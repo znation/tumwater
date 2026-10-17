@@ -62,10 +62,10 @@ import type { TierFallbackMap } from "../config/config-fallbacks.js";
  * src/gates/pause-gates.ts, src/gates/streak-gate.ts, src/gates/role-cap-gates.ts,
  * src/scheduling/quiet-hours.ts, src/gates/disk-gate.ts, and the team-health trio in
  * src/team/team-polls.ts); this owns the wiring half — one poll advances every gate's state in
- * place. Split out of orchestrator.ts so the poll loop reads as phases (reload → requests →
- * gates → redeploy → landings → schedule → start) and the gate family's wiring sits in one
- * place, the same split team/team-polls.ts made for the team-health trio. Dependency direction:
- * orchestrator → gate-polls → the gate modules. */
+ * place. Split out of orchestrator.ts so the poll loop reads as phases (reload → requests → gates →
+ * redeploy → merges → schedule → start) and the gate family's wiring sits in one place, the same
+ * split team/team-polls.ts made for the team-health trio. Dependency direction: orchestrator →
+ * gate-polls → the gate modules. */
 
 /** The gate family's cross-poll memory, constructed once per orchestrator run and mutated in place
  * by each poll. In memory only — a restart re-trusts the fallback, re-opens the hold, and can
@@ -137,11 +137,11 @@ interface TeamGatePoll {
   userPaused: boolean;
   pausedRoles: ReadonlySet<string>;
   capPaused: ReadonlySet<string>;
-  /** The maintenance allowance's verdict this poll (plans/work-ratio.md, part 1b/4): `allowance`
-   * is what the rolling window permits, `used` is the landed maintenance count plus the
-   * maintenance loops already in flight, and `held` is `used >= allowance`. The scheduling pass
-   * admits at most the remaining `allowance - used` due maintenance loops, so the headroom is
-   * never overshot within a poll. */
+  /** The maintenance allowance's verdict this poll (plans/work-ratio.md, part 1b/4): `allowance` is
+   * what the rolling window permits, `used` is the merged maintenance count plus the maintenance
+   * loops already in flight, and `held` is `used >= allowance`. The scheduling pass admits at most
+   * the remaining `allowance - used` due maintenance loops, so the headroom is never overshot
+   * within a poll. */
   maintenanceQuota: MaintenanceQuotaVerdict;
   /** The loops the new-project bootstrap holds (plans/work-ratio.md, part 2/2): every role but
    * plan, feature and director — and bugfix while BUGS.md `## Open` is empty. A held loop
@@ -278,17 +278,16 @@ export function pollTeamGates(
     r.budgetFallbackActive = onFallback;
   }
 
-  // The budget reopened: a tick that started on a fallback pair keeps it until it ends, so
-  // hand those ticks back — abort them resumably (session and worktree edits kept) and
-  // let their next tick continue the same session on the primary, whose config the
-  // assignment above already installed (PLANS.md 2026-09-30). Per-tier fallbacks put
-  // different roles on different pairs (part 5c/8), so the match runs over EVERY pair the
-  // price-based resolution hands out, not only one. A tick started on the primary keeps
-  // running, the director is exempt, and the landings (the slot's own runs) are untouched.
-  // One event per pair names who was handed back, so the resulting aborted ticks read as
-  // the budget reopening, not as unexplained failures.
-  // The subscription window reset (below the cap): the same hand-back for the pairs the window
-  // move used. A window that resets while the cap still holds hands back nothing.
+  // The budget reopened: a tick that started on a fallback pair keeps it until it ends, so hand
+  // those ticks back — abort them resumably (session and worktree edits kept) and let their next
+  // tick continue the same session on the primary, whose config the assignment above already
+  // installed (PLANS.md 2026-09-30). Per-tier fallbacks put different roles on different pairs
+  // (part 5c/8), so the match runs over EVERY pair the price-based resolution hands out, not only
+  // one. A tick started on the primary keeps running, the director is exempt, and the merges (the
+  // slot's own runs) are untouched. One event per pair names who was handed back, so the resulting
+  // aborted ticks read as the budget reopening, not as unexplained failures. The subscription
+  // window reset (below the cap): the same hand-back for the pairs the window move used. A window
+  // that resets while the cap still holds hands back nothing.
   const handBack = gateResumed || (windowResumed && !budgetActive);
   if (handBack && fallbackPairs.length > 0) {
     // A cap reopen while the window is still used up leaves the window's tiers on their
@@ -317,8 +316,8 @@ export function pollTeamGates(
   }
 
   // The pause gates (src/gates/pause-gates.ts owns the reads, the edge-triggered pause/resume
-  // events, and the cross-poll bookkeeping): the operator pause's marker and the per-role
-  // pause's set, both read fresh per cycle so a marker change lands on the next poll.
+  // events, and the cross-poll bookkeeping): the operator pause's marker and the per-role pause's
+  // set, both read fresh per cycle so a marker change takes effect on the next poll.
   const { userPaused, pausedRoles } = pollPauseGates(root, states.pause);
 
   // The error-streak circuit breaker (src/gates/streak-gate.ts): a role past ERROR_STREAK_BREAKER
@@ -361,11 +360,10 @@ export function pollTeamGates(
   // local midnight lifts the verdict by itself.
   const capPaused = pollRoleCapGate(root, states.cap, runners, liveConfig.maxDailyCostUsdPerRole, now);
 
-  // The maintenance allowance (plans/work-ratio.md, part 1b/4): code-maintenance landings in a
-  // rolling 24 h window are capped at `maintenancePerWorkMerge × work +
-  // MAINTENANCE_DAILY_FLOOR`.
+  // The maintenance allowance (plans/work-ratio.md, part 1b/4): code-maintenance merges in a
+  // rolling 24 h window are capped at `maintenancePerWorkMerge × work + MAINTENANCE_DAILY_FLOOR`.
   // The gate counts the window, adds the maintenance loops already in flight (running a tick or
-  // holding a queued landing, so six concurrent permits cannot overshoot), and logs the one
+  // holding a queued merge, so six concurrent permits cannot overshoot), and logs the one
   // hold/resume event per transition. Enabled only: a disabled loop runs no tick to count. The
   // scheduling pass spends the returned headroom one due maintenance loop at a time, beside
   // capPaused, with the fresh-wake/queued-prompt override the need-based deferral honors.
@@ -377,7 +375,7 @@ export function pollTeamGates(
       role: r.role,
       enabled: loopEnabled(r.config, r.role),
       running: r.state.running === true,
-      hasQueuedLanding: queuedRoles.has(r.role),
+      hasQueuedMerge: queuedRoles.has(r.role),
     })),
     liveConfig.maintenancePerWorkMerge,
     now,
@@ -472,25 +470,23 @@ export function pollTeamGates(
     }));
 
   // Team-wide failure hold, per provider (src/team/team-hold.ts, PLANS.md 2026-10-05): once two
-  // roles' runs have ended on the SAME provider AND failure kind within a short window —
-  // 429s, or a connection, timeout, 5xx, or model-load backend failure — role loops on THAT
-  // provider start no new ticks, and the land queue starts no new vet, whose reviewer run
-  // has no retry and would spend a review strike on the storm — until the hold re-opens at
-  // its own deadline (Retry-After honored on the rate-limit kind, doubling on a relapse,
-  // capped). Roles on a healthy provider keep ticking; a hold on the reviewer's provider
-  // (with the review gate on) still blocks everything, since nothing could land — the
-  // orchestrator's scheduling and start passes derive that verdict from this map. The
-  // director's ticks are exempt, as under the budget gate and the operator pause: an
-  // explicit human prompt outranks an autonomous gate, one director run is not the
-  // concurrency that sustains a storm, its 429 runs keep the per-run transient retry
-  // (backend-failure kinds ride this hold alone), and a prompt its tick fails to fulfill
-  // goes back to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like
-  // both siblings, and a role tick already parked in the semaphore meets the same hold at
-  // its permit (the start gate) and hands its reservation back instead of starting
-  // into the storm. The verdicts are written back to states.teamHold — one hold per
-  // provider, lifted holds kept keyed for their relapse memory but never reading as held —
-  // and the permit-time closures read the LATEST poll's map there, so a waiter granted its
-  // permit after a later poll sees that poll's world.
+  // roles' runs have ended on the SAME provider AND failure kind within a short window — 429s, or a
+  // connection, timeout, 5xx, or model-load backend failure — role loops on THAT provider start no
+  // new ticks, and the merge queue starts no new verify, whose reviewer run has no retry and would
+  // spend a review strike on the storm — until the hold re-opens at its own deadline (Retry-After
+  // honored on the rate-limit kind, doubling on a relapse, capped). Roles on a healthy provider
+  // keep ticking; a hold on the reviewer's provider (with the review gate on) still blocks
+  // everything, since nothing could merge — the orchestrator's scheduling and start passes derive
+  // that verdict from this map. The director's ticks are exempt, as under the budget gate and the
+  // operator pause: an explicit human prompt outranks an autonomous gate, one director run is not
+  // the concurrency that sustains a storm, its 429 runs keep the per-run transient retry
+  // (backend-failure kinds ride this hold alone), and a prompt its tick fails to fulfill goes back
+  // to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like both siblings, and
+  // a role tick already parked in the semaphore meets the same hold at its permit (the start gate)
+  // and hands its reservation back instead of starting into the storm. The verdicts are written
+  // back to states.teamHold — one hold per provider, lifted holds kept keyed for their relapse
+  // memory but never reading as held — and the permit-time closures read the LATEST poll's map
+  // there, so a waiter granted its permit after a later poll sees that poll's world.
   const claudeAccount = readClaudeAccount(root, now);
   states.teamHold = pollTeamHold(
     root,

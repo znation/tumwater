@@ -50,7 +50,7 @@ test("a Done entry whose heading carries its done date is not stranded", () => {
 
 ### Timed pause support (planned 2026-09-25, done 2026-09-26)
 
-**Goal.** Landed.
+**Goal.** Merged.
 
 ## Planned
 
@@ -64,7 +64,7 @@ test("a done date on a wrapped second heading line is matched", () => {
 ### Timed pause support (planned 2026-09-02, done
 2026-09-03)
 
-**Goal.** Landed, wrapped heading.
+**Goal.** Merged, wrapped heading.
 
 ## Planned
 
@@ -90,7 +90,7 @@ _None yet._`);
 test("a stranded-looking heading inside a fenced block is ignored", () => {
   const md = plansDoc(`## Done
 
-Example landing note:
+Example merge note:
 
 \`\`\`md
 ### Not a real entry (planned 2026-09-25)
@@ -111,7 +111,7 @@ test("other sections and sectionless content are out of scope; dates in bodies n
 
 ## Done
 
-### Landed work (planned 2026-09-10, done 2026-09-11)
+### Merged work (planned 2026-09-10, done 2026-09-11)
 
 ## Verified
 
@@ -148,7 +148,7 @@ test("the clean tick's block lists each stranded heading with its section; a cle
     path.join(dir, "PLANS.md"),
     plansDoc(`## Done
 
-### Landed (planned 2026-09-10, done 2026-09-11)
+### Merged (planned 2026-09-10, done 2026-09-11)
 
 ## Planned
 
@@ -164,7 +164,7 @@ test("a missing PLANS.md gives no block instead of throwing", () => {
 test("renderBacklogStructureBlock re-reads PLANS.md whose stat changed", () => {
   const dir = tmpdir();
   const plans = path.join(dir, "PLANS.md");
-  fs.writeFileSync(plans, plansDoc(`## Done\n\n### Landed (planned 2026-09-10, done 2026-09-11)`));
+  fs.writeFileSync(plans, plansDoc(`## Done\n\n### Merged (planned 2026-09-10, done 2026-09-11)`));
   assert.equal(renderBacklogStructureBlock(dir), undefined);
   // A larger rewrite guarantees a new size (and mtime) even on a filesystem with coarse
   // clocks, so the stat-keyed cache must miss and re-read.
@@ -175,9 +175,9 @@ test("renderBacklogStructureBlock re-reads PLANS.md whose stat changed", () => {
   assert.match(renderBacklogStructureBlock(dir) ?? "", /\(now under ## Done\) Timed pause support/);
 });
 
-// ── backlogStructureReason — the heading-set check at the gate and the landing re-check ──
-// (plans: "Backlog structure check at the review gate and the in-lock landing re-check",
-// part 2/4) A change that duplicates or drops a `## ` section heading must not reach main.
+// ── backlogStructureReason — the heading-set check at the gate and the merge re-check ──
+// (plans: "Backlog structure check at the review gate and the in-lock landing re-check", part 2/4)
+// A change that duplicates or drops a `## ` section heading must not reach main.
 
 /** A repo whose main carries `base` as a backlog file, plus the improve worktree whose HEAD
  * commit replaces it with `head` — the shape backlogStructureReason measures: the diff's
@@ -308,8 +308,8 @@ test("backlogStructureReason ignores files outside the backlog set", async () =>
 });
 
 // ── backlogStructureReason — the new-plan-under-Done rule (plans, part 4/4) ─────────────
-// A change that ADDS a plan entry directly under the only `## Done` — the most common
-// stranding (PLANS.md 9eaae5ac) — is rejected at the gate and the landing re-check alike.
+// A change that ADDS a plan entry directly under the only `## Done` — the most common stranding
+// (PLANS.md 9eaae5ac) — is rejected at the gate and the merge re-check alike.
 
 test("backlogStructureReason rejects a head that files a new plan directly under the only ## Done", async () => {
   const wt = await structureFixture(
@@ -475,7 +475,7 @@ test("renderBacklogIndexBlock marks a held entry as blocked, refused or needing 
   assert.match(block, /- 9-10: Review one \[blocked: needs review\]/);
 });
 
-test("renderBacklogIndexBlock blocks a BUGS.md entry whose prerequisite plan is unlanded", () => {
+test("renderBacklogIndexBlock blocks a BUGS.md entry whose prerequisite plan is unmerged", () => {
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "PLANS.md"),
@@ -558,8 +558,8 @@ test("renderBacklogIndexBlock marks an entry another role has claimed as in flig
     "# Plans\n## Planned\n### Volume slider (planned 2026-10-09)\nbody\n## Done\n_None._\n",
   );
   fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n_None yet._\n## Fixed\n_None._\n");
-  // `feature` claimed the plan and its landing is queued (the move to Done merges later), so
-  // every other role's shared index must read it as taken rather than list it as open work.
+  // `feature` claimed the plan and its merge is queued (the move to Done merges later), so every
+  // other role's shared index must read it as taken rather than list it as open work.
   const owner = {
     ...loadLoopState(dir, "feature"),
     claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,

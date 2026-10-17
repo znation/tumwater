@@ -57,12 +57,12 @@ function argvNamesDir(command: string, dirs: string[]): boolean {
   });
 }
 
-/** True when an argv's RELATIVE worktree path (`node .tumwater/worktrees/qa/dist/src/cli.js
- * gui …`) is this repo's. Resolved against the process's cwd it must land here; one that lands
- * in a worktree that exists elsewhere belongs to another checkout's team and is not blamed on
- * this one. When the resolution lands nowhere — the cwd is unreadable, or is a scratch dir
- * since deleted (the leaked qa GUI's was), or the process chdir'd after exec — the worktree's
- * name is the evidence left: it counts only when this repo has a worktree by that name. */
+/** True when an argv's RELATIVE worktree path (`node .tumwater/worktrees/qa/dist/src/cli.js gui …`)
+ * is this repo's. Resolved against the process's cwd it must resolve here; one that resolves in a
+ * worktree that exists elsewhere belongs to another checkout's team and is not blamed on this one.
+ * When the resolution points nowhere — the cwd is unreadable, or is a scratch dir since deleted
+ * (the leaked qa GUI's was), or the process chdir'd after exec — the worktree's name is the
+ * evidence left: it counts only when this repo has a worktree by that name. */
 function relativeArgvIsOurs(command: string, cwd: string | undefined, root: string, dirs: string[]): boolean {
   for (const [, rel = "", name = ""] of command.matchAll(RELATIVE_WORKTREE_ARG)) {
     if (cwd !== undefined) {

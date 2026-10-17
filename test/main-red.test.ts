@@ -293,7 +293,7 @@ test("mainRedGate proceeds silently when no build check is declared", async () =
 });
 
 // The gate's never-throws contract (src/baseline/main-red.ts): an unreadable main must read as
-// `unavailable` with a why, never reject the vet pipeline with an exception — a corrupt or
+// `unavailable` with a why, never reject the verify pipeline with an exception — a corrupt or
 // dangling ref is a broken repo, and the failure belongs in the rejection's reasons.
 test("mainTipVerdict reports unavailable, without throwing, when main's ref dangles", async () => {
   const root = makeRepo();
@@ -337,13 +337,13 @@ test("mainRedGate proceeds unverified when the baseline run spanned a host sleep
   assert.equal((await mainRedGate(root, ROLE, wt, clean))?.result, "main_red");
 });
 
-// mainTipVerdict's own verdict arms, pinned at the seam the review gate and the landing
-// pipeline's attribution read. attribute-red-check.test.ts reaches green/red/no-check through
-// the attribution step; these pin the function directly — including the two degradation arms
-// no other test can reach: a skip (npm off PATH) and a main ref that resolves to nothing.
-// The skip-vs-unverified precedence matters: a skipped check is an environmental miss, not
-// evidence about main, and the why must say which (BUGS.md 2026-09-30, the attribution
-// family that treated a slept run as the change's own verdict).
+// mainTipVerdict's own verdict arms, pinned at the seam the review gate and the merge pipeline's
+// attribution read. attribute-red-check.test.ts reaches green/red/no-check through the attribution
+// step; these pin the function directly — including the two degradation arms no other test can
+// reach: a skip (npm off PATH) and a main ref that resolves to nothing. The skip-vs-unverified
+// precedence matters: a skipped check is an environmental miss, not evidence about main, and the
+// why must say which (BUGS.md 2026-09-30, the attribution family that treated a slept run as the
+// change's own verdict).
 
 test("mainTipVerdict reports green at main's tip, priced under the asking role", async () => {
   const counter = path.join(tmpdir(), "runs");
@@ -414,10 +414,10 @@ test("mainTipVerdict reports the skip reason when the tip's check cannot run", a
 
 test("mainTipVerdict reports unavailable when the named branch does not exist", async () => {
   const root = makeRepo();
-  // A ref `git rev-parse` cannot resolve (no such branch): gitTry returns null, the gate's
-  // worktree is never touched, and the why is the unreadable-main arm — distinct from the
-  // throw path the dangling-ref test pins (an unresolvable ref is a caller or config bug,
-  // not a broken repo, but neither may reject the vet pipeline with an exception).
+  // A ref `git rev-parse` cannot resolve (no such branch): gitTry returns null, the gate's worktree
+  // is never touched, and the why is the unreadable-main arm — distinct from the throw path the
+  // dangling-ref test pins (an unresolvable ref is a caller or config bug, not a broken repo, but
+  // neither may reject the verify pipeline with an exception).
   const verdict = await mainTipVerdict(root, ROLE, "no-such-branch", defaultConfig());
   assert.deepEqual(verdict, { status: "unavailable", why: "no-such-branch is unreadable" });
   assert.deepEqual(readEvents(root), [], "nothing ran, nothing to say");

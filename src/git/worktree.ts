@@ -60,13 +60,13 @@ const setupQueues = new Map<string, Promise<unknown>>();
 
 /** Run `setup` — a clear-and-add of one worktree — after every earlier setup for the same
  * repository has finished. `git worktree add` creates the new registration's directory under
- * .git/worktrees a moment before it writes the `locked` file that shields it from prune, and a
- * `git worktree prune` landing in between deletes the registration: the add then dies with
- * "could not open '.git/worktrees/<name>/locked' for writing". The landing pipeline vets its
- * changes concurrently, each vet ensuring its own leased pool slot, so two vets' clear-and-add
- * steps did interleave — and the loser's vet ended in a terminal "error" that dropped its queue
- * entry. Serializing the harness's own setups per repository closes that; the usable-worktree
- * fast path never takes the queue. */
+ * .git/worktrees a moment before it writes the `locked` file that shields it from prune, and a `git
+ * worktree prune` running in between deletes the registration: the add then dies with "could not
+ * open '.git/worktrees/<name>/locked' for writing". The merge pipeline verifies its changes
+ * concurrently, each verify ensuring its own leased pool slot, so two verifies' clear-and-add steps
+ * did interleave — and the loser's verify ended in a terminal "error" that dropped its queue entry.
+ * Serializing the harness's own setups per repository closes that; the usable-worktree fast path
+ * never takes the queue. */
 async function serializeSetup<T>(root: string, setup: () => Promise<T>): Promise<T> {
   const key = path.resolve(root);
   const run = (setupQueues.get(key) ?? Promise.resolve()).then(setup);
@@ -79,11 +79,11 @@ async function serializeSetup<T>(root: string, setup: () => Promise<T>): Promise
   }
 }
 
-/** Ensure a persistent worktree + branch exists for a role. Returns the worktree path.
- * Self-heals when the directory exists but is no longer a usable worktree: it removes and
- * re-adds the directory instead of failing every tick (see clearStaleWorktree). Since the
- * worktree pool landed (plans/worktree-pool.md, "Role ticks lease slots"), this serves the
- * director only; every other role leases a pooled `_slot-<n>` via leaseSlot instead. */
+/** Ensure a persistent worktree + branch exists for a role. Returns the worktree path. Self-heals
+ * when the directory exists but is no longer a usable worktree: it removes and re-adds the
+ * directory instead of failing every tick (see clearStaleWorktree). Since the worktree pool merged
+ * (plans/worktree-pool.md, "Role ticks lease slots"), this serves the director only; every other
+ * role leases a pooled `_slot-<n>` via leaseSlot instead. */
 export async function ensureWorktree(root: string, role: string, mainBranch: string): Promise<string> {
   const wt = worktreePath(root, role);
   const branch = branchName(role);
@@ -135,11 +135,11 @@ export async function removeWorktree(root: string, role: string): Promise<void> 
   await removeWorktreeDir(root, worktreePath(root, role));
 }
 
-/** Remove lander checkouts left by a pre-pool build (`_land-<role>`): the pool's ticks keep
- * their commit on the role branch and a queued landing re-vets from its pinned ref, so the
- * checkout holds nothing to keep. Called once at orchestrator startup, before any tick; each
- * removal goes through removeWorktreeDir (force `worktree remove`, with the shared
- * dead-registration fallback), then one prune registers the vanished checkouts. */
+/** Remove lander checkouts left by a pre-pool build (`_land-<role>`): the pool's ticks keep their
+ * commit on the role branch and a queued merge re-verifies from its pinned ref, so the checkout
+ * holds nothing to keep. Called once at orchestrator startup, before any tick; each removal goes
+ * through removeWorktreeDir (force `worktree remove`, with the shared dead-registration fallback),
+ * then one prune registers the vanished checkouts. */
 export async function removeLegacyLandWorktrees(root: string): Promise<void> {
   const dir = worktreesDir(root);
   // A missing worktrees dir (a team that has not started) yields no names to remove.

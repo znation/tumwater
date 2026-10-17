@@ -132,12 +132,12 @@ test("ensureWorktree recovers when the worktree's .git pointer file is lost", as
   assert.ok(fs.existsSync(path.join(again, "seed.txt")));
 });
 
-// Concurrent setups in one repository: `git worktree add` creates its registration directory
-// a moment before it writes the `locked` file that shields it from prune, so another setup's
-// `worktree prune` landing in between deleted it and the add died — the landing pipeline's
-// concurrent vets hit exactly that ("could not open '.git/worktrees/_land-alpha/locked' for
-// writing") and dropped a queued change as an error. The harness serializes its own setups
-// per repository; a burst like this one must register every worktree.
+// Concurrent setups in one repository: `git worktree add` creates its registration directory a
+// moment before it writes the `locked` file that shields it from prune, so another setup's
+// `worktree prune` merge in between deleted it and the add died — the merge pipeline's concurrent
+// verifies hit exactly that ("could not open '.git/worktrees/_land-alpha/locked' for writing") and
+// dropped a queued change as an error. The harness serializes its own setups per repository; a
+// burst like this one must register every worktree.
 test("concurrent worktree setups in one repository all succeed (prune/add race)", async () => {
   const repo = makeRepo();
   const head = headSha(repo);
@@ -352,11 +352,11 @@ test("abortSync falls back to spawns when .git is missing entirely", async () =>
 });
 
 test("concurrent ensureWorktree calls serialize: the queued call adopts the worktree the first made", async () => {
-  // Both callers probe a worktree that does not exist yet, so both enter serializeSetup;
-  // the second queues behind the first and must find the worktree usable by its turn —
-  // the queued-ahead branch the landing pipeline's concurrent vets once fell through
-  // (two clear-and-add steps interleaving, the loser's vet a terminal error). Without
-  // the serialization the two `worktree add` calls race and one of them fails.
+  // Both callers probe a worktree that does not exist yet, so both enter serializeSetup; the second
+  // queues behind the first and must find the worktree usable by its turn — the queued-ahead branch
+  // the merge pipeline's concurrent verifies once fell through (two clear-and-add steps
+  // interleaving, the loser's verify a terminal error). Without the serialization the two `worktree
+  // add` calls race and one of them fails.
   const repo = makeRepo();
   const first = ensureWorktree(repo, "clean", "main");
   const second = ensureWorktree(repo, "clean", "main");

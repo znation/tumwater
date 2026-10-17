@@ -212,8 +212,8 @@ test("an idle host leaves the merge-scope deadline alone; load stretches it by t
 });
 
 test("an on-time merge-scope timeout names a starved host, and stays silent on an idle one", async () => {
-  // BUGS.md 2026-10-12: 28 of 29 landing build-check failures in a window were the 300 s
-  // deadline firing on time under the team's own load; the reason must carry that evidence.
+  // BUGS.md 2026-10-12: 28 of 29 merge build-check failures in a window were the 300 s deadline
+  // firing on time under the team's own load; the reason must carry that evidence.
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "sleep 5" }));
   const run = (load1: number) =>
@@ -230,10 +230,10 @@ test("an on-time merge-scope timeout names a starved host, and stays silent on a
   assert.doesNotMatch(idle!.outcome.outputTail?.[0] ?? "", /host load/);
 });
 
-test("a landing- or batch-scope timeout is a deterministic reject, not an environmental skip", async () => {
-  // BUGS.md 2026-09-18: the landing check is the last gate before main, so a suite that never
-  // finished must not read as "environmental" and merge the unverified tree. The gate scope
-  // stays fail-open because the model reviewer and the landing check still stand behind it.
+test("a merge- or batch-scope timeout is a deterministic reject, not an environmental skip", async () => {
+  // BUGS.md 2026-09-18: the merge check is the last gate before main, so a suite that never
+  // finished must not read as "environmental" and merge the unverified tree. The gate scope stays
+  // fail-open because the model reviewer and the merge check still stand behind it.
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(
     path.join(wt, "package.json"),
@@ -260,7 +260,7 @@ test("a landing- or batch-scope timeout is a deterministic reject, not an enviro
   );
   assert.ok(
     events.some((e) => e.type === "warning" && String(e.message).includes('rejecting the merge')),
-    "the operator sees why the landing did not proceed",
+    "the operator sees why the merge did not proceed",
   );
 
   const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, undefined, 400);
@@ -299,7 +299,7 @@ test("a merge-scope check killed by an external signal rejects, naming the signa
     projManifest({ test: "kill -9 $$" }),
   );
   const result = await runScopedBuildCheck(root, ROLE, "batch", wt, undefined, 30_000);
-  assert.equal(result!.outcome.status, "failed", "an unverified tree must not land");
+  assert.equal(result!.outcome.status, "failed", "an unverified tree must not merge");
   assert.match(result!.outcome.outputTail?.[0] ?? "", /was killed by SIGKILL after \d+(?:\.\d+)?s; the tree is unverified/);
   const warning = readEvents(root).find((e) => e.type === "warning");
   assert.match(String(warning?.message ?? ""), /was killed by SIGKILL after \d+(?:\.\d+)?s/);
@@ -362,7 +362,7 @@ test("a merge-scope timeout late on both attempts rejects unverified, without th
   await waitFor(() => fs.existsSync(path.join(wt, "retried2")), "the retry's retried2 marker", 10_000);
   t.mock.timers.tick(10_000); // the retry's deadline fires late too → its verdict stands
   const result = await pending;
-  assert.equal(result!.outcome.status, "failed", "an unverified tree must not land");
+  assert.equal(result!.outcome.status, "failed", "an unverified tree must not merge");
   assert.match(
     result!.outcome.outputTail?.[0] ?? "",
     /merge check timed out after 10s \(its 2s deadline fired 8s late: no host sleep measured: the host was starved or tumwater stalled\); the tree is unverified/,
@@ -563,11 +563,11 @@ test("runScopedBuildCheck remaps a configured command's merge-scope timeout exac
   assert.equal((check as { script?: string } | undefined)?.script, "sleep 5", "the event names the command");
 });
 
-// --- check.gateCommand: an opt-in cheaper check for the review
-// gate's per-change pre-check only. The landing and batch scopes — the checks that decide what
-// reaches main — keep running the full check, or a weaker gate would land an unverified tree.
+// --- check.gateCommand: an opt-in cheaper check for the review gate's per-change pre-check only.
+// The merge and batch scopes — the checks that decide what reaches main — keep running the full
+// check, or a weaker gate would merge an unverified tree.
 
-test("runScopedBuildCheck runs check.gateCommand at the gate scope only; landing and batch keep check.command", async () => {
+test("runScopedBuildCheck runs check.gateCommand at the gate scope only; merge and batch keep check.command", async () => {
   const { root, wt } = buildCheckFixture();
   // The full check is red and the gate command green, so each scope's verdict names which ran.
   const config = { check: { command: "echo full; exit 1", gateCommand: "echo gate-only" } };
@@ -608,13 +608,13 @@ test("check.gateCommand shares the check's cwd and timeout, and overrides the np
     cwd: path.join(wt, "sub"),
     timeoutMs: 7_000,
   });
-  // No check.command (an npm repo — validation allows the key to be absent): the gate runs the
-  // gate command, the landing scope the npm walk-up exactly as before.
+  // No check.command (an npm repo — validation allows the key to be absent): the gate runs the gate
+  // command, the merge scope the npm walk-up exactly as before.
   const npmRepo = { check: { gateCommand: "echo gate-only" } } as { check: { command: string; gateCommand: string } };
   const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, npmRepo, 30_000);
   assert.equal(gate!.outcome.script, "echo gate-only");
-  const landing = await runScopedBuildCheck(root, ROLE, "merge", wt, npmRepo, 30_000);
-  assert.deepEqual(landing!.check, { kind: "npm", rootDir: root, script: "build" });
+  const mergeResult = await runScopedBuildCheck(root, ROLE, "merge", wt, npmRepo, 30_000);
+  assert.deepEqual(mergeResult!.check, { kind: "npm", rootDir: root, script: "build" });
 });
 
 test("an unset or blank check.gateCommand leaves the gate running check.command", async () => {
@@ -663,7 +663,7 @@ test("a retry that also slept is recorded as unverified, not as the change's own
   fs.writeFileSync(path.join(wt, "package.json"), projManifest({ test: "exit 1" }));
   const sampler = scriptedSampler([woke(1_000), woke(121_000, 2_000), woke(122_000), woke(241_000, 3_000)]);
   const result = await runScopedBuildCheck(root, ROLE, "merge", wt, undefined, 30_000, sampler);
-  assert.equal(result!.outcome.status, "failed", "an unverified landing still rejects — the tree must not merge");
+  assert.equal(result!.outcome.status, "failed", "an unverified merge still rejects — the tree must not merge");
   assert.equal(result!.outcome.unverified, true, "the rejection is unverified, not attributed to the tree");
   // The retry's sleep began before its window opened, so the measured in-window span is
   // clamped to 119 s — the sleep is still evidenced, never counted outside the run.

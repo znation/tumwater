@@ -27,10 +27,10 @@ export class Semaphore {
    * never held by a key cap. */
   private readonly waiters: Array<{ tier: number; key?: string; resolve: () => void }> = [];
   /** A parked re-key waiter: it already holds a team permit, so it waits only for its key's
-   * headroom, ahead of every admission waiter (which would otherwise queue a team permit
-   * uselessly behind another provider's runs). `granted` flips when drive() hands the waiter
-   * the target key's slot, so the lease's release can tell a landed grant (give it back) from
-   * a still-parked one (cancel it) when the two interleave. */
+   * headroom, ahead of every admission waiter (which would otherwise queue a team permit uselessly
+   * behind another provider's runs). `granted` flips when drive() hands the waiter the target key's
+   * slot, so the lease's release can tell a delivered grant (give it back) from a still-parked one
+   * (cancel it) when the two interleave. */
   private readonly rekeyWaiters: Array<{ key: string; resolve: () => void; granted: boolean }> = [];
   /** Permits currently held, tracked separately from capacity (rather than as an "available"
    * count): setCapacity can shrink below the current in-use, and a free-permit count cannot
@@ -112,10 +112,9 @@ export class Semaphore {
       if (closed) return;
       closed = true;
       if (parkedRekey !== null) {
-        // A re-key is parked waiting on its new key. Cancel it: pull it off the queue (so
-        // drive can't grant it) and, if the grant already landed this microtask, give the
-        // new key's slot back. The lease holds no slot either way, so the team permit is the
-        // only thing to free.
+        // A re-key is parked waiting on its new key. Cancel it: pull it off the queue (so drive
+        // can't grant it) and, if the grant already arrived this microtask, give the new key's slot
+        // back. The lease holds no slot either way, so the team permit is the only thing to free.
         const w = parkedRekey;
         const idx = this.rekeyWaiters.indexOf(w);
         if (idx >= 0) this.rekeyWaiters.splice(idx, 1);
@@ -250,8 +249,8 @@ export class Semaphore {
     }
   }
 
-  /** The permits withheld from `tier`: `reserve` for tier ≥ 1 (maintenance), 0 for every tier
-   * that ships work or lands a change (work, VERIFY_TIER, MERGE_TIER). */
+  /** The permits withheld from `tier`: `reserve` for tier ≥ 1 (maintenance), 0 for every tier that
+   * ships work or merges a change (work, VERIFY_TIER, MERGE_TIER). */
   private reserveFor(tier: number): number {
     return tier >= 1 ? this.reserve : 0;
   }

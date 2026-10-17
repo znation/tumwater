@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
@@ -21,8 +21,8 @@ import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
 // checkFixClaims — the standalone false-fix detector: the newest Fixed records of BUGS.md are
 // re-verified against the tree with src/verdict/fix-claim.ts's parsing (the document shapes below
-// follow test/fix-claim.test.ts). A record warns only when every symbol its Fix paragraph
-// names is absent; the gate-strength rule (any missing symbol) belongs to md-only landings.
+// follow test/fix-claim.test.ts). A record warns only when every symbol its Fix paragraph names is
+// absent; the gate-strength rule (any missing symbol) belongs to md-only merges.
 
 /** A fixture tree whose code defines `liveSymbol`, plus a BUGS.md whose Fixed section holds
  * one entry per given Fix paragraph, newest first (the template convention). */
@@ -50,7 +50,7 @@ test("checkFixClaims warns naming the heading and missing symbols of a record wh
   const root = fixClaimsRepo([
     "`liveSymbol` is real.",
     "`runScriptGroup` now signals via `signalTree` in `src/build/build-check.ts`, bounded by `killAfter`.",
-    "`anotherPhantom` landed.",
+    "`anotherPhantom` merged.",
   ]);
   const r = checkFixClaims(root);
   assert.equal(r.level, "warn");
@@ -86,9 +86,9 @@ test("checkFixClaims reads ok with no BUGS.md and for a record naming no symbols
 });
 
 test("checkFixClaims warns instead of throwing when BUGS.md vanishes between the stat and the read", () => {
-  // existsSync passes, then the file is gone when readFileSync lands — the rotation/race
-  // tail the catch exists for (fs-faults.ts's vanishOnReadFile is that race, made
-  // deterministic). Without the catch the check throws and takes the whole doctor run down.
+  // existsSync passes, then the file is gone when readFileSync throws — the rotation/race tail the
+  // catch exists for (fs-faults.ts's vanishOnReadFile is that race, made deterministic). Without
+  // the catch the check throws and takes the whole doctor run down.
   const root = fixClaimsRepo(["`liveSymbol` fixed it."]);
   const bugsPath = path.join(root, "BUGS.md");
   const undo = vanishOnReadFile(bugsPath);
@@ -118,7 +118,7 @@ test("checkStrandedPlans warns naming a stranded heading and stays silent on a c
 
   fs.writeFileSync(
     path.join(dir, "PLANS.md"),
-    `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### Landed (planned 2026-09-10, done 2026-09-11)\n`,
+    `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### Merged (planned 2026-09-10, done 2026-09-11)\n`,
   );
   assert.deepEqual(checkStrandedPlans(dir), {
     level: "ok",
@@ -145,10 +145,10 @@ test("checkStrandedPlans warns naming a stranded heading and stays silent on a c
 });
 
 test("checkStrandedPlans warns instead of throwing when PLANS.md cannot be read", () => {
-  // A directory where the file belongs: existsSync passes, readFileSync lands EISDIR — the
-  // class of filesystem damage a stray tool leaves behind. Without the catch the check
-  // throws and takes the whole doctor run down; the contract is a warn, never a fail
-  // (checkFixClaims's vanish-on-read twin above pins the same policy for BUGS.md).
+  // A directory where the file belongs: existsSync passes, readFileSync hits EISDIR — the class
+  // of filesystem damage a stray tool leaves behind. Without the catch the check throws and takes
+  // the whole doctor run down; the contract is a warn, never a fail (checkFixClaims's
+  // vanish-on-read twin above pins the same policy for BUGS.md).
   const dir = tmpdir("doctor-stranded-unreadable-");
   fs.mkdirSync(path.join(dir, "PLANS.md"));
   const r = checkStrandedPlans(dir);
@@ -156,11 +156,11 @@ test("checkStrandedPlans warns instead of throwing when PLANS.md cannot be read"
   assert.match(r.detail, /^cannot read PLANS\.md — /);
 });
 
-// checkBacklogHeadings — the duplicate-heading half of the backlog-structure check surfaced
-// for the operator (plans part 2/4): a `## ` heading already duplicated on main warns, naming
-// the file and heading, so existing damage is visible. The wording must not overstate the
-// gate: rule (a) fires only when a landing ADDS another copy (count exceeds the merge-base's),
-// so a pre-existing duplicate is not blocked away by just any next edit.
+// checkBacklogHeadings — the duplicate-heading half of the backlog-structure check surfaced for the
+// operator (plans part 2/4): a `## ` heading already duplicated on main warns, naming the file and
+// heading, so existing damage is visible. The wording must not overstate the gate: rule (a) fires
+// only when a merge ADDS another copy (count exceeds the merge-base's), so a pre-existing duplicate
+// is not blocked away by just any next edit.
 
 test("checkBacklogHeadings warns on a duplicated heading and stays silent on a clean set", () => {
   const dir = tmpdir("doctor-headings-");
@@ -172,8 +172,8 @@ test("checkBacklogHeadings warns on a duplicated heading and stays silent on a c
   assert.equal(warn.level, "warn");
   assert.match(warn.detail, /PLANS\.md "## Done"/);
   assert.match(warn.detail, /appears more than once/);
-  // The claim about the gate stays accurate: only an adding landing is blocked, so the
-  // message tells the operator to remove the duplicate deliberately.
+  // The claim about the gate stays accurate: only an adding merge is blocked, so the message tells
+  // the operator to remove the duplicate deliberately.
   assert.match(warn.detail, /blocks only a merge that adds another copy/);
   assert.doesNotMatch(warn.detail, /blocks the next edit/);
 
@@ -382,45 +382,45 @@ test("checkStaleBugs ignores refused, undated, fresh and fixed bugs, and a missi
   assert.deepEqual(checkStaleBugs(dir), ok);
 });
 
-// checkStaleQueuedLandings — a change that has sat in the durable land queue too long without
-// starting is the one queued-change health fact with no hook of its own: the header badge counts
-// it and `tumwater queue` ages it, but nothing calls it out. This warns on the oldest queued
-// landing that is NOT in-flight and has waited past the 6-hour threshold; a marker showing the
-// role in-flight suppresses it, and an absent/unreadable marker or empty queue reads ok.
+// checkStaleQueuedMerges — a change that has sat in the durable merge queue too long without
+// starting is the one queued-change health fact with no hook of its own: the header badge counts it
+// and `tumwater queue` ages it, but nothing calls it out. This warns on the oldest queued merge
+// that is NOT in-flight and has waited past the 6-hour threshold; a marker showing the role
+// in-flight suppresses it, and an absent/unreadable marker or empty queue reads ok.
 
 function advice(role: string, summary: string): { role: string; summary: string; enqueuedAt: number; sha: string; run: number } {
   return { role, summary, enqueuedAt: Date.now(), sha: "abc1234", run: 1 };
 }
 
 function queueRoot(): string {
-  const root = tmpdir("doctor-stale-landing-");
+  const root = tmpdir("doctor-stale-merge-");
   fs.mkdirSync(mergeQueueDir(root), { recursive: true });
   return root;
 }
 
-test("checkStaleQueuedLandings reads ok for an empty queue and one whose entries are all fresh", () => {
+test("checkStaleQueuedMerges reads ok for an empty queue and one whose entries are all fresh", () => {
   const now = Date.now();
-  assert.equal(checkStaleQueuedLandings(queueRoot(), now).level, "ok");
+  assert.equal(checkStaleQueuedMerges(queueRoot(), now).level, "ok");
   const root = queueRoot();
   enqueueMerge(root, advice("improve", "tidy parser"));
-  assert.equal(checkStaleQueuedLandings(root, now).level, "ok");
+  assert.equal(checkStaleQueuedMerges(root, now).level, "ok");
   // An entry exactly at the threshold boundary (not strictly past it) is not stale yet.
   enqueueMerge(root, { ...advice("clean", "split module"), enqueuedAt: now - 6 * 60 * 60 * 1000 });
-  assert.equal(checkStaleQueuedLandings(root, now).level, "ok");
+  assert.equal(checkStaleQueuedMerges(root, now).level, "ok");
 });
 
-test("checkStaleQueuedLandings warns naming the oldest stale role, its summary, and its age", () => {
+test("checkStaleQueuedMerges warns naming the oldest stale role, its summary, and its age", () => {
   const now = Date.now();
   const root = queueRoot();
   enqueueMerge(root, { ...advice("organize", "move the helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
-  const out = checkStaleQueuedLandings(root, now);
+  const out = checkStaleQueuedMerges(root, now);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /organize/);
   assert.match(out.detail, /move the helpers/);
   assert.match(out.detail, /has waited 7h to start/);
 });
 
-test("checkStaleQueuedLandings warns once, resting via andMore, and never flags an in-flight role", () => {
+test("checkStaleQueuedMerges warns once, resting via andMore, and never flags an in-flight role", () => {
   const now = Date.now();
   const root = queueRoot();
   enqueueMerge(root, { ...advice("clean", "split module"), enqueuedAt: now - 8 * 60 * 60 * 1000 });
@@ -432,7 +432,7 @@ test("checkStaleQueuedLandings warns once, resting via andMore, and never flags 
     changes: [{ role: "improve", sha: "abc1234", summary: "tidy parser", status: "merging", startedAt: now - 1000 }],
   });
   enqueueMerge(root, { ...advice("improve", "tidy parser"), enqueuedAt: now - 5 * 60 * 60 * 1000 });
-  const out = checkStaleQueuedLandings(root, now);
+  const out = checkStaleQueuedMerges(root, now);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /clean/);
   assert.ok(!out.detail.includes("improve"), "the in-flight role is not flagged");

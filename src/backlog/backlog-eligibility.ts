@@ -20,7 +20,7 @@ import { openParenthetical, trailingParenthetical, type BacklogEntry } from "./b
 import { actionableEntryRangesFor, stripEntryStamp } from "./backlog-structure.js";
 import { openBugEntries, plannedPlanEntries } from "./backlog.js";
 
-/** Why an entry is held, or null when it is eligible. `blockedBy` names the unlanded
+/** Why an entry is held, or null when it is eligible. `blockedBy` names the unmerged
  * prerequisites in the form `Series i/n` so a renderer can show `requires …`. */
 export type EntryHold = "refused" | "needs-review" | "needs-replan" | "waiting-for-failure" | { blockedBy: string[] } | null;
 
@@ -148,12 +148,12 @@ function partKey(series: string, part: string): string {
 
 /** The Done entries of the parts `title` requires, in the order its requires clause names them:
  * for each requiredParts ref, the first `## Done` entry of root's PLANS.md whose seriesPart has
- * the same partKey. Done is newest-first, so the first match is the most recent landing. A ref
+ * the same partKey. Done is newest-first, so the first match is the most recent merge. A ref
  * with no Done match (still planned, or renamed) adds nothing, so a title with no requires
  * clause, or a missing PLANS.md, gives []. Lets the assignment prompt point at the exact range
  * to read instead of leaving the implementer to search a Done section that runs to thousands of
  * lines. */
-export function landedPrerequisiteRanges(root: string, title: string): EligibleEntry[] {
+export function mergedPrerequisiteRanges(root: string, title: string): EligibleEntry[] {
   const refs = requiredParts(title);
   if (refs.length === 0) return [];
   const done = actionableEntryRangesFor(root, "PLANS.md", "Done");
@@ -350,7 +350,7 @@ export function planDependencyProblems(
  * `plannedParts` (built by plannedPartKeys), else []. A heading with no parseable clause is never
  * reported, so only a refusal whose named prerequisites have all left `## Planned` reads as
  * possibly stale. */
-export function prerequisitesLanded(title: string, plannedParts: ReadonlySet<string>): PartRef[] {
+export function prerequisitesMerged(title: string, plannedParts: ReadonlySet<string>): PartRef[] {
   const refs = requiredParts(title);
   return refs.some((ref) => plannedParts.has(partKey(ref.series, ref.part))) ? [] : refs;
 }
@@ -404,14 +404,14 @@ export function holdMark(hold: EntryHold): string {
 /** The holds' shape, derived from two files so it needs a stat key spanning both. */
 interface BacklogHolds { plans: EntryHold[]; bugs: EntryHold[] }
 
-/** `/api/status` polls the holds on the 1-second dashboard poll and the TUI recomputes them
- * each frame while PLANS.md/BUGS.md change only when a loop lands an edit. The file reads
- * beneath are already stat-cached (plannedPlanEntries/openBugEntries), but the per-entry
- * eligibility walk (entryHoldAgainst's body scan + heading clause) is pure CPU re-derived on
- * every call, growing with the append-only backlog. Cache the derived holds keyed on both
- * files' stat identities — the same dev/ino/mtimeMs/size freshness check stat-cache.ts
- * applies — so an unchanged backlog costs two stat syscalls per poll instead of the walk.
- * Bounded (like sectionCache) so many short-lived roots in tests cannot grow it unbounded. */
+/** `/api/status` polls the holds on the 1-second dashboard poll and the TUI recomputes them each
+ * frame while PLANS.md/BUGS.md change only when a loop merges an edit. The file reads beneath are
+ * already stat-cached (plannedPlanEntries/openBugEntries), but the per-entry eligibility walk
+ * (entryHoldAgainst's body scan + heading clause) is pure CPU re-derived on every call, growing
+ * with the append-only backlog. Cache the derived holds keyed on both files' stat identities — the
+ * same dev/ino/mtimeMs/size freshness check stat-cache.ts applies — so an unchanged backlog costs
+ * two stat syscalls per poll instead of the walk. Bounded (like sectionCache) so many short-lived
+ * roots in tests cannot grow it unbounded. */
 const HOLDS_CACHE_MAX = 64;
 const holdsCache = new Map<string, BacklogHolds>();
 

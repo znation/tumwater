@@ -21,11 +21,11 @@ import {
   STATE_DIR,
 } from "../paths.js";
 
-/** The in-flight landing fields `consumeAbortRequests` needs to cancel one. The
- * orchestrator's `InFlightMerge` carries exactly these plus its `promise`, and the vetting
- * stage's waiting `ApprovedMerge` extends it, so both are assignable here without this module
- * knowing about the drain. */
-export interface AbortableLanding {
+/** The in-flight merge fields `consumeAbortRequests` needs to cancel one. The orchestrator's
+ * `InFlightMerge` carries exactly these plus its `promise`, and the verifying stage's waiting
+ * `ApprovedMerge` extends it, so both are assignable here without this module knowing about the
+ * drain. */
+export interface AbortableMerge {
   roles: string[];
   userAborted: boolean;
   controller: AbortController;
@@ -142,21 +142,20 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
   removeQuiet(markerFile);
 }
 
-/** Consume a pending wake request from `tumwater wake [--role <id>] [--in <duration>]`, if
- * any. Immediate wakes find the state files already cleared by the CLI when no team was
- * running; this clears the affected runners' in-memory schedules (backoffSeconds, nextRunAt),
- * or their next save would resurrect the pre-wake sleep window and the loops would keep
- * sleeping until the original backoff expired, and writes the cleared schedule directly for
- * requested roles with no runner, which the CLI left to its marker. A scheduled wake
- * (`--in`) carries a `notBeforeMs`: before the deadline the
- * marker is left in place (a later poll retries it — the wake lands within one poll cycle
- * after the deadline, the same delivery granularity prompt --at's consumer gives), and the
- * deadline-crossing poll's `wake()` call is what applies the state change, since the submit
+/** Consume a pending wake request from `tumwater wake [--role <id>] [--in <duration>]`, if any.
+ * Immediate wakes find the state files already cleared by the CLI when no team was running; this
+ * clears the affected runners' in-memory schedules (backoffSeconds, nextRunAt), or their next save
+ * would resurrect the pre-wake sleep window and the loops would keep sleeping until the original
+ * backoff expired, and writes the cleared schedule directly for requested roles with no runner,
+ * which the CLI left to its marker. A scheduled wake (`--in`) carries a `notBeforeMs`: before the
+ * deadline the marker is left in place (a later poll retries it — the wake takes effect within one
+ * poll cycle after the deadline, the same delivery granularity prompt --at's consumer gives), and
+ * the deadline-crossing poll's `wake()` call is what applies the state change, since the submit
  * deliberately skipped it. A non-numeric or non-finite value (a hand edit's `1e999`) reads as
- * immediate (defensive; validation happens at the CLI) — leaving Infinity as a deadline would
- * hold `notBefore > Date.now()` true forever and strand the marker, which nothing else deletes.
- * Each woken role logs the existing `wake` event with the operator reason, so the team's early
- * ticks read in the feed as deliberate. */
+ * immediate (defensive; validation happens at the CLI) — leaving Infinity as a deadline would hold
+ * `notBefore > Date.now()` true forever and strand the marker, which nothing else deletes. Each
+ * woken role logs the existing `wake` event with the operator reason, so the team's early ticks
+ * read in the feed as deliberate. */
 export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   // A legacy wake.json (the pre-upgrade build wrote scheduled wakes here) keeps its deadline.
   const markerFile = wakeRequestPath(root);
@@ -290,25 +289,24 @@ export function consumeReclaimRequest(root: string, reclaim: { requestManual(): 
   consumeMarkerRequest(reclaimRequestPath(root), () => reclaim?.requestManual());
 }
 
-/** Consume per-role abort requests from `tumwater abort --role <id>`: one marker file per
- * role (no parsing needed), so a request for an idle OR disabled loop is still cleaned up. A
- * running tick gets killed and logs exactly one event; anything else is a silent no-op — the
- * marker's presence IS the request, removing it acknowledges. Since merge queue 3/5 a role's
- * in-flight work is often a LANDING rather than a tick, so the landing's controller is passed
- * in: an abort for the role landing right now kills that too (the drain's task sees
- * `userAborted` and discards the pinned ref when the landing ends). There can be several
- * in-flight units at once (land-queue speed 2c) — one per change being vetted, the merge
- * slot's stack, and each vetted change waiting for it (flagged, then settled by the drain) — so
- * `landings` lists them all and the request stops whichever holds the role. The merge is a
- * whole STACK (merge queue 5/5), so the request matches ANY of its roles — `roles` is every role
- * it is landing right now, and a stop for one of them kills the whole stack: the lander cannot
- * split it (abandoning mid-stack would leave the pinned refs of the not-yet-processed changes
- * for one-at-a-time recovery, which is already the fallback), and the merge discards every
- * stacked ref when it ends. */
+/** Consume per-role abort requests from `tumwater abort --role <id>`: one marker file per role (no
+ * parsing needed), so a request for an idle OR disabled loop is still cleaned up. A running tick
+ * gets killed and logs exactly one event; anything else is a silent no-op — the marker's presence
+ * IS the request, removing it acknowledges. Since merge queue 3/5 a role's in-flight work is often
+ * a MERGE rather than a tick, so the merge's controller is passed in: an abort for the role being
+ * merged right now kills that too (the drain's task sees `userAborted` and discards the pinned ref
+ * when the merge ends). There can be several in-flight units at once (land-queue speed 2c) — one
+ * per change being verified, the merge slot's stack, and each verified change waiting for it
+ * (flagged, then settled by the drain) — so `merges` lists them all and the request stops
+ * whichever holds the role. The merge is a whole STACK (merge queue 5/5), so the request matches
+ * ANY of its roles — `roles` is every role it is merging right now, and a stop for one of them
+ * kills the whole stack: the lander cannot split it (abandoning mid-stack would leave the pinned
+ * refs of the not-yet-processed changes for one-at-a-time recovery, which is already the
+ * fallback), and the merge discards every stacked ref when it ends. */
 export function consumeAbortRequests(
   root: string,
   runners: LoopRunner[],
-  landings: readonly AbortableLanding[],
+  merges: readonly AbortableMerge[],
 ): void {
   let markers: string[];
   try {
@@ -335,10 +333,10 @@ export function consumeAbortRequests(
     // after it forever. Apply the side effects first; a failure there keeps the marker for the
     // next poll (retry), but still moves on so it cannot starve the others.
     try {
-      for (const landing of landings) {
-        if (!landing.roles.includes(role)) continue;
-        landing.userAborted = true;
-        landing.controller.abort();
+      for (const merge of merges) {
+        if (!merge.roles.includes(role)) continue;
+        merge.userAborted = true;
+        merge.controller.abort();
       }
       if (runner?.state.running) runner.abortTick();
     } catch (err) {

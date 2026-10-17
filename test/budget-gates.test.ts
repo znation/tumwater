@@ -434,10 +434,10 @@ test("a demoted strong-tier pair names itself as the pause cause when only stron
   assert.equal(events[0]!.failures, 3);
 });
 
-// The per-tier gate semantics (part 5c/8): the gate folds the DEMOTION-AWARE resolution of
-// the `default` and `strong` tiers — a tier resolved to pause holds its own roles beside the
-// per-role cap set, and with review on an unresolvable strong tier pauses the whole gate
-// (nothing could land).
+// The per-tier gate semantics (part 5c/8): the gate folds the DEMOTION-AWARE resolution of the
+// `default` and `strong` tiers — a tier resolved to pause holds its own roles beside the per-role
+// cap set, and with review on an unresolvable strong tier pauses the whole gate (nothing could
+// merge).
 test("review on and strong unresolvable pauses the gate; review off holds only its roles", () => {
   const root = tmpdir("budget-gates-tier-");
   const models = writeModelsFile(root, MODELS_JSON);
@@ -449,7 +449,7 @@ test("review on and strong unresolvable pauses the gate; review off holds only i
   const state = newBudgetGateState(cfg);
 
   const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
-  assert.equal(p.gate, "paused", "review on: nothing could land, the gate pauses");
+  assert.equal(p.gate, "paused", "review on: nothing could merge, the gate pauses");
   assert.equal(p.servingResolved.strong.pair, null);
   assert.ok(p.servingResolved.default.pair !== null, "default still resolves (borrowing small)");
   assert.ok(p.budgetActive);

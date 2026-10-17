@@ -1,16 +1,15 @@
 // vocabulary: plain
-/** Pure formatting and description of a build check's failure output — split out of
- * build-check.ts, which keeps the execution side (detect → run → classify, the toolchain
- * probe, the process-group runner). This module turns a check's raw combined output and a
- * BuildCheckOutcome into the machine text that is persisted and shown: the per-line clip cap
- * (clipReason/MAX_REASON_CHARS, shared with review-verdict.ts's parseVerdict), the clipped
- * output tail (clipBuildTail), the one-line headline a warning names the failure by
- * (failureHeadline), the check's human-facing command name (describeCheck), and the reasons a
- * red check hands its author (checkFailureReasons). Every consumer of a check's tail — the
- * review gate, the landing path, the red-main gate, the tick prompt — imports from here, so
- * "which line is the headline" and "how much output survives" have one answer each. Type-only
- * back-reference to build-check.ts for BuildCheckOutcome (no runtime cycle); BuildCheck comes
- * from build-check-detect.ts. */
+/** Pure formatting and description of a build check's failure output — split out of build-check.ts,
+ * which keeps the execution side (detect → run → classify, the toolchain probe, the process-group
+ * runner). This module turns a check's raw combined output and a BuildCheckOutcome into the machine
+ * text that is persisted and shown: the per-line clip cap (clipReason/MAX_REASON_CHARS, shared with
+ * review-verdict.ts's parseVerdict), the clipped output tail (clipBuildTail), the one-line headline
+ * a warning names the failure by (failureHeadline), the check's human-facing command name
+ * (describeCheck), and the reasons a red check hands its author (checkFailureReasons). Every
+ * consumer of a check's tail — the review gate, the merge path, the red-main gate, the tick prompt
+ * — imports from here, so "which line is the headline" and "how much output survives" have one
+ * answer each. Type-only back-reference to build-check.ts for BuildCheckOutcome (no runtime cycle);
+ * BuildCheck comes from build-check-detect.ts. */
 
 import type { BuildCheck } from "./build-check-detect.js";
 import type { BuildCheckOutcome } from "./build-check.js";
@@ -109,13 +108,12 @@ export function describeCheck(check: BuildCheck): string {
   return check.kind === "npm" ? `\`npm run ${check.script}\`` : `\`${check.command}\``;
 }
 
-/** The machine-generated reasons a red check hands its author: the headline joined to the rest
- * of the clipped tail, so the compiler error sits right after it in the injected next-tick note.
- * The headline is failureHeadline's — the first line that is not a stack frame — not
- * outputTail[0]: a suite that dies on an unhandled rejection opens mid-stack, and naming the
- * frame tells the author where it broke, never what (BUGS.md 2026-09-19). One definition for
- * every red that rejects a change: the gate's pre-check, a batch's single-change red, and a
- * single landing's in-lock check. */
+/** The machine-generated reasons a red check hands its author: the headline joined to the rest of
+ * the clipped tail, so the compiler error sits right after it in the injected next-tick note. The
+ * headline is failureHeadline's — the first line that is not a stack frame — not outputTail[0]: a
+ * suite that dies on an unhandled rejection opens mid-stack, and naming the frame tells the author
+ * where it broke, never what (BUGS.md 2026-09-19). One definition for every red that rejects a
+ * change: the gate's pre-check, a batch's single-change red, and a single merge's in-lock check. */
 export function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcome): string[] {
   const tail = outcome.outputTail ?? [];
   // An unverified rejection already says what happened — the check never finished, the tree is

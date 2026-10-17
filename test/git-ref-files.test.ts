@@ -31,7 +31,7 @@ function richRepo(): string {
   commitIn(root, "b");
   sh(root, "git", "tag", "v1");
   sh(root, "git", "tag", "-a", "v2", "-m", "annotated");
-  sh(root, "git", "update-ref", "refs/tumwater/landing/improve", "HEAD~1");
+  sh(root, "git", "update-ref", "refs/tumwater/merge/improve", "HEAD~1");
   return root;
 }
 
@@ -43,7 +43,7 @@ const REFS = [
   "refs/heads/tumwater/feature",
   "refs/tags/v1",
   "refs/tags/v2",
-  "refs/tumwater/landing/improve",
+  "refs/tumwater/merge/improve",
   "v1",
   "no-such-branch",
   "refs/heads/no-such-branch",
@@ -60,14 +60,14 @@ function assertAgrees(dir: string, answered: string[]): void {
 
 test("loose refs: every answer from files is git's, and the common reads need no spawn", () => {
   const root = richRepo();
-  assertAgrees(root, ["HEAD", "main", "tumwater/feature", "refs/heads/main", "refs/tumwater/landing/improve"]);
+  assertAgrees(root, ["HEAD", "main", "tumwater/feature", "refs/heads/main", "refs/tumwater/merge/improve"]);
 });
 
 test("packed refs answer too, and a loose ref written after packing wins like it does in git", () => {
   const root = richRepo();
   sh(root, "git", "pack-refs", "--all");
   assert.ok(!fs.existsSync(path.join(root, ".git", "refs", "heads", "main")), "main lives in packed-refs now");
-  assertAgrees(root, ["HEAD", "main", "refs/tags/v1", "refs/tumwater/landing/improve"]);
+  assertAgrees(root, ["HEAD", "main", "refs/tags/v1", "refs/tumwater/merge/improve"]);
   fs.writeFileSync(path.join(root, "c.txt"), "c\n");
   commitIn(root, "c"); // writes a loose refs/heads/main over the packed line
   assert.equal(refShaFromFiles(root, "main"), gitRevParse(root, "main"));
@@ -138,8 +138,8 @@ test("the probes answer from files and agree with git across hits and misses", a
   assert.equal(await hasCommits(root), true);
   assert.equal(await headOf(root, "main"), gitRevParse(root, "main"));
   await assert.rejects(() => headOf(root, "no-such-branch"), /no-such-branch/);
-  assert.equal(await refSha(root, "refs/tumwater/landing/improve"), gitRevParse(root, "refs/tumwater/landing/improve"));
-  assert.equal(await refSha(root, "refs/tumwater/landing/none"), null);
+  assert.equal(await refSha(root, "refs/tumwater/merge/improve"), gitRevParse(root, "refs/tumwater/merge/improve"));
+  assert.equal(await refSha(root, "refs/tumwater/merge/none"), null);
   assert.equal(await branchExists(root, "tumwater/feature"), true);
   assert.equal(await branchExists(root, "no-such-branch"), false);
 });

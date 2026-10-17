@@ -58,17 +58,17 @@ export async function branchHead(root: string, branch: string): Promise<string |
 
 // ── Ref reads from files ───────────────────────────────────────────────────────────────────
 // The read-only probes below (isGitRepo, hasCommits, headOf, refSha, branchExists) each used to
-// spawn a `git rev-parse`. The harness asks them constantly: a landing alone re-reads HEAD a
-// dozen times, and the test suite, which process creation bounds (DEVELOPMENT.md), spawned
-// ~8,000 of them a run. Each probe now answers from the repository's files when the files
-// settle it POSITIVELY: a resolvable git dir, or a ref whose loose file or packed-refs line
-// names a SHA. Everything else spawns git exactly as before: a miss, a symref other than HEAD,
-// a name git's DWIM rules could read another way, a reftable repo, an environment that
-// redirects git (GIT_DIR and friends), or a repository another user owns, which git itself
-// refuses (safe.directory). A hit is the SHA `rev-parse --verify` prints. It resolves the name
-// and does not check that the object exists, and neither does this. The one negative answered
-// from files is a plain full `refs/…` name with no loose file and no packed-refs line
-// (refAbsentFromFiles): in a files-backend repository that is everywhere git looks.
+// spawn a `git rev-parse`. The harness asks them constantly: a merge alone re-reads HEAD a dozen
+// times, and the test suite, which process creation bounds (DEVELOPMENT.md), spawned ~8,000 of them
+// a run. Each probe now answers from the repository's files when the files settle it POSITIVELY: a
+// resolvable git dir, or a ref whose loose file or packed-refs line names a SHA. Everything else
+// spawns git exactly as before: a miss, a symref other than HEAD, a name git's DWIM rules could
+// read another way, a reftable repo, an environment that redirects git (GIT_DIR and friends), or a
+// repository another user owns, which git itself refuses (safe.directory). A hit is the SHA
+// `rev-parse --verify` prints. It resolves the name and does not check that the object exists, and
+// neither does this. The one negative answered from files is a plain full `refs/…` name with no
+// loose file and no packed-refs line (refAbsentFromFiles): in a files-backend repository that is
+// everywhere git looks.
 
 /** Environment variables that make git look somewhere other than the files `dir` holds. While
  * any is set, every probe spawns git. */
@@ -221,10 +221,10 @@ export async function headOf(cwd: string, ref: string): Promise<string> {
   return refShaFromFiles(cwd, ref) ?? git(cwd, "rev-parse", "--verify", ref);
 }
 
-/** Point `ref` at `sha`, creating the ref if needed (git update-ref). The landing pin of
+/** Point `ref` at `sha`, creating the ref if needed (git update-ref). The merge pin of
  * plans/merge-queue.md invariant 4 uses this to keep a committed sha reachable across the role
- * branch's reset-to-main. Returns false instead of throwing when git fails — the caller then
- * keeps the commit on its branch (no reset) so leftover recovery can still reach it. */
+ * branch's reset-to-main. Returns false instead of throwing when git fails — the caller then keeps
+ * the commit on its branch (no reset) so leftover recovery can still reach it. */
 export async function setRef(root: string, ref: string, sha: string): Promise<boolean> {
   return (await gitTry(root, "update-ref", ref, sha)) !== null;
 }
@@ -256,7 +256,7 @@ export async function refSha(root: string, ref: string): Promise<string | null> 
 }
 
 /** True when `sha` is already contained in `branch` (git merge-base --is-ancestor; equality counts
- * as contained). The leftover-recovery entry condition uses this to tell a stale pin — landed but
+ * as contained). The leftover-recovery entry condition uses this to tell a stale pin — merged but
  * not yet un-pinned by a crash between the ff and the ref deletion — from real work. */
 export async function isMergedInto(root: string, sha: string, branch: string): Promise<boolean> {
   return (await gitTry(root, "merge-base", "--is-ancestor", sha, branch)) !== null;
@@ -304,13 +304,12 @@ export async function branchExists(root: string, branch: string): Promise<boolea
   return (await gitTry(root, "rev-parse", "--verify", ref)) !== null;
 }
 
-/** The revision a worktree's change should be judged against: the merge-base of its HEAD
- * with `mainBranch`, falling back to main's tip when the merge-base fails (no common
- * ancestor, or no commits yet). The one home of the "diff against the merge-base, not
- * main's tip" policy shared by falseFixReason's BUGS.md base read and
- * backlogStructureReason's per-file base reads — both judge a backlog edit against the
- * tree the change builds on, so a stacked batch's earlier landing cannot make an
- * Open→Fixed restoration compare as already done (BUGS.md 2026-09-23). `rev` is the commit
+/** The revision a worktree's change should be judged against: the merge-base of its HEAD with
+ * `mainBranch`, falling back to main's tip when the merge-base fails (no common ancestor, or no
+ * commits yet). The one home of the "diff against the merge-base, not main's tip" policy shared by
+ * falseFixReason's BUGS.md base read and backlogStructureReason's per-file base reads — both judge
+ * a backlog edit against the tree the change builds on, so a stacked batch's earlier merge cannot
+ * make an Open→Fixed restoration compare as already done (BUGS.md 2026-09-23). `rev` is the commit
  * whose merge-base with main is wanted; it defaults to the worktree's HEAD, and the rejected
  * change's revision interdiff asks for its own prior commit instead (git-diff.ts). */
 export async function changeBaseRev(
@@ -422,12 +421,12 @@ export async function isDirty(cwd: string): Promise<boolean> {
   return out.length > 0;
 }
 
-/** Stage ONLY the given repo-relative paths, commit them with `message`, then discard every
- * other change in the worktree — tracked edits via reset --hard HEAD (the committed content is
- * safe at HEAD by the time the reset runs) and untracked files via clean -fd. Returns the new
- * commit hash, or null when nothing was stageable under those paths (the caller then decides
- * what to do with the rest). The refusal path uses this so a refusing run's objection note
- * lands while its half-done code work does not. */
+/** Stage ONLY the given repo-relative paths, commit them with `message`, then discard every other
+ * change in the worktree — tracked edits via reset --hard HEAD (the committed content is safe at
+ * HEAD by the time the reset runs) and untracked files via clean -fd. Returns the new commit hash,
+ * or null when nothing was stageable under those paths (the caller then decides what to do with the
+ * rest). The refusal path uses this so a refusing run's objection note is kept while its half-done
+ * code work is not. */
 export async function commitPathsAndDiscardRest(
   wt: string,
   message: string,
@@ -444,10 +443,10 @@ export async function commitPathsAndDiscardRest(
   return headOf(wt, "HEAD");
 }
 
-/** Commit subjects landed on `mainBranch` since `sinceHead`, newest first — the range is
- * exclusive of its base, so a head that is an ancestor of main yields exactly what moved past
- * it (empty when nothing has). Null when the range cannot be resolved (unknown head, not a
- * repo), so callers fall back conservatively. */
+/** Commit subjects merged on `mainBranch` since `sinceHead`, newest first — the range is exclusive
+ * of its base, so a head that is an ancestor of main yields exactly what moved past it (empty when
+ * nothing has). Null when the range cannot be resolved (unknown head, not a repo), so callers fall
+ * back conservatively. */
 export async function subjectsBetween(
   root: string,
   sinceHead: string,
@@ -490,8 +489,8 @@ export async function aheadOfMain(wt: string, mainBranch: string): Promise<numbe
  * as "no match", never an error. */
 export async function patchId(wt: string, base: string, head: string): Promise<string | null> {
   try {
-    // Both children run through execGitBounded, so a hung diff or patch-id is SIGTERMed
-    // group-wide and SIGKILLed after the grace instead of stalling landing's approval check.
+    // Both children run through execGitBounded, so a hung diff or patch-id is SIGTERMed group-wide
+    // and SIGKILLed after the grace instead of stalling merge's approval check.
     const { stdout: diff } = await execGitBounded(
       ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--binary", `${base}...${head}`],
       { cwd: wt, timeoutMs: GIT_TIMEOUT_MS },
@@ -509,9 +508,9 @@ export async function patchId(wt: string, base: string, head: string): Promise<s
 }
 
 /** Undo commits the agent made on top of `base` (INV-H1): a soft reset keeps their content as
- * staged edits, so the harness's own commitAll lands it as one commit. Returns how many commits
- * were folded — 0 when HEAD never moved. A count of 0 from rev-list with HEAD moved means the
- * agent amended or reset away from `base`; that still folds, and counts as 1. */
+ * staged edits, so the harness's own commitAll records it as one commit. Returns how many commits
+ * were folded — 0 when HEAD never moved. A count of 0 from rev-list with HEAD moved means the agent
+ * amended or reset away from `base`; that still folds, and counts as 1. */
 export async function foldCommitsSince(wt: string, base: string): Promise<number> {
   if ((await headOf(wt, "HEAD")) === base) return 0;
   const count = await countCommitsInRange(wt, `${base}..HEAD`);

@@ -9,7 +9,7 @@ import {
   cancelScheduledWakes,
   consumeWakeRequest,
   pendingScheduledWakes,
-  type AbortableLanding,
+  type AbortableMerge,
 } from "../src/operator/operator-requests.js";
 import { readEvents } from "../src/events/event-read.js";
 import {
@@ -302,34 +302,34 @@ test("consumeAbortRequests clears a marker for a role with no runner at all", ()
   assert.equal(fs.existsSync(marker), false);
 });
 
-test("consumeAbortRequests marks and aborts the in-flight landing for any batched role", () => {
+test("consumeAbortRequests marks and aborts the in-flight merge for any batched role", () => {
   const root = tmpdir();
   const controller = new AbortController();
-  const landing: AbortableLanding = {
+  const inFlightMerge: AbortableMerge = {
     roles: ["clean", "coverage"],
     userAborted: false,
     controller,
   };
   const marker = abortRequestPath(root, "coverage");
   writeMarker(marker, { at: 1 });
-  consumeAbortRequests(root, asRunners(), [landing]);
-  assert.equal(landing.userAborted, true);
+  consumeAbortRequests(root, asRunners(), [inFlightMerge]);
+  assert.equal(inFlightMerge.userAborted, true);
   assert.equal(controller.signal.aborted, true);
   assert.equal(fs.existsSync(marker), false);
 });
 
-test("consumeAbortRequests stops whichever of several in-flight landings holds the role, and only that one", () => {
-  // Land-queue speed 2c: each change being vetted is its own unit, beside the merge slot's.
+test("consumeAbortRequests stops whichever of several in-flight merges holds the role, and only that one", () => {
+  // Land-queue speed 2c: each change being verified is its own unit, beside the merge slot's.
   const root = tmpdir();
-  const unit = (roles: string[]): AbortableLanding => ({ roles, userAborted: false, controller: new AbortController() });
-  const vetA = unit(["clean"]);
-  const vetB = unit(["coverage"]);
+  const unit = (roles: string[]): AbortableMerge => ({ roles, userAborted: false, controller: new AbortController() });
+  const verifyA = unit(["clean"]);
+  const verifyB = unit(["coverage"]);
   const merge = unit(["feature", "dedupe"]);
   writeMarker(abortRequestPath(root, "coverage"), { at: 1 });
   writeMarker(abortRequestPath(root, "dedupe"), { at: 1 });
-  consumeAbortRequests(root, asRunners(), [vetA, vetB, merge]);
-  assert.equal(vetA.userAborted || vetA.controller.signal.aborted, false, "another vet runs on");
-  assert.equal(vetB.userAborted && vetB.controller.signal.aborted, true);
+  consumeAbortRequests(root, asRunners(), [verifyA, verifyB, merge]);
+  assert.equal(verifyA.userAborted || verifyA.controller.signal.aborted, false, "another verify runs on");
+  assert.equal(verifyB.userAborted && verifyB.controller.signal.aborted, true);
   assert.equal(merge.userAborted && merge.controller.signal.aborted, true, "a stacked role stops the stack");
 });
 

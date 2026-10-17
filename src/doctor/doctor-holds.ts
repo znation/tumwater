@@ -126,12 +126,12 @@ export function checkBudget(
   return okOutcome(`${phrase} today${cappedPhrase}`);
 }
 
-/** The `maintenance quota` check: rolling-24 h maintenance landings against the allowance
- * (`maintenancePerWorkMerge` per work landing + the daily floor), naming the maintenance loops
- * held when it is full. Read-only and built on the same verdict the scheduler and status use
- * (maintenanceQuotaForPoll). Only a live team's running loops and landing queue count as in
- * flight, since a dead team's leftover `running` flag and queue drain nothing. A held allowance
- * is a warn because it stops a whole tier. */
+/** The `maintenance quota` check: rolling-24 h maintenance merges against the allowance
+ * (`maintenancePerWorkMerge` per work merge + the daily floor), naming the maintenance loops held
+ * when it is full. Read-only and built on the same verdict the scheduler and status use
+ * (maintenanceQuotaForPoll). Only a live team's running loops and merge queue count as in flight,
+ * since a dead team's leftover `running` flag and queue drain nothing. A held allowance is a warn
+ * because it stops a whole tier. */
 export function checkMaintenanceQuota(
   root: string,
   config: TumwaterConfig | undefined,

@@ -33,33 +33,31 @@ import type { CheckConfigSlice } from "../config/config-schema.js";
 import { sampleHostLoad, sampleSleepClock, type LoadSampler, type SleepSampler } from "./host-sleep.js";
 import { type InstallRunner, npmInstall } from "./dep-install.js";
 
-/** Run the project's declared check for a named scope — the detect → run → build_check
- * event → skip-warning sequence the review gate's pre-check (scope "gate"), the landing
- * path's in-lock re-check (scope "landing"), and the batch lander's one check over the whole
- * stacked tree (scope "batch") previously each ran inline, kept in one place so
- * the event's shape and the skip warning cannot drift between them. Split out of
- * build-check.ts — which keeps the check's execution and outcome classification
- * (runBuildCheck, BuildCheckOutcome) — because orchestration is its own concern: the permit,
- * the event emission, the verdict-less retry, the merge-scope unverified remapping, and the
- * skip warning. Every run is an event with its cost: the deterministic checks are where the
- * team's compute goes after the authoring run, and "how long does npm test take per merge"
- * must be answerable from the feed, not by timing it by hand. Returns null when no check is
+/** Run the project's declared check for a named scope — the detect → run → build_check event →
+ * skip-warning sequence the review gate's pre-check (scope "gate"), the merge path's in-lock
+ * re-check (scope "merge"), and the batch lander's one check over the whole stacked tree (scope
+ * "batch") previously each ran inline, kept in one place so the event's shape and the skip warning
+ * cannot drift between them. Split out of build-check.ts — which keeps the check's execution and
+ * outcome classification (runBuildCheck, BuildCheckOutcome) — because orchestration is its own
+ * concern: the permit, the event emission, the verdict-less retry, the merge-scope unverified
+ * remapping, and the skip warning. Every run is an event with its cost: the deterministic checks
+ * are where the team's compute goes after the authoring run, and "how long does npm test take per
+ * merge" must be answerable from the feed, not by timing it by hand. Returns null when no check is
  * declared (nothing to run — the caller passes, exactly as before this split), otherwise the
- * declared check plus its classified outcome. A "skipped" outcome also logs its standard
- * warning here (wording keyed on the scope, the timeout as actually set — and, when its
- * deadline fired late, as actually enforced); "failed" and "passed" are the caller's to
- * decide (deterministic reject vs. verifiedHead / baseline seeding). A timeout or signal kill
- * at a merge scope is remapped to a deterministic "failed" — the tree is unverified, so it
- * must not land. A check killed by a signal the harness did not send is retried once at any
- * scope — the first run's death says nothing about the tree (it is another run's `pkill`), so
- * one verdict from a clean attempt is owed before the skip is honored; a timeout whose deadline
- * demonstrably fired late (the harness's own host-sleep evidence) earns that same one retry at
- * any scope, and a failed run the host slept through does too; each attempt is priced
- * as its own build_check event, carrying when the check itself ran (buildCheckRunFields).
- * A configured `check.gateCommand` replaces the command at scope "gate" only (same cwd and
- * timeout); the landing and batch scopes — and the red-main baseline, which detects on its
- * own — keep running check.command. `permitWait` hears about a wait for the check permit (the
- * landing cell's "waiting for a check slot"). Never throws. */
+ * declared check plus its classified outcome. A "skipped" outcome also logs its standard warning
+ * here (wording keyed on the scope, the timeout as actually set — and, when its deadline fired
+ * late, as actually enforced); "failed" and "passed" are the caller's to decide (deterministic
+ * reject vs. verifiedHead / baseline seeding). A timeout or signal kill at a merge scope is
+ * remapped to a deterministic "failed" — the tree is unverified, so it must not merge. A check
+ * killed by a signal the harness did not send is retried once at any scope — the first run's death
+ * says nothing about the tree (it is another run's `pkill`), so one verdict from a clean attempt is
+ * owed before the skip is honored; a timeout whose deadline demonstrably fired late (the harness's
+ * own host-sleep evidence) earns that same one retry at any scope, and a failed run the host slept
+ * through does too; each attempt is priced as its own build_check event, carrying when the check
+ * itself ran (buildCheckRunFields). A configured `check.gateCommand` replaces the command at scope
+ * "gate" only (same cwd and timeout); the merge and batch scopes — and the red-main baseline, which
+ * detects on its own — keep running check.command. `permitWait` hears about a wait for the check
+ * permit (the merge cell's "waiting for a check slot"). Never throws. */
 export async function runScopedBuildCheck(
   root: string,
   role: string,
@@ -118,22 +116,21 @@ export async function runScopedBuildCheck(
     },
     permitWait,
   );
-  // A signal kill at a merge scope, or a timeout whose deadline fired on time (real slowness,
-  // a genuinely hung or oversized suite), made no verdict about the tree — and this is the
-  // check whose whole job is to catch a semantic conflict before it lands, so it rejects
-  // deterministically — the author keeps its commit and retries. A timeout whose deadline
-  // fired late has already had its retry above: the lateness is the harness's own evidence the
-  // host slept, so a second verdict-less attempt is recorded as unverified rather than read
-  // again as weather (BUGS.md 2026-09-28). no-npm and a broken toolchain still say nothing
-  // about the tree, and the gate scope still proceeds to the model reviewer, which the landing
-  // path's own check backs up.
-  // A retry that ALSO slept made no clean verdict either: it is recorded as unverified — not
+  // A signal kill at a merge scope, or a timeout whose deadline fired on time (real slowness, a
+  // genuinely hung or oversized suite), made no verdict about the tree — and this is the check
+  // whose whole job is to catch a semantic conflict before it merges, so it rejects
+  // deterministically — the author keeps its commit and retries. A timeout whose deadline fired
+  // late has already had its retry above: the lateness is the harness's own evidence the host
+  // slept, so a second verdict-less attempt is recorded as unverified rather than read again as
+  // weather (BUGS.md 2026-09-28). no-npm and a broken toolchain still say nothing about the tree,
+  // and the gate scope still proceeds to the model reviewer, which the merge path's own check backs
+  // up. A retry that ALSO slept made no clean verdict either: it is recorded as unverified — not
   // attributed to the change, not cached as a red baseline — rather than read as a second
-  // deterministic failure (BUGS.md 2026-09-30). A retry that passed stands: the tree went
-  // green under the project's own check, even if the host napped through parts of it.
+  // deterministic failure (BUGS.md 2026-09-30). A retry that passed stands: the tree went green
+  // under the project's own check, even if the host napped through parts of it.
   const sleepFailed = raw.status === "failed" && (raw.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
-  // A failed dependency install is the same at a merge scope: nothing ran against the tree as
-  // its lockfile pins it, so it must not land (BUGS.md 2026-10-01).
+  // A failed dependency install is the same at a merge scope: nothing ran against the tree as its
+  // lockfile pins it, so it must not merge (BUGS.md 2026-10-01).
   const unverifiedSkip =
     MERGE_SCOPES.has(scope) &&
     (((raw.status === "skipped" &&

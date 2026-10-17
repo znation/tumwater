@@ -6,15 +6,15 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
 import { refSha } from "../git/git.js";
 
-/** Build provenance for the compiled harness: which commit `dist/` was compiled from, written
- * by `npm run build` (scripts/stamp-build.mjs) as dist/build-info.json and read back by the
- * running process. tumwater is self-hosting — the team edits the harness that runs the team —
- * and a `tumwater run` process never reloads its code, so without a stamp nothing can tell
- * whether the running team is executing the harness main describes. The stale-build finding of
- * 2026-09-07 (ten days on an Aug 27 build while 350 commits landed, including the review gate's
- * build pre-check) is exactly the blind spot this closes: the orchestrator records the stamp in
- * orchestrator.json and its start event, the dashboards and `doctor` compare it against main, and
- * redeploy.ts restarts onto a fresh build when the inputs changed. */
+/** Build provenance for the compiled harness: which commit `dist/` was compiled from, written by
+ * `npm run build` (scripts/stamp-build.mjs) as dist/build-info.json and read back by the running
+ * process. tumwater is self-hosting — the team edits the harness that runs the team — and a
+ * `tumwater run` process never reloads its code, so without a stamp nothing can tell whether the
+ * running team is executing the harness main describes. The stale-build finding of 2026-09-07 (ten
+ * days on an Aug 27 build while 350 commits merged, including the review gate's build pre-check) is
+ * exactly the blind spot this closes: the orchestrator records the stamp in orchestrator.json and
+ * its start event, the dashboards and `doctor` compare it against main, and redeploy.ts restarts
+ * onto a fresh build when the inputs changed. */
 
 /** What dist/build-info.json records. */
 export interface BuildInfo {

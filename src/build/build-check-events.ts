@@ -59,16 +59,16 @@ export function owesCleanRetry(first: BuildCheckOutcome): boolean {
 export const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }> = {
   gate: { label: "check", proceeding: "proceeding to model review" },
   merge: { label: "merge check", proceeding: "proceeding to merge" },
-  // The batch's next step after the check is the fast-forward — the same phrase the landing
-  // scope uses (gate says "proceeding to model review" because its next step is the reviewer).
+  // The batch's next step after the check is the fast-forward — the same phrase the merge scope
+  // uses (gate says "proceeding to model review" because its next step is the reviewer).
   batch: { label: "batch check", proceeding: "proceeding to merge" },
 };
 
-/** Scopes whose outcome gates a merge to main: runScopedBuildCheck remaps a timeout or an
- * external signal kill at these scopes to a deterministic "failed" — the tree is unverified,
- * and these are the last checks before main. The gate scope's pre-check stays fail-open
- * because the model reviewer and the landing path's own check still stand behind it
- * (BUGS.md: a landing build check that times out must not merge unverified). */
+/** Scopes whose outcome gates a merge to main: runScopedBuildCheck remaps a timeout or an external
+ * signal kill at these scopes to a deterministic "failed" — the tree is unverified, and these are
+ * the last checks before main. The gate scope's pre-check stays fail-open because the model
+ * reviewer and the merge path's own check still stand behind it (BUGS.md: a merge build check that
+ * times out must not merge unverified). */
 export const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["merge", "batch"]);
 
 /** The proceeding reason a merge-scope check that made no verdict about the tree carries: the

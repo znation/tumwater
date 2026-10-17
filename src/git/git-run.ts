@@ -10,12 +10,12 @@ import { EXEC_MAX_BUFFER, childEnv, releaseChildHandles, signalTree } from "../p
 import { KILL_GRACE_MS, armGroupDeadline } from "../process/process-group.js";
 import { errorMessage } from "../text/text.js";
 
-/** The wall-clock bound on one git subprocess. Generous enough for a large rebase or diff on
- * a slow disk, but finite: a git wedged on a stuck filesystem or a dead helper otherwise
- * stalls its awaited landing/scheduling path with no bound at all. `runGit`'s optional
- * timeoutMs overrides it — tests drive the deadline down to exercise the timeout; production
- * callers need no override. The SIGTERM → SIGKILL escalation then runs for KILL_GRACE_MS, so
- * one call is bounded at timeoutMs + KILL_GRACE_MS whatever the child does. */
+/** The wall-clock bound on one git subprocess. Generous enough for a large rebase or diff on a slow
+ * disk, but finite: a git wedged on a stuck filesystem or a dead helper otherwise stalls its
+ * awaited merge/scheduling path with no bound at all. `runGit`'s optional timeoutMs overrides it —
+ * tests drive the deadline down to exercise the timeout; production callers need no override. The
+ * SIGTERM → SIGKILL escalation then runs for KILL_GRACE_MS, so one call is bounded at timeoutMs +
+ * KILL_GRACE_MS whatever the child does. */
 export const GIT_TIMEOUT_MS = 600_000;
 
 /** Identity used for harness-authored commits so ticks work without global git config. */
@@ -210,7 +210,7 @@ export function execGitBounded(
 }
 
 /** Like git(), with extra environment variables (e.g. GIT_EDITOR for rebase --continue, which the
- * landing flow in merge-to-main.ts needs so `rebase --continue` can never block on a commit-message
+ * merge flow in merge-to-main.ts needs so `rebase --continue` can never block on a commit-message
  * prompt; and the harness ident for rewritten committer identity). The subprocess is bounded by
  * GIT_TIMEOUT_MS plus the KILL_GRACE_MS escalation (an optional `timeoutMs`/`killGraceMs` override
  * both for tests), so a hung or signal-ignoring git fails loudly as a GitError instead of stalling

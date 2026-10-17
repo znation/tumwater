@@ -98,7 +98,7 @@ test("pollBootstrapGate: reaching the target latches, logs once, and lifts the h
 
   assert.equal(pollBootstrapGate(root, state, runners, cfg, Date.now()).has("clean"), true);
 
-  // The second plan lands: the next poll writes the latch, logs, and admits clean.
+  // The second plan completes: the next poll writes the latch, logs, and admits clean.
   writePlans(root, ["One done (done 2026-10-01)", "Two done (done 2026-10-02)"]);
   const completed = pollBootstrapGate(root, state, runners, cfg, Date.now());
   assert.equal(completed.has("clean"), false, "the completion poll lifts the hold");

@@ -146,10 +146,10 @@ function revisionRoundOf(message: string): number | undefined {
   return m ? Number(m[1]) : undefined;
 }
 
-/** The fields a landing request needs that a commit message can supply: the commit's
- * subject (WHAT landed — recovery rides it into its `merged` summary so the failure digest
- * can name recovered work, BUGS.md 2026-09-21), the author's body (WHY/RISK/VERIFIED,
- * reformatted), and whether the tick was high-friction. */
+/** The fields a merge request needs that a commit message can supply: the commit's subject (WHAT
+ * merged — recovery rides it into its `merged` summary so the failure digest can name recovered
+ * work, BUGS.md 2026-09-21), the author's body (WHY/RISK/VERIFIED, reformatted), and whether the
+ * tick was high-friction. */
 export interface CommitMetadata {
   subject?: string;
   body?: string;

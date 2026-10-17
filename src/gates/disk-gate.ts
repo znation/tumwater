@@ -1,11 +1,11 @@
 /** The disk floor's hold (plans/disk-floor.md, "Disk floor 1/4"): when the volume the harness
- * worktrees live on runs low on free space, the team starts no new work — role ticks, the
- * director, landing vets and merges — so a team of build-heavy checkouts cannot fill the
- * disk. The syscall, the hold's hysteresis, and the edge-triggered `disk_low`/`disk_ok`
- * events live here; the orchestrator owns only the wiring, exactly like the quiet-hours and
- * pause gates. Part 2/4 reclaims build outputs so the hold rarely engages; this part turns
- * "disk full" into "team held, with a notification". In-flight work runs on — killing it
- * wastes the work without freeing anything a finished run would not free anyway.
+ * worktrees live on runs low on free space, the team starts no new work — role ticks, the director,
+ * merge verifies and merges — so a team of build-heavy checkouts cannot fill the disk. The syscall,
+ * the hold's hysteresis, and the edge-triggered `disk_low`/`disk_ok` events live here; the
+ * orchestrator owns only the wiring, exactly like the quiet-hours and pause gates. Part 2/4
+ * reclaims build outputs so the hold rarely engages; this part turns "disk full" into "team held,
+ * with a notification". In-flight work runs on — killing it wastes the work without freeing
+ * anything a finished run would not free anyway.
  *
  * The measurement is deliberately language-agnostic: `fs.statfsSync` reports the bytes an
  * unprivileged user can still write, whatever the project builds. */

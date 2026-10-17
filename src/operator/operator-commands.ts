@@ -366,9 +366,9 @@ async function retireTargetRole(root: string, args: string[]): Promise<string> {
 }
 
 /** `tumwater retire --role <id> [--force] [--json]`: remove a disabled loop's leftover worktree,
- * branch, landing ref, and paused-state marker. The collection, safety rails, and removal live
- * in src/operator/retire.ts; this is the render layer — one line per removed artifact, the skip
- * lines that make a second run idempotent, or the `--json` payload. */
+ * branch, merge ref, and paused-state marker. The collection, safety rails, and removal live in
+ * src/operator/retire.ts; this is the render layer — one line per removed artifact, the skip lines
+ * that make a second run idempotent, or the `--json` payload. */
 export async function cmdRetire(root: string, args: string[]): Promise<void> {
   // The config exists only to validate the id against built-ins plus user-defined loops, with
   // the leftover-branch gate for ids no config names; a missing --role fails before it is needed.

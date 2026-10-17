@@ -28,10 +28,10 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * build/build-check.ts's checkMainBaseline machinery (detection + execution + per-SHA cache),
  * which stays unaware of ticks. */
 
-/** The last main SHA for which this process logged a red-main hold event (the baseline check):
- * one harness-level warning per newly-discovered red SHA, not one per blocked role's tick —
- * module-level so every runner in the team shares it. A restart re-logs once: the cache is
- * cold then too, and an operator restarting into a still-red main should see why nothing lands. */
+/** The last main SHA for which this process logged a red-main hold event (the baseline check): one
+ * harness-level warning per newly-discovered red SHA, not one per blocked role's tick —
+ * module-level so every runner in the team shares it. A restart re-logs once: the cache is cold
+ * then too, and an operator restarting into a still-red main should see why nothing merges. */
 let lastMainRedSha: string | null = null;
 
 /** The red-main message's shared spine — the SHA, script, and failure headline a red baseline
@@ -160,27 +160,26 @@ type MainTipVerdict =
   | { status: "red"; sha: string }
   | { status: "unavailable"; why: string };
 
-/** Serializes mainTipVerdict's use of its one worktree: the landing pipeline's vets run their
+/** Serializes mainTipVerdict's use of its one worktree: the merge pipeline's verifies run their
  * gates concurrently, and a second gate re-pointing the checkout at a newer main while the first's
- * check ran in it would measure a tree that is neither. Each link is bounded — a few git
- * commands plus at most one check run, which runBuildCheck kills at its timeout — and takes no
- * other lock, so a waiter waits at most for the gates queued ahead of it. */
+ * check ran in it would measure a tree that is neither. Each link is bounded — a few git commands
+ * plus at most one check run, which runBuildCheck kills at its timeout — and takes no other lock,
+ * so a waiter waits at most for the gates queued ahead of it. */
 let gateMainQueue: Promise<unknown> = Promise.resolve();
 
 /** Main's baseline verdict at its current tip, for attributing a gate check that failed twice
  * (src/review/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked
  * through checkMainBaseline — the same per-SHA, team-wide cache mainRedGate reads, which every
- * landing seeds green for the SHA it moved main to, so the common case is a cache hit. A miss
- * (or a provisional red from another worktree, or a green that was only inherited across doc
- * commits) runs the declared check once here, bounded by its timeout. A red is warned
- * team-wide once per SHA, exactly as mainRedGate warns it. Never throws: an unreadable main,
- * a checkout that fails, no declared check on main, or a skipped
- * run all read as `unavailable`.
+ * merge seeds green for the SHA it moved main to, so the common case is a cache hit. A miss (or a
+ * provisional red from another worktree, or a green that was only inherited across doc commits)
+ * runs the declared check once here, bounded by its timeout. A red is warned team-wide once per
+ * SHA, exactly as mainRedGate warns it. Never throws: an unreadable main, a checkout that fails, no
+ * declared check on main, or a skipped run all read as `unavailable`.
  *
- * `forceFresh` bypasses that per-SHA cache and runs main's declared check now, even over a
- * cached green (checkMainBaseline's forceFresh): the review gate needs it to re-attribute a
- * repeated gate failure on a clock- or load-sensitive test whose cached green has gone stale
- * (BUGS.md 2026-10-06). The landing pipeline's attribution reads the cached verdict instead. */
+ * `forceFresh` bypasses that per-SHA cache and runs main's declared check now, even over a cached
+ * green (checkMainBaseline's forceFresh): the review gate needs it to re-attribute a repeated gate
+ * failure on a clock- or load-sensitive test whose cached green has gone stale (BUGS.md
+ * 2026-10-06). The merge pipeline's attribution reads the cached verdict instead. */
 export function mainTipVerdict(
   root: string,
   role: string,

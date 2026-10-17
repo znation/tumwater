@@ -1,15 +1,14 @@
 // vocabulary: plain
-/** The entry-writing half of `tumwater bug` and `tumwater plan` — the operator-authored
- * backlog writes, mirroring the read half in backlog.ts: file a bug into BUGS.md's `## Open`
- * or a plan request into PLANS.md's `## Planned`, stamped the way loops write those
- * entries, and cancel, edit, release, or show an entry by position. The markdown surgery is
- * more than a dispatch case: the entry must land after the section's last
- * entry and before the next `## ` heading, fenced-safe (a `## ` line quoted inside an
- * entry's code fence is body text, never a boundary — the same fenceTracker every backlog
- * reader consults), and a file tumwater init never seeded is created with init's template
- * rather than failing. Flag classification, preflights, and the printed confirmations live
- * in backlog-cli.ts; the wake of the loop that should act stays in cli.ts beside the other
- * command bodies. */
+/** The entry-writing half of `tumwater bug` and `tumwater plan` — the operator-authored backlog
+ * writes, mirroring the read half in backlog.ts: file a bug into BUGS.md's `## Open` or a plan
+ * request into PLANS.md's `## Planned`, stamped the way loops write those entries, and cancel,
+ * edit, release, or show an entry by position. The markdown surgery is more than a dispatch case:
+ * the entry must be placed after the section's last entry and before the next `## ` heading,
+ * fenced-safe (a `## ` line quoted inside an entry's code fence is body text, never a boundary —
+ * the same fenceTracker every backlog reader consults), and a file tumwater init never seeded is
+ * created with init's template rather than failing. Flag classification, preflights, and the
+ * printed confirmations live in backlog-cli.ts; the wake of the loop that should act stays in
+ * cli.ts beside the other command bodies. */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker, headingMetadata, nextSectionHeading } from "./backlog-md.js";
 import { actionableEntryRanges, stripEntryStamp, type ActionableEntryRange } from "./backlog-structure.js";
@@ -37,10 +36,10 @@ function backlogTarget(kind: "bug" | "plan"): { fileName: string; sectionTitle: 
 }
 
 /** The section-append entry point: run the whole read-modify-write under the cross-process
- * primary-worktree lock (paths.ts), which a landing's working-tree fast-forward (`ffMainTo`)
- * takes too, so a filed entry and a landed change to the same backlog file cannot each clobber
- * the other. The section is one read plus one atomic rename — short, never held across a build
- * check — and withStateLock creates the state dir the lock lives under on first use. */
+ * primary-worktree lock (paths.ts), which a merge's working-tree fast-forward (`ffMainTo`) takes
+ * too, so a filed entry and a merged change to the same backlog file cannot each clobber the other.
+ * The section is one read plus one atomic rename — short, never held across a build check — and
+ * withStateLock creates the state dir the lock lives under on first use. */
 function appendEntry(
   root: string,
   fileName: string,
@@ -171,7 +170,7 @@ function readEntryLines(
 }
 
 /** The section-remove entry point, the appendEntry analogue: the same cross-process lock, so a
- * cancel and a landing's working-tree fast-forward cannot each clobber the other's
+ * cancel and a merge's working-tree fast-forward cannot each clobber the other's
  * read-modify-write. */
 function removeEntry(
   root: string,
@@ -240,9 +239,9 @@ export function tryCancelEntry(
   });
 }
 
-/** The section-edit entry point, the appendEntry/removeEntry analogue: the same
- * cross-process lock, so an edit and a landing's working-tree fast-forward cannot each clobber
- * the other's read-modify-write. */
+/** The section-edit entry point, the appendEntry/removeEntry analogue: the same cross-process lock,
+ * so an edit and a merge's working-tree fast-forward cannot each clobber the other's
+ * read-modify-write. */
 function editEntry(
   root: string,
   fileName: string,

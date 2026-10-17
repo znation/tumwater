@@ -25,17 +25,16 @@ import {
 } from "./backlog-eligibility.js";
 import { plannedPlanEntries } from "./backlog.js";
 
-/** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
- * the same files loops edit and readers parse, but read here for states no reader wants: an
- * entry filed under the wrong `## ` section. This module holds PLANS.md's stranding rules
- * (plans: "Stranded-plan detection", part 3/4): a `(planned …)` heading sitting under `## Done`
- * never entered a reader's section, and a `done`-dated heading still sitting under
- * `## Planned` invites re-implementation. It also holds the gate-side companion (part 4/4):
- * a change that ADDS a new plan directly under `## Done` is rejected before it can land.
- * Detection is pure markdown reading — no pi, no git — so the clean loop's tick prompt,
- * `tumwater doctor`, and every landing check can all afford it every time. It also renders the
- * compact actionable backlog index every loop prompt carries (renderBacklogIndexBlock below),
- * the bounded replacement for the per-tick heading map. */
+/** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) — the
+ * same files loops edit and readers parse, but read here for states no reader wants: an entry filed
+ * under the wrong `## ` section. This module holds PLANS.md's stranding rules (plans:
+ * "Stranded-plan detection", part 3/4): a `(planned …)` heading sitting under `## Done` never
+ * entered a reader's section, and a `done`-dated heading still sitting under `## Planned` invites
+ * re-implementation. It also holds the gate-side companion (part 4/4): a change that ADDS a new
+ * plan directly under `## Done` is rejected before it can merge. Detection is pure markdown reading
+ * — no pi, no git — so the clean loop's tick prompt, `tumwater doctor`, and every merge check can
+ * all afford it every time. It also renders the compact actionable backlog index every loop prompt
+ * carries (renderBacklogIndexBlock below), the bounded replacement for the per-tick heading map. */
 
 /** A `### ` heading the detector found filed under the wrong `## ` section of PLANS.md:
  * `title` is the full heading text (verbatim, dates and all), `section` the section it sits
@@ -160,8 +159,8 @@ function sectionTitleCounts(md: string): Map<string, number> {
 }
 
 /** The `## ` titles of `md` that appear more than once, in first-appearance order — the
- * duplicate-heading signal `checkBacklogHeadings` reports for main and
- * `backlogStructureReason` checks on a tree being landed. */
+ * duplicate-heading signal `checkBacklogHeadings` reports for main and `backlogStructureReason`
+ * checks on a tree being merged. */
 export function duplicateHeadings(md: string): string[] {
   return [...sectionTitleCounts(md)].filter(([, n]) => n > 1).map(([title]) => title);
 }
@@ -190,30 +189,29 @@ export function doubleBlockFixedEntries(md: string): string[] {
   return found;
 }
 
-/** The first structural fault a diff landing on `mainBranch` leaves in a backlog file, or
- * undefined when none: for each touched backlog file it compares the `## ` heading set of the
- * tree being landed (`wt`) against the diff's merge-base — the same base falseFixReason
- * measures against, so a stacked batch is judged change by change — and rejects when
- * (a) the head carries MORE of a title than the base carried (a duplicate `## Done` added, or
- * a second one where the base had none), or (b) a title present on the base is gone from the
- * head (a whole section dropped). The rule is deliberately about heading sets, not section
- * names: a project whose BUGS.md adds `## Verified` (this repo's does) or a fresh repo seeded
- * from src/init/init.ts's templates passes unchanged. A base that already carries a duplicate never
- * blocks unrelated edits — rule (a) fires only when the head's count EXCEEDS the base's, so a
- * change that removes a duplicate always passes. For PLANS.md there is a third rule
- * (part 4/4): a head that ADDS a `### ` entry directly under `## Done` whose joined heading
- * metadata carries `(planned YYYY-MM-DD` but no `done YYYY-MM-DD`, and whose key the base's
- * PLANS.md never carried in ANY section, is a plan filed into the wrong section — rejected with
- * a reason naming the entry and the one-line fix. Judged against the merge-base (the same base
- * the heading rules use), so a Planned → Done move of an entry the base already had passes, a
- * stacked batch is measured change by change, and a pre-existing stranded entry (whose key the
- * base has) never blocks unrelated landings — the clean loop's repair (part 3/4) owns those.
- * BUGS.md has one more: a head `## Fixed` entry that holds more than one `**Symptom:**` or
- * `**Fix:**` block (doubleBlockFixedEntries) absorbed a headingless record into its body; a
- * base body that already had the shape is never re-flagged, so only a newly merged record is
- * rejected (BUGS.md 2026-10-08). Detection is deterministic markdown reading —
- * no pi — so both the review gate (exempt and code diffs alike) and the in-lock landing
- * re-check can afford it on every landing (plans: "Backlog structure check", part 2/4). */
+/** The first structural fault a diff merging into `mainBranch` leaves in a backlog file, or
+ * undefined when none: for each touched backlog file it compares the `## ` heading set of the tree
+ * being merged (`wt`) against the diff's merge-base — the same base falseFixReason measures
+ * against, so a stacked batch is judged change by change — and rejects when (a) the head carries
+ * MORE of a title than the base carried (a duplicate `## Done` added, or a second one where the
+ * base had none), or (b) a title present on the base is gone from the head (a whole section
+ * dropped). The rule is deliberately about heading sets, not section names: a project whose BUGS.md
+ * adds `## Verified` (this repo's does) or a fresh repo seeded from src/init/init.ts's templates
+ * passes unchanged. A base that already carries a duplicate never blocks unrelated edits — rule (a)
+ * fires only when the head's count EXCEEDS the base's, so a change that removes a duplicate always
+ * passes. For PLANS.md there is a third rule (part 4/4): a head that ADDS a `### ` entry directly
+ * under `## Done` whose joined heading metadata carries `(planned YYYY-MM-DD` but no `done
+ * YYYY-MM-DD`, and whose key the base's PLANS.md never carried in ANY section, is a plan filed into
+ * the wrong section — rejected with a reason naming the entry and the one-line fix. Judged against
+ * the merge-base (the same base the heading rules use), so a Planned → Done move of an entry the
+ * base already had passes, a stacked batch is measured change by change, and a pre-existing
+ * stranded entry (whose key the base has) never blocks unrelated merges — the clean loop's repair
+ * (part 3/4) owns those. BUGS.md has one more: a head `## Fixed` entry that holds more than one
+ * `**Symptom:**` or `**Fix:**` block (doubleBlockFixedEntries) absorbed a headingless record into
+ * its body; a base body that already had the shape is never re-flagged, so only a newly merged
+ * record is rejected (BUGS.md 2026-10-08). Detection is deterministic markdown reading — no pi — so
+ * both the review gate (exempt and code diffs alike) and the in-lock merge re-check can afford it
+ * on every merge (plans: "Backlog structure check", part 2/4). */
 export async function backlogStructureReason(
   wt: string,
   mainBranch: string,
@@ -420,14 +418,14 @@ const CLOSED_SECTIONS: readonly { file: string; section: string }[] = [
   { file: "BUGS.md", section: "Fixed" },
 ];
 
-/** One actionable entry as the index renders it: the 1-based range the loop reads, the
- * verbatim heading, and the body a hold note is read from. Cached per file stat
+/** One actionable entry as the index renders it: the 1-based range the loop reads, the verbatim
+ * heading, and the body a hold note is read from. Cached per file stat
  * (stat-cache.cachedTextByStat): both branches of every tick prompt render this block, and the
- * backlog files — BUGS.md above all, since its closed history grows without bound — change only
- * at a landing. An unchanged file then costs one stat per tick instead of a full read, a split
- * into lines, and a section walk proportional to the whole file. The eligibility mark is applied
- * after the cache, against the section-independent prerequisite set; the cache is keyed by the
- * file path so distinct roots never collide, and bounded inside cachedTextByStat. */
+ * backlog files — BUGS.md above all, since its closed history grows without bound — change only at
+ * a merge. An unchanged file then costs one stat per tick instead of a full read, a split into
+ * lines, and a section walk proportional to the whole file. The eligibility mark is applied after
+ * the cache, against the section-independent prerequisite set; the cache is keyed by the file path
+ * so distinct roots never collide, and bounded inside cachedTextByStat. */
 interface IndexEntry {
   start: number;
   end: number;
@@ -473,8 +471,8 @@ function renderIndexRow(row: IndexRow): string {
 }
 
 /** True when `row` is a candidate for series-collapsing: it is a series part held only by an
- * unlanded prerequisite (`{ blockedBy }`, not a Refused/needs-review/needs-replan note) and no
- * live claim names it. Returns the row's series part when it collapses, else null. */
+ * unmerged prerequisite (`{ blockedBy }`, not a Refused/needs-review/needs-replan note) and no live
+ * claim names it. Returns the row's series part when it collapses, else null. */
 function collapsibleSeriesPart(row: SeriesRow): PartRef | null {
   if (row.claimer !== undefined) return null;
   if (typeof row.hold !== "object" || row.hold === null) return null;
@@ -519,16 +517,16 @@ export function partsLabel(rows: readonly SeriesRow[]): string {
   return pieces.join(", ");
 }
 
-/** Renders `rows` to index lines, collapsing a multi-part series' blocked parts to one line
- * per series (this plan, "Compact backlog index, part 1/1"): a long series' chain of held
- * parts would otherwise fill every loop prompt with lines no role can act on. An entry
- * collapses when it is a series part held only by an unlanded prerequisite and no live claim
- * names it; a series with two or more such parts renders as one line at the position of its
- * first collapsed part, spanning from that part's start to the last's end, with the part list
- * (`2/4–4/4`) and a `[blocked: each waits on an earlier part]` mark. A series with a single
- * blocked part, an eligible part, a note-held (Refused/needs-review/needs-replan) part and a
- * claimed part keep their ordinary lines, so the eligibility rules the feature role's charter
- * teaches are unchanged; the collapsed mark keeps the `[blocked: …]` prefix it already skips. */
+/** Renders `rows` to index lines, collapsing a multi-part series' blocked parts to one line per
+ * series (this plan, "Compact backlog index, part 1/1"): a long series' chain of held parts would
+ * otherwise fill every loop prompt with lines no role can act on. An entry collapses when it is a
+ * series part held only by an unmerged prerequisite and no live claim names it; a series with two
+ * or more such parts renders as one line at the position of its first collapsed part, spanning from
+ * that part's start to the last's end, with the part list (`2/4–4/4`) and a `[blocked: each waits
+ * on an earlier part]` mark. A series with a single blocked part, an eligible part, a note-held
+ * (Refused/needs-review/needs-replan) part and a claimed part keep their ordinary lines, so the
+ * eligibility rules the feature role's charter teaches are unchanged; the collapsed mark keeps the
+ * `[blocked: …]` prefix it already skips. */
 /** The grouping half of collapseBlockedSeries, on any rows carrying a title, hold and claimer:
  * each series with two or more collapsible blocked parts becomes one `series` group at its first
  * part's place; every other row stays a `row` group in order. */
@@ -593,9 +591,9 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
   const plannedParts = plannedPartKeys(planned);
   // The cross-role in-flight hold (BUGS.md 2026-10-09): every role's prompts share this one
   // section-agnostic index, and the role it is assembled for is not available here, so an entry
-  // claimed by ANY role is marked in flight — the owner's own index marks it too, which is
-  // harmless (its assignment note is the instruction), and every other role reads it as taken
-  // instead of re-implementing a change someone's landing is already carrying to main.
+  // claimed by ANY role is marked in flight — the owner's own index marks it too, which is harmless
+  // (its assignment note is the instruction), and every other role reads it as taken instead of
+  // re-implementing a change someone's merge is already carrying to main.
   const claimed = allLiveClaims(root);
   const listed: string[] = [];
   for (const { file, section } of INDEX_SECTIONS) {

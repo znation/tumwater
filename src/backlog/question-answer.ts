@@ -240,12 +240,12 @@ export type AnswerOutcome =
 export const UNCLOSED_FENCE_MESSAGE =
   "QUESTIONS.md's ## Open section holds an unclosed code fence — every reader quotes the rest of the file as that entry's body, so answering would corrupt the file; close or remove the fence and re-run";
 
-/** The non-exiting answer core, for callers (the dashboard server) that must not end the
- * process: runs the whole read-modify-write under the cross-process primary-worktree lock
- * (paths.ts), shared with `tumwater bug`/`plan` and a landing's working-tree fast-forward, so an
- * answer and a landed change to QUESTIONS.md cannot each overwrite the other's whole-file write.
- * With `expectedTitle`, a block at position `n` titled otherwise is `moved` and nothing is
- * written; the comparison runs inside the lock, after the scan. */
+/** The non-exiting answer core, for callers (the dashboard server) that must not end the process:
+ * runs the whole read-modify-write under the cross-process primary-worktree lock (paths.ts), shared
+ * with `tumwater bug`/`plan` and a merge's working-tree fast-forward, so an answer and a merged
+ * change to QUESTIONS.md cannot each overwrite the other's whole-file write. With `expectedTitle`,
+ * a block at position `n` titled otherwise is `moved` and nothing is written; the comparison runs
+ * inside the lock, after the scan. */
 export function tryAnswerQuestion(root: string, n: number, rawDecision: string, expectedTitle?: string, keepLines = false): AnswerOutcome {
   return withStateLock(primaryWorktreeLockPath(root), () => answerQuestionLocked(root, n, rawDecision, expectedTitle, keepLines));
 }
@@ -259,7 +259,7 @@ export function tryAnswerQuestion(root: string, n: number, rawDecision: string, 
  * caller; a multi-line decision follows the stamp after a blank line. The Open section that is
  * left empty regains its `_None yet._` placeholder; a file with no `## Answered` section gains
  * one. Returns the outcome (see `AnswerOutcome`); on `answered` the title for the confirmation
- * line, plus the collapsed decision that actually landed in the file so callers report what was
+ * line, plus the collapsed decision that actually went into the file so callers report what was
  * written rather than the caller's raw whitespace. */
 function answerQuestionLocked(root: string, n: number, rawDecision: string, expectedTitle: string | undefined, keepLines: boolean): AnswerOutcome {
   const decision = keepLines ? normalizeEntryBody(rawDecision) : collapseWhitespace(rawDecision);
@@ -337,11 +337,10 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string, expe
       placeholderAt.push(i);
     }
   }
-  // A section holding only its `_None yet._` skeleton placeholder must lose the placeholder
-  // when a real entry lands there: the placeholder means "no entries", so leaving it above
-  // the moved block makes ## Answered claim to be empty while holding an answered question.
-  // Fence-aware: a `_None yet._` line quoted inside a fenced block is quoted content, never
-  // the placeholder.
+  // A section holding only its `_None yet._` skeleton placeholder must lose the placeholder when a
+  // real entry goes there: the placeholder means "no entries", so leaving it above the moved
+  // block makes ## Answered claim to be empty while holding an answered question. Fence-aware: a
+  // `_None yet._` line quoted inside a fenced block is quoted content, never the placeholder.
   if (placeholderAt.length > 0) {
     const dropped = new Set(placeholderAt);
     const stripped = rebuilt.filter((_, i) => !dropped.has(i));

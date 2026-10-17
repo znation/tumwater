@@ -12,10 +12,10 @@ import type { HarnessEvent } from "../src/events/events.js";
 import type { BuildCheckRun } from "../src/build/build-check.js";
 
 // Unit pins for the presentation half of the build check (src/build/build-check-events.ts): the
-// timeout wording, the environmental-skip warning, and the build_check event's shape. These
-// are pure functions shared by four surfaces (gate, landing, batch, red-main baseline), so a
-// wording regression here mislabels the feed everywhere at once — including the false
-// "timed out after 300s" claim BUGS.md 2026-09-21 recorded.
+// timeout wording, the environmental-skip warning, and the build_check event's shape. These are
+// pure functions shared by four surfaces (gate, merge, batch, red-main baseline), so a wording
+// regression here mislabels the feed everywhere at once — including the false "timed out after
+// 300s" claim BUGS.md 2026-09-21 recorded.
 
 // --- timedOutPhrase: on-time vs late-firing deadlines ---
 
@@ -78,11 +78,11 @@ test("buildCheckSkipWarning words each environmental skip without ever naming a 
 
 test("buildCheckSkipWarning for a killed check uses the caller's signal and wall-clock when given", () => {
   assert.equal(
-    buildCheckSkipWarning("killed", "landing build check", "proceeding to merge", 300_000, {
+    buildCheckSkipWarning("killed", "merge build check", "proceeding to merge", 300_000, {
       signal: "SIGKILL",
       durationMs: 12_345,
     }),
-    "landing build check was killed by SIGKILL after 12.345s; proceeding to merge",
+    "merge build check was killed by SIGKILL after 12.345s; proceeding to merge",
   );
 });
 

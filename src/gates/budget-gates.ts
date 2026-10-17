@@ -194,14 +194,14 @@ export function tickOnPair(
   );
 }
 
-/** The config a runner runs on while the budget gate stands: the director keeps the live
- * config — an explicit human prompt outranks the autonomous-spend cap — except while a used-up
- * window has its own subscription claude model unable to run, when it takes `directorConfig`
- * (pollBudgetGate's view: the tier's fallback pair; omitted means the live config). Every other
- * role takes the gate's derived view (pollBudgetGate's returned `roleConfig`). Single home for the
- * rule, so the scheduler's per-poll assignment (src/gates/gate-polls.ts) and a throwaway landing
- * author's construction (src/merge/merge-verify.ts's resolveAuthor) cannot drift apart —
- * say, an exemption granted to one more role in one copy and not the other. */
+/** The config a runner runs on while the budget gate stands: the director keeps the live config —
+ * an explicit human prompt outranks the autonomous-spend cap — except while a used-up window has
+ * its own subscription claude model unable to run, when it takes `directorConfig` (pollBudgetGate's
+ * view: the tier's fallback pair; omitted means the live config). Every other role takes the gate's
+ * derived view (pollBudgetGate's returned `roleConfig`). Single home for the rule, so the
+ * scheduler's per-poll assignment (src/gates/gate-polls.ts) and a throwaway merge author's
+ * construction (src/merge/merge-verify.ts's resolveAuthor) cannot drift apart — say, an exemption
+ * granted to one more role in one copy and not the other. */
 export function gateRoleConfig(
   role: string,
   liveConfig: TumwaterConfig,
@@ -391,12 +391,11 @@ export function pollBudgetGate(
     });
     state.prevGate = gate;
   }
-  // While the fallback holds, role loops run under the derived view — the free pair
-  // installed top-level and every per-role/reviewer model override dropped, so no seam can
-  // reach a priced model. A breaker-demoted fallback keeps the view too: its gate is
-  // `paused`, but a tick parked in the semaphore when it tripped, the half-open probe, and
-  // the landings must still run on the free pair — a demotion must never promote them to
-  // the priced model the cap already spent.
+  // While the fallback holds, role loops run under the derived view — the free pair installed
+  // top-level and every per-role/reviewer model override dropped, so no seam can reach a priced
+  // model. A breaker-demoted fallback keeps the view too: its gate is `paused`, but a tick parked
+  // in the semaphore when it tripped, the half-open probe, and the merges must still run on the
+  // free pair — a demotion must never promote them to the priced model the cap already spent.
   const onFallback = reached && pairNames.length > 0;
   // A used-up window moves the subscription claude jobs to their tier's fallback below the cap
   // too; with no fallback to move to, nothing changes and the claude hold applies.
@@ -416,9 +415,9 @@ export function pollBudgetGate(
     const available = (seam: { agent?: string; provider?: string; model?: string }) =>
       !(windowOut !== null && seamIsClaude(seam)) && (!reached || seamFree(providers, seam, account));
     const view = applyFallbackModel(liveConfig, priceResolved, available);
-    // A role pinned to subscription claude under a tier that is not claude has no tier pair to
-    // fall onto — dropping its override would land it on the tier's priced primary — so it keeps
-    // its pin and the claude hold stops it, as before the window move.
+    // A role pinned to subscription claude under a tier that is not claude has no tier pair to fall
+    // onto — dropping its override would put it on the tier's priced primary — so it keeps its
+    // pin and the claude hold stops it, as before the window move.
     if (windowOut !== null) {
       for (const role of enabledRoleIds(liveConfig)) {
         const tier = roleSeamTier(liveConfig, role);
@@ -426,9 +425,9 @@ export function pollBudgetGate(
         if (pin && seamIsClaude(configForRole(liveConfig, role)) && !seamIsClaude(withModelOverrides(liveConfig, tier, {})))
           view.roles[role] = pin;
       }
-      // A reviewer pinned to subscription claude under such a tier would likewise land on the
-      // tier's priced primary; it goes to the tier's fallback pair instead (a held reviewer
-      // would stop the whole team).
+      // A reviewer pinned to subscription claude under such a tier would likewise end up on the
+      // tier's priced primary; it goes to the tier's fallback pair instead (a held reviewer would
+      // stop the whole team).
       const rm = liveConfig.review.model;
       const reviewTier: ModelTier = isTierName(rm) ? rm : "strong";
       const reviewPair = priceResolved[reviewTier].pair;

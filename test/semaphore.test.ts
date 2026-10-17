@@ -305,18 +305,18 @@ test("lowering the reserve admits a parked maintenance waiter", async () => {
   assert.equal(granted, true, "the freed reserve admits the parked maintenance waiter");
 });
 
-test("the landing and merge tiers ignore the reserve", async () => {
+test("the verify and merge tiers ignore the reserve", async () => {
   const sem = new Semaphore(2);
   await sem.acquire(1);
   await sem.acquire(1); // capacity full
   sem.setReserve(1);
   sem.release(); // one permit free, but a reserve of 1 would withhold it from tier >= 1
-  let vetGranted = false;
+  let verifyGranted = false;
   void sem.acquire(-1).then(() => {
-    vetGranted = true;
+    verifyGranted = true;
   });
   await flushImmediate();
-  assert.equal(vetGranted, true, "a negative-tier (vet/merge) acquirer is never held by the reserve");
+  assert.equal(verifyGranted, true, "a negative-tier (verify/merge) acquirer is never held by the reserve");
 });
 
 // --- Keyed permits (plans/provider-concurrency.md §3; 2026-10-15) ---

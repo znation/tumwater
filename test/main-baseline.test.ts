@@ -15,10 +15,10 @@ import { pathReplace, projManifest } from "./fakes/fake-commands.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
 // Unit coverage for the team-shared main-baseline verdict (src/baseline/main-baseline.ts): the
-// one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
-// red from blocking the team, and green seeding from the landing path. main-red.test.ts
-// covers the gate built on top; build-check.test.ts covers the detection, execution, and
-// failure-tail presentation this module consumes.
+// one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental red
+// from blocking the team, and green seeding from the merge path. main-red.test.ts covers the gate
+// built on top; build-check.test.ts covers the detection, execution, and failure-tail presentation
+// this module consumes.
 
 const ROLE = "improve";
 /** The live config checkMainBaseline now requires (plans/portability.md §6/7): the tests here
@@ -95,8 +95,8 @@ test("checkMainBaseline re-checks when main moves to a new SHA", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "red");
-  // A new commit lands on main (still red) and the worktree resets to it — the next tick's
-  // fresh SHA must re-run the check instead of trusting the old verdict.
+  // A new commit merges on main (still red) and the worktree resets to it — the next tick's fresh
+  // SHA must re-run the check instead of trusting the old verdict.
   fs.writeFileSync(
     path.join(root, "package.json"),
     projManifest({ test: `echo run >> ${counter}; exit 2` }),
@@ -219,19 +219,18 @@ test("a red is provisional: the next worktree re-runs it unasked, and a pass pro
   assert.equal(runsOf(counter), 2);
 });
 
-// --- noteGreenBaseline: the landing path (src/merge/merge-to-main.ts) seeds this cache with the
-// post-rebase
-// head after a green check, so a merged tree is never re-verified by checkMainBaseline.
+// --- noteGreenBaseline: the merge path (src/merge/merge-to-main.ts) seeds this cache with the
+// post-rebase head after a green check, so a merged tree is never re-verified by checkMainBaseline.
 
 test("noteGreenBaseline records a directly-observed green verdict: checkMainBaseline returns it without running the suite", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo ok`);
-  // The landing path just verified this exact tree (branch HEAD == main here) and passed:
-  // record that verdict the way verifyMerge does after a green runBuildCheck.
+  // The merge path just verified this exact tree (branch HEAD == main here) and passed: record that
+  // verdict the way verifyMerge does after a green runBuildCheck.
   noteGreenBaseline(headSha(root));
   const result = await checkMainBaseline(wt, CFG);
   assert.equal(result.baseline?.status, "green");
-  assert.ok(!fs.existsSync(counter), "the suite never ran — the landing path's verdict is trusted for this SHA");
+  assert.ok(!fs.existsSync(counter), "the suite never ran — the merge path's verdict is trusted for this SHA");
 });
 
 test("a configured check.command verifies main on a repo with no npm install anywhere", async () => {
@@ -404,11 +403,11 @@ test("a slept baseline failure is retried once and the clean retry's verdict sta
   assert.equal(seen.length, 2, "the verdict-less first attempt is priced as its own run");
 });
 
-// The verdict cache is keyed by every merged code SHA, so without a cap the orchestrator would
-// hold one entry per landing for the life of the process. It keeps the most recent capped set
-// and evicts the oldest; eviction costs at most one redundant suite run if that SHA is consulted
-// again, which is why it is safe to bound. Inserting twice the cap makes the assertion
-// independent of whatever earlier tests left in the cache.
+// The verdict cache is keyed by every merged code SHA, so without a cap the orchestrator would hold
+// one entry per merge for the life of the process. It keeps the most recent capped set and evicts
+// the oldest; eviction costs at most one redundant suite run if that SHA is consulted again, which
+// is why it is safe to bound. Inserting twice the cap makes the assertion independent of whatever
+// earlier tests left in the cache.
 test("the baseline verdict cache is bounded: pushing past the cap evicts the oldest SHAs", () => {
   const CAP = 256;
   const shas = Array.from({ length: CAP * 2 }, (_, i) => `cache-cap-sha-${i}`);

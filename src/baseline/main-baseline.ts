@@ -51,14 +51,13 @@ interface MainBaseline {
    * re-verified elsewhere before it blocks the team; two distinct worktrees agreeing makes it
    * authoritative. Never set on a green — a green is authoritative wherever it was observed. */
   redFrom?: string[];
-  /** Green only: set when no check ran on this tree. It is the commit whose green verdict this
-   * one was carried over from, because the two trees differ only in review-exempt paths:
-   * inheritedGreen across doc-only commits on main, or noteInheritedGreen for a landing whose
-   * tree drifted from the gate-verified one only in exempt paths. It is weaker than an observed
-   * green. A caller that attributes a red check to a change (`observedOnly`) treats it as no
-   * verdict and runs the suite itself, and a red observed on the SHA replaces it. A doc edit
-   * can still break a test that reads the docs, and an inherited green must not hide that
-   * from attribution. */
+  /** Green only: set when no check ran on this tree. It is the commit whose green verdict this one
+   * was carried over from, because the two trees differ only in review-exempt paths: inheritedGreen
+   * across doc-only commits on main, or noteInheritedGreen for a merge whose tree drifted from the
+   * gate-verified one only in exempt paths. It is weaker than an observed green. A caller that
+   * attributes a red check to a change (`observedOnly`) treats it as no verdict and runs the suite
+   * itself, and a red observed on the SHA replaces it. A doc edit can still break a test that reads
+   * the docs, and an inherited green must not hide that from attribution. */
   inheritedFrom?: string;
 }
 
@@ -110,11 +109,11 @@ const baselineCache = new Map<string, MainBaseline>();
 
 /** Safety cap so the per-process verdict cache can never grow unbounded: it is keyed by every
  * merged code SHA and a red entry carries the failed run's output tail, so a team running for
- * weeks would accumulate one entry per landing forever. Evicting the oldest entry (Map's
- * insertion order) costs at most one redundant suite run if that SHA is consulted again: a
- * green for a SHA that becomes main is re-seeded by the next landing (or its own
- * checkMainBaseline run), and a red is provisional by shouldRerunRed anyway. In-place updates
- * never grow the map and are never evicted. */
+ * weeks would accumulate one entry per merge forever. Evicting the oldest entry (Map's insertion
+ * order) costs at most one redundant suite run if that SHA is consulted again: a green for a SHA
+ * that becomes main is re-seeded by the next merge (or its own checkMainBaseline run), and a red
+ * is provisional by shouldRerunRed anyway. In-place updates never grow the map and are never
+ * evicted. */
 const BASELINE_CACHE_MAX = 256;
 
 /** Insert or update `sha`'s verdict, evicting the oldest entry when a NEW SHA would exceed the
@@ -190,24 +189,24 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
   return seen.length < 2 && !seen.includes(wt);
 }
 
-/** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the landing
+/** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the merge
  * path (src/merge/merge-to-main.ts's verifyMerge) and the stack lander
- * (src/merge/merge-stack.ts' mergeStack) — both call it only after their fast-forward
- * SUCCEEDED, with the exact SHA that just became main: verifyMerge with the POST-rebase head
- * in two cases — its own in-lock re-check just ran this project's declared check green on that
- * tree, or the rebase was a no-op so the review gate's pre-check (which runs outside the merge
- * lock) had already run green on exactly this tree — and mergeStack with the stacked tip when a
- * scope-`batch` check ran green on exactly it (a skipped check seeds nothing, and neither does
- * a merge_blocked stack or a doc-only re-stack that landed without a check of its own). Seeding
- * here means that once the merge lands — main now points at this very SHA — the next fresh
+ * (src/merge/merge-stack.ts' mergeStack) — both call it only after their fast-forward SUCCEEDED,
+ * with the exact SHA that just became main: verifyMerge with the POST-rebase head in two cases —
+ * its own in-lock re-check just ran this project's declared check green on that tree, or the
+ * rebase was a no-op so the review gate's pre-check (which runs outside the merge lock) had
+ * already run green on exactly this tree — and mergeStack with the stacked tip when a
+ * scope-`batch` check ran green on exactly it (a skipped check seeds nothing, and neither does a
+ * merge_blocked stack or a doc-only re-stack that merged without a check of its own). Seeding
+ * here means that once the merge completes — main now points at this very SHA — the next fresh
  * tick's checkMainBaseline is a cache hit instead of re-running the full suite on an
  * already-verified tree: for tumwater itself that saves one redundant `npm test` (~1 min) per
  * merged code tick, plus every other role waking on "main moved" stalling behind that in-flight
  * run. Never seed a pre-rebase head: whenever main moved under the review, that SHA never
  * becomes main and the entry would silently miss (BUGS.md 2026-09-08). Safe because git trees
  * are immutable — a SHA's content cannot change under a cached verdict, the same staleness
- * semantics checkMainBaseline already has for its own entries. Only a directly observed pass
- * may seed this; skips and failures leave the baseline unknown (the caller decides). */
+ * semantics checkMainBaseline already has for its own entries. Only a directly observed pass may
+ * seed this; skips and failures leave the baseline unknown (the caller decides). */
 export function noteGreenBaseline(sha: string): void {
   rememberBaseline(sha, { status: "green", sha });
 }
@@ -225,23 +224,22 @@ export function noteInheritedGreen(sha: string, from: string): void {
   rememberBaseline(sha, { status: "green", sha, inheritedFrom: from });
 }
 
-/** How far down main's first-parent history inheritedGreen looks for a verdict to carry over.
- * main gains about two dozen commits an hour under a full team, and the walk stops at the
- * first cached verdict anyway (every code landing seeds one), so this bound only caps the
- * rev-list on a cold cache. */
+/** How far down main's first-parent history inheritedGreen looks for a verdict to carry over. main
+ * gains about two dozen commits an hour under a full team, and the walk stops at the first cached
+ * verdict anyway (every code merge seeds one), so this bound only caps the rev-list on a cold
+ * cache. */
 const INHERIT_WALK_MAX = 64;
 
-/** A green for `sha` carried over from its nearest verdict-bearing first-parent ancestor, or
- * null when there is none to carry. The nearest ancestor with a cached verdict must be GREEN, and
- * the tree diff from it to `sha` must touch only `exemptPaths` (config.review.exemptPaths, the
- * same patterns that let a doc-only change land with no build check at all). Under that policy
- * a doc commit cannot change the suite's verdict, so re-running the suite on every doc-only
- * move of main buys nothing. Before this, 82% of the baseline runs (260 of 319 over
- * 2026-10-02..12) ran on a main whose tip was doc commits on top of a code landing that had
- * already seeded green. The nearest RED stops the walk: a doc commit after a red may be the
- * fix, so it is re-checked, never inherited past. An uncached ancestor is walked through, since
- * the single diff from the green covers it. Never throws: any git failure means no inheritance,
- * and the caller runs the suite as before. */
+/** A green for `sha` carried over from its nearest verdict-bearing first-parent ancestor, or null
+ * when there is none to carry. The nearest ancestor with a cached verdict must be GREEN, and the
+ * tree diff from it to `sha` must touch only `exemptPaths` (config.review.exemptPaths, the same
+ * patterns that let a doc-only change merge with no build check at all). Under that policy a doc
+ * commit cannot change the suite's verdict, so re-running the suite on every doc-only move of main
+ * buys nothing. Before this, 82% of the baseline runs (260 of 319 over 2026-10-02..12) ran on a
+ * main whose tip was doc commits on top of a code merge that had already seeded green. The nearest
+ * RED stops the walk: a doc commit after a red may be the fix, so it is re-checked, never inherited
+ * past. An uncached ancestor is walked through, since the single diff from the green covers it.
+ * Never throws: any git failure means no inheritance, and the caller runs the suite as before. */
 async function inheritedGreen(wt: string, sha: string, exemptPaths: readonly string[]): Promise<MainBaseline | null> {
   const ancestors = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${INHERIT_WALK_MAX}`, `${sha}^`));
   for (const ancestor of ancestors) {
@@ -263,14 +261,13 @@ function exemptPathsOf(config: CheckConfigSlice): string[] {
   return Array.isArray(patterns) ? patterns.filter((p): p is string => typeof p === "string" && p !== "") : [];
 }
 
-/** The cached verdict for `sha` WITHOUT running anything — "green", "red", or undefined when
- * this process holds none. The redeployer's urgency carve-out consults it first (BUGS.md
- * 2026-09-30): a verdict already in hand answers the RUNNING build's redness for free — the
- * warm path, a red observed here while that SHA was still main's tip. Undefined — a cold
- * cache, e.g. a fresh orchestrator that inherited a stale build — sends the caller to run the
- * check itself (redeploy.ts's witness worktree at the build SHA), which lands in this same
- * cache and answers every later consult. Read-only: deciding a SHA's verdict is
- * checkMainBaseline's alone. */
+/** The cached verdict for `sha` WITHOUT running anything — "green", "red", or undefined when this
+ * process holds none. The redeployer's urgency carve-out consults it first (BUGS.md 2026-09-30): a
+ * verdict already in hand answers the RUNNING build's redness for free — the warm path, a red
+ * observed here while that SHA was still main's tip. Undefined — a cold cache, e.g. a fresh
+ * orchestrator that inherited a stale build — sends the caller to run the check itself
+ * (redeploy.ts's witness worktree at the build SHA), which is recorded in this same cache and
+ * answers every later consult. Read-only: deciding a SHA's verdict is checkMainBaseline's alone. */
 export function cachedBaselineVerdict(sha: string): "green" | "red" | undefined {
   return baselineCache.get(sha)?.status;
 }
@@ -382,9 +379,9 @@ export async function checkMainBaseline(
               outputTail: outcome.outputTail,
               redFrom: priorRedFrom.includes(wt) ? priorRedFrom : [...priorRedFrom, wt],
             };
-      // A green always lands (promoting a provisional red); a red never overwrites an observed
-      // green — a concurrent run may have promoted this SHA while this one was still going. An
-      // inherited green is no observation, so this run's verdict replaces it either way.
+      // A green is always recorded (promoting a provisional red); a red never overwrites an
+      // observed green — a concurrent run may have promoted this SHA while this one was still
+      // going. An inherited green is no observation, so this run's verdict replaces it either way.
       const current = baselineCache.get(sha);
       if (current?.status !== "green" || current.inheritedFrom !== undefined) rememberBaseline(sha, baseline);
       return { baseline };
@@ -398,14 +395,14 @@ export async function checkMainBaseline(
   }
 }
 
-/** Is main green at the mirror worktree's HEAD? The landing path seeds a green verdict for
- * every merged code SHA (noteGreenBaseline — its in-lock post-rebase re-check, or the gate's
- * pre-check when the rebase was a no-op), so the common case is a cache hit. A head that only
- * added doc commits on top of such a SHA inherits its green (checkMainBaseline's
- * inheritedGreen). The redeployer's cooldown pre-warm asks this for every new head, and those doc
- * heads were most of the harness's baseline runs (247 of 319 over 2026-10-02..12). Otherwise the
- * project's declared check runs once in the mirror. No declared check or an
- * environmental skip reads as green — the gates' warn-and-proceed policy.
+/** Is main green at the mirror worktree's HEAD? The merge path seeds a green verdict for every
+ * merged code SHA (noteGreenBaseline — its in-lock post-rebase re-check, or the gate's pre-check
+ * when the rebase was a no-op), so the common case is a cache hit. A head that only added doc
+ * commits on top of such a SHA inherits its green (checkMainBaseline's inheritedGreen). The
+ * redeployer's cooldown pre-warm asks this for every new head, and those doc heads were most of the
+ * harness's baseline runs (247 of 319 over 2026-10-02..12). Otherwise the project's declared check
+ * runs once in the mirror. No declared check or an environmental skip reads as green — the gates'
+ * warn-and-proceed policy.
  *
  * A cached RED, though, is re-verified here (checkMainBaseline's `reverifyRed`) instead of
  * being taken as given. A red verdict can belong to the worktree that produced it rather than

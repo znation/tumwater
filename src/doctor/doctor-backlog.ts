@@ -5,7 +5,7 @@ import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { ageInDays, donePlans, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
-import { entryHold, planDependencyProblems, plannedPartKeys, plansWaitingOn, prerequisitesLanded, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
+import { entryHold, planDependencyProblems, plannedPartKeys, plansWaitingOn, prerequisitesMerged, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES, lastDate } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
@@ -88,17 +88,16 @@ function readDocChecked(p: string, file: string, missingDetail: string): { doc: 
   return read;
 }
 
-/** Fix claims — the standalone half of the landing gate's false-fix check
- * (src/verdict/fix-claim.ts): that gate fires only when an md-only diff moves a BUGS.md entry
- * to Fixed, so a phantom fix
- * that reached main any other way (landed before the gate existed, or through a path it never
- * sees) was visible only to a human reading raw history. This re-verifies the newest Fixed
- * records against the tree at `root` — the primary checkout IS main's tree — with the gate's
- * own parsing and existence rules. Deliberately looser than the gate: a record warns only
- * when EVERY symbol its Fix paragraph names is absent (one live symbol passes — the phantom
- * signature, not a half-stale narrative), and a record naming no symbols is skipped, since
- * pure-documentation fixes are legitimate. A warn, never a fail (the checkFallbackModel
- * precedent): a suspicious record is operator signal, not a broken environment. */
+/** Fix claims — the standalone half of the merge gate's false-fix check (src/verdict/fix-claim.ts):
+ * that gate fires only when an md-only diff moves a BUGS.md entry to Fixed, so a phantom fix that
+ * reached main any other way (merged before the gate existed, or through a path it never sees) was
+ * visible only to a human reading raw history. This re-verifies the newest Fixed records against
+ * the tree at `root` — the primary checkout IS main's tree — with the gate's own parsing and
+ * existence rules. Deliberately looser than the gate: a record warns only when EVERY symbol its Fix
+ * paragraph names is absent (one live symbol passes — the phantom signature, not a half-stale
+ * narrative), and a record naming no symbols is skipped, since pure-documentation fixes are
+ * legitimate. A warn, never a fail (the checkFallbackModel precedent): a suspicious record is
+ * operator signal, not a broken environment. */
 export function checkFixClaims(root: string): CheckOutcome {
   const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
   if ("outcome" in read) return read.outcome;
@@ -151,14 +150,14 @@ export function checkStrandedPlans(root: string): CheckOutcome {
 }
 
 /** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure
- * check, src/backlog/backlog-structure.ts): a `## Done` a past landing or conflict resolution added
+ * check, src/backlog/backlog-structure.ts): a `## Done` a past merge or conflict resolution added
  * twice leaves every later entry after the first section invisible to the section readers, and
- * nothing repairs it on its own. Reads the tree at `root` — the primary checkout IS main's tree
- * — like checkFixClaims. A warn, never a fail: existing damage is operator signal, not a broken
- * environment, and a landing that adds another copy of the heading trips the gate's same
- * rule (a) — src/backlog/backlog-structure.ts fires only when a count EXCEEDS the merge-base's,
- * so an edit that leaves an existing duplicate alone passes and the duplicate itself needs a
- * deliberate removal edit. */
+ * nothing repairs it on its own. Reads the tree at `root` — the primary checkout IS main's tree —
+ * like checkFixClaims. A warn, never a fail: existing damage is operator signal, not a broken
+ * environment, and a merge that adds another copy of the heading trips the gate's same rule (a) —
+ * src/backlog/backlog-structure.ts fires only when a count EXCEEDS the merge-base's, so an edit
+ * that leaves an existing duplicate alone passes and the duplicate itself needs a deliberate
+ * removal edit. */
 export function checkBacklogHeadings(root: string): CheckOutcome {
   const duplicates: string[] = [];
   for (const file of BACKLOG_FILES) {
@@ -254,36 +253,36 @@ export function checkPlanDependencies(root: string): CheckOutcome {
   return okOutcome("every planned plan's requires clause names a known part, with no cycle or misworded dependency");
 }
 
-/** How long a queued landing may wait without its change starting before the stale-queued-landing
- * check warns: 6 hours, fixed. A vet plus a merge completes in minutes (plans/merge-queue.md), so
- * a full six-hour silence while the team is healthy — not on a hold, which doctor already reports
+/** How long a queued merge may wait without its change starting before the stale-queued-merge check
+ * warns: 6 hours, fixed. A verify plus a merge completes in minutes (plans/merge-queue.md), so a
+ * full six-hour silence while the team is healthy — not on a hold, which doctor already reports
  * separately — is never a merely busy pipeline: it reads as a drain that has stalled. The one
  * opinionated default, like STALE_QUESTION_DAYS, so no knob. */
-const LAND_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
+const MERGE_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
 
-/** Stale queued landings — a change that has sat in the durable land queue too long without
- * starting (plans/merge-queue.md). Every queued-change health fact is otherwise a hook into its
- * own role or stage: a vet under way reads in the team row, a team hold gets its own banner,
- * and team-alerts' STALL_RE catches a RUNNING stage frozen. But a change (or a batch behind the
- * single merge slot) that quietly never starts — neither vetted nor flagged — reads as healthy:
- * the header's `land queue: N` badge counts it and `tumwater queue` ages it, yet nothing calls it
- * out on its own. This names the single oldest queued landing that is NOT currently in-flight and
- * has waited past LAND_QUEUE_STALE_MS, so an operator sees a stalled drain instead of only a
- * growing depth. The in-flight marker (readMergeMarker via mergeChanges) contributes the set
- * of roles holding a change being vetted or merged right now — a slow review is not a stalled
- * drain, and an absent or never-throwing unreadable marker contributes the empty set. Reads the
- * tree at `root` with the already-exported readers, changing nothing in src/merge/. A warn,
- * never a fail — the checkStaleQuestions/checkStalledPlans precedent: a queued wait is legitimate
- * while the team is genuinely held, and those holds already warn separately. */
-export function checkStaleQueuedLandings(root: string, now: number): CheckOutcome {
+/** Stale queued merges — a change that has sat in the durable merge queue too long without starting
+ * (plans/merge-queue.md). Every queued-change health fact is otherwise a hook into its own role or
+ * stage: a verify under way reads in the team row, a team hold gets its own banner, and
+ * team-alerts' STALL_RE catches a RUNNING stage frozen. But a change (or a batch behind the single
+ * merge slot) that quietly never starts — neither verified nor flagged — reads as healthy: the
+ * header's `merge queue: N` badge counts it and `tumwater queue` ages it, yet nothing calls it out
+ * on its own. This names the single oldest queued merge that is NOT currently in-flight and has
+ * waited past MERGE_QUEUE_STALE_MS, so an operator sees a stalled drain instead of only a growing
+ * depth. The in-flight marker (readMergeMarker via mergeChanges) contributes the set of roles
+ * holding a change being verified or merged right now — a slow review is not a stalled drain, and
+ * an absent or never-throwing unreadable marker contributes the empty set. Reads the tree at `root`
+ * with the already-exported readers, changing nothing in src/merge/. A warn, never a fail — the
+ * checkStaleQuestions/checkStalledPlans precedent: a queued wait is legitimate while the team is
+ * genuinely held, and those holds already warn separately. */
+export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome {
   const marker = readMergeMarker(root);
   const inFlight = new Set(marker ? mergeChanges(marker).map((c) => c.role) : []);
   const stale = queuedMerges(root)
-    .filter((e) => !inFlight.has(e.role) && now - e.enqueuedAt > LAND_QUEUE_STALE_MS)
+    .filter((e) => !inFlight.has(e.role) && now - e.enqueuedAt > MERGE_QUEUE_STALE_MS)
     .map((e) => ({ role: e.role, summary: e.summary, age: humanSeconds(secondsSince(e.enqueuedAt, now)) }));
   const [first, ...rest] = stale;
   if (!first)
-    return okOutcome(`no merge-queue entry has waited more than ${humanSeconds(LAND_QUEUE_STALE_MS / 1000)} to start`);
+    return okOutcome(`no merge-queue entry has waited more than ${humanSeconds(MERGE_QUEUE_STALE_MS / 1000)} to start`);
   const more = andMore(rest, (e) => `${e.role} — "${truncate(e.summary, FIX_CLAIM_HEADING_MAX)}"`);
   return warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
       `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`);
@@ -468,18 +467,18 @@ export function checkRefusedEntries(root: string): CheckOutcome {
     entries.flatMap((entry, index) => {
       const note = refusalNote(entry.body);
       if (note === null) return [];
-      const landed = prerequisitesLanded(entry.title, parts);
+      const mergeDone = prerequisitesMerged(entry.title, parts);
       const waiting = file === "PLANS.md" ? plansWaitingOn(planned, index).length : 0;
-      return [{ file, command, position: index + 1, title: entry.title, note, landed, waiting }];
+      return [{ file, command, position: index + 1, title: entry.title, note, mergeDone, waiting }];
     }));
   const [first, ...rest] = held;
   if (!first) return okOutcome("no planned plan or open bug is held by a Refused note");
   const more = andMore(rest, (e) =>
     `${e.file} ${e.command} #${e.position} "${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"` +
-    (e.landed.length > 0 ? " [prerequisites no longer planned]" : "") +
+    (e.mergeDone.length > 0 ? " [prerequisites no longer planned]" : "") +
     (e.waiting > 0 ? ` [${e.waiting} part(s) wait on it]` : ""));
-  const stale = first.landed.length > 0
-    ? `; its prerequisite(s) ${first.landed.map((r) => `${r.series} ${r.part}/${r.of}`).join(", ")} are no longer planned, so the refusal may be stale`
+  const stale = first.mergeDone.length > 0
+    ? `; its prerequisite(s) ${first.mergeDone.map((r) => `${r.series} ${r.part}/${r.of}`).join(", ")} are no longer planned, so the refusal may be stale`
     : "";
   const waiting = first.waiting > 0
     ? `; ${first.waiting} planned part(s) wait on it, directly or through an earlier part`
@@ -490,12 +489,12 @@ export function checkRefusedEntries(root: string): CheckOutcome {
       `or retract it with \`tumwater ${first.command} --cancel ${first.position}\``);
 }
 
-/** Names the backlog files (and the brief file) with uncommitted edits in the primary checkout.
- * An operator write is meant to be committed on the base branch by commitOperatorBacklogEdit;
- * when that commit does not happen the edit is invisible to every loop worktree (they branch
- * from main) and a landing that touches the file cannot fast-forward the checkout
- * (merge_blocked). A primary off the base branch is skipped: the ref-push landing arm leaves
- * its working tree alone. Untracked files are not edits of a tracked file and are ignored. */
+/** Names the backlog files (and the brief file) with uncommitted edits in the primary checkout. An
+ * operator write is meant to be committed on the base branch by commitOperatorBacklogEdit; when
+ * that commit does not happen the edit is invisible to every loop worktree (they branch from main)
+ * and a merge that touches the file cannot fast-forward the checkout (merge_blocked). A primary off
+ * the base branch is skipped: the ref-push merge arm leaves its working tree alone. Untracked files
+ * are not edits of a tracked file and are ignored. */
 export async function checkUncommittedBacklog(root: string, config: TumwaterConfig | undefined): Promise<CheckOutcome> {
   const primary = await currentBranch(root);
   const base = targetBranch(config?.baseBranch, primary);

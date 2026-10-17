@@ -4,16 +4,16 @@ import type { BuildCheck } from "../src/build/build-check-detect.js";
 import type { BuildCheckOutcome } from "../src/build/build-check.js";
 import { checkFailureReasons, clipBuildTail, failureHeadline } from "../src/build/build-check-report.js";
 
-// build-check-report.ts's checkFailureReasons turns a red check's outcome into the machine
-// text every rejecting gate hands its author — the reason lines injected into the next-tick
-// note by main-red, the review gate, the landing path and build-stage alike. Its unverified
-// passthrough is pinned in build-check.test.ts, but the MAIN path — a genuine red whose
-// reason is the headline joined to the rest of the clipped tail — had no coverage at all:
-// a regression there (wrong headline, the headline kept twice, the tail dropped, a missing
-// fallback) would silently degrade every red's diagnosis without failing a single test.
-// These tests pin that path on synthetic outcomes: headline selection and dedup, the npm vs
-// command wording of describeCheck, the empty-tail fallback, the all-framing fallback, and
-// the unverified empty-tail branch the integration test never reaches.
+// build-check-report.ts's checkFailureReasons turns a red check's outcome into the machine text
+// every rejecting gate hands its author — the reason lines injected into the next-tick note by
+// main-red, the review gate, the merge path and build-stage alike. Its unverified passthrough is
+// pinned in build-check.test.ts, but the MAIN path — a genuine red whose reason is the headline
+// joined to the rest of the clipped tail — had no coverage at all: a regression there (wrong
+// headline, the headline kept twice, the tail dropped, a missing fallback) would silently degrade
+// every red's diagnosis without failing a single test. These tests pin that path on synthetic
+// outcomes: headline selection and dedup, the npm vs command wording of describeCheck, the
+// empty-tail fallback, the all-framing fallback, and the unverified empty-tail branch the
+// integration test never reaches.
 
 const NPM_CHECK: BuildCheck = { kind: "npm", rootDir: "/tmp/proj", script: "test" };
 

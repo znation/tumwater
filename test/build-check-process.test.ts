@@ -85,12 +85,12 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
   let pid = 0;
   try {
     // 4s budget, 700ms SIGKILL grace: the grandchild traps SIGTERM, so it must be gone once the
-    // grace expires — and only via the escalation. Both run on logical time (checkClock), and
-    // the deadline fires only once the grandchild has trapped SIGTERM and written its pid. On
-    // the wall clock the budget had to cover the whole startup chain (npm boot → runner boot →
-    // the grandchild's own node boot) BEFORE the group SIGTERM fired: at 600ms a load-sensitive
-    // run let SIGTERM land mid-grandchild-startup, which died by default action before trapping
-    // or writing its pid — the test then died reading a pid file that never existed and falsely
+    // grace expires — and only via the escalation. Both run on logical time (checkClock), and the
+    // deadline fires only once the grandchild has trapped SIGTERM and written its pid. On the wall
+    // clock the budget had to cover the whole startup chain (npm boot → runner boot → the
+    // grandchild's own node boot) BEFORE the group SIGTERM fired: at 600ms a load-sensitive run let
+    // SIGTERM arrive mid-grandchild-startup, which died by default action before trapping or
+    // writing its pid — the test then died reading a pid file that never existed and falsely
     // reddened main at 03edeba6 (BUGS.md 2026-09-24), and 4s stayed a load flake after it.
     const advance = checkClock(t);
     const check = runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 4_000, 700);
@@ -101,7 +101,7 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
     const outcome = await check;
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "timeout");
-    // The SIGKILL lands before the check settles, but launchd reaps the orphan asynchronously:
+    // The SIGKILL arrives before the check settles, but launchd reaps the orphan asynchronously:
     // poll until it is gone (or the assertion below fails on the leak this test pins).
     await waitFor(() => !pidAlive(pid), "the timed-out check's grandchild to be reaped", 5_000);
     assert.equal(pidAlive(pid), false, "the timed-out check's grandchild is gone after the SIGKILL grace");
@@ -117,10 +117,10 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
   }
 });
 
-// The SIGKILL escalation is armed WHEN THE TIMEOUT FIRES, never at spawn: a timer armed at
-// spawn SIGKILLed every healthy check still running at killGraceMs and misclassified it as a
-// timeout — which, at a merge scope (landing/batch), is a deterministic reject of a green
-// tree (the 2026-09-22 review-gate catch on this fix's first draft).
+// The SIGKILL escalation is armed WHEN THE TIMEOUT FIRES, never at spawn: a timer armed at spawn
+// SIGKILLed every healthy check still running at killGraceMs and misclassified it as a timeout —
+// which, at a merge scope (merge/batch), is a deterministic reject of a green tree (the 2026-09-22
+// review-gate catch on this fix's first draft).
 test("a healthy check that outlasts the SIGKILL grace is not mistaken for a timeout", async (t) => {
   const { root, wt } = buildCheckFixture();
   const started = path.join(wt, "started");

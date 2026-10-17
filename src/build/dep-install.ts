@@ -8,14 +8,14 @@ import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 
 /** Keeping a tree's install in step with its lockfile (BUGS.md 2026-10-01). node_modules is
- * gitignored, so a tumwater worktree has none of its own: its toolchain and every import
- * resolve by walking UP to the root checkout's install (detectBuildCheck,
- * resolveFromNodeModules). That install predates any dependency a change adds, and no loop ever
- * ran `npm install` — so a legitimate dependency-adding change failed its gate check with
- * TS2307 every time, and had it landed, every tree after it would have resolved against a root
- * install missing the package. Two callers close both halves: runBuildCheck installs into the
- * checked tree when its lockfile's direct dependencies are not what the walk-up resolves, and
- * the landing path re-syncs the root checkout after a fast-forward moves main's lockfile. */
+ * gitignored, so a tumwater worktree has none of its own: its toolchain and every import resolve by
+ * walking UP to the root checkout's install (detectBuildCheck, resolveFromNodeModules). That
+ * install predates any dependency a change adds, and no loop ever ran `npm install` — so a
+ * legitimate dependency-adding change failed its gate check with TS2307 every time, and had it
+ * merged, every tree after it would have resolved against a root install missing the package. Two
+ * callers close both halves: runBuildCheck installs into the checked tree when its lockfile's
+ * direct dependencies are not what the walk-up resolves, and the merge path re-syncs the root
+ * checkout after a fast-forward moves main's lockfile. */
 
 /** Hard cap on one install run — a registry fetch of a handful of packages takes seconds; the
  * cap only bounds a hung network. Same bound as the check itself. */
@@ -112,13 +112,13 @@ export async function syncInstall(
 }
 
 /** Re-sync the root checkout's install after a fast-forward moved main's lockfile (BUGS.md
- * 2026-10-01). Every team worktree, the redeploy compile, and the running harness resolve
- * through `root/node_modules`, so a landed dependency the root never installed would leave each
- * of them resolving against the old tree. Called under the merge lock right after the ff, so
- * the next landing's in-lock check already sees it. A `dep_install` event prices a run; a
- * failure also warns, and is retried by the next landing's call (the drift is still there) —
- * meanwhile each check installs into its own tree, so nothing is rejected for it. No drift (the
- * common case — the landing did not touch dependencies) spawns nothing and logs nothing. */
+ * 2026-10-01). Every team worktree, the redeploy compile, and the running harness resolve through
+ * `root/node_modules`, so a merged dependency the root never installed would leave each of them
+ * resolving against the old tree. Called under the merge lock right after the ff, so the next
+ * merge's in-lock check already sees it. A `dep_install` event prices a run; a failure also warns,
+ * and is retried by the next merge's call (the drift is still there) — meanwhile each check
+ * installs into its own tree, so nothing is rejected for it. No drift (the common case — the merge
+ * did not touch dependencies) spawns nothing and logs nothing. */
 export async function syncRootInstall(
   root: string,
   role: string,
@@ -126,9 +126,9 @@ export async function syncRootInstall(
 ): Promise<void> {
   const r = await syncInstall(root, install);
   if (!r) return;
-  // Best-effort: the root install already ran and the ff that prompted it already moved main,
-  // so an unwritable feed must not reject the landing that awaited this (merge-to-main.ts's
-  // tryMerge, merge-stack.ts's ffStackToMain).
+  // Best-effort: the root install already ran and the ff that prompted it already moved main, so an
+  // unwritable feed must not reject the merge that awaited this (merge-to-main.ts's tryMerge,
+  // merge-stack.ts's ffStackToMain).
   logEventBestEffort(root, {
     source: role,
     type: "dep_install",

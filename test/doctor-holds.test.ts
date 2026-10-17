@@ -357,7 +357,7 @@ test("checkMainRed: a loop with a queued summary is ok", () => {
   assert.equal(checkMainRed(redRoot({ queuedSummary: "x" }), bcfg({})).level, "ok");
 });
 
-test("checkMainRed: a passed landing check newer than the red tick retires the hold", () => {
+test("checkMainRed: a passed merge check newer than the red tick retires the hold", () => {
   const root = redRoot();
   writeEvents(root, [{ ts: 2000, loop: "feature", type: "build_check", scope: "merge", status: "passed" }]);
   assert.equal(checkMainRed(root, bcfg({})).level, "ok");

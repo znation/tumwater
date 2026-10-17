@@ -21,19 +21,19 @@ import { HOUR } from "./helpers/oracles.js";
 
 test("maintenanceQuota computes the allowance, used, and held verdict", () => {
   assert.deepEqual(
-    maintenanceQuota({ work: 10, maint: 32, inFlight: 0, perWorkLanding: 2 }),
+    maintenanceQuota({ work: 10, maint: 32, inFlight: 0, perWorkMerge: 2 }),
     { allowance: 32, used: 32, held: true },
   );
   // One below the allowance is not held; the boundary is `used >= allowance`.
   assert.deepEqual(
-    maintenanceQuota({ work: 10, maint: 31, inFlight: 0, perWorkLanding: 2 }),
+    maintenanceQuota({ work: 10, maint: 31, inFlight: 0, perWorkMerge: 2 }),
     { allowance: 32, used: 31, held: false },
   );
 });
 
-test("the floor keeps the allowance at 12 when no work landed", () => {
+test("the floor keeps the allowance at 12 when no work merged", () => {
   assert.equal(
-    maintenanceQuota({ work: 0, maint: 11, inFlight: 0, perWorkLanding: 2 }).allowance,
+    maintenanceQuota({ work: 0, maint: 11, inFlight: 0, perWorkMerge: 2 }).allowance,
     MAINTENANCE_DAILY_FLOOR,
   );
   assert.equal(MAINTENANCE_DAILY_FLOOR, 12);
@@ -41,7 +41,7 @@ test("the floor keeps the allowance at 12 when no work landed", () => {
 
 test("an in-flight maintenance count adds to the used figure", () => {
   assert.deepEqual(
-    maintenanceQuota({ work: 5, maint: 20, inFlight: 2, perWorkLanding: 2 }),
+    maintenanceQuota({ work: 5, maint: 20, inFlight: 2, perWorkMerge: 2 }),
     { allowance: 22, used: 22, held: true },
   );
 });
@@ -61,7 +61,7 @@ test("countMaintenanceWindow counts merged events by tier inside the last 24 h",
     ...Array.from({ length: 2 }, (_, i) => ({ ts: inside, loop: "plan", type: "merged", commit: `p${i}` })),
     // older than 24 h: excluded.
     ...Array.from({ length: 4 }, (_, i) => ({ ts: outside, loop: "clean", type: "merged", commit: `oc${i}` })),
-    // a non-merged event inside the window is not a landing.
+    // a non-merged event inside the window is not a merge.
     { ts: inside, loop: "clean", type: "run_end", tokens: 1 },
     // a tier-counted merge with no timestamp contributes nothing.
     { loop: "clean", type: "merged", commit: "nots" },
@@ -149,13 +149,13 @@ test("records that age past the rolling window are dropped from the memo", () =>
   assert.equal(counter.records.length, 0);
 });
 
-test("a torn trailing merged line is counted once, not again when its newline lands", () => {
+test("a torn trailing merged line is counted once, not again when its newline arrives", () => {
   const root = tmpdir();
   const now = Date.now();
   writeEvents(root, [{ ts: now - 2 * HOUR, loop: "feature", type: "merged", commit: "a" }]);
-  // A write in flight: the merged event's JSON is fully on disk, its newline is not. The
-  // windowed seed read parses that trailing fragment as an event; a fold resumed from the
-  // last complete line would re-read it once the newline lands and count it twice.
+  // A write in flight: the merged event's JSON is fully on disk, its newline is not. The windowed
+  // seed read parses that trailing fragment as an event; a fold resumed from the last complete line
+  // would re-read it once the newline arrives and count it twice.
   fs.appendFileSync(
     eventsLogPath(root),
     JSON.stringify({ ts: now - 1 * HOUR, loop: "clean", type: "merged", commit: "torn" }),
@@ -188,12 +188,12 @@ test("pollMaintenanceQuotaGate computes the allowance verdict and logs one hold 
   ]);
   const state = newMaintenanceQuotaGateState();
   const observers = [
-    { role: "clean", enabled: true, running: false, hasQueuedLanding: false },
-    { role: "dedupe", enabled: true, running: false, hasQueuedLanding: false },
-    { role: "readme", enabled: true, running: false, hasQueuedLanding: false },
-    { role: "feature", enabled: true, running: false, hasQueuedLanding: false },
-    { role: "plan", enabled: true, running: false, hasQueuedLanding: false },
-    { role: "clean-2", enabled: false, running: false, hasQueuedLanding: false },
+    { role: "clean", enabled: true, running: false, hasQueuedMerge: false },
+    { role: "dedupe", enabled: true, running: false, hasQueuedMerge: false },
+    { role: "readme", enabled: true, running: false, hasQueuedMerge: false },
+    { role: "feature", enabled: true, running: false, hasQueuedMerge: false },
+    { role: "plan", enabled: true, running: false, hasQueuedMerge: false },
+    { role: "clean-2", enabled: false, running: false, hasQueuedMerge: false },
   ];
   // allowance = 2 * 10 + 12 = 32, maint = 32, inFlight = 0 -> held at the boundary. The
   // disabled clean-2 and the work/neither feature and plan do not move `used`.
@@ -222,18 +222,18 @@ test("pollMaintenanceQuotaGate computes the allowance verdict and logs one hold 
   );
 });
 
-test("a running tick and a queued landing both count as in flight toward the used figure", () => {
+test("a running tick and a queued merge both count as in flight toward the used figure", () => {
   const root = tmpdir();
   const now = Date.now();
-  // allowance = 0 * work + 12; 10 landed + 2 in flight = 12 -> held at the boundary.
+  // allowance = 0 * work + 12; 10 merged + 2 in flight = 12 -> held at the boundary.
   writeEvents(
     root,
     Array.from({ length: 10 }, (_, i) => ({ ts: now - HOUR, loop: "clean", type: "merged", commit: `c${i}` })),
   );
   const state = newMaintenanceQuotaGateState();
   const observers = [
-    { role: "clean", enabled: true, running: true, hasQueuedLanding: false },
-    { role: "dedupe", enabled: true, running: false, hasQueuedLanding: true },
+    { role: "clean", enabled: true, running: true, hasQueuedMerge: false },
+    { role: "dedupe", enabled: true, running: false, hasQueuedMerge: true },
   ];
   assert.deepEqual(pollMaintenanceQuotaGate(root, state, observers, 0, now), {
     allowance: 12,

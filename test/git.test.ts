@@ -29,9 +29,9 @@ import {
 } from "../src/git/git.js";
 import { runGit } from "../src/git/git-run.js";
 import { ensureWorktree, resetWorktreeToMain } from "../src/git/worktree.js";
-// The landing-flow git helpers live in merge-git.ts — moved there from merge-to-main.ts (which
-// got them from git.ts in the bugfix that completed the half-finished organize tick 78 move)
-// once the lander and the batch lander started calling them directly.
+// The merge-flow git helpers live in merge-git.ts — moved there from merge-to-main.ts (which got
+// them from git.ts in the bugfix that completed the half-finished organize tick 78 move) once the
+// lander and the batch lander started calling them directly.
 import {
   conflictedFiles,
   continueRebase,
@@ -91,7 +91,7 @@ test("an unreadable HEAD file falls back to the spawn instead of throwing", asyn
   assert.equal(await currentBranch(wt), branchName("clean"));
 });
 
-test("commitAll stages everything and ffMainTo lands it while root is on main", async () => {
+test("commitAll stages everything and ffMainTo merges it while root is on main", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "improve", "main");
   fs.writeFileSync(path.join(wt, "new.txt"), "hi\n");
@@ -117,7 +117,7 @@ test("ffMainTo works via ref push when root is on another branch", async () => {
   assert.equal(await headOf(repo, "main"), commit);
 });
 
-// The landing-ref helpers (merge queue 2/5): refs/tumwater/landing/<role> pins a committed sha
+// The merge-ref helpers (merge queue 2/5): refs/tumwater/merge/<role> pins a committed sha
 // across the role branch's reset-to-main. setRef/deleteRef/refSha are the pin mechanics;
 // isMergedInto tells recovery apart a stale pin from real work.
 test("setRef creates and moves a ref; refSha reads it back", async () => {
@@ -125,24 +125,24 @@ test("setRef creates and moves a ref; refSha reads it back", async () => {
   sh(repo, "git", "commit", "--allow-empty", "-m", "one");
   const first = headSha(repo);
 
-  assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), null, "absent before creation");
-  await setRef(repo, "refs/tumwater/landing/improve", first);
-  assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), first);
+  assert.equal(await refSha(repo, "refs/tumwater/merge/improve"), null, "absent before creation");
+  await setRef(repo, "refs/tumwater/merge/improve", first);
+  assert.equal(await refSha(repo, "refs/tumwater/merge/improve"), first);
 
   sh(repo, "git", "commit", "--allow-empty", "-m", "two");
   const second = headSha(repo);
-  await setRef(repo, "refs/tumwater/landing/improve", second);
-  assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), second, "re-pinning moves the ref");
+  await setRef(repo, "refs/tumwater/merge/improve", second);
+  assert.equal(await refSha(repo, "refs/tumwater/merge/improve"), second, "re-pinning moves the ref");
 });
 
 test("deleteRef removes a ref and is idempotent on an absent one", async () => {
   const repo = makeRepo();
   const sha = headSha(repo);
-  await setRef(repo, "refs/tumwater/landing/improve", sha);
+  await setRef(repo, "refs/tumwater/merge/improve", sha);
 
-  await deleteRef(repo, "refs/tumwater/landing/improve");
-  assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), null);
-  await assert.doesNotReject(() => deleteRef(repo, "refs/tumwater/landing/improve"));
+  await deleteRef(repo, "refs/tumwater/merge/improve");
+  assert.equal(await refSha(repo, "refs/tumwater/merge/improve"), null);
+  await assert.doesNotReject(() => deleteRef(repo, "refs/tumwater/merge/improve"));
 });
 
 test("isMergedInto is true for ancestors and equality, false otherwise", async () => {
@@ -158,7 +158,7 @@ test("isMergedInto is true for ancestors and equality, false otherwise", async (
   sh(repo, "git", "checkout", "-b", "side");
   sh(repo, "git", "commit", "--allow-empty", "-m", "side work");
   const side = headSha(repo);
-  assert.ok(!(await isMergedInto(repo, side, "main")), "unlanded work is not contained");
+  assert.ok(!(await isMergedInto(repo, side, "main")), "unmerged work is not contained");
 });
 
 test("rebaseOntoMain resolves divergence and aborts cleanly on conflict", async () => {
@@ -370,7 +370,7 @@ test("commitPathsAndDiscardRest commits only the given paths and discards every 
   assert.equal(await headOf(repo, "HEAD"), head);
   assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /refuse — test/);
 
-  // The note landed with its new content…
+  // The note was committed with its new content…
   assert.equal(fs.readFileSync(path.join(repo, "notes.md"), "utf8"), "objection\n");
   // …and everything else was discarded: tracked edit reverted, untracked junk cleaned.
   assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "seed\n");
@@ -456,13 +456,13 @@ test("runGit times out a hung git and names the deadline instead of stalling for
 test("runGit SIGKILLs a git that ignores SIGTERM, taking its grandchild with it", async () => {
   const dir = tmpdir("stubborn-git-");
   const pidFile = path.join(dir, "grand.pid");
-  // The fake git spawns a grandchild, records its pid, then ignores SIGTERM and waits. The
-  // shim and the grandchild both inherit SIG_IGN, so only the group-wide SIGKILL ends them;
-  // the call must settle at deadline + grace, not wait out the sleeps. This pins the detached
-  // process group: if the child were not its own group leader (execFile drops `detached`), the
-  // negative-pid kill would fall back to the direct child alone and orphan the grandchild.
-  // The 0.7s pause stands in for a loaded host starting the shim slowly: the 2s deadline must
-  // leave the script time to record the pid before the group kill lands.
+  // The fake git spawns a grandchild, records its pid, then ignores SIGTERM and waits. The shim and
+  // the grandchild both inherit SIG_IGN, so only the group-wide SIGKILL ends them; the call must
+  // settle at deadline + grace, not wait out the sleeps. This pins the detached process group: if
+  // the child were not its own group leader (execFile drops `detached`), the negative-pid kill
+  // would fall back to the direct child alone and orphan the grandchild. The 0.7s pause stands in
+  // for a loaded host starting the shim slowly: the 2s deadline must leave the script time to
+  // record the pid before the group kill arrives.
   writeScript(path.join(dir, "git"), `trap '' TERM\nsleep 0.7\nsleep 30 &\necho $! > "${pidFile}"\nwait`);
   const restorePath = pathPrepend(dir);
   const started = Date.now();
@@ -543,7 +543,7 @@ test("subjectsBetween lists main's subjects since a head, newest first; null for
     "tumwater(readme): b",
     "tumwater(feature): a",
   ]);
-  // Nothing landed since the tip → empty, not null.
+  // Nothing merged since the tip → empty, not null.
   const tip = await headOf(repo, "main");
   assert.deepEqual(await subjectsBetween(repo, tip, "main"), []);
   // An unresolvable base yields null so callers fall back conservatively.

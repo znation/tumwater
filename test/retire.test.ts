@@ -25,12 +25,12 @@ import { helpTopic } from "../src/cli/help.js";
 // `feature` is enabled by default config, so a retire of it must refuse; `clean` is a
 // user-defined loop the tests disable in tumwater.json first.
 
-test("retire removes a disabled role's worktree, branch, and landing ref", async () => {
+test("retire removes a disabled role's worktree, branch, and merge ref", async () => {
   const { root } = await initializedWorktree();
   disableRole(root, "improve");
 
-  // A landing ref pinning a sha already merged into main (the stale-pin crash state) must not
-  // block — only a pin holding unlanded work counts against the retire.
+  // A merge ref pinning a sha already merged into main (the stale-pin crash state) must not block —
+  // only a pin holding unmerged work counts against the retire.
   await setRef(root, mergeRefName("improve"), mainSha(root));
 
   const r = await cli(root, "retire", "--role", "improve", "--json");
@@ -44,7 +44,7 @@ test("retire removes a disabled role's worktree, branch, and landing ref", async
     false,
     "no worktree registration left",
   );
-  assert.equal(mergeRefExists(root, "improve"), false, "landing ref deleted");
+  assert.equal(mergeRefExists(root, "improve"), false, "merge ref deleted");
   // Branch gone: rev-parse fails.
   const branchGone = await import("../src/git/git.js").then((m) => m.branchHead(root, branchName("improve")));
   assert.equal(branchGone, null, "branch deleted");
@@ -61,14 +61,14 @@ test("retire refuses an enabled role, unmerged commits, a dirty worktree, and a 
 
   disableRole(root, "improve");
 
-  // Unlanded commits: refuse.
-  fs.writeFileSync(path.join(wt, "work.txt"), "unlanded\n");
+  // Unmerged commits: refuse.
+  fs.writeFileSync(path.join(wt, "work.txt"), "unmerged\n");
   sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "unlanded work");
+  sh(wt, "git", "commit", "-m", "unmerged work");
   r = await cli(root, "retire", "--role", "improve");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unmerged commit/);
-  assert.ok(fs.existsSync(wt), "unlanded-commit refusal removes nothing");
+  assert.ok(fs.existsSync(wt), "unmerged-commit refusal removes nothing");
 
   // --force overrides and removes everything, unmerged commits included.
   r = await cli(root, "retire", "--role", "improve", "--force", "--json");
@@ -214,16 +214,16 @@ test("retire removes a dead worktree registration (directory already gone, branc
   assert.equal(sh(root, "git", "branch", "--list", branchName("improve")).trim(), "");
 });
 
-test("retire counts a dead worktree's unlanded branch commits even when the directory is gone", async () => {
+test("retire counts a dead worktree's unmerged branch commits even when the directory is gone", async () => {
   const { root, wt } = await initializedWorktree();
   disableRole(root, "improve");
 
-  // Unlanded work on the branch, then the worktree directory disappears (rm'd, registration
-  // stale) — collectRetire can no longer read HEAD from the worktree, but the branch ref
-  // still holds the commit, so the safety rail must still refuse.
-  fs.writeFileSync(path.join(wt, "work.txt"), "unlanded\n");
+  // Unmerged work on the branch, then the worktree directory disappears (rm'd, registration stale)
+  // — collectRetire can no longer read HEAD from the worktree, but the branch ref still holds the
+  // commit, so the safety rail must still refuse.
+  fs.writeFileSync(path.join(wt, "work.txt"), "unmerged\n");
   sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "unlanded work");
+  sh(wt, "git", "commit", "-m", "unmerged work");
   fs.rmSync(wt, { recursive: true, force: true });
 
   const status: RetireStatus = await collectRetire(root, "improve");
@@ -277,7 +277,7 @@ test("retire accepts a leftover instance id above the configured instances and r
 test("retire still refuses a leftover id whose branch holds unmerged commits", async () => {
   const root = await leftoverInstanceRepo();
   const tree = sh(root, "git", "rev-parse", "HEAD^{tree}").trim();
-  const commit = sh(root, "git", "commit-tree", tree, "-p", "HEAD", "-m", "unlanded").trim();
+  const commit = sh(root, "git", "commit-tree", tree, "-p", "HEAD", "-m", "unmerged").trim();
   sh(root, "git", "update-ref", `refs/heads/${branchName("feature-4")}`, commit);
   const r = await cli(root, "retire", "--role", "feature-4");
   assert.equal(r.code, 1);
@@ -321,9 +321,9 @@ test("retire refuses an enabled work instance id, not just its bare base role (p
 
 test("retire refuses when tumwater.json cannot be read, even with --force", async () => {
   const { root } = await initializedWorktree();
-  // An unreadable config means retire cannot resolve baseBranch (what "unlanded" counts
-  // against) or which roles are enabled, so it must surface the error instead of acting on
-  // unknown state — and no safety rail, not even --force, may bypass that.
+  // An unreadable config means retire cannot resolve baseBranch (what "unmerged" counts against) or
+  // which roles are enabled, so it must surface the error instead of acting on unknown state — and
+  // no safety rail, not even --force, may bypass that.
   fs.writeFileSync(path.join(root, "tumwater.json"), "{ not json\n");
 
   await assert.rejects(() => collectRetire(root, "improve"), /cannot read tumwater\.json/);
@@ -363,7 +363,7 @@ test("retire --dry-run previews the removal and changes nothing", async () => {
   assert.ok(fs.existsSync(worktreePath(root, "improve")), "worktree directory kept");
   const head = await import("../src/git/git.js").then((m) => m.branchHead(root, branchName("improve")));
   assert.notEqual(head, null, "branch kept");
-  assert.equal(mergeRefExists(root, "improve"), true, "landing ref kept");
+  assert.equal(mergeRefExists(root, "improve"), true, "merge ref kept");
 });
 
 test("retire --dry-run reports rail objections without failing; --force reframes them", async () => {

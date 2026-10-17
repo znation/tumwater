@@ -143,12 +143,11 @@ test("pollStreakGate: the director trips like any role", () => {
 });
 
 test("pollStreakGate: a rejection-fed streak trips the breaker through the real accumulation path", () => {
-  // BUGS.md 2026-09-30: review rejections accumulate in the same consecutiveErrors field the
-  // gate polls — the authoring tick ends `queued` (preserving the streak) and the landing's
-  // rejected branch increments it — so ERROR_STREAK_BREAKER rejections must pause the role,
-  // with the rejection's own text as the recorded lastError. This drives the real
-  // queued→rejected flow, not a hand-set streak, so the gate cannot pass while the
-  // accumulation point leaks.
+  // BUGS.md 2026-09-30: review rejections accumulate in the same consecutiveErrors field the gate
+  // polls — the authoring tick ends `queued` (preserving the streak) and the merge's rejected
+  // branch increments it — so ERROR_STREAK_BREAKER rejections must pause the role, with the
+  // rejection's own text as the recorded lastError. This drives the real queued→rejected flow, not
+  // a hand-set streak, so the gate cannot pass while the accumulation point leaks.
   const root = tmpdir("streak-gate-reject-");
   const cfg = defaultConfig();
   const s = freshLoopState("coverage");

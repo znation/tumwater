@@ -21,10 +21,10 @@ import { readJson } from "./helpers/json-read.js";
 import { eventsLogPath } from "../src/paths.js";
 
 // A tree's install kept in step with its lockfile (src/build/dep-install.ts, BUGS.md 2026-10-01): a
-// worktree has no node_modules of its own, so a change that adds a dependency failed its gate
-// check (TS2307) against the root install that predates it, and nothing ever re-synced the root
-// after one landed. No test here reaches a registry: every install goes through a fake
-// InstallRunner that writes the pinned manifests itself.
+// worktree has no node_modules of its own, so a change that adds a dependency failed its gate check
+// (TS2307) against the root install that predates it, and nothing ever re-synced the root after one
+// merged. No test here reaches a registry: every install goes through a fake InstallRunner that
+// writes the pinned manifests itself.
 
 /** A v3 lockfile pinning `deps` (name → version) as direct dependencies of `dir`. */
 function writeLock(dir: string, deps: Record<string, string>, dev: Record<string, string> = {}): void {
@@ -132,16 +132,16 @@ test("runBuildCheck installs a drifted lockfile into the tree before running the
   assert.deepEqual(outcome.install?.packages, ["ink"]);
 });
 
-test("a failed install skips the gate check but rejects the landing as unverified", async () => {
+test("a failed install skips the gate check but rejects the merge as unverified", async () => {
   const { root, wt } = buildCheckFixture();
   writeLock(wt, { ink: "7.1.1" });
   const gate = await runScopedBuildCheck(root, "feature", "gate", wt, undefined, 30_000, undefined, fakeInstaller("fail"));
   assert.equal(gate!.outcome.status, "skipped");
   assert.equal(gate!.outcome.skipReason, "install");
-  const landing = await runScopedBuildCheck(root, "feature", "merge", wt, undefined, 30_000, undefined, fakeInstaller("fail"));
-  assert.equal(landing!.outcome.status, "failed");
-  assert.equal(landing!.outcome.unverified, true);
-  assert.match(landing!.outcome.outputTail?.[0] ?? "", /dependency install \(ink\) failed: .*ENOTFOUND.*the tree is unverified/);
+  const mergeResult = await runScopedBuildCheck(root, "feature", "merge", wt, undefined, 30_000, undefined, fakeInstaller("fail"));
+  assert.equal(mergeResult!.outcome.status, "failed");
+  assert.equal(mergeResult!.outcome.unverified, true);
+  assert.match(mergeResult!.outcome.outputTail?.[0] ?? "", /dependency install \(ink\) failed: .*ENOTFOUND.*the tree is unverified/);
   const priced = eventsOfType(root, "build_check").find((e) => e.scope === "merge");
   assert.deepEqual(priced?.installed, ["ink"], "the feed names what the check tried to install");
 });
@@ -166,7 +166,7 @@ test("syncRootInstall re-syncs a drifted root install and prices it as a dep_ins
   assert.deepEqual(event?.packages, ["ink"]);
   assert.equal(event?.status, "passed");
   await syncRootInstall(root, "feature", install);
-  assert.equal(install.calls.length, 1, "an in-step root spawns nothing on the next landing");
+  assert.equal(install.calls.length, 1, "an in-step root spawns nothing on the next merge");
 });
 
 // The production installer itself, driven by a fake npm on PATH (the suite's offline shim
@@ -239,12 +239,12 @@ test("syncRootInstall warns when the root install fails, and stays silent with n
   assert.ok(warningMessages(root).some((m) => m.includes('root install did not pick up main\'s dependencies (ink)')));
 });
 
-test("syncRootInstall resolves when the events feed is unwritable, leaving the post-ff landing un-rejected", async () => {
+test("syncRootInstall resolves when the events feed is unwritable, leaving the post-ff merge un-rejected", async () => {
   const root = tmpdir("dep-install-broken-feed-");
   writeLock(root, { ink: "7.1.1" });
   // A directory at the feed path makes every append throw EISDIR. The install itself still
-  // succeeds, and the dep_install pricing that follows is observability: the landing that
-  // awaits this after its fast-forward must not be turned into a failure by it.
+  // succeeds, and the dep_install pricing that follows is observability: the merge that awaits this
+  // after its fast-forward must not be turned into a failure by it.
   fs.mkdirSync(eventsLogPath(root), { recursive: true });
   const install = fakeInstaller();
 

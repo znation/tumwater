@@ -590,7 +590,7 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   const gate = pollMaintenanceQuotaGate(
     root,
     newMaintenanceQuotaGateState(),
-    runners.map((r) => ({ role: r.role, enabled: true, running: false, hasQueuedLanding: false })),
+    runners.map((r) => ({ role: r.role, enabled: true, running: false, hasQueuedMerge: false })),
     0,
     now,
   );

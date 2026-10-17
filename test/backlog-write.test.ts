@@ -35,7 +35,7 @@ test("fileBug appends an operator-stamped entry to ## Open and the readers list 
   assert.deepEqual(openBugs(repo), [expected]);
 });
 
-test("a second filed bug lands after the first, and the _None yet._ placeholder goes", async () => {
+test("a second filed bug goes after the first, and the _None yet._ placeholder goes", async () => {
   const repo = makeRepo();
   await initProject(repo, "bug write two");
   fileBug(repo, "first symptom", 'tumwater bug "<symptom>"');
@@ -96,7 +96,7 @@ test("an entry's fenced block quoting ## headings does not end the section early
   fileBug(repo, "second symptom", 'tumwater bug "<symptom>"');
   const md = fs.readFileSync(file, "utf8");
   const open = md.slice(md.indexOf("## Open"));
-  assert.ok(open.indexOf("second symptom") > open.indexOf("```"), "the entry must land after the quoted fence");
+  assert.ok(open.indexOf("second symptom") > open.indexOf("```"), "the entry must go after the quoted fence");
   assert.ok(open.indexOf("second symptom") < open.lastIndexOf("## Fixed"), "the quoted ## Fixed must not end ## Open");
 });
 
@@ -184,7 +184,7 @@ test("a repeated --json fails with the shared duplicate-flag wording and writes 
   const r = await cli(repo, "bug", "a symptom", "--json", "--json");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--json may only be given once/);
-  // The refusal precedes the write and the wake: the entry never lands and no prompt queues.
+  // The refusal precedes the write and the wake: the entry is never filed and no prompt queues.
   assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /_None yet\._/);
   assert.equal(queuedRolePrompts(repo, "bugfix").length, 0);
 });
@@ -232,11 +232,11 @@ test("empty or missing arguments fail with the usage line and write nothing", as
 
 // The cross-process primary-worktree race: `tumwater bug` rewrites BUGS.md while the lander
 // fast-forwards the same working tree in the primary checkout. Without a shared lock the later
-// whole-file write drops the other's change. The child holds the primary-worktree lock,
-// snapshots BUGS.md, and writes that stale snapshot back once it has seen the parent's write (an
-// unlocked parent's lands immediately; a locked one waits for the lock). The fix serializes the
+// whole-file write drops the other's change. The child holds the primary-worktree lock, snapshots
+// BUGS.md, and writes that stale snapshot back once it has seen the parent's write (an unlocked
+// parent's write goes through immediately; a locked one waits for the lock). The fix serializes the
 // parent's read→write, so the filed entry survives the child's write-back.
-test("a filed bug cannot be clobbered by a landing that fast-forwards the same file", async () => {
+test("a filed bug cannot be clobbered by a merge that fast-forwards the same file", async () => {
   const repo = makeRepo();
   await initProject(repo, "backlog write race");
   const bugsFile = path.join(repo, "BUGS.md");

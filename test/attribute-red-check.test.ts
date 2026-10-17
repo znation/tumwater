@@ -18,19 +18,18 @@ import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { baselineFixture, fakeNpm } from "./fixtures/loop-fixtures.js";
 
 // Unit coverage for attributeRedCheck (src/merge/merge-check-failures.ts): the gate's final
-// attribution
-// step, shared by a batch bisect's last move and a single landing's in-lock check at the
-// failure limit. The red change's verdict is not the test's subject — main's OWN verdict at
-// its current tip is (the land-queue 1/3 rule): main green → the change broke the check and
-// is rejected deterministically; main red → the failure is main's, the change is recoverable;
-// no verdict → reject, the safe default, with the why in the reasons. The check run itself is
-// exercised in build-check.test.ts and main-red.test.ts; here the fake npm decides the
-// baseline verdict so all three attributions are reachable.
+// attribution step, shared by a batch bisect's last move and a single merge's in-lock check at the
+// failure limit. The red change's verdict is not the test's subject — main's OWN verdict at its
+// current tip is (the land-queue 1/3 rule): main green → the change broke the check and is rejected
+// deterministically; main red → the failure is main's, the change is recoverable; no verdict →
+// reject, the safe default, with the why in the reasons. The check run itself is exercised in
+// build-check.test.ts and main-red.test.ts; here the fake npm decides the baseline verdict so all
+// three attributions are reachable.
 
 const ROLE = "alpha";
 const CHANGE_REASON = "test failed: expected 2 to be 3";
 
-/** A red check over one change's tree, as a landing's in-lock check reports it. */
+/** A red check over one change's tree, as a merge's in-lock check reports it. */
 function red(): { check: BuildCheck; outcome: BuildCheckOutcome } {
   return {
     check: { kind: "npm", rootDir: process.cwd(), script: "test" },
@@ -47,10 +46,10 @@ function seededState(root: string): LoopState {
   return s;
 }
 
-/** Run attributeRedCheck against `root`'s current main tip the way every test here does:
- * pin the tip under ROLE's landing ref, carry strike-count state (`state` defaults to a fresh
- * seeded one), and pass the suite's standard context. Returns the tip, the state, and the
- * verdict so callers can assert on all three. */
+/** Run attributeRedCheck against `root`'s current main tip the way every test here does: pin the
+ * tip under ROLE's merge ref, carry strike-count state (`state` defaults to a fresh seeded one),
+ * and pass the suite's standard context. Returns the tip, the state, and the verdict so callers can
+ * assert on all three. */
 async function attribute(
   root: string,
   scope: Parameters<typeof attributeRedCheck>[3],
@@ -144,7 +143,7 @@ test("attributeRedCheck returns main_red and keeps the change recoverable when m
     assert.equal(
       await refSha(root, mergeRefName(ROLE)),
       head,
-      "the pin was kept so recovery can re-land once main is green",
+      "the pin was kept so recovery can re-merge once main is green",
     );
     assert.deepEqual(reviewRejectedEvents(root), [], "no rejection event for main's own red");
     const saved = loadLoopState(root, ROLE);
@@ -170,12 +169,12 @@ test("attributeRedCheck rejects with the unavailable why when main's baseline ca
   assert.equal(saved.lastReview?.verdict, "reject", "the rejection was persisted");
 });
 
-// BUGS.md 2026-09-30: an unverified red — a run that spanned a host sleep past the tolerance,
-// the tree never judged — is not the change's failure and not a strike. Attribution asks
-// main's verdict only when the check produced one; here the ref stays for recovery's re-land
-// and the recorded reason names the sleep instead of a test failure. Both spellings of
-// "unverified" count: runScopedBuildCheck's explicit flag at the merge scopes, and a run
-// carrying its own sleep evidence (the gate-shaped outcome).
+// BUGS.md 2026-09-30: an unverified red — a run that spanned a host sleep past the tolerance, the
+// tree never judged — is not the change's failure and not a strike. Attribution asks main's verdict
+// only when the check produced one; here the ref stays for recovery's re-merge and the recorded
+// reason names the sleep instead of a test failure. Both spellings of "unverified" count:
+// runScopedBuildCheck's explicit flag at the merge scopes, and a run carrying its own sleep
+// evidence (the gate-shaped outcome).
 test("attributeRedCheck keeps the ref and records no strike for an unverified red", async () => {
   const { root } = baselineFixture(ROLE, "attr-unverified-marker");
   const restore = fakeNpm("echo ok; exit 0");
@@ -190,7 +189,7 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
       },
     };
     const { head, state, result } = await attribute(root, "merge check", flag);
-    assert.equal(result, "merge_blocked", "the pin stays for the next attempt, as for any retriable landing");
+    assert.equal(result, "merge_blocked", "the pin stays for the next attempt, as for any retriable merge");
     assert.equal(state.unreviewFailures, 3, "no strike: nothing judged this diff");
     assert.equal(await refSha(root, mergeRefName(ROLE)), head, "the ref was not deleted");
     assert.match(state.lastError ?? "", /host slept 119s mid-run/, "the sleep is what the state records");
@@ -217,11 +216,11 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
 });
 
 test("attributeRedCheck still rejects when the events feed is unwritable", async () => {
-  // rejectChange (src/merge/merge-check-failures.ts) writes review_rejected LAST, after
-  // the durable state (recordReview, saveLoopState) and the pin's deletion. An EISDIR on the
-  // feed must not turn the terminal "rejected" into a thrown landing error that leaves the pin
-  // deleted while the caller believes the attribution failed. Seed main's baseline green so
-  // mainTipVerdict is a cache hit and this test isolates rejectChange's own append.
+  // rejectChange (src/merge/merge-check-failures.ts) writes review_rejected LAST, after the durable
+  // state (recordReview, saveLoopState) and the pin's deletion. An EISDIR on the feed must not turn
+  // the terminal "rejected" into a thrown merge error that leaves the pin deleted while the caller
+  // believes the attribution failed. Seed main's baseline green so mainTipVerdict is a cache hit
+  // and this test isolates rejectChange's own append.
   const { root } = baselineFixture(ROLE, "attr-green-unwritable");
   const restore = fakeNpm("echo ok; exit 0");
   try {

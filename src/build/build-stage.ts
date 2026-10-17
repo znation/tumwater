@@ -20,14 +20,14 @@ import { shortSha } from "../text/format.js";
 /** Hard cap on one compile of the harness; tsc on this codebase takes well under a minute. */
 const COMPILE_TIMEOUT_MS = 5 * 60_000;
 
-/** How old a superseded staged build may get before a later compile deletes it. A completed
- * compile stays consumable for one episode's tail — the drain hold is capped at
- * RESTART_DRAIN_MAX_MS (30 min) — so anything older than this grace cannot be swapped by any
- * live episode and is pure disk: a team whose restarts stay blocked (red main, a failing boot
- * gate) recompiles every new head it lands, and without a prune each landed commit left a full
- * staged tree behind until the NEXT successful swap cleaned them all up — ~750 MB across one
- * busy day (observed 2026-09-30: 128 staged builds, none swapped). A successful swap already
- * wipes every staging; this bounds the accumulation between swaps. */
+/** How old a superseded staged build may get before a later compile deletes it. A completed compile
+ * stays consumable for one episode's tail — the drain hold is capped at RESTART_DRAIN_MAX_MS (30
+ * min) — so anything older than this grace cannot be swapped by any live episode and is pure disk:
+ * a team whose restarts stay blocked (red main, a failing boot gate) recompiles every new head it
+ * merges, and without a prune each merged commit left a full staged tree behind until the NEXT
+ * successful swap cleaned them all up — ~750 MB across one busy day (observed 2026-09-30: 128
+ * staged builds, none swapped). A successful swap already wipes every staging; this bounds the
+ * accumulation between swaps. */
 export const STAGED_PRUNE_AFTER_MS = 45 * 60_000;
 
 /** Delete staged builds other than `keep` that no live episode can still swap: directories

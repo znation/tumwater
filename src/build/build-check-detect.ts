@@ -137,10 +137,10 @@ export function detectBuildCheck(
 
 /** The configured per-change gate command (`check.gateCommand`, PLANS.md Land-queue speed 3e) when
  * it is a non-blank string, else undefined — off. Opt-in: a repo that sets it trades a cheaper
- * review-gate pre-check for a full check.command run that happens once per stack at the
- * batch/landing scope instead. One reading shared by runScopedBuildCheck (which runs it at scope
- * "gate") and merge-to-main.ts's verifyMerge (which must then never treat the gate's green as the
- * full check's), so the two cannot disagree about whether it is on. */
+ * review-gate pre-check for a full check.command run that happens once per stack at the batch/merge
+ * scope instead. One reading shared by runScopedBuildCheck (which runs it at scope "gate") and
+ * merge-to-main.ts's verifyMerge (which must then never treat the gate's green as the full
+ * check's), so the two cannot disagree about whether it is on. */
 export function gateCommandOf(config?: CheckConfigSlice): string | undefined {
   const g = config?.check?.gateCommand;
   return isNonBlankString(g) ? g : undefined;

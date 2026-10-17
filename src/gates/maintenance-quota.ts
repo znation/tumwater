@@ -1,17 +1,17 @@
-/** Work ratio 1a/4 and 1b/4 (plans/work-ratio.md, "Maintenance follows work"): the arithmetic,
- * the setting, and the gate behind the maintenance allowance — code-maintenance landings in a
- * rolling 24 h window are capped at `maintenancePerWorkMerge × work landings +
- * MAINTENANCE_DAILY_FLOOR`, and `pollMaintenanceQuotaGate` puts that verdict in front of the
- * scheduler so the enabled maintenance loops stop starting new ticks past it.
+/** Work ratio 1a/4 and 1b/4 (plans/work-ratio.md, "Maintenance follows work"): the arithmetic, the
+ * setting, and the gate behind the maintenance allowance — code-maintenance merges in a rolling
+ * 24 h window are capped at `maintenancePerWorkMerge × work merges + MAINTENANCE_DAILY_FLOOR`, and
+ * `pollMaintenanceQuotaGate` puts that verdict in front of the scheduler so the enabled maintenance
+ * loops stop starting new ticks past it.
  *
  * The window counts `merged` events by `commitTier` (src/roles/roles.ts): feature/bugfix/director
  * are the work count, the code-maintenance roles plus readme the maintenance count, and every other
  * role (plan, steward, observers, custom) is neither. The count is an instant-shaped trailing
- * window — `ts >= now − 24 h` — not a local-day bucket, so it cannot reuse the report's
- * day-keyed fold cache (src/report/report-data.ts): instead the counter folds only the bytes the
- * append-only live log gained since the previous poll (`readCompleteLines`) and keeps the parsed
- * merged records in memory, re-reading the window whole only on the first call or after rotation.
- * Both readers share `parseEventLine`, so there is no second line parser.
+ * window — `ts >= now − 24 h` — not a local-day bucket, so it cannot reuse the report's day-keyed
+ * fold cache (src/report/report-data.ts): instead the counter folds only the bytes the append-only
+ * live log gained since the previous poll (`readCompleteLines`) and keeps the parsed merged records
+ * in memory, re-reading the window whole only on the first call or after rotation. Both readers
+ * share `parseEventLine`, so there is no second line parser.
  *
  * The verdict is pure and lives here beside the count so the scheduler and every status reader
  * share one definition; `pollMaintenanceQuotaGate` is the one writer (the edge-triggered events)
@@ -30,24 +30,23 @@ import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { HarnessEvent } from "../events/events.js";
 
 /** The fixed test-independent part of the allowance: a project whose backlog is empty still gets
- * this many maintenance landings in a rolling day, so hygiene never stops entirely. */
+ * this many maintenance merges in a rolling day, so hygiene never stops entirely. */
 export const MAINTENANCE_DAILY_FLOOR = 12;
 
 /** The rolling window length: 24 h in ms. */
 const MAINTENANCE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** The allowance verdict for one poll. `allowance` is what the window permits, `used` is the
- * landed maintenance count plus the maintenance loops in flight, and `held` is true while used
- * has reached the allowance. Additive over the counts, so six concurrent permits cannot push
- * `used` past the line without the caller counting the in-flight loops
- * (pollMaintenanceQuotaGate). */
+/** The allowance verdict for one poll. `allowance` is what the window permits, `used` is the merged
+ * maintenance count plus the maintenance loops in flight, and `held` is true while used has reached
+ * the allowance. Additive over the counts, so six concurrent permits cannot push `used` past the
+ * line without the caller counting the in-flight loops (pollMaintenanceQuotaGate). */
 export interface MaintenanceQuotaVerdict {
   allowance: number;
   used: number;
   held: boolean;
 }
 
-/** The pure allowance verdict: `allowance = perWorkLanding × work + MAINTENANCE_DAILY_FLOOR`;
+/** The pure allowance verdict: `allowance = perWorkMerge × work + MAINTENANCE_DAILY_FLOOR`;
  * `used = maint + inFlight`; held while `used >= allowance`. No I/O — the counts and the
  * in-flight figure come from the caller, so the same verdict serves the scheduler and the
  * dashboards. */
@@ -55,14 +54,14 @@ export function maintenanceQuota(input: {
   work: number;
   maint: number;
   inFlight: number;
-  perWorkLanding: number;
+  perWorkMerge: number;
 }): MaintenanceQuotaVerdict {
-  const allowance = input.perWorkLanding * input.work + MAINTENANCE_DAILY_FLOOR;
+  const allowance = input.perWorkMerge * input.work + MAINTENANCE_DAILY_FLOOR;
   const used = input.maint + input.inFlight;
   return { allowance, used, held: used >= allowance };
 }
 
-/** One merged landing the window keeps: its timestamp and which side of the split it counts on. */
+/** One merged change the window keeps: its timestamp and which side of the split it counts on. */
 interface MergedRecord {
   ts: number;
   tier: "work" | "maintenance";
@@ -135,13 +134,13 @@ function seed(
 }
 
 /** One enabled loop as the quota gate reads it: whether a maintenance-tier tick is in flight
- * (running a tick or holding a queued landing). Only the two in-flight facts matter; the tier
- * is derived from the role here, so the caller passes every runner unchanged. */
+ * (running a tick or holding a queued merge). Only the two in-flight facts matter; the tier is
+ * derived from the role here, so the caller passes every runner unchanged. */
 interface MaintenanceQuotaObservation {
   role: string;
   enabled: boolean;
   running: boolean;
-  hasQueuedLanding: boolean;
+  hasQueuedMerge: boolean;
 }
 
 /** The gate's cross-poll memory: the same instant-shaped window memo as `countMaintenanceWindow`
@@ -158,19 +157,19 @@ export function newMaintenanceQuotaGateState(): MaintenanceQuotaGateState {
   return { counter: newMaintenanceWindowCounter(), prevHeld: false };
 }
 
-/** Step the gate by one orchestrator poll: count the rolling window, add the maintenance loops
- * in flight, and put 1a's verdict in front of the scheduler. Returns the verdict — `allowance`,
- * `used` (landed maintenance plus the loops already in flight), and `held` (`used >= allowance`)
- * — for the scheduling pass's per-poll admission: it spends the remaining `allowance - used`
- * headroom one due maintenance loop at a time, so two due loops cannot start in the same poll.
- * Logs exactly one team-level `maintenance_quota_hold` when the gate goes from open to held and
- * one `maintenance_quota_resumed` when it re-opens — never one per loop. The director is never
+/** Step the gate by one orchestrator poll: count the rolling window, add the maintenance loops in
+ * flight, and put 1a's verdict in front of the scheduler. Returns the verdict — `allowance`, `used`
+ * (merged maintenance plus the loops already in flight), and `held` (`used >= allowance`) — for the
+ * scheduling pass's per-poll admission: it spends the remaining `allowance - used` headroom one due
+ * maintenance loop at a time, so two due loops cannot start in the same poll. Logs exactly one
+ * team-level `maintenance_quota_hold` when the gate goes from open to held and one
+ * `maintenance_quota_resumed` when it re-opens — never one per loop. The director is never
  * maintenance-tier, so no exemption is needed. */
 export function pollMaintenanceQuotaGate(
   root: string,
   state: MaintenanceQuotaGateState,
   observers: readonly MaintenanceQuotaObservation[],
-  perWorkLanding: number,
+  perWorkMerge: number,
   now: number,
 ): MaintenanceQuotaVerdict {
   const { work, maint } = countMaintenanceWindow(root, state.counter, now);
@@ -178,9 +177,9 @@ export function pollMaintenanceQuotaGate(
   for (const o of observers) {
     if (!o.enabled) continue;
     if (commitTier(baseRoleOf(o.role)) !== "maintenance") continue;
-    if (o.running || o.hasQueuedLanding) inFlight++;
+    if (o.running || o.hasQueuedMerge) inFlight++;
   }
-  const verdict = maintenanceQuota({ work, maint, inFlight, perWorkLanding });
+  const verdict = maintenanceQuota({ work, maint, inFlight, perWorkMerge });
   if (verdict.held !== state.prevHeld) {
     if (verdict.held) {
       logEventBestEffort(root, {
@@ -204,9 +203,9 @@ export function pollMaintenanceQuotaGate(
   return verdict;
 }
 
-/** Count `merged` landings by tier over the rolling 24 h ending `now`, folding only the live
- * log's appended bytes since the previous call through `counter`. Returns `{ work, maint }`;
- * records that have aged out of the window are dropped from the memo so it stays bounded. */
+/** Count `merged` events by tier over the rolling 24 h ending `now`, folding only the live log's
+ * appended bytes since the previous call through `counter`. Returns `{ work, maint }`; records that
+ * have aged out of the window are dropped from the memo so it stays bounded. */
 export function countMaintenanceWindow(
   root: string,
   counter: MaintenanceWindowCounter,

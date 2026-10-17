@@ -261,7 +261,7 @@ test("cmdPause --role pauses one role, is idempotent, and leaves the team marker
   assert.ok(!fs.existsSync(pausedPath(root)), "a per-role pause never writes the team marker");
   const second = await expectOk(() => cmdPause(root, ["--role", "clean"]));
   assert.match(second.stdout, /role clean is already paused/);
-  // Both roles land in the one marker set.
+  // Both roles end up in the one marker set.
   await expectOk(() => cmdPause(root, ["--role", "dedupe"]));
   assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dedupe"]);
   // A custom-loop id resolves through the config-backed check like abort's does.
@@ -506,9 +506,9 @@ test("cmdStop SIGTERMs the recorded orchestrator pid and reports the drain", asy
 
 test("cmdStop reports a pid that died between the check and the signal as already stopped", async (t) => {
   const root = tmpdir();
-  // The race window: pidAlive's signal-0 probe (passed through) says the recorded pid is
-  // alive, but the SIGTERM itself lands on nothing (ESRCH). Stop's goal is already met, so
-  // the command must exit clean with the honest wording, not a raw kill error.
+  // The race window: pidAlive's signal-0 probe (passed through) says the recorded pid is alive, but
+  // the SIGTERM itself arrives at nothing (ESRCH). Stop's goal is already met, so the command must
+  // exit clean with the honest wording, not a raw kill error.
   const kill = t.mock.method(process, "kill", ((_pid: number, signal?: NodeJS.Signals | number) => {
     if (signal === 0) return true;
     throw errnoError("ESRCH", "no such process");

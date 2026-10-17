@@ -209,11 +209,11 @@ export function claudeSeamsInUse(config: TumwaterConfig): boolean {
   return seamPairs(config).some((pair) => pair.agent === "claude");
 }
 
-/** The default credential probe: run the resolved agent binary's own auth check for one
- * provider and read `ready` out of its JSON. The binary resolves exactly as the spawn does
- * (resolveAgentBin — the same source a real tick would launch), so doctor tests the auth of
- * the pi it would actually run. Never throws; every failure mode lands on "unknown". The
- * bounded subprocess is the shared boundedProbe (probe.ts), also used by the claude probes. */
+/** The default credential probe: run the resolved agent binary's own auth check for one provider
+ * and read `ready` out of its JSON. The binary resolves exactly as the spawn does (resolveAgentBin
+ * — the same source a real tick would launch), so doctor tests the auth of the pi it would actually
+ * run. Never throws; every failure mode ends on "unknown". The bounded subprocess is the shared
+ * boundedProbe (probe.ts), also used by the claude probes. */
 export async function piProviderAuth(
   config: TumwaterConfig,
   provider: string,
@@ -376,25 +376,23 @@ export async function checkClaudeVersion(
   return okOutcome(`claude ${found} (>= ${required} for ${neededBy})${clampNote}`);
 }
 
-/** Declared model readiness — plans/model-tiers.md "Doctor" (part 7c/8): every model the
- * config can put on a seam must resolve in pi's definitions, and its provider must report
- * `ready` from the agent binary's own auth check. A strong tier pi cannot resolve would fail
- * every review, and so every landing — the check exists so the operator finds out before the
- * team does, mid-review. Pairs collected in the same sweep teamModelsFree prices: each
- * tier's top-level selector (a string is default's), every enabled role's resolved pair
- * (per-role overrides included; tier-name overrides resolve through configForRole), and the
- * reviewer's while review is on. A pair with no model is pi's own default and out of scope;
- * fallback pairs are the sibling check's (checkFallbackModel prices the cap pair). Levels:
- * an unresolvable pair fails, a provider that is not ready warns (credentials are fixable
- * without a config edit), a probe that cannot run warns rather than guesses, and a priced
- * model whose cache reads declare $0 warns — the daily budget would undercount it
- * (BUGS.md 2026-10-06). When one of
- * PI_SMOL_MODEL / PI_SLOW_MODEL / PI_PLAN_MODEL is set the check also reports that tumwater
- * does not read it — the variables are oh-my-pi's, pi ignores them, and with omp as
- * `agentBin` they still reach omp through the inherited environment (src/pi/pi-backend.ts,
- * built on src/process/run-marker.ts's agentBaseEnv) — pointing at the tier keys that do the
- * same job (`model.small` / `model.strong`). `auth` is
- * injectable so tests need no pi on PATH; `env` so the PI_* branches stay hermetic. */
+/** Declared model readiness — plans/model-tiers.md "Doctor" (part 7c/8): every model the config can
+ * put on a seam must resolve in pi's definitions, and its provider must report `ready` from the
+ * agent binary's own auth check. A strong tier pi cannot resolve would fail every review, and so
+ * every merge — the check exists so the operator finds out before the team does, mid-review. Pairs
+ * collected in the same sweep teamModelsFree prices: each tier's top-level selector (a string is
+ * default's), every enabled role's resolved pair (per-role overrides included; tier-name overrides
+ * resolve through configForRole), and the reviewer's while review is on. A pair with no model is
+ * pi's own default and out of scope; fallback pairs are the sibling check's (checkFallbackModel
+ * prices the cap pair). Levels: an unresolvable pair fails, a provider that is not ready warns
+ * (credentials are fixable without a config edit), a probe that cannot run warns rather than
+ * guesses, and a priced model whose cache reads declare $0 warns — the daily budget would
+ * undercount it (BUGS.md 2026-10-06). When one of PI_SMOL_MODEL / PI_SLOW_MODEL / PI_PLAN_MODEL is
+ * set the check also reports that tumwater does not read it — the variables are oh-my-pi's, pi
+ * ignores them, and with omp as `agentBin` they still reach omp through the inherited environment
+ * (src/pi/pi-backend.ts, built on src/process/run-marker.ts's agentBaseEnv) — pointing at the tier
+ * keys that do the same job (`model.small` / `model.strong`). `auth` is injectable so tests need no
+ * pi on PATH; `env` so the PI_* branches stay hermetic. */
 export async function checkTierModels(
   root: string,
   modelsPath: string = piModelsPath(),

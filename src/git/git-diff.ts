@@ -64,9 +64,9 @@ export function unquotePorcelainPath(p: string): string {
   return Buffer.from(bytes, "latin1").toString("utf8");
 }
 
-/** Repo-relative paths of every change in the worktree — modified, untracked, and deleted,
- * parsed from `git status --porcelain -z` (paths only). The refusal path uses this to classify
- * what a refusing run left behind: markdown notes may land, everything else is discarded.
+/** Repo-relative paths of every change in the worktree — modified, untracked, and deleted, parsed
+ * from `git status --porcelain -z` (paths only). The refusal path uses this to classify what a
+ * refusing run left behind: markdown notes may be kept, everything else is discarded.
  *
  * The `-z` format is what git recommends for machine parsing: records are NUL-terminated and
  * paths are emitted verbatim, never C-quoted, so a path with whitespace, a quote, a control
@@ -95,7 +95,7 @@ export async function changedFiles(wt: string): Promise<string[]> {
 }
 
 /** Repo-relative paths changed between the branch's fork point from main and its HEAD —
- * everything a merge of this branch would land (the three-dot range diffs against the
+ * everything a merge of this branch would bring in (the three-dot range diffs against the
  * merge-base, so commits main gained during the tick are not included). */
 export async function aheadOfMainFiles(wt: string, mainBranch: string): Promise<string[]> {
   const out = await gitTry(wt, "diff", "--name-only", `${mainBranch}...HEAD`);
@@ -135,15 +135,15 @@ function splitDiffByFile(diff: string): string[] {
   return sections;
 }
 
-/** The combined ahead-of-main diff — everything a merge of this branch would land. Capped:
- * over `maxBytes`, the result is a truncation note plus `--stat` and the largest files' full
- * diffs (an oversized diff is itself reviewable information, and the reviewer can read any
- * file in the worktree directly). The per-file sections are split out of the one full diff
- * already fetched — spawning a diff per file would re-diff the entire range once per file for
- * text we already hold in memory (measured ~0.5 s of redundant git work on a 530 KB / 39-file
- * tick). Section byte length ranks files at least as well as numstat's added+deleted: it is
- * exactly what the reviewer will see, and a binary file's short "Binary files differ" stub
- * naturally ranks below any real text change. */
+/** The combined ahead-of-main diff — everything a merge of this branch would bring in. Capped: over
+ * `maxBytes`, the result is a truncation note plus `--stat` and the largest files' full diffs (an
+ * oversized diff is itself reviewable information, and the reviewer can read any file in the
+ * worktree directly). The per-file sections are split out of the one full diff already fetched —
+ * spawning a diff per file would re-diff the entire range once per file for text we already hold in
+ * memory (measured ~0.5 s of redundant git work on a 530 KB / 39-file tick). Section byte length
+ * ranks files at least as well as numstat's added+deleted: it is exactly what the reviewer will
+ * see, and a binary file's short "Binary files differ" stub naturally ranks below any real text
+ * change. */
 export async function aheadOfMainDiff(
   wt: string,
   mainBranch: string,
@@ -158,8 +158,8 @@ export async function aheadOfMainDiff(
     `[diff truncated: the full ahead-of-main diff is ${full.length} bytes; ` +
     `showing --stat plus the largest files]\n\n` + ((await gitTry(wt, "diff", "--stat", range)) ?? "") + "\n";
   for (const d of ranked) {
-    // Account for the surrounding newlines in the budget check so the output never exceeds
-    // maxBytes even when a section lands exactly on the boundary.
+    // Account for the surrounding newlines in the budget check so the output never exceeds maxBytes
+    // even when a section ends exactly on the boundary.
     if (out.length + d.length + 2 > maxBytes) break;
     out += `\n${d}\n`;
   }

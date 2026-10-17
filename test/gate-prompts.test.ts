@@ -1,8 +1,8 @@
-/** Tests for src/prompt/gate-prompts.ts — the landing gate's prompts: conflict resolution after a
- * rebase, the adversarial pre-merge review, and the notes that carry the gate's verdicts back
- * to the author loop. Split out of prompt.test.ts, which keeps the role-loop prompt builders'
- * tests; gate prompts are started by the harness's merge/review pipeline, not the role ticks,
- * so their contracts live beside their own module. */
+/** Tests for src/prompt/gate-prompts.ts — the merge gate's prompts: conflict resolution after a
+ * rebase, the adversarial pre-merge review, and the notes that carry the gate's verdicts back to
+ * the author loop. Split out of prompt.test.ts, which keeps the role-loop prompt builders' tests;
+ * gate prompts are started by the harness's merge/review pipeline, not the role ticks, so their
+ * contracts live beside their own module. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -78,8 +78,8 @@ test("buildConflictPrompt drops the branch's edit where main deliberately remove
 
 test("buildConflictPrompt treats backlog section headings as structure, not text", () => {
   const p = buildConflictPrompt("feature", ["PLANS.md", "src/git.ts"]);
-  // The failure this pins (PLANS.md 2026-09-30, part 1/3): a conflict resolution kept both
-  // sides' `## Done` headings, and a new plan landed under the first one, outside Planned.
+  // The failure this pins (PLANS.md 2026-09-30, part 1/3): a conflict resolution kept both sides'
+  // `## Done` headings, and a new plan merged under the first one, outside Planned.
   assert.match(p, /markdown backlog file \(PLANS\.md, BUGS\.md, QUESTIONS\.md\)/);
   assert.match(p, /section headings are structure, not text/);
   assert.match(p, /exactly one of each\n  \`## \` heading/);
@@ -154,9 +154,9 @@ test("buildConflictPrompt names the project's declared check and tells the resol
 
 test("buildConflictPrompt keeps the project building and ends by stopping", () => {
   const p = buildConflictPrompt("improve", ["a.txt"]);
-  // The harness re-checks conflict markers after this run and runs the declared check (when
-  // there is one) before landing; a resolution that combines both sides still has to make sense
-  // as code, so the prompt asks for it.
+  // The harness re-checks conflict markers after this run and runs the declared check (when there
+  // is one) before merge; a resolution that combines both sides still has to make sense as code, so
+  // the prompt asks for it.
   assert.match(p, /Keep the project building and its tests passing/);
   // The run's only job is resolving the markers: it ends by stopping — no new task,
   // no sentinel or SUMMARY line (this flow parses neither from pi's reply).
@@ -181,10 +181,10 @@ test("buildRejectedReviewNote degrades to a placeholder when no reasons were rec
   assert.match(note, /rejected in review/);
 });
 
-// A rejection persists until a later reviewed landing overwrites it, and the paths that never
-// reach a model review (the md-only exemption) leave it standing: without the timestamp an
-// objection main has since satisfied keeps riding every later prompt as if fresh (BUGS.md,
-// undated rejection note).
+// A rejection persists until a later reviewed merge overwrites it, and the paths that never reach a
+// model review (the md-only exemption) leave it standing: without the timestamp an objection main
+// has since satisfied keeps riding every later prompt as if fresh (BUGS.md, undated rejection
+// note).
 test("buildRejectedReviewNote dates the verdict and names the reviewed head", () => {
   const at = new Date(2026, 8, 24, 1, 20, 32).getTime();
   const note = buildRejectedReviewNote({ reasons: ["md-only edit"], at, head: "127157a4deadbeef" });
@@ -314,7 +314,7 @@ test("buildReviewPrompt shows a revision's prior objections and interdiff, and i
 
 test("buildReviewPrompt freezes and names the comparison base so a moved main cannot read as the change", () => {
   // BUGS.md 2026-10-06: the reviewer double-checked scope with `git diff main`; a merge that
-  // landed while the review ran showed up reversed, and the change was rejected for edits it
+  // finished while the review ran showed up reversed, and the change was rejected for edits it
   // never made. The prompt must name the frozen base and point every check at it.
   const base = "abcdef1234567890abcdef1234567890abcdef12";
   const short = base.slice(0, 8);
@@ -446,10 +446,9 @@ test("buildConflictPrompt bounds reading to the conflicted files", () => {
   assert.match(p, /`grep -n '<<<<<<<' FILE`/);
 });
 
-// The pre-queue self-check's fix-up prompt (PLANS.md "Pre-queue self-check, part 1/2"): one
-// bounded turn on the author's own session to fix the deterministic faults the landing gate
-// would reject, before the change commits. The fake pi ignores prompt text, so its contract
-// is pinned here.
+// The pre-queue self-check's fix-up prompt (PLANS.md "Pre-queue self-check, part 1/2"): one bounded
+// turn on the author's own session to fix the deterministic faults the merge gate would reject,
+// before the change commits. The fake pi ignores prompt text, so its contract is pinned here.
 test("buildStageFixPrompt lists every finding, forbids git state changes, and asks for the closing block", () => {
   const p = buildStageFixPrompt(["first fault", "second fault"]);
   assert.match(p, /1\. first fault/);

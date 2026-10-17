@@ -74,7 +74,7 @@ test("swapDist replaces dist with the staged build, restores on failure, and cle
   assert.deepEqual(fs.readdirSync(dist), ["new.js"], "a failed swap leaves dist untouched");
 });
 
-test("swapDist throws when the staged build cannot land and leaves nothing half-swapped", () => {
+test("swapDist throws when the staged build cannot be swapped in and leaves nothing half-swapped", () => {
   // The catch's restore path needs a live dist to put back; with none, the failure must still
   // propagate (the Redeployer blocks on it) without touching the staged build. A regular file in
   // the dist path's ancestry makes the rename fail ENOTDIR.
@@ -354,10 +354,10 @@ test("a successful compile prunes superseded stagings past the grace, keeping yo
   const head = tinyTsProject(root);
   borrowTypeScript(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
-  // Two superseded stagings from heads the team landed past: one older than the grace
-  // (dead weight a blocked restart let pile up), one younger (a live episode's drain hold
-  // can still swap it). A non-SHA entry — swapDist's own dist.prev scratch — is never
-  // this prune's concern, however old it is.
+  // Two superseded stagings from heads the team moved past: one older than the grace (dead weight
+  // a blocked restart let pile up), one younger (a live episode's drain hold can still swap it). A
+  // non-SHA entry — swapDist's own dist.prev scratch — is never this prune's concern, however old
+  // it is.
   const old = stagingDir(root, "a".repeat(40));
   const young = stagingDir(root, "e".repeat(40));
   for (const dir of [old, young, path.join(stagingRootDir(root), "dist.prev")]) {

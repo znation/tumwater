@@ -108,13 +108,12 @@ test("a nested withCheckPermit runs under the permit already held", async () => 
 });
 
 test("a merge-tier waiter is granted ahead of an earlier other-tier waiter", async () => {
-  // A merge-scope check runs inside the merge lock, so every check it waits behind is
-  // lock-hold time for every other landing — the merge tier must jump the queue.
-  // The holder parks on a test-controlled gate, not a timer: a timer can expire under
-  // load before both waiters are queued, and the release then hands the permit to the
-  // only waiter present (the other-tier one) — the queue-jump the test asserts on never
-  // gets a chance to happen. With the gate, the holder cannot release until both
-  // waiters are parked, so the grant order is observable by construction.
+  // A merge-scope check runs inside the merge lock, so every check it waits behind is lock-hold
+  // time for every other merge — the merge tier must jump the queue. The holder parks on a
+  // test-controlled gate, not a timer: a timer can expire under load before both waiters are
+  // queued, and the release then hands the permit to the only waiter present (the other-tier one) —
+  // the queue-jump the test asserts on never gets a chance to happen. With the gate, the holder
+  // cannot release until both waiters are parked, so the grant order is observable by construction.
   const cfg = { maxConcurrentChecks: 1 };
   const granted: string[] = [];
   let releaseHolder: () => void = () => {};
@@ -139,21 +138,20 @@ test("a merge-tier waiter is granted ahead of an earlier other-tier waiter", asy
   assert.deepEqual(granted, ["holder", "merge", "other"]);
 });
 
-// ── Process-wide check cap: every full suite takes one permit
-// from a single semaphore sized by config.maxConcurrentChecks, so a burst of landings cannot
-// stack suites on the host. The cap lives in src/concurrency/check-permit.ts; these tests drive it
-// through
-// runScopedBuildCheck (the checks' real entry point) as well as withCheckPermit directly.
+// ── Process-wide check cap: every full suite takes one permit from a single semaphore sized by
+// config.maxConcurrentChecks, so a burst of merges cannot stack suites on the host. The cap lives
+// in src/concurrency/check-permit.ts; these tests drive it through runScopedBuildCheck (the checks'
+// real entry point) as well as withCheckPermit directly.
 
 const ROLE = "improve";
 
 test("at the default cap of 2, a third concurrent check starts only after one of the first two finishes", async () => {
   const { root, wt } = buildCheckFixture();
-  // The sleep keeps the first two in flight long enough that an uncapped third would start
-  // beside them. Every timing below is the harness's own: each build_check event carries the
-  // run's spawnedAt/settledAt, stamped as the permit holder spawns and reaps its check — not
-  // stamps the check's shell writes, whose node startup a loaded host delays by seconds, so a
-  // first-wave run's "start" could land after the other's end and misname the waiter.
+  // The sleep keeps the first two in flight long enough that an uncapped third would start beside
+  // them. Every timing below is the harness's own: each build_check event carries the run's
+  // spawnedAt/settledAt, stamped as the permit holder spawns and reaps its check — not stamps the
+  // check's shell writes, whose node startup a loaded host delays by seconds, so a first-wave run's
+  // "start" could arrive after the other's end and misname the waiter.
   const results = await Promise.all(
     [1, 2, 3].map(() => runScopedBuildCheck(root, ROLE, "gate", wt, { check: { command: "sleep 1" } }, 30_000)),
   );
@@ -223,18 +221,18 @@ test("the check cap resizes from each caller's live config without preempting a 
 });
 
 test("a queued merge-scope check is granted the next permit ahead of queued gate checks", { timeout: 10_000 }, async () => {
-  // A landing's check runs inside the merge lock, so every check it waited behind would be
-  // lock-hold time for every other landing.
+  // A merge's check runs inside the merge lock, so every check it waited behind would be lock-hold
+  // time for every other merge.
   const one = { maxConcurrentChecks: 1 };
   const order: string[] = [];
   let release!: () => void;
   const held = withCheckPermit(one, CHECK_TIER.other, () => new Promise<void>((resolve) => (release = resolve)));
   const gate = withCheckPermit(one, CHECK_TIER.other, async () => void order.push("gate"));
-  const landing = withCheckPermit(one, CHECK_TIER.merge, async () => void order.push("landing"));
+  const mergeCheck = withCheckPermit(one, CHECK_TIER.merge, async () => void order.push("mergeCheck"));
   await flushImmediate();
   release();
-  await Promise.all([held, gate, landing]);
-  assert.deepEqual(order, ["landing", "gate"]);
+  await Promise.all([held, gate, mergeCheck]);
+  assert.deepEqual(order, ["mergeCheck", "gate"]);
 });
 
 test("a check-permit request from inside a held permit runs under it instead of deadlocking", { timeout: 10_000 }, async () => {

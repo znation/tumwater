@@ -5,79 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Plain terms code merge, part 9/11: Rename the merge identifiers in the gates and doctor and backlog and git and operator and concurrency and check modules (planned 2026-10-16 by user; requires part 8/11 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/doctor/ src/backlog/ src/git/ src/operator/ src/concurrency/ src/baseline/ src/build/ and their tests)
-
-*Replanned 2026-10-17 by the plan role after two rejected reviews: the last objection was a
-rewritten comment paragraph in test/worktree.test.ts that still said "the merge pipeline's
-concurrent vets". This plan now gives the rule for the noun "vet", names the call sites outside
-the listed directories, and adds a grep for leftover words to the acceptance criteria.*
-
-**Goal.** These modules' merge-related identifiers, comments and test names say merge. The backlog heading grammar keeps its word. A rename of about 360 lines with no behavior change.
-
-**Approach.**
-- **Rename rule**, as in this series:
-  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
-  - comments, test names and assertion messages follow the Glossary ("unlanded" → "not yet merged");
-  - **the noun "vet" in prose becomes "verify", plural "verifies"**: test/worktree.test.ts's two
-    prune/add-race comments ("the landing pipeline's concurrent vets", "the loser's vet") become
-    "the merge pipeline's concurrent verifies" and "the loser's verify". Use the same word in
-    src/baseline/main-red.ts ("the landing pipeline's vets"), src/concurrency/provider-lease.ts
-    ("a vet task", "the vet: providerWaitStage", "or vet waiting"), src/doctor/doctor-backlog.ts
-    ("A vet plus a merge", "a vet under way"), src/gates/disk-gate.ts ("landing vets") and
-    src/gates/gate-polls.ts ("the land queue starts no new vet" → "the merge queue starts no new
-    verify"). Rewrite every comment sentence that holds a retired word, including ones you only
-    reflow;
-  - comment lines wrap at 100 columns.
-- **Prose after the rename** (an earlier attempt was rejected three times on these alone): read each
-  edited comment, test name and assertion message as a sentence, not as a word swap.
-  - **Reflow every edited comment paragraph** so only its last line is short. A rename that
-    shortens a line (e.g. `checkStaleQueuedLandings` → `checkStaleQueuedMerges` in
-    doctor-backlog.ts's `LAND_QUEUE_STALE_MS` and `checkStaleQueuedLandings` doc comments) pulls
-    the following words up; never leave a mid-paragraph stub line or an early break.
-  - **No doubled or garbled words.** Where the swap would produce "merged merge", "merge merge" or
-    similar, reword: maintenance-quota.ts's "One merged landing the window keeps" becomes "One
-    merged change the window keeps".
-  - **Compound adjectives take "unmerged",** matching retire.ts's own "unmerged commit(s)": test
-    strings such as test/retire.test.ts's "unlanded-commit refusal removes nothing" become
-    "unmerged-commit refusal removes nothing", and "unlanded work"/"unlanded branch commits"
-    become "unmerged work"/"unmerged branch commits". "not yet merged" is for predicate use
-    ("work not yet merged").
-- **Renames:**
-  - doctor-backlog.ts: `checkStaleQueuedLandings` → `checkStaleQueuedMerges`, `LAND_QUEUE_STALE_MS` → `MERGE_QUEUE_STALE_MS`, local `landed` → `mergeDone`.
-  - backlog-eligibility.ts: `prerequisitesLanded` → `prerequisitesMerged`. The heading keyword stays: `requiredParts`' `/requires\s+(.+?)\s+landed\b/` and the "requires … landed" prose are backlog grammar that every PLANS.md heading uses, not identifiers.
-  - operator-requests.ts: `AbortableLanding` → `AbortableMerge`, including its uses in src/merge/merge-pipeline.ts. Locals `landing`/`landings` → `merge`/`merges`.
-  - retire.ts: the member `landingRefPresent` → `mergeRefPresent`, local `landing` → `mergeRef`.
-  - maintenance-quota.ts: `perWorkLanding` → `perWorkMerge`, and the member `hasQueuedLanding` → `hasQueuedMerge` (in src/gates/gate-polls.ts too).
-  - Tests: `pinnedUnlanded` → `pinnedNotMerged`, and `vetA`/`vetB`/`vetGranted` → `verifyA`/`verifyB`/`verifyGranted`.
-  - Comments that list tiers (src/concurrency/semaphore.ts: "LANDING_TIER, MERGE_TIER") → `VERIFY_TIER`, `MERGE_TIER`.
-  - src/baseline/ and src/build/ (the main check and the build checks): mostly comments and test names. src/baseline's `landStack` call becomes `mergeStack`, and the comments' `verifyLanding` mentions become `verifyMerge`.
-- **git/worktree.ts's `removeLegacyLandWorktrees` keeps its name.** It removes the legacy `_land-<role>` worktrees, which "State and git" keeps.
-- **Collisions.** test/operator-requests.test.ts and test/check-permit.test.ts already bind a local `merge` near the `landing` locals. If a renamed local would share a scope with it (tsc reports the clash), use `inFlightMerge` or `mergeCheck` instead.
-- **Move off the aliases.** These files still use aliases from parts 2–6, such as `queuedMergeRoles`, `readMergeQueue`, `readMergeMarker`, `mergeChanges`, `mergeRefName`, `VERIFY_TIER` and `ApprovedMerge`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
-- **Leave alone:**
-  - user-visible strings and expected-output literals (doctor check titles were set by the text series);
-  - event type names;
-  - legacy readers;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-- Skip any name that an earlier series already renamed.
-
-**Files touched.** `src/gates/`, `src/doctor/`, `src/backlog/`, `src/git/`, `src/operator/`, `src/concurrency/`, `src/baseline/`, `src/build/`. Call sites outside them, renamed and nothing else: `src/merge/merge-pipeline.ts` (`AbortableMerge` uses), `src/status/status-polls.ts` (the `perWorkLanding` parameter and its pass to `maintenanceQuota`), and `test/orchestrator-scheduling.test.ts` (a `hasQueuedLanding: false` literal). Tests: `test/maintenance-quota.test.ts`, `test/*gate*.test.ts`, `test/doctor-*.test.ts`, `test/backlog-*.test.ts`, `test/git*.test.ts`, `test/worktree*.test.ts`, `test/operator-*.test.ts`, `test/retire.test.ts`, `test/check-permit.test.ts`, `test/semaphore.test.ts`, `test/provider-lease.test.ts`, `test/main-baseline*.test.ts`, `test/main-red.test.ts`, `test/attribute-red-check.test.ts`, `test/build-*.test.ts`, `test/dep-install.test.ts`.
-
-**Acceptance criteria.**
-- `git grep -nE 'checkStaleQueuedLandings|LAND_QUEUE_STALE_MS|prerequisitesLanded|AbortableLanding|landingRefPresent|perWorkLanding|hasQueuedLanding' -- src test` prints nothing.
-- test/backlog-eligibility.test.ts still parses `requires part 2/5 landed` headings unchanged.
-- In the listed directories, no identifier, comment or test name uses a retired merge word, except `removeLegacyLandWorktrees`, the grammar keyword and quoted backlog titles. Check it with
-  `git grep -nwiE 'vet|vets|vetted|vetting|unlanded|landing|landings|land|landed' -- src/gates src/doctor src/backlog src/git src/operator src/concurrency src/baseline src/build test/worktree.test.ts`
-  plus the test files listed above, run through `grep -v 'vocabulary-ok'`. It may print only
-  `requires … landed` grammar lines, quoted backlog titles, and user-visible strings or
-  expected-output literals this part leaves alone. In particular, no comment in
-  test/worktree.test.ts says "vet" or "vets".
-- `git grep -nE '\b(merged?|merging) merge' -- src test` prints no line this part introduced, and
-  `git grep -nE 'not yet merged-' -- src test` prints nothing.
-- In every comment paragraph this part edits, only the last line is shorter than the wrap would allow
-  (spot-check doctor-backlog.ts's two stale-queue doc comments and maintenance-quota.ts's header).
-- `npm run test` passes.
-
 ### Plain terms code merge, part 10/11: Rename the merge identifiers in the status and dashboard and TUI and report and history and failure modules (planned 2026-10-16 by user; requires part 9/11 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/status/ src/report/ src/history/ src/failure/ src/gui/ and their tests)
 
 **Goal.** The presentation and reporting modules' merge-related identifiers say merge, including the dashboard's browser code. So do their comments and test names. A mechanical rename of about 540 lines with no behavior change.
@@ -1260,6 +1187,80 @@ the listed directories, and adds a grep for leftover words to the acceptance cri
 - `test/gui-client-team.test.ts`, "the Questions tab lists answered questions under the open ones, read-only" (rename it to drop "read-only"): the answered rows now carry `data-file='answered' data-index='0'` and `data-index='1'`, the decision meta and escaping assertions are unchanged, and the `doesNotMatch` on `backloglink|data-index|Answer</button>` is narrowed to `Answer</button>` (no Answer button on answered rows). With `backlogScope("questions", { openEntryKey: () => "answered:1" })`, the second row carries `active` and the first does not. The Plans tab still shows no "Answered recently".
 - `test/gui-client-drawer.test.ts`, new test "an answered question entry opens read-only with its kind and body", modelled on the Done-plan drawer test: with a `responses` entry for `/api/backlog?file=answered&index=0`, `toggleEntry("answered", 0)` paints `drawerhead` matching `Answered question` and `entrybody` rendering the body's Markdown. `entrybody` matches none of `answertext`, `answer-record`, `data-act='mention'`, `entry-edit`, `entry-cancel`, `entry-top`, `entry-release`.
 - `npm run test` passes.
+
+### Plain terms code merge, part 9/11: Rename the merge identifiers in the gates and doctor and backlog and git and operator and concurrency and check modules (planned 2026-10-16 by user; requires part 8/11 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/doctor/ src/backlog/ src/git/ src/operator/ src/concurrency/ src/baseline/ src/build/ and their tests, done 2026-10-17)
+
+*Replanned 2026-10-17 by the plan role after two rejected reviews: the last objection was a
+rewritten comment paragraph in test/worktree.test.ts that still said "the merge pipeline's
+concurrent vets". This plan now gives the rule for the noun "vet", names the call sites outside
+the listed directories, and adds a grep for leftover words to the acceptance criteria.*
+
+**Goal.** These modules' merge-related identifiers, comments and test names say merge. The backlog heading grammar keeps its word. A rename of about 360 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names and assertion messages follow the Glossary ("unlanded" → "not yet merged");
+  - **the noun "vet" in prose becomes "verify", plural "verifies"**: test/worktree.test.ts's two
+    prune/add-race comments ("the landing pipeline's concurrent vets", "the loser's vet") become
+    "the merge pipeline's concurrent verifies" and "the loser's verify". Use the same word in
+    src/baseline/main-red.ts ("the landing pipeline's vets"), src/concurrency/provider-lease.ts
+    ("a vet task", "the vet: providerWaitStage", "or vet waiting"), src/doctor/doctor-backlog.ts
+    ("A vet plus a merge", "a vet under way"), src/gates/disk-gate.ts ("landing vets") and
+    src/gates/gate-polls.ts ("the land queue starts no new vet" → "the merge queue starts no new
+    verify"). Rewrite every comment sentence that holds a retired word, including ones you only
+    reflow;
+  - comment lines wrap at 100 columns.
+- **Prose after the rename** (an earlier attempt was rejected three times on these alone): read each
+  edited comment, test name and assertion message as a sentence, not as a word swap.
+  - **Reflow every edited comment paragraph** so only its last line is short. A rename that
+    shortens a line (e.g. `checkStaleQueuedLandings` → `checkStaleQueuedMerges` in
+    doctor-backlog.ts's `LAND_QUEUE_STALE_MS` and `checkStaleQueuedLandings` doc comments) pulls
+    the following words up; never leave a mid-paragraph stub line or an early break.
+  - **No doubled or garbled words.** Where the swap would produce "merged merge", "merge merge" or
+    similar, reword: maintenance-quota.ts's "One merged landing the window keeps" becomes "One
+    merged change the window keeps".
+  - **Compound adjectives take "unmerged",** matching retire.ts's own "unmerged commit(s)": test
+    strings such as test/retire.test.ts's "unlanded-commit refusal removes nothing" become
+    "unmerged-commit refusal removes nothing", and "unlanded work"/"unlanded branch commits"
+    become "unmerged work"/"unmerged branch commits". "not yet merged" is for predicate use
+    ("work not yet merged").
+- **Renames:**
+  - doctor-backlog.ts: `checkStaleQueuedLandings` → `checkStaleQueuedMerges`, `LAND_QUEUE_STALE_MS` → `MERGE_QUEUE_STALE_MS`, local `landed` → `mergeDone`.
+  - backlog-eligibility.ts: `prerequisitesLanded` → `prerequisitesMerged`. The heading keyword stays: `requiredParts`' `/requires\s+(.+?)\s+landed\b/` and the "requires … landed" prose are backlog grammar that every PLANS.md heading uses, not identifiers.
+  - operator-requests.ts: `AbortableLanding` → `AbortableMerge`, including its uses in src/merge/merge-pipeline.ts. Locals `landing`/`landings` → `merge`/`merges`.
+  - retire.ts: the member `landingRefPresent` → `mergeRefPresent`, local `landing` → `mergeRef`.
+  - maintenance-quota.ts: `perWorkLanding` → `perWorkMerge`, and the member `hasQueuedLanding` → `hasQueuedMerge` (in src/gates/gate-polls.ts too).
+  - Tests: `pinnedUnlanded` → `pinnedNotMerged`, and `vetA`/`vetB`/`vetGranted` → `verifyA`/`verifyB`/`verifyGranted`.
+  - Comments that list tiers (src/concurrency/semaphore.ts: "LANDING_TIER, MERGE_TIER") → `VERIFY_TIER`, `MERGE_TIER`.
+  - src/baseline/ and src/build/ (the main check and the build checks): mostly comments and test names. src/baseline's `landStack` call becomes `mergeStack`, and the comments' `verifyLanding` mentions become `verifyMerge`.
+- **git/worktree.ts's `removeLegacyLandWorktrees` keeps its name.** It removes the legacy `_land-<role>` worktrees, which "State and git" keeps.
+- **Collisions.** test/operator-requests.test.ts and test/check-permit.test.ts already bind a local `merge` near the `landing` locals. If a renamed local would share a scope with it (tsc reports the clash), use `inFlightMerge` or `mergeCheck` instead.
+- **Move off the aliases.** These files still use aliases from parts 2–6, such as `queuedMergeRoles`, `readMergeQueue`, `readMergeMarker`, `mergeChanges`, `mergeRefName`, `VERIFY_TIER` and `ApprovedMerge`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
+- **Leave alone:**
+  - user-visible strings and expected-output literals (doctor check titles were set by the text series);
+  - event type names;
+  - legacy readers;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/gates/`, `src/doctor/`, `src/backlog/`, `src/git/`, `src/operator/`, `src/concurrency/`, `src/baseline/`, `src/build/`. Call sites outside them, renamed and nothing else: `src/merge/merge-pipeline.ts` (`AbortableMerge` uses), `src/status/status-polls.ts` (the `perWorkLanding` parameter and its pass to `maintenanceQuota`), and `test/orchestrator-scheduling.test.ts` (a `hasQueuedLanding: false` literal). Tests: `test/maintenance-quota.test.ts`, `test/*gate*.test.ts`, `test/doctor-*.test.ts`, `test/backlog-*.test.ts`, `test/git*.test.ts`, `test/worktree*.test.ts`, `test/operator-*.test.ts`, `test/retire.test.ts`, `test/check-permit.test.ts`, `test/semaphore.test.ts`, `test/provider-lease.test.ts`, `test/main-baseline*.test.ts`, `test/main-red.test.ts`, `test/attribute-red-check.test.ts`, `test/build-*.test.ts`, `test/dep-install.test.ts`.
+
+**Acceptance criteria.**
+- `git grep -nE 'checkStaleQueuedLandings|LAND_QUEUE_STALE_MS|prerequisitesLanded|AbortableLanding|landingRefPresent|perWorkLanding|hasQueuedLanding' -- src test` prints nothing.
+- test/backlog-eligibility.test.ts still parses `requires part 2/5 landed` headings unchanged.
+- In the listed directories, no identifier, comment or test name uses a retired merge word, except `removeLegacyLandWorktrees`, the grammar keyword and quoted backlog titles. Check it with
+  `git grep -nwiE 'vet|vets|vetted|vetting|unlanded|landing|landings|land|landed' -- src/gates src/doctor src/backlog src/git src/operator src/concurrency src/baseline src/build test/worktree.test.ts`
+  plus the test files listed above, run through `grep -v 'vocabulary-ok'`. It may print only
+  `requires … landed` grammar lines, quoted backlog titles, and user-visible strings or
+  expected-output literals this part leaves alone. In particular, no comment in
+  test/worktree.test.ts says "vet" or "vets".
+- `git grep -nE '\b(merged?|merging) merge' -- src test` prints no line this part introduced, and
+  `git grep -nE 'not yet merged-' -- src test` prints nothing.
+- In every comment paragraph this part edits, only the last line is shorter than the wrap would allow
+  (spot-check doctor-backlog.ts's two stale-queue doc comments and maintenance-quota.ts's header).
+- `npm run test` passes.
+
 
 ### The TUI backlog pane's up/down reach the "done recently" and "fixed recently" rows and open each finished entry's full body read-only (planned 2026-10-17 by the plan role; done 2026-10-17 by the feature role; independent of the waiting plain-terms rename series and of the in-flight GUI drawer and `--show <n> --done` plans — touches only src/ui/tui/tui-backlog.ts, tui-pane.ts, tui-keys.ts, tui-panes.ts, tui-editors.ts, src/ui/status-payload.ts, docs/cli.md and their tests)
 

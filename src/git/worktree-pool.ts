@@ -1,15 +1,15 @@
 // vocabulary: plain
-/** The worktree pool's lease machinery (plans/worktree-pool.md, "Leases"; part 2a/5): a fixed
- * set of `.tumwater/worktrees/_slot-<n>` checkouts that ticks and vets lease and switch commits
- * in place, instead of keeping one `_land-<role>` checkout per role. The persisted layout and
- * its cross-process lock live in slots-state.ts, which other processes (`tumwater diff`,
- * `retire`) also read; this module owns choosing a slot, holding it through the disk-floor
- * registry, and handing it back. Nothing leases a slot yet — part 4/5 wires the loops to it.
+/** The worktree pool's lease machinery (plans/worktree-pool.md, "Leases"; part 2a/5): a fixed set
+ * of `.tumwater/worktrees/_slot-<n>` checkouts that ticks and verifies lease and switch commits in
+ * place, instead of keeping one `_land-<role>` checkout per role. The persisted layout and its
+ * cross-process lock live in slots-state.ts, which other processes (`tumwater diff`, `retire`) also
+ * read; this module owns choosing a slot, holding it through the disk-floor registry, and handing
+ * it back. Nothing leases a slot yet — part 4/5 wires the loops to it.
  *
- * The lease decision is synchronous: `updateSlotsState` writes slots.json under the slots lock,
- * and one Node process runs every tick and landing, so two concurrent `leaseSlot` calls claim
- * distinct free slots and a call with none free registers an in-process waiter. A release wakes
- * the waiters, which re-decide; `signal` aborts a waiter. */
+ * The lease decision is synchronous: `updateSlotsState` writes slots.json under the slots lock, and
+ * one Node process runs every tick and merge, so two concurrent `leaseSlot` calls claim distinct
+ * free slots and a call with none free registers an in-process waiter. A release wakes the waiters,
+ * which re-decide; `signal` aborts a waiter. */
 
 import path from "node:path";
 import { loadConfig, slotCount } from "../config/config.js";
@@ -258,10 +258,10 @@ async function acquire(
       logSlotWait(root, role, purpose, Date.now() - startedAt);
       return chosen;
     }
-    // The pool-slot wait rule (plans/provider-concurrency.md §5 "No deadlock"): a lease never
-    // holds a provider key while it waits for a pool slot. Drop the calling lease's key (which
-    // never waits) before parking here, so this tick or vet holds no provider slot whose in-use
-    // a re-key waiter is waiting to drain; the next run re-takes the key as an ordinary re-key.
+    // The pool-slot wait rule (plans/provider-concurrency.md §5 "No deadlock"): a lease never holds
+    // a provider key while it waits for a pool slot. Drop the calling lease's key (which never
+    // waits) before parking here, so this tick or verify holds no provider slot whose in-use a
+    // re-key waiter is waiting to drain; the next run re-takes the key as an ordinary re-key.
     await dropProviderLeaseKey();
     const waiter = registerWaiter(root);
     try {

@@ -51,12 +51,11 @@ function stateOf(root: string, role: string): Record<string, unknown> {
   return readJsonFile(path.join(root, STATE_DIR, "state", `${role}.json`)) ?? {};
 }
 
-/** The operator request markers (wake/reset/restart/abort) must be written ATOMICALLY
- * (tmp+rename): a concurrent poll reading a marker mid-write sees a torn file, which
- * readJsonFile folds to null — the corrupt-marker superset that wakes every runner. For a
- * scheduled wake that superset drops notBeforeMs, firing `wake --in` hours early. This pins
- * the write path: the marker lands via fs.rename (writeTextAtomic), never a direct
- * writeFileSync to the marker path. */
+/** The operator request markers (wake/reset/restart/abort) must be written ATOMICALLY (tmp+rename):
+ * a concurrent poll reading a marker mid-write sees a torn file, which readJsonFile folds to null —
+ * the corrupt-marker superset that wakes every runner. For a scheduled wake that superset drops
+ * notBeforeMs, firing `wake --in` hours early. This pins the write path: the marker arrives via
+ * fs.rename (writeTextAtomic), never a direct writeFileSync to the marker path. */
 test("operator request markers are written atomically (tmp+rename, never a torn write)", () => {
   const root = deadRoot();
   const wakeDir = scheduledWakeDir(root);
@@ -70,7 +69,7 @@ test("operator request markers are written atomically (tmp+rename, never a torn 
   } finally {
     restoreRename();
   }
-  assert.ok(renamed.some((to) => path.dirname(to) === wakeDir), `expected a wake marker in ${wakeDir} to land via rename`);
+  assert.ok(renamed.some((to) => path.dirname(to) === wakeDir), `expected a wake marker in ${wakeDir} to arrive via rename`);
   // The rename is the last step, so the marker's final content is intact and no tmp remnant
   // is left behind.
   assert.ok(readScheduledWakes(root)[0]?.notBeforeMs);
@@ -280,7 +279,7 @@ test("timedPauseBits renders the duration and resume-time phrases, empty for an 
 test("rolePauseMessage reports the idempotent no-op and the full pause confirmation", () => {
   const dead = deadRoot();
   assert.equal(rolePauseMessage(dead, "fix", false), "role fix is already paused");
-  // Not live: the tail says where the marker lands instead.
+  // Not live: the tail says where the marker arrives instead.
   assert.match(
     rolePauseMessage(dead, "fix", true),
     /^role fix paused — it starts no new runs \(current runs finish; the rest of the team is unaffected\).*next `tumwater start`/,

@@ -613,7 +613,7 @@ test("a lease that waited under 30 s logs no slot_wait", async (t) => {
   got.release();
 });
 
-test("a lease an old build wrote with purpose vet reads as verify and the next write stores it", () => {
+test("a lease an old build wrote with the legacy purpose vet reads as verify and the next write stores it", () => {
   const root = makeRepo();
   mkdirSync(dirname(slotsStatePath(root)), { recursive: true });
   writeFileSync(

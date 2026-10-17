@@ -10,7 +10,7 @@ import type { ModelSelector } from "../config/model-selector.js";
 import { deleteRef } from "../git/git.js";
 import { removeMergeChange, writeMergeOutcome, type MergeUsage } from "./merge-slot.js";
 import { mergeRefName, rejectedRefName } from "../paths.js";
-import type { AbortableLanding } from "../operator/operator-requests.js";
+import type { AbortableMerge } from "../operator/operator-requests.js";
 import type { MergeEntry } from "./merge-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { FoldsUsage } from "../loop/loop-pi.js";
@@ -37,8 +37,8 @@ export interface InFlightMerge {
  * its merge ref (`sha`) and the approval's patch-id in its state (2a). In memory only: after a
  * restart the entry is verified again, and its review carries over through the patch-id while
  * its check runs once more. It holds no task, so `tumwater abort --role` only flags it
- * (AbortableLanding); the next drain settles it as "aborted" and discards its pin. */
-export interface ApprovedMerge extends AbortableLanding, FoldsUsage {
+ * (AbortableMerge); the next drain settles it as "aborted" and discards its pin. */
+export interface ApprovedMerge extends AbortableMerge, FoldsUsage {
   entry: MergeEntry;
   /** The queue file to drop once its outcome is written. */
   file: string;
@@ -127,7 +127,7 @@ export function mergeTasks(p: MergePipeline): InFlightMerge[] {
 /** Everything `tumwater abort --role` can reach: every task in flight, plus each approved change
  * waiting with no task of its own. A parked verification is out of reach, as a plainly queued entry
  * always was: its change has not started merging. */
-export function abortableMerges(p: MergePipeline): AbortableLanding[] {
+export function abortableMerges(p: MergePipeline): AbortableMerge[] {
   return [...mergeTasks(p), ...p.approved.values()];
 }
 

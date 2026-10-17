@@ -71,7 +71,7 @@ test("the gate is asked again right before the swap: a successor that stops boot
   assert.equal(await r.poll(HEAD_B, busy, true, (t += 10)), "hold", "compiled; draining the in-flight tick");
   assert.equal(asked.length, 1, "asked once at the episode start, not on every hold poll");
 
-  // During the drain a landing that was already in flight deletes tumwater.json.
+  // During the drain a merge that was already in flight deletes tumwater.json.
   problem = NOT_INITIALIZED_MESSAGE;
   assert.equal(await r.poll(HEAD_B, IDLE, true, (t += 10)), "none", "drained, but the successor could not boot: no swap");
   assert.deepEqual(f.calls.swap, []);

@@ -23,7 +23,7 @@ import { pausedRoles, resumeRole } from "../team/team-state.js";
 import { git } from "../git/git-run.js";
 
 /** `tumwater retire --role <id>`: remove a disabled loop's persistent worktree and branch, plus the
- * per-role landing ref and paused-state marker that outlive it. The safety rails and the `--force`
+ * per-role merge ref and paused-state marker that outlive it. The safety rails and the `--force`
  * override live here, so the CLI layer (operator/operator-commands.ts) stays a thin renderer. */
 
 /** The role's merge pin, falling back to the legacy-named one a not-yet-migrated repo holds. */
@@ -49,7 +49,7 @@ export interface RetireStatus {
   worktreeUsable: boolean;
   branchPresent: boolean;
   mergeRefPresent: boolean;
-  /** Commits on the role branch not on main — unlanded work the branch would take with it. */
+  /** Commits on the role branch not on main — unmerged work the branch would take with it. */
   aheadOfMain: number;
   /** Uncommitted changes (staged, modified, or untracked) in the worktree. */
   dirty: boolean;
@@ -75,28 +75,28 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
     throw new Error(`cannot read tumwater.json: ${errorMessage(config.error)}`);
   }
   const mainBranch = targetBranch(config.config.baseBranch, await currentBranch(root));
-  // Count unlanded work from the branch ref at root, not from the worktree's HEAD: the worktree
-  // may be gone or unusable (the messy half-state this command exists to clean up) while the
-  // branch still holds commits — reading HEAD through the worktree would report 0 and let
-  // retireRole's `branch -D` delete unlanded work without objection. When the branch is
-  // absent, or a usable worktree sits on it, the rev-list range is empty or matches HEAD.
+  // Count unmerged work from the branch ref at root, not from the worktree's HEAD: the worktree may
+  // be gone or unusable (the messy half-state this command exists to clean up) while the branch
+  // still holds commits — reading HEAD through the worktree would report 0 and let retireRole's
+  // `branch -D` delete unmerged work without objection. When the branch is absent, or a usable
+  // worktree sits on it, the rev-list range is empty or matches HEAD.
   const branch = branchName(role);
   const branchThere = await branchExists(root, branch);
   const ahead = branchThere
     ? await countCommitsInRange(root, `${mainBranch}..${branch}`)
     : 0;
   const dirty = usable && wt !== null ? await isDirty(wt) : false;
-  const landing = await mergeRefSha(root, role);
-  // A landing ref pins a committed-but-unlanded sha (plans/merge-queue.md invariant 4): count
-  // it as unlanded work too — the branch can sit at main while the pin holds the crash survivor.
+  const mergeRef = await mergeRefSha(root, role);
+  // A merge ref pins a committed-but-unmerged sha (plans/merge-queue.md invariant 4): count it as
+  // unmerged work too — the branch can sit at main while the pin holds the crash survivor.
   const pinnedUnlanded =
-    landing !== null && !(await isMergedInto(root, landing, mainBranch)) ? 1 : 0;
+    mergeRef !== null && !(await isMergedInto(root, mergeRef, mainBranch)) ? 1 : 0;
   return {
     role,
     worktreePresent: present,
     worktreeUsable: usable,
     branchPresent: branchThere,
-    mergeRefPresent: landing !== null,
+    mergeRefPresent: mergeRef !== null,
     aheadOfMain: ahead + pinnedUnlanded,
     dirty,
     enabledInConfig: loopEnabled(config.config, role),
@@ -133,7 +133,7 @@ function objections(status: RetireStatus): string[] {
   return reasons;
 }
 
-/** Remove the role's worktree, branch, landing ref, and paused-state marker. Refuses — removing
+/** Remove the role's worktree, branch, merge ref, and paused-state marker. Refuses — removing
  * nothing — when any safety rail objects, unless `force` overrides every objection. */
 export async function retireRole(root: string, role: string, { force }: { force?: boolean }): Promise<RetireResult> {
   const status = await collectRetire(root, role);

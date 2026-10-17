@@ -12,9 +12,9 @@ import {
   entryKey,
   holdMark,
   holdsBacklogReaders,
-  landedPrerequisiteRanges,
+  mergedPrerequisiteRanges,
   plannedPartKeys,
-  prerequisitesLanded,
+  prerequisitesMerged,
   refusalNote,
   refusedEntryTitles,
   waitingNote,
@@ -97,7 +97,7 @@ test("requiredParts reads the trailing parenthetical, expands ranges, and resolv
 });
 
 test("requiredParts returns [] for a clause that does not parse and for a heading with no clause", () => {
-  assert.deepEqual(requiredParts("Foo, part 1/2: x (planned 2026-10-01; land that plan first)"), []);
+  assert.deepEqual(requiredParts("Foo, part 1/2: x (planned 2026-10-01; merge that plan first)"), []);
   assert.deepEqual(requiredParts("Foo, part 1/2: x"), []);
   assert.deepEqual(requiredParts("Foo (planned 2026-10-01; requires something else entirely)"), []);
 });
@@ -249,8 +249,8 @@ test("eligibleEntries holds a plan another role's base has claimed, but keeps th
     path.join(dir, "PLANS.md"),
     "# Plans\n## Planned\n### Volume slider (planned 2026-10-09)\nDrive it through the backend.\n## Done\n_None._\n",
   );
-  // `feature` takes the plan the way a real tick does (a queued landing keeps its claim until
-  // the move tunes into main); a second plan-consuming role must not be handed the same entry.
+  // `feature` takes the plan the way a real tick does (a queued merge keeps its claim until the
+  // move tunes into main); a second plan-consuming role must not be handed the same entry.
   const owner = {
     ...loadLoopState(dir, "feature"),
     claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,
@@ -379,14 +379,14 @@ test("openParenthetical returns the outermost group still open", () => {
   assert.equal(openParenthetical("a) b (c"), "c");
 });
 
-test("prerequisitesLanded returns the refs only when none is still planned", () => {
+test("prerequisitesMerged returns the refs only when none is still planned", () => {
   const title = "S, part 2/2: x (planned 2026-10-12; requires part 1/2 landed)";
   const refs = [{ series: "S", part: "1", of: 2 }];
-  assert.deepEqual(prerequisitesLanded(title, new Set()), refs);
+  assert.deepEqual(prerequisitesMerged(title, new Set()), refs);
   const planned = plannedPartKeys([{ title: "S, part 1/2: y", body: "" }]);
-  assert.deepEqual(prerequisitesLanded(title, planned), []);
-  assert.deepEqual(prerequisitesLanded("S, part 2/2: x (planned 2026-10-12)", new Set()), []);
-  assert.deepEqual(prerequisitesLanded("S, part 2/2: x (planned 2026-10-12; requires part 1/2 landed. More", new Set()), refs);
+  assert.deepEqual(prerequisitesMerged(title, planned), []);
+  assert.deepEqual(prerequisitesMerged("S, part 2/2: x (planned 2026-10-12)", new Set()), []);
+  assert.deepEqual(prerequisitesMerged("S, part 2/2: x (planned 2026-10-12; requires part 1/2 landed. More", new Set()), refs);
 });
 
 test("withoutRefusalNotes drops Refused note lines and the blank line after one between blanks", () => {
@@ -464,7 +464,7 @@ test("plansWaitingOn follows requires clauses transitively and stops on a cycle"
   assert.deepEqual(plansWaitingOn(cycle, 0), [1]);
 });
 
-test("landedPrerequisiteRanges names each landed prerequisite's newest Done entry", () => {
+test("mergedPrerequisiteRanges names each merged prerequisite's newest Done entry", () => {
   const dir = tmpdir();
   const c = "S, part 3/3: c (requires parts 1/3–2/3 landed)";
   const lines = [
@@ -474,7 +474,7 @@ test("landedPrerequisiteRanges names each landed prerequisite's newest Done entr
     "### S, part 1/3: a-old (done 2026-10-01)", "body old",
   ];
   fs.writeFileSync(path.join(dir, "PLANS.md"), lines.join("\n") + "\n");
-  const got = landedPrerequisiteRanges(dir, c);
+  const got = mergedPrerequisiteRanges(dir, c);
   assert.deepEqual(
     got.map((e) => [e.title, e.start, e.end]),
     [
@@ -482,9 +482,9 @@ test("landedPrerequisiteRanges names each landed prerequisite's newest Done entr
       ["s, part 2/3: b (done 2026-10-16)", 6, 7],
     ],
   );
-  assert.deepEqual(landedPrerequisiteRanges(dir, "Plain"), []);
-  assert.deepEqual(landedPrerequisiteRanges(dir, "S, part 3/3: c (requires part 9/9 landed)"), []);
-  assert.deepEqual(landedPrerequisiteRanges(tmpdir(), c), []);
+  assert.deepEqual(mergedPrerequisiteRanges(dir, "Plain"), []);
+  assert.deepEqual(mergedPrerequisiteRanges(dir, "S, part 3/3: c (requires part 9/9 landed)"), []);
+  assert.deepEqual(mergedPrerequisiteRanges(tmpdir(), c), []);
 });
 
 test("waitingPartRanges names the planned parts that wait on an entry, with their ranges", () => {

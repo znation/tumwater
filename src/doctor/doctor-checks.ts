@@ -717,20 +717,18 @@ export function checkBuildCheck(
   return withTiming(where ? `npm ${check.script} in ${where}` : `npm ${check.script}`);
 }
 
-/** The review gate's flake memory surfaced read-only: names which checks the gate kept
- * excusing as flakes over its own KNOWN_FLAKE_WINDOW_MS window. The gate logs
- * `gate check failed then passed on retry — flaky: <headline>` for each failure that passed
- * on its one immediate re-run, and the in-lock merge check logs the same under
- * MERGE_FLAKY_WARNING_PREFIX when its kept-pin retry passes (src/review/known-flakes.ts);
- * that record is internal to the
- * gate's matching, so a genuinely flaky check silently burns a re-run per landing and hides
- * real instability — exactly the information that explains intermittent rejections. This
- * check reads the same window and folds the same normalized headline the gate matches with
- * (flakeCounts, so the prefix slice-offset and cluster normalization cannot drift), and
- * warns only when a normalized check flapped more than once, so a routine one-off flake stays
- * quiet.
- * ok/warn only — never a fail — so a flaky suite cannot fail a scripted doctor pre-flight
- * (the checkStalledPlans precedent; the exit-code rule is outcome.ts's). */
+/** The review gate's flake memory surfaced read-only: names which checks the gate kept excusing as
+ * flakes over its own KNOWN_FLAKE_WINDOW_MS window. The gate logs `gate check failed then passed on
+ * retry — flaky: <headline>` for each failure that passed on its one immediate re-run, and the
+ * in-lock merge check logs the same under MERGE_FLAKY_WARNING_PREFIX when its kept-pin retry passes
+ * (src/review/known-flakes.ts); that record is internal to the gate's matching, so a genuinely
+ * flaky check silently burns a re-run per merge and hides real instability — exactly the
+ * information that explains intermittent rejections. This check reads the same window and folds the
+ * same normalized headline the gate matches with (flakeCounts, so the prefix slice-offset and
+ * cluster normalization cannot drift), and warns only when a normalized check flapped more than
+ * once, so a routine one-off flake stays quiet. ok/warn only — never a fail — so a flaky suite
+ * cannot fail a scripted doctor pre-flight (the checkStalledPlans precedent; the exit-code rule is
+ * outcome.ts's). */
 export function checkFlakyChecks(root: string): CheckOutcome {
   const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);
   const flapped = flakeCounts(events).filter(([, n]) => n >= 2);

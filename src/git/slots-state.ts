@@ -83,7 +83,8 @@ function isSlotLease(value: unknown): boolean {
   );
 }
 
-/** A lease an older build wrote carries `tick`/`vet`; read them as `run`/`verify`. */
+/** A lease an older build wrote carries the pre-rename purpose names; read them as
+ * `run`/`verify`. */
 function readSlotLease(lease: unknown): SlotLease {
   const l = lease as { purpose: string; role: string };
   const purpose = l.purpose === "tick" ? "run" : l.purpose === "vet" ? "verify" : l.purpose; // vocabulary-ok: legacy value read from old files

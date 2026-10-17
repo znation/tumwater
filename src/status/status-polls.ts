@@ -280,7 +280,7 @@ const maintenanceCounters = new Map<string, ReturnType<typeof newMaintenanceWind
  * and keeps no hold edge, so it can run in the TUI/GUI process every second. */
 export function maintenanceQuotaForPoll(
   root: string,
-  perWorkLanding: number,
+  perWorkMerge: number,
   loops: readonly { role: string; running?: boolean }[],
   queuedMergeRoles: ReadonlySet<string>,
   now: number,
@@ -298,6 +298,6 @@ export function maintenanceQuotaForPoll(
     maintenanceRoles.push(loop.role);
     if (loop.running || queuedMergeRoles.has(loop.role)) inFlight++;
   }
-  const verdict = maintenanceQuota({ work, maint, inFlight, perWorkLanding });
+  const verdict = maintenanceQuota({ work, maint, inFlight, perWorkMerge });
   return { allowance: verdict.allowance, used: verdict.used, held: verdict.held ? maintenanceRoles : [] };
 }

@@ -209,12 +209,12 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
  *
  * A `- ` line needs more than a date to be an entry: the sections also hold body bullets (an
  * entry's repro steps, a plan's task breakdown), and a body bullet that merely mentions a
- * completion — "- same shape as the sibling bug (fixed 2026-09-24)" — is not one. The epitaph
- * shape separates them: an epitaph always closes its line with a parenthetical that records
- * both the completion date and the landing commit ("(planned …, done …; commit abc1234)"),
- * so a bullet counts only when its trailing `(…)` group carries the date AND a `commit`
- * reference; a heading entry keeps the plain metadata match (headings are the primary entry
- * format and always close their metadata parenthetical by convention). */
+ * completion — "- same shape as the sibling bug (fixed 2026-09-24)" — is not one. The epitaph shape
+ * separates them: an epitaph always closes its line with a parenthetical that records both the
+ * completion date and the merge commit ("(planned …, done …; commit abc1234)"), so a bullet counts
+ * only when its trailing `(…)` group carries the date AND a `commit` reference; a heading entry
+ * keeps the plain metadata match (headings are the primary entry format and always close their
+ * metadata parenthetical by convention). */
 export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] {
   const dates: string[] = [];
   const lines = sectionBodyLines(md, sectionTitle);

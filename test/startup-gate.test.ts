@@ -68,8 +68,8 @@ test("each unmet precondition is the gate's verdict, in cmdRun's order", async (
 });
 
 test("each unmet repo precondition names its own fix: not a repo, no commits, no git", async () => {
-  // A plain directory is the first thing a fresh `tumwater run` lands in: the verdict is the
-  // repo one, and the git probe behind it must not be what the operator reads.
+  // A plain directory is the first thing a fresh `tumwater run` ends up in: the verdict is the repo
+  // one, and the git probe behind it must not be what the operator reads.
   assert.equal(await repoNotReady(tmpdir()), NOT_A_REPO_MESSAGE);
 
   // An unborn HEAD fails on the missing config first and on the missing commits only once

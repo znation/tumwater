@@ -66,12 +66,12 @@ test("claimForReclaim refuses while in use and marks the worktree reclaiming", a
   assert.equal(registry["feature"]?.reclaimedAt, 1_700_000_000_000);
 });
 
-// The cross-process read-modify-write race: the orchestrator records a use release in-process
-// while `tumwater reclaim` runs as a separate CLI process that seeds the same worktree-use
-// registry. Without the lock, the later whole-file write drops the other's field. The child
-// holds the worktree-use lock, snapshots the registry, waits to see whether the parent's
-// release lands (an unlocked writer's does; a locked one's waits for the lock), then writes its
-// own stale snapshot. The fix serializes the parent's read→write, so both records survive.
+// The cross-process read-modify-write race: the orchestrator records a use release in-process while
+// `tumwater reclaim` runs as a separate CLI process that seeds the same worktree-use registry.
+// Without the lock, the later whole-file write drops the other's field. The child holds the
+// worktree-use lock, snapshots the registry, waits to see whether the parent's release arrives (an
+// unlocked writer's does; a locked one's waits for the lock), then writes its own stale snapshot.
+// The fix serializes the parent's read→write, so both records survive.
 test("a concurrent worktree-use write cannot drop another process's update", async () => {
   const root = tmpdir("wt-use-race-");
   const dir = useDir("wt-use-race-wt-");
