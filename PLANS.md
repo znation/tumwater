@@ -1233,7 +1233,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor` gains a `root install` row that warns when the root checkout's `node_modules` no longer matches `package-lock.json`'s direct pins, so an operator learns a failed post-merge re-sync is making every check install into its own tree (planned 2026-10-16 by plan; independent of every other Planned entry — adds one new module under `src/doctor/` and one row to `src/doctor/doctor.ts`'s list, and leaves `src/doctor/doctor-checks.ts` alone, which the in-flight "check row … 24 h passing merge-check durations" plan edits)
+## Done
+
+### `tumwater doctor` gains a `root install` row that warns when the root checkout's `node_modules` no longer matches `package-lock.json`'s direct pins, so an operator learns a failed post-merge re-sync is making every check install into its own tree (planned 2026-10-16 by plan; independent of every other Planned entry — adds one new module under `src/doctor/` and one row to `src/doctor/doctor.ts`'s list, and leaves `src/doctor/doctor-checks.ts` alone, which the in-flight "check row … 24 h passing merge-check durations" plan edits) (done 2026-10-16)
 
 **Goal.** When a merge moves main's lockfile, `syncRootInstall` (`src/build/dep-install.ts`) re-installs the root checkout. If that install fails, it logs a `dep_install` event with `status: "failed"` plus a warning, and only tries again when a later merge calls it. Until then, every gate and merge check finds the drift through `installDrift` and runs its own `npm install` into its own tree. Each check pays for an install, and nothing tells the operator the root is behind. `src/build/dep-install.ts` and `src/events/event-format.ts` are the only places that reference `dep_install` or `installDrift` today, so no doctor row, alert, or report reads either one. Add a doctor row that checks the root live and names the fix.
 
@@ -1257,8 +1259,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - the same failed event with no drift is ok.
 - `tumwater doctor` lists a `root install` row right after `check`. The row is ok on this repo's own healthy checkout, which `test/doctor.test.ts` covers only if it already asserts row names; otherwise do not add an assertion there.
 - No `src/ui` import in `src/doctor/doctor-install.ts`. `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor`'s `check` row says how long the declared check's passing merge checks took over the last 24 h, so the operator sees the suite slowing the merge lock before it times out (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts, docs/cli.md) (done 2026-10-16)
 

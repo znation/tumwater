@@ -5,6 +5,7 @@ import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-in
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
 import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours } from "./doctor-holds.js";
+import { checkRootInstall } from "./doctor-install.js";
 import { checkNotify } from "./doctor-notify.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
@@ -119,6 +120,7 @@ export async function runDoctor(
     // reports it), so the check falls back to the 10 GB default rather than skipping itself.
     { name: "disk space", ...checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40) },
     { name: "check", ...checkBuildCheck(root, config) },
+    { name: "root install", ...checkRootInstall(root) },
     // The review gate's flake memory, surfaced read-only: naming which checks the gate kept
     // excusing as flakes (ok/warn only, so a flaky suite never fails a scripted pre-flight).
     { name: "flaky checks", ...checkFlakyChecks(root) },
