@@ -45,14 +45,14 @@ export const CLAUDE_DIALECT: PromptDialect = {
   in ranges (the Read tool's offset/limit) instead of retrying the same read.`,
 };
 
-/** opencode's dialect (plans/opencode-backend.md §5): role notes are off on OpenCode (part
- * 5/7 ships with no notes; part 5b/7 turns the MCP server on), its read tool takes
+/** opencode's dialect (plans/opencode-backend.md §5): role notes ride the role-notes MCP
+ * server, which registers as `tumwater_role_notes` (part 5b/7); its read tool takes
  * `offset`/`limit`, its oversized shell output spills to a named file (finding 17), and two
  * backend rules tell the model how OpenCode's shell tool works: a 2-minute default timeout
  * that `timeout` overrides, and no `background` (a backgrounded command dies when the run
  * ends, finding 18). */
 export const OPENCODE_DIALECT: PromptDialect = {
-  notesTool: "",
+  notesTool: "tumwater_role_notes",
   readRange: "the read tool's offset/limit (or `sed -n 'A,Bp'`)",
   oversizedOutput: `Oversized shell output keeps only its last lines, followed by a note naming the file with
   the full output — read that file in ranges (the read tool's offset/limit) instead of

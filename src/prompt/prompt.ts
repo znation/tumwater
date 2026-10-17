@@ -387,7 +387,7 @@ relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
  * write one, so the first tick (when no note exists yet) can create it. The note content block
  * (roleNotesBlock) is what is omitted when there is nothing to show. */
 export function roleNotesInstruction(dialect: PromptDialect = PI_DIALECT): string {
-  // A backend with role notes off (opencode in part 5/7: `notesTool: ""`) has no tool to call,
+  // A backend whose dialect carries no notes tool (`notesTool: ""`) has no tool to call,
   // so no instruction is rendered at all rather than one naming a tool the model lacks.
   if (dialect.notesTool === "") return "";
   return `Before you end, if you learned something the next run of your role should know (where

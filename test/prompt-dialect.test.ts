@@ -71,16 +71,19 @@ test("the notes instruction switches tool name with the dialect", () => {
   assert.match(roleNotesInstruction(CLAUDE_DIALECT), /call mcp__tumwater__role_notes with/);
 });
 
-test("opencode's dialect omits the notes instruction and carries both backend rules", () => {
+test("opencode's dialect names the MCP notes tool and carries both backend rules", () => {
   assert.equal(dialectFor("opencode"), OPENCODE_DIALECT);
-  // Part 5/7 ships role notes off on OpenCode (part 5b/7 turns the MCP server on), so no
-  // notes tool is named and no instruction is rendered at all.
-  assert.equal(OPENCODE_DIALECT.notesTool, "");
-  assert.equal(roleNotesInstruction(OPENCODE_DIALECT), "");
+  // Part 5b/7 turns the role-notes MCP server on: the notes tool is tumwater_role_notes and the
+  // prompt asks for the note "before the run ends" — past OpenCode's first-request MCP gap
+  // (finding 21, design §5).
+  assert.equal(OPENCODE_DIALECT.notesTool, "tumwater_role_notes");
+  assert.match(roleNotesInstruction(OPENCODE_DIALECT), /call tumwater_role_notes with/);
 
   const role = roleById("feature")!;
   const opencode = buildTickPrompt({ role, initialPrompt: "", agent: "opencode" });
-  assert.ok(!/call \w*_notes with/.test(opencode), "the opencode prompt carries no notes instruction");
+  assert.match(opencode, /call tumwater_role_notes with/, "the opencode prompt names the MCP notes tool");
+  assert.ok(!opencode.includes("call role_notes with"), "opencode never sees the pi tool name");
+  assert.ok(!opencode.includes("mcp__tumwater__role_notes"), "opencode uses its own MCP name, not claude's");
   // The two backend rules (plans/opencode-backend.md §5) ride the reading-budget section.
   assert.match(opencode, /pass `timeout` in milliseconds/);
   assert.match(opencode, /never set `background`/);

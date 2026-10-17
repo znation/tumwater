@@ -53,6 +53,9 @@ export const opencodeCaptures = {
   /** The role-notes MCP tool appearing mid-run and working as `tumwater_role_notes`, plus a
    * final `text "DONE"` with no open `step_start` buffer. */
   mcpToolLate: loadLines("mcp-tool-late.jsonl"),
+  /** The end-of-run notes pattern (follow-up probe, finding 21): read, shell, then a final
+   * `tumwater_role_notes` call saving the note — the shape that worked 6 of 6. */
+  mcpNotesEndOfRun: loadLines("mcp-notes-end-of-run.jsonl"),
   /** A resumed session that did get its final `step_finish`; the streamed-only counterpoint. */
   resume: loadLines("resume.jsonl"),
 };

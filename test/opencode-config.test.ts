@@ -1,7 +1,8 @@
 // The injected opencode config and the operator global-config reader (plans/opencode-backend.md
 // "The invocation", PLANS.md "OpenCode backend, part 3/7"): the gate-safe isolation switches
-// and denials, the disabled operator servers under mcp.servers, the CLAUDE.md/AGENTS.md matrix,
-// the absence of any tumwater MCP server, and the jsonc reading — all without a spawned process.
+// and denials, the disabled operator servers under mcp.servers, the role-notes MCP server under
+// mcp.servers.tumwater (part 5b/7), the CLAUDE.md/AGENTS.md matrix, and the jsonc reading —
+// all without a spawned process.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -37,9 +38,41 @@ test("opencodeConfigContent disables every operator server under mcp.servers", (
   assert.deepEqual(parsed.mcp.servers.two, { disabled: true });
 });
 
-test("opencodeConfigContent never configures a tumwater MCP server (finding 21)", () => {
+test("opencodeConfigContent adds tumwater's role-notes server when notesServer is given", () => {
+  const parsed = JSON.parse(
+    opencodeConfigContent(opts({ operatorMcpNames: ["one"], notesServer: { command: ["node", "/x/role-notes-server.js"], notesPath: "/n/notes.md" } })),
+  ) as { mcp: { servers: Record<string, unknown> } };
+  assert.deepEqual(
+    parsed.mcp.servers.tumwater,
+    {
+      type: "local",
+      command: ["node", "/x/role-notes-server.js"],
+      codemode: false,
+      environment: { TUMWATER_NOTES_PATH: "/n/notes.md" },
+    },
+    "the tumwater server names the notes server as a direct tool with the notes path",
+  );
+  // Operator servers are still disabled alongside it.
+  assert.deepEqual(parsed.mcp.servers.one, { disabled: true });
+});
+
+test("an operator server named tumwater is replaced by the notes server, not disabled", () => {
+  const parsed = JSON.parse(
+    opencodeConfigContent(opts({ operatorMcpNames: ["tumwater", "other"], notesServer: { command: ["node", "/x/role-notes-server.js"], notesPath: "/n/notes.md" } })),
+  ) as { mcp: { servers: Record<string, unknown> } };
+  assert.equal((parsed.mcp.servers.other as { disabled?: boolean }).disabled, true);
+  assert.equal((parsed.mcp.servers.tumwater as { disabled?: boolean } | undefined)?.disabled, undefined, "not disabled");
+  assert.ok(!("disabled" in (parsed.mcp.servers.tumwater as object)), "the notes server replaces the operator entry whole");
+});
+
+test("without notesServer an operator server named tumwater is disabled like any other", () => {
+  const parsed = JSON.parse(opencodeConfigContent(opts({ operatorMcpNames: ["tumwater"] }))) as { mcp: { servers: Record<string, unknown> } };
+  assert.deepEqual(parsed.mcp.servers.tumwater, { disabled: true });
+});
+
+test("opencodeConfigContent without notesServer never configures a tumwater MCP server (finding 21)", () => {
   const parsed = JSON.parse(opencodeConfigContent(opts({ operatorMcpNames: ["one"] }))) as { mcp?: { servers: Record<string, unknown> } };
-  assert.ok(!parsed.mcp?.servers?.tumwater, "no tumwater MCP server is configured");
+  assert.ok(!parsed.mcp?.servers?.tumwater, "no tumwater MCP server is configured without notes");
 });
 
 test("opencodeConfigContent emits instructions only for CLAUDE.md alone", () => {

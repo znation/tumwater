@@ -4,12 +4,16 @@
  * applies after the operator's global and project files, so only managed config wins over it:
  * the gate-safe isolation switches (snapshots off, updates off, six denials), an `enabled →
  * disabled: true` entry for every operator MCP server (config merges, so disabling is the only
- * way to remove one), and an `instructions` entry mirroring claude's AGENTS.md handling. No
+ * way to remove one), an `mcp.servers.tumwater` entry naming tumwater's bundled role-notes MCP
+ * server when the run carries a notebook (part 5b/7), and an `instructions` entry mirroring
+ * claude's AGENTS.md handling. No
  * tool is disabled beyond the six gate-safe denials — denying `read` trips the free-tier gate
  * (finding 11). Part 5/7 wires this string into the run's environment.
  *
- * No MCP server of tumwater's own is configured while finding 21 stands (role notes are off on
- * OpenCode, design decision 8). No XDG/config files are read here except the operator's global
+ * The only MCP server of tumwater's own lives at `mcp.servers.tumwater`, added only when a run
+ * carries role notes; an operator server of that name is replaced by it rather than disabled (a
+ * later config replaces a server object whole, design decision 8 and plans/opencode-backend.md
+ * "The invocation"). No XDG/config files are read here except the operator's global
  * opencode config, and that only to enumerate its MCP server names (operatorMcpNames): a broken
  * or missing file yields `[]` here, and doctor reports it in part 7/7. */
 
@@ -159,35 +163,64 @@ function shouldInjectClaudeMd(cwd: string): boolean {
   return fs.existsSync(path.join(cwd, "CLAUDE.md")) && !fs.existsSync(path.join(cwd, "AGENTS.md"));
 }
 
+/** One `mcp.servers` entry: a disabled operator server, or tumwater's own role-notes server
+ * (part 5b/7). */
+type McpServer =
+  | { disabled: boolean }
+  | {
+      type: "local";
+      command: string[];
+      codemode: boolean;
+      environment: { TUMWATER_NOTES_PATH: string };
+    };
+
 /** The injected-config builder's inputs. `cwd` is read only to decide the `instructions`
- * entry. `operatorMcpNames` is the list of operator MCP servers to disable. */
+ * entry. `operatorMcpNames` is the list of operator MCP servers to disable. `notesServer`,
+ * when a run carries role notes, names tumwater's bundled role-notes server to add under
+ * `mcp.servers.tumwater`. */
 export interface OpencodeConfigOptions {
   /** The worktree the run starts in; read only to decide the `instructions` entry. */
   cwd: string;
   /** Operator MCP server names, each disabled with `{ disabled: true }` under
    * `mcp.servers`. */
   operatorMcpNames: string[];
+  /** tumwater's bundled role-notes MCP server, added as `mcp.servers.tumwater` when given. */
+  notesServer?: { command: string[]; notesPath: string };
 }
 
 /** Build the injected opencode config JSON string. Never reads the worktree beyond the
- * CLAUDE.md/AGENTS.md probe, and configures no server of tumwater's own (finding 21). */
+ * CLAUDE.md/AGENTS.md probe. Without `notesServer` the output is byte-identical to part 5/7's. */
 export function opencodeConfigContent(opts: OpencodeConfigOptions): string {
   const config: {
     snapshots: boolean;
     update: string;
     permissions: readonly { action: string; resource: string; effect: string }[];
-    mcp?: { servers: Record<string, { disabled: boolean }> };
+    mcp?: { servers: Record<string, McpServer> };
     instructions?: string[];
   } = {
     snapshots: false,
     update: "disable",
     permissions: DENIED_PERMISSIONS,
   };
-  if (opts.operatorMcpNames.length > 0) {
-    const servers: Record<string, { disabled: boolean }> = {};
-    for (const name of opts.operatorMcpNames) servers[name] = { disabled: true };
-    config.mcp = { servers };
+  const servers: Record<string, McpServer> = {};
+  for (const name of opts.operatorMcpNames) {
+    // An operator server named `tumwater` is replaced by our notes server below rather than
+    // disabled — but only when a notes server is actually configured. Without one, it is
+    // disabled like any other operator server.
+    if (name === "tumwater" && opts.notesServer !== undefined) continue;
+    servers[name] = { disabled: true };
   }
+  if (opts.notesServer !== undefined) {
+    servers.tumwater = {
+      type: "local",
+      command: opts.notesServer.command,
+      // A direct tool: Code Mode (`execute`) is denied, and MCP tools would otherwise only be
+      // reachable through it.
+      codemode: false,
+      environment: { TUMWATER_NOTES_PATH: opts.notesServer.notesPath },
+    };
+  }
+  if (Object.keys(servers).length > 0) config.mcp = { servers };
   if (shouldInjectClaudeMd(opts.cwd)) config.instructions = ["CLAUDE.md"];
   return JSON.stringify(config);
 }

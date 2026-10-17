@@ -121,6 +121,15 @@ test("oversized-output.jsonl: the bash call carries the canonical command seq 1 
   assert.equal(start.args.command, "seq 1 200000", "suite-rerun detection reads the command");
 });
 
+test("mcp-notes-end-of-run.jsonl: the role-notes tool follows the run's reads and bash calls", () => {
+  const { canonical } = fold(opencodeCaptures.mcpNotesEndOfRun);
+  const tools = canonical
+    .filter((l) => JSON.parse(l).type === "tool_execution_start")
+    .map((l) => (JSON.parse(l) as { toolName: string }).toolName);
+  assert.deepEqual(tools, ["glob", "bash", "read", "tumwater_role_notes"], "read and bash come before the end-of-run note");
+  assert.equal(tools[tools.length - 1], "tumwater_role_notes", "the note is saved at the run's end, past the first-request MCP gap");
+});
+
 test("both free-tier refusals fold to transientBackend and warn opencode_free_tier_refused once", () => {
   for (const capture of [opencodeCaptures.freeTierRefused, opencodeCaptures.freeTierRefusedReadDenied]) {
     const { parser, translator } = fold(capture);

@@ -186,3 +186,51 @@ test("a hang the quiet watchdog kills never runs the export and leaves the resul
     fake.restore();
   }
 });
+
+/** The `mcp.servers.tumwater` entry from the last run's recorded OPENCODE_CONFIG_CONTENT, or
+ * undefined when the config names no such server. */
+interface NotesServer {
+  type: string;
+  command: string[];
+  codemode: boolean;
+  environment: { TUMWATER_NOTES_PATH: string };
+}
+function tumwaterServer(fake: FakeOpencodeReplay): NotesServer | undefined {
+  const env = fs.readFileSync(fake.envFile, "utf8");
+  const line = env.split("\n").find((l) => l.startsWith("OPENCODE_CONFIG_CONTENT="));
+  if (line === undefined) return undefined;
+  const parsed = JSON.parse(line.slice("OPENCODE_CONFIG_CONTENT=".length)) as { mcp?: { servers: Record<string, NotesServer> } };
+  return parsed.mcp?.servers?.tumwater;
+}
+
+test("an authoring run with a notebook carries the role-notes MCP server on every invocation", async () => {
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const notes = path.join(dir, ".tumwater", "notes", "feature.md");
+  await withOpencodeReplay(opencodeCaptures.editRun, async (fake) => {
+    const run = opencodeRun(dir, { notesPath: notes });
+    let result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    let server = tumwaterServer(fake);
+    assert.ok(server, "a notes-carrying run configures the tumwater server");
+    assert.equal(server!.type, "local");
+    assert.equal(server!.codemode, false);
+    assert.match(server!.command[server!.command.length - 1]!, /role-notes-server\.js$/, "points at the bundled role-notes server");
+    assert.equal((server!.environment as { TUMWATER_NOTES_PATH: string }).TUMWATER_NOTES_PATH, notes, "points at the role's notes path");
+
+    // A continue of that run carries the server too (OpenCode's config is per process).
+    result = await runAgent({ ...run, continueSession: true });
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    server = tumwaterServer(fake);
+    assert.ok(server, "the continue carries the server too");
+    assert.equal((server!.environment as { TUMWATER_NOTES_PATH: string }).TUMWATER_NOTES_PATH, notes);
+  });
+
+  // A run without a notebook names no tumwater server at all.
+  await withOpencodeReplay(opencodeCaptures.editRun, async (fake) => {
+    const run = opencodeRun(dir);
+    const result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.equal(tumwaterServer(fake), undefined, "no notes path means no tumwater MCP server");
+  });
+});

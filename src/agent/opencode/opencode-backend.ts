@@ -15,13 +15,15 @@
  * fresh id (design §4).
  *
  * Registration lives in src/agent/run-agent.ts beside the pi and claude adapters; a test selects
- * opencode by setting `config.agent = "opencode"` on a run. Part 5b/7 turns the role-notes MCP
- * server on; until then a run's `notesPath` is ignored (design decision 8). */
+ * opencode by setting `config.agent = "opencode"` on a run. A run carrying a notebook gets the
+ * bundled role-notes MCP server under `mcp.servers.tumwater` (part 5b/7) and the notes path in
+ * its environment, as the pi and claude adapters do. */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedAgentConfig } from "../../config/config-views.js";
 import { agentBaseEnv } from "../../process/run-marker.js";
@@ -150,6 +152,13 @@ function classifyOpencodeExit(info: AgentExitInfo): AgentExitClassification {
   return {};
 }
 
+/** The bundled role-notes MCP server's dist module, resolved exactly as claude-backend.ts's
+ * `roleNotesMcpConfig` resolves it (the same dist module the bundled pi extensions reach), so
+ * OpenCode runs it under the same node running this harness. */
+function roleNotesServerPath(): string {
+  return fileURLToPath(new URL("../mcp/role-notes-server.js", import.meta.url));
+}
+
 /** The agent-backend seam's opencode adapter. */
 export const opencodeBackend: AgentBackend = {
   id: "opencode",
@@ -168,8 +177,21 @@ export const opencodeBackend: AgentBackend = {
     const configContent = opencodeConfigContent({
       cwd: run.cwd,
       operatorMcpNames: operatorMcpNames(process.env, os.homedir()),
+      // A run carrying a notebook gets tumwater's bundled role-notes MCP server under
+      // `mcp.servers.tumwater`. Passed on EVERY invocation that carries notes — fresh or
+      // resumed, a transient retry, a SUMMARY follow-up — because OpenCode's config is per
+      // process.
+      ...(run.notesPath !== undefined
+        ? { notesServer: { command: [process.execPath, roleNotesServerPath()], notesPath: run.notesPath } }
+        : {}),
     });
-    const env = opencodeEnv(agentBaseEnv(run.runMarker), { dbPath, configContent });
+    // The notebook path rides beside the run marker so the spawned MCP server — which inherits
+    // this environment — reads the same notes file, as the pi and claude adapters' envs do.
+    const base =
+      run.notesPath === undefined
+        ? agentBaseEnv(run.runMarker)
+        : { ...agentBaseEnv(run.runMarker), TUMWATER_NOTES_PATH: run.notesPath };
+    const env = opencodeEnv(base, { dbPath, configContent });
     const { sessionId } = resolveOpencodeSession(run, env);
     const { args, stdin } = opencodeArgs({
       model: run.config.model ?? "",
