@@ -1,0 +1,121 @@
+// vocabulary: plain
+import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
+import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
+import { moveEntrySelection } from "./tui-backlog.js";
+import { arrowDir } from "./tui-keymap.js";
+import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
+import type { TuiPaneSession } from "./tui-pane-session.js";
+
+/** The Queued pane (view roleIds.length + 6) of the TUI (src/ui/tui/tui.tsx): the prompt row
+ * selection, the up/down select and Esc-to-list arms, and the two-step Ctrl+X cancel arm.
+ * Split out of the pane-navigation monolith; it owns the pane's rows/selection state and
+ * the arms that touch them. */
+export function createQueuedPane(
+  session: TuiPaneSession,
+) {
+  // The Queued pane's row selection (null = list mode): the index into queuedRows of the
+  // prompt shown in full. Cleared on every Ctrl+T, like selectedEntry, so cycling back into
+  // the pane starts at today's list.
+  let selectedQueued: number | null = null;
+  // The Queued pane's cached rows, the same queuedListRows traversal the cached
+  // renderQueuedList string was built from, so a selection addresses a row's role/position
+  // without re-reading the queue on every frame.
+  let queuedRows: QueuedListRow[] = [];
+
+  // Re-read the Queued pane's rows and cached list after the queue changed (entry or cancel)
+  // and clamp the row selection to the shortened queue — a selection past the new end lands
+  // on the last remaining prompt, never on a stale role/position. An emptied queue clears it
+  // back to list mode. The refreshed list and any clamped-in row share paneScroll, so the
+  // offset resets too: a cancel that moves the selection opens the newly selected prompt at
+  // its head. The one home of the queuedRows/paneCache pairing the Ctrl+T entry and the Ctrl+X
+  // cancel share, so the pane's list and its selectable rows cannot drift.
+  const refreshQueued = (): void => {
+    queuedRows = queuedListRows(session.root, null, listWideScope(session.root));
+    session.paneCache = renderQueuedList(queuedRows, session.now());
+    selectedQueued = selectedQueued === null || queuedRows.length === 0
+      ? null
+      : Math.min(selectedQueued, queuedRows.length - 1);
+    session.paneScroll = 0;
+  };
+
+  const handleKey = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    if (
+      key.ctrl && key.name === "x" &&
+      promptLineFree(ctx.es) &&
+      session.view === session.roleIds.length + 6 && selectedQueued !== null
+    ) {
+      // Ctrl+X cancels the selected queued prompt through the CLI's own per-loop path
+      // (`tumwater prompt --cancel <n> --role <id>`): cancelRolePrompt removes that loop's
+      // Nth queue file and logs the prompt_cancelled event, so the pane, the CLI, and the
+      // dashboard cancel cannot drift. Then re-read the queue so the pane's list and rows
+      // reflect the removal and the selection clamps. A no-selection press (list mode), and
+      // every other view, leaves the queue untouched.
+      try {
+        const row = queuedRows[Math.min(selectedQueued, queuedRows.length - 1)];
+        if (row !== undefined) {
+          const outcome = cancelRolePrompt(session.root, row.role, row.position);
+          // A gone outcome is the concurrent-dequeue race (cancelRolePrompt's own contract),
+          // not a failure: flash it honestly and still refresh the listing.
+          session.flashMessage(
+            outcome.status === "cancelled"
+              ? `cancelled inbox message #${row.position} for ${row.role}`
+              : `inbox message #${row.position} for ${row.role} was already gone`,
+          );
+          refreshQueued();
+        }
+      } catch (err) {
+        session.flashError(err);
+      }
+      session.requestRender();
+      return true;
+    }
+    const arrow = arrowDir(key.name);
+    if (session.view === session.roleIds.length + 6 && arrow !== null) {
+      // In the Queued pane, up/down select a queued prompt row in full (wrapping, the backlog
+      // pane's rule) instead of editing the prompt; an empty queue has nothing to select, so
+      // moveEntrySelection clears the selection. Every other view keeps today's behavior.
+      // The selected body shares paneScroll with the list, so a newly opened row must start
+      // at its head (the status pane's entryScroll reset on the same move), or it renders
+      // scrolled into the middle of the previous row's body.
+      selectedQueued = moveEntrySelection(queuedRows.length, selectedQueued, arrow);
+      session.paneScroll = 0;
+      session.requestRender();
+      return true;
+    }
+    if (
+      key.name === "escape" && selectedQueued !== null && session.view === session.roleIds.length + 6 &&
+      promptLineFree(ctx.es)
+    ) {
+      // Esc on the Queued pane returns it to list mode; the cached list is untouched (nothing
+      // was cancelled), so the pane shows the same renderQueuedList it entered with. The
+      // shared paneScroll resets with the body switch, like a selection move.
+      selectedQueued = null;
+      session.paneScroll = 0;
+      session.requestRender();
+      return true;
+    }
+    return false;
+  };
+
+  return {
+    handleKey,
+    enter: () => {
+      // Queued is a synchronous read of the same queue list `tumwater prompt --list`
+      // prints (renderQueuedList over queuedListRows), so it paints on entry with no
+      // async collector. The now() clock keeps the age/countdown suffix testable.
+      refreshQueued();
+      return true;
+    },
+    reset() {
+      // Leaving a view drops any queued-row selection; re-entering starts at the list.
+      selectedQueued = null;
+    },
+    refreshQueued,
+    state() {
+      return { selectedQueued, queuedRows };
+    },
+  } satisfies TuiPaneModule & { refreshQueued(): void };
+}

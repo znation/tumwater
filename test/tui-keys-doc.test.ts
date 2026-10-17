@@ -11,13 +11,17 @@ const read = (rel: string): string => fs.readFileSync(fileURLToPath(new URL(rel,
 function handledCtrlKeys(): Set<string> {
   const keys = new Set<string>();
   // The prompt-line editor arms were split out of tui-editors.ts into per-editor modules, so
-  // scan the tui/ directory for all of them (tui-editors.ts itself now only routes to them).
+  // scan the tui/ directory for all of them (tui-editors.ts itself now only routes to them),
+  // and the pane arms were split out of tui-panes.ts into per-pane modules the same way.
   const tuiDir = new URL("../../src/ui/tui/", import.meta.url);
-  const editorFiles = fs
-    .readdirSync(fileURLToPath(tuiDir))
-    .filter((f) => f.startsWith("tui-editor-") && f.endsWith(".ts"))
-    .map((f) => `../../src/ui/tui/${f}`);
-  for (const file of [...editorFiles, "../../src/ui/tui/tui-keys.ts", "../../src/ui/tui/tui-panes.ts"]) {
+  const fileNames = (prefix: string): string[] =>
+    fs
+      .readdirSync(fileURLToPath(tuiDir))
+      .filter((f) => f.startsWith(prefix) && f.endsWith(".ts"))
+      .map((f) => `../../src/ui/tui/${f}`);
+  const editorFiles = fileNames("tui-editor-");
+  const paneFiles = fileNames("tui-pane-");
+  for (const file of [...editorFiles, ...paneFiles, "../../src/ui/tui/tui-keys.ts", "../../src/ui/tui/tui-panes.ts"]) {
     for (const line of read(file).split("\n")) {
       if (!line.includes("key.ctrl &&")) continue;
       for (const m of line.matchAll(/key\.name === "([a-z])"/g)) keys.add(m[1]!.toUpperCase());

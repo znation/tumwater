@@ -189,8 +189,8 @@ export interface TuiKeys {
  * (src/ui/tui/tui.tsx) stays the caller: it syncs snapshot data and line budgets in, and reads
  * the resulting state out to compose the frame — the same data flow, one module boundary added.
  * The prompt-line editor half of this closure lives in tui-editors.ts and the pane-navigation
- * half in tui-panes.ts; this file keeps the outer dispatch, the flash notice, and the director
- * gate. */
+ * half in the tui-panes.ts factory beside its per-pane modules; this file keeps the outer
+ * dispatch, the flash notice, and the director gate. */
 export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
