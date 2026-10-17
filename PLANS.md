@@ -5,6 +5,69 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### The TUI Health tab and the dashboard Health card take `tumwater doctor --problems`' problems-only view (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the blocked runner/run/cleanup parts; touches only src/ui/tui/, src/ui/gui/, docs/cli.md and their tests)
+
+**Goal.** `tumwater doctor` prints well over 50 rows and `--problems` (`problemsOnly` and
+`renderDoctorProblems` in src/doctor/doctor-render.ts) trims them to the warn and fail rows.
+The two dashboards still paint every `ok` row: the TUI's Health tab renders `renderDoctor` into
+its cached pane, and the dashboard's Health card renders every check through
+`renderDoctorReport`. Give both surfaces the same problems-only view so an operator can hide
+the ok rows without leaving the surface. The checks that run and the default full view stay as
+they are.
+
+**Approach.**
+
+TUI (the Health tab is `kind === "health"` in src/ui/tui/tui-pane.ts, painted from the
+`paneCache` the Ctrl+T arm in src/ui/tui/tui-panes.ts fills):
+- src/ui/tui/tui-panes.ts: import `renderDoctorProblems` beside `renderDoctor`. Add
+  `let healthProblems = false;` and `let lastDoctorReport: DoctorReport | null = null;` beside
+  `paneCache`. In the Health arm (`view === roleIds.length + 7`), set `lastDoctorReport = null`
+  at entry and `lastDoctorReport = report` on resolution, painting
+  `paneCache = (healthProblems ? renderDoctorProblems : renderDoctor)(report)`. Add a Ctrl+O arm
+  before the existing History outcome arm: when `view === roleIds.length + 7` and
+  `promptLineFree()`, flip `healthProblems`, repaint `paneCache` from `lastDoctorReport` (reset
+  `paneScroll = 0`; leave the loading note when it is null), `deps.requestRender()`, `return
+  true`. Every other view keeps the existing History Ctrl+O behavior. Expose `healthProblems`
+  from `state()`.
+- src/ui/tui/tui-keys.ts: add `healthProblems: boolean` to `TuiKeysState`; the
+  `...panes.state()` spread already carries the value.
+- src/ui/tui/tui.tsx: pass `problems: s.healthProblems` in the Health pane literal.
+- src/ui/tui/tui-frame.ts: make the Health variant `{ kind: "health"; problems?: boolean }`;
+  in `hintLine` split Health from the Brief branch and add
+  `["Ctrl+O", view.problems ? "problems only" : "all checks"]`.
+- docs/cli.md: the `Ctrl+O` TUI row's Where becomes `History, Health`, noting that on Health it
+  toggles the problems-only view.
+
+Dashboard (the Health card in src/ui/gui/gui-client-settings.ts):
+- Add `let lastDoctor = null; let doctorProblems = false;`. Change
+  `renderDoctorReport(d, problems = false)`: when `problems`, keep only checks whose
+  `level !== "ok"` and append a `<p>` line counting the hidden ok rows (mirroring `problemsOnly`
+  and `renderDoctorProblems`). The Health card header gains a `<label>` holding
+  `<input type='checkbox' data-action='doctor-problems'> Problems only`. `fetchDoctor` stores
+  `lastDoctor = report` and paints `renderDoctorReport(report, doctorProblems)`. Add
+  `toggleDoctorProblems(checked)`: set `doctorProblems = checked` and repaint `doctorbody` from
+  `lastDoctor` (a no-op while it is null).
+- src/ui/gui/gui-client-boot.ts: a delegated `change` listener beside the doctor-rerun click arm
+  calls `toggleDoctorProblems(box.checked)` for `input[data-action='doctor-problems']`.
+
+**Files touched.** src/ui/tui/tui-panes.ts, src/ui/tui/tui-keys.ts, src/ui/tui/tui.tsx,
+src/ui/tui/tui-frame.ts, src/ui/gui/gui-client-settings.ts, src/ui/gui/gui-client-boot.ts,
+docs/cli.md, test/tui-keys.test.ts, test/tui-frame.test.ts, test/gui-client-settings.test.ts.
+
+**Acceptance criteria.**
+- test/tui-keys.test.ts: a test modelled on "the Health tab caches renderDoctor of the seam's
+  report", with a seam report holding one `ok` and one `warn` check. On entry `state().paneCache`
+  is `renderDoctor(report)`; after one Ctrl+O it is `renderDoctorProblems(report)` (holds the
+  warn row and the hidden-ok count, not the ok row's name); after a second Ctrl+O it is
+  `renderDoctor(report)` again. Ctrl+O on the History view still cycles the outcome filter.
+- test/tui-frame.test.ts: `hintLine` for `{ kind: "health", problems: false }` names `Ctrl+O`
+  with `all checks`; for `{ kind: "health", problems: true }` with `problems only`.
+- test/gui-client-settings.test.ts: `renderDoctorReport(report, true)` keeps only the warn and
+  fail rows and appends the hidden-count line; `renderDoctorReport(report)` still renders every
+  row; a test calling `toggleDoctorProblems(true)` after `fetchDoctor` repaints `doctorbody`
+  with the filtered report. Add `toggleDoctorProblems` to the scope's extracted names.
+- `npm run test` passes, including `tui-keys-doc.test.ts` (Ctrl+O is already a documented key).
+
 ### Plain terms code merge, part 11a/11: Rewrite the merge family in the pipeline modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11b/11, 11c/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in src/merge/ src/events/ src/review/ src/verdict/ src/git/ src/tick/ src/failure/ src/change/ src/build/ src/process/ and src/loop/)
 
 **Goal.** The merge family's identifiers and file names are already renamed and guarded (`RETIRED` in test/retired-names.test.ts carries the family; part 11/11's identifier half landed). What remains is comment prose. This part rewrites the merge family in the comments of the pipeline modules, so a reader sees `merge`, `merged` and `approved` where the code merges.
