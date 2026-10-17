@@ -433,6 +433,16 @@ ${titles.map((t) => `- "${t}"`).join("\n")}
 </held-entries>`;
 }
 
+/** The capped series-part range list shared by the merged-prerequisites and waiting-parts
+ * notes: at most five `- "title"` lines, each naming the entry's heading line range, then one
+ * `- …and N more` line for the rest, so the two notes list a part's neighbors identically. A
+ * pure function so its shape is pinned in tests (test/gate-prompts.test.ts). */
+function entryRangeLines(entries: readonly { title: string; start: number; end: number }[]): string[] {
+  const lines = entries.slice(0, 5).map((e) => `- "${e.title}" (PLANS.md lines ${e.start}-${e.end})`);
+  if (entries.length > 5) lines.push(`- …and ${entries.length - 5} more`);
+  return lines;
+}
+
 /** The note appended to a series part's assignment when parts it requires already landed: each
  * one's Done heading and PLANS.md line range, so the implementer reads exactly what that part
  * changed instead of searching a Done section that runs to thousands of lines. Lists at most
@@ -440,8 +450,7 @@ ${titles.map((t) => `- "${t}"`).join("\n")}
 export function buildMergedPrerequisitesNote(
   entries: readonly { title: string; start: number; end: number }[],
 ): string {
-  const lines = entries.slice(0, 5).map((e) => `- "${e.title}" (PLANS.md lines ${e.start}-${e.end})`);
-  if (entries.length > 5) lines.push(`- …and ${entries.length - 5} more`);
+  const lines = entryRangeLines(entries);
   return `<merged-prerequisites>
 Your assigned entry builds on parts that are already merged. Each one's Done entry records what it actually changed; read one by its range when your entry depends on its details, rather than searching PLANS.md:
 ${lines.join("\n")}
@@ -518,8 +527,7 @@ If the failure is environmental — flaky, load-sensitive, or a broken local too
  * five are listed, then a literal `- …and N more` line (the `moreSuffix` phrase renders inline,
  * not as a list line). A pure function so its shape is pinned in tests. */
 export function buildWaitingPartsNote(entries: readonly { title: string; start: number; end: number }[]): string {
-  const shown = entries.slice(0, 5).map((e) => `- "${e.title}" (PLANS.md lines ${e.start}-${e.end})`);
-  if (entries.length > 5) shown.push(`- …and ${entries.length - 5} more`);
+  const shown = entryRangeLines(entries);
   return `<waiting-parts>
 Later parts of your series wait for yours to land, and each one plans its own share of the work: do none of it here, and keep in place the names and files they say your part leaves behind. Read one by its range when you need to know what it expects:
 ${shown.join("\n")}
