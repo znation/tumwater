@@ -11,12 +11,17 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
  * location so staged builds (.tumwater/build/<sha>) load their own copies: bounded-output caps
  * oversized tool results, context-shake then reclaims old bulky results at 70% of the window,
  * context-budget appends its context-usage note to the (already bounded) result that crosses a
- * threshold, and role-notes registers the `role_notes` tool (only when TUMWATER_NOTES_PATH
- * names a notebook — see pi-extension/role-notes.ts). */
+ * threshold, strip-thinking drops the model's replayed thinking from each request on a
+ * small-window chat-completions model, and role-notes registers the `role_notes` tool (only when
+ * TUMWATER_NOTES_PATH names a notebook — see pi-extension/role-notes.ts). */
 export function bundledExtensionPaths(): string[] {
-  return ["bounded-output.js", "context-shake.js", "context-budget.js", "role-notes.js"].map((file) =>
-    fileURLToPath(new URL(`../pi-extension/${file}`, import.meta.url)),
-  );
+  return [
+    "bounded-output.js",
+    "context-shake.js",
+    "context-budget.js",
+    "strip-thinking.js",
+    "role-notes.js",
+  ].map((file) => fileURLToPath(new URL(`../pi-extension/${file}`, import.meta.url)));
 }
 
 /** The fields of PiRunOptions (src/agent/run-agent.ts) that piArgs reads, plus the resolved

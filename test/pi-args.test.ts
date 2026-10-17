@@ -48,7 +48,13 @@ test("piArgs loads the context-shake extension right after bounded-output", () =
   const args = piArgs({ config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" });
   const exts = args.flatMap((a, i) => (a === "-e" ? [args[i + 1]!] : []));
   assert.deepEqual(exts, bundledExtensionPaths());
-  assert.deepEqual(exts.map((e) => path.basename(e)), ["bounded-output.js", "context-shake.js", "context-budget.js", "role-notes.js"]);
+  assert.deepEqual(exts.map((e) => path.basename(e)), [
+    "bounded-output.js",
+    "context-shake.js",
+    "context-budget.js",
+    "strip-thinking.js",
+    "role-notes.js",
+  ]);
   for (const e of exts) assert.ok(fs.existsSync(e), `extension exists in dist: ${e}`);
 });
 

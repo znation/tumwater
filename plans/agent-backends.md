@@ -43,7 +43,7 @@ agent-CLI abstraction. Every pi assumption below the spawn is still in place:
 | Cost | `usage.cost.total` per message, priced from `~/.pi/agent/models.json` | per-message token usage only. Cost appears once, as `result.total_cost_usd`, with a per-model `modelUsage` breakdown that includes `contextWindow` |
 | Errors | text in `errorMessage`, matched by regex | `result.is_error` + `api_error_status` (HTTP status) + `terminal_reason`. **An API error arrives as `subtype: "success"` with `is_error: true`.** An unknown model gives `api_error_status: 404`, `terminal_reason: "api_error"`. Not being logged in gives `is_error: true` with `api_error_status: null` and the text "Not logged in · Please run /login" |
 | Live tool progress | `tool_execution_update` with output text | **nothing** between `tool_use` and its `tool_result`. `tool_progress` heartbeats (every 30 s of a running tool, claude 2.1.295) and `system/thinking_tokens` estimates arrive but are dropped silently by the translator: the open call already tracks liveness |
-| Extensions | bounded-output, context-shake, context-budget, role-notes (`-e`) | none load. Claude Code has its own output truncation, large-output spill-to-file and auto-compaction. `role_notes` needs another carrier |
+| Extensions | bounded-output, context-shake, context-budget, strip-thinking, role-notes (`-e`) | none load. Claude Code has its own output truncation, large-output spill-to-file and auto-compaction. `role_notes` needs another carrier |
 | Tool names | `bash`, `read`, `edit`, `write` | `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, and `file_path` rather than `path` |
 | Auth check | `pi auth check --provider P --json` | `claude auth status` (JSON, `loggedIn`) |
 
@@ -341,6 +341,7 @@ Environment, layered on today's (`TUMWATER_RUN`, `NODE_OPTIONS` preload, noteboo
 | bounded-output (head+tail at 12k/16k + full-output file) | Claude Code truncates Bash output and spills large results to a file it names. Not needed; the prompt bullet that promises tumwater's marker becomes dialect text |
 | context-shake (pi `context_edit` at 70/85%) | Not needed: claude auto-compacts (→ `compacted`), window 1M |
 | context-budget (50/70/85% notes) | Dropped for claude in this series. Possible later via a `--settings` PostToolUse hook |
+| strip-thinking (no replayed thinking at a window of at most 256k; added 2026-10-17) | Not needed: Claude Code manages its own thinking blocks, and the Anthropic API requires them back during tool use |
 | role-notes (`role_notes` tool) | **A tiny stdio MCP server shipped in dist** (`src/agent/mcp/role-notes-server.ts`) passed via `--mcp-config` only when `TUMWATER_NOTES_PATH` is set; same 4 KB cap and atomic write, sharing `writeRoleNote` (src/agent/role-notes-write.ts). Tool name `mcp__tumwater__role_notes`. MCP rather than "edit this file": the notebook lives under `.tumwater/`, which the prompts forbid touching, and every future agent CLI speaks MCP |
 
 `PromptDialect` (src/prompt/dialect.ts) carries the only backend-specific prompt text:

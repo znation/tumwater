@@ -286,7 +286,8 @@ suite's first steps recompile and restamp `dist/`), so run suites in a worktree.
 
 Every run carries PRINCIPLES.md, which only the director and steward edit. Prompts are written
 for a mid-sized model with a finite context window: tool-call budgets, ranged reads of large
-files, and a bundled pi extension that trims oversized tool output to its head and tail.
+files, and bundled pi extensions that trim oversized tool output to its head and tail and, on
+a model with a window of at most 256k, stop sending the model's earlier thinking back to it.
 
 Each role also has notes: a short, model-written note its own earlier runs left for the
 next fresh session (where things live, what was ruled out, what to look at next). They live at

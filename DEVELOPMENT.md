@@ -181,7 +181,11 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/tick/`: the per-run pipeline (`tick-stage.ts`, `tick-prompt.ts`, `tick-timing.ts`,
   `tick-usage.ts`, `tick-verdict.ts`, `tick-finalize.ts`, `tick-apply.ts`, `tick-resume.ts`,
   `tick-detail.ts`, `tick-detail-data.ts`, `tick-outcome.ts`).
-- `src/pi-extension/`: the bundled bounded-output pi extension.
+- `src/pi-extension/`: the bundled pi extensions, loaded on every pi run in this order:
+  bounded-output (head+tail cap on oversized tool results), context-shake (reclaims old bulky
+  results at 70% of the window), context-budget (context-usage notes at 50/70/85%),
+  strip-thinking (drops replayed thinking on a chat-completions model with a window of at most
+  256k) and role-notes (the `role_notes` tool).
 - `src/gui/`: the `tumwater gui` command and the dashboard's HTTP transport — the CLI entry
   (`gui-command.ts`), the server (`gui-server.ts`), its /api GET and POST handlers
   (`gui-endpoints.ts`, `gui-endpoint-commands.ts`), the shared request/response plumbing
