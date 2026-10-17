@@ -7,7 +7,7 @@
  * shape — because it is a pure render with no ink or UI dependency, and core modules
  * (collections.ts, history-data.ts) name it in their contracts. */
 import type { ReportData, ReportDay, ReportTotals, SinceReport } from "./report-data.js";
-import { addTo, compareCodeUnits, rankCountEntries } from "../collections.js";
+import { addTo, rankCountEntries, sortByValueDesc } from "../collections.js";
 import { compactTokens, usd } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
@@ -213,7 +213,7 @@ function costPerCommitPairs(
     if (n > 0) mergeDone.push([role, c / n, n]);
     else idleCost.push([role, c]);
   }
-  mergeDone.sort((a, b) => b[1] - a[1] || compareCodeUnits(a[0], b[0]));
+  sortByValueDesc(mergeDone);
   return { mergeDone, idle: rankCountEntries(idleCost) };
 }
 

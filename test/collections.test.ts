@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addTo, getOrCreate, groupBy, memoSetLru, rankCountEntries } from "../src/collections.js";
+import { addTo, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
 // digest, the team hold, and the error-storm reducer. Those paths already cover it end to
@@ -85,6 +85,67 @@ test("rankCountEntries accepts a Map and leaves the input unmutated", () => {
     ["budget", 5],
   ]);
   assert.notEqual(ranked, counts);
+});
+
+// sortByValueDesc is the sibling ordering for `[key, value, …]` pairs that want a code-unit
+// tiebreak instead of rankCountEntries's localeCompare: the log-commands per-type event-count
+// lines and the report's mergeDone ranking. These pin its contract directly — value descending,
+// then code-unit ascending — and that it sorts the input array in place and returns it (the
+// `.sort()` the call sites replaced).
+
+test("sortByValueDesc orders by value descending, breaking ties in code-unit order", () => {
+  assert.deepEqual(
+    sortByValueDesc([
+      ["b", 2],
+      ["a", 3],
+      ["c", 2],
+    ]),
+    [
+      ["a", 3],
+      ["b", 2],
+      ["c", 2],
+    ],
+  );
+});
+
+test("sortByValueDesc uses code-unit order for the tiebreak, not localeCompare", () => {
+  // "é" is U+00E9; code-unit order puts "z" (0x7A) before it, where localeCompare would not.
+  assert.deepEqual(
+    sortByValueDesc([
+      ["é", 1],
+      ["z", 1],
+    ]),
+    [
+      ["z", 1],
+      ["é", 1],
+    ],
+  );
+});
+
+test("sortByValueDesc sorts in place and returns the input array", () => {
+  const entries: Array<[string, number]> = [
+    ["b", 2],
+    ["a", 3],
+  ];
+  const out = sortByValueDesc(entries);
+  assert.equal(out, entries);
+  assert.deepEqual(entries, [
+    ["a", 3],
+    ["b", 2],
+  ]);
+});
+
+test("sortByValueDesc carries extra trailing fields through untouched", () => {
+  assert.deepEqual(
+    sortByValueDesc([
+      ["b", 2, "x"],
+      ["a", 3, "y"],
+    ]),
+    [
+      ["a", 3, "y"],
+      ["b", 2, "x"],
+    ],
+  );
 });
 
 // addTo seeds a missing key at `amount`, so its read must be an OWN property: the custom-loop

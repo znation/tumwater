@@ -87,15 +87,17 @@ export function memoSetLru<K, V>(cache: Map<K, V>, key: K, value: V, max: number
 
 /** One deterministic ranking rule: count descending, then key ascending, so equal counts always
  * order the same way. These two helpers are the single home of that rule; every surface that
- * ranks counters calls one of them rather than re-implementing the comparator —
+ * ranks counters by count calls one of them rather than re-implementing the comparator —
  * `rankCountEntries` serves the `[key, count]` entry shape (src/report/report-render.ts's
  * rankedRoleMap, src/team/failure-spread.ts's strongest-kind pick) and `rankByCount` serves
  * callers whose counts are fields or computations on other shapes
  * (src/failure/failure-cluster.ts's clusters, src/team/error-storm.ts's strongest-cause pick,
- * failure-data.ts's outcome table, and time-spend.ts's time-and-spend table). The one deliberate
- * exception is ui/gui/gui-client-report.ts's reportRoleOrder, which keeps its own copy by design:
- * it runs in the browser, where harness modules cannot be imported. Both helpers return a fresh
- * sorted array; the input is never mutated. */
+ * failure-data.ts's outcome table, and time-spend.ts's time-and-spend table). `sortByValueDesc`
+ * is the deliberate sibling for the same value-descending shape that wants a code-unit tiebreak
+ * instead of localeCompare, and unlike these two it sorts its input array in place. The one
+ * deliberate exception to both orderings is ui/gui/gui-client-report.ts's reportRoleOrder, which
+ * keeps its own copy by design: it runs in the browser, where harness modules cannot be imported.
+ * These two helpers return a fresh sorted array; their input is never mutated. */
 export function rankByCount<T>(
   items: Iterable<T>,
   count: (item: T) => number,
@@ -115,11 +117,24 @@ export function lowerMedian(values: number[]): number {
 }
 
 /** Ascending string comparator by UTF-16 code unit — the locale-independent order a bare `.sort()`
- * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used by
- * src/cli/cli-run.ts, src/cli/log-commands.ts, src/history/history-data.ts and
- * src/report/report-render.ts. */
+ * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used directly by
+ * src/cli/cli-run.ts, src/cli/log-commands.ts and src/history/history-data.ts, and by
+ * `sortByValueDesc` for its tiebreak. */
 export function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Rank `[key, value, …]` pairs by value descending, breaking ties in code-unit order
+ * (compareCodeUnits — the locale-independent order, unlike rankByCount's localeCompare), so
+ * equal values always order the same way. The single home of that comparator, which
+ * src/cli/log-commands.ts's per-type event-count lines and src/report/report-render.ts's
+ * mergeDone sort hand-rolled before; `…rest` lets a site carry extra trailing fields
+ * (report-render's third column) through the sort untouched. Mutates and returns the input
+ * array, matching the `.sort()` the call sites replaced. */
+export function sortByValueDesc<K extends string, Rest extends unknown[]>(
+  entries: Array<[K, number, ...Rest]>,
+): Array<[K, number, ...Rest]> {
+  return entries.sort((a, b) => b[1] - a[1] || compareCodeUnits(a[0], b[0]));
 }
 
 /** rankByCount for `[key, count]` entry pairs (count first): src/report/report-render.ts's
