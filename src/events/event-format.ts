@@ -6,7 +6,7 @@ import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
 import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
-import { textOr, truncate } from "../text/text.js";
+import { squash, textOr, truncate } from "../text/text.js";
 import { formatTimestamp, formatTime } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
@@ -337,8 +337,9 @@ export function eventMessage(e: HarnessEvent): string {
     case "role_streak_paused":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the pause IS the
       // harness handling the failure. Names the streak depth and the lift command, so the
-      // operator knows why the loop stopped and what to do about it.
-      return `role ${textOr(e.role)} paused — ${textOr(e.streak)} runs failed in a row; fix the cause and resume it (tumwater resume --role <id>)`;
+      // operator knows why the loop stopped and what to do about it; names the last error
+      // when one is recorded.
+      return `role ${textOr(e.role)} paused — ${textOr(e.streak)} runs failed in a row${typeof e.lastError === "string" && e.lastError.trim() ? ` — last error: ${squash(e.lastError, 120)}` : ""}; fix the cause and resume it (tumwater resume --role <id>)`;
     case "role_cap_warning":
       // The per-role early page beside role_cap_paused: the cap is not reached yet, so say so —
       // the operator still has room to raise it before the loop stops.

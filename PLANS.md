@@ -1680,7 +1680,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The repeated-failure pause page names the role's last error, so `tumwater logs` and the notify message say why the role stopped (planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts)
+## Done
+
+### The repeated-failure pause page names the role's last error, so `tumwater logs` and the notify message say why the role stopped (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts)
 
 **Goal.** When the error-streak breaker pauses a role, `pollStreakGate` (`src/gates/streak-gate.ts`) logs `role_streak_paused` with `role`, `streak`, and `lastError` when one is recorded. `docs/how-it-works.md` already says this event "names the streak and the cause", but `formatEvent` (`src/events/event-format.ts`, `case "role_streak_paused"`) renders only `role <id> paused — <N> runs failed in a row; fix the cause and resume it (tumwater resume --role <id>)`. `role_streak_paused` is in `NOTIFY_EVENT_TYPES` (`src/events/notify.ts`), so that line is the whole page: it tells the operator to fix the cause without saying what the cause is. Render the recorded `lastError` in the line.
 
@@ -1699,8 +1701,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `lastError: "   "` renders the same line as the summary-less event.
 - `test/event-format.test.ts`'s malformed-payload case for `role_streak_paused` (object `role` and `streak`, no `lastError`) still passes.
 - `npm run test` passes.
-
-## Done
 
 ### The `merge_failed` event carries the change's summary, so `tumwater logs` and the notify page say which change failed to land (planned 2026-10-16 by plan; independent of every other entry — touches src/landing/landing-slot.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md and their tests) — done 2026-10-16
 

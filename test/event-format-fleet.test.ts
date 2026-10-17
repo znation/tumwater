@@ -246,6 +246,20 @@ test("formatEvent renders the per-role pause and resume events with the role nam
     `breaker pause line: ${streakPaused}`,
   );
   assert.ok(!streakPaused.includes("warning"), `the breaker's pause is routine, not a warning: ${streakPaused}`);
+  const withError = (lastError: string) =>
+    formatEvent({ ts: 0, source: "tumwater", type: "role_streak_paused", role: "docs", streak: 10, lastError } as never);
+  const named = withError("pi exited 1\n  at runTick");
+  assert.match(
+    named,
+    /role docs paused — 10 runs failed in a row — last error: pi exited 1 at runTick; fix the cause and resume it \(tumwater resume --role <id>\)$/,
+    `names the last error: ${named}`,
+  );
+  assert.ok(!named.includes("warning"), `still routine: ${named}`);
+  const clipped = withError("x".repeat(300));
+  const shown = /last error: (.*); fix the cause/.exec(clipped)?.[1] ?? "";
+  assert.equal(shown.length, 120);
+  assert.ok(shown.endsWith("…"), `clipped with an ellipsis: ${shown}`);
+  assert.equal(withError("   "), streakPaused, "a blank lastError renders the summary-less line");
 });
 
 // Fleet-wide 429 hold (src/fleet/fleet-hold.ts; BUGS.md 2026-09-21 "A 429 storm still has no

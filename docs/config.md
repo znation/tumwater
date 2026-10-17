@@ -125,7 +125,7 @@ The `notify` command receives one of these values as `TUMWATER_EVENT_TYPE`; each
 | `budget_paused` | The spend cap is hit with no usable free fallback, so the role loops are stopped. |
 | `claude_window_warning` | The claude.ai subscription window first reported a warning; claude jobs still run. This is the heads-up before the hold. |
 | `claude_window_limited` | The subscription window was rejected, so every claude job is held until it resets. |
-| `role_streak_paused` | The repeated-failure breaker paused a role. |
+| `role_streak_paused` | The repeated-failure breaker paused a role; the message names the streak and its last error. |
 | `role_cap_paused` | A role reached its own daily cost cap and stops starting runs. |
 | `disk_low` | Free space on the worktrees volume dropped below `diskHoldGB`, so new work is held. |
 | `main_red_hold` | Main's own check is failing, so every code role is held until a fix merges. |
