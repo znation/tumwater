@@ -7,12 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code merge, part 9/11: Rename the merge identifiers in the gates and doctor and backlog and git and operator and concurrency and check modules (planned 2026-10-16 by user; requires part 8/11 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/doctor/ src/backlog/ src/git/ src/operator/ src/concurrency/ src/baseline/ src/build/ and their tests)
 
-**Needs replan 2026-10-16 by feature: rejected after 3 review rounds**
-
-1. (prior 2) `src/doctor/doctor-backlog.ts:279` adds a new 27-column stub line, " * the empty set. Reads the", in the `checkStaleQueuedMerges` doc comment, and line 257 still breaks early before "(plans/merge-queue.md)". Both comments need reflowing so only each paragraph's last line is short.
-2. `src/gates/maintenance-quota.ts:65` reads "One merged merge the window keeps", a garbled doubled word from the rename. It should be "One merged change…" or similar.
-3. `test/retire.test.ts:71` has the assertion message "not yet merged-commit refusal removes nothing", a compound adjective broken by the rename. It should be "unmerged-commit refusal…", matching the wording `retire.ts` uses.
-
 **Goal.** These modules' merge-related identifiers, comments and test names say merge. The backlog heading grammar keeps its word. A rename of about 360 lines with no behavior change.
 
 **Approach.**
@@ -20,6 +14,20 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
   - comments, test names and assertion messages follow the Glossary ("unlanded" → "not yet merged");
   - comment lines wrap at 100 columns.
+- **Prose after the rename** (an earlier attempt was rejected three times on these alone): read each
+  edited comment, test name and assertion message as a sentence, not as a word swap.
+  - **Reflow every edited comment paragraph** so only its last line is short. A rename that
+    shortens a line (e.g. `checkStaleQueuedLandings` → `checkStaleQueuedMerges` in
+    doctor-backlog.ts's `LAND_QUEUE_STALE_MS` and `checkStaleQueuedLandings` doc comments) pulls
+    the following words up; never leave a mid-paragraph stub line or an early break.
+  - **No doubled or garbled words.** Where the swap would produce "merged merge", "merge merge" or
+    similar, reword: maintenance-quota.ts's "One merged landing the window keeps" becomes "One
+    merged change the window keeps".
+  - **Compound adjectives take "unmerged",** matching retire.ts's own "unmerged commit(s)": test
+    strings such as test/retire.test.ts's "unlanded-commit refusal removes nothing" become
+    "unmerged-commit refusal removes nothing", and "unlanded work"/"unlanded branch commits"
+    become "unmerged work"/"unmerged branch commits". "not yet merged" is for predicate use
+    ("work not yet merged").
 - **Renames:**
   - doctor-backlog.ts: `checkStaleQueuedLandings` → `checkStaleQueuedMerges`, `LAND_QUEUE_STALE_MS` → `MERGE_QUEUE_STALE_MS`, local `landed` → `mergeDone`.
   - backlog-eligibility.ts: `prerequisitesLanded` → `prerequisitesMerged`. The heading keyword stays: `requiredParts`' `/requires\s+(.+?)\s+landed\b/` and the "requires … landed" prose are backlog grammar that every PLANS.md heading uses, not identifiers.
@@ -45,6 +53,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `git grep -nE 'checkStaleQueuedLandings|LAND_QUEUE_STALE_MS|prerequisitesLanded|AbortableLanding|landingRefPresent|perWorkLanding|hasQueuedLanding' -- src test` prints nothing.
 - test/backlog-eligibility.test.ts still parses `requires part 2/5 landed` headings unchanged.
 - In the listed directories, no identifier, comment or test name uses a retired merge word, except `removeLegacyLandWorktrees`, the grammar keyword and quoted backlog titles.
+- `git grep -nE '\b(merged?|merging) merge' -- src test` prints no line this part introduced, and
+  `git grep -nE 'not yet merged-' -- src test` prints nothing.
+- In every comment paragraph this part edits, only the last line is shorter than the wrap would allow
+  (spot-check doctor-backlog.ts's two stale-queue doc comments and maintenance-quota.ts's header).
 - `npm run test` passes.
 
 ### Plain terms code merge, part 10/11: Rename the merge identifiers in the status and dashboard and TUI and report and history and failure modules (planned 2026-10-16 by user; requires part 9/11 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/status/ src/report/ src/history/ src/failure/ src/gui/ and their tests)
