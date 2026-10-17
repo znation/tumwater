@@ -18,7 +18,7 @@ import {
 import { PiStreamParser } from "../src/pi/pi-stream.js";
 import { claudeTranslator } from "../src/agent/claude/claude-stream.js";
 import { NO_LAUNCH_SERVICES_CHECK_IN, withoutLaunchServicesCheckIn } from "../src/process/process.js";
-import { toolUpdateHasContent } from "../src/pi/pi-event-line.js";
+import { messageUpdateHasContent, toolUpdateHasContent } from "../src/pi/pi-event-line.js";
 import { startPiWatchdogs } from "../src/pi/pi-watchdogs.js";
 import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
@@ -157,6 +157,19 @@ test("toolUpdateHasContent sees real text, not empty or content-less updates", (
   assert.equal(toolUpdateHasContent(undefined), false);
   assert.equal(toolUpdateHasContent(null), false);
   assert.equal(toolUpdateHasContent("plain string"), false);
+});
+
+test("messageUpdateHasContent sees a delta carrying text, not a keepalive", () => {
+  const update = (delta: unknown) => ({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta } });
+  assert.equal(messageUpdateHasContent(update("All")), true, "a thinking delta is real generation");
+  assert.equal(messageUpdateHasContent(update("")), false, "an empty delta is a keepalive");
+  assert.equal(messageUpdateHasContent(update("   ")), false, "whitespace-only is not content");
+  assert.equal(messageUpdateHasContent(update(undefined)), false);
+  // The pre-strip shape carried a message snapshot and no delta event at all.
+  assert.equal(messageUpdateHasContent({ type: "message_update", message: { role: "assistant" } }), false);
+  assert.equal(messageUpdateHasContent({ type: "message_update" }), false);
+  assert.equal(messageUpdateHasContent(undefined), false);
+  assert.equal(messageUpdateHasContent("plain string"), false);
 });
 
 // The stall warning itself: one event per stalled call, naming the command, while the quiet

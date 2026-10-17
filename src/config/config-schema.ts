@@ -284,9 +284,10 @@ export interface TumwaterConfig {
   minRunIntervalSeconds: number;
   /** Hard cap on a single pi run, in seconds. */
   runTimeoutSeconds: number;
-  /** Kill a pi run when it emits NO output for this many seconds (0 disables). A healthy
-   * run streams events continuously even when slow; prolonged silence means a hung tool
-   * (interactive command, zombie socket) that would otherwise burn the whole tick timeout. */
+  /** Kill a pi run when it makes NO progress for this many seconds (0 disables). A healthy
+   * run keeps producing progress even when slow — boundaries, and content-bearing streaming
+   * deltas; prolonged silence means a hung tool (interactive command, zombie socket) that
+   * would otherwise burn the whole run timeout. */
   quietTimeoutSeconds: number;
   /** Warn — without killing — when ONE tool call has been open this many seconds with no
    * content-bearing output update: a `warning` event names the command and the loop's state

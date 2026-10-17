@@ -299,8 +299,9 @@ longer describe what runs.
   pi's `settings.json` — `$PI_CODING_AGENT_DIR/settings.json` when that env var is set, else
   `~/.pi/agent/settings.json` —. Do not use `0` (fully disabled): a zombie socket then waits
   forever. tumwater's `quietTimeoutSeconds` stall watchdog (default 30 min; kills a run when no
-  *progress* — message, turn, and tool boundary events — happens, so content-free keepalives
-  cannot reset it) and `runTimeoutSeconds` remain the layered hang guards.
+  *progress* — message, turn, and tool boundary events, plus content-bearing streaming deltas —
+  happens, so content-free keepalives cannot reset it) and `runTimeoutSeconds` remain the
+  layered hang guards.
 - **Context accounting**: declare an honest `contextWindow` for the model in pi's `models.json` —
   it is what triggers pi's auto-compaction. With LM Studio's unified KV cache, concurrent requests
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full
