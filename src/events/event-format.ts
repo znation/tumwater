@@ -12,9 +12,9 @@ import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js"
 import { fallbackTierEntries } from "../budget/budget.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares (run_end,
- * landed): the usage numbers arrive via eventUsage (the loose-typing coercion every usage consumer
- * shares), rendered through the shared token/money formats (compactTokens, usd) in one place.
- * Either part is omitted when zero or absent, so skipped ticks and zero-usage landings render
+ * merge_done): the usage numbers arrive via eventUsage (the loose-typing coercion every usage
+ * consumer shares), rendered through the shared token/money formats (compactTokens, usd) in one
+ * place. Either part is omitted when zero or absent, so skipped ticks and zero-usage merges render
  * byte-identical to a pre-feature line — no leading or trailing separator. "·" is the separator
  * the budget badge already uses. Sentence contexts prepend their own " · " via usagePhrase;
  * table-cell contexts (history's usage column) use the bare text. */
@@ -83,7 +83,7 @@ function providerScope(e: HarnessEvent): string {
   return typeof e.provider === "string" ? "that provider" : "every provider";
 }
 
-/** An event's outcome string — a tick's `result`, or a landing's or build check's `status`,
+/** An event's outcome string — a tick's `result`, or a merge's or build check's `status`,
  * whichever the event carries; undefined when neither does. The activity feeds' tone and
  * filter key (tone.ts's eventKind takes it beside the event type), also shipped as the
  * status payload's per-event `result` field, so the two surfaces cannot disagree on what a
@@ -134,7 +134,7 @@ export function formatEvent(e: HarnessEvent): string {
 }
 
 /** One event as the dashboard's activity feed consumes it: `result` is a tick's outcome, a
- * landing's result, or a build check's status — whichever string the event carries. The event
+ * merge's result, or a build check's status — whichever string the event carries. The event
  * layer owns the event shape's projection, so both the status poll (ui/status-payload.ts) and
  * the slice endpoint (gui/gui-endpoints.ts's handleLogs) read the same fields, and a feed row's
  * shape cannot drift between them. */
@@ -172,12 +172,12 @@ export function eventMessage(e: HarnessEvent): string {
     case "merged":
       return `merged ${shortSha(e.commit)} to main — ${textOr(e.summary)}`;
     case "merge_queued":
-      // Merge queue 3/5: routine state change (the tick committed and the landing slot is
-      // ahead) — no warning prefix. The landing's own events follow it.
+      // Merge queue 3/5: routine state change (the tick committed and the merge slot is
+      // ahead) — no warning prefix. The merge's own events follow it.
       return `waiting to merge ${shortSha(e.commit)} — ${textOr(e.summary)}`;
     case "merge_done":
-      // The landing slot finished with the change on main; the usage is the landing's own
-      // spend (reviewer + conflict resolution), omitted when zero so review-exempt landings
+      // The merge slot finished with the change on main; the usage is the merge's own
+      // spend (reviewer + conflict resolution), omitted when zero so review-exempt merges
       // render bare — the same phrase run_end carries for its run.
       return `merge of ${shortSha(e.commit)} done${elapsed(e.durationMs)}${usagePhrase(e)}`;
     case "merge_failed":
@@ -189,7 +189,7 @@ export function eventMessage(e: HarnessEvent): string {
       // The position is the `<n>` `questions answer` takes, so the notify page is actionable.
       return `question posted: ${textOr(e.question)}${typeof e.position === "number" && Number.isInteger(e.position) && e.position >= 1 ? ` — question ${e.position} in \`tumwater questions\`; answer it with \`tumwater questions answer ${e.position} "<decision>"\`` : ""}`;
     case "entry_refused":
-      // Routine operation (a refusal note landed), not a warning — like question_posted.
+      // Routine operation (a refusal note merged), not a warning — like question_posted.
       const files = Array.isArray(e.files) ? e.files.join(", ") : "";
       const titles = stringList(e.entries);
       if (titles.length === 0) return `entry refused: ${textOr(e.reason)} (${files})`;
@@ -255,7 +255,7 @@ export function eventMessage(e: HarnessEvent): string {
       // conflicted with it, dropped by its author, or exhausted its rounds.
       return `revision ${textOr(e.round)} ${textOr(e.action)} ${shortSha(e.sha)}`;
     case "conflict_handback": {
-      // A change whose landings kept conflicting was handed back to its author with the markers
+      // A change whose merges kept conflicting was handed back to its author with the markers
       // in place (PLANS.md "Robust conflict landing, part 2/2"): queued, applied, or failed.
       const files = stringList(e.conflicted);
       const where = files.length > 0 ? `: ${files.join(", ")}` : "";
@@ -265,13 +265,13 @@ export function eventMessage(e: HarnessEvent): string {
     case "build_check":
       // The deterministic check's cost, per run: scope names which gate paid (the pre-merge review
       // gate, the red-main baseline check of main itself, or the merge lock's post-rebase re-check
-      // of the tree about to land). script carries the npm script name for an npm check but the
+      // of the tree about to merge). script carries the npm script name for an npm check but the
       // FULL configured command otherwise (checkScriptName in build/build-check.ts), so no "npm"
       // prefix is asserted here — the bare name reads correctly for both kinds ("npm test" would
       // misrender a cargo or make-based project's check).
       return `check (${textOr(e.scope)}): ${textOr(e.script)} ${eventTypeLabel(outcomeText(e))}${elapsed(e.durationMs)}`;
     case "dep_install": {
-      // The root checkout's install catching up with a landed lockfile change — routine on
+      // The root checkout's install catching up with a merged lockfile change — routine on
       // success; a failure also rides its own warning, which says what happens meanwhile.
       const pkgs = stringList(e.packages).join(", ");
       return `root install (${pkgs}) ${eventTypeLabel(outcomeText(e))}${e.error ? ` — ${textOr(e.error)}` : ""}${elapsed(e.durationMs)}`;
@@ -360,7 +360,7 @@ export function eventMessage(e: HarnessEvent): string {
       return textOr(e.message);
     case "maintenance_quota_hold":
       // Routine state change, like role_cap_paused — no warning prefix: the hold IS the harness
-      // keeping maintenance landings in proportion to work. Names the window's counts so the
+      // keeping maintenance merges in proportion to work. Names the window's counts so the
       // operator can see why the hygiene loops stopped and what would re-open them.
       return `waiting: maintenance allowance used — ${textOr(e.maint)} maintenance merges against an allowance of ${textOr(e.allowance)} in the last 24h (${textOr(e.work)} work); the maintenance roles wait until the window rolls over`;
     case "maintenance_quota_resumed":

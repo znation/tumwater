@@ -1,5 +1,5 @@
 /** The collector behind `tumwater diff --role <id>`: what change a loop holds between its commit
- * and its merge. The committed half is the loop branch's unlanded work (commits ahead of the
+ * and its merge. The committed half is the loop branch's unmerged work (commits ahead of the
  * team's main branch, with the patch); the uncommitted half is the loop worktree's dirty state.
  * Everything is read-only git plumbing already used elsewhere — this module only wires the pieces
  * into one operator view, degrading like `report` does when the team (or just this role's
@@ -15,7 +15,7 @@ import { branchName } from "../paths.js";
 import { isUsableWorktree } from "../git/worktree.js";
 import { roleWorktreeDir } from "../git/slots-state.js";
 
-/** One unlanded commit: its abbreviated sha and subject, from `git log --oneline`. */
+/** One unmerged commit: its abbreviated sha and subject, from `git log --oneline`. */
 interface RoleChangeCommit {
   sha: string;
   subject: string;

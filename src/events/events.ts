@@ -36,12 +36,12 @@ export interface HarnessEvent {
   type:
     | "run_start" // carries run; model when one is configured — the selector string (formatModelSelector) of the config the tick's runs start on (the budget fallback included)
     | "run_end"
-    | "merge_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's landing slot (merge queue 3/5); carries sha + summary
-    | "merge_done" // the landing slot finished with the change on main; carries commit, the lander's outcome, durationMs, queuedMs (enqueue to outcome), and the landing's own usage
-    | "merge_failed" // the landing slot finished without landing (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload (including queuedMs and the entry's summary) — retry rides next-tick leftover recovery, never the queue
+    | "merge_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's merge slot (merge queue 3/5); carries sha + summary
+    | "merge_done" // the merge slot finished with the change on main; carries commit, the merger's outcome, durationMs, queuedMs (enqueue to outcome), and the merge's own usage
+    | "merge_failed" // the merge slot finished without merging (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload (including queuedMs and the entry's summary) — retry rides next-tick leftover recovery, never the queue
     | "merged"
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
-    | "entry_refused" // a refusal tick's objection note landed on main (src/verdict/refusal.ts handleRefusal); carries reason, files and entries (the stamp-free titles of the plans and bugs whose Refused note is new) — the entry stays held until a human or the director lifts it
+    | "entry_refused" // a refusal tick's objection note merged on main (src/verdict/refusal.ts handleRefusal); carries reason, files and entries (the stamp-free titles of the plans and bugs whose Refused note is new) — the entry stays held until a human or the director lifts it
     | "wake"
     | "run_deferred" // need-based prioritization: a due maintenance tick was deferred; carries reason "backlog" (PLANS.md `## Planned` or BUGS.md `## Open` non-empty) "no-work" (no feature/bugfix/director/operator/human commit since its last no_change tick), or "plans-full" (the plan loop's PLANS.md already holds its eligible-plan target); one per deferral episode
     | "orchestrator_start"
@@ -53,14 +53,14 @@ export interface HarnessEvent {
     | "counters_reset"
     | "run_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
     | "resume" // the interrupted tick's session is picked back up; carries cause (restart|cut-off|hung-tool|timeout|budget-resumed|handoff)
-    | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the landing is a revision (plans/revise-rejected.md part 2/2); resumed true when the run continues a timed-out reviewer's session (PLANS.md, review-retry part 3/3)
+    | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the merge is a revision (plans/revise-rejected.md part 2/2); resumed true when the run continues a timed-out reviewer's session (PLANS.md, review-retry part 3/3)
     | "review_verdict" // approved; carries durationMs of the reviewer run
     | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
     | "review_failed"
     | "revision" // a rejected change's revision round: action applied|conflict|dropped|exhausted, with round and sha (plans/revise-rejected.md)
-    | "conflict_handback" // a change whose landings kept conflicting was handed back to its author with the markers in place (PLANS.md "Robust conflict landing, part 2/2"); action queued|applied, with sha, reason landing|revision, and the conflicted paths on a successful re-apply
-    | "build_check" // the project's declared check ran: scope gate|baseline|landing|batch (landing is the merge lock's post-rebase re-check; batch is the batch lander's one check over the stacked tree), status, script, durationMs; spawnedAt/settledAt when a process ran, plus timeoutMs/deadlineLateMs when its deadline fired, and sleptMs when the host slept mid-run (build/build-check-events.ts buildCheckRunFields); installed/installMs (plus installError) when the check first installed the tree's drifted lockfile (build/dep-install.ts)
-    | "dep_install" // the root checkout's install was re-synced after a landing moved main's lockfile (build/dep-install.ts syncRootInstall): packages (the drifted direct dependencies), status passed|failed, durationMs, error on a failure
+    | "conflict_handback" // a change whose merges kept conflicting was handed back to its author with the markers in place (PLANS.md "Robust conflict landing, part 2/2"); action queued|applied, with sha, reason merge|revision, and the conflicted paths on a successful re-apply
+    | "build_check" // the project's declared check ran: scope gate|baseline|merge|batch (merge is the merge lock's post-rebase re-check; batch is the batch merger's one check over the stacked tree), status, script, durationMs; spawnedAt/settledAt when a process ran, plus timeoutMs/deadlineLateMs when its deadline fired, and sleptMs when the host slept mid-run (build/build-check-events.ts buildCheckRunFields); installed/installMs (plus installError) when the check first installed the tree's drifted lockfile (build/dep-install.ts)
+    | "dep_install" // the root checkout's install was re-synced after a merge moved main's lockfile (build/dep-install.ts syncRootInstall): packages (the drifted direct dependencies), status passed|failed, durationMs, error on a failure
     | "budget_warning" // team daily spend crossed 80% of maxDailyCostUsd; the gate is still open
     | "budget_paused" // team daily spend reached maxDailyCostUsd with no usable free fallback; role loops stop starting ticks
     | "budget_fallback" // team daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
@@ -76,12 +76,12 @@ export interface HarnessEvent {
     | "role_cap_paused" // the role's local-day spend reached its maxDailyCostUsdPerRole cap (src/gates/role-cap-gates.ts); it starts no new ticks until local midnight or a live edit; carries role, spentUsd, capUsd
     | "role_cap_resumed" // the cap was raised/removed or a new local day started; that role ticks again (carries role)
     | "main_red_hold" // main's declared check is verified red; warnMainRedOnce (src/baseline/main-red.ts) logs it once per process per newly verified red main SHA, and every code loop skips authoring until main is green; carries sha, script, message
-    | "maintenance_quota_hold" // code-maintenance landings in the rolling 24 h window reached the allowance (plans/work-ratio.md, part 1b/4, src/gates/maintenance-quota.ts); the enabled maintenance loops start no new ticks until it re-opens; carries work, maint, allowance
+    | "maintenance_quota_hold" // code-maintenance merges in the rolling 24 h window reached the allowance (plans/work-ratio.md, part 1b/4, src/gates/maintenance-quota.ts); the enabled maintenance loops start no new ticks until it re-opens; carries work, maint, allowance
     | "maintenance_quota_resumed" // the rolling window re-opened below the allowance; the held maintenance loops tick again; carries work, maint, allowance
     | "bootstrap_complete" // the bootstrap gate's plan target was reached (plans/work-ratio.md, part 2/2); the latch .tumwater/bootstrap-complete.json is written and the held maintenance loops are admitted; carries plansDone, untilPlansDone
     | "quiet_hours_started" // the configured quietHours window began; role loops stop starting new ticks until it ends, director exempt (carries window)
     | "quiet_hours_ended" // the configured quietHours window ended; role loops tick again (carries window)
-    | "disk_low" // free space on the worktrees volume dropped below diskHoldGB; no new work starts — role ticks, the director, vets and merges — until it climbs DISK_HOLD_HYSTERESIS_GB above (carries freeGB, holdGB)
+    | "disk_low" // free space on the worktrees volume dropped below diskHoldGB; no new work starts — role ticks, the director, verification and merges — until it climbs DISK_HOLD_HYSTERESIS_GB above (carries freeGB, holdGB)
     | "disk_ok" // the disk hold lifted: free space climbed back above diskHoldGB + the hysteresis band, or diskHoldGB was edited to 0; new work starts again (carries freeGB)
     | "disk_reclaim" // a reclaim pass deleted gitignored files from idle worktrees (plans/disk-floor.md, part 2/4); carries mode (pressure|idle|manual), the cleaned worktrees' basenames, the statfs delta freedGB, freeGB after the pass, and durationMs
     | "claim" // a work instance took (action assigned) or dropped (action released) its backlog entry; carries action, key, title and reason (src/scheduling/claims.ts)

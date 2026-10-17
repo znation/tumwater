@@ -1,17 +1,17 @@
 // vocabulary: plain
 /** False-fix detection for md-only BUGS.md edits (BUGS.md 2026-09-22): an md-only diff is
  * exempt from the review gate by design, so nothing else verifies that a bug it moves to
- * Fixed actually has code behind it — commit 9cea8c3 landed a Fix paragraph naming
+ * Fixed actually has code behind it — commit 9cea8c3 merged a Fix paragraph naming
  * `runScriptGroup`/`signalTree` with no source anywhere in main's history. This module
- * cross-checks the diff against the tree being landed: a `## Fixed` entry that is new in
+ * cross-checks the diff against the tree being merged: a `## Fixed` entry that is new in
  * the diff must name only symbols or paths that exist on the tree — identifier-like
  * backticked spans are substring-matched against the tree's code files, path-like spans
  * against the tree itself. An entry whose Fix paragraph names nothing checkable is left
- * alone: pure-documentation fixes are legitimate and must keep landing md-only.
+ * alone: pure-documentation fixes are legitimate and must keep merging md-only.
  *
- * Two holes this check closed after its first landing (BUGS.md 2026-09-23): an ALREADY-Fixed
+ * Two holes this check closed after its first merge (BUGS.md 2026-09-23): an ALREADY-Fixed
  * entry is skipped only when its body is untouched — an md-only edit that rewrites an
- * existing Fixed record's narrative (the exact shape a second phantom landing takes) faces
+ * existing Fixed record's narrative (the exact shape a second phantom merge takes) faces
  * the same symbol check a new entry does; and the comparison base is the diff's own
  * merge-base, not main's tip, so a stacked batch's earlier change (which moved the entry
  * Fixed→Open) is what an Open→Fixed restoration is measured against.
@@ -219,7 +219,7 @@ export function missingSymbolNames(missing: string[]): string {
 
 /** The first false-fix claim in an md-only diff that touches BUGS.md, or undefined when the
  * diff backs its Fixed transitions (or makes none). `files` is the ahead-of-main path list
- * of the diff landing on `mainBranch`; the worktree `wt` holds the tree being landed. */
+ * of the diff merging on `mainBranch`; the worktree `wt` holds the tree being merged. */
 export async function falseFixReason(
   wt: string,
   mainBranch: string,
@@ -240,7 +240,7 @@ export async function falseFixReason(
   const base = await fileContentAt(wt, baseRev, "BUGS.md");
   // An already-Fixed entry is skipped only when its body is unchanged: an md-only edit that
   // rewrites an existing Fixed record's narrative must face the symbol check too (BUGS.md
-  // 2026-09-23 — the in-place narrative rewrite is how a second phantom landing evaded it).
+  // 2026-09-23 — the in-place narrative rewrite is how a second phantom merge evaded it).
   const baseBodies = new Map(
     fixedEntries(base).map((e) => [normalizeFixedHeading(e.title), e.body]),
   );

@@ -99,22 +99,6 @@ a flaky or broken suite without reading the failure digest.
   `checkFailures` renders no such line; a `{ ...base, role: "feature" }` report renders none.
 - `npm run test` passes.
 
-### Plain terms code merge, part 11a/11: Rewrite the merge family in the pipeline modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11b/11, 11c/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in src/merge/ src/events/ src/review/ src/verdict/ src/git/ src/tick/ src/failure/ src/change/ src/build/ src/process/ and src/loop/)
-
-**Goal.** The merge family's identifiers and file names are already renamed and guarded (`RETIRED` in test/retired-names.test.ts carries the family; part 11/11's identifier half landed). What remains is comment prose. This part rewrites the merge family in the comments of the pipeline modules, so a reader sees `merge`, `merged` and `approved` where the code merges.
-
-**Approach.**
-- Work only in the listed paths, and only on comments (line and block). Apply plans/terminology.md "Code names": the pipeline `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` (now on main) → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`. Name event types by their current names (`merge_queued`, `merge_done`, `merge_failed`).
-- Keep four kinds of match: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title, kept verbatim; a legacy name kept on purpose (an old event type, an old state key, `_land-<role>`, `refs/tumwater/landing/`, `CONFIG_KEY_RENAMES`, `LEGACY_ROLE_IDS`, the startup migrations); and the ordinary English verb `land`/`lands`/`landed` meaning "arrive", which is not the merge pipeline (e.g. "the write landed", "the signal lands").
-- Do not rename identifiers or touch string literals.
-
-**Files touched.** Comments in src/merge/, src/events/, src/review/, src/verdict/, src/git/, src/tick/, src/failure/, src/change/, src/build/, src/process/ and src/loop/. plans/terminology.md is read, not edited.
-
-**Acceptance criteria.**
-- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/merge src/events src/review src/verdict src/git src/tick src/failure src/change src/build src/process src/loop` lists only the four kept kinds above, and the run's summary names each remaining match and its kept kind.
-- The diff changes comment lines only.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 11b/11: Rewrite the merge family in the operator-surface and support modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11c/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in src/ui/ src/cli/ src/config/ src/prompt/ src/roles/ src/doctor/ src/history/ src/operator/ src/backlog/ src/text/ src/budget/ src/pi/ src/redeploy/ src/files/ src/inbox/ src/team/ src/pi-extension/ src/init/ src/agent/ src/gui/ src/orchestrator/ and src/paths.ts)
 
 **Goal.** Same as part 11a for the operator-facing and support modules: the merge family's identifiers and file names are already renamed and guarded, and this part rewrites the merge family in their comments so the code reads in the glossary's words.
@@ -1198,6 +1182,21 @@ a flaky or broken suite without reading the failure digest.
 
 ## Done
 
+### Plain terms code merge, part 11a/11: Rewrite the merge family in the pipeline modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11b/11, 11c/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in src/merge/ src/events/ src/review/ src/verdict/ src/git/ src/tick/ src/failure/ src/change/ src/build/ src/process/ and src/loop/) — done 2026-10-17 by the feature role
+
+**Goal.** The merge family's identifiers and file names are already renamed and guarded (`RETIRED` in test/retired-names.test.ts carries the family; part 11/11's identifier half landed). What remains is comment prose. This part rewrites the merge family in the comments of the pipeline modules, so a reader sees `merge`, `merged` and `approved` where the code merges.
+
+**Approach.**
+- Work only in the listed paths, and only on comments (line and block). Apply plans/terminology.md "Code names": the pipeline `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` (now on main) → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`. Name event types by their current names (`merge_queued`, `merge_done`, `merge_failed`).
+- Keep four kinds of match: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title, kept verbatim; a legacy name kept on purpose (an old event type, an old state key, `_land-<role>`, `refs/tumwater/landing/`, `CONFIG_KEY_RENAMES`, `LEGACY_ROLE_IDS`, the startup migrations); and the ordinary English verb `land`/`lands`/`landed` meaning "arrive", which is not the merge pipeline (e.g. "the write landed", "the signal lands").
+- Do not rename identifiers or touch string literals.
+
+**Files touched.** Comments in src/merge/, src/events/, src/review/, src/verdict/, src/git/, src/tick/, src/failure/, src/change/, src/build/, src/process/ and src/loop/. plans/terminology.md is read, not edited.
+
+**Acceptance criteria.**
+- `git grep -nE '[Ll]and(ings?|es|ed|ers?|s)?[^a-z]|[Ll]and(ings?|s|ed|ers?)?$|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/merge src/events src/review src/verdict src/git src/tick src/failure src/change src/build src/process src/loop` lists only the four kept kinds above, and the run's summary names each remaining match and its kept kind.
+- The diff changes comment lines only.
+- `npm run test` passes.
 ### The TUI Health tab and the dashboard Health card take `tumwater doctor --problems`' problems-only view (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the blocked runner/run/cleanup parts; touches only src/ui/tui/, src/ui/gui/, docs/cli.md and their tests) — done 2026-10-17
 
 **Goal.** `tumwater doctor` prints well over 50 rows and `--problems` (`problemsOnly` and

@@ -135,7 +135,7 @@ export async function removeWorktree(root: string, role: string): Promise<void> 
   await removeWorktreeDir(root, worktreePath(root, role));
 }
 
-/** Remove lander checkouts left by a pre-pool build (`_land-<role>`): the pool's ticks keep their
+/** Remove the `_land-<role>` checkouts left by a pre-pool build: the pool's ticks keep their
  * commit on the role branch and a queued merge re-verifies from its pinned ref, so the checkout
  * holds nothing to keep. Called once at orchestrator startup, before any tick; each removal goes
  * through removeWorktreeDir (force `worktree remove`, with the shared dead-registration fallback),

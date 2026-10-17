@@ -5,7 +5,7 @@ import { promisify } from "node:util";
  * probe every place that decides whether a recorded pid still belongs to a live process shares
  * (the merge lock's stale-holder check in lock.ts, the orchestrator-alive status in
  * team/orchestrator-info.ts), the group-signal helpers behind every teardown, the register/abort
- * race helper the spawns and landing's shutdown wiring share, and the child environment
+ * race helper the spawns and merge's shutdown wiring share, and the child environment
  * that keeps the harness's Node processes out of LaunchServices on macOS. Reading the host's
  * process table and the per-run TUMWATER_RUN marks and sweep built on it live in
  * process-table.ts, on top of the exec helper here. */
@@ -39,7 +39,7 @@ export function execFileAsync(
  * Returns a disposer that detaches `fn`. A `{ once: true }` listener detaches itself when the
  * signal fires, so a caller whose work outlives the abort need not dispose; a caller that
  * settles while the signal is still live MUST run the disposer, or a long-lived signal — the
- * team shutdown, wired once per landing — accumulates one listener and its closure per task
+ * team shutdown, wired once per merge — accumulates one listener and its closure per task
  * that ever settled. */
 export function runOnAbort(signal: AbortSignal | undefined, fn: () => void): () => void {
   if (!signal) return () => {};

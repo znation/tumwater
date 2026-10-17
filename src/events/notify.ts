@@ -34,10 +34,10 @@ export const NOTIFY_EVENT_TYPES = [
   "role_cap_paused", // the role's own daily cost cap is reached — it stops starting ticks
   "disk_low", // free space on the worktrees volume dropped below diskHoldGB — new work is held
   "main_red_hold", // main's own check is red — every code loop is held until a fix lands
-  "merge_failed", // the landing slot finished without landing a change
+  "merge_failed", // the merge slot finished without merging a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the team is stuck behind it
-  "question_posted", // a landing posted a new QUESTIONS.md ## Open entry — only a human can answer it
-  "entry_refused", // a refusal note landed — the entry is held until a human or the director releases it
+  "question_posted", // a merge posted a new QUESTIONS.md ## Open entry — only a human can answer it
+  "entry_refused", // a refusal note merged — the entry is held until a human or the director releases it
   "supervisor_exit", // the supervisor gave up — the team is down; paged from the supervisor process by notifyTeamDown, since no orchestrator is left to hear it
 ] as const;
 

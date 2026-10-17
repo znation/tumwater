@@ -46,7 +46,7 @@ function withRuns(r: GateResult, run: PiRunResult, followUp: PiRunResult | null,
 }
 
 /** Put the worktree back on the exact head the gate reviewed: the reviewer's only output is its
- * verdict, so a commit it made must never reach the landing pin or the next re-review. */
+ * verdict, so a commit it made must never reach the merge pin or the next re-review. */
 async function restoreReviewedHead(wt: string, head: string, root: string, role: string): Promise<void> {
   const now = await headOf(wt, "HEAD").catch(() => null);
   if (now && now !== head) {
@@ -82,12 +82,12 @@ export interface ReviewContext {
   /** The sleep clock the pre-check measures host suspension with; defaults to the real
    * sampleSleepClock. A test seam — production callers leave it unset. */
   sampleSleep?: SleepSampler;
-  /** The revision round this landing is, absent for a fresh change — labeled on `review_start`
+  /** The revision round this merge is, absent for a fresh change — labeled on `review_start`
    * and paired with `priorReview` (plans/revise-rejected.md part 2/2). */
   revisionRound?: number;
-  /** The rejected change's head and objections when this landing is a revision, absent
-   * otherwise: built from the landing entry's PriorReview and used to show the re-review what
-   * the revision had to resolve. A recovery landing carries none. */
+  /** The rejected change's head and objections when this merge is a revision, absent
+   * otherwise: built from the merge entry's PriorReview and used to show the re-review what
+   * the revision had to resolve. A recovery merge carries none. */
   priorReview?: PriorReview;
   /** The reviewer's pi runs (the review run and the verdict follow-up), through the owning
    * loop's shared transient-retry wiring (LoopPi.runGatePi — BUGS.md 2026-10-01: a 429 in the
@@ -102,7 +102,7 @@ export interface ReviewContext {
 export interface GateResult {
   decision: "approved" | "exempt" | "rejected" | "failed";
   /** The branch HEAD this gate invocation's pre-check just ran green on — the one tree the
-   * landing path may trust without re-running the check (src/merge/merge-to-main.ts seeds the
+   * merge path may trust without re-running the check (src/merge/merge-to-main.ts seeds the
    * red-main baseline with it when the rebase is a no-op, and re-verifies anything else). Absent
    * when no fresh green observation was made: gate disabled, exempt diff, already-approved early
    * return, or a pre-check that failed or skipped. */
@@ -116,18 +116,18 @@ export interface GateResult {
    * decision alone, which is the same "failed" shape an under-cap failure reports. */
   discarded?: boolean;
   /** The pre-check failed twice on a tree whose main is red at its tip ("failed"): not this
-   * change's failure, so its landing reports `main_red` — pin kept, no strike, and none of the
+   * change's failure, so its merge reports `main_red` — pin kept, no strike, and none of the
    * error streak a dead reviewer backend feeds (the batch's own attribution says the same). */
   mainRed?: boolean;
   /** The pre-check's every attempt spanned a host sleep, so nothing judged the tree
-   * ("failed"): not this change's failure either — its landing keeps the pin for a re-land
+   * ("failed"): not this change's failure either — its merge keeps the pin for a re-merge
    * with no strike, and the detail names the sleep (BUGS.md 2026-09-30). */
   unverified?: boolean;
   /** Failure message ("failed") or first rejection reason ("rejected"), for lastSummary. */
   detail?: string;
   /** The failure was a permanent provider configuration error (a 4xx other than 408/429, or
    * the provider's model_not_supported/invalid_request_error spelling): the request can never
-   * succeed until the config changes. The landing path holds the pin instead of re-queuing it
+   * succeed until the config changes. The merge path holds the pin instead of re-queuing it
    * at suite speed (BUGS.md 2026-10-06). Absent on every other failure. */
   configError?: boolean;
   /** The reviewer's pi run, for usage folding into the loop totals — absent when no review
@@ -213,12 +213,12 @@ export async function reviewAheadOfMain(
 
   const files = await aheadOfMainFiles(wt, mainBranch);
   // A change handed back to its author with the conflict markers left in place (PLANS.md
-  // "Robust conflict landing, part 2/2") must not land raw `<<<<<<<` lines. The stage check
+  // "Robust conflict landing, part 2/2") must not merge raw `<<<<<<<` lines. The stage check
   // flags them for one fix-up turn, but only this deterministic gate rejection makes it a
   // hard stop — an md-only diff skips the reviewer entirely, so nothing else would catch it.
   const markerReason = conflictMarkerReason(wt, files);
   if (markerReason !== undefined) return reject([markerReason]);
-  // The prompt block and PRINCIPLES.md are markdown, so the exempt fast path below would land
+  // The prompt block and PRINCIPLES.md are markdown, so the exempt fast path below would merge
   // an edit to either unreviewed; reject it here, for md-only and code diffs alike.
   const protectedReason = await protectedEditReason(wt, mainBranch, files, role);
   if (protectedReason !== undefined) return reject([protectedReason]);
@@ -228,13 +228,13 @@ export async function reviewAheadOfMain(
   if (isExemptDiff(files, config.review.exemptPaths)) {
     // The exemption is a fast path, not a blind eye: an md-only diff that moves a bug to
     // Fixed must have its fix's symbols on this tree, or it records code that does not
-    // exist (BUGS.md 2026-09-22 — 9cea8c3 landed a Fix paragraph naming runScriptGroup
+    // exist (BUGS.md 2026-09-22 — 9cea8c3 merged a Fix paragraph naming runScriptGroup
     // and signalTree with no source behind it). A deterministic rejection, like the
     // pre-check below: no pi run consumed, reasons injected into the author's next tick.
     const falseFix = await falseFixReason(wt, mainBranch, files);
     if (falseFix) return reject([falseFix]);
-    // Same cross-check as the landing path (backlog-structure.ts): an md-only diff that
-    // duplicates or drops a `## ` section heading would land unreviewed — md-only edits skip
+    // Same cross-check as the merge path (backlog-structure.ts): an md-only diff that
+    // duplicates or drops a `## ` section heading would merge unreviewed — md-only edits skip
     // the reviewer by design, and a malformed backlog stays invisible until an entry ends up
     // on the wrong side of a heading (PLANS.md 2026-09-25, 52cbadd1).
     const structure = await backlogStructureReason(wt, mainBranch, files);
@@ -245,7 +245,7 @@ export async function reviewAheadOfMain(
 
   // The backlog-structure check for code diffs too, before the build pre-check: a change that
   // duplicates or drops a `## ` section heading in PLANS.md, BUGS.md, or QUESTIONS.md cannot
-  // land, and the rejection is deterministic — no pi run and no check run spent on a tree the
+  // merge, and the rejection is deterministic — no pi run and no check run spent on a tree the
   // heading set already condemns.
   const structure = await backlogStructureReason(wt, mainBranch, files);
   if (structure) return reject([structure]);
@@ -255,9 +255,9 @@ export async function reviewAheadOfMain(
   // "reviewing": a deterministic rejection never shows as reviewing on the dashboards. Both
   // gate callers (the tick path and leftover.ts's recoverLeftover) get it for free. Its run,
   // flake re-run, and attribution live in review-precheck.ts (the check run itself lives in
-  // runScopedBuildCheck, shared with the landing path's in-lock re-check); a resolved result
-  // here is returned verbatim and a pass hands the verified head to the landing path below.
-  // The pre-check sets the landing cell's stage (a no-op outside a queued landing) —
+  // runScopedBuildCheck, shared with the merge path's in-lock re-check); a resolved result
+  // here is returned verbatim and a pass hands the verified head to the merge path below.
+  // The pre-check sets the merge cell's stage (a no-op outside a queued merge) —
   // "build-check" while it runs, "reviewing" when the reviewer run starts below.
   const pre = await gateBuildPrecheck(ctx, state, head, reject);
   if (pre.resolved) {
@@ -329,8 +329,8 @@ export async function reviewAheadOfMain(
   saveLoopState(root, state);
 
   // Freeze the revision the diff is measured from once, before the run: main moves while a
-  // landing is vetted, and a reviewer comparing against the live `main` ref reads another loop's
-  // just-landed work as this change reverting it (BUGS.md 2026-10-06). The prompt names this SHA
+  // merge is approved, and a reviewer comparing against the live `main` ref reads another loop's
+  // just-merged work as this change reverting it (BUGS.md 2026-10-06). The prompt names this SHA
   // and tells the reviewer to compare against it instead.
   const base = await changeBaseRev(wt, mainBranch);
   const diff = await aheadOfMainDiff(wt, mainBranch);
@@ -351,12 +351,12 @@ export async function reviewAheadOfMain(
   // The reviewer's started tool calls, collected only when the no-re-run rule stands (a verified
   // pre-check) — the one case the suite-rerun tripwire below can fire.
   const reviewerCalls: ToolCallStart[] = [];
-  // The landing cell switches to the reviewer run's live detail (no-op outside a queued
-  // landing). runPi writes the run's `tumwater_run` label line before spawning pi, and that
+  // The merge cell switches to the reviewer run's live detail (no-op outside a queued
+  // merge). runPi writes the run's `tumwater_run` label line before spawning pi, and that
   // line resets the gate progress accumulator, so the cell never shows a previous run's counts.
   setMergeStage(root, role, "reviewing");
   // The author's claimed WHY/RISK/VERIFIED ride along when present — checking those claims
-  // against the actual diff is exactly the adversarial angle (recovery landings reconstruct
+  // against the actual diff is exactly the adversarial angle (recovery merges reconstruct
   // them from the pinned commit's message).
   const pi = await ctx.runGatePi({
     cwd: wt,
@@ -376,8 +376,8 @@ export async function reviewAheadOfMain(
         ),
     // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a
     // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend
-    // path below — commit kept, no strike — and re-lands through the author's next tick
-    // instead of holding the land queue for a whole authoring tick.
+    // path below — commit kept, no strike — and re-merges through the author's next tick
+    // instead of holding the merge queue for a whole authoring tick.
     config: reviewCfg,
     // This run's own session directory (per-run, keyed by tick and pinned sha): a follow-up
     // turn, or a later attempt that resumes this review, continues exactly this run instead
@@ -416,7 +416,7 @@ export async function reviewAheadOfMain(
       }),
   });
 
-  // A reviewer told the pre-check passed that re-ran the full suite anyway held the landing
+  // A reviewer told the pre-check passed that re-ran the full suite anyway held the merge
   // slot and loaded the shared host for a result the harness already had (BUGS.md 2026-09-23:
   // scratch copies under /tmp, `npm ci` and `npm test` there). Warned on every outcome, abort
   // included — the run happened either way; the verdict itself is not touched.
@@ -489,7 +489,7 @@ export async function reviewAheadOfMain(
   }
   // A repeat after the nudge (BUGS.md 2026-10-02): the reviewer re-ran the suite on the nudge
   // turn too. Fail the review — strike-free like a dead backend (BUGS.md 2026-09-20): the
-  // commit stays for the next landing's re-review, the discard counter never advances, and no
+  // commit stays for the next merge's re-review, the discard counter never advances, and no
   // rejection is recorded against the author's diff.
   if (nudgeRepeat) {
     const message = `${nudgeRepeat} The review is failed on this repeat: the commit is kept, and the merge re-reviews it under the normal path.`;

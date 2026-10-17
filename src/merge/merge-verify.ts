@@ -31,9 +31,9 @@ import {
 export const VERIFY_TIER = -1;
 
 /** How many verifications may be in flight (parked or running) at once: every `maxConcurrent`
- * permit but one, so a deep land queue never takes the last slot from the roles that could author —
- * at least one, so `maxConcurrent` 1 still lands. The merge's short conflict-resolution run is not
- * counted: it is the one serial step every queued change waits on. */
+ * permit but one, so a deep merge queue never takes the last slot from the roles that could
+ * author — at least one, so `maxConcurrent` 1 still merges. The merge's short conflict-resolution
+ * run is not counted: it is the one serial step every queued change waits on. */
 export function verifyLimit(maxConcurrent: number): number {
   return Math.max(1, maxConcurrent - 1);
 }
@@ -132,13 +132,13 @@ export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): 
  * with no outcome written), then, holding the permit for its whole length: open the change's
  * marker record and verify it — checkout at the pin, rebase onto main, gate check, review
  * (verifyRequest), the verdict persisted by the gate. An approval moves it to `approved` (record
- * `vetted, awaiting merge`). Any other verdict — rejected, a review_error of either kind,
+ * `approved, awaiting merge`). Any other verdict — rejected, a review_error of either kind,
  * main_red, a lost pin's "error", aborted — is final for this queue entry, so its outcome is
  * written at once and its entry dropped, which frees its author on the next poll while the
  * other verifications run on (BUGS.md 2026-09-23's early-rejection rule). A user-aborted
  * verification discards its pin; a shutdown keeps it. Never rejects for a failed merge: an
  * unexpected throw becomes an "error" outcome. Exported for
- * test/fixtures/orchestrator-fixtures.ts's mergeHead, which lands one queue entry through the
+ * test/fixtures/orchestrator-fixtures.ts's mergeHead, which merges one queue entry through the
  * pipeline without draining the rest of the queue. */
 export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEntry, file: string): void {
   const { root, mainBranch, signal, semaphore } = ctx;

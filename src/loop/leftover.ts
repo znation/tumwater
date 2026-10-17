@@ -158,7 +158,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     sha,
     run: ctx.tick,
     // Name what merges, not merely that a recovery happened: the recovered commit's own subject
-    // rides the merge, so the failure digest's "Landed in the window" can correlate a
+    // rides the merge, so the failure digest's "Merged in the window" can correlate a
     // recovered merge with the work it names (BUGS.md 2026-09-21). Unreadable messages fall
     // back to the bare provenance label.
     summary: meta.subject

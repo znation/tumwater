@@ -61,7 +61,7 @@ export function eventTick(ev: HarnessEvent): number {
   return finiteNumber(ev.run, 0);
 }
 
-/** The usage numbers an event records (`run_end`'s own run, `landed`'s landing slot):
+/** The usage numbers an event records (`run_end`'s own run, `merge_done`'s merge slot):
  * `tokens` and `costUsd` arrive `unknown` through the event's index signature, so they are
  * coerced to numbers here, with an absent, non-numeric, or non-finite value reading as 0 —
  * the one convention every usage consumer applies (the event feed's usage fragment,

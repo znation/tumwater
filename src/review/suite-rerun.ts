@@ -2,8 +2,8 @@
 /** Detecting a reviewer run that re-ran the full suite on a tree the gate's pre-check already
  * verified — pure string logic over the bash command lines a pi run started, no subprocess or
  * file I/O. The review prompt tells such a reviewer not to (src/prompt/gate-prompts.ts), but on
- * 2026-09-23 two reviewers that got the instruction copied their lander worktree to /tmp and ran
- * `npm ci` and `npm test` there anyway, holding the landing slot and loading the shared host;
+ * 2026-09-23 two reviewers that got the instruction copied their merger worktree to /tmp and ran
+ * `npm ci` and `npm test` there anyway, holding the merge slot and loading the shared host;
  * 102 of 429 retained review sessions ran a suite or `npm ci` themselves (BUGS.md 2026-09-23).
  * The prompt is the fix, this is the tripwire: review.ts feeds the reviewer's tool calls through
  * suiteRerunWarning and logs a warning when the rule was broken, so the digest can count it.

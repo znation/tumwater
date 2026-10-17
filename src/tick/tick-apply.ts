@@ -140,7 +140,7 @@ export function applyTickOutcome(
   // tick's work description (BUGS.md 2026-09-30: a no_change tick read "No change — Implement
   // the … plan" beside work that had merged, because the prior summary was retained).
   // A `queued` tick is not a completed result: its change is committed but in flight —
-  // the state column shows that (`landing <elapsed>`, the merge-queue badge) — so the pair
+  // the state column shows that (`merge <elapsed>`, the merge-queue badge) — so the pair
   // keeps the prior outcome WITH its own summary while the change waits (BUGS.md 2026-09-23),
   // and the tick's summary is stashed under the pinned sha for applyMergeOutcome to pair with
   // the merge's result. Every other outcome is completed and clears the stash: a role with a

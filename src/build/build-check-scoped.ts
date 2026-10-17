@@ -35,7 +35,7 @@ import { type InstallRunner, npmInstall } from "./dep-install.js";
 
 /** Run the project's declared check for a named scope — the detect → run → build_check event →
  * skip-warning sequence the review gate's pre-check (scope "gate"), the merge path's in-lock
- * re-check (scope "merge"), and the batch lander's one check over the whole stacked tree (scope
+ * re-check (scope "merge"), and the batch merger's one check over the whole stacked tree (scope
  * "batch") previously each ran inline, kept in one place so the event's shape and the skip warning
  * cannot drift between them. Split out of build-check.ts — which keeps the check's execution and
  * outcome classification (runBuildCheck, BuildCheckOutcome) — because orchestration is its own

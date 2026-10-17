@@ -33,7 +33,7 @@ export interface InFlightMerge {
 }
 
 /** A change the verify stage approved (or found exempt), waiting for the merge slot: still
- * queued — its author stays interlocked until it lands — with the head its gate approved in
+ * queued — its author stays interlocked until it merges — with the head its gate approved in
  * its merge ref (`sha`) and the approval's patch-id in its state (2a). In memory only: after a
  * restart the entry is verified again, and its review carries over through the patch-id while
  * its check runs once more. It holds no task, so `tumwater abort --role` only flags it
@@ -72,7 +72,7 @@ export interface MergePipelineContext {
    * sessions into the quiet watchdog's kills). The permits are all that bounds how many
    * verifications run at once. Both merge tiers sit ahead of every role tick's, and a verification
    * takes the slot its author would have used: the interlock keeps that author from ticking until
-   * its change lands. */
+   * its change merges. */
   semaphore: Semaphore;
   /** Live runners, searched first when resolving a merge's author. */
   runners: LoopRunner[];
@@ -102,7 +102,7 @@ export interface MergePipelineContext {
  * - `approved`: the approved changes waiting to merge, still queued.
  * - `merge`: the one task that writes main — every approved change up to mergeBatchMax, in queue
  *   order, through mergeApproved (a stack of two or more shares one check and one fast-forward).
- *   It never waits for an unvetted queue head.
+ *   It never waits for an unapproved queue head.
  * A role is in at most one of them: its one queued change is approved, then waits, then merges, so
  * a verification and a merge never touch the same worktree or ref. */
 export interface MergePipeline {
@@ -213,10 +213,10 @@ export async function settleMergeOutcome(
   file: string,
 ): Promise<void> {
   writeMergeOutcome(root, entry, state, result, durationMs, usage, file);
-  // A revision that lands ends the rejected change's life: drop the rejected ref (plans/revise-
+  // A revision that merges ends the rejected change's life: drop the rejected ref (plans/revise-
   // rejected.md). A rejection repoints or deletes it in merge-core.ts, so this is the only
   // ref cleanup a merged revision needs here. Guarded on the entry's revisionRound, not just a
-  // `changed` result: a fresh change can land while a different rejection's revision is still
+  // `changed` result: a fresh change can merge while a different rejection's revision is still
   // pending, and its merge must leave that pending revision's ref alone.
   if (result === "changed" && entry.revisionRound !== undefined) {
     await deleteRef(root, rejectedRefName(entry.role));

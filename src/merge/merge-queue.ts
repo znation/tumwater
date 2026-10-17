@@ -33,7 +33,7 @@ export interface PriorReview {
   counts?: number[];
 }
 
-/** One entry in the durable land queue (.tumwater/land-queue/; this module): a commit
+/** One entry in the durable merge queue (.tumwater/land-queue/; this module): a commit
  * the tick pinned by `refs/tumwater/landing/<role>` and enqueued at tick end. One file per
  * entry, filename-ordered (`<ts>-<seq>-<pid>.json`); the entry is dropped after EVERY merge
  * outcome, so the queue holds only unattempted merges. No attempt counter lives in the file —
@@ -221,7 +221,7 @@ export function queuedMergeRoles(root: string): Set<string> {
 
 /** The queue read as one view: every readable entry in execution order (oldest first) plus the
  * number of queue files the reader skipped — torn, foreign, or vanished mid-listing. The one
- * home of "the queue as a view": `tumwater queue` renders it and `status`'s `landQueue`
+ * home of "the queue as a view": `tumwater queue` renders it and `status`'s `mergeQueue`
  * projects it, so those callers cannot drift. The queue's depth is
  * `entries.length + unreadable`: every listed file is either a readable entry or skipped, so
  * the caller needs no second directory listing. A missing queue dir reads as

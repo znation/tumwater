@@ -29,7 +29,7 @@ interface GatePrecheckResult {
   /** Set when the pre-check alone resolved the gate; the caller returns it verbatim. */
   resolved?: GateResult;
   /** The head the pre-check just verified (see GateResult.verifiedHead) — handed to the
-   * landing path, which owns the baseline seeding for the SHA that actually becomes main. */
+   * merge path, which owns the baseline seeding for the SHA that actually becomes main. */
   verifiedHead?: string;
   /** The harness's own counts sentence, named in the reviewer's prompt when the pre-check ran
    * green: the model reviewer then spends its run on what a passing suite cannot show instead
@@ -49,7 +49,7 @@ export async function gateBuildPrecheck(
   reject: (reasons: string[], durationMs?: number) => Promise<GateResult>,
 ): Promise<GatePrecheckResult> {
   const { root, role, wt, mainBranch, config } = ctx;
-  // The landing cell's stage (a no-op outside a queued landing — see setMergeStage): the
+  // The merge cell's stage (a no-op outside a queued merge — see setMergeStage): the
   // pre-check, its one re-run, and any attribution check behind them are the gate's first
   // long phase.
   setMergeStage(root, role, "build-check");
@@ -101,7 +101,7 @@ export async function gateBuildPrecheck(
       // The run spanned a host sleep past the tolerance and no clean attempt judged the tree
       // (runScopedBuildCheck already retried once): nothing here is the change's failure, so
       // the gate attributes nothing — it keeps the commit and reports the sleep, and the
-      // landing path keeps the pin for a re-land (BUGS.md 2026-09-30).
+      // merge path keeps the pin for a re-merge (BUGS.md 2026-09-30).
       const detail = sleptPhrase("gate check", outcome.run!.sleptMs!, UNVERIFIED_TREE);
       warnEventBestEffort(root, role, `${detail}; keeping the commit for another merge attempt`);
       return { resolved: { decision: "failed", detail, unverified: true } };
@@ -111,7 +111,7 @@ export async function gateBuildPrecheck(
       // re-run passed on this exact headline) says nothing about this change: attribute nothing
       // — keep the commit and the pin, count no strike — and name the flake, exactly as the
       // host-sleep path above does. Before this, the repeat was attributed through main's
-      // per-SHA baseline cache (usually a green seeded by an earlier landing), so a load- or
+      // per-SHA baseline cache (usually a green seeded by an earlier merge), so a load- or
       // clock-sensitive test rejected whichever unrelated change hit it (BUGS.md 2026-10-06).
       const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
       if (isKnownFlake(root, flaky)) {
@@ -121,13 +121,13 @@ export async function gateBuildPrecheck(
         return { resolved: { decision: "failed", detail, unverified: true } };
       }
       const reasons = checkFailureReasons(check, outcome);
-      // A failure that reproduced is attributed, never fixed here: the one landing slot the
+      // A failure that reproduced is attributed, never fixed here: the one merge slot the
       // whole queue waits on is no place for a model run (the in-slot build-fix run this
-      // replaces held it for hours and never once led to a landing — PLANS.md "Land-queue
+      // replaces held it for hours and never once led to a merge — PLANS.md "Land-queue
       // speed 1/3"). The question is whose failure it is, and main's own verdict at its tip
       // answers it. A failure matching no recorded flake bypasses the per-SHA cache and runs
       // main's check now (forceFresh): a clock- or load-sensitive test can pass on an immutable
-      // SHA early and fail later, so a cached green — usually seeded by an earlier landing —
+      // SHA early and fail later, so a cached green — usually seeded by an earlier merge —
       // may no longer be true, and trusting it rejected an unrelated change (BUGS.md
       // 2026-10-06). A shutdown already under way skips the question and fails closed like any
       // abort.
@@ -139,7 +139,7 @@ export async function gateBuildPrecheck(
         // Main fails too: not this change's failure. Leave the commit (and with it the pin) and
         // do not advance the discard counter — the transport-failure rule (BUGS.md 2026-09-20):
         // nothing judged this diff. main-red.ts's gate and the bugfix handoff own the repair,
-        // and the author's next tick re-lands the change once main is green again.
+        // and the author's next tick re-merges the change once main is green again.
         const detail = mainRedNotMine(main.sha);
         recordReview(state, "failed", [detail], head);
         warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; merge kept`);
@@ -159,7 +159,7 @@ export async function gateBuildPrecheck(
     }
     if (outcome.status === "passed") {
       // Passed: this exact tree just went green under the project's own declared check. Hand
-      // the verdict to the landing path via verifiedHead — it seeds the red-main baseline with
+      // the verdict to the merge path via verifiedHead — it seeds the red-main baseline with
       // the SHA that actually becomes main (the rebased head, which may differ from `head`),
       // so every role's next fresh tick is a cache hit instead of one redundant full-suite
       // re-run on an already-verified tree.

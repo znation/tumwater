@@ -23,7 +23,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "../loop/loop-state.js";
 
 /** Handling a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended
- * with TUMWATER_REFUSED. Only the markdown objection note may land — it is the durable record
+ * with TUMWATER_REFUSED. Only the markdown objection note may merge — it is the durable record
  * that blocks the entry for later ticks; any non-markdown half-work is discarded, tracked edits
  * via reset --hard and untracked files via clean -fd (the committed note is safe at HEAD by
  * then). A refusal with no note left resets the worktree cleanly and lets the reason live in
@@ -96,7 +96,7 @@ export function newlyRefusedTitles(baseMd: string, headMd: string, section: stri
 
 /** What handleRefusal needs from its owning loop: identity, this tick's assistant-turn count
  * (deliberately not on LoopState — see TickUsage.turns, src/tick/tick-usage.ts), and the
- * loop's shared merge landing so a conflict-resolution run folds into the same tick counters as
+ * loop's shared merge step so a conflict-resolution run folds into the same tick counters as
  * an authoring run. */
 export interface RefusalContext {
   role: string;
@@ -105,12 +105,12 @@ export interface RefusalContext {
   /** Assistant turns folded into this tick so far (main + transient retry) — the same field
    * the friction flag reads. */
   turns: number;
-  /** Land the worktree branch on main with the loop's shared wiring. */
+  /** Merge the worktree branch on main with the loop's shared wiring. */
   merge(wt: string, summary: string): Promise<TickResult>;
 }
 
 /** Handle a refused tick and return its outcome. Never throws: a failed note merge is recorded
- * in `state.lastError` and reported through the "refused" result like any other non-landing. */
+ * in `state.lastError` and reported through the "refused" result like any other non-merge. */
 export async function handleRefusal(
   ctx: RefusalContext,
   state: LoopState,
@@ -167,19 +167,19 @@ export async function handleRefusal(
     commit = (await commitPathsAndDiscardRest(wt, message, notes)) ?? undefined;
   }
   if (!commit) {
-    // No note landed (none left, or nothing stageable): reset and keep the reason in the
+    // No note merged (none left, or nothing stageable): reset and keep the reason in the
     // event + lastSummary only.
     await resetWorktreeToMain(wt, ctx.mainBranch);
     return { result: "refused", summary: reason };
   }
   const result = await ctx.merge(wt, `refused: ${reason}`);
   if (result !== "changed") state.lastError = `refusal note merge failed: ${result}`;
-  // A landed refusal note is a landed change too: it supersedes a stale rejection exactly as
-  // applyMergeOutcome's landed branch does (this path merges directly, bypassing that fold).
+  // A merged refusal note is a merged change too: it supersedes a stale rejection exactly as
+  // applyMergeOutcome's merged branch does (this path merges directly, bypassing that fold).
   else {
     clearSupersededRejection(state);
     // Page the operator: the entry stays held until a human or the director lifts it. Best-effort —
-    // the note has already landed.
+    // the note has already merged.
     logEventBestEffort(ctx.root, { source: ctx.role, type: "entry_refused", reason, files: notes, entries });
   }
   return { result: "refused", summary: reason, commit };

@@ -26,7 +26,7 @@ import type { TickResult } from "../tick/tick-outcome.js";
  * runs outside it — merge-to-main.ts's mergeToMain — so this cannot deadlock.) */
 const MERGE_TIER = VERIFY_TIER - 1;
 
-/** One poll of the land queue (the scheduler's WHEN: after the gates, never while a restart or
+/** One poll of the merge queue (the scheduler's WHEN: after the gates, never while a restart or
  * a team hold is pending): start a verification for every queued change the pipeline does not
  * already hold (drainVerify, in merge-verify.ts), and start the merge when the slot is free and
  * something is approved (drainMerge). A queued merge is COMMITTED work awaiting completion, not
@@ -67,7 +67,7 @@ export async function settleAbortedApproved(root: string, p: MergePipeline): Pro
 }
 
 /** Start the merge when the slot is free and something is approved: every approved change, up to
- * mergeBatchMax, in queue order among the approved — an unvetted entry ahead of them in the queue
+ * mergeBatchMax, in queue order among the approved — an unapproved entry ahead of them in the queue
  * (a slow review) does not hold them back. An approved change whose queue entry is gone is
  * forgotten (nothing in-process drops one; defensive). */
 export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
@@ -93,8 +93,8 @@ export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
  * main's current tip — one change through mergeApprovedChange, two or more as one stack with one
  * scope-`batch` check, one fast-forward, and 3d's largest-passing-prefix bisect — with no second
  * review. An approved change whose main moved since its verification is re-checked on the tree that
- * lands (the in-lock re-check, or the stack's check), so an approval that outlived its base never
- * lands unverified. Each defined result is written back and its entry dropped; an unattempted
+ * merges (the in-lock re-check, or the stack's check), so an approval that outlived its base never
+ * merges unverified. Each defined result is written back and its entry dropped; an unattempted
  * change (behind a bisect's attributed one) goes back to `approved` for the next merge. A plumbing
  * throw keeps every entry queued, but unapproved: each is verified afresh from its pin next poll. A
  * user abort of any merged role stops the whole stack, and every change it had not merged ends
