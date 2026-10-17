@@ -57,6 +57,14 @@ export interface AlertLoop {
   stuckMs?: number;
 }
 
+/** The dashboard's "Open <role>" buttons for an alert about a set of loops: one button per
+ * loop (capped to the first three so the banner does not overflow), each opening that loop's
+ * pane. Shared by the failing, stuck, and no-image-target alerts, so the button shape and its
+ * cap cannot drift between them. */
+function openRoleActions(loops: readonly AlertLoop[]): Array<{ label: string; act: string; arg: string }> {
+  return loops.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role }));
+}
+
 function listRoles(loops: readonly AlertLoop[]): string {
   const names = loops.map((l) => roleLabel(l.role));
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
@@ -197,7 +205,7 @@ export function teamAlerts(
       detail: failing.some((l) => l.lastError)
         ? failing.map((l) => `${roleLabel(l.role)}: ${l.lastError || "see its transcript"}`).join(" · ")
         : "The streak clears only on the next healthy run; the transcript names each failure.",
-      actions: failing.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role })),
+      actions: openRoleActions(failing),
     });
   }
   // A stall marker rides only a running label. The director is excluded from `inFlight` (it
@@ -210,7 +218,7 @@ export function teamAlerts(
       tone: "amber",
       title: `${listRoles(stuck)} ${agree(stuck.length, "looks", "look")} stuck`,
       detail: stuck.map(stuckDetail).join(" · "),
-      actions: stuck.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role })),
+      actions: openRoleActions(stuck),
     });
   }
   if (snap.build?.stale) {
@@ -305,7 +313,7 @@ export function teamAlerts(
       tone: "amber",
       title: `No configured model can read images for ${listRoles(noTarget)}`,
       detail: "A run that reads an image fails, and image attachments to these roles are refused. Declare image input on a vision model in pi's models.json, or point a tier at one.",
-      actions: noTarget.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role })),
+      actions: openRoleActions(noTarget),
     });
   } else if (textOnly.length > 0) {
     const targets = [...new Set(textOnly.map((l) => l.imageReroute ?? ""))].filter(Boolean);
