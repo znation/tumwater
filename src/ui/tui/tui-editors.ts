@@ -53,7 +53,8 @@ import {
 /** The seams a prompt-line editor cannot own itself: the disk side effects the commit arms
  * trigger (submit, pause, edit, answer, budget), the pane-side results an editor returns to
  * (the flash notice, the refreshed queued/backlog selections, an applied search), and the
- * clock the pause editor reads. Everything here runs on the tui-keys.ts side of the boundary;
+ * clock the pause editor reads. Everything here runs on the tui-keys.ts and
+ * tui-panes.ts side of the boundary;
  * this factory owns only the one prompt line and the editors that share it. */
 interface TuiEditorsDeps {
   root: string;
@@ -159,7 +160,8 @@ interface TuiEditors {
  * the `/` search — each with its own saved-draft pair and exit helper. The saved-draft
  * invariants (the editors share one line and are mutually exclusive) hold here once, at the
  * module boundary, instead of being re-stated per editor. The disk/commit responsibilities and
- * the pane state stay on the tui-keys.ts side; this factory receives them as deps and the
+ * the pane state stay on the tui-keys.ts and tui-panes.ts side; this
+ * factory receives them as deps and the
  * per-keypress pane reads as ctx. */
 export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const { root } = deps;
