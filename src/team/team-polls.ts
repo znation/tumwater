@@ -1,7 +1,8 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { teamHold, TEAM_OPEN, type TeamHold, type HoldObservation } from "./team-hold.js";
-import { claudeWindowUsedUp, windowReserved, type ClaudeAccount } from "../agent/claude/claude-account.js";
+import { claudeWindowUsedUp, windowReserved, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
+import type { HarnessEventInput } from "../events/events.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
 import type { LoopState } from "../loop/loop-state.js";
@@ -168,6 +169,35 @@ export function claudeWindowObservation(
   };
 }
 
+/** Log at most one subscription-window event per window key. The reserve and the warning polls
+ * (below) both walk the account's windows for the first one that crosses its mark this poll and
+ * log exactly one event for it, deduplicated by the `type:resetsAt` key so many polls across one
+ * window log once (a later window's crossing is its own key). They differ only in WHICH window
+ * marks (the reserve fraction vs the `allowed_warning` status) and the event's payload, so the
+ * shared traversal, the "reset instant already past" skip, the key build, the key dedup, and the
+ * return-key contract live here and each caller supplies the mark-and-payload predicate
+ * (`eventFor` returns the event to log, or null to skip that window). */
+function logWindowEventOnce(
+  root: string,
+  prevKey: string | null,
+  account: ClaudeAccount | null,
+  now: number,
+  eventFor: (type: string, w: ClaudeWindow) => HarnessEventInput | null,
+): string | null {
+  if (account?.billing !== "subscription") return prevKey;
+  for (const [type, w] of Object.entries(account.windows)) {
+    const ev = eventFor(type, w);
+    if (ev === null) continue;
+    // A window whose reset instant is in the past (or unreadable) no longer marks a crossing.
+    if (typeof w.resetsAt === "number" && w.resetsAt <= now) continue;
+    const key = `${type}:${w.resetsAt ?? ""}`;
+    if (key === prevKey) return prevKey;
+    logEventBestEffort(root, ev);
+    return key;
+  }
+  return prevKey;
+}
+
 /** One poll of the reserve crossing: the first window at or past its `claudeWindowReserve`
  * fraction logs `claude_window_reserved` once; `prevKey` is the `type:resetsAt` it was logged
  * for, the same once-per-window memory as pollClaudeWindowWarning. Returns the key to keep. */
@@ -178,23 +208,19 @@ export function pollClaudeWindowReserve(
   now: number,
   reserve: Record<string, number> | undefined,
 ): string | null {
-  if (account?.billing !== "subscription" || reserve === undefined) return prevKey;
-  for (const [type, w] of Object.entries(account.windows)) {
+  if (reserve === undefined) return prevKey;
+  return logWindowEventOnce(root, prevKey, account, now, (type, w) => {
     const fraction = reserve[type];
-    if (!windowReserved(w, fraction) || typeof w.resetsAt !== "number" || w.resetsAt <= now) continue;
-    const key = `${type}:${w.resetsAt}`;
-    if (key === prevKey) return prevKey;
-    logEventBestEffort(root, {
+    if (!windowReserved(w, fraction) || typeof w.resetsAt !== "number") return null;
+    return {
       source: TUMWATER_SOURCE,
       type: "claude_window_reserved",
       windowType: type,
       utilization: w.utilization,
       reserve: fraction,
       resetsAt: w.resetsAt,
-    });
-    return key;
-  }
-  return prevKey;
+    };
+  });
 }
 
 /** One poll of the subscription-window warning: the first `allowed_warning` window logs
@@ -207,21 +233,15 @@ export function pollClaudeWindowWarning(
   account: ClaudeAccount | null,
   now: number,
 ): string | null {
-  if (account?.billing !== "subscription") return prevWarnedKey;
-  for (const [type, w] of Object.entries(account.windows)) {
-    if (w.status !== "allowed_warning") continue;
-    if (typeof w.resetsAt === "number" && w.resetsAt <= now) continue;
-    const key = `${type}:${w.resetsAt ?? ""}`;
-    if (key === prevWarnedKey) return prevWarnedKey;
-    logEventBestEffort(root, {
+  return logWindowEventOnce(root, prevWarnedKey, account, now, (type, w) => {
+    if (w.status !== "allowed_warning") return null;
+    return {
       source: TUMWATER_SOURCE,
       type: "claude_window_warning",
       windowType: type,
       ...(typeof w.resetsAt === "number" ? { resetsAt: w.resetsAt } : {}),
-    });
-    return key;
-  }
-  return prevWarnedKey;
+    };
+  });
 }
 
 /** One poll of the team-wide error-storm warning (src/team/error-storm.ts): gather each runner's
