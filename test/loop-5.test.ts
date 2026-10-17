@@ -37,7 +37,7 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
   const sha = headSha(wt);
 
   // Block the adoption: a leftover lock file makes update-ref fail without touching the ref.
-  const lockDir = path.join(repo, ".git", "refs", "tumwater", "landing");
+  const lockDir = path.join(repo, ".git", "refs", "tumwater", "merge");
   fs.mkdirSync(lockDir, { recursive: true });
   fs.writeFileSync(path.join(lockDir, "improve.lock"), "");
 

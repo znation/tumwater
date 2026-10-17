@@ -1,6 +1,7 @@
 import { migrateLandQueueDir } from "../landing/landing-queue.js";
 import fs from "node:fs";
-import { legacyLandingStatePath } from "../paths.js";
+import { deleteRefIfAt, refSha, refsUnder, setRef } from "../git/git.js";
+import { landingRefName, legacyLandingStatePath } from "../paths.js";
 import { registerStartupMigration } from "./startup-migrations.js";
 
 /** The one place that fixes startup-migration step order. Callers import the runners from here,
@@ -17,6 +18,27 @@ registerStartupMigration({
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw err;
     }
+  },
+});
+registerStartupMigration({
+  name: "mergeRefs",
+  run: async (root) => {
+    const legacyPrefix = "refs/tumwater/landing/"; // vocabulary-ok: legacy name read from old refs or commits
+    const notes: string[] = [];
+    for (const { ref, sha } of await refsUnder(root, legacyPrefix)) {
+      const role = ref.slice(legacyPrefix.length);
+      const target = landingRefName(role);
+      const existing = await refSha(root, target);
+      if (existing === null) {
+        if (!(await setRef(root, target, sha))) continue; // keep the legacy pin; the next start retries
+        await deleteRefIfAt(root, ref, sha);
+        notes.push(`moved ${ref} to ${target}`);
+      } else if (existing === sha) {
+        await deleteRefIfAt(root, ref, sha);
+        notes.push(`removed ${ref}: ${target} already names the same commit`);
+      } else notes.push(`kept ${ref} and ${target}: they name different commits`);
+    }
+    return notes;
   },
 });
 

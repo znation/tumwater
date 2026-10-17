@@ -63,7 +63,7 @@ test("a refusal with a markdown note commits only the note and merges it directl
   // trailer (landing it on main is the merge wiring's job — recorded above, not faked here)…
   const log = sh(wt, "git", "log", "-1", "--format=%s%n%b");
   assert.match(log, /tumwater\(improve\): refuse — it would delete user data/);
-  assert.match(log, /Tick: improve #7 · turns 3/);
+  assert.match(log, /Run: improve #7 · turns 3/);
   // …and nothing else did: the tracked edit was reset and the untracked file cleaned.
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "seed\n", "the code change was discarded");
   assert.ok(!fs.existsSync(path.join(wt, "broken.ts")), "untracked half-work is cleaned");

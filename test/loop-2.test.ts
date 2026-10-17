@@ -74,7 +74,7 @@ test("a changed run past thrashTurns is flagged high-friction end to end", async
 
     // The commit on main carries the Friction trailer line after the Tick line (item d's e2e).
     const body = sh(repo, "git", "log", "-1", "--format=%B");
-    assert.match(body, /^Tick: improve #\d+ · turns 2 · ctx \S+\nFriction: high \(2 turns \/ \d+m\)$/m);
+    assert.match(body, /^Run: improve #\d+ · turns 2 · ctx \S+\nFriction: high \(2 turns \/ \d+m\)$/m);
   });
 });
 
@@ -179,14 +179,14 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     const first = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(
       first,
-      /^tumwater\(improve\): add hello file\n\nWHY: the roles needed a hello file to prove the pipeline works\nRISK: none that I can see\nVERIFIED: npm test, all pass\n\nTick: improve #1 · turns 1 · ctx 42$/m,
+      /^tumwater\(improve\): add hello file\n\nWHY: the roles needed a hello file to prove the pipeline works\nRISK: none that I can see\nVERIFIED: npm test, all pass\n\nRun: improve #1 · turns 1 · ctx 42$/m,
     );
 
     // Tick 2: SUMMARY-only reply → subject + trailer only; no body paragraph at all.
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     const second = sh(repo, "git", "log", "-1", "--format=%B");
-    assert.match(second, /^tumwater\(improve\): add world file\n\nTick: improve #2 · turns 1 · ctx 7$/m);
+    assert.match(second, /^tumwater\(improve\): add world file\n\nRun: improve #2 · turns 1 · ctx 7$/m);
     assert.doesNotMatch(second, /WHY:|RISK:|VERIFIED:/);
   });
 });
@@ -359,7 +359,7 @@ test("a failed pin leaves the commit on the branch; the next run recovers and la
     `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
     `echo hello > hello.txt`,
   ].join("\n");
-  const blockedRef = path.join(repo, ".git", "refs", "tumwater", "landing", "improve");
+  const blockedRef = path.join(repo, ".git", "refs", "tumwater", "merge", "improve");
   fs.mkdirSync(blockedRef, { recursive: true });
   fs.writeFileSync(path.join(blockedRef, "blocker"), "keep the directory non-empty\n");
   await withPi(script1, async () => {

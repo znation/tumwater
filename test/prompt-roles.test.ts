@@ -293,10 +293,11 @@ test("the readme prompt names the state-only content: summary, backlog pointer â
 });
 test("the readme prompt works from the delta since its own last commit", () => {
   const find = oneLine(readme!.find);
-  // The delta anchor is the role's own last commit (found via its Tick trailer), not a stamped
+  // The delta anchor is the role's own last commit (found via its Run trailer), not a stamped
   // sha in the brief â€” the stamp was the only thing that made the old anchor resolvable.
   assert.match(find, /git log --oneline <last readme commit>\.\.main/);
-  assert.match(find, /Tick: readme #N/);
+  assert.match(find, /Run: readme #N/);
+  assert.match(find, /git log -E --grep='\^\(Run\|Tick\): readme #' -1 --format=%H/);
   // Sync is need-based now: a merge that touched no user-facing surface needs no sync.
   assert.match(find, /a merge that touched no user-facing surface \(commands, flags, config keys, docs\) needs no sync/);
 });

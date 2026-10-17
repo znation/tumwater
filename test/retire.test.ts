@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { branchName, landingRefName, pausedRolesPath, slotWorktreePath, worktreePath } from "../src/paths.js";
+import { branchName, landingRefName, legacyLandingRefName, pausedRolesPath, slotWorktreePath, worktreePath } from "../src/paths.js";
 import { collectRetire, hasRetirableLeftovers, previewRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/retire.js";
 import { landingRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
@@ -403,4 +403,10 @@ test("retire --dry-run leaves a pinned slot's pin alone and rejects a misspelled
   assert.notEqual(bad.code, 0);
   assert.match(bad.stderr, /unknown argument: --dry-runn/);
   assert.match(helpTopic("retire") ?? "", /--dry-run/);
+});
+
+test("hasRetirableLeftovers counts a legacy-named pin", async () => {
+  const root = await initializedRepo();
+  await setRef(root, legacyLandingRefName("oldpin"), mainSha(root));
+  assert.equal(await hasRetirableLeftovers(root, "oldpin"), true);
 });

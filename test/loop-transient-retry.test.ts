@@ -108,6 +108,6 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
     // The trailer sums both runs' turns (3 + 1) — and only them: the reviewer run folds
     // after the commit. Peak ctx is the retry run's 42; attempt 1 carried no usage.
     const body = sh(repo, "git", "log", "-1", "--format=%B");
-    assert.match(body, /^Tick: improve #\d+ · turns 4 · ctx 42$/m);
+    assert.match(body, /^Run: improve #\d+ · turns 4 · ctx 42$/m);
   });
 });

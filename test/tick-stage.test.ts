@@ -392,7 +392,7 @@ test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () =
   // The commit carries the derived subject and the harness-stamped trailer.
   const log = sh(wt, "git", "log", "-1", "--format=%s%n%b");
   assert.equal(log.split("\n")[0], "tumwater(improve): add the feature");
-  assert.match(log, /Tick: improve #3 · turns 4/);
+  assert.match(log, /Run: improve #3 · turns 4/);
 
   // The commit was pinned by the landing ref before the worktree was freed.
   assert.equal(calls.pins.length, 1);

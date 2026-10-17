@@ -101,9 +101,9 @@ export function formatCommitBody(body: CommitBody): string {
 /** The harness-stamped trailer line of every tick commit — truth from the run's counters, not
  * model claims. `turns` sums this tick's pre-commit pi runs (main + transient retry); `peakCtx`
  * is their largest single-request context. A changed tick flagged high-friction (plans/
- * refusal-and-thrash.md) appends a sibling Friction line after the Tick line — minutes rounded,
+ * refusal-and-thrash.md) appends a sibling Friction line after the Run line — minutes rounded,
  * e.g. `Friction: high (41 turns / 62m)`; only changed ticks carry it, so the refusal path
- * never passes the argument and the Tick line's asserted format stays stable. */
+ * never passes the argument and the Run line's asserted format stays stable. */
 export function commitTrailer(
   role: string,
   tick: number,
@@ -112,7 +112,7 @@ export function commitTrailer(
   highFrictionMinutes?: number,
   revisionRound?: number,
 ): string {
-  const base = `Tick: ${role} #${tick} · turns ${turns} · ctx ${compactTokens(peakCtx)}`; // vocabulary-ok: the Tick: trailer is read back from history until the state rename
+  const base = `Run: ${role} #${tick} · turns ${turns} · ctx ${compactTokens(peakCtx)}`;
   const friction =
     highFrictionMinutes === undefined
       ? ""

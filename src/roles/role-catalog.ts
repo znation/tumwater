@@ -22,7 +22,9 @@ import type { ModelTier } from "../config/config-schema.js";
 /** The trailer the readme role's commits carry and its `git log --grep` reads back; git parses
  * it, so it keeps this spelling. Interpolated because a comment inside the template would
  * become prompt text. */
-const README_TRAILER = "Tick: readme #"; // vocabulary-ok: git log --grep matches this trailer until the state series renames it
+const README_TRAILER = "Run: readme #";
+const README_TRAILER_GREP = "^(Run|Tick): readme #"; // vocabulary-ok: legacy name read from old refs or commits
+const README_TRAILER_LEGACY = "Tick: readme #"; // vocabulary-ok: legacy name read from old refs or commits
 
 /** The older spelling of a merge citation in existing BUGS.md/PLANS.md entries, which the steward
  * still reads; kept verbatim because those entries say it. Interpolated into the template. */
@@ -157,8 +159,9 @@ ${DECOMPOSITION_GUIDANCE}`,
     find: `Keep the project brief — TUMWATER.md when it exists with the tumwater:prompt markers, else
 README.md — accurate against the actual state of the project.
    1. Work from the delta, not from scratch: \`git log --oneline <last readme commit>..main\` names
-      everything that merged since your last sync — your commits carry a \`${README_TRAILER}N\`
-      trailer, and \`git log --grep='^${README_TRAILER}' -1 --format=%H\` names the last one. Read only
+      everything that merged since your last sync — your new commits carry a \`${README_TRAILER}N\`
+      trailer and older ones \`${README_TRAILER_LEGACY}N\`; \`git log -E --grep='${README_TRAILER_GREP}' -1 --format=%H\`
+      names the last one. Read only
       what those commits touched.
    2. If the brief is already accurate, there is nothing to do: a merge that touched no
       user-facing surface (commands, flags, config keys, docs) needs no sync.

@@ -144,44 +144,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms state, part 5/5: Move landing refs to refs/tumwater/merge and write the Run trailer (planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/git/ src/orchestrator/startup-migration-steps.ts src/operator/retire.ts src/roles/role-catalog.ts test/)
-
-**Goal.** Two git-side renames:
-- The pin for a committed but unmerged change moves from `refs/tumwater/landing/<id>` to `refs/tumwater/merge/<id>`, and startup moves existing pins with `update-ref`. `refs/tumwater/rejected/<id>` is unchanged.
-- New commits carry a `Run: <id> #N · turns … · ctx …` trailer, and every prompt that greps for the trailer matches both `Run:` and `Tick:`.
-
-**Approach.**
-- src/paths.ts: `landingRefName(role)` returns `refs/tumwater/merge/<role>`. Plain terms code merge renames the function. Add `legacyLandingRefName(role)`, which returns `refs/tumwater/landing/<role>`.
-- src/git/git.ts: add `refsUnder(root, prefix)`, returning `{ ref, sha }[]` from `git for-each-ref --format='%(refname) %(objectname)' <prefix>`. Follow the existing `gitTry`/`gitLines` pattern.
-- Migration step `mergeRefs`, registered last in startup-migration-steps.ts, runs for each ref under `refs/tumwater/landing/`:
-  - When the new ref is absent: `setRef(new, sha)`, then `git update-ref -d <legacy> <sha>`, guarded by the old value. The legacy ref is never deleted before its copy exists.
-  - When the new ref names the same sha: delete the legacy ref.
-  - When the new ref names a different sha: keep both and note it. Never overwrite a pin the new build wrote.
-- src/operator/retire.ts:
-  - `collectRetire` reads `landingRefName(role)` and falls back to `legacyLandingRefName(role)`.
-  - `retireRole` deletes both, because a fleet stopped before its first start on this build still holds legacy pins.
-  - Every other reader and writer (landing-core.ts, leftover.ts, loop-recovery.ts, loop-tick.ts, tick-timing.ts, landing-stack.ts, landing-pipeline.ts, landing-check-failures.ts) goes through `landingRefName` inside the orchestrator, after the step has run.
-- Tests: test/loop-2.test.ts builds the ref's file path by hand, so update it. test/git.test.ts and test/git-ref-files.test.ts use the name only as an arbitrary ref and may stay.
-- Trailer:
-  - `commitTrailer` (src/git/commit-message.ts) writes `Run:`.
-  - The readme role's instructions in src/roles/role-catalog.ts say new commits carry `Run: readme #N` and older ones `Tick: readme #N`, and use `git log -E --grep='^(Run|Tick): readme #' -1 --format=%H`.
-  - No src code parses the `Tick:` line today: `hasFrictionTrailer` and `revisionRoundOf` read only the Friction and Revision lines. Grep to confirm; any parser found must accept both forms.
-  - Tests that assert the trailer: test/loop-2.test.ts, loop-leftover-recovery, loop-merge-conflicts, loop-transient-retry, tick-stage, refusal, loop-ids and prompt-roles.
-- If the vocabulary guard flags a legacy literal, end its line with `// vocabulary-ok: legacy name read from old refs or commits`.
-- **Self-hosting:** safe in one part.
-  - The old build pins under `landing/` until it exits.
-  - The new build moves the pins before its first reader, leftover recovery, runs.
-  - A crash between the two `update-ref` calls leaves the commit reachable under both names, and the next start finishes the move.
-  - The trailer has no code parser, and the prompt matches both forms. History keeps `Tick:`.
-
-**Files touched.** src/paths.ts, src/git/git.ts, src/git/commit-message.ts, src/orchestrator/startup-migration-steps.ts, src/operator/retire.ts, src/roles/role-catalog.ts; test/startup-migrations.test.ts, test/retire.test.ts, test/loop-2.test.ts, test/loop-leftover-recovery.test.ts, test/loop-merge-conflicts.test.ts, test/loop-transient-retry.test.ts, test/tick-stage.test.ts, test/refusal.test.ts, test/loop-ids.test.ts, test/prompt-roles.test.ts.
-
-**Acceptance criteria.**
-- Fixture: a repo with `refs/tumwater/landing/improve` at an unmerged sha. Startup leaves `refs/tumwater/merge/improve` at that sha and no legacy ref, and leftover recovery re-queues the change. A second start changes nothing. A legacy and a new ref at different shas are both kept and noted.
-- `tumwater retire` on a repo that still has only the legacy pin counts it as unmerged work and deletes it with `--force`.
-- New commits end with `Run: <id> #N · turns … · ctx …`. The readme instructions' grep finds the newest commit carrying either form.
-- `npm run test` passes.
-
 ### Plain terms role ids, part 1/5: Read legacy role ids as their new ids through one alias table (planned 2026-10-16 by user; requires Plain terms state 5/5 and Plain terms commands 6/6 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config-aliases.ts and src/cli/ and the event normalizer plus the persisted role readers)
 
 **Goal.** One table of retired role ids, and every place a role id enters tumwater reads an old id as its new one: typed ids, config keys, old events, and persisted state. This part ships the table empty, so nothing changes yet. Parts 3/5 and 4/5 each add one row and get every alias for free.
@@ -2015,6 +1977,44 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - In `test/tick-prompt.test.ts`, "the plan prompt counts only takeable entries and marks the blocked ones in the index" also checks `/It holds 1 now/`. Its fixture has one takeable entry and four blocked ones.
 - A new test in `test/tick-prompt.test.ts` writes a PLANS.md with no `## Planned` entries and finds `/It holds 0 now/` in the plan prompt. A non-plan role's prompt (feature) does not contain `It holds`.
 - "the plan charter's stop target scales with feature.instances" (`test/tick-prompt.test.ts`) and "the plan payload resolves the stop target without leaking a template" (`test/role-view.test.ts`) pass without edits.
+- `npm run test` passes.
+
+### Plain terms state, part 5/5: Move landing refs to refs/tumwater/merge and write the Run trailer (done 2026-10-16; planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/git/ src/orchestrator/startup-migration-steps.ts src/operator/retire.ts src/roles/role-catalog.ts test/)
+
+**Goal.** Two git-side renames:
+- The pin for a committed but unmerged change moves from `refs/tumwater/landing/<id>` to `refs/tumwater/merge/<id>`, and startup moves existing pins with `update-ref`. `refs/tumwater/rejected/<id>` is unchanged.
+- New commits carry a `Run: <id> #N · turns … · ctx …` trailer, and every prompt that greps for the trailer matches both `Run:` and `Tick:`.
+
+**Approach.**
+- src/paths.ts: `landingRefName(role)` returns `refs/tumwater/merge/<role>`. Plain terms code merge renames the function. Add `legacyLandingRefName(role)`, which returns `refs/tumwater/landing/<role>`.
+- src/git/git.ts: add `refsUnder(root, prefix)`, returning `{ ref, sha }[]` from `git for-each-ref --format='%(refname) %(objectname)' <prefix>`. Follow the existing `gitTry`/`gitLines` pattern.
+- Migration step `mergeRefs`, registered last in startup-migration-steps.ts, runs for each ref under `refs/tumwater/landing/`:
+  - When the new ref is absent: `setRef(new, sha)`, then `git update-ref -d <legacy> <sha>`, guarded by the old value. The legacy ref is never deleted before its copy exists.
+  - When the new ref names the same sha: delete the legacy ref.
+  - When the new ref names a different sha: keep both and note it. Never overwrite a pin the new build wrote.
+- src/operator/retire.ts:
+  - `collectRetire` reads `landingRefName(role)` and falls back to `legacyLandingRefName(role)`.
+  - `retireRole` deletes both, because a fleet stopped before its first start on this build still holds legacy pins.
+  - Every other reader and writer (landing-core.ts, leftover.ts, loop-recovery.ts, loop-tick.ts, tick-timing.ts, landing-stack.ts, landing-pipeline.ts, landing-check-failures.ts) goes through `landingRefName` inside the orchestrator, after the step has run.
+- Tests: test/loop-2.test.ts builds the ref's file path by hand, so update it. test/git.test.ts and test/git-ref-files.test.ts use the name only as an arbitrary ref and may stay.
+- Trailer:
+  - `commitTrailer` (src/git/commit-message.ts) writes `Run:`.
+  - The readme role's instructions in src/roles/role-catalog.ts say new commits carry `Run: readme #N` and older ones `Tick: readme #N`, and use `git log -E --grep='^(Run|Tick): readme #' -1 --format=%H`.
+  - No src code parses the `Tick:` line today: `hasFrictionTrailer` and `revisionRoundOf` read only the Friction and Revision lines. Grep to confirm; any parser found must accept both forms.
+  - Tests that assert the trailer: test/loop-2.test.ts, loop-leftover-recovery, loop-merge-conflicts, loop-transient-retry, tick-stage, refusal, loop-ids and prompt-roles.
+- If the vocabulary guard flags a legacy literal, end its line with `// vocabulary-ok: legacy name read from old refs or commits`.
+- **Self-hosting:** safe in one part.
+  - The old build pins under `landing/` until it exits.
+  - The new build moves the pins before its first reader, leftover recovery, runs.
+  - A crash between the two `update-ref` calls leaves the commit reachable under both names, and the next start finishes the move.
+  - The trailer has no code parser, and the prompt matches both forms. History keeps `Tick:`.
+
+**Files touched.** src/paths.ts, src/git/git.ts, src/git/commit-message.ts, src/orchestrator/startup-migration-steps.ts, src/operator/retire.ts, src/roles/role-catalog.ts; test/startup-migrations.test.ts, test/retire.test.ts, test/loop-2.test.ts, test/loop-leftover-recovery.test.ts, test/loop-merge-conflicts.test.ts, test/loop-transient-retry.test.ts, test/tick-stage.test.ts, test/refusal.test.ts, test/loop-ids.test.ts, test/prompt-roles.test.ts.
+
+**Acceptance criteria.**
+- Fixture: a repo with `refs/tumwater/landing/improve` at an unmerged sha. Startup leaves `refs/tumwater/merge/improve` at that sha and no legacy ref, and leftover recovery re-queues the change. A second start changes nothing. A legacy and a new ref at different shas are both kept and noted.
+- `tumwater retire` on a repo that still has only the legacy pin counts it as unmerged work and deletes it with `--force`.
+- New commits end with `Run: <id> #N · turns … · ctx …`. The readme instructions' grep finds the newest commit carrying either form.
 - `npm run test` passes.
 
 ### Plain terms state, part 4/5: Rename the merging marker and the workspace lease purposes (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/landing/ src/ui/status-model.ts src/git/ src/loop/loop-tick.ts src/orchestrator/startup-migration-steps.ts src/events/ src/doctor/doctor-checks.ts test/; done 2026-10-16)

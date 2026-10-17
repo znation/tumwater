@@ -55,7 +55,7 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
       // only the authoring run's turns — the reviewer and conflict-resolution runs fold into
       // tickTurns after the trailer string is already assembled.
       const body = sh(repo, "git", "log", "-1", "--format=%B");
-      assert.match(body, /^Tick: improve #\d+ · turns 1 · ctx 0$/m);
+      assert.match(body, /^Run: improve #\d+ · turns 1 · ctx 0$/m);
       // Routine conflict → pi-resolve → land is normal operation, not something to warn
       // about: the merged event and run_end already cover observability.
       const warnings = eventsOfType(repo, "warning");

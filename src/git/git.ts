@@ -229,6 +229,19 @@ export async function setRef(root: string, ref: string, sha: string): Promise<bo
   return (await gitTry(root, "update-ref", ref, sha)) !== null;
 }
 
+/** Every ref under `prefix` with the sha it names (git for-each-ref). Empty when none match. */
+export async function refsUnder(root: string, prefix: string): Promise<{ ref: string; sha: string }[]> {
+  return gitLines(await gitTry(root, "for-each-ref", "--format=%(refname) %(objectname)", prefix)).map((line) => {
+    const [ref, sha] = line.split(" ") as [string, string];
+    return { ref, sha };
+  });
+}
+
+/** Delete `ref` only while it still names `sha` (git update-ref -d guarded by the old value). */
+export async function deleteRefIfAt(root: string, ref: string, sha: string): Promise<void> {
+  await gitTry(root, "update-ref", "-d", ref, sha);
+}
+
 /** Delete `ref`; a no-op when it is already gone (idempotent cleanup on terminal outcomes). */
 export async function deleteRef(root: string, ref: string): Promise<void> {
   await gitTry(root, "update-ref", "-d", ref);

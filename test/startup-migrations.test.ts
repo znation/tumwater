@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { readLandingQueue } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { writeOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
-import { landQueueDir, legacyLandingStatePath, legacyLandQueueDir, orchestratorStatePath } from "../src/paths.js";
+import { headOf, refSha, setRef } from "../src/git/git.js";
+import { landingRefName, legacyLandingRefName, landQueueDir, legacyLandingStatePath, legacyLandQueueDir, orchestratorStatePath } from "../src/paths.js";
 import { registerStartupMigration } from "../src/orchestrator/startup-migrations.js";
 import { runStartupMigrations, runStartupMigrationsIfIdle } from "../src/orchestrator/startup-migration-steps.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
@@ -79,4 +81,27 @@ test("mergingMarker removes a leftover landing.json once", async () => {
   assert.equal(migrated(root).filter((e) => e.step === "mergingMarker").length, 1);
   await runStartupMigrations(root);
   assert.equal(migrated(root).filter((e) => e.step === "mergingMarker").length, 1, "a second start logs nothing");
+});
+
+test("mergeRefs moves a legacy pin once, keeps a differing pair, and retire sees a legacy-only pin", async () => {
+  const root = makeRepo();
+  const sha = await headOf(root, "HEAD");
+  const legacy = legacyLandingRefName("improve");
+  await setRef(root, legacy, sha);
+  await runStartupMigrations(root);
+  assert.equal(await refSha(root, landingRefName("improve")), sha);
+  assert.equal(await refSha(root, legacy), null);
+  await runStartupMigrations(root);
+  assert.equal(await refSha(root, landingRefName("improve")), sha);
+
+  const other = execFileSync("git", ["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "other"], { cwd: root, encoding: "utf8" }).trim();
+  await setRef(root, legacyLandingRefName("same"), sha);
+  await setRef(root, landingRefName("same"), sha);
+  await setRef(root, legacyLandingRefName("diff"), other);
+  await setRef(root, landingRefName("diff"), sha);
+  const diffNew = sha;
+  await runStartupMigrations(root);
+  assert.equal(await refSha(root, legacyLandingRefName("same")), null);
+  assert.equal(await refSha(root, legacyLandingRefName("diff")), other);
+  assert.equal(await refSha(root, landingRefName("diff")), diffNew);
 });

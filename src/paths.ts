@@ -402,7 +402,14 @@ export function slotsLockPath(root: string): string {
  * written right after the tick's commit, before its branch resets to main, so the reset cannot
  * orphan the work. Deleted on every terminal landing outcome; kept until re-landed otherwise. */
 export function landingRefName(role: string): string {
-  return `refs/tumwater/landing/${role}`;
+  return `refs/tumwater/merge/${role}`;
+}
+
+/** The pre-rename pin name (`refs/tumwater/landing/<role>`): the startup step moves these to
+ * landingRefName, and retire still reads and deletes it for a fleet stopped before its first
+ * start on this build. */
+export function legacyLandingRefName(role: string): string {
+  return `refs/tumwater/landing/${role}`; // vocabulary-ok: legacy name read from old refs or commits
 }
 
 /** The ref naming a role's rejected change while a revision is due (plans/revise-rejected.md):

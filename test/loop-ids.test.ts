@@ -113,7 +113,7 @@ test("a custom loop name shaped like an instance id is a validation error", () =
 
 test("a commit stamps the base role and still trailers the loop id", () => {
   assert.equal(stampedSubject(baseRoleOf("feature-2"), "land it"), "tumwater(feature): land it");
-  assert.match(commitTrailer("feature-2", 1, 3, 1000), /^Tick: feature-2 #1/);
+  assert.match(commitTrailer("feature-2", 1, 3, 1000), /^Run: feature-2 #1/);
 });
 
 test("the per-role cap groups instances: their spend sums against the base role's cap", () => {

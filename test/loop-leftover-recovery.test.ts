@@ -245,7 +245,7 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
       "RISK: touches the landing path",
       "VERIFIED: npm test, all pass",
       "",
-      "Tick: improve #3 · turns 44 · ctx 20.0k",
+      "Run: improve #3 · turns 44 · ctx 20.0k",
       "Friction: high (44 turns / 4m)",
     ].join("\n"),
   );

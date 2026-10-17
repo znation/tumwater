@@ -16,7 +16,7 @@ import {
 } from "../git/git.js";
 import { errorMessage } from "../text/text.js";
 import { loadLoopState } from "../loop/loop-state.js";
-import { branchName, landingRefName, worktreePath } from "../paths.js";
+import { branchName, landingRefName, legacyLandingRefName, worktreePath } from "../paths.js";
 import { isUsableWorktree, removeWorktree } from "../git/worktree.js";
 import { roleWorktreeDir, slotForDir, updateSlotsState } from "../git/slots-state.js";
 import { pausedRoles, resumeRole } from "../fleet/fleet-state.js";
@@ -26,12 +26,17 @@ import { git } from "../git/git-run.js";
  * per-role landing ref and paused-state marker that outlive it. The safety rails and the `--force`
  * override live here, so the CLI layer (operator/operator-commands.ts) stays a thin renderer. */
 
+/** The role's merge pin, falling back to the legacy-named one a not-yet-migrated repo holds. */
+async function mergeRefSha(root: string, role: string): Promise<string | null> {
+  return (await refSha(root, landingRefName(role))) ?? (await refSha(root, legacyLandingRefName(role)));
+}
+
 /** The id gate for ids no config names (a lowered `instances`, a removed custom role): the id is
  * well-formed (CUSTOM_NAME_RE keeps `..` and `/` out of the paths retire builds), is not the
  * director, and still has its branch or merge ref. Read-only. */
 export async function hasRetirableLeftovers(root: string, role: string): Promise<boolean> {
   if (!CUSTOM_NAME_RE.test(role) || role === DIRECTOR_ROLE) return false;
-  return (await branchExists(root, branchName(role))) || (await refSha(root, landingRefName(role))) !== null;
+  return (await branchExists(root, branchName(role))) || (await mergeRefSha(root, role)) !== null;
 }
 
 /** What retire sees today for one role — the collect half, exported so a read-only surface can
@@ -81,7 +86,7 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
     ? await countCommitsInRange(root, `${mainBranch}..${branch}`)
     : 0;
   const dirty = usable && wt !== null ? await isDirty(wt) : false;
-  const landing = await refSha(root, landingRefName(role));
+  const landing = await mergeRefSha(root, role);
   // A landing ref pins a committed-but-unlanded sha (plans/merge-queue.md invariant 4): count
   // it as unlanded work too — the branch can sit at main while the pin holds the crash survivor.
   const pinnedUnlanded =
@@ -176,6 +181,7 @@ export async function retireRole(root: string, role: string, { force }: { force?
   } else mark("branch", false);
   if (status.mergeRefPresent) {
     await deleteRef(root, landingRefName(status.role));
+    await deleteRef(root, legacyLandingRefName(status.role)); // a fleet stopped before its first start here
     mark("mergeRef", true);
   } else mark("mergeRef", false);
   mark("pausedMarker", resumeRole(root, status.role));
