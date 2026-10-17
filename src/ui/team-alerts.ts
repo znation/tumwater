@@ -82,8 +82,8 @@ function localizeInstants(text: string): string {
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, loops failing tick after tick, loops that look stuck, a stale running build, open
- * questions, a pause, a stopped team. `now` is passed so a timed pause's countdown agrees with
- * the rest of the frame. */
+ * questions, refused entries, a pause, a stopped team. `now` is passed so a timed pause's
+ * countdown agrees with the rest of the frame. */
 export function teamAlerts(
   snap: Pick<
     StatusSnapshot,
@@ -102,6 +102,7 @@ export function teamAlerts(
   questions: readonly string[],
   loops: readonly AlertLoop[],
   now: number,
+  refused: readonly string[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -223,6 +224,16 @@ export function teamAlerts(
       title: `${plural(questions.length, "question needs", "questions need")} your answer`,
       detail: `${stripEntryStamp(questions[0]!)}${questions.length > 1 ? ` — and ${questions.length - 1} more` : ""}`,
       actions: [{ label: "Answer", act: "questions" }],
+    });
+  }
+  // Refused entries hold until a human decides; amber because the operator has to act.
+  if (refused.length) {
+    out.push({
+      key: "refused",
+      tone: "amber",
+      title: `${plural(refused.length, "refused entry waits", "refused entries wait")} on your decision`,
+      detail: `${stripEntryStamp(refused[0]!)}${refused.length > 1 ? ` — and ${refused.length - 1} more` : ""} · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it`,
+      actions: [{ label: "Open backlog", act: "backlog" }],
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:

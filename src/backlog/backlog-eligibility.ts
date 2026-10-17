@@ -480,6 +480,20 @@ export function backlogMarks(root: string): { plans: string[]; bugs: string[] } 
   };
 }
 
+/** The verbatim titles of the planned plans, then the open bugs, whose hold is `"refused"`, in
+ * file order: the entries that wait on an operator decision (the `refused` team alert's
+ * input). Pairs backlogHolds' arrays with the entries the same readers return, like
+ * backlogInProgress. A missing file yields `[]`. */
+export function refusedEntryTitles(root: string): string[] {
+  const holds = backlogHolds(root);
+  const titlesOf = (entries: readonly BacklogEntry[], held: readonly (EntryHold | null)[]): string[] =>
+    entries.filter((_, i) => held[i] === "refused").map((e) => e.title);
+  return [
+    ...titlesOf(plannedPlanEntries(root), holds.plans),
+    ...titlesOf(openBugEntries(root), holds.bugs),
+  ];
+}
+
 /** The runner id holding a live claim on each planned plan and open bug, two arrays parallel
  * to backlogHolds' (same readers, same order); `null` when no role is working on the entry.
  * Keyed by entryKey alone, exactly as the backlog index's claim lookup is. */

@@ -1266,7 +1266,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### A refused plan or bug raises a standing `refused` team alert on the dashboard, the TUI and `tumwater status`, the way an open question does (planned 2026-10-16 by plan; independent of every other Planned entry — touches src/backlog/backlog-eligibility.ts, src/ui/team-alerts.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx and their tests; no src/merge, src/tick, src/doctor or src/ui/gui edit)
+## Done
+
+### A refused plan or bug raises a standing `refused` team alert on the dashboard, the TUI and `tumwater status`, the way an open question does (planned 2026-10-16 by plan; independent of every other Planned entry — touches src/backlog/backlog-eligibility.ts, src/ui/team-alerts.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx and their tests; no src/merge, src/tick, src/doctor or src/ui/gui edit) (done 2026-10-16)
 
 **Goal.** A **Refused** note holds an entry until a human decides ("The objection stands until a human or the director edits the entry"). Today the operator hears about it in three places: one notify page when the refusal lands (`entry_refused`), the `refused` row in `tumwater doctor` (`checkRefusedEntries`, src/doctor/doctor-backlog.ts), and a `[blocked: refused]` mark inside the backlog lists. Once the page has scrolled away, nothing on the surfaces an operator watches says a decision is waiting. The tui-panes split in PLANS.md has been held this way since 2026-10-14. An open question gets a standing indigo banner (the `questions` alert in `teamAlerts`, src/ui/team-alerts.ts) until it is answered. This plan gives refused entries the same kind of standing alert. It is amber, because the operator has to act, and it carries a button that opens the backlog card.
 
@@ -1292,8 +1294,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `teamAlerts(base, [], [], now)` stays `[]`.
 - test/status-payload.test.ts: the existing "status payload carries planned plans and open bugs, fresh per poll" fixture already holds a refused plan and a refused bug. Its payload's `alerts` gains a `refused` alert whose title is `2 refused entries wait on your decision`.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor` warns when a recently Fixed bug's quoted test has failed again since its fix and no Open bug names that test (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, test/doctor-backlog.test.ts and test/doctor.test.ts; no src/merge, src/tick, src/backlog or src/ui edit)
 

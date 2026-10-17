@@ -285,6 +285,8 @@ test("status payload carries planHolds and bugHolds parallel to plans and bugs",
   assert.deepEqual(payload.bugHolds, ["", " [blocked: refused]"]);
   assert.deepEqual(payload.planBlocked, [false, true, true, false]);
   assert.deepEqual(payload.bugBlocked, [false, true]);
+  const alerts = (statusPayload(repo) as { alerts: Array<{ key: string; title: string }> }).alerts;
+  assert.equal(alerts.find((a) => a.key === "refused")?.title, "2 refused entries wait on your decision");
 });
 
 test("status payload's planHolds carries the working-on-it mark for a claimed plan", () => {

@@ -16,6 +16,7 @@ import {
   plannedPartKeys,
   prerequisitesLanded,
   refusalNote,
+  refusedEntryTitles,
   waitingNote,
   planDependencyProblems,
   plansWaitingOn,
@@ -515,4 +516,39 @@ test("waitingNote returns the note line without its bold markers, and null for a
     waitingNote("x\n  **Waiting for the next failure 2026-10-16 by bugfix: the message names the pid**\n"),
     "Waiting for the next failure 2026-10-16 by bugfix: the message names the pid");
   assert.equal(waitingNote("see Waiting for the next failure mid-line"), null);
+});
+
+test("refusedEntryTitles lists the refused plans then the refused bugs, and [] with no backlog files", () => {
+  const empty = tmpdir();
+  assert.deepEqual(refusedEntryTitles(empty), []);
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### Ready (planned 2026-10-04)",
+      "body",
+      "### Dead plan (planned 2026-10-03)",
+      "**Refused 2026-10-07 by feature: no**",
+      "### Needs a look (planned 2026-10-03)",
+      "**Needs review 2026-10-07 by feature: too large for one run**",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    [
+      "# Bugs",
+      "## Open",
+      "### Live (reported 2026-10-02)",
+      "Repro.",
+      "### Dead bug (reported 2026-10-02)",
+      "**Refused 2026-10-07 by bugfix: not reproducible**",
+      "## Fixed",
+      "_None._",
+    ].join("\n"),
+  );
+  assert.deepEqual(refusedEntryTitles(dir), ["Dead plan (planned 2026-10-03)", "Dead bug (reported 2026-10-02)"]);
 });

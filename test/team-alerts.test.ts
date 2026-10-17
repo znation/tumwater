@@ -301,3 +301,18 @@ test("images alert: a cached probe failure is amber, whatever the loops resolved
   assert.match(probe?.detail ?? "", /local\/vision declare image input but failed/);
   assert.equal(alertNeedsYou(probe!), true);
 });
+
+test("refused entries raise a standing amber alert right after the questions alert", () => {
+  const now = Date.now();
+  const one = teamAlerts(base, [], [], now, ["Split X (planned 2026-10-14 by plan)"]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["refused", "amber", "1 refused entry waits on your decision"]]);
+  assert.ok(one[0]!.detail.startsWith("Split X ·"));
+  assert.ok(one[0]!.detail.includes("--release"));
+  assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog" }]);
+  const two = teamAlerts(base, [], [], now, ["A (planned 2026-10-14)", "B (reported 2026-10-14)"]);
+  assert.equal(two[0]!.title, "2 refused entries wait on your decision");
+  assert.ok(two[0]!.detail.includes("— and 1 more"));
+  const both = teamAlerts(base, ["Q? (asked 2026-10-14)"], [], now, ["A"]);
+  assert.deepEqual(both.map((a) => a.key), ["questions", "refused"]);
+  assert.deepEqual(teamAlerts(base, [], [], now), []);
+});

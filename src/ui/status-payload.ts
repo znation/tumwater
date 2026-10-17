@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { answeredQuestionSummaries } from "../backlog/question-answer.js";
 import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, plannedPlans, type BacklogEntry } from "../backlog/backlog.js";
-import { backlogHolds, backlogInProgress, backlogMarks } from "../backlog/backlog-eligibility.js";
+import { backlogHolds, backlogInProgress, backlogMarks, refusedEntryTitles } from "../backlog/backlog-eligibility.js";
 import { finishedTitle, groupBlockedSeries, partsLabel } from "../backlog/backlog-structure.js";
 import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
@@ -326,6 +326,6 @@ export function statusPayload(root: string, now = Date.now()): object {
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntryTitles(root)),
   };
 }
