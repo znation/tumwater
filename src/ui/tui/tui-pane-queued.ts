@@ -1,15 +1,16 @@
 // vocabulary: plain
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
+import { movePromptToTop } from "../../inbox/inbox-top.js";
 import { moveEntrySelection } from "./tui-backlog.js";
 import { arrowDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Queued pane (view roleIds.length + 6) of the TUI (src/ui/tui/tui.tsx): the prompt row
- * selection, the up/down select and Esc-to-list arms, and the two-step Ctrl+X cancel arm.
- * Split out of the pane-navigation monolith; it owns the pane's rows/selection state and
- * the arms that touch them. */
+ * selection, the up/down select and Esc-to-list arms, and the Ctrl+X cancel and Ctrl+V
+ * move-to-top arms. Split out of the pane-navigation monolith; it owns the pane's
+ * rows/selection state and the arms that touch them. */
 export function createQueuedPane(
   session: TuiPaneSession,
 ) {
@@ -65,6 +66,44 @@ export function createQueuedPane(
               : `inbox message #${row.position} for ${row.role} was already gone`,
           );
           refreshQueued();
+        }
+      } catch (err) {
+        session.flashError(err);
+      }
+      session.requestRender();
+      return true;
+    }
+    if (
+      key.ctrl && key.name === "v" &&
+      promptLineFree(ctx.es) &&
+      session.view === session.roleIds.length + 6 && selectedQueued !== null
+    ) {
+      // Ctrl+V moves the selected queued prompt to the head of its role's queue through the
+      // CLI's own per-loop path (`tumwater prompt --top <n>`): movePromptToTop renames that
+      // loop's Nth queue file to the head and logs the prompt_topped event, so the pane, the
+      // CLI, and the dashboard cannot drift. A position-1 row is already the head (a no-op);
+      // a gone outcome is the concurrent-dequeue race (movePromptToTop's own contract), not a
+      // failure, so flash it honestly. Either way re-read the queue and drop the selection so
+      // the repainted list shows the new order at its head. A no-selection press (list mode)
+      // and every other view leave the queues untouched.
+      try {
+        const row = queuedRows[Math.min(selectedQueued, queuedRows.length - 1)];
+        if (row !== undefined) {
+          if (row.position === 1) {
+            // A head row is a no-op, not movePromptToTop's throw: it is already where the
+            // reorder would put it, and throwing would flash an error for a press that
+            // changed nothing.
+            session.flashMessage(`inbox message #1 for ${row.role} is already first`);
+          } else {
+            const outcome = movePromptToTop(session.root, row.role, row.position);
+            selectedQueued = null;
+            refreshQueued();
+            session.flashMessage(
+              outcome.status === "topped"
+                ? `moved inbox message #${row.position} for ${row.role} to the top: ${outcome.preview}`
+                : `inbox message #${row.position} for ${row.role} was already gone`,
+            );
+          }
         }
       } catch (err) {
         session.flashError(err);

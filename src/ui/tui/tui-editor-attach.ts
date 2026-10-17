@@ -12,7 +12,8 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * session module — plus Esc, Ctrl+V again, and Enter). The pending attachments themselves
  * (`session.images`) are session state the director submit also reads, so they live in the
  * session, not here. Guarded to the Activity view (`ctx.view === 0`), so the Transcript reset
- * arm and the Backlog move-to-top arm keep `Ctrl+V` on their views. */
+ * arm, the Backlog move-to-top arm, and the Queued pane's move-to-top arm keep `Ctrl+V` on
+ * their views. */
 export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
   let attachMode = false;
   let attachSavedInput = "";

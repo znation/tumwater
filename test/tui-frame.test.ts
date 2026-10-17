@@ -151,6 +151,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "health", problems: true }), /Ctrl\+O problems only/);
   assert.match(hint({ kind: "brief" }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "queued" }), /PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "queued" }), /Ctrl\+V top/);
   assert.match(hint({ kind: "queued" }), /Ctrl\+E edit/);
   assert.match(hint({ kind: "queued" }), /Ctrl\+X cancel/);
   // The Queued editor names its save/cancel keys, like the budget and role editors.

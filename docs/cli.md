@@ -76,4 +76,4 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+P` / `Ctrl+W` / `Ctrl+A` / `Ctrl+V` | Transcript | pause or resume the role / wake it (a duration schedules it, `cancel` drops scheduled wakes) / stop its in-flight run / zero the role's counters |
 | `Ctrl+N` | Transcript | cycle transcript, notes, and pending change; `Ctrl+X` pressed twice on notes clears them |
 | `Ctrl+X` (twice) / `Ctrl+V` / `Ctrl+E` / `Ctrl+N` / `Ctrl+A` | Backlog | cancel the selected entry / move it to the head of its section / edit its title / file a new plan or bug / answer the selected question |
-| `Ctrl+E` / `Ctrl+X` | Inbox | edit / cancel the selected queued prompt |
+| `Ctrl+V` / `Ctrl+E` / `Ctrl+X` | Inbox | move the selected queued prompt to the head of its role's queue / edit / cancel it |

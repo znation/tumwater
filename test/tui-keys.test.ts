@@ -26,6 +26,7 @@ import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => tmpdir("tui-keys-");
@@ -1765,6 +1766,70 @@ test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps
   assert.equal(keys.state().queuedRows.length, 0);
   assert.equal(keys.state().selectedQueued, null, "an emptied queue clears the selection");
   assert.equal(keys.state().paneCache, "");
+});
+
+test("the Queued pane moves the selected prompt to the head of its role's queue with Ctrl+V", () => {
+  const root = makeRoot();
+  enqueuePrompt(root, "director text");
+  enqueueRolePrompt(root, "clean", "clean one");
+  enqueueRolePrompt(root, "clean", "clean two");
+  const t = Date.now();
+  const { keys } = makeKeys(root, () => t);
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  assert.equal(keys.state().view, 6);
+  assert.equal(keys.state().selectedQueued, null, "the pane opens in list mode");
+
+  // Ctrl+V with no selection leaves the queue untouched (the backlog pane shares the key).
+  keys.handleKey(undefined, { ctrl: true, name: "v" });
+  assert.deepEqual(queuedListRows(root, null, listWideScope(root)).map((r) => r.text), ["director text", "clean one", "clean two"]);
+
+  // Select the second clean row (position 2 of clean's queue) and promote it to the head.
+  keys.handleKey(undefined, { name: "down" }); // director
+  keys.handleKey(undefined, { name: "down" }); // clean one
+  keys.handleKey(undefined, { name: "down" }); // clean two
+  assert.equal(keys.state().selectedQueued, 2);
+  keys.handleKey(undefined, { ctrl: true, name: "v" });
+  const movedRows = queuedListRows(root, null, listWideScope(root));
+  assert.deepEqual(movedRows.map((r) => [`${r.role}#${r.position}`, r.text]), [
+    ["director#1", "director text"],
+    ["clean#1", "clean two"],
+    ["clean#2", "clean one"],
+  ], "the second clean prompt moves to the head of clean's queue; the director's queue is untouched");
+  assert.equal(movedRows[1]!.text, "clean two", "the moved prompt's text is byte-identical");
+  assert.match(keys.state().flash!, /moved inbox message #2 for clean to the top: clean two/);
+  assert.equal(keys.state().selectedQueued, null, "a move returns the pane to list mode");
+  assert.equal(
+    keys.state().paneCache,
+    renderQueuedList(queuedListRows(root, null, listWideScope(root)), t),
+    "the cached list refreshes to the CLI's reordered list",
+  );
+
+  // Ctrl+V on a role's position-1 row flashes "already first" and leaves every order unchanged.
+  keys.handleKey(undefined, { name: "escape" });
+  keys.handleKey(undefined, { name: "down" }); // director row (position 1 of its queue)
+  keys.handleKey(undefined, { ctrl: true, name: "v" });
+  assert.match(keys.state().flash!, /inbox message #1 for director is already first/);
+  assert.deepEqual(queuedListRows(root, null, listWideScope(root)).map((r) => r.text), ["director text", "clean two", "clean one"]);
+
+  // A row whose file vanishes between listing and reading (the concurrent-dequeue race
+  // inbox-top's own gone test injects) flashes the gone notice, leaves every order unchanged,
+  // and returns the pane to list mode. The read inside movePromptToTop faults once and then
+  // falls through, so the refreshing list still reads normally.
+  keys.handleKey(undefined, { name: "escape" });
+  keys.handleKey(undefined, { name: "down" }); // director
+  keys.handleKey(undefined, { name: "down" }); // clean two (now position 1)
+  keys.handleKey(undefined, { name: "down" }); // clean one (position 2)
+  assert.equal(keys.state().selectedQueued, 2);
+  let undo = () => {};
+  undo = patchFsMethod("readFileSync", (_orig) => (_args) => {
+    undo(); // restore before the first read fails, so the refreshed list still reads
+    throw errnoError("ENOENT");
+  });
+  keys.handleKey(undefined, { ctrl: true, name: "v" });
+  assert.match(keys.state().flash!, /inbox message #2 for clean was already gone/);
+  assert.deepEqual(queuedListRows(root, null, listWideScope(root)).map((r) => r.text), ["director text", "clean two", "clean one"]);
+  assert.equal(keys.state().selectedQueued, null, "a gone move returns the pane to list mode");
 });
 
 test("the Queued pane edits the selected prompt in place through editQueuedFile", () => {

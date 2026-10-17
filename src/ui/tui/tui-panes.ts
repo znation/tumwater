@@ -140,7 +140,14 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       return backlog.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "r") return backlog.handleKey?.(key, ctx) ?? false;
-    if (key.ctrl && key.name === "v") return backlog.handleKey?.(key, ctx) ?? false;
+    if (key.ctrl && key.name === "v") {
+      // The move-to-top Ctrl+V arms, routed like Ctrl+X's: the queued prompt first, then the
+      // backlog entry — each returns false when its view/selection does not apply. The
+      // Activity attach editor's own Ctrl+V arm is guarded to view 0, so it still fires
+      // there ahead of this router.
+      if (queued.handleKey?.(key, ctx)) return true;
+      return backlog.handleKey?.(key, ctx) ?? false;
+    }
     const arrow = arrowDir(key.name);
     if (arrow !== null) {
       // Entry-browse arrows: the backlog pane then the queued pane; every other view falls
