@@ -508,7 +508,7 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
         if (waited > finiteNumber(longest.waitedMs, 0)) longest = ev;
       }
       contended = total >= SLOT_WAIT_WARN_TOTAL_MS;
-      const purpose = longest.purpose === "vet" ? "check" : "run";
+      const purpose = longest.purpose === "verify" ? "check" : "run";
       parts.push(
         `${waits.length} ${waits.length === 1 ? "wait" : "waits"} to start in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(
           finiteNumber(longest.waitedMs, 0),

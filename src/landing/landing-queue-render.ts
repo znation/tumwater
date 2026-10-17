@@ -21,7 +21,7 @@ export function queueEntryLandingLabel(sha: string, inFlight: LandingInFlight | 
   if (!inFlight) return "";
   const change = landingChanges(inFlight).find((c) => c.sha === sha);
   if (!change || change.status === "done") return "";
-  if (change.status === "vetted") return "approved, waiting to merge"; // vocabulary-ok: persisted status value
+  if (change.status === "approved") return "approved, waiting to merge";
   let label = "merging";
   if (change.startedAt) label += ` ${humanSeconds(secondsSince(change.startedAt, now))}`;
   if (change.stage) label += ` · ${LANDING_STAGE_LABELS[change.stage]}`;

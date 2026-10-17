@@ -217,7 +217,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
           controller: new AbortController(),
           userAborted: false,
         });
-        setLandingChangeStatus(root, role, "vetted"); // vocabulary-ok: persisted state value, renamed by a later series
+        setLandingChangeStatus(root, role, "approved");
       } else {
         const result = verdict.kind === "stack" ? "aborted" : verdict.result;
         await settleLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);

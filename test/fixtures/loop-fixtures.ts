@@ -45,7 +45,7 @@ export function makeLoopRunner(
  * instead of assuming the legacy path. */
 export function roleWt(root: string, role: string): string {
   const slots = readSlotsState(root).slots;
-  const leased = slots.find((slot) => slot.lease?.role === role && slot.lease.purpose === "tick");
+  const leased = slots.find((slot) => slot.lease?.role === role && slot.lease.purpose === "run");
   if (leased !== undefined) return leased.dir;
   const pinned = slots.find((slot) => slot.pinnedFor === role);
   if (pinned !== undefined) return pinned.dir;

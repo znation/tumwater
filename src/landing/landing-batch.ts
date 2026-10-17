@@ -78,7 +78,7 @@ export async function vetRequest(ctx: BatchContext, req: LandRequest, w: BatchRo
   try {
     lease = await leaseSlot(ctx.root, {
       role: req.role,
-      purpose: "vet",
+      purpose: "verify",
       ref: req.sha,
       signal: ctx.signal(),
       // The live view's pool budget, same rule as the tick path: a broken tumwater.json
@@ -216,7 +216,7 @@ export async function landVetted(
   // ── The degenerate case: one vetted change lands on its own ──────────────────────────
   if (vetted.length === 1) {
     const req = vetted[0]!;
-    report(0, "landing"); // vocabulary-ok: persisted state value or event scope, renamed by a later series
+    report(0, "merging");
     await landOne(0, req);
     return results;
   }
@@ -230,7 +230,7 @@ export async function landVetted(
   const entries: StackEntry[] = vetted.map((req) => ({ role: req.role, sha: req.sha, summary: req.summary }));
   let abandon = false;
   // Every stacked change is landing now: they share the assembly, the check, and the ff.
-  for (let s = 0; s < vetted.length; s++) report(s, "landing"); // vocabulary-ok: persisted state value or event scope, renamed by a later series
+  for (let s = 0; s < vetted.length; s++) report(s, "merging");
   // Stack positions [0, landedCount) are on main. `suspect` is how many of the rest, from the
   // front, the last red check ran over — the prefix that still holds what broke it; null when
   // no red check stands against the rest, which are then tried together.
@@ -297,10 +297,10 @@ export async function landVetted(
     // rebase + verifyLanding re-check every change whose tree differs from the one its vet
     // judged. Only the change being landed reads `landing`; the rest are back to awaiting
     // their turn, and each one landed is done.
-    for (let s = landedCount; s < vetted.length; s++) report(s, "vetted"); // vocabulary-ok: persisted state value, renamed by a later series
+    for (let s = landedCount; s < vetted.length; s++) report(s, "approved");
     for (let s = landedCount; s < vetted.length; s++) {
       const req = vetted[s]!;
-      report(s, "landing"); // vocabulary-ok: persisted state value or event scope, renamed by a later series
+      report(s, "merging");
       await landOne(s, req);
       if (results[s] === "aborted") aborted = true;
       report(s, "done");

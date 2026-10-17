@@ -79,37 +79,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms state, part 4/5: Rename the merging marker and the workspace lease purposes (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/landing/ src/ui/status-model.ts src/git/ src/loop/loop-tick.ts src/orchestrator/startup-migration-steps.ts src/events/ src/doctor/doctor-checks.ts test/)
-
-**Goal.** Two renames of persisted values:
-- The in-flight marker `state/landing.json`, with statuses `landing | vetted | done`, becomes `state/merging.json` with statuses `merging | approved | done`.
-- In `slots.json`, the lease `purpose` changes from `tick | vet` to `run | verify`. The `slot_wait` event's `purpose` follows, since it is the same value.
-
-**Approach.**
-- Marker:
-  - src/paths.ts: `landingStatePath` returns `state/merging.json`. Add `legacyLandingStatePath`, used only by the migration step.
-  - src/landing/landing-slot.ts: `LandingChangeStatus = "merging" | "approved" | "done"`, plus `isLandingChange`, `setLandingChangeStatus`, `addLandingChange` and `landingChanges`. In `landingChanges`, the old single-change top-level shape reads as `merging`.
-  - Callers (tsc): landing-batch.ts, landing-vetting.ts and landing-drain.ts (`"vetted"` → `"approved"`, `"landing"` → `"merging"`), landing-queue-render.ts, and `loopPhase` (src/ui/status-model.ts). Only the status comparison changes; the phase text belongs to the text series.
-  - Migration step `mergingMarker`, registered in startup-migration-steps.ts after `mergeQueueDir`, deletes a leftover `state/landing.json`. The marker is display-only, and a previous generation's marker is stale by definition: `addLandingChange` already drops records whose role is not live. There is no reader fallback.
-- Leases:
-  - src/git/slots-state.ts: `SlotLease.purpose` is `"run" | "verify"`. `isSlotLease` also accepts the legacy `"tick"`/`"vet"`, and `readSlotRecord` maps them, so a lease the old build wrote reads correctly and the next write stores the new value.
-  - src/git/worktree-pool.ts: the purpose type of `claim`, `chooseSlot`, `logSlotWait`, `tryClaim`, `acquire` and the pooled-checkout options.
-  - Callers: `tickWithWorktreePhase` (src/loop/loop-tick.ts) passes `"run"`, landing-batch.ts passes `"verify"`, plus any other `purpose:` that tsc lists.
-- `slot_wait` event: append a normalizer rewrite in src/events/event-legacy.ts that maps a `slot_wait` line's purpose `tick` → `run` and `vet` → `verify`. Readers: the slot-wait line in src/doctor/doctor-checks.ts and the `slot_wait` case in event-format.ts compare against `"verify"`.
-- If the vocabulary guard flags a legacy value literal, end its line with `// vocabulary-ok: legacy value read from old files`.
-- **Self-hosting:** safe in one part.
-  - The new build deletes the old marker at startup and maps old lease purposes and old `slot_wait` lines on read.
-  - The old build never reads `merging.json` or a new purpose, because the CLI and the orchestrator share one dist.
-  - A standalone dashboard still on the old build shows no merge in flight until it restarts (display only).
-
-**Files touched.** src/paths.ts, src/landing/landing-slot.ts, src/landing/landing-batch.ts, src/landing/landing-vetting.ts, src/landing/landing-drain.ts, src/landing/landing-queue-render.ts, src/ui/status-model.ts, src/git/slots-state.ts, src/git/worktree-pool.ts, src/loop/loop-tick.ts, src/orchestrator/startup-migration-steps.ts, src/events/event-legacy.ts, src/events/event-format.ts, src/doctor/doctor-checks.ts; test/status-model.test.ts, test/landing-slot.test.ts, test/landing-queue.test.ts, test/gui-client.test.ts, test/doctor-backlog.test.ts, test/worktree-pool.test.ts, test/startup-migrations.test.ts, test/event-legacy.test.ts, test/doctor-checks.test.ts.
-
-**Acceptance criteria.**
-- During a landing, `state/merging.json` holds `merging`, then `approved` records. `status` renders the same phases as before.
-- A startup with a fixture `state/landing.json` removes it, logs `state_migrated`, and a second start logs nothing.
-- A fixture `slots.json` lease with `purpose: "vet"` reads as `"verify"`, and the next pool write persists `"verify"`. An old `slot_wait` line with `purpose: "tick"` reads as `"run"`.
-- `npm run test` passes.
-
 ### Plain terms state, part 5/5: Move landing refs to refs/tumwater/merge and write the Run trailer (planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/git/ src/orchestrator/startup-migration-steps.ts src/operator/retire.ts src/roles/role-catalog.ts test/)
 
 **Goal.** Two git-side renames:
@@ -1964,6 +1933,37 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms state, part 4/5: Rename the merging marker and the workspace lease purposes (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/landing/ src/ui/status-model.ts src/git/ src/loop/loop-tick.ts src/orchestrator/startup-migration-steps.ts src/events/ src/doctor/doctor-checks.ts test/; done 2026-10-16)
+
+**Goal.** Two renames of persisted values:
+- The in-flight marker `state/landing.json`, with statuses `landing | vetted | done`, becomes `state/merging.json` with statuses `merging | approved | done`.
+- In `slots.json`, the lease `purpose` changes from `tick | vet` to `run | verify`. The `slot_wait` event's `purpose` follows, since it is the same value.
+
+**Approach.**
+- Marker:
+  - src/paths.ts: `landingStatePath` returns `state/merging.json`. Add `legacyLandingStatePath`, used only by the migration step.
+  - src/landing/landing-slot.ts: `LandingChangeStatus = "merging" | "approved" | "done"`, plus `isLandingChange`, `setLandingChangeStatus`, `addLandingChange` and `landingChanges`. In `landingChanges`, the old single-change top-level shape reads as `merging`.
+  - Callers (tsc): landing-batch.ts, landing-vetting.ts and landing-drain.ts (`"vetted"` → `"approved"`, `"landing"` → `"merging"`), landing-queue-render.ts, and `loopPhase` (src/ui/status-model.ts). Only the status comparison changes; the phase text belongs to the text series.
+  - Migration step `mergingMarker`, registered in startup-migration-steps.ts after `mergeQueueDir`, deletes a leftover `state/landing.json`. The marker is display-only, and a previous generation's marker is stale by definition: `addLandingChange` already drops records whose role is not live. There is no reader fallback.
+- Leases:
+  - src/git/slots-state.ts: `SlotLease.purpose` is `"run" | "verify"`. `isSlotLease` also accepts the legacy `"tick"`/`"vet"`, and `readSlotRecord` maps them, so a lease the old build wrote reads correctly and the next write stores the new value.
+  - src/git/worktree-pool.ts: the purpose type of `claim`, `chooseSlot`, `logSlotWait`, `tryClaim`, `acquire` and the pooled-checkout options.
+  - Callers: `tickWithWorktreePhase` (src/loop/loop-tick.ts) passes `"run"`, landing-batch.ts passes `"verify"`, plus any other `purpose:` that tsc lists.
+- `slot_wait` event: append a normalizer rewrite in src/events/event-legacy.ts that maps a `slot_wait` line's purpose `tick` → `run` and `vet` → `verify`. Readers: the slot-wait line in src/doctor/doctor-checks.ts and the `slot_wait` case in event-format.ts compare against `"verify"`.
+- If the vocabulary guard flags a legacy value literal, end its line with `// vocabulary-ok: legacy value read from old files`.
+- **Self-hosting:** safe in one part.
+  - The new build deletes the old marker at startup and maps old lease purposes and old `slot_wait` lines on read.
+  - The old build never reads `merging.json` or a new purpose, because the CLI and the orchestrator share one dist.
+  - A standalone dashboard still on the old build shows no merge in flight until it restarts (display only).
+
+**Files touched.** src/paths.ts, src/landing/landing-slot.ts, src/landing/landing-batch.ts, src/landing/landing-vetting.ts, src/landing/landing-drain.ts, src/landing/landing-queue-render.ts, src/ui/status-model.ts, src/git/slots-state.ts, src/git/worktree-pool.ts, src/loop/loop-tick.ts, src/orchestrator/startup-migration-steps.ts, src/events/event-legacy.ts, src/events/event-format.ts, src/doctor/doctor-checks.ts; test/status-model.test.ts, test/landing-slot.test.ts, test/landing-queue.test.ts, test/gui-client.test.ts, test/doctor-backlog.test.ts, test/worktree-pool.test.ts, test/startup-migrations.test.ts, test/event-legacy.test.ts, test/doctor-checks.test.ts.
+
+**Acceptance criteria.**
+- During a landing, `state/merging.json` holds `merging`, then `approved` records. `status` renders the same phases as before.
+- A startup with a fixture `state/landing.json` removes it, logs `state_migrated`, and a second start logs nothing.
+- A fixture `slots.json` lease with `purpose: "vet"` reads as `"verify"`, and the next pool write persists `"verify"`. An old `slot_wait` line with `purpose: "tick"` reads as `"run"`.
+- `npm run test` passes.
 
 ### docs/config.md lists every `TUMWATER_EVENT_TYPE` value the notify hook can receive, and a test keeps that table in step with `NOTIFY_EVENT_TYPES` (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry)
 

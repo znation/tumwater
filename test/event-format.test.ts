@@ -968,7 +968,7 @@ test("formatEvent renders slot_wait with the wait, purpose, and pool shape", () 
     source: "clean",
     type: "slot_wait",
     role: "clean",
-    purpose: "vet",
+    purpose: "verify",
     waitedMs: 31_000,
     slots: 4,
     pinned: 1,

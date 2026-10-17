@@ -62,22 +62,22 @@ export const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
 /** Where one change stands in the landing pipeline (land-queue speed 2c) — the per-change status
  * the marker carries, so each role's row says what the pipeline is doing with ITS change rather
  * than every row reading as one change's landing (BUGS.md 2026-09-23):
- * - `landing`: a vet or the merge is working on it right now — its checkout, rebase, gate check
- *   and review, or the merge's stack check and fast-forward — `landing <its elapsed> · <stage>`,
+ * - `merging`: a vet or the merge is working on it right now — its checkout, rebase, gate check
+ *   and review, or the merge's stack check and fast-forward — `merging <its elapsed> · <stage>`,
  *   the only live state (several changes hold it at once: vets run in parallel, and a stack
  *   lands together);
- * - `vetted`: its vet approved it and it waits for the merge slot (or, in an abandoned stack's
- *   one-at-a-time fallback, for its own turn) — `vetted, awaiting merge`;
+ * - `approved`: its vet approved it and it waits for the merge slot (or, in an abandoned stack's
+ *   one-at-a-time fallback, for its own turn) — `approved, waiting to merge`;
  * - `done`: the merge is finished with it — landed, attributed, or left for the next merge —
  *   and the marker shows nothing for it: its row reads its own state until the record goes.
  * A queued change whose vet is still waiting for a permit has no record at all: its row reads
  * plainly queued. */
-export type LandingChangeStatus = "landing" | "vetted" | "done";
+export type LandingChangeStatus = "merging" | "approved" | "done";
 
 /** One change's record in the in-flight marker. `startedAt` is stamped when its vet starts and
  * kept through its merge, so its `landing <elapsed>` measures this change's own landing. `stage`
  * is this change's own LandingStage (setLandingStage): `rebasing` when its vet starts, reset to
- * `merging` each time the merge slot moves it back to `landing` (the stack's assembly, a
+ * `merging` each time the merge slot moves it back to `merging` (the stack's assembly, a
  * fallback's merge). Keyed by role — invariant 3 caps a role at one in-flight change. */
 export interface LandingChange {
   role: string;
@@ -136,7 +136,7 @@ export function readLandingMarker(root: string): LandingInFlight | null {
  * throws: the marker is display-only, and a failed write must not fail a landing (the
  * observers keep the previous frame's record until the next write). */
 function rewriteMarker(root: string, marker: LandingInFlight & { changes: LandingChange[] }): void {
-  const headline = marker.changes.find((c) => isLandingChange(c) && c.status === "landing"); // vocabulary-ok: persisted state value or event scope, renamed by a later series
+  const headline = marker.changes.find((c) => isLandingChange(c) && c.status === "merging");
   if (headline) {
     marker.role = headline.role;
     marker.sha = headline.sha;
@@ -177,13 +177,13 @@ function updateLandingChange(
 /** Advance one change's record in the live marker — the vet's move to `vetted` and the merge's
  * per-change status hook (BatchContext.onChangeStatus). A read-modify-write of the file, not a
  * rewrite from memory, so the stage a gate last set (setLandingStage, the same process)
- * survives. Each move to `landing` resets the change's stage to `merging` and stamps its
+ * survives. Each move to `merging` resets the change's stage to `merging` and stamps its
  * `startedAt` if it has none. A no-op when there is no marker or it has no record for `role`.
  * Never throws (rewriteMarker). */
 export function setLandingChangeStatus(root: string, role: string, status: LandingChangeStatus): void {
   updateLandingChange(root, role, (change) => {
     change.status = status;
-    if (status === "landing") { // vocabulary-ok: persisted state value or event scope, renamed by a later series
+    if (status === "merging") {
       change.startedAt ??= Date.now();
       change.stage = "merging";
     }
@@ -204,7 +204,7 @@ export function addLandingChange(root: string, entry: LandingEntry, live: Readon
     role: entry.role,
     sha: entry.sha,
     summary: entry.summary,
-    status: "landing", // vocabulary-ok: persisted state value or event scope, renamed by a later series
+    status: "merging",
     startedAt,
     stage: "rebasing",
     stageSince: startedAt,
@@ -303,7 +303,7 @@ export function landingChanges(marker: LandingInFlight): LandingChange[] {
           role: marker.role,
           sha: marker.sha,
           summary: marker.summary,
-          status: "landing", // vocabulary-ok: persisted state value or event scope, renamed by a later series
+          status: "merging",
           startedAt: marker.startedAt,
           stage: marker.stage,
           ...(marker.stageSince !== undefined ? { stageSince: marker.stageSince } : {}),
@@ -322,7 +322,7 @@ export function isLandingChange(value: unknown): value is LandingChange {
     typeof value.role === "string" &&
     typeof value.sha === "string" &&
     typeof value.summary === "string" &&
-    (value.status === "landing" || value.status === "vetted" || value.status === "done") && // vocabulary-ok: persisted state value or event scope, renamed by a later series
+    (value.status === "merging" || value.status === "approved" || value.status === "done") &&
     (value.stageSince === undefined || nonNegativeNumber(value.stageSince, null) !== null)
   );
 }

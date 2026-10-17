@@ -290,8 +290,8 @@ test("renderLandingQueue marks entries with a live in-flight record and leaves t
   const inFlight = {
     ...base,
     changes: [
-      { role: "a", sha: "1".repeat(40), summary: "s", status: "landing" as const, startedAt: now - 120_000, stage: "reviewing" as const },
-      { role: "b", sha: "2".repeat(40), summary: "s", status: "vetted" as const },
+      { role: "a", sha: "1".repeat(40), summary: "s", status: "merging" as const, startedAt: now - 120_000, stage: "reviewing" as const },
+      { role: "b", sha: "2".repeat(40), summary: "s", status: "approved" as const },
     ],
   };
   const lines = renderLandingQueue(view, now, inFlight).split("\n");

@@ -342,7 +342,7 @@ test("addLandingChange and setLandingStage stamp stageSince on each stage entry"
     landingStatePath(root2),
     JSON.stringify({
       role: "beta", sha: "b".repeat(40), summary: "s", startedAt: 1, stage: "rebasing", stageSince: "oops",
-      changes: [{ role: "beta", sha: "b".repeat(40), summary: "s", status: "landing", stageSince: "oops" }],
+      changes: [{ role: "beta", sha: "b".repeat(40), summary: "s", status: "merging", stageSince: "oops" }],
     }),
   );
   assert.deepEqual(landingChanges(readLandingMarker(root2)!).map((c) => c.role), [], "a bad stageSince record reads as absent");
@@ -395,7 +395,7 @@ test("the marker's records come and go per change, and its top level follows the
   addLandingChange(root, entries.beta!, new Set(["alpha", "beta"]));
   setLandingStage(root, "beta", "reviewing");
   setLandingStage(root, "delta", "reviewing"); // no record: a no-op
-  assert.deepEqual(records(), ["alpha=landing/rebasing", "beta=landing/reviewing"]);
+  assert.deepEqual(records(), ["alpha=merging/rebasing", "beta=merging/reviewing"]);
   assert.ok(readLandingMarker(root)!.changes![0]!.startedAt! >= before, "the change's own start");
   assert.equal(readLandingMarker(root)!.role, "alpha", "the top level names the first change in flight");
   assert.equal(readLandingMarker(root)!.stage, "rebasing", "at that change's own stage");
@@ -403,7 +403,7 @@ test("the marker's records come and go per change, and its top level follows the
   // alpha's vet approves it: it waits for the merge, and beta, still under review, becomes the
   // top level — with its own start and its own stage.
   setLandingStage(root, "alpha", "merging");
-  setLandingChangeStatus(root, "alpha", "vetted");
+  setLandingChangeStatus(root, "alpha", "approved");
   const marker = readLandingMarker(root)!;
   assert.deepEqual(
     [marker.role, marker.sha, marker.stage, marker.startedAt],
@@ -412,14 +412,14 @@ test("the marker's records come and go per change, and its top level follows the
 
   // A record the pipeline no longer holds (a crashed generation's) never rides along.
   addLandingChange(root, entries.gamma!, new Set(["beta", "gamma"]));
-  assert.deepEqual(records(), ["beta=landing/reviewing", "gamma=landing/rebasing"]);
+  assert.deepEqual(records(), ["beta=merging/reviewing", "gamma=merging/rebasing"]);
   addLandingChange(root, entries.alpha!, new Set(["alpha", "beta", "gamma"]));
 
   // The merge reaches alpha: re-entering `landing` keeps its first start and restages it
   // `merging` — the merge slot's own stage.
   const alphaStart = readLandingMarker(root)!.changes!.find((c) => c.role === "alpha")!.startedAt;
-  setLandingChangeStatus(root, "alpha", "vetted");
-  setLandingChangeStatus(root, "alpha", "landing");
+  setLandingChangeStatus(root, "alpha", "approved");
+  setLandingChangeStatus(root, "alpha", "merging");
   const alpha = readLandingMarker(root)!.changes!.find((c) => c.role === "alpha")!;
   assert.equal(alpha.stage, "merging");
   assert.equal(alpha.startedAt, alphaStart, "the elapsed keeps counting from the vet's start");
@@ -437,7 +437,7 @@ test("the marker's records come and go per change, and its top level follows the
 // marker is one `landing` record at the marker's stage.
 test("landingChanges reads a one-change marker as one landing record", () => {
   const single = { role: "clean", sha: "c", summary: "s", startedAt: 5, stage: "reviewing" } as const;
-  assert.deepEqual(landingChanges(single), [{ ...single, status: "landing" }]);
+  assert.deepEqual(landingChanges(single), [{ ...single, status: "merging" }]);
   // A top-level stageSince (a newer generation's one-change marker) rides the legacy record;
   // without one, the record carries none — backward compatible with the old generation.
   const withSince = { ...single, stageSince: 6 } as const;
@@ -454,7 +454,7 @@ test("a foreign changes shape or a null record degrades instead of crashing a la
     landingStatePath(root),
     JSON.stringify({ role: "improve", sha: "a", summary: "s", startedAt: 1, changes: "oops" }),
   );
-  assert.doesNotThrow(() => setLandingChangeStatus(root, "improve", "vetted"));
+  assert.doesNotThrow(() => setLandingChangeStatus(root, "improve", "approved"));
   assert.deepEqual(landingChanges(readLandingMarker(root)!).map((c) => c.role), ["improve"]);
 
   // A record array carrying a null entry: the bad entries read as absent and the good one still
@@ -466,13 +466,13 @@ test("a foreign changes shape or a null record degrades instead of crashing a la
       sha: "x",
       summary: "x",
       startedAt: 1,
-      changes: [null, { role: "y", sha: "y".repeat(40), summary: "s", status: "landing" }],
+      changes: [null, { role: "y", sha: "y".repeat(40), summary: "s", status: "merging" }],
     }),
   );
-  assert.doesNotThrow(() => setLandingChangeStatus(root, "y", "vetted"));
+  assert.doesNotThrow(() => setLandingChangeStatus(root, "y", "approved"));
   const after = landingChanges(readLandingMarker(root)!);
   assert.deepEqual(after.map((c) => c.role), ["y"]);
-  assert.equal(after[0]!.status, "vetted");
+  assert.equal(after[0]!.status, "approved");
 });
 
 test("a queued landing's record names each phase while it runs: the gate's check, the review, the merge's in-lock check", async () => {
@@ -527,14 +527,14 @@ test("a queued landing's record names each phase while it runs: the gate's check
 test("setLandingChangeStatus and removeLandingChange no-op when the marker is absent or shapeless", () => {
   const root = makeRepo();
   // No marker file: neither call may invent one.
-  setLandingChangeStatus(root, "improve", "vetted");
+  setLandingChangeStatus(root, "improve", "approved");
   removeLandingChange(root, "improve");
   assert.equal(readLandingMarker(root), null, "no marker was invented");
   // A marker an older generation wrote carries no per-change records: there is no record to
   // advance, and the file is left exactly as it was.
   const legacy = { role: "improve", sha: "b", summary: "s", startedAt: 2, stage: "merging" } as const;
   writeLandingMarker(root, legacy);
-  setLandingChangeStatus(root, "improve", "vetted");
+  setLandingChangeStatus(root, "improve", "approved");
   assert.deepEqual(readLandingMarker(root), legacy, "a shapeless marker is untouched");
 });
 
@@ -550,7 +550,7 @@ test("a kept legacy record without startedAt or stage never leaves the top level
       sha: "b".repeat(40),
       summary: "s",
       startedAt: 7,
-      changes: [{ role: "beta", sha: "b".repeat(40), summary: "s", status: "landing" }],
+      changes: [{ role: "beta", sha: "b".repeat(40), summary: "s", status: "merging" }],
     }),
   );
   // The next change's vet starts while beta still holds a record: the legacy record is kept
@@ -576,7 +576,7 @@ test("a marker whose top level lost its stage falls back to merging on the next 
       sha: "a".repeat(40),
       summary: "s",
       startedAt: 5,
-      changes: [{ role: "alpha", sha: "a".repeat(40), summary: "s", status: "vetted" }],
+      changes: [{ role: "alpha", sha: "a".repeat(40), summary: "s", status: "approved" }],
     }),
   );
   setLandingChangeStatus(root, "alpha", "done");

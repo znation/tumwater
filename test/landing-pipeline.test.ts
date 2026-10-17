@@ -458,7 +458,7 @@ test("a vetting rejection drops its entry at once — its role may tick next pol
     const marker = readLandingMarker(root);
     assert.deepEqual(
       marker?.changes?.map((c) => [c.role, c.status, c.stage]),
-      [["beta", "landing", "reviewing"]],
+      [["beta", "merging", "reviewing"]],
       "the marker holds only the change still in flight, at its own stage",
     );
     assert.equal(marker?.role, "beta", "the top level follows the change still in flight, for older observers");
@@ -756,12 +756,12 @@ for (const headVerdict of ["reject", "approve"] as const) {
       // The head's own vet: pre-check, then its reviewer, with beta parked and showing nothing.
       // Then beta's vet runs with the head's record already off the gate's stages (vetted, or
       // gone with its rejection) — beta's transitions advance only beta's own record.
-      const alphaAfter = headVerdict === "reject" ? "" : "alpha=vetted/merging,";
+      const alphaAfter = headVerdict === "reject" ? "" : "alpha=approved/merging,";
       const vets = [
-        "check:alpha=landing/build-check",
-        "alpha:alpha=landing/reviewing",
-        `check:${alphaAfter}beta=landing/build-check`,
-        `beta:${alphaAfter}beta=landing/reviewing`,
+        "check:alpha=merging/build-check",
+        "alpha:alpha=merging/reviewing",
+        `check:${alphaAfter}beta=merging/build-check`,
+        `beta:${alphaAfter}beta=merging/reviewing`,
       ];
       if (headVerdict === "reject") {
         assert.deepEqual(seen, vets, "a one-change merge lands on its own: no stack check, no re-check on an unmoved main");
@@ -769,7 +769,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
       } else {
         assert.deepEqual(
           seen,
-          [...vets, "check:alpha=landing/build-check,beta=landing/build-check"],
+          [...vets, "check:alpha=merging/build-check,beta=merging/build-check"],
           "the shared stack check runs under build-check on every stacked change",
         );
         assert.equal(loadLoopState(root, "alpha").lastResult, "changed");

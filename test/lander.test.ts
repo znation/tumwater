@@ -787,8 +787,8 @@ test("a merge reports each change as it reaches it: the stack lands together, an
     const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta", "gamma"], wiringFor);
     assert.deepEqual(results, ["changed", "rejected", "changed"]);
     assert.deepEqual(seen, [
-      "alpha:landing", // the stack's shared check + ff: every stacked change lands together
-      "gamma:landing",
+      "alpha:merging", // the stack's shared check + ff: every stacked change lands together
+      "gamma:merging",
       "alpha:done", // landed: the merge is done with them
       "gamma:done",
     ]);
@@ -806,13 +806,13 @@ test("an abandoned stack reports one change landing at a time, the rest back to 
     const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta"], wiringFor);
     assert.deepEqual(results, ["changed", "changed"]);
     assert.deepEqual(seen, [
-      "alpha:landing", // the stack attempt
-      "beta:landing",
-      "alpha:vetted", // abandoned: back to awaiting their turn…
-      "beta:vetted",
-      "alpha:landing", // …and each lands alone, then is done
+      "alpha:merging", // the stack attempt
+      "beta:merging",
+      "alpha:approved", // abandoned: back to awaiting their turn…
+      "beta:approved",
+      "alpha:merging", // …and each lands alone, then is done
       "alpha:done",
-      "beta:landing",
+      "beta:merging",
       "beta:done",
     ]);
   });

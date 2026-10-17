@@ -132,3 +132,11 @@ test("an old loop-keyed line reads back as source from the live log and from the
   assert.deepEqual(win.events.map((e) => e.source).sort(), ["clean", "feature"]);
   assert.ok(win.events.every((e) => !("loop" in e)));
 });
+
+test("normalizeLegacyEvent maps a slot_wait's old purpose values", () => {
+  const norm = (purpose: string) =>
+    (normalizeLegacyEvent({ type: "slot_wait", purpose } as never) as unknown as { purpose: string }).purpose;
+  assert.equal(norm("tick"), "run"); // vocabulary-ok: legacy event value
+  assert.equal(norm("vet"), "verify"); // vocabulary-ok: legacy event value
+  assert.equal(norm("run"), "run");
+});

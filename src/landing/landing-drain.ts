@@ -209,7 +209,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
         const result = results[s] ?? (merge.userAborted ? "aborted" : undefined);
         if (result === undefined && !threw) {
           p.vetted.set(role, v);
-          setLandingChangeStatus(root, role, "vetted"); // vocabulary-ok: persisted state value, renamed by a later series
+          setLandingChangeStatus(root, role, "approved");
           continue;
         }
         if (result !== undefined) {

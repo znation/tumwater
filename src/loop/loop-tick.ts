@@ -376,7 +376,7 @@ async function runTickInLeasePhase(
 ): Promise<TickOutcome> {
   const lease = await leaseSlot(ctx.root, {
     role: ctx.role,
-    purpose: "tick", // vocabulary-ok: lease purpose "tick" is a persisted state value until the state rename
+    purpose: "run",
     ref: ctx.mainBranch,
     keep: plan.resuming || plan.handoff,
     signal: ctx.runSignal(),

@@ -52,6 +52,16 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
     },
   },
   {
+    // slot_wait.purpose said "tick"/"vet" for what is now "run"/"verify".
+    name: "slot-purpose",
+    apply(ev) {
+      const e = ev as Record<string, unknown>;
+      if (e.type !== "slot_wait") return;
+      if (e.purpose === "tick") e.purpose = "run"; // vocabulary-ok: legacy event value read from old logs
+      if (e.purpose === "vet") e.purpose = "verify"; // vocabulary-ok: legacy event value read from old logs
+    },
+  },
+  {
     // The restart event's drain fields became finish fields.
     name: "restart-drain-to-finish",
     apply(ev) {

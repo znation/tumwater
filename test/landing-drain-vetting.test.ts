@@ -267,7 +267,7 @@ test("a vet runs in a pooled slot (purpose vet while it works, no lease after) a
       };
       const leased = during.slots.find((s) => fs.realpathSync(s.dir) === fs.realpathSync(cwd));
       assert.equal(leased?.lease?.role, role, "the slot was leased for the change's role while the vet ran");
-      assert.equal(leased?.lease?.purpose, "vet", "the lease's purpose was vet");
+      assert.equal(leased?.lease?.purpose, "verify", "the lease's purpose was verify");
       assert.equal(readSlotsState(root).slots.every((s) => s.lease === null), true, "no lease survives the landing");
     },
   );

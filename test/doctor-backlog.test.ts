@@ -426,7 +426,7 @@ test("checkStaleQueuedLandings warns once, resting via andMore, and never flags 
   // not be flagged even though it too is older than the threshold.
   writeLandingMarker(root, {
     role: "improve", sha: "abc1234", summary: "tidy parser", startedAt: now - 1000, stage: "merging",
-    changes: [{ role: "improve", sha: "abc1234", summary: "tidy parser", status: "landing", startedAt: now - 1000 }],
+    changes: [{ role: "improve", sha: "abc1234", summary: "tidy parser", status: "merging", startedAt: now - 1000 }],
   });
   enqueueLanding(root, { ...advice("improve", "tidy parser"), enqueuedAt: now - 5 * 60 * 60 * 1000 });
   const out = checkStaleQueuedLandings(root, now);

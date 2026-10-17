@@ -132,7 +132,7 @@ export function loopPhase(
   // passed gets it (callers derive it via landingForRole), and a stopped harness never
   // shows it — a dead fleet's marker is stale by definition.
   if (landing) {
-    if (landing.status === "vetted") return "approved, waiting to merge"; // vocabulary-ok: persisted status value
+    if (landing.status === "approved") return "approved, waiting to merge";
     const head = landing.startedAt === undefined ? "merging" : `merging ${duration(Date.now() - landing.startedAt)}`;
     if (!landing.stage) return head;
     const base = `${head} · ${LANDING_STAGE_LABELS[landing.stage]}`;

@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { leaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
@@ -37,7 +37,7 @@ async function waitFor<T>(fn: () => T | undefined, ms = 3000): Promise<T> {
  * can assert it is still waiting and then `waitFor(claimed)` once a slot frees. */
 function waitingLease(root: string): { claimed: () => SlotLeaseHandle | undefined } {
   let handle: SlotLeaseHandle | undefined;
-  void leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" }).then((h) => {
+  void leaseSlot(root, { role: "clean", purpose: "run", ref: "main" }).then((h) => {
     handle = h;
   });
   return { claimed: () => handle };
@@ -52,8 +52,8 @@ test("two concurrent leases take different slots and a third waits for a release
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 2 });
   const [a, b] = await Promise.all([
-    leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" }),
-    leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" }),
+    leaseSlot(root, { role: "feature", purpose: "run", ref: "main" }),
+    leaseSlot(root, { role: "bugfix", purpose: "run", ref: "main" }),
   ]);
   assert.notEqual(a.dir, b.dir, "two concurrent leases share one slot");
   assert.match(a.dir, /_slot-\d+$/);
@@ -74,11 +74,11 @@ test("two concurrent leases take different slots and a third waits for a release
 test("a waiting lease honors signal abort", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 1 });
-  const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const held = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   const controller = new AbortController();
   const pending = leaseSlot(root, {
     role: "bugfix",
-    purpose: "tick",
+    purpose: "run",
     ref: "main",
     signal: controller.signal,
   });
@@ -109,7 +109,7 @@ test("a role leases the free slot it released most recently", async () => {
       },
     ],
   });
-  const lease = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   assert.equal(lease.dir, slotWorktreePath(root, 1), "affinity did not beat recency");
   lease.release();
 });
@@ -117,10 +117,10 @@ test("a role leases the free slot it released most recently", async () => {
 test("slots.json records the lease while held and clears it on release", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 1 });
-  const lease = await leaseSlot(root, { role: "feature", purpose: "vet", ref: "main" });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "verify", ref: "main" });
   const held = readSlotsState(root).slots.find((slot) => slot.dir === lease.dir);
   assert.equal(held?.lease?.role, "feature");
-  assert.equal(held?.lease?.purpose, "vet");
+  assert.equal(held?.lease?.purpose, "verify");
   assert.equal(held?.lease?.pid, process.pid);
 
   lease.release();
@@ -133,7 +133,7 @@ test("slots.json records the lease while held and clears it on release", async (
 test("a release whose use-record write fails still frees the slot", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 1 });
-  const lease = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   // The worktree-use registry write is LRU bookkeeping; a directory standing at its path makes
   // updateWorktreeUse's atomic rename fail (EISDIR), the same way ENOSPC or a lock timeout
   // would on a real host. Before the fix, this throw escaped release() before releaseSlot ran,
@@ -154,7 +154,7 @@ test("a lease whose prepare and use-record write both fail still frees the slot"
   // ref makes ensureDetachedWorktree fail regardless.
   mkdirSync(worktreeUsePath(root), { recursive: true });
   await assert.rejects(
-    leaseSlot(root, { role: "feature", purpose: "tick", ref: "refs/heads/no-such-ref" }),
+    leaseSlot(root, { role: "feature", purpose: "run", ref: "refs/heads/no-such-ref" }),
   );
   const after = readSlotsState(root).slots.find((slot) => slot.dir !== undefined);
   assert.equal(after?.lease, null, "the failed lease left its slot claimed after a use-record write failure");
@@ -168,14 +168,14 @@ test("a lease held by another pid is cleared and its slot reused", async () => {
     slots: [
       {
         dir,
-        lease: { role: "ghost", purpose: "tick", since: 1, pid: process.pid + 1 },
+        lease: { role: "ghost", purpose: "run", since: 1, pid: process.pid + 1 },
         pinnedFor: null,
         lastRole: "ghost",
         lastReleasedAt: 1,
       },
     ],
   });
-  const lease = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   assert.equal(lease.dir, dir, "the dead lease's slot was not reused");
   const rec = readSlotsState(root).slots.find((slot) => slot.dir === dir);
   assert.equal(rec?.lease?.role, "feature");
@@ -192,7 +192,7 @@ test("a slot record missing its known fields is usable instead of crashing the c
   // defaulting the known fields lets the pool lease the slot instead.
   mkdirSync(join(root, ".tumwater", "state"), { recursive: true });
   writeFileSync(slotsStatePath(root), JSON.stringify({ slots: [{ dir }] }));
-  const lease = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   assert.equal(lease.dir, dir, "the under-specified slot was not leased");
   lease.release();
 });
@@ -247,9 +247,9 @@ test("a slot record's non-finite lease numbers read as no lease", () => {
 test("release removes idle unpinned slots when worktreeSlots shrank", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 3 });
-  const a = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
-  const b = await leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" });
-  const c = await leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" });
+  const a = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
+  const b = await leaseSlot(root, { role: "bugfix", purpose: "run", ref: "main" });
+  const c = await leaseSlot(root, { role: "clean", purpose: "run", ref: "main" });
 
   writeConfig(root, { worktreeSlots: 1 });
   a.release(); // one idle slot, at the budget: kept
@@ -263,7 +263,7 @@ test("release removes idle unpinned slots when worktreeSlots shrank", async () =
 test("an invalid config still frees a held slot on release", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 1 });
-  const lease = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   writeConfig(root, { worktreeSlots: 0 }); // now invalid: liveCount falls back permissively
   lease.release();
   assert.equal(readSlotsState(root).slots[0]?.lease, null);
@@ -273,13 +273,13 @@ test("a lease whose worktree prepare fails frees the slot and can be retried", a
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 1 });
   await assert.rejects(
-    leaseSlot(root, { role: "feature", purpose: "tick", ref: "refs/heads/no-such-ref" }),
+    leaseSlot(root, { role: "feature", purpose: "run", ref: "refs/heads/no-such-ref" }),
   );
   const freed = readSlotsState(root).slots.find((slot) => slot.lease === null);
   assert.ok(freed, "the failed lease left its slot claimed");
   assert.equal(freed?.lastRole, "feature");
 
-  const lease = await leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" });
+  const lease = await leaseSlot(root, { role: "bugfix", purpose: "run", ref: "main" });
   assert.equal(lease.dir, freed?.dir, "the freed slot was not reused");
   lease.release();
 });
@@ -287,11 +287,11 @@ test("a lease whose worktree prepare fails frees the slot and can be retried", a
 test("a waiting lease with a signal acquires when a slot frees, then ignores a late abort", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 1 });
-  const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const held = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   const controller = new AbortController();
   const pending = leaseSlot(root, {
     role: "bugfix",
-    purpose: "tick",
+    purpose: "run",
     ref: "main",
     signal: controller.signal,
   });
@@ -306,14 +306,14 @@ test("a waiting lease with a signal acquires when a slot frees, then ignores a l
 test("keep preserves a slot pinned for the role; a plain lease resets it", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 2 });
-  const first = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const first = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   writeFileSync(join(first.dir, "resume.txt"), "kept");
   first.release({ pin: true });
   assert.equal(slotForDir(root, first.dir)?.pinnedFor, "feature");
 
   const resumed = await leaseSlot(root, {
     role: "feature",
-    purpose: "tick",
+    purpose: "run",
     ref: "main",
     keep: true,
   });
@@ -323,7 +323,7 @@ test("keep preserves a slot pinned for the role; a plain lease resets it", async
   resumed.release();
   assert.equal(slotForDir(root, first.dir)?.pinnedFor, null, "release cleared the pin");
 
-  const plain = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const plain = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   assert.equal(plain.preserved, false);
   assert.equal(existsSync(join(plain.dir, "resume.txt")), false, "a plain lease resets the slot");
   plain.release();
@@ -332,13 +332,13 @@ test("keep preserves a slot pinned for the role; a plain lease resets it", async
 test("keep on an unpinned slot still resets and reports not preserved", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 2 });
-  const first = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const first = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   writeFileSync(join(first.dir, "resume.txt"), "dropped");
   first.release();
 
   const kept = await leaseSlot(root, {
     role: "feature",
-    purpose: "tick",
+    purpose: "run",
     ref: "main",
     keep: true,
   });
@@ -368,7 +368,7 @@ test("a lease for the pinned role takes the pinned slot over a free unpinned one
       },
     ],
   });
-  const lease = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main", keep: true });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main", keep: true });
   assert.equal(lease.dir, slotWorktreePath(root, 1));
   assert.equal(lease.preserved, true);
   lease.release();
@@ -383,7 +383,7 @@ test("a slot pinned for one role is never leased by another", async () => {
       { dir: pinnedDir, lease: null, pinnedFor: "feature", lastRole: null, lastReleasedAt: 1 },
     ],
   });
-  const lease = await leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" });
+  const lease = await leaseSlot(root, { role: "bugfix", purpose: "run", ref: "main" });
   assert.notEqual(lease.dir, pinnedDir, "another role leased a pinned slot");
   lease.release();
   assert.equal(slotForDir(root, pinnedDir)?.pinnedFor, "feature");
@@ -392,9 +392,9 @@ test("a slot pinned for one role is never leased by another", async () => {
 test("a pinned slot does not count toward the slot budget", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 1 });
-  const a = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const a = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
   a.release({ pin: true });
-  const b = await leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" });
+  const b = await leaseSlot(root, { role: "bugfix", purpose: "run", ref: "main" });
   assert.notEqual(b.dir, a.dir, "the pinned slot consumed the only budgeted slot");
   assert.match(b.dir, /_slot-\d+$/);
   b.release();
@@ -403,9 +403,9 @@ test("a pinned slot does not count toward the slot budget", async () => {
 test("the shrink-away pass keeps a pinned slot and drops older idle unpinned ones", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 3 });
-  const a = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
-  const b = await leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" });
-  const c = await leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" });
+  const a = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
+  const b = await leaseSlot(root, { role: "bugfix", purpose: "run", ref: "main" });
+  const c = await leaseSlot(root, { role: "clean", purpose: "run", ref: "main" });
   a.release({ pin: true });
 
   writeConfig(root, { worktreeSlots: 1 });
@@ -489,7 +489,7 @@ test("a resumable enabled role's legacy dir becomes a pinned slot and serves one
 
   const lease = await leaseSlot(root, {
     role: "feature",
-    purpose: "tick",
+    purpose: "run",
     ref: "main",
     keep: true,
   });
@@ -506,7 +506,7 @@ test("a resumable role that already owns a tick slot keeps the slot and retires 
   writeConfig(root, { worktreeSlots: 3 });
   const wt = worktreeAt(root, "feature");
   saveLoopState(root, { ...freshLoopState("feature"), running: true });
-  const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const held = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
 
   await retireLegacyRoleWorktrees(root, ["feature"]);
   assert.equal(existsSync(wt), false, "the legacy checkout survived beside the owned slot");
@@ -560,7 +560,7 @@ test("a failed slot reset still removes a migrated legacy dir instead of orphani
   });
 
   await assert.rejects(
-    leaseSlot(root, { role: "feature", purpose: "tick", ref: "no-such-ref" }),
+    leaseSlot(root, { role: "feature", purpose: "run", ref: "no-such-ref" }),
     "a slot reset to an unknown ref must reject",
   );
   await waitFor(() => (existsSync(wt) ? undefined : true));
@@ -571,7 +571,7 @@ test("a failed slot reset still removes a migrated legacy dir instead of orphani
 test("a lease that waited 30 s or more logs one slot_wait naming the pool", async (t) => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 1 });
-  const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const held = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
 
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const waited = waitingLease(root);
@@ -585,7 +585,7 @@ test("a lease that waited 30 s or more logs one slot_wait naming the pool", asyn
   const events = readEvents(root).filter((e) => e.type === "slot_wait");
   assert.equal(events.length, 1, "the 31 s wait did not log exactly one slot_wait");
   assert.equal(events[0]?.role, "clean");
-  assert.equal(events[0]?.purpose, "tick");
+  assert.equal(events[0]?.purpose, "run");
   assert.equal(events[0]?.waitedMs, 31_000);
   assert.equal(events[0]?.slots, 1);
   assert.equal(events[0]?.pinned, 0);
@@ -595,7 +595,7 @@ test("a lease that waited 30 s or more logs one slot_wait naming the pool", asyn
 test("a lease that waited under 30 s logs no slot_wait", async (t) => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 1 });
-  const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const held = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
 
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const waited = waitingLease(root);
@@ -611,4 +611,16 @@ test("a lease that waited under 30 s logs no slot_wait", async (t) => {
     "a 1 s wait logged a slot_wait",
   );
   got.release();
+});
+
+test("a lease an old build wrote with purpose vet reads as verify and the next write stores it", () => {
+  const root = makeRepo();
+  mkdirSync(dirname(slotsStatePath(root)), { recursive: true });
+  writeFileSync(
+    slotsStatePath(root),
+    JSON.stringify({ slots: [{ dir: "/x", lease: { role: "feature", purpose: "vet", since: 1, pid: process.pid } }] }), // vocabulary-ok: legacy value
+  );
+  assert.equal(readSlotsState(root).slots[0]!.lease?.purpose, "verify");
+  writeSlotsState(root, readSlotsState(root));
+  assert.match(readFileSync(slotsStatePath(root), "utf8"), /"purpose": ?"verify"/);
 });

@@ -563,21 +563,21 @@ test("loopPhase renders the landing cell ahead of every idle state, only when th
   const startedAt = Date.now() - 90_000; // 90s of landing → "1m30s"
   // The record wins over the idle state…
   assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "merging" }),
+    loopPhase(s, true, undefined, false, undefined, false, { status: "merging", startedAt, stage: "merging" }),
     "merging 1m30s · finishing the merge",
   );
   // …and it is the caller's job to pass it only for the landing role: without it the loop
   // keeps its ordinary state (the "other roles" case — the record is filtered upstream).
   assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
   // A stopped harness never shows it — a dead fleet's marker is stale by definition.
-  assert.equal(loopPhase(s, false, undefined, false, undefined, false, { status: "landing", startedAt, stage: "merging" }), "stopped");
+  assert.equal(loopPhase(s, false, undefined, false, undefined, false, { status: "merging", startedAt, stage: "merging" }), "stopped");
   // Only a record with no stage at all — an older writer's marker mid-upgrade — keeps the
   // bare elapsed label: there is nothing more it can honestly say.
-  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt }), "merging 1m30s");
+  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "merging", startedAt }), "merging 1m30s");
   // A change the vetting stage approved waits for the merge slot: it reads that state instead —
   // no elapsed and no stage, because nothing of its own is running (BUGS.md 2026-09-23).
   assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { status: "vetted", startedAt, stage: "merging" }),
+    loopPhase(s, true, undefined, false, undefined, false, { status: "approved", startedAt, stage: "merging" }),
     "approved, waiting to merge",
   );
 });
@@ -602,7 +602,7 @@ test("the build-check and merging landing stages render their label and never re
     ["resolve-wait", "waiting to resolve conflicts"],
     ["merging", "finishing the merge"],
   ] as const) {
-    const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt, stage });
+    const phase = loopPhase(s, true, root, false, null, false, { status: "merging", startedAt, stage });
     assert.match(phase, new RegExp(`^merging 1m3[01]s · ${label}$`), `${stage}: ${phase}`);
   }
 });
@@ -616,22 +616,22 @@ test("loopPhase appends the per-stage elapsed after a staged landing, when the c
   const stageSince = Date.now() - 30_000; // 30s in THIS stage → "30s"
   // build-check (a plain staged arm): the stage elapsed appends after the stage.
   assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "build-check", stageSince }),
+    loopPhase(s, true, undefined, false, undefined, false, { status: "merging", startedAt, stage: "build-check", stageSince }),
     "merging 1m30s · checking 30s",
   );
   // Without stageSince the current label is unchanged (the old generation's cell).
   assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "build-check" }),
+    loopPhase(s, true, undefined, false, undefined, false, { status: "merging", startedAt, stage: "build-check" }),
     "merging 1m30s · checking",
   );
   // reviewing (a scrutinized arm): the stage elapsed renders before the in-flight detail tail;
   // without a log the tail is the bare staged label carrying it.
   assert.equal(
-    loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt, stage: "reviewing", stageSince }),
+    loopPhase(s, true, undefined, false, null, false, { status: "merging", startedAt, stage: "reviewing", stageSince }),
     "merging 1m30s · reviewing 30s",
   );
   assert.equal(
-    loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt, stage: "reviewing" }),
+    loopPhase(s, true, undefined, false, null, false, { status: "merging", startedAt, stage: "reviewing" }),
     "merging 1m30s · reviewing",
   );
 });
@@ -652,11 +652,11 @@ test("the reviewing landing stage carries the reviewer run's live detail, timed 
   // The authoring tick started an hour ago; the cell's elapsed is the LANDING's (90s), and
   // the frame's `live` for a non-running loop is null — the branch reads the gate itself.
   s.lastRunStartedAt = Date.now() - 3_600_000;
-  const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
+  const phase = loopPhase(s, true, root, false, null, false, { status: "merging", startedAt: Date.now() - 90_000, stage: "reviewing" });
   assert.match(phase, /^merging 1m3[01]s · reviewing · turn 2 · ctx 22\.0k · bash npm test$/, `unexpected shape: ${phase}`);
 
   // No log to read (or no root): the honest stage label alone.
-  const bare = loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
+  const bare = loopPhase(s, true, undefined, false, null, false, { status: "merging", startedAt: Date.now() - 90_000, stage: "reviewing" });
   assert.equal(bare, "merging 1m30s · reviewing");
 });
 
@@ -674,7 +674,7 @@ test("the resolving landing stage carries the conflict resolver's live detail, n
     assistantLine("resolving PLANS.md", { tokens: 12_000 }),
     toolStart("bash", { command: "grep -n '<<<<<<<' PLANS.md" }),
   ]);
-  const landing = { status: "landing", startedAt: Date.now() - 90_000, stage: "resolving" } as const;
+  const landing = { status: "merging", startedAt: Date.now() - 90_000, stage: "resolving" } as const;
   const phase = loopPhase(freshLoopState("clean"), true, root, false, null, false, landing);
   assert.match(phase, /^merging 1m3[01]s · resolving conflicts · turn 2 · ctx 12\.0k · bash grep/, `unexpected shape: ${phase}`);
   assert.equal(loopPhase(freshLoopState("clean"), true, undefined, false, null, false, landing), "merging 1m30s · resolving conflicts");
@@ -685,11 +685,11 @@ test("a landing cell with no recorded start renders the bare `landing` head", ()
   // no honest elapsed exists, so the head degrades to the bare label — staged or not.
   const s = freshLoopState("feature");
   assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt: undefined, stage: "merging" }),
+    loopPhase(s, true, undefined, false, undefined, false, { status: "merging", startedAt: undefined, stage: "merging" }),
     "merging · finishing the merge",
   );
   assert.equal(
-    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt: undefined }),
+    loopPhase(s, true, undefined, false, undefined, false, { status: "merging", startedAt: undefined }),
     "merging",
   );
 });
@@ -707,7 +707,7 @@ test("a new landing's reviewing cell starts at its run's label line, not at the 
     JSON.stringify({ type: "tumwater_run", label: "review" }),
   ]);
   const phase = loopPhase(freshLoopState("clean"), true, root, false, null, false, {
-    status: "landing",
+    status: "merging",
     startedAt: Date.now() - 5_000,
     stage: "reviewing",
   });

@@ -5,7 +5,7 @@ import path from "node:path";
 import { readLandingQueue } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { writeOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
-import { landQueueDir, legacyLandQueueDir, orchestratorStatePath } from "../src/paths.js";
+import { landQueueDir, legacyLandingStatePath, legacyLandQueueDir, orchestratorStatePath } from "../src/paths.js";
 import { registerStartupMigration } from "../src/orchestrator/startup-migrations.js";
 import { runStartupMigrations, runStartupMigrationsIfIdle } from "../src/orchestrator/startup-migration-steps.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
@@ -67,4 +67,16 @@ test("runStartupMigrationsIfIdle moves nothing while an orchestrator is alive", 
 
 test("registering a duplicate step name throws", () => {
   assert.throws(() => registerStartupMigration({ name: "mergeQueueDir", run: async () => [] }), /already registered/);
+});
+
+test("mergingMarker removes a leftover landing.json once", async () => {
+  const root = makeRepo();
+  const old = legacyLandingStatePath(root);
+  fs.mkdirSync(path.dirname(old), { recursive: true });
+  fs.writeFileSync(old, "{}");
+  await runStartupMigrations(root);
+  assert.ok(!fs.existsSync(old));
+  assert.equal(migrated(root).filter((e) => e.step === "mergingMarker").length, 1);
+  await runStartupMigrations(root);
+  assert.equal(migrated(root).filter((e) => e.step === "mergingMarker").length, 1, "a second start logs nothing");
 });

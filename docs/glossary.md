@@ -218,7 +218,7 @@ None of these keep the older name, except the dashboard hashes.
 | --- | --- | --- |
 | `state/<id>.json` fields `ticks`, `lastTickStartedAt`, `lastTickEndedAt`, `landingReviewError`, `landingCheckFailures`, `lastLandedAt` | `runs`, `lastRunStartedAt`, `lastRunEndedAt`, `mergeReviewError`, `mergeCheckFailures`, `lastMergedAt` | yes, read and migrated |
 | `.tumwater/land-queue/` and its entries' `tick` | `.tumwater/merge-queue/` and `run` | yes, read and migrated |
-| `state/landing.json`, status `"landing"` / `"vetted"` / `"done"` | `state/merging.json`, status `"merging"` / `"approved"` / `"done"` | yes, read and migrated |
+| `state/landing.json`, status `"landing"` / `"vetted"` / `"done"` | `state/merging.json`, status `"merging"` / `"approved"` / `"done"` | no, a leftover file is deleted at startup (display-only) |
 | `slots.json` `purpose: "tick"` / `"vet"` | `"run"` / `"verify"` | yes, read and migrated |
 | refs `refs/tumwater/landing/<id>` | `refs/tumwater/merge/<id>` | yes, read and migrated |
 | commit trailer `Tick: <id> #N · turns … · ctx …` | `Run: <id> #N · turns … · ctx …` | yes, parsers accept both |

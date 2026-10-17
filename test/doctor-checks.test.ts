@@ -871,13 +871,13 @@ test("checkWorktreePool sums the last day of slot_wait events and warns at ten m
   const root = readyRepo();
   const wait = (role: string, purpose: string, waitedMs: number) =>
     logEvent(root, { source: TUMWATER_SOURCE, type: "slot_wait", message: "waited", role, purpose, waitedMs });
-  wait("feature", "tick", 45_000);
-  wait("clean", "vet", 90_000);
+  wait("feature", "run", 45_000);
+  wait("clean", "verify", 90_000);
   const quiet = checkWorktreePool(root);
   assert.equal(quiet.level, "ok");
   assert.match(quiet.detail, /2 waits to start in the last 24h, 2m total, longest 90s \(clean check\)/);
 
-  wait("feature", "tick", 600_000);
+  wait("feature", "run", 600_000);
   const busy = checkWorktreePool(root);
   assert.equal(busy.level, "warn");
   assert.match(busy.detail, /raise worktreeSlots above 0/);

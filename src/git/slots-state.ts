@@ -18,7 +18,7 @@ import { isUsableWorktree } from "./worktree.js";
  * orchestrator pid that owns it. A lease whose pid is not the running process is dead. */
 interface SlotLease {
   role: string;
-  purpose: "tick" | "vet";
+  purpose: "run" | "verify";
   since: number;
   pid: number;
 }
@@ -72,14 +72,21 @@ export function readSlotsState(root: string): SlotsState {
  * through nonNegativeNumber, not a bare `typeof`: a hand edit's `1e999` parses to Infinity and
  * would pass, and a non-finite owner pid looks live to the cross-process readers
  * (roleWorktreeDir, status-data) that do not run the pool's own clearDeadLeases. */
-function isSlotLease(value: unknown): value is SlotLease {
+function isSlotLease(value: unknown): boolean {
   return (
     isJsonObject(value) &&
     typeof value.role === "string" &&
-    (value.purpose === "tick" || value.purpose === "vet") && // vocabulary-ok: lease purpose "tick" is a persisted state value until the state rename
+    (value.purpose === "run" || value.purpose === "verify" || value.purpose === "tick" || value.purpose === "vet") && // vocabulary-ok: legacy value read from old files
     nonNegativeNumber(value.since, null) !== null &&
     nonNegativeNumber(value.pid, null) !== null
   );
+}
+
+/** A lease an older build wrote carries `tick`/`vet`; read them as `run`/`verify`. */
+function readSlotLease(lease: unknown): SlotLease {
+  const l = lease as { purpose: string };
+  const purpose = l.purpose === "tick" ? "run" : l.purpose === "vet" ? "verify" : l.purpose; // vocabulary-ok: legacy value read from old files
+  return { ...l, purpose } as SlotLease;
 }
 
 /** Coerce one persisted entry into a SlotRecord, defaulting the known fields a hand edit or an
@@ -96,7 +103,7 @@ function readSlotRecord(slot: unknown): SlotRecord | null {
   return {
     ...slot,
     dir: slot.dir,
-    lease: isSlotLease(slot.lease) ? slot.lease : null,
+    lease: isSlotLease(slot.lease) ? readSlotLease(slot.lease) : null,
     pinnedFor: typeof slot.pinnedFor === "string" ? slot.pinnedFor : null,
     // Absent stays absent (an older writer's shape is preserved); present-but-foreign is null.
     pinnedAt: slot.pinnedAt === undefined ? undefined : finiteNumber(slot.pinnedAt, null),
@@ -136,7 +143,7 @@ export function slotForDir(root: string, dir: string): SlotRecord | undefined {
  * ticks lease slots (part 4/5), because nothing writes those leases yet. */
 export async function roleWorktreeDir(root: string, role: string): Promise<string | null> {
   const slots = readSlotsState(root).slots;
-  const leased = slots.find((slot) => slot.lease?.role === role && slot.lease.purpose === "tick"); // vocabulary-ok: lease purpose "tick" is a persisted state value until the state rename
+  const leased = slots.find((slot) => slot.lease?.role === role && slot.lease.purpose === "run");
   if (leased !== undefined) return leased.dir;
   const pinned = slots.find((slot) => slot.pinnedFor === role);
   if (pinned !== undefined) return pinned.dir;

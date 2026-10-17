@@ -173,12 +173,12 @@ test("the marker is cross-checked per change and each row reads its own change's
     startedAt: betaStart,
     changes: [
       { role: "clean", sha: "c1ea000", summary: "clean work", status: "done", startedAt: t0 },
-      { role: "bugfix", sha: "b0f1000", summary: "bugfix work", status: "landing", startedAt: betaStart },
-      { role: "feature", sha: "fea7000", summary: "feature work", status: "vetted", startedAt: t0, stage: "merging" },
-      { role: "dry", sha: "d1a0000", summary: "dry work", status: "landing", startedAt: t0, stage: "build-check" },
+      { role: "bugfix", sha: "b0f1000", summary: "bugfix work", status: "merging", startedAt: betaStart },
+      { role: "feature", sha: "fea7000", summary: "feature work", status: "approved", startedAt: t0, stage: "merging" },
+      { role: "dry", sha: "d1a0000", summary: "dry work", status: "merging", startedAt: t0, stage: "build-check" },
       // A record whose entry is gone (its outcome written, or a crash) is finished, whatever
       // its record last said: the cross-check drops it.
-      { role: "plan", sha: "91a0000", summary: "plan work", status: "landing", startedAt: t0 },
+      { role: "plan", sha: "91a0000", summary: "plan work", status: "merging", startedAt: t0 },
     ],
   });
   let snap = snapshot(repo);

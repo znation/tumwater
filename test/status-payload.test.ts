@@ -37,7 +37,7 @@ test("status payload carries the pooled worktree slot a loop holds or is pinned 
     slots: [
       {
         dir: slotWorktreePath(repo, 1),
-        lease: { role: "feature", purpose: "tick", since: Date.now(), pid: process.pid },
+        lease: { role: "feature", purpose: "run", since: Date.now(), pid: process.pid },
         pinnedFor: null,
         lastRole: null,
         lastReleasedAt: null,

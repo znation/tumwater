@@ -89,7 +89,7 @@ test("a slot leased for a role's tick serves its change to the diff reader", asy
     slots: [
       {
         dir: slot,
-        lease: { role: "feature", purpose: "tick", since: Date.now(), pid: process.pid },
+        lease: { role: "feature", purpose: "run", since: Date.now(), pid: process.pid },
         pinnedFor: null,
         lastRole: null,
         lastReleasedAt: null,

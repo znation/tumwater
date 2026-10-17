@@ -142,7 +142,13 @@ export function roleNotesPath(root: string, role: string): string {
  * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,
  * but they can read this file (plans/merge-queue.md). */
 export function landingStatePath(root: string): string {
-  return path.join(tumwaterDir(root), "state", "landing.json");
+  return path.join(tumwaterDir(root), "state", "merging.json");
+}
+
+/** The merge marker's old file, deleted by the startup migration (the marker is display-only,
+ * so a previous generation's is stale and is not read). */
+export function legacyLandingStatePath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "landing.json"); // vocabulary-ok: legacy path read from old layouts
 }
 
 /** The last completed auto-restart's timestamp (epoch ms) — unlike orchestrator.json it must

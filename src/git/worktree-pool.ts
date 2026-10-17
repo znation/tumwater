@@ -38,7 +38,7 @@ export interface SlotLeaseHandle {
 interface LeaseSlotOptions {
   /** The loop the slot is held for; drives affinity and the persisted lease record. */
   role: string;
-  purpose: "tick" | "vet";
+  purpose: "run" | "verify";
   /** The commit the slot is prepared at (a sha or branch name; ensureDetachedWorktree
    * resets it). */
   ref: string;
@@ -59,7 +59,7 @@ interface LeaseSlotOptions {
  * module and this one depends only on the fields it uses. */
 interface PoolSlot {
   dir: string;
-  lease: { role: string; purpose: "tick" | "vet"; since: number; pid: number } | null;
+  lease: { role: string; purpose: "run" | "verify"; since: number; pid: number } | null;
   pinnedFor: string | null;
   /** When the current pin began (epoch ms), or null when unpinned. Optional so slot records
    * written before this field existed read as "pin age unknown" (the doctor warns only on a
@@ -143,7 +143,7 @@ function clearDeadLeases(state: PoolState, pid: number): void {
   }
 }
 
-function claim(slot: PoolSlot, role: string, purpose: "tick" | "vet", now: number, pid: number): string {
+function claim(slot: PoolSlot, role: string, purpose: "run" | "verify", now: number, pid: number): string {
   slot.lease = { role, purpose, since: now, pid };
   return slot.dir;
 }
@@ -166,7 +166,7 @@ function chooseSlot(
   root: string,
   state: PoolState,
   role: string,
-  purpose: "tick" | "vet",
+  purpose: "run" | "verify",
   count: number,
   now: number,
   pid: number,
@@ -211,7 +211,7 @@ export const SLOT_WAIT_EVENT_MS = 30_000;
  * ordinary queueing and stays silent. The event names the pool size and how many of its slots
  * are pinned, so an operator can size `worktreeSlots` from the line alone. Best-effort: an
  * unwritable feed must not fail the lease it describes. */
-function logSlotWait(root: string, role: string, purpose: "tick" | "vet", waitedMs: number): void {
+function logSlotWait(root: string, role: string, purpose: "run" | "verify", waitedMs: number): void {
   if (waitedMs < SLOT_WAIT_EVENT_MS) return;
   const slots = readSlotsState(root).slots;
   logEventBestEffort(root, {
@@ -228,7 +228,7 @@ function logSlotWait(root: string, role: string, purpose: "tick" | "vet", waited
 function tryClaim(
   root: string,
   role: string,
-  purpose: "tick" | "vet",
+  purpose: "run" | "verify",
   count: number,
 ): string | null {
   let chosen: string | null = null;
@@ -241,7 +241,7 @@ function tryClaim(
 async function acquire(
   root: string,
   role: string,
-  purpose: "tick" | "vet",
+  purpose: "run" | "verify",
   signal?: AbortSignal,
   slotBudget?: number,
 ): Promise<string> {
@@ -386,7 +386,7 @@ export async function retireLegacyRoleWorktrees(
         const owned = state.slots.find(
           (slot) =>
             slot.pinnedFor === role ||
-            (slot.lease?.role === role && slot.lease.purpose === "tick"), // vocabulary-ok: lease purpose "tick" is a persisted state value until the state rename
+            (slot.lease?.role === role && slot.lease.purpose === "run"),
         );
         if (owned !== undefined) {
           // The resume happens in the owned slot: drop the legacy record and remove its dir.

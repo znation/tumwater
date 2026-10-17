@@ -499,7 +499,7 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the pool
       // working as designed. Names the wait, the pool it waited on, and how many slots are
       // pinned, so the operator can raise worktreeSlots with the numbers in hand.
-      const purpose = e.purpose === "vet" ? "check" : "run";
+      const purpose = e.purpose === "verify" ? "check" : "run";
       return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} to start (${textOr(e.role)} ${purpose}; ${textOr(e.slots)} workspaces, ${textOr(e.pinned)} pinned)`;
     }
     case "claim":
