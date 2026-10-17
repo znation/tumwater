@@ -374,6 +374,16 @@ export function eventMessage(e: HarnessEvent): string {
       // handling the low disk, and naming the free space and the floor tells the operator
       // whether to clear space or lower diskHoldGB in tumwater.json.
       return `waiting: low disk — ${gigabytes(e.freeGB)} free on the workspaces volume (floor ${gigabytes(e.holdGB)}); new work waits until space recovers`;
+    case "quiet_hours_started": {
+      // Routine hold, like disk_low — no warning prefix: the window is configured, and the line
+      // says what stops and what keeps running. pollQuietHoursGate may send no window.
+      const window = typeof e.window === "string" && e.window.trim() ? ` (${textOr(e.window)})` : "";
+      return `waiting: quiet hours${window} — roles start no new runs until the window ends; the director still runs`;
+    }
+    case "quiet_hours_ended": {
+      const window = typeof e.window === "string" && e.window.trim() ? ` (${textOr(e.window)})` : "";
+      return `quiet hours ended${window} — roles start runs again`;
+    }
     case "disk_ok":
       return `disk recovered — ${gigabytes(e.freeGB)} free on the workspaces volume; new work starts again`;
     case "disk_reclaim": {
@@ -448,6 +458,12 @@ export function eventMessage(e: HarnessEvent): string {
       // The live-edit sibling of config_changed: names the new selector, the one fact the key
       // list cannot show. The per-role diffs stay structured on the event.
       return `model changed — now ${textOr(e.to, "pi's default")}`;
+    case "backend_binary":
+      // The binary check for a newly routed backend: found is the routine verdict; a missing
+      // binary is the warning.
+      return e.found === false
+        ? `warning: newly routed ${textOr(e.agent)} backend — its binary was not found`
+        : `newly routed ${textOr(e.agent)} backend checked — binary found`;
     case "model_fallback_started":
       // Routine-with-explanation, like rate_limit_hold: the switch IS the harness handling the
       // failure. Names the pair the role now runs on and why the primary was abandoned.
@@ -495,6 +511,9 @@ export function eventMessage(e: HarnessEvent): string {
       // The restart is blocked, not refused: a verdict latched this head, so the line names
       // what failed and that only main moving can end it.
       return `restart blocked for main ${shortSha(e.to)} — ${textOr(e.reason)}; staying on version ${shortSha(e.from)} until main moves`;
+    case "restart_forced":
+      // The operator's own override: names the running build, the one fact the type code lacks.
+      return `restart forced by you — the update skips its cooldown (running version ${shortSha(e.build)})`;
     case "supervisor_exit": {
       // The team is DOWN and nothing will bring it back: the one line that must say so, since
       // the dead generation's own stderr reached only the supervisor's terminal.

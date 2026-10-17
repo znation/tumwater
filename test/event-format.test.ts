@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { eventResult, formatEvent, outcomeText, usageText } from "../src/events/event-format.js";
+import { eventMessage, eventResult, formatEvent, outcomeText, usageText } from "../src/events/event-format.js";
+import { EVENT_TYPE_LABELS } from "../src/events/event-labels.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import { formatTimestamp } from "../src/text/datetime.js";
 import { truncate } from "../src/text/text.js";
@@ -1014,4 +1015,25 @@ test("formatEvent renders claim assignment and release lines", () => {
   const torn = formatEvent({ ts: 0, source: "feature", type: "claim", action: "released", title: "Plan A" } as never);
   assert.match(torn, /released "Plan A" \(\?\)/);
   assert.doesNotMatch(torn, /undefined/);
+});
+
+test("eventMessage gives every event type its own line, never the bare code", () => {
+  for (const type of Object.keys(EVENT_TYPE_LABELS)) {
+    assert.notEqual(eventMessage({ ts: 0, source: "tumwater", type } as never), type, type);
+  }
+});
+
+test("formatEvent renders quiet hours, a forced restart, and a backend check in words", () => {
+  const line = (e: Record<string, unknown>) => formatEvent({ ts: 0, source: "tumwater", ...e } as never);
+  const started = line({ type: "quiet_hours_started", window: "23:00-07:00" });
+  assert.match(started, /quiet hours \(23:00-07:00\)/);
+  assert.match(started, /no new runs/);
+  const bare = line({ type: "quiet_hours_started" });
+  assert.doesNotMatch(bare, /undefined|\(\)/);
+  assert.match(line({ type: "quiet_hours_ended" }), /roles start runs again/);
+  assert.match(line({ type: "restart_forced", build: "abcdef1234567890" }), /abcdef12/);
+  const found = line({ type: "backend_binary", agent: "claude", found: true });
+  assert.match(found, /claude/);
+  assert.match(found, /binary found/);
+  assert.match(eventMessage({ ts: 0, source: "tumwater", type: "backend_binary", agent: "claude", found: false } as never), /^warning:/);
 });

@@ -1233,7 +1233,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The event feed gives `backend_binary`, `quiet_hours_started`, `quiet_hours_ended`, and `restart_forced` their own lines, and a test makes every event type render one (planned 2026-10-16 by plan)
+## Done
+
+### The event feed gives `backend_binary`, `quiet_hours_started`, `quiet_hours_ended`, and `restart_forced` their own lines, and a test makes every event type render one (planned 2026-10-16 by plan) (done 2026-10-16)
 
 **Goal.** `eventMessage` (`src/events/event-format.ts`) turns each `HarnessEvent` into the one line that `tumwater logs`, `formatEvent`, and the dashboards' activity feed (`eventFeedItem`) show. Four types in the `HarnessEvent["type"]` union (`src/events/events.ts`) have no `case` and fall through to `default`, which prints the bare code. So an operator sees `quiet_hours_started` with no window and no hint that roles have stopped starting runs. They see `restart_forced` with no build, and `backend_binary` without the backend's name. Each event already carries the fields a sentence needs (`window`; `build`; `agent` and `found`). This plan writes those sentences and adds a test so the next new event type cannot ship without a line. `EVENT_TYPE_LABELS` already does the same job for the short chip labels in `src/events/event-labels.ts`.
 
@@ -1260,8 +1262,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `tumwater logs` and the dashboard feed show the four sentences above in place of the bare type codes.
 - Both new tests pass, and the first one would fail if a case were removed.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor` gains a `root install` row that warns when the root checkout's `node_modules` no longer matches `package-lock.json`'s direct pins, so an operator learns a failed post-merge re-sync is making every check install into its own tree (planned 2026-10-16 by plan; independent of every other Planned entry — adds one new module under `src/doctor/` and one row to `src/doctor/doctor.ts`'s list, and leaves `src/doctor/doctor-checks.ts` alone, which the in-flight "check row … 24 h passing merge-check durations" plan edits) (done 2026-10-16)
 
