@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { abortRequestPath, orchestratorStatePath, roleNotesPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, orchestratorStatePath, restartRequestPath, roleNotesPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { cli } from "./helpers/cli-harness.js";
@@ -138,6 +138,72 @@ test("abort's confirmation names the discarded prompt only for the director", as
   assert.ok(!f.stdout.includes("discarded"), `no director clause for non-director roles:\n${f.stdout}`);
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
+// --- restart: apply a pending self-redeploy, waiving the restart cooldown ---
+// The terminal twin of the dashboard update alert's refresh button (POST /api/restart): both
+// call requestRestart, so the CLI's confirmation and refusal are byte-for-byte the GUI's. The
+// marker file is the same one consumeRestartRequest consumes. Like abort, restart's staleness
+// gate reads the recorded published build's `stale` flag; with no team running the marker is
+// written harmlessly for the next run's first poll.
+
+test("restart drops the marker and reports the waived cooldown while the build is stale", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli restart stale");
+
+  // Record this test process as the running orchestrator with a stale published build.
+  writeOrchestratorMarker(repo, ["feature"], {
+    build: { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 3 },
+  });
+
+  const r = await cli(repo, "restart");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /restart requested/);
+  assert.match(r.stdout, /cooldown is waived/);
+  assert.match(r.stdout, /blocked restart still blocks/);
+
+  const marker = readJson(restartRequestPath(repo)) as { at: number };
+  assert.ok(marker.at > 0, "marker carries the numeric at the team consumes");
+
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
+test("restart refuses with nothing written while the running build is not stale", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli restart fresh");
+
+  writeOrchestratorMarker(repo, ["feature"], {
+    build: { sha: "a".repeat(40), builtAt: 1, stale: false },
+  });
+
+  const r = await cli(repo, "restart");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no update is waiting/);
+  assert.ok(!fs.existsSync(restartRequestPath(repo)), "a fresh build's restart writes no marker");
+
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
+test("restart with no team running writes the marker harmlessly and says so", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli restart no team");
+
+  const r = await cli(repo, "restart");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /tumwater is not running/);
+  assert.equal(fs.existsSync(restartRequestPath(repo)), true, "the marker waits for the next run's first poll");
+});
+
+test("restart rejects stray arguments and a --role before writing anything", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli restart arg validation");
+
+  for (const args of [["extra"], ["--role", "feature"]]) {
+    const r = await cli(repo, "restart", ...args);
+    assert.equal(r.code, 1, JSON.stringify(args));
+    assert.match(r.stderr, /takes no arguments/);
+    assert.ok(!fs.existsSync(restartRequestPath(repo)), `no marker written for ${JSON.stringify(args)}`);
+  }
 });
 
 // --- pause / resume: the operator-intent team gate via a persistent marker file ---

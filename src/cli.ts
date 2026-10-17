@@ -356,16 +356,17 @@ async function main(): Promise<void> {
       await (await import("./inbox/prompt-commands.js")).cmdPrompt(root, args);
       break;
     case "reset-counters":
-    // Fall through: the six marker commands share one guard+dispatch shape — unknown-args
+    // Fall through: the seven marker commands share one guard+dispatch shape — unknown-args
     // rejection against the command's flag set, the ready-repo gate, then the
-    // operator-commands core — so runMarkerCommand holds it once instead of six copies
+    // operator-commands core — so runMarkerCommand holds it once instead of seven copies
     // drifting. The case labels here are exactly MarkerCommand's members, which is what
     // makes the cast below exhaustive.
     case "wake":
     case "abort":
     case "pause":
     case "resume":
-    case "reclaim": {
+    case "reclaim":
+    case "restart": {
       await (await import("./cli/cli-marker-commands.js")).runMarkerCommand(root, command, args);
       break;
     }

@@ -372,6 +372,10 @@ Usage:
                                    and ignored-path count and cleans nothing
   tumwater abort --role <id>       Stop that role's run in progress (work discarded; the role
                                    keeps going)
+  tumwater restart                Apply a pending self-redeploy now, waiving the restart
+                                   cooldown (the dashboard's update-alert refresh button; a
+                                   passing check on main, a successful compile, and in-flight
+                                   runs finishing still apply)
   tumwater pause [--role <id>] [--for <dur>] [--reason <text>]
                                    Stop roles (or just the named role) starting new
                                    runs; --reason states why the whole team is paused (no

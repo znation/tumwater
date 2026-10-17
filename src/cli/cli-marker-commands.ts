@@ -12,10 +12,10 @@ import {
   type FlagSpec,
 } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
-import { cmdAbort, cmdPause, cmdReclaim, cmdResetCounters, cmdResume, cmdWake } from "../operator/operator-commands.js";
+import { cmdAbort, cmdPause, cmdReclaim, cmdResetCounters, cmdRestart, cmdResume, cmdWake } from "../operator/operator-commands.js";
 
 /** The marker commands that share runMarkerCommand's guard+dispatch shape below. */
-export type MarkerCommand = "reset-counters" | "wake" | "abort" | "pause" | "resume" | "reclaim";
+export type MarkerCommand = "reset-counters" | "wake" | "abort" | "pause" | "resume" | "reclaim" | "restart";
 
 /** The CLI command layer of each marker command, keyed by its CLI name (the command bodies
  * live in operator/operator-commands.ts, the shared marker-writing cores in
@@ -28,12 +28,14 @@ const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) =
   pause: cmdPause,
   resume: cmdResume,
   reclaim: cmdReclaim,
+  restart: cmdRestart,
 };
 
-/** The shared shape of the six marker commands (reset-counters, wake, abort, pause, resume,
- * reclaim): reject unknown args against each command's flag set, gate on a ready repo, then
- * dispatch to its operator-commands core. One copy of the guard sequence so the six cannot
- * drift on validation order or gating. Lives beside operator/operator-commands.ts's importers
+/** The shared shape of the seven marker commands (reset-counters, wake, abort, pause,
+ * resume, reclaim, restart): reject unknown args against each command's flag set, gate on a
+ * ready repo, then dispatch to its operator-commands core. One copy of the guard sequence so
+ * the seven cannot drift on validation order or gating. Lives beside
+ * operator/operator-commands.ts's importers
  * as the marker commands' CLI layer, with cli.ts's main() dispatch casting to MarkerCommand
  * here. */
 export async function runMarkerCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
@@ -54,6 +56,7 @@ export async function runMarkerCommand(root: string, command: MarkerCommand, arg
     ],
     resume: [ROLE_FLAG],
     reclaim: [DRY_RUN_FLAG],
+    restart: [],
   };
   rejectUnknownArgs(command, args, perCommandFlags[command] ?? [ROLE_FLAG]);
   await requireReadyRepo(root);

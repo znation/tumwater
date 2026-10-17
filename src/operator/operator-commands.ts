@@ -30,6 +30,7 @@ import {
   renderWakeList,
   requestAbort,
   requestResetCounters,
+  requestRestart,
   requestScheduledStop,
   requestWake,
   rolePauseMessage,
@@ -181,6 +182,17 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
   // user-defined loops; a missing --role fails before it is ever needed.
   const role = requiredNamedRole(root, args, "abort");
   const result = requestAbort(root, role);
+  if (!result.ok) fail(result.error);
+  say(result.message);
+}
+
+/** `tumwater restart`: apply a pending self-redeploy now, waiving the restart cooldown —
+ * the terminal twin of the dashboard update alert's refresh button (POST /api/restart,
+ * handleRestart in src/gui/gui-operator-commands.ts). Both call the same marker-writing
+ * core requestRestart, so the confirmation (or refusal) is byte-for-byte the GUI's. Takes
+ * no flags. */
+export async function cmdRestart(root: string, _args: string[]): Promise<void> {
+  const result = requestRestart(root);
   if (!result.ok) fail(result.error);
   say(result.message);
 }

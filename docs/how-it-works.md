@@ -275,7 +275,8 @@ restarts, at most once every 12 hours. A failing check on main or a failed compi
 build running and shows `restart BLOCKED`, with the reason. You do not have to wait out the
 12-hour clock: the dashboard's update alert has a refresh button that waives the cooldown
 and starts the pending update immediately — every other gate (a passing check on main, a
-successful compile, in-flight runs finishing) still applies.
+successful compile, in-flight runs finishing) still applies. From the terminal, run
+`tumwater restart` to press the same button: both write the marker the redeployer consumes.
 
 `tumwater tui` and `tumwater gui` follow the swap: each re-execs onto the new `dist/` within a
 second, and only onto a build stamped with a real commit of the repo. Because the team executes

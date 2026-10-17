@@ -30,6 +30,7 @@ const ALL_COMMANDS = [
   "pause",
   "resume",
   "reclaim",
+  "restart",
   "retire",
   "stop",
   "completion",
