@@ -125,9 +125,10 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     if (key.ctrl && key.name === "s") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "y") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "o") {
-      // The Health problems-only Ctrl+O is routed ahead of the History outcome cycle on that
-      // view, matching the original health-branch-first ordering; every other view keeps the
-      // History outcome cycle.
+      // The Activity type cycle is routed first on its own view (0); on the Health view the
+      // problems-only toggle precedes the History outcome cycle, and every other view keeps
+      // the History outcome cycle.
+      if (session.view === 0) return activity.handleKey?.(key, ctx) ?? false;
       if (session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
       return history.handleKey?.(key, ctx) ?? false;
     }
@@ -212,6 +213,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       activityScroll: act.activityScroll,
       activityRole: act.activityRole,
       activityGrep: act.activityGrep,
+      activityType: act.activityType,
       noteMode: tra.noteMode,
       noteCache: tra.noteCache,
       changeMode: tra.changeMode,

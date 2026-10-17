@@ -551,6 +551,55 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
   assert.equal(keys.state().activityScroll, null, "...and the offset over the old filtered list");
 });
 
+test("Ctrl+O on the Activity view cycles the present event types and filters the paging total", () => {
+  const root = makeRoot();
+  // Two loops, three present types: `feature` carries run_start and run_end, `clean` only
+  // wake, so a team-wide cycle turns over all three while the feature scope holds two.
+  writeEvents(root, [
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "run_start", run: i + 1 })),
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "feature", type: "run_end", run: i + 1, result: "changed" })),
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_001_400_000 + i * 60_000, loop: "clean", type: "wake", run: i + 1 })),
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "clean"]);
+  keys.setLineBudgets(5, 4);
+  assert.equal(keys.state().activityType, null, "Activity opens on every type");
+
+  // The unfiltered total is 36 and each type's own is 12, so PgUp's clamped offset proves
+  // which filtered list the handler paged over (36 − 5 = 31 → pages back to 26 vs 12 − 5 = 7
+  // → back to 2).
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, 26, "every-type read pages over all 36 events");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, "run_end", "the first Ctrl+O selects the first present type in the sorted cycle");
+  assert.equal(keys.state().activityScroll, null, "a type change resets the pane to the live tail");
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, 2, "paging now clamps over run_end's 12 events only");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, "run_start", "the cycle walks each present type in turn");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, "wake", "the cycle keeps walking once a type is selected");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, null, "the cycle wraps back to every type");
+
+  // The present-type cycle is built from the pre-type scope: scoping to feature (run_start
+  // and run_end only) drops wake from the slots.
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, "run_end", "inside the feature scope the first present type is run_end");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, "run_start", "then run_start");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, null, "then wrap back to every type, still scoped to feature");
+
+  // A type survives a Ctrl+G scope change (the composed filter, like CLI --role+--type).
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // → run_end within feature
+  assert.equal(keys.state().activityType, "run_end");
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // → clean
+  assert.equal(keys.state().activityType, "run_end", "the type survives a role-scope change");
+  assert.equal(keys.state().activityScroll, null, "the scope change still resets the tail");
+});
+
 test("the `/` search filters the Activity feed and clears on an empty line", () => {
   const root = makeRoot();
   writeEvents(root, [
@@ -1222,13 +1271,23 @@ test("Ctrl+O over a zero-row read keeps the pane's no-ticks note, not a filter-e
   assert.equal(keys.state().paneCache, "", "an empty log is not blamed on the outcome filter");
 });
 
-test("Ctrl+O is inert in the prompt-line modes and off the History view only moves the label", () => {
+test("Ctrl+O cycles the Activity type on view 0, the History label elsewhere, and is inert in the prompt-line modes", () => {
   const root = makeRoot();
   writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
-  // Off the History view, Ctrl+O advances the class without computing a cache.
+  // On the Activity view (0), Ctrl+O now cycles the event type, not the History label.
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, "run_end", "view 0 routes Ctrl+O to the Activity type cycle");
+  assert.equal(keys.state().historyResult, "all", "the History label is untouched on Activity");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, null, "the Activity type wraps");
+
+  // Off the Activity, History, and Health views, Ctrl+O advances the History class without
+  // computing a cache (its own pane holds the label; no pane is showing here).
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript clean
+  assert.equal(keys.state().view, 1);
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().historyResult, "merged");
   assert.equal(keys.state().paneCache, null, "no History pane is showing");
@@ -1241,8 +1300,6 @@ test("Ctrl+O is inert in the prompt-line modes and off the History view only mov
   keys.handleKey(undefined, { name: "escape" });
 
   // Role-prompt mode holds it too: open it on a transcript view and try Ctrl+O.
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript clean
-  assert.equal(keys.state().view, 1);
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(keys.state().rolePromptFor, "clean");
   keys.handleKey(undefined, { ctrl: true, name: "o" });

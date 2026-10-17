@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { clipToWidth, displayWidth } from "../src/text/text-width.js";
 import { clipSpans, renderStatusSpans, type StatusSpan } from "../src/ui/status-render.js";
 import { eventKind } from "../src/ui/tone.js";
+import { eventTypeLabel } from "../src/events/event-labels.js";
 import type { TeamAlert } from "../src/ui/team-alerts.js";
 import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init/init.js";
@@ -86,8 +87,8 @@ test("attention lines mark each alert and fold the overflow into a count", () =>
 });
 
 test("the tab strip names every view and brackets the current one", () => {
-  assert.equal(plain(tabStrip({ kind: "activity", role: null, grep: null }, 200)), "[Activity]  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "activity", role: "feature", grep: null }, 200)), "[Activity: feature]  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "activity", role: null, grep: null, type: null }, 200)), "[Activity]  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "activity", role: "feature", grep: null, type: null }, 200)), "[Activity: feature]  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
   assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: false }, 200)), "Activity  [Transcript: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
   assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: true, change: false }, 200)), "Activity  [Notes: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
   assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: true }, 200)), "Activity  [Change: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
@@ -107,15 +108,18 @@ test("the tab strip names every view and brackets the current one", () => {
 
 test("the hint line says what the keys do in each view and mode", () => {
   const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, deferMode = false, defer: string | null = null, queuedEditFor: { role: string; file: string } | null = null, answerFor: { position: number; title: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, deferMode, defer, queuedEditFor, answerFor }, 300));
-  assert.equal(hint({ kind: "activity", role: null, grep: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+G scope: team · / search · Ctrl+T next view · Ctrl+F pause team · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+V attach image · Ctrl+D quit · Ctrl+L send later");
+  assert.equal(hint({ kind: "activity", role: null, grep: null, type: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+O type: all · Ctrl+G scope: team · / search · Ctrl+T next view · Ctrl+F pause team · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+V attach image · Ctrl+D quit · Ctrl+L send later");
   // The Activity hint names the Ctrl+V image attach on the prompt line.
-  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+V attach image/);
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+V attach image/);
   // The Activity pane names its exact-loop scope and its text search, the raw id or the team
   // and "search" or the active pattern, matching the History pane's conventions.
-  assert.match(hint({ kind: "activity", role: "feature", grep: null }), /Ctrl\+G scope: feature · \/ search/);
-  assert.match(hint({ kind: "activity", role: null, grep: "widget" }), /Ctrl\+G scope: team · \/ search: widget/);
+  assert.match(hint({ kind: "activity", role: "feature", grep: null, type: null }), /Ctrl\+G scope: feature · \/ search/);
+  assert.match(hint({ kind: "activity", role: null, grep: "widget", type: null }), /Ctrl\+G scope: team · \/ search: widget/);
+  // The Activity Ctrl+O hint names the active type label, "all" or the exact event type.
+  assert.match(hint({ kind: "activity", role: null, grep: null, type: null }), /Ctrl\+O type: all/);
+  assert.match(hint({ kind: "activity", role: null, grep: null, type: "run_end" }), new RegExp(`Ctrl\\+O type: ${eventTypeLabel("run_end")}`));
   // At the fake TTY's 100 columns the daily-cap key (placed before the new ones) stays visible.
-  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 100)), /Ctrl\+B daily cap/);
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 100)), /Ctrl\+B daily cap/);
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }),
     "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+T next view · Ctrl+D quit · Ctrl+L send later",
@@ -154,9 +158,9 @@ test("the hint line says what the keys do in each view and mode", () => {
     plain(hintLine({ kind: "queued" }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: { role: "clean", file: "a.md" }, answerFor: null }, 300)),
     "Enter save the edit · Esc cancel · Ctrl+D quit",
   );
-  assert.equal(hint({ kind: "activity", role: null, grep: null }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
-  assert.equal(hint({ kind: "activity", role: null, grep: null }, false, null, true), "Enter save the delay · Esc cancel · Ctrl+D quit");
-  assert.match(hint({ kind: "activity", role: null, grep: null }, false, null, false, "45m"), /Ctrl\+L send later: 45m/);
+  assert.equal(hint({ kind: "activity", role: null, grep: null, type: null }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
+  assert.equal(hint({ kind: "activity", role: null, grep: null, type: null }, false, null, true), "Enter save the delay · Esc cancel · Ctrl+D quit");
+  assert.match(hint({ kind: "activity", role: null, grep: null, type: null }, false, null, false, "45m"), /Ctrl\+L send later: 45m/);
   assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
   // The History pane names its trailing window in the Ctrl+S hint, default or active.
   assert.match(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: false }), /Ctrl\+S window: 1h/);
@@ -178,7 +182,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false, summary: true }), /Ctrl\+Y rows/);
   // Every view names Ctrl+D as quit; the director prompt line additionally names Ctrl+C.
   for (const v of [
-    { kind: "activity", role: null, grep: null } as const,
+    { kind: "activity", role: null, grep: null, type: null } as const,
     { kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false } as const,
     { kind: "backlog" } as const,
     { kind: "usage", scope: null, window: null } as const,
@@ -189,20 +193,20 @@ test("the hint line says what the keys do in each view and mode", () => {
     { kind: "health" } as const,
   ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
-  const spans = hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300);
-  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+G", "/", "Ctrl+T", "Ctrl+F", "Ctrl+Q", "Ctrl+C", "Ctrl+V", "Ctrl+D", "Ctrl+L"]);
+  const spans = hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300);
+  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+O", "Ctrl+G", "/", "Ctrl+T", "Ctrl+F", "Ctrl+Q", "Ctrl+C", "Ctrl+V", "Ctrl+D", "Ctrl+L"]);
 });
 
 test("pause-edit mode shows its own hint keys and prompt prefix", () => {
   const base = { budget: false, rolePromptFor: null, deferMode: false, pauseEditMode: true, defer: null, queuedEditFor: null, answerFor: null };
-  assert.deepEqual(hintLine({ kind: "activity", role: null, grep: null }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
+  assert.deepEqual(hintLine({ kind: "activity", role: null, grep: null, type: null }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
   assert.equal(plain(promptPrefix(base)), "pause › ");
   const forRole = { ...base, pauseEditRole: "qa" };
   assert.equal(plain(promptPrefix(forRole)), "pause qa › ");
-  assert.deepEqual(hintLine({ kind: "activity", role: null, grep: null }, forRole, 300).map((s) => s.text).join("").includes("Enter pause qa"), true);
+  assert.deepEqual(hintLine({ kind: "activity", role: null, grep: null, type: null }, forRole, 300).map((s) => s.text).join("").includes("Enter pause qa"), true);
   const wake = { ...forRole, pauseEditWake: true };
   assert.equal(plain(promptPrefix(wake)), "wake qa › ");
-  assert.equal(hintLine({ kind: "activity", role: null, grep: null }, wake, 300).map((s) => s.text).join("").includes("Enter wake qa"), true);
+  assert.equal(hintLine({ kind: "activity", role: null, grep: null, type: null }, wake, 300).map((s) => s.text).join("").includes("Enter wake qa"), true);
 });
 
 test("the prompt line names who Enter sends to", () => {
@@ -228,7 +232,7 @@ test("the prompt line names who Enter sends to", () => {
   // A role-targeted prompt never carries the images, so the count is not named beside it.
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: null, queuedEditFor: null, answerFor: null, images: 2 })), "qa › ");
   // Attach mode names its own hint keys.
-  assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, attachMode: true, defer: null, queuedEditFor: null, answerFor: null }, 300)), "Enter attach image path · Esc cancel · Ctrl+D quit");
+  assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, deferMode: false, attachMode: true, defer: null, queuedEditFor: null, answerFor: null }, 300)), "Enter attach image path · Esc cancel · Ctrl+D quit");
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: { role: "clean", file: "a.md" }, answerFor: null })), "edit clean › ");
   assert.equal(prefixWidth(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), 11);
 });
@@ -292,8 +296,8 @@ test("the answer editor names Enter record answer, drops the defer hint, and pre
 
 test("the activity hint names Ctrl+Q and the stop editor reads `stop in ›` with a schedule-stop hint", () => {
   const base = { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null };
-  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, base, 300)), /Ctrl\+Q stop later/);
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, base, 300)), /Ctrl\+Q stop later/);
   const edit = { ...base, pauseEditMode: true, pauseEditStop: true };
   assert.match(plain(promptPrefix(edit)), /stop in/);
-  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, edit, 300)), /schedule stop/);
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, edit, 300)), /schedule stop/);
 });

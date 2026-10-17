@@ -12,6 +12,7 @@ import { alertLines, clipSpans, toneLine, type StatusLine, type StatusSpan } fro
 // the other shared status renderers and the `tumwater status` banner block.
 export { alertLines, toneLine };
 import { eventResult } from "../../events/event-format.js";
+import { eventTypeLabel } from "../../events/event-labels.js";
 import { eventKind, resultTone, type Tone } from "../tone.js";
 import { roleLabel } from "../../roles/role-labels.js";
 import { displayWidth } from "../../text/text-width.js";
@@ -34,7 +35,7 @@ export function sanitizeFrameLines(lines: readonly StatusLine[]): StatusLine[] {
  * report, the failure digest, the completed-tick history, the pending-change roster, or the
  * queued prompts — the dashboard's views, in the order Ctrl+T cycles them. */
 export type TuiView =
-  | { kind: "activity"; role: string | null; grep: string | null }
+  | { kind: "activity"; role: string | null; grep: string | null; type: string | null }
   | { kind: "transcript"; role: string; index: number; count: number; note: boolean; change: boolean }
   | { kind: "backlog" }
   | { kind: "usage"; scope: string | null; window: string | null }
@@ -92,7 +93,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+D", "quit"]];
+  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+O", view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+D", "quit"]];
   // The defer editor is the prompt line's fourth meta-editor (after budget, role, and
   // search), so every view whose hint is about sending names its state: the pending delay
   // when one is set, otherwise the way to open it. The mode branches above already name

@@ -52,16 +52,21 @@ interface TuiPaneState {
  * A fixed tail term so readEvents' stat cache hits per (file, limit) in the steady state. */
 const ACTIVITY_EVENTS = 200;
 
-/** The Activity pane's loaded event tail, narrowed by its loop and text filters: the one read
- * the pane body and the PgUp/PgDn total share, so their filtered lists cannot drift. Both
- * match rules are the CLI's and dashboard's own: `eventRole` for the exact-loop scope (`null`
- * = the team's full tail), and `eventMatchesGrep` over the type-prefixed rendered line for the
- * case-insensitive search (`null` = no search) — `tumwater logs --grep` and `GET /api/logs`
- * call the same two, so the three surfaces cannot disagree about what a filter matches. */
-export function activityEvents(root: string, role: string | null, grep: string | null): HarnessEvent[] {
+/** The Activity pane's loaded event tail, narrowed by its loop, text, and type filters: the one
+ * read the pane body and the PgUp/PgDn total share, so their filtered lists cannot drift. All
+ * three match rules are the CLI's and dashboard's own: `eventRole` for the exact-loop scope
+ * (`null` = the team's full tail), `eventMatchesGrep` over the type-prefixed rendered line for
+ * the case-insensitive search (`null` = no search), and the exact `e.type === type` match for
+ * the event-type filter (`null` = every type) — `tumwater logs --grep`, `logs --type`, and
+ * `GET /api/logs` call the same ones, so the surfaces cannot disagree about what a filter
+ * matches. */
+export function activityEvents(root: string, role: string | null, grep: string | null, type: string | null): HarnessEvent[] {
   const needle = grep === null ? null : grep.toLowerCase();
   return readEvents(root, ACTIVITY_EVENTS).filter(
-    (e) => (role === null || eventRole(e) === role) && (needle === null || eventMatchesGrep(e, needle)),
+    (e) =>
+      (role === null || eventRole(e) === role) &&
+      (needle === null || eventMatchesGrep(e, needle)) &&
+      (type === null || e.type === type),
   );
 }
 
@@ -251,11 +256,14 @@ export function paneBody(
   // events), a stored offset pages back through the loaded events. Both clamp to
   // [0, events.length - eventBudget]. An active filter that matched nothing names the filter
   // instead of claiming the log is empty.
-  const events = activityEvents(root, pane.role, pane.grep);
+  const events = activityEvents(root, pane.role, pane.grep, pane.type);
   const maxStart = Math.max(0, events.length - eventBudget);
   const start = state.activityScroll === null ? maxStart : Math.min(state.activityScroll, maxStart);
   return {
     body: events.slice(start, start + eventBudget).map((e) => toneLine(formatEvent(e), width, eventTone(e))),
-    emptyNote: pane.role === null && pane.grep === null ? "(no events yet)" : "(no events match this filter)",
+    emptyNote:
+      pane.role === null && pane.grep === null && pane.type === null
+        ? "(no events yet)"
+        : "(no events match this filter)",
   };
 }

@@ -27,6 +27,11 @@ export function createActivityPane(
   // rule `tumwater logs --grep` and the dashboard search use. null is no search; session-only
   // like the scope, so the next read computes with it.
   let activityGrep: string | null = null;
+  // The Activity pane's session exact event type (Ctrl+O), a canonical event type or null for
+  // every type. Filtered exactly (`e.type === type`, the same match `tumwater logs --type`
+  // applies), built as a cycle from the types present in the pre-type scope; session-only and
+  // reset to the live tail with a change like the scope and search.
+  let activityType: string | null = null;
 
   const applySearch = (pattern: string | null): void => {
     // Apply a finished Activity search on the pane: set the grep and reset the scroll to the
@@ -51,6 +56,18 @@ export function createActivityPane(
       session.requestRender();
       return true;
     }
+    if (key.ctrl && key.name === "o" && promptLineFree(ctx.es)) {
+      // The Activity type cycle: advance all → first present type → … → last present type → all.
+      // `present` is built from the pre-type read (type `null`), so every type stays reachable
+      // once one is selected — the same reason the dashboard builds its chip set before its
+      // type filter. The scroll resets because its offset indexed the old filtered list.
+      const present = [...new Set(activityEvents(session.root, activityRole, activityGrep, null).map((e) => e.type))].sort();
+      const slots: Array<string | null> = [null, ...present];
+      activityType = slots[(slots.indexOf(activityType) + 1) % slots.length] ?? null;
+      activityScroll = null;
+      session.requestRender();
+      return true;
+    }
     const page = pageDir(key.name);
     if (page !== null && session.view === 0) {
       // The Activity pane keeps the live tail by default; PgUp pauses follow and pages back
@@ -59,7 +76,7 @@ export function createActivityPane(
       // with eventBudget or fewer events stays on the tail. The read is the pane's own fixed
       // tail term (and active loop/text filter), so it hits readEvents' stat cache rather than
       // rescanning the log.
-      const total = activityEvents(session.root, activityRole, activityGrep).length;
+      const total = activityEvents(session.root, activityRole, activityGrep, activityType).length;
       const maxStart = Math.max(0, total - session.eventBudget);
       const current = activityScroll ?? maxStart;
       const next = stepEntryScroll(current, total, session.eventBudget, page);
@@ -86,7 +103,7 @@ export function createActivityPane(
     },
     applySearch,
     state() {
-      return { activityScroll, activityRole, activityGrep };
+      return { activityScroll, activityRole, activityGrep, activityType };
     },
   } satisfies TuiPaneModule & { applySearch(pattern: string | null): void };
 }

@@ -68,7 +68,7 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+G` | Activity, History, Usage, Failures | cycle the role scope |
 | `/` | Activity, History | search |
 | `Ctrl+S` | History | cycle the trailing window |
-| `Ctrl+O` | History, Health | cycle the outcome filter on History; on Health, toggle the problems-only (warn and fail) view |
+| `Ctrl+O` | Activity, History, Health | cycle the event type on Activity; cycle the outcome filter on History; on Health, toggle the problems-only (warn and fail) view |
 | `Ctrl+Y` | History | toggle the per-role Summary table |
 | `Ctrl+N` | History | the newest completed run's event trail, and back |
 | `Ctrl+E` | Usage, Failures | cycle the trailing window |

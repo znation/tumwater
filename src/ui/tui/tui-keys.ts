@@ -142,6 +142,9 @@ interface TuiKeysState {
   /** The Activity pane's active free-text search (the `/` editor), or null when none; matched
    * through eventMatchesGrep, the same rule `tumwater logs --grep` and the dashboard search use. */
   activityGrep: string | null;
+  /** The Activity pane's active exact event type (Ctrl+O), or null for every type; cycled
+   * through the types present in the pre-type scope, and named in the hint line. */
+  activityType: string | null;
   /** The History pane's active trailing window label (Ctrl+S), or null for the default
    * newest-N read; named in the hint line. */
   historySince: string | null;
