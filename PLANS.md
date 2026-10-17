@@ -1153,6 +1153,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater report`'s day report gains a `Merge check median` line giving each day's median passing merge-check time, so the operator sees the suite slowing over days (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and the in-flight GUI failed-runs chart — touches src/report/, src/build/build-check-events.ts and tests only, and leaves src/doctor/ and src/ui/ alone)
+
+**Goal.** `tumwater doctor`'s `check` row (`checkDurationPhrase` in `src/doctor/doctor-checks.ts`) says how long passing merge checks took over the last 24 h. That is one number, with no history. The merge lock waits on the declared check, and a test suite tends to grow slower a little every day. That trend is what tells an operator to act before a check times out, and nothing shows it. The day report (`renderReportMarkdown` in `src/report/report-render.ts`) already has a day series built from the event log, so give it one more per-day figure: the median wall clock of that day's passing full-suite checks.
+
+**Approach.**
+- `src/build/build-check-events.ts`: export `isPassingFullCheck(ev: HarnessEvent): boolean`. It is true when `ev.type === "build_check"`, `ev.status === "passed"`, and `String(ev.scope)` is one of `merge`, `batch`, `baseline`. These are the scopes `checkDurationPhrase` counts: a `gate` check can run a subset of the suite. Import `HarnessEvent` as a type only, so the module keeps its no-runtime-cycle note true. Leave `checkDurationPhrase` as it is in this change, because the in-flight merge-rename part 9/11 edits the doctor modules. A later cleanup can switch it over to the predicate.
+- `src/report/report-data.ts`:
+  - Add `checkDurationsMs: number[]` to `UsageFold` and `DayFold`, with a short doc comment, and seed it `[]` wherever a fold seeds `revisionsByRole: {}`.
+  - In `foldUsageEvent`, add a branch: when `isPassingFullCheck(ev)` is true and `finiteNumber(ev.durationMs, 0) > 0`, push that duration. The `build_check` type matches none of the existing branches, so add this as one more `else if`.
+  - Add the optional field `checkMedianMs?: number` to `ReportDay`. Its doc comment says it is the lower median of the day's passing full-suite check durations and is absent when the day has none.
+  - In `collectReport`, only in the team branch (`role === undefined`), set `day.checkMedianMs` to the lower median when `fold.checkDurationsMs` is non-empty: sort a copy ascending and take index `Math.floor((n - 1) / 2)`, the same rule as `checkDurationPhrase`. The role-scope branch leaves it unset, because checks belong to the merge slot, not to a role, just as the merge fields stay unset there.
+  - `SinceReport` gets no new field: `collectReportSince` ignores `checkDurationsMs`.
+- `src/report/report-render.ts`, `renderReportMarkdown`: inside the existing team-only `if (data.role === undefined)` block, after the `Merge failures by role` line, collect the series days that carry `checkMedianMs`, in series order. When there is at least one, push `**Merge check median:** 10-14 95s · 10-16 2m`: each part is `monthDay(d.date)` and `shortSpanPhrase(d.checkMedianMs)` (from `src/text/phrases.ts`), joined with ` · `. Days without a check are left out. When no day has one, print no line (zero means absent, like `Merge failures by role`). Add a one-line comment in the style of its neighbours. `renderSinceReportMarkdown` is unchanged.
+- The GUI and the `report --json` output carry the new optional field through the existing serialization, so nothing changes there. Charting it is a separate later plan.
+
+**Files touched.** `src/build/build-check-events.ts`, `src/report/report-data.ts`, `src/report/report-render.ts`, `test/build-check-events.test.ts`, `test/report-data.test.ts`, `test/report.test.ts`.
+
+**Acceptance criteria.**
+- New test in `test/report-data.test.ts`, logging events the way the existing `collectReport` tests do. On one day, log passing `build_check` events with scope `merge` (60 000 ms), `batch` (120 000 ms) and `baseline` (90 000 ms), plus a passing `gate`-scope check and a `failed` merge-scope check that must both be ignored. `collectReport(root, 2)` gives that day `checkMedianMs === 90000`. The other day has no `checkMedianMs` key. With `role` set, no day carries the key.
+- New test in `test/report.test.ts`, on hand-built `ReportData`:
+  - A two-day series where only the second day has `checkMedianMs: 95000` renders the line `**Merge check median:** <MM-DD> 95s` for that day alone.
+  - A series where no day has the field renders no `Merge check median` line.
+  - The same series with `role` set renders no line either.
+- A unit test for `isPassingFullCheck` covers passed merge/batch/baseline (true), passed gate (false) and failed merge (false). Put it in `test/build-check-events.test.ts`.
+- The existing tests in `test/report.test.ts` and `test/report-data.test.ts` pass unchanged.
+- `npm run test` passes.
+
 ## Done
 
 ### The GUI Usage view charts `Failed runs by role` and `Merge failures by role` as stacked per-role elements (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series) — done 2026-10-16
