@@ -34,7 +34,7 @@ at 80% of the cap while the gate is still open, a role's own cap warning or cap 
 space holding new work, a claude subscription window nearing its limit or holding the claude
 model jobs, a repeated-failure pause, main's check failing, a failed merge, a blocked restart, a posted question, a blocked backlog entry, the
 team going down — the command gets
-`TUMWATER_EVENT_TYPE`, `TUMWATER_EVENT_SOURCE`, and `TUMWATER_EVENT_MESSAGE` in its environment;
+`TUMWATER_EVENT_TYPE` (the type names are in the Notify events table below), `TUMWATER_EVENT_SOURCE`, and `TUMWATER_EVENT_MESSAGE` in its environment;
 verify it with `tumwater notify --test`; a hook that exits nonzero logs a warning).
 Edits apply live while the team runs. A config file written before the settings were renamed still
 loads, and `tumwater doctor` names each older key with its new name.
@@ -112,3 +112,24 @@ A bare model id that starts with `claude-` (such as `"strong": "claude-opus-5-5"
 claude CLI even under the default `backend: "pi"`, so a Claude model runs on the claude CLI's
 included usage beside models from other providers on pi; `anthropic/claude-…` keeps pi (see
 [plans/agent-backends.md §3](../plans/agent-backends.md) rule 3a).
+
+## Notify events
+
+The `notify` command receives one of these values as `TUMWATER_EVENT_TYPE`; each type pages at most once a minute, and `tumwater notify --test` sends `merge_failed`.
+
+| Event | When it fires |
+| --- | --- |
+| `budget_warning` | Daily spend crossed 80% of the cap and the gate is still open: time to raise the cap or fix the fallback before the pause. |
+| `role_cap_warning` | One role's own daily spend crossed 80% of its cap and it is still running: time to raise the cap before the pause. |
+| `budget_paused` | The spend cap is hit with no usable free fallback, so the role loops are stopped. |
+| `claude_window_warning` | The claude.ai subscription window first reported a warning; claude jobs still run. This is the heads-up before the hold. |
+| `claude_window_limited` | The subscription window was rejected, so every claude job is held until it resets. |
+| `role_streak_paused` | The repeated-failure breaker paused a role. |
+| `role_cap_paused` | A role reached its own daily cost cap and stops starting runs. |
+| `disk_low` | Free space on the worktrees volume dropped below `diskHoldGB`, so new work is held. |
+| `main_red_hold` | Main's own check is failing, so every code role is held until a fix merges. |
+| `merge_failed` | A merge finished without landing its change. |
+| `restart_blocked` | The restart onto the new main is blocked, and the team is stuck behind it. |
+| `question_posted` | A merge added a new entry under `## Open` in QUESTIONS.md; only a human can answer it. |
+| `entry_refused` | A refusal note landed, so the entry is held until a human or the director releases it. |
+| `supervisor_exit` | The supervisor gave up and the team is down; the supervisor runs the hook itself. |
