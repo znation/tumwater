@@ -22,7 +22,7 @@ const checkPermits = new Semaphore(defaultConfig().maxConcurrentChecks);
 /** Set while the current async context holds a check permit: a nested withCheckPermit runs
  * inside the permit it already has instead of queueing for a second one — at a cap of 1 that
  * second wait could never be granted (its own holder is the one blocking it). No call path
- * nests today; this keeps a future one from deadlocking the fleet's checks. */
+ * nests today; this keeps a future one from deadlocking the team's checks. */
 const holdingPermit = new AsyncLocalStorage<true>();
 
 /** Waiting-queue tiers (Semaphore.acquire): a merge-scope check runs inside the merge lock, so

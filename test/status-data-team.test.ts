@@ -1,4 +1,4 @@
-// The fleet-health facet of the status-data suite: snapshot()'s pause markers, mainCheck
+// The team-health facet of the status-data suite: snapshot()'s pause markers, mainCheck
 // badge, published disk state, and its tolerance of a foreign orchestrator.json shape. Split by
 // facet from one status-data test file; the core contract and poll cache live in
 // status-data.test.ts.
@@ -16,7 +16,7 @@ import { ensureParentDir } from "../src/files/files.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { orchestratorStatePath, pausedPath, pausedRolesPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
-import { pauseFleet, pauseRole, resumeFleet } from "../src/team/team-state.js";
+import { pauseTeam, pauseRole, resumeTeam } from "../src/team/team-state.js";
 
 test("pausedRolesUntil carries a timed role pause's shared deadline only while the set is non-empty", async () => {
   const repo = tmpdir();
@@ -34,49 +34,49 @@ test("pausedRolesUntil carries a timed role pause's shared deadline only while t
   assert.equal(snapshot(repo).pausedRolesUntil, undefined, "an empty set advertises no deadline");
 });
 
-test("pausedUntil carries only a standing fleet timed-pause deadline", async () => {
+test("pausedUntil carries only a standing team timed-pause deadline", async () => {
   const repo = tmpdir();
   await initProject(repo, "paused until");
   assert.equal(snapshot(repo).pausedUntil, undefined, "no marker: absent");
 
-  pauseFleet(repo);
-  assert.equal(snapshot(repo).pausedUntil, undefined, "an indefinite fleet pause exposes no deadline");
+  pauseTeam(repo);
+  assert.equal(snapshot(repo).pausedUntil, undefined, "an indefinite team pause exposes no deadline");
   assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, undefined);
 
   const until = Date.now() + 30 * 60_000;
-  pauseFleet(repo, until);
+  pauseTeam(repo, until);
   assert.equal(snapshot(repo).pausedUntil, until);
   assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, until);
 
-  // Role-only timed pauses are not fleet pauses: the fleet-scoped field stays absent.
+  // Role-only timed pauses are not team pauses: the team-scoped field stays absent.
   pauseRole(repo, "clean", until);
-  assert.equal(snapshot(repo).pausedUntil, until, "the fleet marker still stands beside a role pause");
+  assert.equal(snapshot(repo).pausedUntil, until, "the team marker still stands beside a role pause");
 
   fs.writeFileSync(pausedPath(repo), JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000 }));
   assert.equal(snapshot(repo).pausedUntil, undefined, "an expired deadline reads as unpaused");
   // JSON.stringify drops the undefined field, so `status --json` carries it only while a
-  // timed fleet pause stands.
+  // timed team pause stands.
   assert.ok(!("pausedUntil" in JSON.parse(JSON.stringify(statusPayload(repo)))));
 });
 
-// --- pauseReason: the standing fleet pause's operator reason (`pause --reason <text>`) ---
+// --- pauseReason: the standing team pause's operator reason (`pause --reason <text>`) ---
 
-test("pauseReason carries only a standing fleet pause's operator reason", async () => {
+test("pauseReason carries only a standing team pause's operator reason", async () => {
   const repo = tmpdir();
   await initProject(repo, "pause reason");
   assert.equal(snapshot(repo).pauseReason, undefined, "no marker: absent");
 
-  pauseFleet(repo);
+  pauseTeam(repo);
   assert.equal(snapshot(repo).pauseReason, undefined, "an anonymous pause exposes no reason");
   assert.ok(!("pauseReason" in JSON.parse(JSON.stringify(statusPayload(repo)))), "the payload omits the key entirely");
 
   // A reason applies only on a fresh pause write: resume the anonymous pause first.
-  resumeFleet(repo);
-  pauseFleet(repo, undefined, "deploying to prod");
+  resumeTeam(repo);
+  pauseTeam(repo, undefined, "deploying to prod");
   assert.equal(snapshot(repo).pauseReason, "deploying to prod");
   assert.equal((statusPayload(repo) as { pauseReason?: string }).pauseReason, "deploying to prod");
 
-  // A role-only pause is not a fleet pause: no fleet marker, no fleet reason.
+  // A role-only pause is not a team pause: no team marker, no team reason.
   fs.rmSync(pausedPath(repo));
   pauseRole(repo, "clean");
   assert.equal(snapshot(repo).pauseReason, undefined);
@@ -176,7 +176,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
 });
 
 // Part 4/4: the snapshot carries the running orchestrator's published disk state, and only
-// while it runs — a stale block beside a dead pid speaks for no fleet.
+// while it runs — a stale block beside a dead pid speaks for no team.
 test("snapshot carries the running orchestrator's published disk state", async () => {
   const repo = makeRepo();
   await initProject(repo, "published disk test");

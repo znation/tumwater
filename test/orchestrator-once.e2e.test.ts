@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { pauseFleet, resumeFleet } from "../src/team/team-state.js";
+import { pauseTeam, resumeTeam } from "../src/team/team-state.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init/init.js";
@@ -21,7 +21,7 @@ import { fakePi, fakePiIdle, withIdlePi, withPi } from "./fakes/fake-pi.js";
 import { cli } from "./helpers/cli-harness.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
-test("once: a fleet where every role finds nothing to do exits on its own, one tick each", async () => {
+test("once: a team where every role finds nothing to do exits on its own, one tick each", async () => {
   const repo = await makeFastRepo("once round test", ["clean", "dedupe"]);
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
@@ -78,9 +78,9 @@ test("once: a role in error backoff is skipped and does not run, and the round s
   });
 });
 
-test("once: a fleet under a standing pause settles every role as paused, ticks nothing, and still exits", async () => {
+test("once: a team under a standing pause settles every role as paused, ticks nothing, and still exits", async () => {
   const repo = await makeFastRepo("once paused test", ["clean"]);
-  pauseFleet(repo);
+  pauseTeam(repo);
   const restore = fakePiIdle();
   try {
     // The round must not hang on a pause it cannot lift — a once round has to end even when
@@ -96,7 +96,7 @@ test("once: a fleet under a standing pause settles every role as paused, ticks n
       "no tick started for the paused role",
     );
   } finally {
-    resumeFleet(repo);
+    resumeTeam(repo);
     restore();
   }
 });

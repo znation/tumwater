@@ -9,7 +9,7 @@
  *   acquire/release closures (`usesSlot = role !== DIRECTOR_ROLE`), so it never queues behind
  *   maxConcurrent. Pinned with a slot-holding role tick: with one permit and a role pi that
  *   holds it for minutes, the director's own pi run still sees two loops in flight.
- * - No fleet gate for the director: an operator pause (`tumwater pause`, the marker file)
+ * - No team gate for the director: an operator pause (`tumwater pause`, the marker file)
  *   holds every role's next tick but exempts the director — an explicit human prompt outranks
  *   the pause. The director ticks while the paused role never starts one.
  * - Merge queue 3/5 interlock: a role with a queued landing starts no new tick until the
@@ -29,7 +29,7 @@ import { spawnSync } from "node:child_process";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
-import { pauseFleet } from "../src/team/team-state.js";
+import { pauseTeam } from "../src/team/team-state.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import {
   FAST_POLL_MS,
@@ -83,7 +83,7 @@ test("director: a queued prompt runs without a permit even while the only slot i
   saveConfig(repo, { ...loadConfig(repo), maxConcurrent: 1 });
   const runDir = tmpdir("director-slot-");
   const samples = path.join(runDir, "samples.log");
-  // The role's run takes the fleet's one permit and holds it for minutes; the director's run
+  // The role's run takes the team's one permit and holds it for minutes; the director's run
   // waits for that lock file (proof the role holds the slot), samples the in-flight count
   // with its own lock held, and only then replies — so a count of 2 is direct evidence the
   // director's pi ran beside the permit holder instead of behind it.
@@ -109,7 +109,7 @@ test("director: a queued prompt runs without a permit even while the only slot i
     `esac`,
   ].join("\n");
   const restore = fakePi(script);
-  submitRolePrompt(repo, "director", "what is the fleet working on?");
+  submitRolePrompt(repo, "director", "what is the team working on?");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await awaitSettledTick(repo, "director", 1, "the director's prompt tick");
@@ -133,11 +133,11 @@ test("director: a queued prompt runs without a permit even while the only slot i
   }
 });
 
-test("director: a fleet pause holds role ticks but not the director's queued prompt", async () => {
+test("director: a team pause holds role ticks but not the director's queued prompt", async () => {
   const repo = await makeFastRepo("director pause exemption test", ["clean", "director"]);
-  assert.equal(pauseFleet(repo), true, "the fleet pause marker is standing before the run starts");
+  assert.equal(pauseTeam(repo), true, "the team pause marker is standing before the run starts");
   const restore = fakePiIdle();
-  submitRolePrompt(repo, "director", "summarize the fleet's state");
+  submitRolePrompt(repo, "director", "summarize the team's state");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await awaitSettledTick(repo, "director", 1, "the director's prompt tick under the pause");

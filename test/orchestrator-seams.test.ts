@@ -7,21 +7,21 @@ import {
   runTimedRoleTick,
   sleepInterruptible,
 } from "../src/tick/tick-timing.js";
-import { pollFleetHold, type HoldInputs } from "../src/team/team-polls.js";
+import { pollTeamHold, type HoldInputs } from "../src/team/team-polls.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { readEvents } from "../src/events/event-read.js";
-import { FLEET_OPEN, HOLD_BASE_MS, type FleetHold } from "../src/team/team-hold.js";
+import { TEAM_OPEN, HOLD_BASE_MS, type TeamHold } from "../src/team/team-hold.js";
 
-/** Step the fleet-hold poll from a single-provider prev and read the default provider's
+/** Step the team-hold poll from a single-provider prev and read the default provider's
  * hold back out of the per-provider map it returns (src/team/team-polls.ts). */
 function stepHolds(
   root: string,
-  prev: FleetHold | ReadonlyMap<string | undefined, FleetHold>,
+  prev: TeamHold | ReadonlyMap<string | undefined, TeamHold>,
   runners: readonly HoldInputs[],
   now: number,
-): FleetHold {
-  const prevMap = prev instanceof Map ? prev : new Map([[(prev as FleetHold).provider ?? undefined, prev]]);
-  return pollFleetHold(root, prevMap, runners, now).get(undefined)!;
+): TeamHold {
+  const prevMap = prev instanceof Map ? prev : new Map([[(prev as TeamHold).provider ?? undefined, prev]]);
+  return pollTeamHold(root, prevMap, runners, now).get(undefined)!;
 }
 import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
@@ -32,7 +32,7 @@ import { warningMessages } from "./fixtures/log-fixtures.js";
 // permit-holding
 // wrapper that times a role tick for the p75 redeploy window (and the p75 itself), the
 // abort-wakeable poll sleep, and the restart hand-off's bounded landing wait. Both are small enough
-// to pin without a fleet — the live orchestrator loop around
+// to pin without a team — the live orchestrator loop around
 // them is the e2e tier's job — but each carries a documented edge case that could plausibly
 // break (an already-aborted signal that addEventListener alone would never fire; an aborted
 // tick whose duration must not drag the window down), and none of that was under any unit
@@ -191,7 +191,7 @@ test("a parked waiter holds no permit until acquire grants it, which the landing
     async () => ({ result: "changed" } as TickOutcome),
   );
   await sleep(5);
-  // Neither queued party holds a permit yet — the fleet serves at most the cap.
+  // Neither queued party holds a permit yet — the team serves at most the cap.
   assert.equal(parked.waiter, 1, "the waiter is still parked");
   assert.equal(parked.landing, 1, "the landing is still parked");
 
@@ -277,10 +277,10 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
 
 // BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold": the orchestrator's per-poll
 // step reads every runner's latest 429 (LoopRunner.lastRateLimit), steps the pure gate
-// (team-hold.test.ts pins its rule), and logs exactly one event per crossing — the fleet
-// state transitions the digest's Fleet state changes section replays. Before the fix there was
+// (team-hold.test.ts pins its rule), and logs exactly one event per crossing — the team
+// state transitions the digest's Team state changes section replays. Before the fix there was
 // no cross-role input at all: two roles 429ing seconds apart changed nothing.
-test("pollFleetHold trips on two roles' 429s, logs one event per crossing, and re-opens at its deadline", () => {
+test("pollTeamHold trips on two roles' 429s, logs one event per crossing, and re-opens at its deadline", () => {
   const root = tmpdir();
   const now = 1_000_000_000;
   const holdEvents = () =>
@@ -292,7 +292,7 @@ test("pollFleetHold trips on two roles' 429s, logs one event per crossing, and r
   ];
 
   // One role's 429 is the per-run retry's business: no hold, no event.
-  let hold = stepHolds(root, FLEET_OPEN, runners, now);
+  let hold = stepHolds(root, TEAM_OPEN, runners, now);
   assert.equal(hold.until, null);
   assert.equal(holdEvents().length, 0);
 
@@ -338,13 +338,13 @@ test("pollFleetHold trips on two roles' 429s, logs one event per crossing, and r
 // The hold's generalization (PLANS.md 2026-09-29): the same poll gathers each runner's
 // lastBackendFailure beside its lastRateLimit, and a storm of one backend kind trips and
 // renders with the kind in the event payload — while a 429 storm keeps its exact wording.
-test("pollFleetHold trips on two roles' same-kind backend failures and names the kind", () => {
+test("pollTeamHold trips on two roles' same-kind backend failures and names the kind", () => {
   const root = tmpdir();
   const now = 1_000_000_000;
   const holdEvents = () =>
     readEvents(root).filter((e) => e.type === "rate_limit_hold" || e.type === "rate_limit_resumed");
   // The poll's structural runner shape (src/team/team-polls.ts HoldInputs), mutable so the test
-  // moves the observations as the fleet's runs would (the runner's own getters are readonly).
+  // moves the observations as the team's runs would (the runner's own getters are readonly).
   const runners: HoldInputs[] = [
     { role: "bugfix", lastRateLimit: undefined, lastBackendFailure: { at: now - 3_000, kind: "connection" } },
     { role: "director", lastRateLimit: undefined, lastBackendFailure: undefined },
@@ -352,7 +352,7 @@ test("pollFleetHold trips on two roles' same-kind backend failures and names the
   ];
 
   // Different kinds, one role each: no storm of either, no event.
-  let hold = stepHolds(root, FLEET_OPEN, runners, now);
+  let hold = stepHolds(root, TEAM_OPEN, runners, now);
   assert.equal(hold.until, null);
   assert.equal(holdEvents().length, 0);
 

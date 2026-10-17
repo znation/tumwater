@@ -6,7 +6,7 @@
  * director's semaphore bypass, the parked-waiter/permit-holder bookkeeping, the start
  * gate handing a reservation back, the probe claim handed back when the gate turns it
  * away, the wake event, and the duration-sample fold — ran only inside full-repo runs,
- * where a slip in any of them would surface as a hung fleet, not a red test.
+ * where a slip in any of them would surface as a hung team, not a red test.
  *
  * The tests drive launchDueTicks directly with stand-in runners (the launch pass touches
  * only `role`, `state.running`, `state.parkedSince`, and `tick()` on a LoopRunner), a real
@@ -22,7 +22,7 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
-import type { FleetGateStates } from "../src/gates/gate-polls.js";
+import type { TeamGateStates } from "../src/gates/gate-polls.js";
 import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, type FallbackBreaker } from "../src/budget/fallback-breaker.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -49,9 +49,9 @@ function fakeRunner(
   } as unknown as LoopRunner;
 }
 
-function emptyGateStates(breaker: FallbackBreaker = IDLE_FALLBACK_BREAKER): FleetGateStates {
+function emptyGateStates(breaker: FallbackBreaker = IDLE_FALLBACK_BREAKER): TeamGateStates {
   const breakers = breaker.pair !== null ? { [breaker.pair]: breaker } : {};
-  return { budget: { breakers, engaged: breaker.pair } } as unknown as FleetGateStates;
+  return { budget: { breakers, engaged: breaker.pair } } as unknown as TeamGateStates;
 }
 
 function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
@@ -186,7 +186,7 @@ test("a model-fallback tick folds its breaker evidence into the pair runConfig n
   const fallback = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
   const gateStates = {
     budget: { breakers: { "paid/gpt": primary, "free/qwen": fallback }, engaged: "paid/gpt" },
-  } as unknown as FleetGateStates;
+  } as unknown as TeamGateStates;
   const runner = {
     role: "feature",
     state: {} as LoopState,
@@ -282,7 +282,7 @@ test("a rejected tick task is logged and un-reserved, not an unhandled rejection
   // A LoopRunner.tick normally folds every failure into an `error` outcome, but a throw
   // before or after runTick (a finalize-time file write, a bug) rejects the task. The
   // launch pass chains its bucket cleanup off a detached `void task.finally(...)`, so the
-  // rejection would surface as an unhandled rejection and kill the whole fleet. The drain
+  // rejection would surface as an unhandled rejection and kill the whole team. The drain
   // already awaits these with allSettled, so mirror that here.
   const runner = fakeRunner("organize", async () => {
     throw new Error("boom during finalize");
@@ -301,7 +301,7 @@ test("a warning whose event write throws is reported to stderr, not left as an u
   // The rejection handler reports the rejected tick through warnEvent, which writes the
   // events log. On a full or unwritable disk that write throws — inside the rejection
   // handler of a detached `void task.catch(...).finally(...)` chain — so the reporting
-  // error would become the chain's own rejection, unhandled and fleet-ending, unless the
+  // error would become the chain's own rejection, unhandled and team-ending, unless the
   // handler contains it. Sabotage the log (the root becomes a regular file, so
   // ensureParentDir cannot create .tumwater/log under it) and watch where the failure goes.
   const runner = fakeRunner("organize", async () => {
@@ -336,7 +336,7 @@ test("a warning whose event write throws is reported to stderr, not left as an u
 
 test("a wake event that cannot be logged still starts the due tick", async () => {
   // The launch pass runs inside the orchestrator's catch-less poll loop: a wake for an
-  // inbox/resume/main-moved run must not end the fleet when events.jsonl is unwritable.
+  // inbox/resume/main-moved run must not end the team when events.jsonl is unwritable.
   const root = tmpdir("launch-best-effort-wake-");
   const file = eventsLogPath(root);
   fs.rmSync(file, { recursive: true, force: true });

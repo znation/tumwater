@@ -91,7 +91,7 @@ test("snapshot rows carry the active model-fallback episode", async () => {
 });
 
 // The subscription usage-window block (plans/agent-backends.md §8, PLANS.md part 6d/7): the
-// snapshot classifies the fleet's paying seams so the display can replace or join the daily
+// snapshot classifies the team's paying seams so the display can replace or join the daily
 // spend.
 test("snapshot carries the claude subscription window and classifies paying seams", async () => {
   const repo = makeRepo();
@@ -99,7 +99,7 @@ test("snapshot carries the claude subscription window and classifies paying seam
   const modelsFile = writeModelsFile(tmpdir("status-claude-"), MODELS_JSON);
   const cfg = loadConfig(repo);
 
-  // A pi-only fleet with no account reading: absent, so the surfaces render as before.
+  // A pi-only team with no account reading: absent, so the surfaces render as before.
   assert.equal(snapshot(repo, modelsFile).claudeWindow, undefined);
 
   // Every seam claude on subscription billing: the window block is present and `only`.
@@ -131,7 +131,7 @@ test("snapshot carries the claude subscription window and classifies paying seam
   snap = snapshot(repo, modelsFile);
   assert.equal(snap.claudeWindow!.heldUntil, resetsAt);
 
-  // Mixed: the fleet on claude with one role on a priced pi model — the daily spend and the
+  // Mixed: the team on claude with one role on a priced pi model — the daily spend and the
   // window both stand. The top-level legacy provider is cleared so the claude default is not
   // read as a bare id under a pi provider.
   cfg.backend = "claude";
@@ -141,7 +141,7 @@ test("snapshot carries the claude subscription window and classifies paying seam
   cfg.roles.clean!.model = "gpt-x";
   saveConfig(repo, cfg);
   snap = snapshot(repo, modelsFile);
-  assert.ok(snap.claudeWindow, "the mixed fleet still shows the window");
+  assert.ok(snap.claudeWindow, "the mixed team still shows the window");
   assert.equal(snap.claudeWindow!.only, false, "priced pi seams keep the daily spend");
   const mixed = statusPayload(repo) as { budgetBadge: string };
   assert.match(mixed.budgetBadge, /budget: /, "the daily-spend line stands");

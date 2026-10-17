@@ -2,7 +2,7 @@
  * once-mode
  * return). The gating `npm test` never runs the e2e tier, so the shape `run --once`'s summary
  * reads — the restart flag, the per-role settle-reasons map, and the per-role ticks-run map —
- * was pinned only by orchestrator-once.e2e.test.ts. This file pins the idle-fleet round
+ * was pinned only by orchestrator-once.e2e.test.ts. This file pins the idle-team round
  * itself in the declared check: it must exit on its own (a once round that hangs is the bug
  * `--once` exists to avoid), never report a restart, and count exactly one tick per role.
  * The pause-settle and prompt-wake slices below extend the same contract to a round opened
@@ -26,7 +26,7 @@ import { makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { withIdlePi } from "./fakes/fake-pi.js";
 
-test("once: an idle fleet exits on its own, ticks each role exactly once, and returns the once-mode shape", async () => {
+test("once: an idle team exits on its own, ticks each role exactly once, and returns the once-mode shape", async () => {
   const repo = await makeFastRepo("once exit contract test", ["clean", "dedupe"]);
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
@@ -65,7 +65,7 @@ test("once: startup retires a legacy role worktree now that ticks lease pooled s
 test("once: a scoped --role run leaves another role's pending resume alone", async () => {
   // Regression: the migration must see every CONFIGURED loop id (`loopIds`), not the run's
   // `--once --role` filter. Passing the filter retired `dedupe`'s resumable legacy checkout and
-  // unpinned `feature`'s canonical slot, losing both resumes on the next full-fleet start.
+  // unpinned `feature`'s canonical slot, losing both resumes on the next full-team start.
   const repo = await makeFastRepo("once scoped migration test", ["clean", "dedupe", "feature"]);
   const legacy = path.join(repo, ".tumwater", "worktrees", "dedupe");
   await ensureDetachedWorktree(repo, legacy, "main");

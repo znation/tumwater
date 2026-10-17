@@ -163,7 +163,7 @@ export function newMaintenanceQuotaGateState(): MaintenanceQuotaGateState {
  * `used` (landed maintenance plus the loops already in flight), and `held` (`used >= allowance`)
  * — for the scheduling pass's per-poll admission: it spends the remaining `allowance - used`
  * headroom one due maintenance loop at a time, so two due loops cannot start in the same poll.
- * Logs exactly one fleet-level `maintenance_quota_hold` when the gate goes from open to held and
+ * Logs exactly one team-level `maintenance_quota_hold` when the gate goes from open to held and
  * one `maintenance_quota_resumed` when it re-opens — never one per loop. The director is never
  * maintenance-tier, so no exemption is needed. */
 export function pollMaintenanceQuotaGate(

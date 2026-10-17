@@ -11,7 +11,7 @@ import { piModelsPath } from "../pi/pi-models.js";
 import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { pausedRoles, pausedRolesUntil, scheduledStopAt, scheduledWakes, standingFleetPause } from "../team/team-state.js";
+import { pausedRoles, pausedRolesUntil, scheduledStopAt, scheduledWakes, standingTeamPause } from "../team/team-state.js";
 import {
   orchestratorAlive,
   readOrchestratorInfo,
@@ -24,7 +24,7 @@ import { collectImageProbeFailures, collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
 import { collectBudget } from "./status-budget.js";
 
-/** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
+/** Status data collection: one fresh snapshot of the team for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
  * snapshot() reads through (main-check scan, last-known-good config, loop-state stat cache)
  * live in status/status-polls.ts. snapshot() composes the per-domain collectors in
@@ -98,7 +98,7 @@ export interface StatusSnapshot {
      * (plans/parallel-work-instances.md "Observability", part 6/7). Absent on the bare role. */
     instanceOf?: string;
     /** The loop's image-input capability (plans/image-input.md "Surfaces", part 5/5): true
-     * when its own model reads images, false when it is text-only, null when the fleet cannot
+     * when its own model reads images, false when it is text-only, null when the team cannot
      * tell (an unknown pair). Always present, so both observer surfaces answer without running
      * doctor. */
     imageInput: boolean | null;
@@ -108,15 +108,15 @@ export interface StatusSnapshot {
     imageRerouteLabel: string | null;
   }>;
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
-   * show): today's fleet spend vs the cap, for the header badge on both dashboards (`· budget:
+   * show): today's team spend vs the cap, for the header badge on both dashboards (`· budget:
    * $X/$Y today` while enabled, `· no cap` when disabled) and the editable affordance that
-   * needs a badge even on a disabled fleet. While the orchestrator runs, `spentUsd` is the
+   * needs a badge even on a disabled team. While the orchestrator runs, `spentUsd` is the
    * scheduler's OWN published figure (the gate's poll, over the runners' live in-memory
    * states — BUGS.md 2026-09-30): what an operator sees is what the scheduler enforces. Not
-   * running, it is the persisted loop states' sum — a stopped fleet's files are final. The
+   * running, it is the persisted loop states' sum — a stopped team's files are final. The
    * per-loop rows always read their persisted copies, so while ticks are in flight the
    * per-loop cells can sit under the header/total figure: that difference is exactly the
-   * charge the scheduler has already counted. `free` is true when every model the fleet could
+   * charge the scheduler has already counted. `free` is true when every model the team could
    * use resolves to an unpriced or zero-cost entry in pi's models.json (src/pi/pi-models.ts):
    * spend can never accumulate against a cap that cannot be reached, so both dashboards read
    * `· budget: n/a` instead of a dollar figure. `fallback` is the cost-free model role loops
@@ -135,7 +135,7 @@ export interface StatusSnapshot {
      * to scripts through the snapshot's own serialization. */
     capHitAt: number | null;
     free: boolean;
-    /** The fleet's resolved backend (`agent` config, plans/agent-backends.md): the badge's
+    /** The team's resolved backend (`agent` config, plans/agent-backends.md): the badge's
      * `<agent> default` label when a fallback pair names neither a provider nor a model.
      * Optional so literal budget blocks in the tests stand; fresh per poll like the pair. */
     backend?: string;
@@ -160,7 +160,7 @@ export interface StatusSnapshot {
    * `primary` the one the badge shows, `only` true when every paying seam is a subscription
    * claude seam (so the window replaces the daily-spend badge, not just joins it), and
    * `heldUntil` the rejected window's future `resetsAt` (epoch ms) the display names in
-   * "claude seams held until …", or null when no window holds. A pi-only or API-claude fleet
+   * "claude seams held until …", or null when no window holds. A pi-only or API-claude team
    * has no account subscription reading, so the block is absent and every surface renders as
    * before. */
   claudeWindow?: {
@@ -169,16 +169,16 @@ export interface StatusSnapshot {
     only: boolean;
     heldUntil: number | null;
   };
-  /** True while the operator has paused the fleet (`tumwater pause` marker present): every
+  /** True while the operator has paused the team (`tumwater pause` marker present): every
    * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
    * because a 2-second-stale pause flag would mislead an operator mid-resume. */
   paused: boolean;
   /** The roles the operator has individually paused (`tumwater pause --role <id>` marker
-   * set): an idle loop in this set also reads `paused`, the same cell as under the fleet
+   * set): an idle loop in this set also reads `paused`, the same cell as under the team
    * pause. Fresh per poll like `paused` — no cache, for the same mid-resume reason. */
   pausedRoles: string[];
   /** The loop ids the per-role daily cost cap holds (`maxDailyCostUsdPerRole`): an idle loop
-   * in this set reads `cap paused`, its own spend state — more specific than the fleet's
+   * in this set reads `cap paused`, its own spend state — more specific than the team's
    * `budget paused`. Computed with the gate's own grouped verdict (roleCapVerdicts): instance
    * loop ids share their base role's cap and its SUMMED spend, and the director is exempt,
    * exactly as the scheduler's gate groups and exempts them (role-cap-gates.ts). Uses the caps
@@ -209,7 +209,7 @@ export interface StatusSnapshot {
   /** The roles whose budget tier resolved to pause while the cap is reached (part 5c/8): a
    * loop whose `model` tier (roleSeamTier) has no usable free pair — none configured, one
    * priced above zero, or its fallback breaker demoted — reads `budget paused`, the same cell
-   * the fleet gate's old fleet-wide verdict filled. Computed with resolveTierFallbacks over
+   * the team gate's old team-wide verdict filled. Computed with resolveTierFallbacks over
    * the SAME usable predicate the scheduler's gate folds (price at zero, and not among the
    * running orchestrator's published demotions), against the same last-known-good config as
    * `capPaused`, so the verdict an operator sees is the scheduler's — the per-tier pause set
@@ -222,7 +222,7 @@ export interface StatusSnapshot {
    * string as written (trimmed by quietHoursStatus's parser rule — the schedule as written,
    * not a reformat). The window is looked up by BASE role, exactly as the scheduler's own
    * gate does (gate-polls.ts's roleQuietHeld): config keys are base role ids, so an
-   * instance loop reads its base's window. An idle loop in this map reads the fleet gate's
+   * instance loop reads its base's window. An idle loop in this map reads the team gate's
    * own quiet wording, scoped to its window — `quiet until <end>`. Computed with
    * roleQuietHold against the same last-known-good config as `capPaused` (a transiently
    * broken tumwater.json degrades with the whole config), the director exempt exactly as
@@ -230,17 +230,17 @@ export interface StatusSnapshot {
    * `capPaused` shape's keyed sibling. Fresh per poll, like `capPaused`: a live `config
    * set quietHoursPerRole` edit shows on the next poll. */
   roleQuietPaused: Record<string, string>;
-  /** The fleet marker's standing deadline (ms epoch) while a timed pause
-   * (`tumwater pause --for <duration>`) holds — undefined for an indefinite fleet pause, a
+  /** The team marker's standing deadline (ms epoch) while a timed pause
+   * (`tumwater pause --for <duration>`) holds — undefined for an indefinite team pause, a
    * role-only pause, or an expired `until` (team-state's read side already treats expiry as
-   * unpaused, so the field cannot outlive the pause it describes). Fleet-scoped: only the
-   * fleet marker's deadline may be claimed by a header badge, since only it covers the whole
-   * fleet. JSON.stringify drops the undefined field, so `status --json` carries it only while
-   * a timed fleet pause stands. Fresh per poll, like `paused`. */
+   * unpaused, so the field cannot outlive the pause it describes). Team-scoped: only the
+   * team marker's deadline may be claimed by a header badge, since only it covers the whole
+   * team. JSON.stringify drops the undefined field, so `status --json` carries it only while
+   * a timed team pause stands. Fresh per poll, like `paused`. */
   pausedUntil?: number;
   /** The paused-roles marker's one shared `until` (ms epoch) — the field `pause --role <id>
    * --for` writes — while a timed per-role pause stands; absent for a standing role pause, a
-   * fleet-only pause, or after expiry. Read with `pausedRoles` from one marker parse, so it is
+   * team-only pause, or after expiry. Read with `pausedRoles` from one marker parse, so it is
    * present only while that set is non-empty. */
   pausedRolesUntil?: number;
   /** A pending scheduled wake (`tumwater wake --in`): the roles it targets and the deadline
@@ -249,7 +249,7 @@ export interface StatusSnapshot {
   /** Every pending scheduled wake, earliest first (`scheduledWake` is its head); absent when
    * none is pending. */
   scheduledWakes?: { roles: string[]; atMs: number }[];
-  /** The standing fleet pause's operator reason (`tumwater pause --reason <text>`), absent
+  /** The standing team pause's operator reason (`tumwater pause --reason <text>`), absent
    * for a reasonless pause, a role-only pause, or no pause at all — read from the same
    * standing marker read as `paused`/`pausedUntil`, so a reason is never advertised after
    * the pause it describes has lifted or been replaced (last write wins). JSON.stringify
@@ -273,7 +273,7 @@ export interface StatusSnapshot {
   /** The running harness's build (src/build/build-info.ts) as the orchestrator published it: the
    * stamp plus whether main's build inputs have moved past it. Null when no harness is running or
    * its dist carries no stamp. Both dashboards render it in the header — a stale build is the one
-   * fact about the fleet that nothing inside the fleet can otherwise see. */
+   * fact about the team that nothing inside the team can otherwise see. */
   build: BuildStatus | null;
   /** Prompts queued per loop (`tumwater prompt --role <id>`),
    * keyed by role id for every enabled loop except the director — the director's queue IS the
@@ -332,15 +332,15 @@ export interface StatusSnapshot {
    * every surface then renders exactly as before. */
   disk?: DiskStatus;
   /** The permit pool's live state (plans/provider-concurrency.md §8) as the orchestrator
-   * published it: fleet in-use/cap plus each referenced provider key's state. Only while the
+   * published it: team in-use/cap plus each referenced provider key's state. Only while the
    * orchestrator runs; absent otherwise, so the surfaces render exactly as before, and the
-   * provider part of the fleet line appears only while any key carries a cap. */
+   * provider part of the team line appears only while any key carries a cap. */
   permits?: PermitSnapshot;
   /** The earlier of the `run --for` deadline (the running orchestrator's info file) and a
-   * `tumwater stop --in` marker (epoch ms); absent when neither is set or the fleet is stopped. */
+   * `tumwater stop --in` marker (epoch ms); absent when neither is set or the team is stopped. */
   runStopsAt?: number;
   /** A `tumwater stop --in` marker's deadline (epoch ms) alone, so a surface can tell it from
-   * `run --for`'s; absent when none is set or the fleet is stopped. */
+   * `run --for`'s; absent when none is set or the team is stopped. */
   scheduledStopAt?: number;
 }
 
@@ -349,7 +349,7 @@ function earliestStop(a: number | undefined, b: number | undefined): number | un
   return a === undefined ? b : b === undefined ? a : Math.min(a, b);
 }
 
-/** One fresh fleet snapshot for observers. `modelsPath` overrides pi's model definitions
+/** One fresh team snapshot for observers. `modelsPath` overrides pi's model definitions
  * location (default ~/.pi/agent/models.json) — a test seam, like doctor's pathEnv. `now` pins
  * the poll's clock for the budget figures (the persisted day-stamp check and the burn-rate
  * projection) — one instant for the whole block, and the seam that keeps a test's expected
@@ -382,9 +382,9 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const { inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts } =
     collectInboxes(root, roles, now);
   const running = orchestratorAlive(root, info);
-  // One fleet-pause-marker read per poll serves both the paused flag and its deadline:
-  // isFleetPaused + pausedUntil would each re-read the same marker file every second.
-  const fleetPause = standingFleetPause(root);
+  // One team-pause-marker read per poll serves both the paused flag and its deadline:
+  // isTeamPaused + pausedUntil would each re-read the same marker file every second.
+  const teamPause = standingTeamPause(root);
   // One read of the pending scheduled wakes feeds both the earliest and the full list, so they
   // cannot disagree.
   const wakes = scheduledWakes(root, now);
@@ -440,13 +440,13 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     questions: openQuestions(root).length,
     imageProbeFailures,
     loops,
-    // Unconditional (never null): a disabled fleet still shows its spend and the badge is
+    // Unconditional (never null): a disabled team still shows its spend and the badge is
     // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
     // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
     budget,
     ...(claudeWindow ? { claudeWindow } : {}),
     ...(running && info?.chain && Object.keys(info.chain).length > 0 ? { chain: info.chain } : {}),
-    paused: fleetPause !== null,
+    paused: teamPause !== null,
     pausedRoles: pausedRoles(root),
     capPaused,
     // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
@@ -473,7 +473,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
         : [],
     budgetPausedRoles,
     // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
-    // window, so the dashboards can render the same `quiet until <end>` wording the fleet
+    // window, so the dashboards can render the same `quiet until <end>` wording the team
     // badge uses, scoped to the loop's own schedule. The window string comes back out of
     // the same config the hold was decided from, so the label cannot name a window that is
     // not holding (roleQuietHold true implies a parseable, non-empty string there).
@@ -482,23 +482,23 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
         .filter((l) => l.role !== DIRECTOR_ROLE && roleQuietHold(cfg.quietHoursPerRole, baseRoleOf(l.role), new Date()))
         .map((l) => [l.role, cfg.quietHoursPerRole?.[baseRoleOf(l.role)] ?? ""]),
     ),
-    pausedUntil: fleetPause?.until,
+    pausedUntil: teamPause?.until,
     pausedRolesUntil: pausedRolesUntil(root),
     scheduledWake: wakes[0],
     scheduledWakes: wakes.length > 0 ? wakes : undefined,
-    pauseReason: fleetPause?.reason,
+    pauseReason: teamPause?.reason,
     quietHours: quiet.window ?? undefined,
     inQuietHours: quiet.inWindow,
     landQueue,
     mainCheck: mainCheckForPoll(root, cfg),
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
-    // must not speak for a stopped fleet — and only when the last poll could measure the
+    // must not speak for a stopped team — and only when the last poll could measure the
     // volume. Absent otherwise, so the surfaces render exactly as before.
     disk: running && info?.disk ? info.disk : undefined,
-    // Only while running: a stale info file beside a dead pid must not speak for a stopped fleet.
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
     permits: running && info?.permits ? info.permits : undefined,
-    // Only while running: a stale info file beside a dead pid must not speak for a stopped fleet.
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
     runStopsAt: running ? earliestStop(info?.stopsAt, scheduledStopAt(root)) : undefined,
     scheduledStopAt: running ? scheduledStopAt(root) : undefined,
   };

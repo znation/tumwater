@@ -1,4 +1,4 @@
-/** pollFleetGates (src/gates/gate-polls.ts): the wiring between the error-streak circuit breaker's
+/** pollTeamGates (src/gates/gate-polls.ts): the wiring between the error-streak circuit breaker's
  * trips and the pause gates' edge-triggered event bookkeeping. The breaker pauses through the
  * same per-role marker the operator's `pause --role` writes, so without coordination the NEXT
  * poll's pause gate sees the marker change and logs a generic role_paused on top of the
@@ -13,7 +13,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { LoopRunner } from "../src/loop/loop.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
-import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
+import { newTeamGateStates, pollTeamGates } from "../src/gates/gate-polls.js";
 import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 import { heldProviders } from "../src/team/team-hold.js";
 import type { ModelFallbackState } from "../src/loop/model-fallback.js";
@@ -30,14 +30,14 @@ import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import type { OrchestratorInfo } from "../src/team/orchestrator-info.js";
 
-test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplicate role_paused on the next poll", () => {
+test("pollTeamGates: a breaker trip logs role_streak_paused once — no duplicate role_paused on the next poll", () => {
   const root = tmpdir("gate-polls-");
   const config = defaultConfig();
   const runner = new LoopRunner(root, "docs", config, "main");
   runner.state.consecutiveErrors = 10;
   runner.state.lastError = "boom";
 
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const ctx = {
     root,
     runners: [runner],
@@ -50,12 +50,12 @@ test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplica
 
   // Poll 1: the breaker trips — the scheduler's paused-roles view must block the role on
   // this very poll, and the breaker's own event is the announcement.
-  const first = pollFleetGates(states, ctx);
+  const first = pollTeamGates(states, ctx);
   assert.ok(first.pausedRoles.has("docs"), "the fresh trip must fold into this poll's paused view");
 
   // Poll 2: the pause stands. The breaker logs nothing more, and the pause gates must not
   // re-log the same pause as a generic role_paused (whose contract names an operator action).
-  const second = pollFleetGates(states, ctx);
+  const second = pollTeamGates(states, ctx);
   assert.ok(second.pausedRoles.has("docs"), "the marker keeps blocking on the next poll");
 
   const events = readEvents(root, 100);
@@ -71,7 +71,7 @@ test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplica
   );
 });
 
-/** A minimal runner stand-in: pollFleetGates only reads a runner's role and state,
+/** A minimal runner stand-in: pollTeamGates only reads a runner's role and state,
  * assigns its config, and — on a budget reopen — matches tickModel() against the
  * fallback pair and calls handBackTick(). Recorded handbacks stand in for the real
  * resumable abort the orchestrator's runners perform. */
@@ -94,7 +94,7 @@ function fakeRunner(
   return runner as unknown as LoopRunner;
 }
 
-test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the primary", () => {
+test("pollTeamGates: a budget reopen hands in-flight fallback ticks back to the primary", () => {
   const root = tmpdir("gate-polls-budget-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
 
@@ -116,7 +116,7 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
 
   const config = paidFallbackConfig(10);
 
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const ctx = {
     root,
     runners,
@@ -129,7 +129,7 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
   // Poll 1: the cap is reached — the fallback engages, role loops are assigned the
   // derived free-pair view, the director keeps the live (paid) config, and no tick is
   // disturbed while the gate holds.
-  const engaged = pollFleetGates(states, ctx);
+  const engaged = pollTeamGates(states, ctx);
   assert.equal(engaged.gate, "fallback");
   const modelOf = (i: number) => (runners[i] as unknown as { config: { model?: unknown } }).config.model;
   const tierView = { small: "free/qwen-free", default: "free/qwen-free", strong: "free/qwen-free" };
@@ -141,7 +141,7 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
   // Poll 2: the cap is raised (the live reload) — the gate reopens and the orchestrator
   // hands the in-flight fallback ticks back to the primary, resumably.
   const raised = { ...config, maxDailyCostUsd: 100 };
-  const reopened = pollFleetGates(states, { ...ctx, liveConfig: raised });
+  const reopened = pollTeamGates(states, { ...ctx, liveConfig: raised });
   assert.equal(reopened.gate, "open");
   assert.equal(modelOf(1), "gpt-x", "the primary model is back after the reopen");
   assert.deepEqual(handbacks, ["feature"], "only the tick on the fallback pair is handed back");
@@ -156,7 +156,7 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
   assert.equal(handoff[0]!.model, "qwen-free");
 });
 
-test("pollFleetGates: a used-up claude window moves claude roles to the fallback and hands them back at the reset", () => {
+test("pollTeamGates: a used-up claude window moves claude roles to the fallback and hands them back at the reset", () => {
   const root = tmpdir("gate-polls-window-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
   const now = Date.now();
@@ -176,7 +176,7 @@ test("pollFleetGates: a used-up claude window moves claude roles to the fallback
   const config = paidFallbackConfig(10);
   config.provider = undefined;
   config.model = "claude/claude-sonnet-5-5";
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const ctx = {
     root,
     runners,
@@ -186,7 +186,7 @@ test("pollFleetGates: a used-up claude window moves claude roles to the fallback
     info: { pid: process.pid, startedAt: 0, roles: ["feature", DIRECTOR_ROLE] },
   };
 
-  const out = pollFleetGates(states, ctx);
+  const out = pollTeamGates(states, ctx);
   assert.equal(out.gate, "open");
   const cfgOf = (i: number) => (runners[i] as unknown as { config: { model?: unknown } }).config;
   assert.deepEqual(cfgOf(0).model, { small: "free/qwen-free", default: "free/qwen-free", strong: "free/qwen-free" });
@@ -199,7 +199,7 @@ test("pollFleetGates: a used-up claude window moves claude roles to the fallback
 
   // The window resets: the in-flight fallback run is handed back, with reason window.
   writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
-  pollFleetGates(states, ctx);
+  pollTeamGates(states, ctx);
   assert.deepEqual(handbacks, ["feature"]);
   const back = readEvents(root, 100).filter((e) => e.type === "budget_handback");
   assert.equal(back.length, 1);
@@ -208,7 +208,7 @@ test("pollFleetGates: a used-up claude window moves claude roles to the fallback
   assert.equal(cfgOf(1), config, "the director's too");
 });
 
-test("pollFleetGates: fallback_switched is logged once per chain change and orchestrator info carries chain", () => {
+test("pollTeamGates: fallback_switched is logged once per chain change and orchestrator info carries chain", () => {
   const root = tmpdir("gate-polls-chain-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
   const now = Date.now();
@@ -221,19 +221,19 @@ test("pollFleetGates: fallback_switched is logged once per chain change and orch
   const config = paidFallbackConfig(10);
   config.provider = undefined;
   config.model = "claude/claude-sonnet-5-5";
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const info: Record<string, unknown> = { pid: process.pid, startedAt: 0, roles: ["feature"] };
   const ctx = { root, runners, liveConfig: config, modelsPath, now, info: info as never };
   const switched = () => readEvents(root, 100).filter((e) => e.type === "fallback_switched");
 
-  pollFleetGates(states, ctx);
-  pollFleetGates(states, ctx);
+  pollTeamGates(states, ctx);
+  pollTeamGates(states, ctx);
   assert.equal(switched().length, 1);
   assert.equal((switched()[0]!.tiers as Record<string, { reason: string }>).default!.reason, "window");
   assert.ok(info.chain, "chain is published while moved");
 
   writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
-  pollFleetGates(states, ctx);
+  pollTeamGates(states, ctx);
   assert.equal(switched().length, 2);
   const back = (switched()[1]!.tiers as Record<string, { to: unknown; reason: string }>).default!;
   assert.equal(back.to, null);
@@ -241,7 +241,7 @@ test("pollFleetGates: fallback_switched is logged once per chain change and orch
   assert.equal(info.chain, undefined, "chain is gone after the reset");
 });
 
-test("pollFleetGates: a cap reopen while the claude window is still used up hands nothing back", () => {
+test("pollTeamGates: a cap reopen while the claude window is still used up hands nothing back", () => {
   const root = tmpdir("gate-polls-window-cap-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
   const now = Date.now();
@@ -257,7 +257,7 @@ test("pollFleetGates: a cap reopen while the claude window is still used up hand
   const config = paidFallbackConfig(10);
   config.provider = undefined;
   config.model = "claude/claude-sonnet-5-5";
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const ctx = {
     root,
     runners,
@@ -266,8 +266,8 @@ test("pollFleetGates: a cap reopen while the claude window is still used up hand
     now,
     info: { pid: process.pid, startedAt: 0, roles: ["feature"] },
   };
-  assert.equal(pollFleetGates(states, ctx).gate, "fallback");
-  const reopened = pollFleetGates(states, { ...ctx, liveConfig: { ...config, maxDailyCostUsd: 100 } });
+  assert.equal(pollTeamGates(states, ctx).gate, "fallback");
+  const reopened = pollTeamGates(states, { ...ctx, liveConfig: { ...config, maxDailyCostUsd: 100 } });
   assert.equal(reopened.gate, "open");
   assert.deepEqual(handbacks, [], "the run is already on the pair the window still assigns");
   assert.equal(readEvents(root, 100).filter((e) => e.type === "budget_handback").length, 0);
@@ -277,7 +277,7 @@ test("pollFleetGates: a cap reopen while the claude window is still used up hand
 // (PLANS.md "Model failure fallback, part 1/2"): a role mid-episode reports its fallback
 // pair, so a storm on that pair forms its own hold while the abandoned primary stays clear —
 // and a healthy role still on the primary is not gated by the fallback hold.
-test("pollFleetGates: a fallback episode's failures key the hold on the fallback provider", () => {
+test("pollTeamGates: a fallback episode's failures key the hold on the fallback provider", () => {
   const root = tmpdir("gate-polls-fallback-hold-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
   const config = paidFallbackConfig();
@@ -300,7 +300,7 @@ test("pollFleetGates: a fallback episode's failures key the hold on the fallback
   }
   const runners = [feature, docs, perf];
 
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const ctx = {
     root,
     runners,
@@ -309,9 +309,9 @@ test("pollFleetGates: a fallback episode's failures key the hold on the fallback
     now,
     info: { pid: process.pid, startedAt: 0, roles: ["feature", "docs", "perf"] },
   };
-  pollFleetGates(states, ctx);
+  pollTeamGates(states, ctx);
 
-  const held = heldProviders(states.fleetHold);
+  const held = heldProviders(states.teamHold);
   assert.ok(held.has("free"), "the storm on the fallback pair forms a hold there");
   assert.ok(!held.has("paid"), "the abandoned primary is not held");
   assert.equal(
@@ -321,7 +321,7 @@ test("pollFleetGates: a fallback episode's failures key the hold on the fallback
   );
 });
 
-test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key yields the empty set", () => {
+test("pollTeamGates: capPaused reflects maxDailyCostUsdPerRole; an absent key yields the empty set", () => {
   const root = tmpdir("gate-polls-cap-");
   const config = defaultConfig();
   config.maxDailyCostUsdPerRole = { docs: 0.5, coverage: 0 };
@@ -332,7 +332,7 @@ test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key y
     fakeRunner(DIRECTOR_ROLE, freshLoopState(DIRECTOR_ROLE), null, []),
   ];
 
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const ctx = {
     root,
     runners,
@@ -342,23 +342,23 @@ test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key y
     info: { pid: process.pid, startedAt: 0, roles: ["docs", "coverage", DIRECTOR_ROLE] },
   };
 
-  const first = pollFleetGates(states, ctx);
+  const first = pollTeamGates(states, ctx);
   assert.ok(first.capPaused.has("docs"), "the over-cap role is blocked on this very poll");
   assert.ok(!first.capPaused.has("coverage"), "a 0 cap disables that role's gate");
   assert.ok(!first.capPaused.has(DIRECTOR_ROLE), "the director is exempt");
   assert.ok(!first.pausedRoles.has("docs"), "no pause marker is written — the sets stay separate");
 
   // Edge-triggered: a second poll over the cap adds no event, and the set still names the role.
-  const second = pollFleetGates(states, ctx);
+  const second = pollTeamGates(states, ctx);
   assert.ok(second.capPaused.has("docs"));
 
   // A live edit removing the key lifts the verdict (and logs the resume).
-  const lifted = pollFleetGates(states, { ...ctx, liveConfig: { ...config, maxDailyCostUsdPerRole: undefined } });
+  const lifted = pollTeamGates(states, { ...ctx, liveConfig: { ...config, maxDailyCostUsdPerRole: undefined } });
   assert.equal(lifted.capPaused.size, 0);
 
   // An absent key from the start: the empty set, no events at all.
-  const quiet = newFleetGateStates(config);
-  const bare = pollFleetGates(quiet, { ...ctx, liveConfig: { ...config, maxDailyCostUsdPerRole: undefined } });
+  const quiet = newTeamGateStates(config);
+  const bare = pollTeamGates(quiet, { ...ctx, liveConfig: { ...config, maxDailyCostUsdPerRole: undefined } });
   assert.equal(bare.capPaused.size, 0);
   assert.equal(readEvents(root, 100).filter((e) => e.type === "role_cap_paused").length, 1);
   assert.equal(readEvents(root, 100).filter((e) => e.type === "role_cap_resumed").length, 1);
@@ -367,7 +367,7 @@ test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key y
 // The per-tier budget pause (part 5c/8): the gate returns the roles whose tier resolved to
 // pause while the cap is reached, and publishes every demoted pair for the dashboards — not
 // only the engaged pair's, so a per-tier demotion cannot hide from the operator.
-test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, and every demotion is published", () => {
+test("pollTeamGates: budgetPausedRoles holds the tiers that resolved to pause, and every demotion is published", () => {
   const root = tmpdir("gate-polls-tier-budget-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
 
@@ -386,7 +386,7 @@ test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, 
     fakeRunner(DIRECTOR_ROLE, freshLoopState(DIRECTOR_ROLE), null, []),
   ];
 
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: 0, roles: ["docs", "plan", DIRECTOR_ROLE] };
   const ctx = {
     root,
@@ -397,7 +397,7 @@ test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, 
     info,
   };
 
-  const first = pollFleetGates(states, ctx);
+  const first = pollTeamGates(states, ctx);
   assert.equal(first.gate, "fallback", "review off: the strong pause holds only its own roles");
   assert.ok(first.budgetPausedRoles.has("plan"), "the strong-tier role is held");
   assert.ok(!first.budgetPausedRoles.has("docs"), "the small-tier role borrows and keeps ticking");
@@ -406,7 +406,7 @@ test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, 
   // Under the cap: nobody is held.
   const under = spentLoopState("docs", 1);
   const underCtx = { ...ctx, runners: [fakeRunner("docs", under, null, []), runners[1]!, runners[2]!] };
-  const second = pollFleetGates(newFleetGateStates(config), underCtx);
+  const second = pollTeamGates(newTeamGateStates(config), underCtx);
   assert.equal(second.budgetPausedRoles.size, 0);
 
   // A demotion is published per pair, and the engaged pair's entry also fills the legacy
@@ -422,14 +422,14 @@ test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, 
     },
   };
   const legacy = { ...config, fallback: undefined, fallbackModel: { provider: "free", model: "qwen-free" } };
-  pollFleetGates(states, { ...ctx, liveConfig: legacy });
+  pollTeamGates(states, { ...ctx, liveConfig: legacy });
   assert.ok(info.fallbackDemotions?.["free/qwen-free"], "the pair's demotion is published");
   assert.equal(info.fallbackDemoted?.pair, "free/qwen-free", "the engaged pair's entry fills the legacy field");
 });
 
-// Per-role quiet hours (PLANS.md quietHoursPerRole): pollFleetGates folds the per-role
+// Per-role quiet hours (PLANS.md quietHoursPerRole): pollTeamGates folds the per-role
 // windows into a stateless hold set beside capPaused — no events, no bookkeeping.
-test("pollFleetGates: roleQuietHeld names the roles their own quiet window holds; the director is exempt", () => {
+test("pollTeamGates: roleQuietHeld names the roles their own quiet window holds; the director is exempt", () => {
   const root = tmpdir("gate-polls-rolequiet-");
   const config = defaultConfig();
   config.quietHoursPerRole = { docs: "00:00-23:59", coverage: "", qa: "23:00-07:00" };
@@ -452,7 +452,7 @@ test("pollFleetGates: roleQuietHeld names the roles their own quiet window holds
   // of Date.now() — a real 23:59:xx run fell outside "00:00-23:59" (the end minute is
   // exclusive, inQuietHours) and flaked the suite. Whichever side of 07:00 a caller's clock
   // sits on, docs' and the director's verdicts are time-independent by construction.
-  const poll = pollFleetGates(newFleetGateStates(config), {
+  const poll = pollTeamGates(newTeamGateStates(config), {
     ...ctx,
     now: new Date(2026, 9, 6, 12, 0, 0).getTime(),
   });
@@ -462,9 +462,9 @@ test("pollFleetGates: roleQuietHeld names the roles their own quiet window holds
   assert.ok(!poll.pausedRoles.has("docs"), "no pause marker is written — stateless beside capPaused");
 
   // A live edit removing the key lifts the verdict on the next poll, and no events were
-  // logged for any of it (stateless — the fleet window's edge events are the only quiet
+  // logged for any of it (stateless — the team window's edge events are the only quiet
   // hours events there are).
-  const lifted = pollFleetGates(newFleetGateStates(config), {
+  const lifted = pollTeamGates(newTeamGateStates(config), {
     ...ctx,
     liveConfig: { ...config, quietHoursPerRole: undefined },
   });
@@ -472,9 +472,9 @@ test("pollFleetGates: roleQuietHeld names the roles their own quiet window holds
   assert.equal(readEvents(root, 100).length, 0);
 });
 
-// The disk floor (plans/disk-floor.md, part 1/4): pollFleetGates reads free space through the
+// The disk floor (plans/disk-floor.md, part 1/4): pollTeamGates reads free space through the
 // injectable sampler, holds below diskHoldGB, and yields the edge-triggered disk_low/disk_ok.
-test("pollFleetGates: a low disk holds new work; recovery and a live floor edit lift it", () => {
+test("pollTeamGates: a low disk holds new work; recovery and a live floor edit lift it", () => {
   const root = tmpdir("gate-polls-disk-");
   const config = defaultConfig();
   config.diskHoldGB = 10;
@@ -487,25 +487,25 @@ test("pollFleetGates: a low disk holds new work; recovery and a live floor edit 
     info: { pid: process.pid, startedAt: 0, roles: [] },
     sampleFree: () => 9 * BYTES_PER_GB,
   };
-  const states = newFleetGateStates(config);
-  const first = pollFleetGates(states, ctx);
+  const states = newTeamGateStates(config);
+  const first = pollTeamGates(states, ctx);
   assert.equal(first.diskHeld, true, "9 GB free against a 10 GB floor holds");
   // Still inside the hysteresis band below 15 GB: the hold stands, no second event.
-  const still = pollFleetGates(states, { ...ctx, sampleFree: () => 14 * BYTES_PER_GB });
+  const still = pollTeamGates(states, { ...ctx, sampleFree: () => 14 * BYTES_PER_GB });
   assert.equal(still.diskHeld, true);
   // A live edit to 0 while the hold is active lifts it on the next poll — even though free
   // space sits inside the old hysteresis band — and logs the one disk_ok.
-  const off = pollFleetGates(states, {
+  const off = pollTeamGates(states, {
     ...ctx,
     liveConfig: { ...config, diskHoldGB: 0 },
     sampleFree: () => 1 * BYTES_PER_GB,
   });
   assert.equal(off.diskHeld, false);
   // Back on with a low sample: a fresh crossing logs a second disk_low.
-  const heldAgain = pollFleetGates(states, { ...ctx, sampleFree: () => 9 * BYTES_PER_GB });
+  const heldAgain = pollTeamGates(states, { ...ctx, sampleFree: () => 9 * BYTES_PER_GB });
   assert.equal(heldAgain.diskHeld, true);
   // Reaching the floor + 5 lifts the hold and logs the second disk_ok.
-  const lifted = pollFleetGates(states, { ...ctx, sampleFree: () => 15 * BYTES_PER_GB });
+  const lifted = pollTeamGates(states, { ...ctx, sampleFree: () => 15 * BYTES_PER_GB });
   assert.equal(lifted.diskHeld, false);
   assert.deepEqual(
     eventTypes(root).filter((t) => t === "disk_low" || t === "disk_ok"),
@@ -516,7 +516,7 @@ test("pollFleetGates: a low disk holds new work; recovery and a live floor edit 
 // Part 4/4: the same poll publishes what it measured, so observers (status, TUI, GUI) do not
 // call statfs themselves. One decimal for freeGB, the configured knobs, the hold verdict; an
 // unmeasurable sample publishes nothing so the surfaces render exactly as before.
-test("pollFleetGates publishes the measured disk state for observers", () => {
+test("pollTeamGates publishes the measured disk state for observers", () => {
   const root = tmpdir("gate-polls-disk-publish-");
   const config = defaultConfig();
   config.diskHoldGB = 10;
@@ -530,27 +530,27 @@ test("pollFleetGates publishes the measured disk state for observers", () => {
     info: { pid: process.pid, startedAt: 0, roles: [] } satisfies OrchestratorInfo,
     sampleFree: () => 9 * BYTES_PER_GB,
   };
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const readDisk = () => readJson<{ disk: unknown }>(orchestratorStatePath(root)).disk;
-  pollFleetGates(states, ctx);
+  pollTeamGates(states, ctx);
   assert.deepEqual(readDisk(), { freeGB: 9, holdGB: 10, reclaimGB: 40, held: true });
-  pollFleetGates(states, { ...ctx, sampleFree: () => 100 * BYTES_PER_GB });
+  pollTeamGates(states, { ...ctx, sampleFree: () => 100 * BYTES_PER_GB });
   assert.deepEqual(readDisk(), { freeGB: 100, holdGB: 10, reclaimGB: 40, held: false });
-  pollFleetGates(states, { ...ctx, sampleFree: () => null });
+  pollTeamGates(states, { ...ctx, sampleFree: () => null });
   assert.equal(readDisk(), undefined, "an unmeasurable volume publishes nothing");
 });
 
-// The orchestrator's poll loop has no catch, and pollFleetGates publishes build/budget/disk
+// The orchestrator's poll loop has no catch, and pollTeamGates publishes build/budget/disk
 // changes to the info file on most polls. An unwritable state dir (ENOSPC, EACCES, the path
 // replaced by a directory) must degrade that published snapshot, not throw out of the poll and
-// end the fleet. Pinned with the info path made a directory, so the atomic writer's rename
+// end the team. Pinned with the info path made a directory, so the atomic writer's rename
 // onto it cannot succeed.
-test("pollFleetGates: an unwritable orchestrator info file warns instead of throwing", () => {
+test("pollTeamGates: an unwritable orchestrator info file warns instead of throwing", () => {
   const root = tmpdir("gate-polls-info-unwritable-");
   const config = defaultConfig();
   fs.mkdirSync(orchestratorStatePath(root), { recursive: true });
-  const states = newFleetGateStates(config);
-  const poll = pollFleetGates(states, {
+  const states = newTeamGateStates(config);
+  const poll = pollTeamGates(states, {
     root,
     runners: [],
     liveConfig: config,

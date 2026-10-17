@@ -244,15 +244,15 @@ export function checkPlanDependencies(root: string): CheckOutcome {
 
 /** How long a queued landing may wait without its change starting before the stale-queued-landing
  * check warns: 6 hours, fixed. A vet plus a merge completes in minutes (plans/merge-queue.md), so
- * a full six-hour silence while the fleet is healthy — not on a hold, which doctor already reports
+ * a full six-hour silence while the team is healthy — not on a hold, which doctor already reports
  * separately — is never a merely busy pipeline: it reads as a drain that has stalled. The one
  * opinionated default, like STALE_QUESTION_DAYS, so no knob. */
 const LAND_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
 
 /** Stale queued landings — a change that has sat in the durable land queue too long without
  * starting (plans/merge-queue.md). Every queued-change health fact is otherwise a hook into its
- * own role or stage: a vet under way reads in the fleet row, a fleet hold gets its own banner,
- * and fleet-alerts' STALL_RE catches a RUNNING stage frozen. But a change (or a batch behind the
+ * own role or stage: a vet under way reads in the team row, a team hold gets its own banner,
+ * and team-alerts' STALL_RE catches a RUNNING stage frozen. But a change (or a batch behind the
  * single merge slot) that quietly never starts — neither vetted nor flagged — reads as healthy:
  * the header's `land queue: N` badge counts it and `tumwater queue` ages it, yet nothing calls it
  * out on its own. This names the single oldest queued landing that is NOT currently in-flight and
@@ -262,7 +262,7 @@ const LAND_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
  * drain, and an absent or never-throwing unreadable marker contributes the empty set. Reads the
  * tree at `root` with the already-exported readers, changing nothing in src/landing/. A warn,
  * never a fail — the checkStaleQuestions/checkStalledPlans precedent: a queued wait is legitimate
- * while the fleet is genuinely held, and those holds already warn separately. */
+ * while the team is genuinely held, and those holds already warn separately. */
 export function checkStaleQueuedLandings(root: string, now: number): CheckOutcome {
   const marker = readLandingMarker(root);
   const inFlight = new Set(marker ? landingChanges(marker).map((c) => c.role) : []);
@@ -278,7 +278,7 @@ export function checkStaleQueuedLandings(root: string, now: number): CheckOutcom
 }
 
 /** Stale questions — open QUESTIONS.md questions that have waited more than 7 days for an
- * answer. A fleet can stay parked on a question for days while `tumwater doctor` reports
+ * answer. A team can stay parked on a question for days while `tumwater doctor` reports
  * nothing; the `--list` age (`questionAgeSuffix` on `tumwater questions`) is the only other
  * place the wait shows, and only when the operator asks. Reads the tree at `root` — the
  * primary checkout IS main's tree — like checkRefusedEntries, reusing

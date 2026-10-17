@@ -127,7 +127,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   fs.rmSync(infoFile);
   snap = snapshot(repo);
   assert.equal(snap.running, false);
-  assert.equal(snap.landQueue.depth, 1, "queued work is visible even while the fleet is down");
+  assert.equal(snap.landQueue.depth, 1, "queued work is visible even while the team is down");
   assert.equal(snap.landQueue.inFlight, undefined, "a dead harness never shows a landing as in flight");
 
   // …and a marker whose sha no longer has a matching queue entry (a crash between the entry
@@ -264,4 +264,4 @@ test("snapshot's director inbox deliverability advances with its pinned clock", 
   assert.equal(snapshot(repo, undefined, until).inbox, 1);
 });
 
-// --- pausedUntil: the fleet marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---
+// --- pausedUntil: the team marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---

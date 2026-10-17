@@ -1,6 +1,6 @@
 /** Unit-tier coverage for the orchestrator's branch-divergence watch
  * (src/orchestrator/orchestrator.ts):
- * when the primary checkout sits on a branch other than the fleet's merge target, the
+ * when the primary checkout sits on a branch other than the team's merge target, the
  * orchestrator warns once — and only once — naming the branch, then re-arms when the checkout
  * returns to the target branch, so a second divergence warns again. The gating `npm test`
  * never ran this path; the shape was only implied by the orchestrator's source. */
@@ -72,7 +72,7 @@ test("branch divergence: warns once per episode and re-arms when main returns", 
   }
 });
 
-test("an unwritable event log does not end the fleet on a divergence warning", async () => {
+test("an unwritable event log does not end the team on a divergence warning", async () => {
   const repo = await makeFastRepo("divergence unwritable log test", ["clean"]);
   const restore = fakePiIdle();
   const controller = new AbortController();
@@ -91,7 +91,7 @@ test("an unwritable event log does not end the fleet on a divergence warning", a
     await awaitFirstTick(repo, "clean");
     // Replace the event feed with a directory: every append inside the poll loop now throws
     // EISDIR (ENOSPC/EACCES behave the same). The divergence warning is a direct poll-loop
-    // emission, so it must not take the fleet down with it.
+    // emission, so it must not take the team down with it.
     unwritableEvents(repo);
     execFileSync("git", ["-C", repo, "checkout", "-b", "wander"]);
     await sleep(5 * FAST_POLL_MS);

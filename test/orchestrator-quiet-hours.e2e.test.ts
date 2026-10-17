@@ -36,7 +36,7 @@ test("quiet hours block role ticks while the director runs; emptying the window 
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // The gate sits before eligibility: the entry event arrives on the first poll, and the
-    // role's startup tick (which an ungated fleet runs immediately) never starts.
+    // role's startup tick (which an ungated team runs immediately) never starts.
     await waitFor(
       () => eventsOfType(repo, "quiet_hours_started").length === 1,
       "a quiet_hours_started event",

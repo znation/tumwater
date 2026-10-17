@@ -39,7 +39,7 @@ export interface MainCheckStatus {
 }
 
 /** How far mainCheckForPoll may grow its event tail. The per-poll default
- * (event-read.ts's DEFAULT_EVENT_TAIL) covers a healthy fleet — a merge-scope check rides
+ * (event-read.ts's DEFAULT_EVENT_TAIL) covers a healthy team — a merge-scope check rides
  * every landing and every redeploy — but a burst of quiet or failing ticks logs hundreds
  * of events without moving main, and a tail
  * that ends before the last check makes the header badge vanish and reappear as ticks tick
@@ -162,7 +162,7 @@ function mainCheckScanFor(root: string): MainCheckScan {
 }
 
 /** Has main's newest merge-scope check retired a loop's stale `main_red` verdict? Only a
- * PASSED check stamped strictly after the loop's red tick ended counts — the fleet-level
+ * PASSED check stamped strictly after the loop's red tick ended counts — the team-level
  * green is newer evidence than the loop's own red (BUGS.md 2026-09-30). A failed or skipped
  * newest check, a check from before the red tick, or a loop with no known tick end all leave
  * the verdict standing. Single-homed here beside heldByMainRed. */
@@ -223,7 +223,7 @@ export function queueInFlight(root: string, entries: readonly LandingEntry[], ru
 // The last config each root loaded successfully. snapshot is polled every second by the
 // TUI and GUI, where a throw would kill (or blind) the observer — but tumwater.json can be
 // transiently broken while a user edits it live-reload style. On failure we keep showing
-// the fleet with the last known-good role set; the orchestrator does the same in its own
+// the team with the last known-good role set; the orchestrator does the same in its own
 // reload poll and surfaces the error as a warning event visible in `tumwater logs`.
 const lastGoodConfig = new Map<string, TumwaterConfig>();
 

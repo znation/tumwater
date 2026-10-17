@@ -42,10 +42,10 @@ test("the status header carries an inbox badge only while prompts are queued", (
 });
 
 // The timed-pause countdown rides the header last: only a
-// FUTURE fleet-marker deadline makes it appear — a role-only pause, an indefinite pause, and
+// FUTURE team-marker deadline makes it appear — a role-only pause, an indefinite pause, and
 // an expired marker all keep the header byte-identical, because the badge must never claim
 // a countdown that is over (the read side already treats an expired marker as unpaused).
-test("the status header shows the timed-pause countdown only while the fleet deadline stands", () => {
+test("the status header shows the timed-pause countdown only while the team deadline stands", () => {
   const quiet = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.doesNotMatch(quiet, /auto-resumes/);
 
@@ -83,7 +83,7 @@ test("the status header states the operator pause's reason, timed or not", () =>
 
 // Quiet hours 2/2 (plans: "Quiet hours … part 2/2, observability"): the window rides the
 // header LAST, after the pause badge, as standing information once configured — the plain
-// window string outside it, the active `quiet until <end>` reading inside — and a fleet
+// window string outside it, the active `quiet until <end>` reading inside — and a team
 // without the schedule keeps its header byte-identical (the badge is empty).
 test("the status header carries a quiet-hours badge only while a window is configured", () => {
   const unset = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
@@ -126,15 +126,15 @@ test("the status header carries a budget badge in every cap state", () => {
   assert.match(disabled, /· budget: \$3\.25 today · no cap$/);
 });
 
-// A fleet whose models are all free (local LLMs) can never accumulate spend against the cap,
+// A team whose models are all free (local LLMs) can never accumulate spend against the cap,
 // so the badge reads n/a instead of a dollar figure that would never move.
-test("the status header budget badge reads n/a for an all-free fleet", () => {
+test("the status header budget badge reads n/a for an all-free team", () => {
   const free = headerOf(
     renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null })),
   );
   assert.match(free, /· budget: n\/a$/);
 
-  // The dollar form is untouched for a fleet that can spend (byte-identical to before).
+  // The dollar form is untouched for a team that can spend (byte-identical to before).
   const paid = headerOf(
     renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, fallback: null })),
   );
@@ -143,7 +143,7 @@ test("the status header budget badge reads n/a for an all-free fleet", () => {
 
 test("the header names the running build and flags a stale one", () => {
   // Build provenance (src/build/build-info.ts): the dashboards are where an operator learns the
-  // fleet
+  // team
   // is running code main no longer describes — the badge must carry the commit and the gap.
   const fresh = { ...snapshotWith([{ role: "clean" }]), running: true, pid: 4242, build: { sha: "a".repeat(40), builtAt: 1, stale: false, aheadCommits: 0, checkedHead: "b".repeat(40) } };
   assert.match(headerOf(renderStatus("/tmp/x", fresh)), /running \(pid 4242, build aaaaaaaa\)/);
@@ -200,7 +200,7 @@ test("renderStatus shows the land-queue badge in the header and the label in the
 });
 
 test("the status header carries a mainCheck badge only after a merge-scope check", () => {
-  // No check yet: no badge — the header of a quiet fleet stays byte-identical to before.
+  // No check yet: no badge — the header of a quiet team stays byte-identical to before.
   const none = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.doesNotMatch(none, /· main /);
   // Green with counts (wording: the old README
@@ -219,7 +219,7 @@ test("the status header carries a mainCheck badge only after a merge-scope check
 });
 
 // The disk floor (plans/disk-floor.md, part 4/4): the header carries the published free space,
-// the hold verdict — an operator sees why the fleet stopped without
+// the hold verdict — an operator sees why the team stopped without
 // reading events. No disk block keeps the header byte-identical.
 test("the status header carries the disk reading and the hold, not the last reclaim", () => {
   assert.doesNotMatch(headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }]))), /disk/);

@@ -62,7 +62,7 @@ function loadConfigForCheck(root: string): { config: TumwaterConfig } | { outcom
  * verified" — unless the running orchestrator has published that its breaker demoted the pair
  * (`demoted`, from orchestrator.json; runDoctor passes it only while that orchestrator is alive),
  * which warns with the failure count and the next probe time. No fallbackModel configured is
- * informational, not a warning — plenty of fleets intend to stop at the cap. `modelsPath` is
+ * informational, not a warning — plenty of teams intend to stop at the cap. `modelsPath` is
  * injectable so tests need no real pi install. */
 export function checkFallbackModel(
   root: string,
@@ -204,7 +204,7 @@ function seamPairs(config: TumwaterConfig): SeamPair[] {
 }
 
 /** Whether any seam runs on the claude backend — the doctor's claude checks stand down when
- * none does (a pi-only fleet reads no `~/.claude` state and spawns no claude). */
+ * none does (a pi-only team reads no `~/.claude` state and spawns no claude). */
 export function claudeSeamsInUse(config: TumwaterConfig): boolean {
   return seamPairs(config).some((pair) => pair.agent === "claude");
 }
@@ -272,7 +272,7 @@ async function claudeAuthProbe(
  * names the billing the reply implies — the subscription type, or an API key — so an operator
  * telling subscription spend from API spend does not have to run the command themselves. A
  * probe that could not run or a reply this cannot read warns rather than guesses. Stands down
- * (ok) when no seam routes to claude, so a pi-only fleet spawns nothing. */
+ * (ok) when no seam routes to claude, so a pi-only team spawns nothing. */
 export async function checkClaudeAuth(
   root: string,
   pathEnv: string = envPath(),
@@ -330,7 +330,7 @@ function parseClaudeCliVersion(output: string): string | undefined {
 }
 
 /** claude CLI-version readiness (plans/agent-backends.md finding 9): an installed CLI below a
- * configured model's minimum fails or misprices that model, and fleet runs disable the
+ * configured model's minimum fails or misprices that model, and team runs disable the
  * auto-updater, so the version an operator has is the version ticks run. Fails below the
  * highest floor among the claude-routed models, naming which model needs it; an ok detail
  * prints the installed version and the floor it satisfied (or no floor when none applies).
@@ -380,7 +380,7 @@ export async function checkClaudeVersion(
  * config can put on a seam must resolve in pi's definitions, and its provider must report
  * `ready` from the agent binary's own auth check. A strong tier pi cannot resolve would fail
  * every review, and so every landing — the check exists so the operator finds out before the
- * fleet does, mid-review. Pairs collected in the same sweep fleetModelsFree prices: each
+ * team does, mid-review. Pairs collected in the same sweep fleetModelsFree prices: each
  * tier's top-level selector (a string is default's), every enabled role's resolved pair
  * (per-role overrides included; tier-name overrides resolve through configForRole), and the
  * reviewer's while review is on. A pair with no model is pi's own default and out of scope;
@@ -504,7 +504,7 @@ export async function checkTierModels(
 }
 
 /** The doctor's image-input capability check (plans/image-input.md "Doctor", parts 1-2/5):
- * which of the fleet's seams claim to read images, and whether every text-only enabled loop can
+ * which of the team's seams claim to read images, and whether every text-only enabled loop can
  * reroute to one that does. Part 2 adds the live probe — with `probeImages` "missing" (the
  * terminal `tumwater doctor` default) each claimed pi model with no fresh cached verdict is
  * shown a real image and the answer is checked; with "all" (the `--reprobe` flag) every claimed
@@ -537,7 +537,7 @@ export async function checkImageInput(
   const { config } = loaded;
   // `tier models` already fails on a missing/unknown pair, so this check names only what it can
   // answer; unknown (null) pairs are left to that check. A missing definitions file only blocks
-  // this check when a seam actually needs it — an all-claude fleet reads images without it.
+  // this check when a seam actually needs it — an all-claude team reads images without it.
   const accountNow = account === undefined ? readClaudeAccount(root) : account;
   const pairs = seamPairs(config);
   const needsDefinitions = pairs.some((p) => (p.agent ?? "pi") !== "claude");
@@ -559,7 +559,7 @@ export async function checkImageInput(
       });
   }
   // The tiers' fallback pairs: a reroute target must itself read images to help, and part 4's
-  // fallback regime picks among these, so a text-only fallback fleet is a coverage gap here.
+  // fallback regime picks among these, so a text-only fallback team is a coverage gap here.
   const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
     piPairFree(providers, p.provider, p.model, accountNow),
   );
@@ -636,7 +636,7 @@ export async function checkImageInput(
       );
     else noTarget.push(`${role} text-only (${label(rc.agent, rc.provider, rc.model)})`);
   }
-  // A fleet that declared no models at all leaves capability to pi's own defaults — the same
+  // A team that declared no models at all leaves capability to pi's own defaults — the same
   // "nothing configured" stance as tier models, informational rather than a warning.
   const declared =
     pairs.some((p) => p.model !== undefined) ||

@@ -14,9 +14,9 @@ import { gitOnlyBinDir, headSha, mainSha, makeRepo, sh, tmpdir, worktreeAt } fro
 import { pathReplace, projManifest } from "./fakes/fake-commands.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
-// Unit coverage for the fleet-shared main-baseline verdict (src/baseline/main-baseline.ts): the
+// Unit coverage for the team-shared main-baseline verdict (src/baseline/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
-// red from blocking the fleet, and green seeding from the landing path. main-red.test.ts
+// red from blocking the team, and green seeding from the landing path. main-red.test.ts
 // covers the gate built on top; build-check.test.ts covers the detection, execution, and
 // failure-tail presentation this module consumes.
 
@@ -25,7 +25,7 @@ const ROLE = "improve";
  * all exercise npm auto-detection, so the defaults (no `check` configured) are the fixture. */
 const CFG = defaultConfig();
 
-// --- checkMainBaseline: the red-main gate's one-shot, fleet-shared verification of main's own
+// --- checkMainBaseline: the red-main gate's one-shot, team-shared verification of main's own
 // suite. Unlike build-check.test.ts's plain-directory
 // fixtures — enough for detection and execution in isolation — these need a REAL git repo with
 // a worktree
@@ -48,7 +48,7 @@ test("a red in one worktree is re-verified by the next, and a green there promot
     "the next worktree re-runs a single-worktree red instead of trusting it",
   );
   assert.equal(runsOf(counter), 2);
-  // The promotion is what unblocks the fleet: even the worktree that produced the false red
+  // The promotion is what unblocks the team: even the worktree that produced the false red
   // now reads green, without main having to move.
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "green");
   assert.equal(runsOf(counter), 2, "a green is authoritative — nothing re-ran");
@@ -66,7 +66,7 @@ test("a red confirmed by a second worktree is authoritative: a third trusts the 
   assert.equal((await checkMainBaseline(third, CFG)).baseline?.status, "red");
   assert.equal(runsOf(counter), 2, "two agreeing worktrees settle it — no run per role");
   // What the flag still buys: the redeploy gate pays for its own opinion even on a red two
-  // worktrees already agree on, because stranding the fleet on a stale build costs more.
+  // worktrees already agree on, because stranding the team on a stale build costs more.
   assert.equal((await checkMainBaseline(third, CFG, undefined, true)).baseline?.status, "red");
   assert.equal(runsOf(counter), 3, "reverifyRed always runs");
 });
@@ -152,7 +152,7 @@ test("checkMainBaseline never caches red for an environmental skip: with npm mis
 
 test("checkMainBaseline reads a toolchain-failing suite as an environmental skip, never red", async () => {
   // BUGS.md 2026-09-15: the harness's own suite failed with an Xcode license error in its
-  // output, the red verdict latched, and the fleet sat on a stale build until main moved. The
+  // output, the red verdict latched, and the team sat on a stale build until main moved. The
   // incident's suite path, in miniature: git works (rev-parse keys the check), the suite runs
   // and dies on the toolchain — the verdict must be a skip, not a red.
   const counter = path.join(tmpdir(), "runs");
@@ -187,7 +187,7 @@ test("checkMainBaseline dedups concurrent checks of one new SHA into a single ru
 
 test("a red is provisional: the next worktree re-runs it unasked, and a pass promotes the SHA", async () => {
   // The 2026-09-08 shape: one worktree's environment, not the tree, produced the red — here a
-  // `marker` file standing in for the missing node_modules — and it became the fleet's verdict.
+  // `marker` file standing in for the missing node_modules — and it became the team's verdict.
   // Since 2026-09-18 no caller has to ASK for that second opinion: the role loops never passed
   // the flag, so one environmental red blocked every code role until main moved — which it could
   // not, because blocking the code roles is what stops main moving (BUGS.md).
@@ -315,7 +315,7 @@ test("mainIsGreen runs a configured check.command on a repo with no npm install 
   assert.equal(red.baseline.status === "red" ? red.baseline.script : undefined, `${checkScript} -q`);
 });
 
-test("mainIsGreen re-verifies another worktree's red in the mirror, and its green promotes the SHA fleet-wide", async () => {
+test("mainIsGreen re-verifies another worktree's red in the mirror, and its green promotes the SHA team-wide", async () => {
   // The 2026-09-08 failure in miniature: one worktree's ENVIRONMENT, not the tree, decides the
   // verdict — here a `marker` file standing in for the missing node_modules. A red from such a
   // worktree must not be what blocks the harness's own restart (BUGS.md).
@@ -354,7 +354,7 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
 
 // BUGS.md 2026-09-30: a FAILED baseline run the host slept through made no verdict about the
 // tree — the sleep expired a test's own wait and the suite exited 1 inside the deadline — so
-// it must not be cached as the fleet's authoritative red main.
+// it must not be cached as the team's authoritative red main.
 test("a baseline run the host slept through is unverified and never cached red", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { wt } = baselineFixture(ROLE,

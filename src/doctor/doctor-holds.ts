@@ -1,6 +1,6 @@
 // vocabulary: plain
 import { roleLabel } from "../roles/role-labels.js";
-import { pausedRoles, pausedRolesUntil, standingFleetPause } from "../team/team-state.js";
+import { pausedRoles, pausedRolesUntil, standingTeamPause } from "../team/team-state.js";
 import { MODEL_TIERS, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";
 import { withModelOverrides } from "../config/config-views.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
@@ -36,36 +36,36 @@ export function loadLoopStates(root: string, config: TumwaterConfig): LoopState[
 }
 
 /** The `pause` check: names a standing operator pause so doctor does not print "ready to run"
- * over a fleet that starts no tick. Read-only: it reads the same fleet and per-role pause
- * markers the scheduler reads (standingFleetPause, pausedRoles, pausedRolesUntil — all treat
- * an expired marker as absent), so its verdict cannot disagree with what the fleet does. A
- * fleet pause is a warn because it stops every loop; paused roles are ok because the operator
+ * over a team that starts no tick. Read-only: it reads the same team and per-role pause
+ * markers the scheduler reads (standingTeamPause, pausedRoles, pausedRolesUntil — all treat
+ * an expired marker as absent), so its verdict cannot disagree with what the team does. A
+ * team pause is a warn because it stops every loop; paused roles are ok because the operator
  * chose them by name and every other loop keeps ticking. `now` only drives the countdowns. */
 export function checkPause(root: string, now: number = Date.now()): CheckOutcome {
-  const fleet = standingFleetPause(root);
+  const team = standingTeamPause(root);
   const roles = pausedRoles(root);
   let rolesPhrase = "";
   if (roles.length > 0) {
     const until = pausedRolesUntil(root);
     rolesPhrase = `paused roles: ${roles.join(", ")}${until !== undefined ? ` (auto-resume in ${humanSeconds(secondsUntil(until, now))})` : ""}`;
   }
-  if (!fleet) return rolesPhrase ? okOutcome(rolesPhrase) : okOutcome("not paused");
+  if (!team) return rolesPhrase ? okOutcome(rolesPhrase) : okOutcome("not paused");
   const head =
-    fleet.until !== undefined
-      ? `team paused — auto-resumes in ${humanSeconds(secondsUntil(fleet.until, now))}`
+    team.until !== undefined
+      ? `team paused — auto-resumes in ${humanSeconds(secondsUntil(team.until, now))}`
       : "team paused — no role starts a run until `tumwater resume`";
-  return warnOutcome(`${head}${pauseReasonSuffix(fleet.reason)}${rolesPhrase ? `; ${rolesPhrase}` : ""}`);
+  return warnOutcome(`${head}${pauseReasonSuffix(team.reason)}${rolesPhrase ? `; ${rolesPhrase}` : ""}`);
 }
 
-/** The `quiet hours` check: names the fleet quiet window and any per-role windows holding now,
- * so doctor does not print "ready to run" over a fleet that starts no tick until the window
+/** The `quiet hours` check: names the team quiet window and any per-role windows holding now,
+ * so doctor does not print "ready to run" over a team that starts no tick until the window
  * ends. Read-only: membership comes from the scheduler's own parser and predicate
- * (quietHoursStatus, roleQuietHold), so the verdict cannot disagree with the gate. A fleet
+ * (quietHoursStatus, roleQuietHold), so the verdict cannot disagree with the gate. A team
  * window holding is a warn because it stops every loop (the director is exempt); held per-role
  * windows are ok because the operator chose those roles by name. A malformed value reads as
  * unset here — checkInit owns that error. `now` is injected so tests never read the clock. */
 export function checkQuietHours(config: TumwaterConfig | undefined, now: Date = new Date()): CheckOutcome {
-  const fleet = quietHoursStatus(config?.quietHours, now);
+  const team = quietHoursStatus(config?.quietHours, now);
   const perRole = config?.quietHoursPerRole;
   const roleKeys = Object.keys(perRole ?? {}).filter((k) => k !== DIRECTOR_ROLE);
   const held = roleKeys.filter((k) => roleQuietHold(perRole, k, now)).sort();
@@ -74,11 +74,11 @@ export function checkQuietHours(config: TumwaterConfig | undefined, now: Date = 
     return parsed.ok && parsed.window !== null;
   });
   const phrases: string[] = [];
-  if (fleet.window !== null) {
+  if (team.window !== null) {
     phrases.push(
-      fleet.inWindow
-        ? `quiet now (${fleet.window}) — no role starts a run until ${quietWindowEnd(fleet.window)}; the director is exempt`
-        : `${fleet.window} (not in the window now)`,
+      team.inWindow
+        ? `quiet now (${team.window}) — no role starts a run until ${quietWindowEnd(team.window)}; the director is exempt`
+        : `${team.window} (not in the window now)`,
     );
   }
   if (held.length > 0) {
@@ -88,14 +88,14 @@ export function checkQuietHours(config: TumwaterConfig | undefined, now: Date = 
   }
   if (phrases.length === 0) return okOutcome("none configured");
   const detail = phrases.join("; ");
-  return fleet.inWindow ? warnOutcome(detail) : okOutcome(detail);
+  return team.inWindow ? warnOutcome(detail) : okOutcome(detail);
 }
 
-/** The `budget` check: today's fleet spend against `maxDailyCostUsd`, plus base roles over their
+/** The `budget` check: today's team spend against `maxDailyCostUsd`, plus base roles over their
  * own `maxDailyCostUsdPerRole` cap. Read-only and built on the scheduler's own definitions
  * (fleetDailyCost, budgetReached, roleCapVerdicts), so the verdict cannot disagree with the gate.
  * `published` is the running scheduler's figure (it includes runs charged since the last save)
- * and wins over the persisted sum, as in status. A reached fleet cap is a warn because role loops
+ * and wins over the persisted sum, as in status. A reached team cap is a warn because role loops
  * run on their tier fallback or hold until local midnight (the `fallback` row says which);
  * per-role caps reached alone are ok because the operator chose them by name. */
 export function checkBudget(
@@ -129,18 +129,18 @@ export function checkBudget(
 /** The `maintenance quota` check: rolling-24 h maintenance landings against the allowance
  * (`maintenancePerWorkMerge` per work landing + the daily floor), naming the maintenance loops
  * held when it is full. Read-only and built on the same verdict the scheduler and status use
- * (maintenanceQuotaForPoll). Only a live fleet's running loops and landing queue count as in
- * flight, since a dead fleet's leftover `running` flag and queue drain nothing. A held allowance
+ * (maintenanceQuotaForPoll). Only a live team's running loops and landing queue count as in
+ * flight, since a dead team's leftover `running` flag and queue drain nothing. A held allowance
  * is a warn because it stops a whole tier. */
 export function checkMaintenanceQuota(
   root: string,
   config: TumwaterConfig | undefined,
-  aliveFleet: boolean,
+  aliveTeam: boolean,
   now: number = Date.now(),
 ): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
-  const loops = loadLoopStates(root, config).map((s) => ({ role: s.role, running: aliveFleet && s.running === true }));
-  const queued = aliveFleet ? new Set(readLandingQueue(root).entries.map((e) => e.role)) : new Set<string>();
+  const loops = loadLoopStates(root, config).map((s) => ({ role: s.role, running: aliveTeam && s.running === true }));
+  const queued = aliveTeam ? new Set(readLandingQueue(root).entries.map((e) => e.role)) : new Set<string>();
   const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkMerge, loops, queued, now);
   if (held.length > 0) {
     return warnOutcome(
@@ -153,7 +153,7 @@ export function checkMaintenanceQuota(
 }
 
 /** The `claude window` check: whether a rejected subscription window holds the subscription claude
- * seams. Read-only and built on claudeWindowObservation, the verdict the scheduler's fleet hold
+ * seams. Read-only and built on claudeWindowObservation, the verdict the scheduler's team hold
  * uses, so it cannot disagree with the hold. A hold is a warn because it stops every subscription
  * claude seam until the window resets; otherwise the most constrained window's state is reported
  * as ok (a rejected window spending overage reads `rejected` here: overage spends, it does not
@@ -199,14 +199,14 @@ export function checkClaudeWindow(
  * its resume — an older resumed event must not be missed or a re-opened provider reads held. */
 const HOLD_CHECK_WINDOW_MS = 2 * 3600_000;
 
-/** The `provider hold` check: names each provider whose fleet-wide failure hold
- * (src/team/team-hold.ts, polled by pollFleetHold) stands now — a 429/backend-failure storm
+/** The `provider hold` check: names each provider whose team-wide failure hold
+ * (src/team/team-hold.ts, polled by pollTeamHold) stands now — a 429/backend-failure storm
  * that stops the roles on that provider from starting new ticks until it re-opens. Read-only:
  * it infers the standing set from the event log's own `rate_limit_hold`/`rate_limit_resumed`
- * crossings, the events pollFleetHold writes, so it cannot disagree with the hold. A standing
+ * crossings, the events pollTeamHold writes, so it cannot disagree with the hold. A standing
  * hold is a warn (as with the `claude window` row) because it stops every role on that
  * provider; `now` is injected so a test can pin a hold standing before its deadline and
- * re-opened after. The ended hold's kind rides the resumed event (see pollFleetHold), and any
+ * re-opened after. The ended hold's kind rides the resumed event (see pollTeamHold), and any
  * resumed event ends that provider's current hold whatever its kind. */
 export function checkProviderHolds(root: string, now: number = Date.now()): CheckOutcome {
   let events: HarnessEvent[];
@@ -242,7 +242,7 @@ export function checkProviderHolds(root: string, now: number = Date.now()): Chec
  * the same `consecutiveErrors` the error-streak breaker and `fleetAlerts` read, and the same
  * `pausedRoles` marker the scheduler reads. The marker does not record who wrote it, so a paused
  * loop at ERROR_STREAK_BREAKER's bar is described, not attributed to the breaker. A warn, not a
- * fail: a failing loop does not stop the fleet from running. */
+ * fail: a failing loop does not stop the team from running. */
 export function checkErrorStreaks(root: string, config: TumwaterConfig | undefined): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const failing = loadLoopStates(root, config)
@@ -267,7 +267,7 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
 /** The `main red` check: names the code loops the red-main gate (mainRedGate) holds, ending
  * each blocked tick `main_red` while main's suite is red. Read-only: it asks heldByMainRed,
  * the predicate the status phase's `main red` label reads, so the two cannot disagree. A warn,
- * not a fail: a red main does not stop the fleet from running. */
+ * not a fail: a red main does not stop the team from running. */
 export function checkMainRed(root: string, config: TumwaterConfig | undefined): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const mainCheck = mainCheckForPoll(root, config);

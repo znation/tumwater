@@ -59,7 +59,7 @@ function argvNamesDir(command: string, dirs: string[]): boolean {
 
 /** True when an argv's RELATIVE worktree path (`node .tumwater/worktrees/qa/dist/src/cli.js
  * gui …`) is this repo's. Resolved against the process's cwd it must land here; one that lands
- * in a worktree that exists elsewhere belongs to another checkout's fleet and is not blamed on
+ * in a worktree that exists elsewhere belongs to another checkout's team and is not blamed on
  * this one. When the resolution lands nowhere — the cwd is unreadable, or is a scratch dir
  * since deleted (the leaked qa GUI's was), or the process chdir'd after exec — the worktree's
  * name is the evidence left: it counts only when this repo has a worktree by that name. */
@@ -98,7 +98,7 @@ function descendantCount(children: Map<number, number[]>, pid: number): number {
  * (absolute; or relative, confirmed by cwd where it can be — relativeArgvIsOurs) or when its
  * cwd lies under it: a leaked `node dist/test/test-runner.js` names no worktree at all.
  *
- * PPID 1 is what keeps the live fleet out: a running orchestrator's pi runs and build checks
+ * PPID 1 is what keeps the live team out: a running orchestrator's pi runs and build checks
  * have the orchestrator as parent, and the orchestrator and its supervisor run from the repo
  * root, never from a worktree, even when a detached `nohup` launch leaves them parentless.
  * (macOS always reparents an orphan to launchd, PID 1; on Linux a process under a child
@@ -109,7 +109,7 @@ function descendantCount(children: Map<number, number[]>, pid: number): number {
  * 2/2): every process a run starts carries `TUMWATER_RUN=<harness pid>-<nonce>` in its
  * environment (appended to any inherited mark), wherever its cwd is — exactly where the
  * prompts send agents (scratch dirs under the system temp). A parentless process whose
- * every mark names a harness pid that is no longer alive is this fleet's orphan: nothing
+ * every mark names a harness pid that is no longer alive is this team's orphan: nothing
  * will reap it, because the run sweep that would have dies with its harness. A mark naming
  * ANY live harness is not reported — that harness's own sweep kills everything carrying the
  * mark when its run folds. A pid that died and was recycled by an unrelated process reads

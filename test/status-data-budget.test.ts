@@ -1,5 +1,5 @@
 // The budget facet of the status-data suite: snapshot()'s spend, cap, cap-hit projection,
-// per-role cap and tier pauses, free-fleet reading, and the cost-n/a fallback model. Split by
+// per-role cap and tier pauses, free-team reading, and the cost-n/a fallback model. Split by
 // facet from one status-data test file; the core contract and poll cache live in
 // status-data.test.ts.
 
@@ -46,7 +46,7 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   saveLoopState(repo, dry);
 
   let snap = snapshot(repo, undefined, now.getTime());
-  // No provider/model is configured (pi's own default), so the fleet cannot be verified as
+  // No provider/model is configured (pi's own default), so the team cannot be verified as
   // free — the dollar badge stays.
   assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null });
 
@@ -94,7 +94,7 @@ test("snapshot prefers the running orchestrator's published budget over the pers
   saveLoopState(repo, clean);
 
   // Not running: no published figure exists (the exit removes the info file), so the
-  // persisted sum is the only figure there is — a stopped fleet's files are final.
+  // persisted sum is the only figure there is — a stopped team's files are final.
   let snap = snapshot(repo);
   assert.equal(snap.budget.spentUsd, 1);
   assert.equal(snap.budget.capUsd, 50);
@@ -116,14 +116,14 @@ test("snapshot prefers the running orchestrator's published budget over the pers
   assert.doesNotMatch(totalRow, /\$1\.00/);
 
   // The publish rides the liveness check: a stale marker beside a dead pid must not speak
-  // for the fleet.
+  // for the team.
   writeOrchestratorMarker(repo, ["clean"], { pid: 2_000_000_000, budget: { spentUsd: 60, capUsd: 50 } }); // beyond any pid space
   assert.equal(snapshot(repo).running, false, "a dead pid is not a running orchestrator");
   assert.equal(snapshot(repo).budget.spentUsd, 1);
 });
 
-// The free-fleet case (BUGS.md: budget badge on local LLM fleets): when every model the
-// fleet could use resolves to an unpriced or zero-cost entry in pi's models.json, spend can
+// The free-team case (BUGS.md: budget badge on local LLM teams): when every model the
+// team could use resolves to an unpriced or zero-cost entry in pi's models.json, spend can
 // never accumulate against the cap and the badge data carries `free` so both dashboards read n/a.
 // The per-role cap's observer side (PLANS.md, part 2/2): the snapshot lists the roles the
 // gate actually holds — roleCapPaused against the last-known-good config's caps, the director
@@ -231,9 +231,9 @@ test("snapshot lists the roles whose budget tier resolved to pause in budgetPaus
   assert.ok(snap2.budgetPausedRoles.includes("clean"));
 });
 
-test("snapshot marks the budget free when every fleet model is unpriced", async () => {
+test("snapshot marks the budget free when every team model is unpriced", async () => {
   const repo = makeRepo();
-  await initProject(repo, "free fleet test");
+  await initProject(repo, "free team test");
 
   // A models.json with one unpriced local model and one paid API model.
   const dir = tmpdir("status-free-");
@@ -254,7 +254,7 @@ test("snapshot marks the budget free when every fleet model is unpriced", async 
   cfg.model = "qwen3.8-27b";
   saveConfig(repo, cfg);
   let snap = snapshot(repo, modelsFile);
-  assert.equal(snap.budget?.free, true, "all-free fleet reads n/a");
+  assert.equal(snap.budget?.free, true, "all-free team reads n/a");
 
   // One role on a paid model flips it back to the dollar badge.
   cfg.roles.clean!.provider = "paid";
@@ -286,7 +286,7 @@ test("snapshot carries the fallback model only when pi prices it at zero", async
     { provider: "local", model: "local-free" },
     "a zero-priced fallback is what the gate would engage",
   );
-  // The fleet itself is still priced: the fallback does not make the budget n/a, it only says
+  // The team itself is still priced: the fallback does not make the budget n/a, it only says
   // what happens when the cap is reached.
   assert.equal(snapshot(repo, modelsFile).budget.free, false);
 

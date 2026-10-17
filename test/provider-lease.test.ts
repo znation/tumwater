@@ -4,7 +4,7 @@
  * a run with no lease in context is a no-op, a run on the lease's own key never re-keys, a run
  * on another key releases the old key before (and instead of waiting in line for) the new one,
  * a re-key to a full provider parks and reports the wait through the hooks, and the pool-slot
- * drop returns the key without giving up the fleet permit. */
+ * drop returns the key without giving up the team permit. */
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -42,7 +42,7 @@ test("a run on the lease's own key never re-keys", async () => {
   });
   const snap = semaphore.snapshot();
   assert.equal(snap.byKey.omlx!.inUse, 1, "the lease stayed on omlx");
-  assert.equal(snap.inUse, 1, "the fleet permit stayed held");
+  assert.equal(snap.inUse, 1, "the team permit stayed held");
   lease.release();
   assert.equal(semaphore.snapshot().inUse, 0);
 });
@@ -62,7 +62,7 @@ test("a run on a different key re-keys: it releases the old key and takes the ne
 });
 
 test("a re-key to a full provider parks (holding no key) and is granted when it drains", async () => {
-  // §5 "No deadlock": a re-key waiter holds a fleet permit but no provider permit, so the key
+  // §5 "No deadlock": a re-key waiter holds a team permit but no provider permit, so the key
   // it waits for always drains and another run on a free provider is never blocked behind it.
   const semaphore = new Semaphore(4);
   semaphore.setKeyCaps({ omlx: 1, hf: 1 });
@@ -122,7 +122,7 @@ test("a re-key wait reports through the hooks, once, and a same-key run fires no
   assert.equal(semaphore.snapshot().inUse, 0);
 });
 
-test("dropProviderLeaseKey returns the held key without giving up the fleet permit", async () => {
+test("dropProviderLeaseKey returns the held key without giving up the team permit", async () => {
   // §5 pool-slot wait rule: a lease never holds a provider key while it waits for a pool slot.
   const semaphore = new Semaphore(2);
   semaphore.setKeyCaps({ omlx: 1 });
@@ -131,7 +131,7 @@ test("dropProviderLeaseKey returns the held key without giving up the fleet perm
     await dropProviderLeaseKey();
     const snap = semaphore.snapshot();
     assert.equal(snap.byKey.omlx!.inUse, 0, "the omlx count dropped while it parks on a slot");
-    assert.equal(snap.inUse, 1, "the fleet permit is still held while it waits");
+    assert.equal(snap.inUse, 1, "the team permit is still held while it waits");
   });
   lease.release();
   assert.equal(semaphore.snapshot().inUse, 0);

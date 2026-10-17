@@ -58,7 +58,7 @@ export interface ImageProbeCacheEntry {
  * `imageProbeKey(agent, provider, model)`. */
 export type ImageProbeCache = Record<string, ImageProbeCacheEntry>;
 
-/** The cache-file key for one seam — agent/provider/model, the natural identity of a fleet
+/** The cache-file key for one seam — agent/provider/model, the natural identity of a team
  * model, joined on `/` (agent and provider never contain it and a model id is fully qualified,
  * so the key cannot collide with another seam's). */
 export function imageProbeKey(

@@ -19,7 +19,7 @@ import {
   type FallbackBreakerPolicy,
 } from "../budget/fallback-breaker.js";
 import { seamHoldKey } from "../config/config-views.js"
-import type { FleetGateStates } from "../gates/gate-polls.js";
+import type { TeamGateStates } from "../gates/gate-polls.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import type { LoopRunner } from "../loop/loop.js";
@@ -37,7 +37,7 @@ import { runTimedRoleTick } from "../tick/tick-timing.js";
  * pace, so the sample is a ring buffer. */
 export const ROLE_TICK_DURATION_SAMPLES = 50;
 
-/** What the launch pass needs from the orchestrator: the poll's inputs and the fleet's
+/** What the launch pass needs from the orchestrator: the poll's inputs and the team's
  * shared mutable state, passed by reference so updates land where the drain, the redeployer,
  * and the next poll read them. Not exported — callers pass an object literal and the
  * structural type is only this module's parameter shape. */
@@ -49,9 +49,9 @@ interface LaunchContext {
   /** The role tick signal (the full shutdown signal plus the role-only stop): a restart
    * cuts off permit holders through it. */
   signal: AbortSignal;
-  /** The fleet gates' shared memory: the fallback breakers' probe and evidence bookkeeping
+  /** The team gates' shared memory: the fallback breakers' probe and evidence bookkeeping
    * is reassigned onto gateStates.budget.breakers in place. */
-  gateStates: FleetGateStates;
+  gateStates: TeamGateStates;
   /** The breaker's policy knobs (drain window and probe timing), fixed at startup. */
   breakerPolicy: FallbackBreakerPolicy;
   /** The fallback breaker's clock (default Date.now; see RunOptions.breakerNow): the evidence
@@ -62,7 +62,7 @@ interface LaunchContext {
   probePair: string | null;
   /** The roles whose model tier resolves to the probed pair (part 5c/8): the ONLY runners
    * this pass may admit as the probe, one per poll. Continuing only these runners — never
-   * the rest of the fleet — when none of them can carry the claim is what keeps a probe
+   * the rest of the team — when none of them can carry the claim is what keeps a probe
    * whose tier has no due runner from deadlocking the pass (an objection to an earlier
    * draft, which continued every non-director runner). */
   probeRoles: ReadonlySet<string>;
@@ -70,7 +70,7 @@ interface LaunchContext {
    * hold puts role ticks on fallback pairs, so only then does a tick's outcome fold as
    * evidence into the breakers. */
   budgetActive: boolean;
-  /** The fleet's tick semaphore; the director never queues behind it. */
+  /** The team's tick semaphore; the director never queues behind it. */
   semaphore: Semaphore;
   /** pi's saved default model (the caller's stat-cached readPiDefaultModel result): the
    * fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2). */
@@ -154,7 +154,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     // turned the tick away at its permit.
     let started = false;
     // The tick's keyed semaphore lease (plans/provider-concurrency.md §4): acquired on the
-    // authoring seam's provider key and released in place of the bare fleet release, so the
+    // authoring seam's provider key and released in place of the bare team release, so the
     // cap is real for role ticks from part 2/5 on. The director never queues, so its lease is
     // never created here.
     let lease: Awaited<ReturnType<Semaphore["acquireLease"]>> | null = null;
@@ -207,7 +207,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
           const now = Date.now();
           const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(now);
           // The breaker is keyed by the seam that ran (seamHoldKey), like the tick pair and
-          // the fleet-hold stamps (PLANS.md "Mixed claude + pi fleets, part 2/4"): a claude
+          // the team-hold stamps (PLANS.md "Mixed claude + pi fleets, part 2/4"): a claude
           // fallback tick demotes the `claude/<model>` breaker entry, never `?/…`.
           const ranPair =
             budgetActive && cfg?.model !== undefined
@@ -272,7 +272,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     // should resolve. A throw outside that fold (a finalize-time file write, a runner bug)
     // rejects it instead; the drain awaits the bucket with allSettled, but chaining cleanup
     // off a bare `void task.finally(...)` would leave the derived promise's rejection
-    // unhandled and take the whole fleet down. Surface it as a warning (warnEventBestEffort,
+    // unhandled and take the whole team down. Surface it as a warning (warnEventBestEffort,
     // which keeps a failed warning write from becoming that unhandled rejection) and hand the
     // reservation back so the role can schedule again, exactly as the unstarted path above
     // does; the drain's allSettled is otherwise silent about the failure.

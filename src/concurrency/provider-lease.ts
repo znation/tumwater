@@ -10,7 +10,7 @@
  * The store carries the `piDefault` (the caller's cached readPiDefaultModel result) beside the
  * lease so `ensureProviderLease` can resolve a bare no-model pi seam's key exactly as the
  * admission/review seam did — a run whose key were computed without it would re-key a default
- * fleet's tick off pi's own provider. It also carries the semaphore and, optionally, wait
+ * team's tick off pi's own provider. It also carries the semaphore and, optionally, wait
  * hooks, so a re-key that has to park on a full target key reports its wait the way a parked
  * resolver does (landing-vetting.ts's providerWaitStage). */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -57,7 +57,7 @@ export function withProviderLease<T>(
  * the current async context carries no lease (a direct LoopPi unit test, `tumwater tick`) or
  * when the run is already on the lease's key. When it does re-key and `hooks` are present and
  * the target key is at its cap, the hooks hear `waiting` before the lease parks and `granted`
- * once the key frees — a re-key never waits on the fleet total (it already holds a fleet
+ * once the key frees — a re-key never waits on the team total (it already holds a team
  * permit), only on the target key's headroom. */
 export async function ensureProviderLease(cfg: ResolvedModelConfig): Promise<void> {
   const ctx = providerLeaseStore.getStore();

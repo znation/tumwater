@@ -39,10 +39,10 @@ import {
   sampleFreeBytes,
   type DiskGateState,
 } from "./disk-gate.js";
-import { pollErrorStorm, pollFailureSpread, pollFleetHold, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../team/team-polls.js";
+import { pollErrorStorm, pollFailureSpread, pollTeamHold, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../team/team-polls.js";
 import { readClaudeAccount } from "../agent/claude/claude-account.js";
 import type { ReclaimController } from "../team/reclaim.js";
-import type { FleetHold } from "../team/team-hold.js";
+import type { TeamHold } from "../team/team-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../team/error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/failure-spread.js";
 import type { LoopRunner } from "../loop/loop.js";
@@ -55,28 +55,28 @@ import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-i
 import { roleSeamTier } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
-/** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost budget
- * gate, the operator and per-role pause gates, quiet hours, the disk floor's hold, the fleet-wide
+/** The orchestrator poll loop's team-wide gates and alarms, as one family: the daily cost budget
+ * gate, the operator and per-role pause gates, quiet hours, the disk floor's hold, the team-wide
  * failure hold, and the two observational storm alarms. Each gate's reads, edge-triggered events,
  * and cross-poll bookkeeping live in its own module (src/gates/budget-gates.ts,
  * src/gates/pause-gates.ts, src/gates/streak-gate.ts, src/gates/role-cap-gates.ts,
- * src/scheduling/quiet-hours.ts, src/gates/disk-gate.ts, and the fleet-health trio in
+ * src/scheduling/quiet-hours.ts, src/gates/disk-gate.ts, and the team-health trio in
  * src/team/team-polls.ts); this owns the wiring half — one poll advances every gate's state in
  * place. Split out of orchestrator.ts so the poll loop reads as phases (reload → requests →
  * gates → redeploy → landings → schedule → start) and the gate family's wiring sits in one
- * place, the same split team/team-polls.ts made for the fleet-health trio. Dependency direction:
+ * place, the same split team/team-polls.ts made for the team-health trio. Dependency direction:
  * orchestrator → gate-polls → the gate modules. */
 
 /** The gate family's cross-poll memory, constructed once per orchestrator run and mutated in place
  * by each poll. In memory only — a restart re-trusts the fallback, re-opens the hold, and can
  * re-log at most one event per gate. Two members are also mutated from outside this module: the
  * budget gate's breaker collects the start pass's tick evidence and its probe
- * (src/budget/fallback-breaker.ts), and `fleetHold` is the holds-per-provider map — the holds'
+ * (src/budget/fallback-breaker.ts), and `teamHold` is the holds-per-provider map — the holds'
  * LATEST verdicts, read at permit time by the start pass's closures — read it from
- * `states.fleetHold` at call time, never from a per-poll snapshot (the poll loop's docs below). Key
+ * `states.teamHold` at call time, never from a per-poll snapshot (the poll loop's docs below). Key
  * presence is not "held": providers whose hold re-opened stay in the map for their relapse memory,
  * so every consumer goes through team/team-hold.ts's heldProviders(). */
-export interface FleetGateStates {
+export interface TeamGateStates {
   budget: BudgetGateState;
   pause: PauseGateState;
   streak: StreakGateState;
@@ -89,10 +89,10 @@ export interface FleetGateStates {
   quiet: QuietHoursGateState;
   /** The disk floor's cross-poll hold (plans/disk-floor.md, part 1/4). */
   disk: DiskGateState;
-  fleetHold: ReadonlyMap<string | undefined, FleetHold>;
+  teamHold: ReadonlyMap<string | undefined, TeamHold>;
   /** The subscription usage window's once-per-window warning memory (team/team-polls.ts
    * pollClaudeWindowWarning): the `type:resetsAt` key whose `claude_window_warning` was
-   * logged, null before any. The hold itself rides `fleetHold`. */
+   * logged, null before any. The hold itself rides `teamHold`. */
   claudeWindowWarned: string | null;
   /** The `type:resetsAt` key whose `claude_window_reserved` was logged
    * (pollClaudeWindowReserve). */
@@ -101,10 +101,10 @@ export interface FleetGateStates {
   failureSpread: FailureSpread;
 }
 
-/** A fresh gate family: nothing seen yet, so the first poll of an unpaused, unheld fleet
+/** A fresh gate family: nothing seen yet, so the first poll of an unpaused, unheld team
  * logs nothing. The budget gate seeds its breaker and derived fallback view from the
  * startup config; a live reload replaces the config on the next poll. */
-export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
+export function newTeamGateStates(config: TumwaterConfig): TeamGateStates {
   return {
     budget: newBudgetGateState(config),
     pause: newPauseGateState(),
@@ -114,7 +114,7 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
     bootstrap: newBootstrapGateState(),
     quiet: newQuietHoursGateState(),
     disk: newDiskGateState(),
-    fleetHold: new Map(),
+    teamHold: new Map(),
     claudeWindowWarned: null,
     claudeWindowReserved: null,
     errorStorm: ERROR_STORM_QUIET,
@@ -125,11 +125,11 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
 /** One poll's verdicts, for the poll loop's scheduling and start passes of THIS poll: the
  * budget gate's value and the config role loops tick under, the two pause views, and
  * whether quiet hours hold now. Deliberately NOT the failure hold or the storm alarms:
- * the hold's verdict must be read fresh from `states.fleetHold` wherever it gates — a
+ * the hold's verdict must be read fresh from `states.teamHold` wherever it gates — a
  * permit-time closure runs after later polls have advanced the hold, so a destructured
  * per-poll copy would freeze the poll-time verdict and let a parked tick start into a
  * storm (or stay parked through a lift) that the latest poll already settled. */
-interface FleetGatePoll {
+interface TeamGatePoll {
   gate: BudgetGate;
   roleConfig: TumwaterConfig;
   /** The director's config this poll (pollBudgetGate's `directorConfig`). */
@@ -157,7 +157,7 @@ interface FleetGatePoll {
    * — none configured, one priced above zero, or its breaker demoted — starts no new ticks,
    * beside `capPaused` (the scheduling pass folds the sets the same way). Roles on tiers that
    * DID resolve keep ticking under the same poll, so a demoted strong pair no longer pauses
-   * the whole fleet. The probe of a demoted pair pierces this set for exactly the pair's own
+   * the whole team. The probe of a demoted pair pierces this set for exactly the pair's own
    * tier's roles (orchestrator-scheduling.ts's probeRoles). */
   budgetPausedRoles: ReadonlySet<string>;
   /** The demotion-aware per-tier resolution behind `budgetPausedRoles`, handed to the poll
@@ -182,7 +182,7 @@ interface FleetGatePoll {
 /** Inputs one poll needs: the live config the reload produced, the runner list (its states
  * feed the spend read and its config field is assigned here), and the orchestrator's info
  * file for the derived-state publish. */
-interface FleetGatePollCtx {
+interface TeamGatePollCtx {
   root: string;
   runners: readonly LoopRunner[];
   liveConfig: TumwaterConfig;
@@ -197,11 +197,11 @@ interface FleetGatePollCtx {
   reclaim?: ReclaimController;
 }
 
-/** Poll every fleet-wide gate and alarm, advancing `states` in place. */
-export function pollFleetGates(
-  states: FleetGateStates,
-  ctx: FleetGatePollCtx,
-): FleetGatePoll {
+/** Poll every team-wide gate and alarm, advancing `states` in place. */
+export function pollTeamGates(
+  states: TeamGateStates,
+  ctx: TeamGatePollCtx,
+): TeamGatePoll {
   const { root, runners, liveConfig, modelsPath, now, info } = ctx;
 
   // Daily cost budget gate (src/gates/budget-gates.ts owns the reads, the edge-triggered
@@ -271,7 +271,7 @@ export function pollFleetGates(
   // the reload, can never tick on the wrong model.
   for (const r of runners) {
     r.config = gateRoleConfig(r.role, liveConfig, roleConfig, directorConfig);
-    // An image reroute must never spend past the daily cap: while the gate has the fleet on
+    // An image reroute must never spend past the daily cap: while the gate has the team on
     // its free fallback pairs, a reroute looks only among those pairs (plans/image-input.md
     // "Reroute target" "Regime"). Set beside the config assignment so the scheduler's regime
     // and the loops' never disagree.
@@ -390,7 +390,7 @@ export function pollFleetGates(
   const bootstrapActive = states.bootstrap.active;
 
   // Per-role quiet hours (src/scheduling/quiet-hours.ts): a role whose own quietHoursPerRole window
-  // covers `now` starts no new ticks — the fleet window's semantics scoped to one loop, the
+  // covers `now` starts no new ticks — the team window's semantics scoped to one loop, the
   // director exempt like every autonomous gate. Stateless, recomputed per poll exactly like
   // capPaused: no crossing events, no state — a live config edit applies on the next poll
   // by construction. A role held by BOTH windows is held once: the scheduling pass folds
@@ -469,7 +469,7 @@ export function pollFleetGates(
       ...(r.lastBackendFailure ? { lastBackendFailure: r.lastBackendFailure } : {}),
     }));
 
-  // Fleet-wide failure hold, per provider (src/team/team-hold.ts, PLANS.md 2026-10-05): once two
+  // Team-wide failure hold, per provider (src/team/team-hold.ts, PLANS.md 2026-10-05): once two
   // roles' runs have ended on the SAME provider AND failure kind within a short window —
   // 429s, or a connection, timeout, 5xx, or model-load backend failure — role loops on THAT
   // provider start no new ticks, and the land queue starts no new vet, whose reviewer run
@@ -485,14 +485,14 @@ export function pollFleetGates(
   // goes back to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like
   // both siblings, and a role tick already parked in the semaphore meets the same hold at
   // its permit (the start gate) and hands its reservation back instead of starting
-  // into the storm. The verdicts are written back to states.fleetHold — one hold per
+  // into the storm. The verdicts are written back to states.teamHold — one hold per
   // provider, lifted holds kept keyed for their relapse memory but never reading as held —
   // and the permit-time closures read the LATEST poll's map there, so a waiter granted its
   // permit after a later poll sees that poll's world.
   const claudeAccount = readClaudeAccount(root, now);
-  states.fleetHold = pollFleetHold(
+  states.teamHold = pollTeamHold(
     root,
-    states.fleetHold,
+    states.teamHold,
     holdInputs(runners),
     now,
     claudeAccount,
@@ -515,19 +515,19 @@ export function pollFleetGates(
     now,
   );
 
-  // Fleet-wide error-storm warning (src/team/error-storm.ts): when several roles' tick streaks
+  // Team-wide error-storm warning (src/team/error-storm.ts): when several roles' tick streaks
   // fail consecutively on one shared cause, each role's own "consecutive tick failures"
-  // warning still fires alone — this adds the one fleet-level warning that names the
+  // warning still fires alone — this adds the one team-level warning that names the
   // cause (and the config knob, when the cause has one) instead of leaving the operator
   // to diff 14 streak lines. Observational only: it gates nothing, so unlike the failure
   // hold above there is no re-open event — the members' own recoveries tell that story.
   states.errorStorm = pollErrorStorm(root, states.errorStorm, runners);
 
-  // Fleet-wide wide-shallow storm alarm (src/team/failure-spread.ts): when many roles each
+  // Team-wide wide-shallow storm alarm (src/team/failure-spread.ts): when many roles each
   // fail a few times on one provider failure kind, the streak bar needs one role deep,
   // the error storm needs several roles deep, and the hold needs the failures close
   // together — this counts raw failures of one kind across roles in a rolling window,
-  // so a degraded backend that fails the fleet widely and shallowly still names itself.
+  // so a degraded backend that fails the team widely and shallowly still names itself.
   // Observational only, like the error storm: it gates nothing.
   states.failureSpread = pollFailureSpread(root, states.failureSpread, holdInputs(runners), now);
 

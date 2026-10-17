@@ -86,7 +86,7 @@ test("pollDiskGate: diskHoldGB 0 disables the hold at any free space", () => {
 });
 
 test("pollDiskGate: a live edit to diskHoldGB 0 lifts an active hold on the next poll", () => {
-  // The prevHeld===true branch: 0 must win over the hysteresis, or a fleet sitting inside
+  // The prevHeld===true branch: 0 must win over the hysteresis, or a team sitting inside
   // the old band would stay held after the operator disabled the hold.
   const root = tmpdir("disk-gate-off-live-");
   const state = newDiskGateState();

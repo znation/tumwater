@@ -31,7 +31,7 @@ import {
 } from "../scheduling/claims.js";
 
 /** One poll's gate verdicts and context, exactly the local view the poll body holds when
- * the scheduling pass runs (FleetGatePoll's fields beside the pass's own inputs). */
+ * the scheduling pass runs (TeamGatePoll's fields beside the pass's own inputs). */
 interface SchedulingPassCtx {
   root: string;
   runners: readonly LoopRunner[];
@@ -66,9 +66,9 @@ interface SchedulingPassCtx {
   /** With the review gate on, an unresolvable strong tier means nothing could land, so every
    * role is held (the director exempt) — not only the strong ones. budgetGate's second pause
    * cause, split from the per-tier set so the dashboards can name the tiers' own holds
-   * separately from this fleet-wide one. */
+   * separately from this team-wide one. */
   reviewStrongPaused: boolean;
-  /** The providers whose fleet-wide failure hold stands (team/team-hold.ts heldProviders —
+  /** The providers whose team-wide failure hold stands (team/team-hold.ts heldProviders —
    * `until` non-null; key presence is relapse memory, not a hold). A role starts no new
    * tick while ITS provider is held (the director exempt). */
   heldProviders: ReadonlySet<string | undefined>;
@@ -151,7 +151,7 @@ export async function pollRunnerReasons(
   // Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
   // with more than one runner assigns each due instance a distinct eligible entry, and releases
   // the claims whose entry left, turned ineligible, was disabled or went stale. Computed once
-  // per poll and only for a multi-runner base, so a single-runner fleet is unchanged. The
+  // per poll and only for a multi-runner base, so a single-runner team is unchanged. The
   // release runs before assignment so a freed key counts as free below.
   const claimGroups = new Map<
     string,
@@ -217,18 +217,18 @@ export async function pollRunnerReasons(
       hold,
     });
   }
-  // The fleet gates' block predicate (the director exempt — an explicit human prompt
+  // The team gates' block predicate (the director exempt — an explicit human prompt
   // outranks any autonomous gate, quiet hours included): the once-mode settle below and
-  // the start gate must agree on exactly when a fleet gate holds, so the compound lives
+  // the start gate must agree on exactly when a team gate holds, so the compound lives
   // here once. Quiet hours fold in beside the operator pause and the budget gate — the
   // schedule is not probe-worthy the way a paused budget is, so no probeDue exception.
-  // The per-role windows (quietHoursPerRole) fold in beside the fleet one as a fourth
+  // The per-role windows (quietHoursPerRole) fold in beside the team one as a fourth
   // disjunct — a role held by either window (or both, held once) starts no new ticks;
   // the director stays exempt by the same role check that covers the other disjuncts.
   // The budget hold, per role (part 5c/8): a tier that resolved to pause holds its own roles,
   // and — with review on — an unresolvable strong tier holds every role (nothing could land).
   // The probe of a demoted pair pierces the hold for EXACTLY the probed pair's tier's roles:
-  // the earlier draft's pair-blind pierce lifted the pause fleet-wide on any due probe.
+  // the earlier draft's pair-blind pierce lifted the pause team-wide on any due probe.
   // Quiet hours fold in beside the operator pause — the schedule is not probe-worthy the way a
   // paused budget is.
   const budgetHolds = (role: string): boolean =>
@@ -247,7 +247,7 @@ export async function pollRunnerReasons(
   // or a queued prompt.
   const bootstrapHeldNow = (runner: LoopRunner): boolean =>
     bootstrapHeld.has(runner.role) && !hasDemand(runner);
-  // The maintenance allowance's fleet-level hold (part 1b/4): `used` has reached `allowance`,
+  // The maintenance allowance's team-level hold (part 1b/4): `used` has reached `allowance`,
   // so no maintenance loop starts unless it carries demand (`tumwater wake <maintenance-role>`
   // runs exactly one tick). The per-poll admission headroom is spent separately, after each
   // loop's due check, where the pass knows what actually ticks; the verdict alone cannot.
@@ -289,7 +289,7 @@ export async function pollRunnerReasons(
     if (once.active && !runner.state.running && once.isSettled(runner)) continue;
     if (holdForRestart || diskHeld)
       continue; // a restart or a low disk is pending: nothing new starts, on any loop
-    // The per-role pause gates BEFORE the fleet check and exempts nothing — the director
+    // The per-role pause gates BEFORE the team check and exempts nothing — the director
     // included (the operator named that one loop deliberately).
     if (pausedRolesSet.has(runner.role) || pausedRolesSet.has(baseRoleOf(runner.role))) continue;
     // The role's own daily cost cap (src/gates/role-cap-gates.ts): no start-gate change — a
@@ -501,7 +501,7 @@ export async function pollRunnerReasons(
   return reasons;
 }
 
-/** The fleet-hold key of the reviewer's seam, read from the config merges actually review under
+/** The team-hold key of the reviewer's seam, read from the config merges actually review under
  * (the poll's roleConfig, which a used-up claude window or the cap has moved to a fallback), so
  * a reviewer that left claude no longer holds the whole team on the claude hold. */
 export function reviewHoldKey(roleConfig: TumwaterConfig): string | undefined {

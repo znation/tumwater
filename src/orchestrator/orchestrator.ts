@@ -47,7 +47,7 @@ import {
   p75TickDurationMs,
   sleepInterruptible,
 } from "../tick/tick-timing.js";
-import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gates/gate-polls.js";
+import { newTeamGateStates, pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";
 import { ReclaimController } from "../team/reclaim.js";
 import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
 import { planBacklogFull, workReserveCount } from "../scheduling/claims.js";
@@ -64,7 +64,7 @@ interface RunOptions {
    * resolves quickly; production callers omit it and keep the real cadence. */
   pollMs?: number;
   /** Self-redeploy state machine (src/redeploy/redeployer.ts; the policy it decides with
-   * lives in src/redeploy/redeploy-policy.ts) for a self-hosting fleet; null/absent when the
+   * lives in src/redeploy/redeploy-policy.ts) for a self-hosting team; null/absent when the
    * running dist carries no build stamp. Consulted every poll with main's head. */
   redeploy?: Redeployer | null;
   /** launchservicesd's port watch (src/process/launch-services.ts), stepped every poll;
@@ -100,7 +100,7 @@ interface RunOptions {
    * set before booting, so an unreachable-without-filter guard upstream is not re-checked. */
   roleFilter?: string;
   /** The `run --for` window's deadline (epoch ms), published in the info file so observers can
-   * show when the fleet stops. The deadline timer itself lives in cmdRun. */
+   * show when the team stops. The deadline timer itself lives in cmdRun. */
   stopsAt?: number;
 }
 
@@ -120,7 +120,7 @@ interface OrchestratorExit {
 }
 
 /** Run all enabled loops until the signal aborts — or until a pending self-redeploy has drained
- * the fleet and swapped the new build into dist/ (then `restart` is true). */
+ * the team and swapped the new build into dist/ (then `restart` is true). */
 export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExit> {
   const { root, config, mainBranch, signal: externalSignal } = opts;
   const pollMs = opts.pollMs ?? POLL_MS;
@@ -185,9 +185,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   writeOrchestratorInfo(root, info);
   // Best-effort, like every other event write in this function (see `emit` below): this runs
   // BEFORE the try/finally and its cleanup, so a raw logEvent throw here would not just stop
-  // the fleet from starting over an informational event — it would also skip the finally that
+  // the team from starting over an informational event — it would also skip the finally that
   // disposes the notifier and removes the info file just written. An unwritable feed
-  // (ENOSPC, EACCES, the path replaced by a directory) must not turn a fleet that can run
+  // (ENOSPC, EACCES, the path replaced by a directory) must not turn a team that can run
   // into one that refuses to start; logEventBestEffort reports the write failure on stderr so
   // it stays visible, and startup proceeds to the poll loop, which is already best-effort.
   logEventBestEffort(root, {
@@ -212,11 +212,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // window, right after the LoopRunners above: a role with a pending resume keeps its dir as a
   // pinned slot, every other legacy dir goes. Pass every configured loop id, not `enabled` (a
   // `--once --role` filter): a scoped run must not retire or unpin the other roles, whose
-  // pending resumes the next full-fleet start still owns. See retireLegacyRoleWorktrees.
+  // pending resumes the next full-team start still owns. See retireLegacyRoleWorktrees.
   await retireLegacyRoleWorktrees(root, loopIds(config));
 
   // Session retention (src/orchestrator/retention.ts owns the whole concern): construction runs the
-  // startup prune, seeding the once-per-day gate so an unchanged fleet prunes at most once
+  // startup prune, seeding the once-per-day gate so an unchanged team prunes at most once
   // per day — and 0 disables pruning, the same convention as quietTimeoutSeconds.
   const retentionPruner = new RetentionPruner(root, config.sessionRetentionDays);
 
@@ -236,10 +236,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const roleInFlight = new Set<Promise<void>>();
   const rolePermitHolders = new Set<LoopRunner>();
   const directorInFlight = new Set<Promise<void>>();
-  // The restart drain's window tracks the fleet's real tick duration (BUGS.md 2026-09-18): the
+  // The restart drain's window tracks the team's real tick duration (BUGS.md 2026-09-18): the
   // durations of recent COMPLETED role ticks feed a p75 that poll uses in place of the
   // cold-start constant. Bounded (orchestrator-launch.ts's ROLE_TICK_DURATION_SAMPLES) so a
-  // long-running fleet's memory stays flat; aborted ticks are
+  // long-running team's memory stays flat; aborted ticks are
   // excluded — their short cut-off durations would drag the window down and cause more aborts.
   const roleTickDurationsMs: number[] = [];
   // Every landing task (landing-drain.ts's LandingPipeline): the vetting stage's tasks, the
@@ -250,25 +250,25 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // settle reasons, and the quiet-poll exit rule — lives in src/scheduling/once-round.ts.
   const once = new OnceRound(runners, opts.once === true);
 
-  // The fleet-wide gates' and alarms' cross-poll memory (src/gates/gate-polls.ts owns the family's
+  // The team-wide gates' and alarms' cross-poll memory (src/gates/gate-polls.ts owns the family's
   // wiring — budget, pause, quiet hours, failure hold, and the two storm alarms): the gates'
   // previous values for the edge-triggered events, the fallback breaker, and the hold's own
   // memory (deadline, kind, relapse count). In memory only — a restart re-trusts the
   // fallback, starts with the hold open, and can re-log at most one event per gate. The
   // budget gate's breaker is also the fallback ticks' evidence sink: the start pass below
   // records every tick's outcome into it and runs its probe (src/budget/fallback-breaker.ts), and
-  // the start gate reads gateStates.fleetHold at permit time, so its closures always see
+  // the start gate reads gateStates.teamHold at permit time, so its closures always see
   // the latest poll's hold verdict rather than the poll that created them.
-  const gateStates: FleetGateStates = newFleetGateStates(config);
+  const gateStates: TeamGateStates = newTeamGateStates(config);
   // The live config the last successful reload produced (last-known-good while the file is
   // broken or missing). The reload bookkeeping itself lives in src/config/config-live.ts.
   const liveReload = newLiveConfigReload({ root, config, mainBranch, runnerSignal: roleSignal, runners, semaphore, roleFilter: opts.roleFilter });
   // The pause gates (src/gates/pause-gates.ts owns the concern): the operator pause's and the
   // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
   // event instead of once per ~2s poll.
-  // The primary checkout's branch, for the edge-triggered divergence warning: the fleet
+  // The primary checkout's branch, for the edge-triggered divergence warning: the team
   // resolved its target branch at startup, and a human checking out something else mid-run
-  // must not silently change what the fleet merges into — every role worktree is based on
+  // must not silently change what the team merges into — every role worktree is based on
   // the resolved branch. One warning per episode, re-armed when the checkout returns.
   let warnedBranchDivergence = false;
 
@@ -287,12 +287,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   let holdForRestart = false;
   // Whether the last poll's disk gate held new work (plans/disk-floor.md, part 1/4). Hoisted
   // beside holdForRestart because tickStartHeld reads it at permit time, between polls — the
-  // disk hold closes the same gate point every fleet-wide hold uses.
+  // disk hold closes the same gate point every team-wide hold uses.
   let diskHeld = false;
   // The start gate every reserved tick passes the moment its permit is granted
   // (runTimedRoleTick's `held`): closed while a restart is pending, and after one is decided so
   // no waiter the shutdown hands a permit to starts on the build being replaced. One predicate,
-  // so another fleet-wide hold on new ticks can close the same gate point.
+  // so another team-wide hold on new ticks can close the same gate point.
   const tickStartHeld = () => holdForRestart || restart || diskHeld;
 
   // The operator notify hook (src/events/notify.ts owns the whole concern): one configured shell
@@ -303,7 +303,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   // Best-effort event logging in the poll loop (bestEffortEventLogger, events.ts): this loop
   // and its finally run with no catch, so an unwritable feed (ENOSPC, EACCES, the path replaced
-  // by a directory) must not end the fleet — and, in the finally, must not skip the
+  // by a directory) must not end the team — and, in the finally, must not skip the
   // notifier/quiet-file cleanup or mask an in-flight error. The feed is the failure; the poll
   // and the shutdown still run.
   const { emit, warn } = bestEffortEventLogger(root);
@@ -348,7 +348,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // yet — isEligible treats an empty head as "no wake".
       const mainHead = (await branchHead(root, mainBranch)) ?? "";
       // Branch-divergence watch, once per poll (see warnedBranchDivergence above): the
-      // fleet keeps fast-forwarding the branch it resolved at startup — the safe behavior,
+      // team keeps fast-forwarding the branch it resolved at startup — the safe behavior,
       // since role worktrees are based on it — and one warning names the divergence
       // instead of leaving it mysterious. Back on the target branch re-arms the check.
       const liveBranch = await currentBranch(root);
@@ -362,14 +362,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
       const now = Date.now();
 
-      // The fleet's gates and alarms, one poll of the family (src/gates/gate-polls.ts): the daily
+      // The team's gates and alarms, one poll of the family (src/gates/gate-polls.ts): the daily
       // budget gate — with its derived-state publish and the fallback handback to the
-      // primary — the operator and per-role pause gates, quiet hours, the fleet-wide failure
+      // primary — the operator and per-role pause gates, quiet hours, the team-wide failure
       // hold, and the two observational storm alarms. The family's cross-poll memory lives
       // in gateStates, advanced in place; this returns this poll's verdicts for the
       // scheduling and start passes. The failure hold is deliberately not among them — the
       // start gate and the landings' startHeld read the LATEST poll's verdict at permit
-      // time from gateStates.fleetHold, so a waiter granted its permit after later polls
+      // time from gateStates.teamHold, so a waiter granted its permit after later polls
       // ran meets the hold as it stands then, not as this poll left it.
       const {
         roleConfig,
@@ -387,7 +387,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         roleQuietHeld,
         quietNow,
         diskHeld: polledDiskHeld,
-      } = pollFleetGates(gateStates, {
+      } = pollTeamGates(gateStates, {
         root,
         runners,
         liveConfig,
@@ -400,9 +400,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // (plans/disk-floor.md, part 1/4).
       diskHeld = polledDiskHeld;
       // Publish the permit pool's live state (plans/provider-concurrency.md §8): observers
-      // (status, TUI, GUI) read one file instead of coupling to this Semaphore, and the fleet
+      // (status, TUI, GUI) read one file instead of coupling to this Semaphore, and the team
       // line shows per-provider counts only while a cap map is configured. Written only when
-      // it changes, like budget and disk; a map-less fleet publishes `byKey` empty, which
+      // it changes, like budget and disk; a map-less team publishes `byKey` empty, which
       // renders exactly as before.
       publishInfoFields(root, info, [["permits", semaphore.snapshot()]]);
 
@@ -411,18 +411,18 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // reviewer's provider is (with the review gate on, nothing could land — and the land
       // queue below reads the same reviewHeld verdict). Key presence in the map is relapse
       // memory, not a hold: heldProviders() reads only standing holds (`until` non-null),
-      // so a lifted hold never keeps blocking. Read fresh from gateStates.fleetHold — the
+      // so a lifted hold never keeps blocking. Read fresh from gateStates.teamHold — the
       // permit-time closures below see the latest poll's verdicts, not this poll's snapshot.
-      const fleetHeldProviders = heldProviders(gateStates.fleetHold);
+      const teamHeldProviders = heldProviders(gateStates.teamHold);
       // Fresh reads for the permit-time closures: they run after later polls have advanced
-      // gateStates.fleetHold, so they re-derive from the LATEST poll's map, not this snapshot.
-      const fleetHeldNow = () => heldProviders(gateStates.fleetHold);
+      // gateStates.teamHold, so they re-derive from the LATEST poll's map, not this snapshot.
+      const teamHeldNow = () => heldProviders(gateStates.teamHold);
       // The reviewer's seam is read from the config merges actually review under — the poll's
       // roleConfig, which a used-up claude window or the cap has already moved to a fallback —
       // so a reviewer that left claude no longer holds the whole team on the claude hold.
       const reviewSeamKey = reviewHoldKey(roleConfig);
-      const reviewHeldNow = () => liveConfig.review.enabled && fleetHeldNow().has(reviewSeamKey);
-      const reviewHeld = liveConfig.review.enabled && fleetHeldProviders.has(reviewSeamKey);
+      const reviewHeldNow = () => liveConfig.review.enabled && teamHeldNow().has(reviewSeamKey);
+      const reviewHeld = liveConfig.review.enabled && teamHeldProviders.has(reviewSeamKey);
       const roleProviders = new Map(runners.map((r) => [r.role, r.runProvider(now)]));
 
       // Self-redeploy (src/redeploy/redeployer.ts): with main's head in hand, let the state
@@ -507,7 +507,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // admits exactly one of them as the probe — a probe blind to the pair's tier would lift
       // the pause for every role (objection to an earlier draft), and a probe with no
       // eligible runner must not hijack the poll's other launches (the launch pass continues
-      // only the eligible runners it cannot admit, never the rest of the fleet).
+      // only the eligible runners it cannot admit, never the rest of the team).
       const probePair = fallbackProbeDuePair(gateStates.budget.breakers, breakerNow());
       const probeRoles = new Set<string>();
       if (probePair !== null) {
@@ -542,8 +542,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         roleQuietHeld,
         holdForRestart,
         diskHeld,
-        heldProviders: fleetHeldProviders,
-        windowHeldProviders: windowHeldProviders(gateStates.fleetHold),
+        heldProviders: teamHeldProviders,
+        windowHeldProviders: windowHeldProviders(gateStates.teamHold),
         reviewHeld,
         roleProviders,
         openBugsNow,
@@ -574,8 +574,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         startHeld: (role) =>
           tickStartHeld() ||
           (role !== DIRECTOR_ROLE
-            ? reviewHeldNow() || fleetHeldNow().has(roleProviders.get(role))
-            : windowHeldProviders(gateStates.fleetHold).has(roleProviders.get(role))),
+            ? reviewHeldNow() || teamHeldNow().has(roleProviders.get(role))
+            : windowHeldProviders(gateStates.teamHold).has(roleProviders.get(role))),
       });
 
       // Priority headroom (plans/parallel-work-instances.md part 7/7): withhold a few permits
@@ -593,7 +593,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // Per-provider headroom (plans/provider-concurrency.md §6): an idle work loop reserves a
         // permit only when its own provider could use it — capped and full, it would only idle
         // the slot another provider's maintenance tick could take. Read from the pool's live
-        // snapshot; an uncapped key (or the fleet-total-only case) always has headroom.
+        // snapshot; an uncapped key (or the team-total-only case) always has headroom.
         providerHasHeadroom: (r) => {
           const runner = runnerByRole.get(r.role);
           const cfg = runner && runner.role !== DIRECTOR_ROLE ? runner.runConfig(now) : null;

@@ -8,15 +8,15 @@
  * and setKeyCaps touch the keyed path. */
 
 /** The handle one keyed acquisition owns: the key it currently holds, a release that hands the
- * fleet permit and the key's slot back, and a rekey that moves the lease onto another key. */
+ * team permit and the key's slot back, and a rekey that moves the lease onto another key. */
 export interface SemaphoreLease {
   /** The key the lease currently holds (undefined for an uncapped holder). */
   key?: string;
-  /** Return the fleet permit and the key's in-use slot, then hand either to a parked waiter. */
+  /** Return the team permit and the key's in-use slot, then hand either to a parked waiter. */
   release(): void;
   /** Move the lease onto `to`: give the old key back first (waking its waiters), then wait
-   * only for the new key's headroom while keeping the fleet permit. A parked re-key queues
-   * ahead of every admission waiter, because it holds a fleet permit nobody else can use while
+   * only for the new key's headroom while keeping the team permit. A parked re-key queues
+   * ahead of every admission waiter, because it holds a team permit nobody else can use while
    * it waits. A forced lease re-keys without waiting. */
   rekey(to?: string): Promise<void>;
 }
@@ -26,8 +26,8 @@ export class Semaphore {
    * resolver that hands it the permit. Keyless waiters (the legacy path) carry no key and are
    * never held by a key cap. */
   private readonly waiters: Array<{ tier: number; key?: string; resolve: () => void }> = [];
-  /** A parked re-key waiter: it already holds a fleet permit, so it waits only for its key's
-   * headroom, ahead of every admission waiter (which would otherwise queue a fleet permit
+  /** A parked re-key waiter: it already holds a team permit, so it waits only for its key's
+   * headroom, ahead of every admission waiter (which would otherwise queue a team permit
    * uselessly behind another provider's runs). `granted` flips when drive() hands the waiter
    * the target key's slot, so the lease's release can tell a landed grant (give it back) from
    * a still-parked one (cancel it) when the two interleave. */
@@ -91,7 +91,7 @@ export class Semaphore {
     });
   }
 
-  /** Admit by both the fleet total and an optional provider key at once, waiting until both
+  /** Admit by both the team total and an optional provider key at once, waiting until both
    * hold, and return a lease handle. `tier` orders the wait exactly as acquire does; `key`
    * bounds the permit by its provider cap: granted when `inUse < capacity − reserveFor(tier)`
    * and the key is under its cap (an absent or uncapped key always passes). FIFO holds within
@@ -114,7 +114,7 @@ export class Semaphore {
       if (parkedRekey !== null) {
         // A re-key is parked waiting on its new key. Cancel it: pull it off the queue (so
         // drive can't grant it) and, if the grant already landed this microtask, give the
-        // new key's slot back. The lease holds no slot either way, so the fleet permit is the
+        // new key's slot back. The lease holds no slot either way, so the team permit is the
         // only thing to free.
         const w = parkedRekey;
         const idx = this.rekeyWaiters.indexOf(w);
@@ -175,7 +175,7 @@ export class Semaphore {
   }
 
   /** Synchronously report whether acquireLease(tier, key) would return at once — both the
-   * fleet total and the key (when set) have headroom right now, and the tier's reserve is
+   * team total and the key (when set) have headroom right now, and the tier's reserve is
    * satisfied. Mirrors the exact fast-path condition acquireLease's first branch uses, so a
    * caller can decide whether to show a "waiting for a slot" state before awaiting a lease
    * that would actually park (landing-drain.ts's resolver wrapper). */
@@ -184,7 +184,7 @@ export class Semaphore {
   }
 
   /** The director's bypass: take a key's slot at once, never waiting, and never counting toward
-   * the fleet cap. It DOES count toward the key's in-use, so a forced lease can overshoot a
+   * the team cap. It DOES count toward the key's in-use, so a forced lease can overshoot a
    * full key by one holder; no grant on that key happens until a release drains it back under
    * the cap. Its re-key also never waits. */
   forceLease(key?: string): SemaphoreLease {
@@ -212,17 +212,17 @@ export class Semaphore {
     return lease;
   }
 
-  /** Hand every parked waiter a permit it can take — both fleet and key headroom — in one
+  /** Hand every parked waiter a permit it can take — both team and key headroom — in one
    * pass. The one home of the permit hand-off: release, setCapacity, setReserve and setKeyCaps
-   * all drive it, and growth loops it to fill new headroom. It never admits past the fleet cap
-   * or a key cap. Re-key waiters run first (they already hold a fleet permit, so they wait only
+   * all drive it, and growth loops it to fill new headroom. It never admits past the team cap
+   * or a key cap. Re-key waiters run first (they already hold a team permit, so they wait only
    * on their key). Admission waiters are scanned in queue (tier, then FIFO) order: a waiter
    * whose key is full is skipped and keeps its place, so a later waiter on a free key is never
    * stuck behind it — but the reserve stops the scan at the first tier ≥ 1 waiter it withholds
    * from, since the tier-ascending queue means everything behind is withheld too. */
   private drive(): void {
     for (;;) {
-      // Re-key waiters first: no fleet check — they already hold a fleet permit.
+      // Re-key waiters first: no team check — they already hold a team permit.
       let granted = false;
       for (let i = 0; i < this.rekeyWaiters.length; i++) {
         const w = this.rekeyWaiters[i]!;
@@ -305,7 +305,7 @@ export class Semaphore {
     this.drive();
   }
 
-  /** The pool's live state for observability (plans/provider-concurrency.md §8): the fleet
+  /** The pool's live state for observability (plans/provider-concurrency.md §8): the team
    * in-use/cap, the reserve, and each referenced key's in-use, cap (undefined when uncapped)
    * and waiting count. */
   snapshot(): {

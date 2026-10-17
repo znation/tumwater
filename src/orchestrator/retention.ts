@@ -37,8 +37,8 @@ export class RetentionPruner {
   }
 
   /** Apply a (possibly live-reloaded) retention window: a mid-run edit re-prunes immediately;
-   * independently of edits, an unchanged fleet prunes at most once per day so a never-restarted
-   * fleet still honors its window. Both paths log the startup warning shape only when files
+   * independently of edits, an unchanged team prunes at most once per day so a never-restarted
+   * team still honors its window. Both paths log the startup warning shape only when files
    * were actually deleted — quiet polls stay silent. */
   poll(root: string, retentionDays: number): void {
     if (retentionDays !== this.lastRetention || dueForPrune(this.lastPruneAt, Date.now(), retentionDays)) {

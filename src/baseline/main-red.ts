@@ -30,7 +30,7 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
 
 /** The last main SHA for which this process logged a red-main hold event (the baseline check):
  * one harness-level warning per newly-discovered red SHA, not one per blocked role's tick —
- * module-level so every runner in the fleet shares it. A restart re-logs once: the cache is
+ * module-level so every runner in the team shares it. A restart re-logs once: the cache is
  * cold then too, and an operator restarting into a still-red main should see why nothing lands. */
 let lastMainRedSha: string | null = null;
 
@@ -42,7 +42,7 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
   return `${mainRedPhrase(red.sha)} (${red.script}${firstLine ? `: ${firstLine}` : ""}) — ${action}`;
 }
 
-/** Log the fleet-wide `main_red_hold` event (the notify hook pages it) for `red`'s SHA at
+/** Log the team-wide `main_red_hold` event (the notify hook pages it) for `red`'s SHA at
  * most once per process. Module-level (with lastMainRedSha) so the gate and the bugfix
  * handoff share one guard: whichever observes the red first logs it, the other stays silent. */
 function warnMainRedOnce(root: string, red: { sha: string; script?: string; outputTail?: string[] }): void {
@@ -59,7 +59,7 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
  * that paid for it, with its duration — the gate's build_check sibling, so both halves of the
- * fleet's deterministic verification are priced in the feed. The one logger for every baseline
+ * team's deterministic verification are priced in the feed. The one logger for every baseline
  * check this module runs — the bugfix handoff, the authoring gate, and mainTipVerdict's tip
  * check (which review.ts's gate and landing-check-failures.ts's attributeRedCheck reach
  * through it) — so the event's shape cannot drift between them. */
@@ -71,7 +71,7 @@ function baselineCheckLogger(
 }
 
 /** Red-main handoff for the `bugfix` healer: mainRedGate exempts
- * bugfix so the only role that can unblock the fleet may author, but its prompt then starts from
+ * bugfix so the only role that can unblock the team may author, but its prompt then starts from
  * BUGS.md and knows nothing about the red suite. This runs the same per-SHA baseline check
  * (cache and provisional-red re-verification reused unchanged, so it costs at most the one run
  * the gate would have paid for) and, when main is red, returns the note that points the healer
@@ -169,11 +169,11 @@ let gateMainQueue: Promise<unknown> = Promise.resolve();
 
 /** Main's baseline verdict at its current tip, for attributing a gate check that failed twice
  * (src/review/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked
- * through checkMainBaseline — the same per-SHA, fleet-wide cache mainRedGate reads, which every
+ * through checkMainBaseline — the same per-SHA, team-wide cache mainRedGate reads, which every
  * landing seeds green for the SHA it moved main to, so the common case is a cache hit. A miss
  * (or a provisional red from another worktree, or a green that was only inherited across doc
  * commits) runs the declared check once here, bounded by its timeout. A red is warned
- * fleet-wide once per SHA, exactly as mainRedGate warns it. Never throws: an unreadable main,
+ * team-wide once per SHA, exactly as mainRedGate warns it. Never throws: an unreadable main,
  * a checkout that fails, no declared check on main, or a skipped
  * run all read as `unavailable`.
  *

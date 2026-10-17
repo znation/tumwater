@@ -1,5 +1,5 @@
 /** pollPauseGates (src/gates/pause-gates.ts): the edge-triggered event logging and gate reads the
- *  orchestrator's poll loop depends on. Exercises the real markers — pauseFleet/resumeFleet and
+ *  orchestrator's poll loop depends on. Exercises the real markers — pauseTeam/resumeTeam and
  *  pauseRole/resumeRole write exactly what the CLI writes, so the contract under test is
  *  producer-and-consumer together, not a mock of either side. */
 
@@ -7,22 +7,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { newPauseGateState, pollPauseGates } from "../src/gates/pause-gates.js";
-import { pauseFleet, resumeFleet, pauseRole, resumeRole } from "../src/team/team-state.js";
+import { pauseTeam, resumeTeam, pauseRole, resumeRole } from "../src/team/team-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 
-test("pollPauseGates: quiet fleet — no gates, no events", () => {
+test("pollPauseGates: quiet team — no gates, no events", () => {
   const root = tmpdir("pause-gates-");
   const state = newPauseGateState();
   assert.deepEqual(pollPauseGates(root, state), { userPaused: false, pausedRoles: new Set() });
   assert.deepEqual(eventTypes(root, "team_paused", "team_resumed", "role_paused", "role_resumed"), []);
 });
 
-test("pollPauseGates: fleet pause logs team_paused once, resume logs team_resumed once", () => {
+test("pollPauseGates: team pause logs team_paused once, resume logs team_resumed once", () => {
   const root = tmpdir("pause-gates-");
   const state = newPauseGateState();
 
-  pauseFleet(root);
+  pauseTeam(root);
   assert.equal(pollPauseGates(root, state).userPaused, true);
   assert.deepEqual(eventTypes(root, "team_paused", "team_resumed"), ["team_paused"]);
 
@@ -30,7 +30,7 @@ test("pollPauseGates: fleet pause logs team_paused once, resume logs team_resume
   assert.equal(pollPauseGates(root, state).userPaused, true);
   assert.deepEqual(eventTypes(root, "team_paused", "team_resumed"), ["team_paused"]);
 
-  resumeFleet(root);
+  resumeTeam(root);
   assert.equal(pollPauseGates(root, state).userPaused, false);
   assert.deepEqual(eventTypes(root, "team_paused", "team_resumed"), ["team_paused", "team_resumed"]);
 
@@ -41,7 +41,7 @@ test("pollPauseGates: fleet pause logs team_paused once, resume logs team_resume
 
 test("pollPauseGates: restart mid-pause logs one event on the first poll", () => {
   const root = tmpdir("pause-gates-");
-  pauseFleet(root);
+  pauseTeam(root);
   // Fresh state = a restarted orchestrator: the standing marker gates, and the documented
   // behavior is exactly one team_paused event, not one per poll and not silence.
   const state = newPauseGateState();
@@ -97,20 +97,20 @@ test("pollPauseGates: a per-role pause that expires while no poll runs reads as 
   assert.deepEqual(eventTypes(root, "role_paused", "role_resumed"), ["role_paused", "role_resumed"]);
 });
 
-test("pollPauseGates: fleet and per-role gates are independent", () => {
+test("pollPauseGates: team and per-role gates are independent", () => {
   const root = tmpdir("pause-gates-");
   const state = newPauseGateState();
 
   pauseRole(root, "tests");
-  pauseFleet(root);
+  pauseTeam(root);
   const both = pollPauseGates(root, state);
   assert.equal(both.userPaused, true);
   assert.deepEqual(both.pausedRoles, new Set(["tests"]));
 
-  resumeFleet(root);
-  const fleetOnly = pollPauseGates(root, state);
-  assert.equal(fleetOnly.userPaused, false);
-  assert.deepEqual(fleetOnly.pausedRoles, new Set(["tests"]));
+  resumeTeam(root);
+  const teamOnly = pollPauseGates(root, state);
+  assert.equal(teamOnly.userPaused, false);
+  assert.deepEqual(teamOnly.pausedRoles, new Set(["tests"]));
   assert.deepEqual(eventTypes(root, "team_paused", "team_resumed", "role_paused", "role_resumed"), [
     "role_paused",
     "team_paused",

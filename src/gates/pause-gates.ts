@@ -1,10 +1,10 @@
 /** The operator pause (`tumwater pause`) and the per-role pause (`tumwater pause --role <id>`), as
  * the orchestrator polls them each cycle. Extracted from orchestrator.ts's poll loop: the marker
  * reads, the edge-triggered pause/resume events, and the cross-poll bookkeeping are one concern
- * beside the other fleet gates (src/budget/budget.ts's budget gate, src/team/team-hold.ts's fleet
+ * beside the other team gates (src/budget/budget.ts's budget gate, src/team/team-hold.ts's team
  * hold) — the orchestrator owns only the wiring. */
 
-import { isFleetPaused, pausedRoles } from "../team/team-state.js";
+import { isTeamPaused, pausedRoles } from "../team/team-state.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 
 /** The previous poll's pause state, so each pause/resume crossing logs exactly one event
@@ -16,14 +16,14 @@ export interface PauseGateState {
 }
 
 /** A fresh poll's pause state: the operator pause (presence of the marker file — pausing
- * before startup starts an already-paused fleet, removing the marker mid-run unblocks roles
+ * before startup starts an already-paused team, removing the marker mid-run unblocks roles
  * on their next eligibility without a restart) and the per-role pause's set. */
 interface PauseGates {
   userPaused: boolean;
   pausedRoles: Set<string>;
 }
 
-/** A fresh pause-gate state: nothing seen paused yet, so the first poll of an unpaused fleet
+/** A fresh pause-gate state: nothing seen paused yet, so the first poll of an unpaused team
  * logs nothing. */
 export function newPauseGateState(): PauseGateState {
   return { prevUserPaused: false, prevPausedRoles: new Set() };
@@ -37,12 +37,12 @@ export function newPauseGateState(): PauseGateState {
  * only NEW ticks are blocked, because the gate sits before isEligible.
  *
  * Per-role pause (`tumwater pause --role <id>`): the operator pause's narrower sibling — the
- * same persistent marker read fresh per cycle, but one named loop instead of the fleet. Unlike
- * the fleet pause the director is NOT exempt: the operator named the role deliberately, and its
- * queued prompts simply wait in the inbox (the same effect the fleet pause has on the director).
+ * same persistent marker read fresh per cycle, but one named loop instead of the team. Unlike
+ * the team pause the director is NOT exempt: the operator named the role deliberately, and its
+ * queued prompts simply wait in the inbox (the same effect the team pause has on the director).
  * In-flight ticks finish; only NEW ticks are blocked (the gate sits before isEligible). */
 export function pollPauseGates(root: string, state: PauseGateState): PauseGates {
-  const userPaused = isFleetPaused(root);
+  const userPaused = isTeamPaused(root);
   if (userPaused !== state.prevUserPaused) {
     logEventBestEffort(root, { source: TUMWATER_SOURCE, type: userPaused ? "team_paused" : "team_resumed" });
     state.prevUserPaused = userPaused;

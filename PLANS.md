@@ -21,36 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code team, part 3/6: Rename the fleet identifiers in the gates and orchestrator and doctor and status modules (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/orchestrator/ src/doctor/ src/status/ src/concurrency/ src/baseline/ and their tests)
-
-**Goal.** Identifiers, comments and test names in these directories say team, and they stop using the part 2/6 aliases. A mechanical rename of about 500 lines with no behavior change.
-
-**Approach.**
-- **Rename rule** (the fleet row of "Code names"):
-  - in identifiers, `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM`;
-  - in comments, "fleet" → "team";
-  - the same in test names, temp-dir prefixes and assertion messages.
-- **Exports and members, renamed at their declarations together with every use** (no other part uses them, so no alias is needed):
-  - src/gates/gate-polls.ts: `pollFleetGates` → `pollTeamGates`, `newFleetGateStates` → `newTeamGateStates`, `FleetGateStates` → `TeamGateStates`, plus the local types `FleetGatePoll` → `TeamGatePoll` and `FleetGatePollCtx` → `TeamGatePollCtx`;
-  - the gate-state member `fleetHold` → `teamHold`.
-- **Locals follow the rule.** Examples: `fleet` → `team` in doctor-holds.ts and `aliveFleet` → `aliveTeam`, along with `fleetHeldNow`, `fleetHeldProviders`, `fleetOnly` and `fleetPause`.
-- **Move off the part 2/6 aliases.** In these files, use `pauseTeam`, `resumeTeam`, `isTeamPaused`, `standingTeamPause`, `TEAM_OPEN`, `teamHold`, `TeamHold` and `pollTeamHold`. When test/exports.test.ts reports an alias as unused, delete it in this part.
-- **Leave for their own parts.** Do not rename `fleetAlerts` (part 4/6) or `fleetDailyCost` and `fleetModelsFree` (part 5/6), even where these files call them. Those parts rename every caller.
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - legacy names kept on purpose;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-- Comment lines wrap at 100 columns.
-
-**Files touched.** `src/gates/`, `src/orchestrator/`, `src/doctor/`, `src/status/`, `src/concurrency/`, `src/baseline/`. Tests: `test/gate-polls.test.ts`, `test/pause-gates.test.ts`, `test/budget-gates.test.ts`, `test/disk-gate.test.ts`, `test/streak-gate.test.ts`, `test/gate-event-best-effort.test.ts`, `test/orchestrator-*.test.ts` (the `.e2e` ones too), `test/doctor-*.test.ts`, `test/status-data*.test.ts` (with `status-data-team.test.ts`), `test/status-budget.test.ts`, `test/status-header.test.ts`, `test/semaphore.test.ts`, `test/provider-lease.test.ts`, `test/check-permit.test.ts`, `test/main-baseline*.test.ts`, `test/main-red.test.ts`.
-
-**Acceptance criteria.**
-- `pollFleetGates`, `newFleetGateStates` and `FleetGateStates` no longer appear anywhere in src/ or test/.
-- In the listed files, the only fleet identifiers left are calls to `fleetAlerts`, `fleetDailyCost` and `fleetModelsFree`, and no comment or test name says fleet, apart from quoted backlog titles.
-- None of the listed files uses a part 2/6 alias.
-- `npm run test` passes.
-
 ### Plain terms code team, part 4/6: Rename the fleet identifiers in the dashboard and TUI and change and text modules (planned 2026-10-16 by user; requires part 3/6 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/gui/ src/change/ src/text/ and their tests)
 
 **Goal.** The UI layers' identifiers, comments, test names and the dashboard's internal DOM ids say team. That includes the browser code the dashboard ships as `String.raw` templates. A mechanical rename of about 500 lines with no behavior change.
@@ -1640,6 +1610,36 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/claims.test.ts`: add `paused: false` to the shared `ctx` in "claimReleaseReason releases left, ineligible, disabled-idle and stale-idle claims", rename it to also say paused-idle, and assert `{ ...ctx, paused: true }` gives `"paused"`. In "an idle extra with a revision, a queued landing, a resume or a running tick keeps its claim", add assertions that each of those four cases still gives `null` with `paused: true`.
 - `test/orchestrator-scheduling.test.ts`: a new test modeled on "lowering feature.instances releases a surplus instance's claim instead of holding it". After a first poll gives `feature-2` the claim on `beta`, a second poll whose `pausedRoles` is `new Set(["feature-2"])` leaves `feature2.state.claim` undefined, and `loadLoopState(root, "feature-2").claim` is undefined too. `feature` keeps `alpha`.
 - A second new test: with `pausedRoles` of `new Set(["feature", "feature-2"])` on the second poll, `feature2.state.claim?.key` is still `"beta"`. Pausing the whole role keeps the claim.
+- `npm run test` passes.
+
+### Plain terms code team, part 3/6: Rename the fleet identifiers in the gates and orchestrator and doctor and status modules (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/orchestrator/ src/doctor/ src/status/ src/concurrency/ src/baseline/ and their tests) (done 2026-10-16)
+
+**Goal.** Identifiers, comments and test names in these directories say team, and they stop using the part 2/6 aliases. A mechanical rename of about 500 lines with no behavior change.
+
+**Approach.**
+- **Rename rule** (the fleet row of "Code names"):
+  - in identifiers, `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM`;
+  - in comments, "fleet" → "team";
+  - the same in test names, temp-dir prefixes and assertion messages.
+- **Exports and members, renamed at their declarations together with every use** (no other part uses them, so no alias is needed):
+  - src/gates/gate-polls.ts: `pollFleetGates` → `pollTeamGates`, `newFleetGateStates` → `newTeamGateStates`, `FleetGateStates` → `TeamGateStates`, plus the local types `FleetGatePoll` → `TeamGatePoll` and `FleetGatePollCtx` → `TeamGatePollCtx`;
+  - the gate-state member `fleetHold` → `teamHold`.
+- **Locals follow the rule.** Examples: `fleet` → `team` in doctor-holds.ts and `aliveFleet` → `aliveTeam`, along with `fleetHeldNow`, `fleetHeldProviders`, `fleetOnly` and `fleetPause`.
+- **Move off the part 2/6 aliases.** In these files, use `pauseTeam`, `resumeTeam`, `isTeamPaused`, `standingTeamPause`, `TEAM_OPEN`, `teamHold`, `TeamHold` and `pollTeamHold`. When test/exports.test.ts reports an alias as unused, delete it in this part.
+- **Leave for their own parts.** Do not rename `fleetAlerts` (part 4/6) or `fleetDailyCost` and `fleetModelsFree` (part 5/6), even where these files call them. Those parts rename every caller.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - legacy names kept on purpose;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Comment lines wrap at 100 columns.
+
+**Files touched.** `src/gates/`, `src/orchestrator/`, `src/doctor/`, `src/status/`, `src/concurrency/`, `src/baseline/`. Tests: `test/gate-polls.test.ts`, `test/pause-gates.test.ts`, `test/budget-gates.test.ts`, `test/disk-gate.test.ts`, `test/streak-gate.test.ts`, `test/gate-event-best-effort.test.ts`, `test/orchestrator-*.test.ts` (the `.e2e` ones too), `test/doctor-*.test.ts`, `test/status-data*.test.ts` (with `status-data-team.test.ts`), `test/status-budget.test.ts`, `test/status-header.test.ts`, `test/semaphore.test.ts`, `test/provider-lease.test.ts`, `test/check-permit.test.ts`, `test/main-baseline*.test.ts`, `test/main-red.test.ts`.
+
+**Acceptance criteria.**
+- `pollFleetGates`, `newFleetGateStates` and `FleetGateStates` no longer appear anywhere in src/ or test/.
+- In the listed files, the only fleet identifiers left are calls to `fleetAlerts`, `fleetDailyCost` and `fleetModelsFree`, and no comment or test name says fleet, apart from quoted backlog titles.
+- None of the listed files uses a part 2/6 alias.
 - `npm run test` passes.
 
 ### A notify page the once-a-minute throttle holds back is sent when the minute ends, so a second question, refusal or failed merge in a burst still reaches the operator (planned 2026-10-16 by plan; independent of every other entry — touches src/events/notify.ts, test/notify.test.ts and docs/config.md) (done 2026-10-16)

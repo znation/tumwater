@@ -1,4 +1,4 @@
-/** The mixed pi + claude fleet e2e (plans/provider-concurrency.md §9, part 1/4): one
+/** The mixed pi + claude team e2e (plans/provider-concurrency.md §9, part 1/4): one
  * orchestrator run whose seams span both backends — a feature author on an omlx pi selector
  * and a claude reviewer on `review.model`. It proves the basic mixed path works end to end: a
  * pi author makes a change, the claude CLI reviews and approves it, and the change lands on
@@ -22,9 +22,9 @@ import { claudeAssistant, claudeInit, claudeResult, claudeText } from "./fixture
 import { assistantLine } from "./fixtures/pi-events.js";
 import { waitFor } from "./helpers/wait.js";
 
-test("a pi author and a claude reviewer run in one fleet and the change lands on main", async () => {
+test("a pi author and a claude reviewer run in one team and the change lands on main", async () => {
   const repo = makeRepo();
-  await initProject(repo, "mixed pi + claude fleet");
+  await initProject(repo, "mixed pi + claude team");
   const cfg = fastConfig(["feature"]);
   cfg.model = "omlx/qwen-mlx"; // the authoring tier runs on pi's omlx provider
   cfg.review = { ...(cfg.review ?? {}), enabled: true, model: "claude/claude-sonnet-5-5" };

@@ -1,10 +1,10 @@
 /** The disk floor's hold (plans/disk-floor.md, "Disk floor 1/4"): when the volume the harness
- * worktrees live on runs low on free space, the fleet starts no new work — role ticks, the
- * director, landing vets and merges — so a fleet of build-heavy checkouts cannot fill the
+ * worktrees live on runs low on free space, the team starts no new work — role ticks, the
+ * director, landing vets and merges — so a team of build-heavy checkouts cannot fill the
  * disk. The syscall, the hold's hysteresis, and the edge-triggered `disk_low`/`disk_ok`
  * events live here; the orchestrator owns only the wiring, exactly like the quiet-hours and
  * pause gates. Part 2/4 reclaims build outputs so the hold rarely engages; this part turns
- * "disk full" into "fleet held, with a notification". In-flight work runs on — killing it
+ * "disk full" into "team held, with a notification". In-flight work runs on — killing it
  * wastes the work without freeing anything a finished run would not free anyway.
  *
  * The measurement is deliberately language-agnostic: `fs.statfsSync` reports the bytes an
@@ -19,24 +19,24 @@ import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../eve
 export const BYTES_PER_GB = 1_000_000_000;
 
 /** How far free space must climb back ABOVE `diskHoldGB` before the hold lifts. Without it a
- * fleet hovering at the line would flap in and out of the hold every poll. */
+ * team hovering at the line would flap in and out of the hold every poll. */
 export const DISK_HOLD_HYSTERESIS_GB = 5;
 
 /** A synchronous statfs call, shaped so tests can inject a fixed sample. `fs.statfsSync`'s
  * own overloads return a bigint variant too; the sampler below narrows to the number form. */
 export type StatfsLike = (path: fs.PathLike) => fs.StatsFs;
 
-/** The volume the fleet's builds write to: the worktrees dir once it exists, else the root
- * (a fleet that has not created a worktree yet measures the checkout's own volume). One home
+/** The volume the team's builds write to: the worktrees dir once it exists, else the root
+ * (a team that has not created a worktree yet measures the checkout's own volume). One home
  * of the choice so the sampler and doctor's detail name the same path. */
 export function diskVolumePath(root: string): string {
   const worktrees = worktreesDir(root);
   return fs.existsSync(worktrees) ? worktrees : root;
 }
 
-/** Free bytes available to an unprivileged user on the volume the fleet builds on, or null
+/** Free bytes available to an unprivileged user on the volume the team builds on, or null
  * when statfs throws (an unsupported platform or filesystem). A null sample never holds —
- * the fleet keeps running rather than freezing on a measurement it cannot make. */
+ * the team keeps running rather than freezing on a measurement it cannot make. */
 export function sampleFreeBytes(
   root: string,
   statfs: StatfsLike = (p) => fs.statfsSync(p),
@@ -58,7 +58,7 @@ export interface DiskGateState {
   warnedUnmeasurable: boolean;
 }
 
-/** A fresh gate state: not held, warning unspent — so the first poll of a fleet with room
+/** A fresh gate state: not held, warning unspent — so the first poll of a team with room
  * logs nothing. */
 export function newDiskGateState(): DiskGateState {
   return { prevHeld: false, warnedUnmeasurable: false };
@@ -66,7 +66,7 @@ export function newDiskGateState(): DiskGateState {
 
 /** Poll the disk gate for one orchestrator cycle: with `freeBytes` in hand, decide the hold
  * (edge-triggered with `DISK_HOLD_HYSTERESIS_GB` of hysteresis) and log exactly one
- * `disk_low` / `disk_ok` event per crossing. `holdGB` 0 disables the hold outright: a fleet
+ * `disk_low` / `disk_ok` event per crossing. `holdGB` 0 disables the hold outright: a team
  * with the key set to 0 never holds, and a live edit to 0 lifts an active hold on the next
  * poll (with its one `disk_ok`). A null sample (statfs threw) logs one `warning` per process
  * and never holds. `waitForReclaim` defers ENTERING the hold while part 2/4's pressure reclaim

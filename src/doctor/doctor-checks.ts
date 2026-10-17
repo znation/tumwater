@@ -126,7 +126,7 @@ export function checkGitBinary(pathEnv: string = envPath()): CheckOutcome {
 /** Repo ready — the git/git.ts predicates in requireReadyRepo's order, so doctor and the
  * readiness gate cannot drift: not a git repo → no commits yet → detached HEAD. Reports the
  * resolved toplevel (not the cwd — doctor must say where .tumwater/ lives) and the branch the
- * fleet would target: a configured `baseBranch` wins (`run --branch` is per-invocation), and
+ * team would target: a configured `baseBranch` wins (`run --branch` is per-invocation), and
  * one that does not exist fails here instead of at the first tick. `config` is optional so
  * the check stands alone; runDoctor passes the loaded config behind a guard. */
 export async function checkRepo(root: string, config?: TumwaterConfig): Promise<CheckOutcome> {
@@ -250,7 +250,7 @@ function agentBinaryCheck(
  * path-shaped accessSync(X_OK) rule, and null-on-unusable verdict the startup gate asks — so
  * doctor cannot pass a binary the gate would reject. resolveAgentBin normalizes path-shaped
  * values against the process cwd at resolution time, so what doctor tests is exactly what
- * spawns. A claude-only fleet checks claude, not pi. The check fails on the first missing
+ * spawns. A claude-only team checks claude, not pi. The check fails on the first missing
  * binary, naming its agent; an ok detail joins each agent's resolved path and source. */
 export function checkAgentBinary(
   root: string,
@@ -308,8 +308,8 @@ function formatBytes(n: number): string {
  * (plans/agent-backends.md "Sessions" retention): the perf adapter ages transcripts out under
  * its own cleanupPeriodDays, so an operator asking where claude's disk went gets the number
  * without `du`. Informational (ok) in every case — a large transcript tree is a fact, not a
- * misconfiguration. Stands down when no seam routes to claude: a pi-only fleet reads no claude
- * state, and the report must not walk a host directory that has nothing to do with the fleet.
+ * misconfiguration. Stands down when no seam routes to claude: a pi-only team reads no claude
+ * state, and the report must not walk a host directory that has nothing to do with the team.
  * `homeDir` and `env` are test seams. */
 export function checkClaudeTranscripts(
   config: TumwaterConfig | undefined,
@@ -403,12 +403,12 @@ export function checkEventLog(root: string): CheckOutcome {
 }
 
 /** Disk floor (plans/disk-floor.md, parts 1/4 and 2/4) — is there room on the volume the
- * worktrees live on? Fail below `diskHoldGB`, the same floor the running fleet holds new work
+ * worktrees live on? Fail below `diskHoldGB`, the same floor the running team holds new work
  * at, so doctor and the gate agree on when the disk is a problem. Warn in the band between
  * `diskHoldGB` and `diskReclaimGB`: pressure reclaim will delete ignored build outputs from
- * idle worktrees but the fleet still runs. Ok at or above `diskReclaimGB` (or when reclaim is
+ * idle worktrees but the team still runs. Ok at or above `diskReclaimGB` (or when reclaim is
  * disabled and free space is above the hold). A statfs failure is a warning, not a failure: an
- * unmeasurable volume never holds the fleet, so it must not fail a scripted pre-flight. The
+ * unmeasurable volume never holds the team, so it must not fail a scripted pre-flight. The
  * detail names the measured path, the free GB to one decimal, and the floor. `holdGB` 0
  * disables the hold, so a free space above `reclaimGB`'s own band (or `reclaimGB` 0) passes. */
 export function checkDiskSpace(
@@ -556,7 +556,7 @@ export async function checkLeftoverRoleBranches(root: string, config?: TumwaterC
 }
 
 /** Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7): the
- * fleet's claims and the two states an operator should act on — a claim whose key is no longer
+ * team's claims and the two states an operator should act on — a claim whose key is no longer
  * listed under its role's section (its instance is stuck on an entry that moved), and a claim
  * idle for more than CLAIM_IDLE_MAX_MS (the scheduler releases these, so seeing one means the
  * reader's view and the scheduler's disagree). An enabled multi-instance role configured with
@@ -606,19 +606,19 @@ export function checkWorkInstances(
  * the review gate, the resolver, the director, and each tier's fallback — so the operator
  * sees whether every cap names a provider in use and whether any cap actually binds. Warns on
  * a cap key no seam resolves to (a typo, or a provider not in use), a cap at or above
- * `maxConcurrent` (which never binds — the fleet total is the real ceiling), and a capped
- * fleet whose seams include one with no key (pi's default provider is unreadable, so that
+ * `maxConcurrent` (which never binds — the team total is the real ceiling), and a capped
+ * team whose seams include one with no key (pi's default provider is unreadable, so that
  * seam cannot be capped). A config with no per-provider map or no caps is fine, and so is a
  * well-formed map; a broken config is reported by the init check. Takes `root` to read pi's
  * own default model (piSettingsPath), the same seam the orchestrator's admission uses, so a
- * bare no-model pi seam keys exactly as the fleet would key it. */
+ * bare no-model pi seam keys exactly as the team would key it. */
 export function checkProviderConcurrency(config: TumwaterConfig | undefined, root: string): CheckOutcome {
   if (!config) return okOutcome("no config to audit");
   const caps = config.maxConcurrentPerProvider;
   const capEntries = Object.entries(caps ?? {}).filter(([, v]) => Number.isInteger(v) && v > 0);
   if (capEntries.length === 0) return okOutcome("no per-provider caps configured");
   // The pi default model the orchestrator's admission seam carries: a bare no-model pi seam
-  // resolves its key only through it, so a fleet whose default is readable has keyed seams and
+  // resolves its key only through it, so a team whose default is readable has keyed seams and
   // only an unreadable default leaves a key-less seam to warn about.
   const piDefault = readPiDefaultModel(piSettingsPath(piModelsPath()), root);
   const seams = seamsInUse(config);
@@ -696,7 +696,7 @@ export function checkFlakyChecks(root: string): CheckOutcome {
 
 /** Build provenance — is the harness about to run (this process's dist/) the code main
  * describes? Only meaningful when this project IS the harness (isSelfHosted); elsewhere the
- * stamp is reported as-is. A stale build is a warning, not a failure: the fleet runs, just not
+ * stamp is reported as-is. A stale build is a warning, not a failure: the team runs, just not
  * the newest code, and auto-restart (or a rebuild + restart) resolves it. `info`, `head` and
  * `running` are injectable so tests can exercise every branch without compiling anything. */
 export async function checkBuild(

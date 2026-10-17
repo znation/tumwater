@@ -1,10 +1,10 @@
 /** The orchestrator's own startup event is best-effort (src/events/events.ts's
  * logEventBestEffort). runOrchestrator writes it BEFORE the try/finally that owns the poll
  * loop's best-effort emit and the shutdown cleanup, so a raw logEvent throw there would stop
- * the fleet from starting over an informational event — and skip the finally that disposes the
+ * the team from starting over an informational event — and skip the finally that disposes the
  * notifier and removes the info file. The fault is injected by putting a directory where
  * events.jsonl belongs: every append throws EISDIR while every other state file still writes,
- * so a fleet that can run must still start and finish a once round. */
+ * so a team that can run must still start and finish a once round. */
 
 import test from "node:test";
 import assert from "node:assert/strict";

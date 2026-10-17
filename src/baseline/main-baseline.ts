@@ -18,24 +18,24 @@ import { isJsonObject } from "../files/json-object.js";
 import { baselineVerdictsPath } from "../paths.js";
 import { memoSetLru } from "../collections.js";
 
-/** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
+/** The team-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
  * machinery that produces it. Split out of build/build-check.ts — which keeps running and
  * classifying the project's declared check — because a verdict ABOUT a specific SHA is a
  * different concern from the mechanics of running one: this module owns the cache, the
  * in-flight dedup, the re-verification policy that keeps one worktree's environmental red
- * from blocking the fleet. main-red.ts's gate consumes it; landing-merge.ts seeds a green
+ * from blocking the team. main-red.ts's gate consumes it; landing-merge.ts seeds a green
  * here after a post-rebase re-check; redeploy.ts re-verifies a red here before it strands the
- * fleet on a stale build. */
+ * team on a stale build. */
 
 // ── Main baseline (red-main gate) ────────────────────────────────────────────────────────
 // The review gate verifies worktree = main + changes before every merge; this checks MAIN
-// ITSELF — once per SHA, fleet-wide — before an authoring run is spent on top of it. A red
+// ITSELF — once per SHA, team-wide — before an authoring run is spent on top of it. A red
 // main rejects every code diff deterministically at the gate (BUGS.md's "Build broken on
 // main" and "Tests red on main" entries), so while a SHA is known red the harness skips
 // authoring for the code-producing roles instead of burning runs that are guaranteed to
 // fail.
 
-/** The fleet-shared verdict of main's own build/test suite at one SHA. */
+/** The team-shared verdict of main's own build/test suite at one SHA. */
 interface MainBaseline {
   status: "green" | "red";
   /** The main HEAD this verdict covers. */
@@ -48,7 +48,7 @@ interface MainBaseline {
   outputTail?: string[];
   /** Red only: the worktrees that have independently observed this red. A red seen in ONE
    * worktree is provisional evidence about the environment as much as the tree, so it is
-   * re-verified elsewhere before it blocks the fleet; two distinct worktrees agreeing makes it
+   * re-verified elsewhere before it blocks the team; two distinct worktrees agreeing makes it
    * authoritative. Never set on a green — a green is authoritative wherever it was observed. */
   redFrom?: string[];
   /** Green only: set when no check ran on this tree. It is the commit whose green verdict this
@@ -67,7 +67,7 @@ interface MainBaseline {
  * its pre-check) or an environmental skip (`skipReason` set — timeout/external signal
  * kill/no-npm/broken toolchain), which the caller warns about and proceeds with, exactly like the
  * gate's pre-check. Skips are never cached red: a hung script — or a broken toolchain (BUGS.md
- * 2026-09-15) — must not wedge authoring, or the fleet's restart, for the life of the process. */
+ * 2026-09-15) — must not wedge authoring, or the team's restart, for the life of the process. */
 interface MainBaselineCheck {
   baseline: MainBaseline | null;
   /** Set when a detected check could not be run (timeout, an external signal kill, no npm on
@@ -79,12 +79,12 @@ interface MainBaselineCheck {
   run?: BuildCheckRun;
   /** The run `failed` while the host slept past the sleep-span tolerance (BUGS.md 2026-09-30):
    * it made no verdict about the tree, so nothing was cached and the caller warns-and-proceeds
-   * exactly as for a skip — a sleep-spanned failure must not become the fleet's authoritative
+   * exactly as for a skip — a sleep-spanned failure must not become the team's authoritative
    * red main. */
   unverified?: boolean;
 }
 
-/** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is cold
+/** Team-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is cold
  * and one re-check per red SHA happens — cheap and deterministic, mirroring the budget gate's
  * stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
  * noteGreenBaseline seeding a green verdict for a SHA that just became main
@@ -100,7 +100,7 @@ interface MainBaselineCheck {
  * tree: the same SHA can fail in one worktree and pass in another when the failure is really
  * about the environment the check ran in (a worktree with no install, a half-written
  * node_modules). On 2026-09-08 exactly that happened — a role worktree's environmental red
- * became the fleet-wide verdict that blocked the harness's own restart (BUGS.md) — so a caller
+ * became the team-wide verdict that blocked the harness's own restart (BUGS.md) — so a caller
  * whose false block is expensive may re-verify a red in its own worktree (`reverifyRed`), and a
  * green from that run promotes the SHA for everyone. Since 2026-09-18 that re-verification is
  * not opt-in only: a red carries the worktrees that observed it (`redFrom`) and is re-run by the
@@ -109,7 +109,7 @@ interface MainBaselineCheck {
 const baselineCache = new Map<string, MainBaseline>();
 
 /** Safety cap so the per-process verdict cache can never grow unbounded: it is keyed by every
- * merged code SHA and a red entry carries the failed run's output tail, so a fleet running for
+ * merged code SHA and a red entry carries the failed run's output tail, so a team running for
  * weeks would accumulate one entry per landing forever. Evicting the oldest entry (Map's
  * insertion order) costs at most one redundant suite run if that SHA is consulted again: a
  * green for a SHA that becomes main is re-seeded by the next landing (or its own
@@ -126,10 +126,10 @@ function rememberBaseline(sha: string, baseline: MainBaseline): void {
 }
 
 /** The file the cache's greens are mirrored to (persistBaselineVerdicts), or undefined while no
- * fleet process has asked for it: the CLI and the tests keep the cache in memory only. */
+ * team process has asked for it: the CLI and the tests keep the cache in memory only. */
 let greensFile: string | undefined;
 
-/** Mirror the green verdicts to disk, so the fleet's next generation starts with them. A restart
+/** Mirror the green verdicts to disk, so the team's next generation starts with them. A restart
  * used to empty the cache, and the first tick after every restart re-ran the suite on a main the
  * previous generation had already verified (41 of 319 baseline runs over 2026-10-02..12 started
  * within 10 minutes of an orchestrator start). Only greens are kept: a green is a fact about an
@@ -148,7 +148,7 @@ function saveGreens(): void {
 }
 
 /** Load the green verdicts a previous generation saved under `root` and keep mirroring them
- * there (saveGreens). Called once at fleet startup (cli/cli-run.ts). An entry the cache already
+ * there (saveGreens). Called once at team startup (cli/cli-run.ts). An entry the cache already
  * holds is left as it is, and a malformed file or entry reads as no data. */
 export function persistBaselineVerdicts(root: string): void {
   const file = baselineVerdictsPath(root);
@@ -172,14 +172,14 @@ const baselineInFlight = new Map<string, Promise<MainBaselineCheck>>();
 
 /** Should a cached RED be re-run here instead of trusted? A red says as much about the
  * environment the check ran in as about the tree — a worktree mid-install, or a machine under
- * the load the fleet deliberately creates starving a timing-sensitive test (BUGS.md's
- * load-sensitive tests entry). The role loops consult this fleet-shared cache and, before
+ * the load the team deliberately creates starving a timing-sensitive test (BUGS.md's
+ * load-sensitive tests entry). The role loops consult this team-shared cache and, before
  * 2026-09-18, trusted a red forever: one environmental red blocked every code role until main
  * moved, and main could not move, because blocking the code roles is exactly what stops it —
  * a deadlock broken only by restarting the orchestrator, since the cache is per-process.
  *
  * So a red is provisional until two DIFFERENT worktrees have seen it. The second observer pays
- * one extra suite run and a green from it promotes the SHA fleet-wide; a second red makes the
+ * one extra suite run and a green from it promotes the SHA team-wide; a second red makes the
  * verdict authoritative for everyone. The cost is bounded at ONE confirmation run per SHA, not
  * one per role. `reverifyRed` still forces a run unconditionally for the redeploy gate, whose
  * false block is expensive enough to always pay for its own opinion. */
@@ -226,7 +226,7 @@ export function noteInheritedGreen(sha: string, from: string): void {
 }
 
 /** How far down main's first-parent history inheritedGreen looks for a verdict to carry over.
- * main gains about two dozen commits an hour under a full fleet, and the walk stops at the
+ * main gains about two dozen commits an hour under a full team, and the walk stops at the
  * first cached verdict anyway (every code landing seeds one), so this bound only caps the
  * rev-list on a cold cache. */
 const INHERIT_WALK_MAX = 64;
@@ -293,8 +293,8 @@ export async function checkMainBaseline(
   /** Ignore a cached RED verdict and run the suite here instead (a cached green still short-
    * circuits — see baselineCache). For the caller whose false block is expensive enough to pay
    * one extra run: the redeploy gate, where trusting another worktree's environmental red
-   * strands the whole fleet on a stale build until main moves. A green from the re-run promotes
-   * the SHA fleet-wide, which unblocks the role loops too. */
+   * strands the whole team on a stale build until main moves. A green from the re-run promotes
+   * the SHA team-wide, which unblocks the role loops too. */
   reverifyRed = false,
   /** Ignore the cache entirely and run the suite here, even over a GREEN verdict. For the one
    * caller that cannot trust a green (BUGS.md 2026-10-06: the review gate re-attributing a
@@ -365,7 +365,7 @@ export async function checkMainBaseline(
       if (outcome.status === "failed" && (outcome.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS) {
         // A failure the host slept through made no verdict about the tree either (BUGS.md
         // 2026-09-30): the sleep expired a test's own wall-clock wait at the wake and the suite
-        // exited 1 inside the deadline. Caching it red would make sleep weather the fleet's
+        // exited 1 inside the deadline. Caching it red would make sleep weather the team's
         // authoritative red main, so nothing is cached — the next consult re-runs, and a clean
         // verdict then settles the SHA exactly as before.
         return { baseline: null, run: outcome.run, unverified: true };
@@ -410,7 +410,7 @@ export async function checkMainBaseline(
  * A cached RED, though, is re-verified here (checkMainBaseline's `reverifyRed`) instead of
  * being taken as given. A red verdict can belong to the worktree that produced it rather than
  * to the tree, and the redeploy gate that asks this is the one place where believing a wrong
- * red is expensive: it strands the whole fleet on a stale build with no retry until main
+ * red is expensive: it strands the whole team on a stale build with no retry until main
  * moves. One extra suite run per red head buys that, and a green from it promotes the SHA for
  * every other gate too. */
 export async function mainIsGreen(
@@ -419,7 +419,7 @@ export async function mainIsGreen(
    * §6/7), so a configured command makes the green check run on a non-npm repo too; its
    * maxConcurrentChecks sizes the check permit this run takes. */
   config: CheckConfigSlice,
-  /** Hook for the build_check event — this run is a minute of the fleet's time and belongs in
+  /** Hook for the build_check event — this run is a minute of the team's time and belongs in
    * the feed like the role loops' own baseline checks. */
   onRun?: (run: BaselineCheckRun) => void,
 ): Promise<boolean> {

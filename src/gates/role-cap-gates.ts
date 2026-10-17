@@ -1,7 +1,7 @@
 /** The per-role daily cost cap (PLANS.md 2026-09-30, part 1/2): a loop whose local-day spend
  * has reached its own `maxDailyCostUsdPerRole` entry starts no new ticks until the next local
- * day or a live config edit — so one runaway role cannot eat the fleet-wide cap and starve
- * every other loop for the rest of the day. The fleet budget gate (src/gates/budget-gates.ts)
+ * day or a live config edit — so one runaway role cannot eat the team-wide cap and starve
+ * every other loop for the rest of the day. The team budget gate (src/gates/budget-gates.ts)
  * bounds the SUM; this bounds each member. The stateless verdict follows that gate's own rule
  * (budgetPaused's doc: "resume is stateless, so … crossing midnight flips it on the next cycle
  * and nothing can get stuck"): the verdict is recomputed from the loop state every poll, no
@@ -20,7 +20,7 @@
  *   never silently no-ops a cap.
  *
  * Shape, like every gate in the family (src/gates/gate-polls.ts): the pure verdict and the
- * edge-triggered bookkeeping live here so they are unit-testable without a fleet, and this
+ * edge-triggered bookkeeping live here so they are unit-testable without a team, and this
  * module owns the only event emission — the orchestrator's poll owns only the wiring. The
  * in-memory `prev` and `warned` sets are the whole cross-poll memory: a restart with a
  * still-over-cap role re-logs one `role_cap_paused` on the first poll, and a role already past
@@ -41,7 +41,7 @@ interface CapObservation {
 }
 
 /** The stateless verdict: is this role over its own per-role cap as of `now`? True iff a cap
- * is configured, it is a finite number above zero (0 disables that role's cap, like the fleet
+ * is configured, it is a finite number above zero (0 disables that role's cap, like the team
  * cap), and today's spend has reached it. The role→cap lookup stays with the caller
  * (`caps?.[role]`), so part 2/2's observers (src/status/status-data.ts) share this single
  * definition with the scheduler. */
@@ -75,7 +75,7 @@ export function roleCapVerdicts(
   now: number,
 ): Map<string, RoleCapVerdict> {
   // Group by base role via the shared Map-of-arrays step (collections.groupBy, which
-  // time-spend, history-data, and fleet-polls also fold), then drop the exempt director's
+  // time-spend, history-data, and team-polls also fold), then drop the exempt director's
   // group so it never holds a verdict; first-appearance order is preserved.
   const groups = groupBy(runners, (r) => baseRoleOf(r.role));
   groups.delete(DIRECTOR_ROLE);
@@ -138,7 +138,7 @@ export function pollRoleCapGate(
     } else if (!verdict.over && was) {
       logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_cap_resumed", role: base });
     }
-    // The 80% early warning (PLANS.md 2026-10-09), the per-role twin of the fleet's
+    // The 80% early warning (PLANS.md 2026-10-09), the per-role twin of the team's
     // budget_warning and edge-triggered with the same reset-on-below: crossing the threshold
     // while still under the cap logs one role_cap_warning, a dip back under re-arms it. Warn
     // only while the cap is open — a poll that jumps straight to the cap already logs its own

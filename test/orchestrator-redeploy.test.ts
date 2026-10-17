@@ -1,6 +1,6 @@
 /** Unit-tier coverage for the orchestrator's self-redeploy wiring
  * (src/orchestrator/orchestrator.ts's
- * `if (redeploy)` block): the policy's verdict gates the fleet — a `hold` starts no new ticks
+ * `if (redeploy)` block): the policy's verdict gates the team — a `hold` starts no new ticks
  * and its lift resumes them, a `restart` ends the run with restart: true — and the policy's
  * status() is published into orchestrator.json, at startup and again whenever it changes. The
  * gating `npm test` never ran this path; the redeploy e2e tier covers it, but only under
@@ -35,7 +35,7 @@ interface ScriptedStep {
 
 /** A Redeployer stand-in that answers each poll with its script's next step and publishes the
  * current step's build status. While `ready` returns false every poll answers "none" without
- * advancing the script, so a step can wait on fleet state instead of a poll count. Cast through
+ * advancing the script, so a step can wait on team state instead of a poll count. Cast through
  * unknown: Redeployer is a class with private state,
  * and the orchestrator touches only poll/status/forceRestart plus the build sha it logs at
  * startup. Also returns how many polls ran, so a hold-length assertion cannot pass by accident
@@ -79,7 +79,7 @@ test("a redeploy hold starts no new ticks, and its lift resumes them", async () 
   const repo = await makeFastRepo("redeploy hold test", ["clean"]);
   const restore = fakePiIdle();
   const controller = new AbortController();
-  // Several held polls, then the hold lifts: the fleet sits idle through the hold and the
+  // Several held polls, then the hold lifts: the team sits idle through the hold and the
   // next due tick runs once it clears. The hold outlasts the observation window below — a
   // poll takes longer than the poll interval (each awaits git subprocesses), so the step
   // count is generous on purpose.
@@ -99,7 +99,7 @@ test("a redeploy hold starts no new ticks, and its lift resumes them", async () 
   });
   try {
     // Wait for four polls — every one of them answered "hold", so the assertion below is
-    // clock-free: an ungated fleet would have ticked on the very first polls (the startup
+    // clock-free: an ungated team would have ticked on the very first polls (the startup
     // tick is due immediately — the divergence test awaits one inside a few poll periods).
     await waitFor(() => polls() >= 4, "the orchestrator to poll through the hold");
     assert.equal(loadLoopState(repo, "clean").runs, 0, "a hold starts no new ticks, director included");
@@ -152,7 +152,7 @@ test("the redeployer's build status is published at startup and republished when
     redeploy: redeployer,
   });
   try {
-    // Startup publishes the policy's status alongside the fleet info, and the start event
+    // Startup publishes the policy's status alongside the team info, and the start event
     // names the build sha.
     assert.deepEqual(readOrchestratorInfo(repo)!.build, initial, "startup publishes the build status");
     assert.equal(

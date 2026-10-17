@@ -429,7 +429,7 @@ test("releasing a lease while its re-key to a full key is parked cancels the gra
   assert.equal(rekeySettled, "rekey", "the re-key call resolves (cancelled) rather than hanging");
   const after = sem.snapshot();
   assert.equal(after.byKey["b"]?.inUse ?? 0, 1, "a cancelled re-key does not steal b from bHold");
-  assert.equal(after.inUse, 1, "only bHold's fleet permit remains");
+  assert.equal(after.inUse, 1, "only bHold's team permit remains");
   assert.equal(admitted, false, "the admission waiter is still held by bHold's slot");
 
   // A SECOND release of the already-released dead lease must be a no-op. Without the fix the
@@ -442,13 +442,13 @@ test("releasing a lease while its re-key to a full key is parked cancels the gra
   assert.equal(admitted, false, "a second release of the dead lease must not free b while bHold still holds it");
   const twice = sem.snapshot();
   assert.equal(twice.byKey["b"]?.inUse ?? 0, 1, "b still belongs to bHold after the dead lease's second release");
-  assert.equal(twice.inUse, 1, "the dead lease's second release is a no-op on the fleet total");
+  assert.equal(twice.inUse, 1, "the dead lease's second release is a no-op on the team total");
 
   // Only when the REAL holder releases does b free up for the parked waiter.
   bHold.release();
   await flushImmediate();
   assert.equal(admitted, true, "releasing bHold hands b to the parked admission waiter");
-  assert.equal(sem.snapshot().inUse, 1, "the admitted waiter holds the single fleet permit");
+  assert.equal(sem.snapshot().inUse, 1, "the admitted waiter holds the single team permit");
   void rekeyTask;
 });
 
@@ -459,7 +459,7 @@ test("a forced lease overshoots a full key by one holder, blocking grants until 
   let waiterGranted = false;
   void sem.acquireLease(0, "a").then(() => (waiterGranted = true));
   await flushImmediate();
-  const dir = sem.forceLease("a"); // overshoots to 2/1, never waits, no fleet permit
+  const dir = sem.forceLease("a"); // overshoots to 2/1, never waits, no team permit
   assert.equal(sem.snapshot().byKey["a"]?.inUse, 2, "the forced lease holds a key slot");
   assert.equal(waiterGranted, false, "the forced overshoot still admits nobody");
   aHold.release(); // drains to 1/1 — still AT the cap, so no new grant yet
@@ -470,11 +470,11 @@ test("a forced lease overshoots a full key by one holder, blocking grants until 
   assert.equal(waiterGranted, true, "draining under the cap admits the waiter");
 });
 
-test("re-key waiters hold a fleet permit only, so the key always drains (no deadlock)", async () => {
+test("re-key waiters hold a team permit only, so the key always drains (no deadlock)", async () => {
   const sem = new Semaphore(2);
   sem.setKeyCaps({ k: 1 });
-  const l1 = await sem.acquireLease(0, "x"); // uncapped key grants immediately, fleet 1/2
-  const l2 = await sem.acquireLease(0, "x"); // fleet 2/2
+  const l1 = await sem.acquireLease(0, "x"); // uncapped key grants immediately, team 1/2
+  const l2 = await sem.acquireLease(0, "x"); // team 2/2
   // Both re-key onto k: one takes k, the other parks as a re-key waiter.
 
   const r1 = l1.rekey("k");
@@ -484,18 +484,18 @@ test("re-key waiters hold a fleet permit only, so the key always drains (no dead
   const snap = sem.snapshot();
   assert.equal(snap.byKey["k"]?.inUse, 1, "exactly one holds k");
   assert.equal(sem.waiting, 1, "one re-key waiter is parked");
-  assert.equal(snap.inUse, 2, "the parked re-key waiter still holds its fleet permit");
+  assert.equal(snap.inUse, 2, "the parked re-key waiter still holds its team permit");
   // No circular wait: releasing k's only holder grants the parked re-key on that single release.
   l1.release();
   await Promise.all([r1, r2]);
   await flushImmediate();
   const after = sem.snapshot();
   assert.equal(after.byKey["k"]?.inUse, 1, "the re-key waiter takes k on the one release");
-  assert.equal(after.inUse, 1, "and releases the fleet permit it no longer needs");
+  assert.equal(after.inUse, 1, "and releases the team permit it no longer needs");
   l2.release();
 });
 
-test("snapshot reports fleet and per-key in-use, caps and waiters", async () => {
+test("snapshot reports team and per-key in-use, caps and waiters", async () => {
   const sem = new Semaphore(4);
   sem.setKeyCaps({ a: 1, b: 3 });
   await sem.acquireLease(0, "a"); // a 1/1 (full)

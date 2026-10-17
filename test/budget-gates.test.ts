@@ -15,7 +15,7 @@ import { configForRole, reviewRunConfig } from "../src/config/config-views.js";
 import { reviewHoldKey } from "../src/orchestrator/orchestrator-scheduling.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { MODELS_JSON, PAID_ONLY_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
-/** A fleet at a paid top-level model, a free fallback configured, one role pinned to the
+/** A team at a paid top-level model, a free fallback configured, one role pinned to the
  * paid model, and a reviewer override — everything the fallback view must strip. */
 function configWith(capUsd: number): TumwaterConfig {
   const cfg = paidFallbackConfig(capUsd);
@@ -40,7 +40,7 @@ test("pollBudgetGate keeps the gate open under the cap and hands the live config
   assert.equal(p.roleConfig, cfg); // same object: no view is derived while budget remains
   // The poll hands back the spend/cap pair it just evaluated — the figures the orchestrator
   // publishes for the dashboards (BUGS.md 2026-09-30). Disabled cap: the spend still rides
-  // along (a disabled fleet's badge keeps its dollar figure).
+  // along (a disabled team's badge keeps its dollar figure).
   assert.deepEqual({ spentUsd: p.spentUsd, capUsd: p.capUsd }, { spentUsd: 5, capUsd: 10 });
   assert.deepEqual(readEvents(root), []); // no transition, no events
 });
@@ -227,7 +227,7 @@ test("tickOnPair matches only an in-flight tick on the fallback pair", () => {
   // A claude fallback pair (PLANS.md "Mixed claude + pi fleets, part 2/4"): setTickPair now
   // keys the in-flight tick by the seam that ran (seamHoldKey → "claude"), and the fallback
   // pair is seam-keyed the same way (config-fallbacks.ts's seamKeyedFallbackProvider names the
-  // backend for both a `claude/<id>` and a bare `<id>` selector on a claude fleet) — so a
+  // backend for both a `claude/<id>` and a bare `<id>` selector on a claude team) — so a
   // claude fallback tick IS handed back in both selector forms, and a tick whose provider is
   // a different seam (a pi `omlx` author here) never matches and is not returned.
   const claude = { provider: "claude", model: "claude-sonnet-5-5" };
@@ -239,7 +239,7 @@ test("tickOnPair matches only an in-flight tick on the fallback pair", () => {
   );
   // A bare-selector claude fallback never reaches tickOnPair with provider undefined: the
   // fallback pair is seam-keyed at creation (config-views.test.ts, seamKeyedFallbackProvider),
-  // so both `claude/<id>` and a bare `<id>` on a claude fleet produce the `claude` pair above
+  // so both `claude/<id>` and a bare `<id>` on a claude team produce the `claude` pair above
   // and both hand the tick back through this same match.
 });
 

@@ -1,5 +1,5 @@
 /** The operator pause gate's e2e tier slice (extracted from orchestrator-2.e2e.test.ts): the
- * fleet-wide pause marker (`tumwater pause` writes it, `resume` removes it) and its narrower
+ * team-wide pause marker (`tumwater pause` writes it, `resume` removes it) and its narrower
  * per-role sibling, observed on a live orchestrator. The CLI side of both is pinned in
  * test/cli.test.ts. Like the other topic-named orchestrator files (orchestrator-resize,
  * orchestrator-permits), this file holds one coherent topic; the tier's balanced slices are
@@ -31,12 +31,12 @@ test("a pause marker blocks new role ticks for any reason while the director run
     // Baseline: clean's startup tick lands while unpaused.
     await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
 
-    // The operator pauses the running fleet (what `tumwater pause` does: drop the marker).
+    // The operator pauses the running team (what `tumwater pause` does: drop the marker).
     const marker = pausedPath(repo);
     writeMarker(marker, { at: Date.now() });
     await waitFor(() => readEvents(repo).some((e) => e.type === "team_paused"), "a team_paused event");
 
-    // The world changed under a paused fleet: advance main. An ungated loop would wake early…
+    // The world changed under a paused team: advance main. An ungated loop would wake early…
     fs.writeFileSync(path.join(repo, "world.txt"), "changed\n");
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "advance main while paused");
@@ -52,8 +52,8 @@ test("a pause marker blocks new role ticks for any reason while the director run
     );
     assert.ok(fs.existsSync(marker), "the pause marker is persistent state, not consumed");
 
-    // The director is exempt: a queued human prompt still runs while the fleet is paused.
-    enqueuePrompt(repo, "steer me while the fleet is paused");
+    // The director is exempt: a queued human prompt still runs while the team is paused.
+    enqueuePrompt(repo, "steer me while the team is paused");
     await awaitSettledTick(repo, "director", 1, "the director to tick while user-paused");
     assert.equal(loadLoopState(repo, "clean").runs, 1, "still paused after the director's run");
 
@@ -72,24 +72,24 @@ test("a pause marker blocks new role ticks for any reason while the director run
 });
 
 // The persistence bullet of the same plan: pausing while stopped, then starting. The marker
-// is the only state involved — a fleet that starts already paused stays blocked until resume,
+// is the only state involved — a team that starts already paused stays blocked until resume,
 // with no restart and no loop-state or config changes.
 test("starting already paused keeps role ticks blocked until resume — no restart needed", async () => {
   const repo = await makeFastRepo("operator pause at startup test", ["clean", "director"]);
   const restore = fakePiIdle();
 
-  // The operator paused before starting the fleet (the marker is persistent state): startup
+  // The operator paused before starting the team (the marker is persistent state): startup
   // itself must not start any role tick.
   const marker = pausedPath(repo);
   writeMarker(marker, { at: Date.now() });
 
-  // A queued director prompt runs even on an already-paused fleet — the exemption holds from
+  // A queued director prompt runs even on an already-paused team — the exemption holds from
   // the first poll, not just mid-run.
-  enqueuePrompt(repo, "steer me before the fleet starts");
+  enqueuePrompt(repo, "steer me before the team starts");
 
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await awaitSettledTick(repo, "director", 1, "the director to tick while the fleet starts paused");
+    await awaitSettledTick(repo, "director", 1, "the director to tick while the team starts paused");
 
     // Several fast poll cycles pass with zero role ticks — startup is a wake reason like any
     // other, and the gate sits before eligibility. The marker survives: persistent state.
@@ -111,7 +111,7 @@ test("starting already paused keeps role ticks blocked until resume — no resta
 
 // The in-flight bullet of the same plan: a tick already running when the marker drops is not
 // killed — it finishes and lands its outcome even though no new one starts.
-test("an in-flight tick finishes and lands while the fleet is paused", async () => {
+test("an in-flight tick finishes and lands while the team is paused", async () => {
   const repo = await makeFastRepo("operator pause in-flight test", ["clean"]);
   // A slow fake pi that makes a real change: it stays in flight long enough for the marker to
   // drop mid-run. The review gate approves with zero usage so the tick's outcome is clean.
@@ -156,8 +156,8 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
 });
 
 // --- Per-role pause (`tumwater pause --role <id>`): the operator pause's narrower sibling.
-// The marker is persistent state, so pausing BEFORE startup starts the fleet with that one
-// role already gated; the director is NOT exempt (unlike the fleet pause); resume re-enables
+// The marker is persistent state, so pausing BEFORE startup starts the team with that one
+// role already gated; the director is NOT exempt (unlike the team pause); resume re-enables
 // within one poll. Each crossing logs exactly one harness-level event naming the role. ---
 
 test("a per-role pause gates only that role, holds a named director, and resumes", async () => {

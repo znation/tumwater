@@ -38,7 +38,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   const repo = makeRepo();
   await initProject(repo, "live maxConcurrent test");
   // THREE fast-ticking roles and ONE slot: with three loops competing for one permit, steady
-  // state always has at least one tick queued on the semaphore (a two-role fleet settles into
+  // state always has at least one tick queued on the semaphore (a two-role team settles into
   // a strict alternation where every poll schedules exactly one loop, so there would be no
   // queued tick for the grow to wake). The shim's ~1.5s hold makes overlapping runs visible.
   const base = fastConfig(["clean", "dedupe", "bugfix"]);
@@ -80,7 +80,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
     landWork(repo);
     // 60s, not the 20s default: this is the one assertion in the suite that waits on the
     // orchestrator's real poll loop scheduling two live pi shims at once, and under the load the
-    // fleet runs it at, 20s expired before the grow was observable (BUGS.md 2026-09-18).
+    // team runs it at, 20s expired before the grow was observable (BUGS.md 2026-09-18).
     await waitFor(() => readSamples(runDir).some((n) => n >= 2), "overlapping runs after the grow", 150_000);
 
     // Phase 3 (cap 1 again): shrinking admits no NEW concurrent run until in-flight work

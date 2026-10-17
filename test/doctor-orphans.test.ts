@@ -9,7 +9,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakeBins, fakeProbe, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
 
 // Unit coverage for the orphaned-worktree-process check (src/doctor/doctor-orphans.ts): every leak
-// shape below is a real leak the fleet produced, driven through a fake process table — no
+// shape below is a real leak the team produced, driven through a fake process table — no
 // orphan is ever spawned. The real ps/lsof reader is smoked in test/process.test.ts; the
 // other doctor checks' unit coverage lives in test/doctor-checks.test.ts and
 // test/doctor-model-checks.test.ts.
@@ -51,7 +51,7 @@ test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, t
   assert.deepEqual(asked, [[88052, 73241]]);
 });
 
-test("checkOrphans leaves the live fleet and other checkouts' orphans alone", async () => {
+test("checkOrphans leaves the live team and other checkouts' orphans alone", async () => {
   const root = readyRepo();
   fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
   const other = tmpdir("doctor-other-checkout-");

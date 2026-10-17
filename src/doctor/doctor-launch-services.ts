@@ -1,10 +1,10 @@
 /** Doctor's `mach ports` line: a warning at or past launchservicesd's port threshold, a warning
- * when the count cannot be read on macOS, ok otherwise. Never a failure — the fleet runs fine on
+ * when the count cannot be read on macOS, ok otherwise. Never a failure — the team runs fine on
  * a leaking Mac; it is the Mac that does not. Split from process/launch-services.ts (2026-10-07,
  * organize) so the doctor's environment checks live together (doctor-orphans.ts reads the process
  * table the same way) and the process layer no longer imports the doctor's report contract. The
  * launchservicesd facts this reads — the thresholds and the warning text — stay in
- * src/process/launch-services.ts, shared with the running fleet's watch. `platform` is a
+ * src/process/launch-services.ts, shared with the running team's watch. `platform` is a
  * parameter so the macOS branches are testable on any host. */
 
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";

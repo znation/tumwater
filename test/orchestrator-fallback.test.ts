@@ -13,7 +13,7 @@
  * to the cap, the gate engages the free pair, and every tick from then on runs on it — the
  * fake pi answers the primary with a compliant nothing-to-do and dies on the fallback pair,
  * so three consecutive errors trip the breaker (FALLBACK_BREAKER_POLICY.failureLimit = 3)
- * before the error-streak breaker (10) or the fleet hold (two distinct roles) could react.
+ * before the error-streak breaker (10) or the team hold (two distinct roles) could react.
  */
 
 import test from "node:test";
@@ -68,7 +68,7 @@ test("ticks on the engaged fallback feed the breaker: three dead-backend errors 
     );
     const paused = eventsOfType(repo, "budget_paused")[0]!;
     assert.equal(paused.fallbackDemoted, "free/qwen-free");
-    assert.equal(paused.failures, 3, "failureLimit consecutive failures, fleet-wide");
+    assert.equal(paused.failures, 3, "failureLimit consecutive failures, team-wide");
     assert.ok(
       typeof paused.spentUsd === "number" && paused.spentUsd >= 10,
       "the pause carries the spend that triggered it",

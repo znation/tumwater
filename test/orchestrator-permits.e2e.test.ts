@@ -28,7 +28,7 @@ function readOrder(runDir: string): string[] {
 }
 
 /** The provider-caps fake pi's census: one `provider providerInFlight totalInFlight` line per
- * run, reading back as the per-provider and whole-fleet in-flight snapshots at that run's start. */
+ * run, reading back as the per-provider and whole-team in-flight snapshots at that run's start. */
 function readProviderSamples(runDir: string): Array<{ provider: string; providerInFlight: number; totalInFlight: number }> {
   try {
     return fs
@@ -213,7 +213,7 @@ test("maxConcurrentPerProvider caps role-tick admission per provider while other
   // plans/provider-concurrency.md §4: the launch pass acquires a keyed lease on the authoring
   // seam's provider, so maxConcurrentPerProvider caps role-tick admission on that provider
   // alone. With maxConcurrent 4 and { omlx: 1 }, two omlx roles must never overlap, while a
-  // huggingface role runs beside them, and nothing exceeds the fleet total. Disabled review
+  // huggingface role runs beside them, and nothing exceeds the team total. Disabled review
   // keeps every pi process here a role tick, so the shim's in-flight census is the role
   // census this part owns (vets count against their provider from part 3/5).
   const repo = makeRepo();
@@ -262,7 +262,7 @@ test("maxConcurrentPerProvider caps role-tick admission per provider while other
     );
     assert.ok(
       totals.every((n) => n <= 4),
-      `nothing exceeds the fleet total (samples: ${JSON.stringify(samples)})`,
+      `nothing exceeds the team total (samples: ${JSON.stringify(samples)})`,
     );
     assert.ok(
       samples.some((s) => s.provider === "huggingface" && s.totalInFlight >= 2),
@@ -276,7 +276,7 @@ test("maxConcurrentPerProvider caps role-tick admission per provider while other
 test("a vet's reviewer and a role tick on the same capped provider never overlap, while another provider runs beside (part 3/5)", async () => {
   // plans/provider-concurrency.md §4: the landing vet acquires a keyed lease on the author's
   // review seam, so a review on omlx shares the omlx provider cap with role ticks — not just
-  // the fleet total (part 2/5's scope, review off). With { omlx: 1 }, feature's omlx tick and
+  // the team total (part 2/5's scope, review off). With { omlx: 1 }, feature's omlx tick and
   // the omlx review vetting feature's (or clean's) change never run at once, while the
   // huggingface bugfix tick runs beside them. Review is on, pinned to omlx.
   const repo = makeRepo();
@@ -333,7 +333,7 @@ test("a vet's reviewer and a role tick on the same capped provider never overlap
     );
     assert.ok(
       totals.every((n) => n <= 4),
-      `nothing exceeds the fleet total (samples: ${JSON.stringify(samples)})`,
+      `nothing exceeds the team total (samples: ${JSON.stringify(samples)})`,
     );
     assert.ok(
       samples.some((s) => s.provider === "huggingface" && s.totalInFlight >= 2),

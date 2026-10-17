@@ -1,8 +1,8 @@
 /** The gate family's event logging is best-effort (src/events/events.ts's
- * logEventBestEffort). pollFleetGates runs inside the orchestrator's catch-less poll loop, so
- * an unwritable events feed (ENOSPC, EACCES, the path replaced) must not end the fleet: every
+ * logEventBestEffort). pollTeamGates runs inside the orchestrator's catch-less poll loop, so
+ * an unwritable events feed (ENOSPC, EACCES, the path replaced) must not end the team: every
  * gate that logs a crossing event — budget, pause, streak, per-role cap, quiet hours, the
- * fleet hold, and the two storm alarms — has to survive a logEvent throw and still perform
+ * team hold, and the two storm alarms — has to survive a logEvent throw and still perform
  * its real work. The fault is injected by putting a directory where events.jsonl belongs:
  * every append throws EISDIR, while every other file under the real root still writes, so
  * each gate reaches its own event line exactly as it would on a full disk. */
@@ -23,16 +23,16 @@ import { pollPauseGates, newPauseGateState } from "../src/gates/pause-gates.js";
 import { pollStreakGate, newStreakGateState } from "../src/gates/streak-gate.js";
 import { pollRoleCapGate, newRoleCapGateState } from "../src/gates/role-cap-gates.js";
 import { newQuietHoursGateState, pollQuietHoursGate } from "../src/scheduling/quiet-hours.js";
-import type { FleetHold } from "../src/team/team-hold.js";
+import type { TeamHold } from "../src/team/team-hold.js";
 import { ERROR_STORM_QUIET } from "../src/team/error-storm.js";
 import { FAILURE_SPREAD_QUIET } from "../src/team/failure-spread.js";
 import {
   pollErrorStorm,
   pollFailureSpread,
-  pollFleetHold,
+  pollTeamHold,
   type HoldInputs,
 } from "../src/team/team-polls.js";
-import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
+import { newTeamGateStates, pollTeamGates } from "../src/gates/gate-polls.js";
 
 const T0 = 1_000_000_000;
 
@@ -110,16 +110,16 @@ test("pollBudgetGate: a budget transition survives an unwritable events feed", (
   assert.equal(state.warned, true, "the once-per-day warning is marked spent even when unlogged");
 });
 
-test("pollFleetHold: a rate-limit hold survives an unwritable events feed", () => {
+test("pollTeamHold: a rate-limit hold survives an unwritable events feed", () => {
   const root = tmpdir("gate-best-effort-hold-");
   unwritableEvents(root);
   const runners: HoldInputs[] = [
     { role: "clean", lastRateLimit: { at: T0 } },
     { role: "coverage", lastRateLimit: { at: T0 } },
   ];
-  let held: FleetHold | undefined;
+  let held: TeamHold | undefined;
   assert.doesNotThrow(() => {
-    held = pollFleetHold(root, new Map(), runners, T0 + 1_000).get(undefined);
+    held = pollTeamHold(root, new Map(), runners, T0 + 1_000).get(undefined);
   });
   assert.notEqual(held!.until, null, "the hold still engages even though its event is lost");
 });
@@ -145,7 +145,7 @@ test("pollFailureSpread: a wide-shallow storm warning survives an unwritable eve
   assert.doesNotThrow(() => pollFailureSpread(root, FAILURE_SPREAD_QUIET, runners, T0 + 20 * 60_000));
 });
 
-test("pollFleetGates: a budget reopen hands fallback ticks back even when the feed is unwritable", () => {
+test("pollTeamGates: a budget reopen hands fallback ticks back even when the feed is unwritable", () => {
   const root = tmpdir("gate-best-effort-reopen-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
 
@@ -163,7 +163,7 @@ test("pollFleetGates: a budget reopen hands fallback ticks back even when the fe
   } as unknown as LoopRunner;
 
   const config = paidFallbackConfig(10);
-  const states = newFleetGateStates(config);
+  const states = newTeamGateStates(config);
   const ctx = {
     root,
     runners: [runner],
@@ -175,14 +175,14 @@ test("pollFleetGates: a budget reopen hands fallback ticks back even when the fe
 
   // Poll 1 engages the fallback and writes its real event, so the reopen below has a
   // transition to announce.
-  assert.equal(pollFleetGates(states, ctx).gate, "fallback");
+  assert.equal(pollTeamGates(states, ctx).gate, "fallback");
   // Now make the feed unwritable; the reopen's budget_resumed and budget_handback events both
   // hit it, and neither may throw out of the catch-less poll loop or skip the handback.
   unwritableEvents(root);
   const raised = { ...config, maxDailyCostUsd: 100 };
   let reopened: { gate: string } | undefined;
   assert.doesNotThrow(() => {
-    reopened = pollFleetGates(states, { ...ctx, liveConfig: raised });
+    reopened = pollTeamGates(states, { ...ctx, liveConfig: raised });
   });
   assert.equal(reopened!.gate, "open");
   assert.deepEqual(handbacks, ["feature"], "the in-flight fallback tick is still handed back");

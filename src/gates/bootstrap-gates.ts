@@ -14,7 +14,7 @@
  * may let a later poll retry. Removing `bootstrap` from config (live
  * reload) also ends it, without a latch. Both the latch write and the completion event are
  * best-effort, like every sibling gate: the poll runs inside the orchestrator's catch-less
- * loop, so an unwritable repo must degrade (the hold still lifts) rather than end the fleet.
+ * loop, so an unwritable repo must degrade (the hold still lifts) rather than end the team.
  *
  * Shape, like every gate in the family (src/gates/gate-polls.ts): the read-only verdict (and
  * the pure hold predicate) is separated from the edge-triggered bookkeeping so both the

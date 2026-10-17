@@ -178,7 +178,7 @@ test("checkAgentBinary falls back to the default when tumwater.json is malformed
   assert.match(out.detail, /pi$/);
 });
 
-// A claude-only fleet must not fail on a missing pi: the check follows the enabled seams'
+// A claude-only team must not fail on a missing pi: the check follows the enabled seams'
 // agents (the startup gate's agentsInUse), not always pi.
 test("checkAgentBinary checks the enabled seams' agents, not always pi", () => {
   const root = readyRepo();
@@ -193,7 +193,7 @@ test("checkAgentBinary checks the enabled seams' agents, not always pi", () => {
   assert.match(missing.detail, /claude not found/);
 });
 
-test("checkAgentBinary joins each agent's verdict for a mixed pi and claude fleet", () => {
+test("checkAgentBinary joins each agent's verdict for a mixed pi and claude team", () => {
   const root = readyRepo();
   writeConfig(root, { agent: "claude", roles: { coverage: { model: "pi/some-model" } } });
 
@@ -426,7 +426,7 @@ test("checkEventLog passes an absent log, fails an unreadable one, and passes a 
 
 test("checkDiskSpace fails below the floor, warns in the reclaim band, passes above it, and warns when unmeasurable", () => {
   // plans/disk-floor.md parts 1/4 and 2/4: the check shares the gate's floor, so doctor and
-  // the running fleet agree on when the disk is a problem, and warns while pressure reclaim
+  // the running team agree on when the disk is a problem, and warns while pressure reclaim
   // will run but new work still starts.
   const root = tmpdir("doctor-disk-");
   const below = checkDiskSpace(root, 10, 40, () => 9_000_000_000);
@@ -539,7 +539,7 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   assert.equal(noHead.level, "ok");
   assert.match(noHead.detail, /^dist\/ from [0-9a-f]{8}$/);
 
-  // Two commits later, one touching src/: stale — a warning (the fleet runs, just old code),
+  // Two commits later, one touching src/: stale — a warning (the team runs, just old code),
   // never a fail.
   fs.writeFileSync(path.join(repo, "README.md"), "docs\n");
   sh(repo, "git", "add", "-A");
@@ -553,7 +553,7 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   assert.match(stale.detail, /is stale — main has 2 later commit\(s\) touching src, package\.json, tsconfig\.json/);
   assert.match(stale.detail, /npm run build/);
 
-  // With a fleet up, doctor reports what auto-restart is actually doing rather than the advice
+  // With a team up, doctor reports what auto-restart is actually doing rather than the advice
   // that it will handle this — a refused restart never retries until main moves (BUGS.md).
   const running = { sha: head, builtAt: 1, stale: true, aheadCommits: 2, checkedHead: head };
   const pending = await checkBuild(repo, here, undefined, { ...running, restartPending: true });
@@ -717,7 +717,7 @@ test("checkWorkInstances does not warn about a disabled instance role's pool", (
 // warn. A map-less config is fine — per-provider caps are optional.
 test("checkProviderConcurrency passes a well-formed map whose key a seam resolves to", () => {
   // Every seam (each role, the director, the review gate) rides the default tier's omlx
-  // provider, so the omlx cap names a provider the fleet actually runs on and no seam is
+  // provider, so the omlx cap names a provider the team actually runs on and no seam is
   // key-less: nothing to warn about.
   const cfg = {
     ...defaultConfig(),
@@ -763,8 +763,8 @@ test("checkProviderConcurrency is fine without a per-provider map", () => {
 });
 
 // claude transcript disk (plans/agent-backends.md "Sessions" retention, part 4e/7): doctor
-// reports the total size for a claude fleet and reads nothing for a pi-only one.
-test("checkClaudeTranscripts totals the transcript dirs for a claude fleet", () => {
+// reports the total size for a claude team and reads nothing for a pi-only one.
+test("checkClaudeTranscripts totals the transcript dirs for a claude team", () => {
   const home = tmpdir("doctor-claude-home-");
   const projects = path.join(home, ".claude", "projects");
   fs.mkdirSync(path.join(projects, "-slot-one"), { recursive: true });
@@ -779,7 +779,7 @@ test("checkClaudeTranscripts totals the transcript dirs for a claude fleet", () 
   assert.equal(outcome.level, "ok");
   assert.match(outcome.detail, /2\.0 KB across 2 projects/);
 
-  // A pi-only fleet reads no claude state at all.
+  // A pi-only team reads no claude state at all.
   writeConfig(root, {});
   assert.deepEqual(checkClaudeTranscripts(loadConfig(root), home), {
     level: "ok",

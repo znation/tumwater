@@ -33,7 +33,7 @@ export type StatusLoopRow = LoopState & {
   slotPinned?: boolean;
   instanceOf?: string;
   /** The loop's image-input capability (plans/image-input.md "Surfaces", part 5/5): `true`
-   * when its own model reads images, `false` when it is text-only, null when the fleet cannot
+   * when its own model reads images, `false` when it is text-only, null when the team cannot
    * tell. Always present, so `status --json` and the dashboards answer without running
    * doctor. */
   imageInput: boolean | null;

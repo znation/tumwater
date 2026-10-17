@@ -14,7 +14,7 @@ import { baselineVerdictsPath } from "../src/paths.js";
 import { baselineFixture, runsOf } from "./fixtures/loop-fixtures.js";
 import { headSha, tmpdir } from "./fixtures/repo-fixtures.js";
 
-// Main's green baseline verdicts survive a fleet restart (persistBaselineVerdicts in
+// Main's green baseline verdicts survive a team restart (persistBaselineVerdicts in
 // src/baseline/main-baseline.ts). The mirror is process-wide state, so these tests live in their
 // own file: every other suite file keeps the cache in memory only.
 

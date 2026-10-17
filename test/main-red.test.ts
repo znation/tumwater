@@ -87,7 +87,7 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
     assert.equal(holds.length, 1, "one main_red_hold for the newly-discovered red SHA");
     const warning = holds[0];
     assert.ok(warning);
-    assert.equal(warning.source, "tumwater", "fleet-wide, not per role");
+    assert.equal(warning.source, "tumwater", "team-wide, not per role");
     assert.equal(warning.sha, sha);
     assert.equal(warning.script, "test");
     assert.equal(warningEvents(events).length, 0, "no generic warning for the red SHA");
@@ -107,7 +107,7 @@ test("mainRedGate warns once per red SHA: a repeat tick on the same HEAD re-bloc
   try {
     assert.equal((await mainRedGate(root, ROLE, wt))?.result, "main_red");
     // A second blocked role waking on the same SHA (or the same role's next tick) must not
-    // re-run the suite or re-log the fleet-wide warning.
+    // re-run the suite or re-log the team-wide warning.
     const again = await mainRedGate(root, "feature", wt);
     assert.equal(again?.result, "main_red");
     assert.equal(runsOf(counter), 1, "the verdict is cached per SHA — no second run");
@@ -216,7 +216,7 @@ test("bugfixMainRedNote hands the healer the failing script and headline, warnin
     assert.ok(note.includes("test"), "names the failing script");
     assert.ok(note.includes("healer-failure-line"), "carries the failureHeadline line");
 
-    // The check ran once, priced under the healer; the fleet warning fired under "harness".
+    // The check ran once, priced under the healer; the team warning fired under "harness".
     assert.equal(runsOf(counter), 1);
     const events = readEvents(root);
     const checks = events.filter((e) => e.type === "build_check");
@@ -225,7 +225,7 @@ test("bugfixMainRedNote hands the healer the failing script and headline, warnin
     assert.equal(checks[0]?.scope, "baseline");
     assert.equal(checks[0]?.status, "failed");
     const holds = mainRedHolds(root);
-    assert.equal(holds.length, 1, "one fleet-wide main_red_hold for the red SHA");
+    assert.equal(holds.length, 1, "one team-wide main_red_hold for the red SHA");
     assert.equal(holds[0]?.source, "tumwater");
 
     // A blocked role on the same SHA still reads the cached red and does NOT add a second
@@ -363,7 +363,7 @@ test("mainTipVerdict reports green at main's tip, priced under the asking role",
   }
 });
 
-test("mainTipVerdict reports red with the fleet-wide warning, once per SHA", async () => {
+test("mainTipVerdict reports red with the team-wide warning, once per SHA", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root } = baselineFixture(ROLE, `echo tip-failure; echo run >> ${counter}; exit 1`);
   const restore = fakeNpm(`echo tip-failure; echo run >> ${counter}; exit 1`);

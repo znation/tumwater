@@ -1,5 +1,5 @@
 /** The self-redeploy tier's e2e slice (extracted from orchestrator-3.e2e.test.ts): the
- * scheduler's half of the self-hosted-redeploy contract — a stale build drains the fleet and
+ * scheduler's half of the self-hosted-redeploy contract — a stale build drains the team and
  * swaps, staleness is published in orchestrator.json, the drain cap aborts the in-flight tick
  * resumably (and counts only the permit holder), a parked tick waits out the restart hold, an
  * in-flight director tick is waited for, a failed compile leaves the old build running, and the
@@ -29,7 +29,7 @@ import { headSha, landWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixture
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
-test("a stale self-hosted build drains the fleet, swaps, and returns restart", async () => {
+test("a stale self-hosted build drains the team, swaps, and returns restart", async () => {
   const repo = await makeFastRepo("self-redeploy test", ["clean"]);
   const restore = fakePiIdle();
   const { redeployer, swaps } = scriptedRedeployer(repo);
@@ -227,7 +227,7 @@ test("an in-flight director tick is waited for, not aborted, when the drain wind
   }
 });
 
-test("a failed compile leaves the fleet running the old build", async () => {
+test("a failed compile leaves the team running the old build", async () => {
   const repo = await makeFastRepo("compile failure test", ["clean"]);
   const restore = fakePiIdle();
   const { redeployer, swaps } = scriptedRedeployer(repo, { compileOk: false });

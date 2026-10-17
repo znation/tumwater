@@ -53,7 +53,7 @@ function writeModels(): string {
 test("checkFallbackModel reports the cap behavior and verifies a free fallback pair", () => {
   const models = writeModels();
 
-  // No fallbackModel: informational — the fleet pauses at the cap by design. The definitions
+  // No fallbackModel: informational — the team pauses at the cap by design. The definitions
   // file is not even consulted, so an absent path is still ok.
   const none = readyRepo();
   assert.deepEqual(checkFallbackModel(none, path.join(tmpdir(), "absent.json")), {
@@ -70,7 +70,7 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
     level: "ok",
     detail: "local/free-model — priced at zero (cost n/a), serving not verified",
   });
-  // The running fleet's breaker demoted it (runDoctor passes orchestrator.json's
+  // The running team's breaker demoted it (runDoctor passes orchestrator.json's
   // fallbackDemoted only while that orchestrator is alive): warn with the evidence and the retry.
   const probeAt = new Date(2026, 8, 19, 23, 10, 56).getTime();
   const demoted = checkFallbackModel(free, models, { pair: "local/free-model", failures: 3, probeAt });
@@ -367,7 +367,7 @@ test("checkTierModels warns when pi's definitions name a reserved agent id", asy
 // ANTHROPIC_API_KEY exported (for pi's anthropic provider) a claude seam prefers the key over a
 // claude.ai login, silently moving every claude run to API billing. Doctor warns only when the
 // key is set, a claude seam is in use, and claude reports a claude.ai login to lose; a pi-only
-// fleet, an unset key, an API-key login, or an unreadable probe all hold the warning.
+// team, an unset key, an API-key login, or an unreadable probe all hold the warning.
 test("checkAnthroApiKey warns on API key + claude.ai login with a claude seam in use", async () => {
   const root = readyRepo();
   writeConfig(root, { agent: "claude" });
@@ -388,7 +388,7 @@ test("checkAnthroApiKey warns on API key + claude.ai login with a claude seam in
   assert.match(apiLogin.detail, /no claude\.ai login/);
 });
 
-// No claude seam, no trap (gap 6's silence rule): a pi-only fleet never spawns claude, so the
+// No claude seam, no trap (gap 6's silence rule): a pi-only team never spawns claude, so the
 // key, however exported, cannot move a claude run off the subscription.
 test("checkAnthroApiKey stays silent without a claude seam", async () => {
   const root = readyRepo();
@@ -426,7 +426,7 @@ test("checkClaudeAuth fails a logged-out claude and names the billing it implies
   assert.match(unreadable.detail, /could not check/);
 });
 
-// A pi-only config stands the claude checks down, so a fleet that never runs claude spawns no
+// A pi-only config stands the claude checks down, so a team that never runs claude spawns no
 // claude and reads no claude state.
 test("checkClaudeAuth and checkClaudeVersion stand down without a claude seam", async () => {
   const root = readyRepo();
@@ -651,7 +651,7 @@ test("checkImageInput warns when no tier can read images and a text-only loop ha
 test("checkImageInput warns when no seam reads images (models declared, all text-only)", async () => {
   const models = writeImageModels();
   const root = readyRepo();
-  // All roles disabled, but a fleet with only a text-only model declared: nothing can read
+  // All roles disabled, but a team with only a text-only model declared: nothing can read
   // images, even though there is nothing enabled to run — the gap is still worth surfacing.
   writeConfig(root, {
     model: { default: "local/text" },
@@ -665,7 +665,7 @@ test("checkImageInput warns when no seam reads images (models declared, all text
 test("checkImageInput is informational when no models are declared at all", async () => {
   const root = readyRepo();
   // No model map: capability is left to pi's own defaults, the same stance as tier models —
-  // informational, so a default-configured fleet still reads doctor as ready.
+  // informational, so a default-configured team still reads doctor as ready.
   writeConfig(root, { roles: onlyFeature() });
   const outcome = await checkImageInput(root, writeImageModels());
   assert.equal(outcome.level, "ok");

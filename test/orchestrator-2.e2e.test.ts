@@ -108,7 +108,7 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
     const markerFile = wakeRequestPath(repo);
     writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
-    // The fleet consumes the marker within a poll cycle and the loop ticks — its
+    // The team consumes the marker within a poll cycle and the loop ticks — its
     // in-memory schedule was the gate, so the file zeroing alone cannot explain the tick.
     await waitFor(() => loadLoopState(repo, "clean").runs >= 4, "the woken loop to tick");
     await waitFor(() => !loadLoopState(repo, "clean").running, "the woken tick to finish");
@@ -292,10 +292,10 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
     await waitFor(() => finished("clean") && finished("dedupe"), "startup ticks to finish");
     // Baseline while both roles are still enabled and idle: clean's next tick after the
-    // disable is what proves the rest of the fleet keeps ticking.
+    // disable is what proves the rest of the team keeps ticking.
     const cleanTicks = loadLoopState(repo, "clean").runs;
 
-    // Disabling a role stops its next tick; the rest of the fleet keeps ticking.
+    // Disabling a role stops its next tick; the rest of the team keeps ticking.
     saveConfig(repo, fastConfig(["clean"]));
     // Wait until the disable is processed AND no in-flight dedupe tick remains. From that point
     // on dedupe can never start another tick (isEligible hard-gates disabled roles), so its
@@ -307,7 +307,7 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
       "the disable to be processed with no in-flight tick",
     );
     const dryTicks = loadLoopState(repo, "dedupe").runs;
-    // The enabled role's next tick proves the fleet is still alive and ticking — the disabled
+    // The enabled role's next tick proves the team is still alive and ticking — the disabled
     // role had that same window and must not have used it. clean is deferrable (need-based
     // prioritization), so a work landing supplies its wake; the re-enabled dedupe below wakes on
     // the same commit.
@@ -376,7 +376,7 @@ test("a live config edit logs one config_changed naming the keys, and an identic
 test("a tumwater.json that vanishes mid-run keeps the last-known-good config, warns once, and reloads on return", async () => {
   // BUGS.md 2026-09-23: a landing's fast-forward deleted the live file and the next poll
   // reloaded defaultConfig() — config_changed naming every non-default key, the cap reset to
-  // the default, every role enabled — and the fleet ran 8.6 h on it with no word of why.
+  // the default, every role enabled — and the team ran 8.6 h on it with no word of why.
   const repo = makeRepo();
   await initProject(repo, "config vanish test");
   // bugfix is never need-deferred (with an open bug — with an empty BUGS.md `## Open` it
@@ -405,7 +405,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
       (warning.message as string).includes(path.join(repo, "tumwater.json")),
       `the warning names the missing file: ${warning.message as string}`,
     );
-    // The fleet keeps running on the retained config, not on defaults.
+    // The team keeps running on the retained config, not on defaults.
     const runsAtVanish = runs().length;
     await waitFor(() => runs().length > runsAtVanish, "a further pi run while the file is missing");
     assert.ok(runs().at(-1)!.includes("model=kept-model"), `retained model: ${runs().at(-1)}`);
@@ -473,7 +473,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
       "the removal to be processed with no in-flight tick",
     );
     const removedTicks = loadLoopState(repo, "docs-auditor").runs;
-    // The enabled role's next tick proves the fleet is alive and main moved — a still-enabled
+    // The enabled role's next tick proves the team is alive and main moved — a still-enabled
     // custom would have used that same wake (it never defers), so its count must not move.
     landWork(repo);
     await waitFor(() => loadLoopState(repo, "clean").runs > 1, "an enabled role to tick again");

@@ -130,9 +130,6 @@ export interface TeamHold {
   reserve?: true;
 }
 
-/** @deprecated Use TeamHold. */
-export type FleetHold = TeamHold;
-
 /** The team's starting state: open, with no history. Providers are map keys elsewhere
  * (pollTeamHold keeps one hold per provider), so undefined means "pi's default backend" —
  * the grouping an unconfigured team (every existing config before providers) lands in. */
@@ -144,9 +141,6 @@ export const TEAM_OPEN: TeamHold = {
   escalation: 0,
   reopenedAt: null,
 };
-
-/** @deprecated Use TEAM_OPEN. */
-export const FLEET_OPEN = TEAM_OPEN;
 
 /** The providers (pi's default included as undefined) whose team hold STANDS — `until`
  * non-null. A provider whose hold has re-opened stays in the holds map (its kind, relapse
@@ -251,9 +245,6 @@ export function teamHold(
   const holdMs = Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
   return { provider, until: now + holdMs, kind, roles, escalation, reopenedAt: prev.reopenedAt };
 }
-
-/** @deprecated Use teamHold. */
-export const fleetHold = teamHold;
 
 /** The providers whose standing hold is the account's rejected subscription window (kind
  * "subscription-window", not a reserve crossing — the director is exempt from the reserve): the

@@ -1,5 +1,5 @@
 /** The error-streak circuit breaker (PLANS.md 2026-09-30): a role whose ticks keep failing
- * consecutively is warned at ERROR_STREAK_WARN (src/tick/tick-apply.ts) and named by the fleet-wide
+ * consecutively is warned at ERROR_STREAK_WARN (src/tick/tick-apply.ts) and named by the team-wide
  * storm alarms (src/team/error-storm.ts, src/team/failure-spread.ts), but both only talk — the
  * role keeps ticking on the error ladder's 600 s max backoff forever, burning a model slot and
  * spend on a loop that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed ticks this gate
@@ -11,7 +11,7 @@
  * toggle) lifts it, as today.
  *
  * Shape, like every gate in the family (src/gates/gate-polls.ts): the pure trip bookkeeping lives
- * here so it is unit-testable without a fleet, and the module owns the only event emission — the
+ * here so it is unit-testable without a team, and the module owns the only event emission — the
  * orchestrator's poll owns only the wiring.
  *
  * Ack bookkeeping. The marker itself is the ack carrier: every poll, each role present in the

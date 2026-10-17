@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { pauseFleet, pauseRole } from "../src/team/team-state.js";
+import { pauseTeam, pauseRole } from "../src/team/team-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
@@ -15,18 +15,18 @@ test("checkPause: no markers is ok", () => {
   assert.deepEqual(checkPause(tmpdir("tw-hold-")), { level: "ok", detail: "not paused" });
 });
 
-test("checkPause: an indefinite fleet pause warns and names resume", () => {
+test("checkPause: an indefinite team pause warns and names resume", () => {
   const root = tmpdir("tw-hold-");
-  pauseFleet(root);
+  pauseTeam(root);
   const out = checkPause(root);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /tumwater resume/);
 });
 
-test("checkPause: a timed fleet pause shows the countdown and reason", () => {
+test("checkPause: a timed team pause shows the countdown and reason", () => {
   const root = tmpdir("tw-hold-");
   const now = Date.now();
-  pauseFleet(root, now + 90 * 60_000, "deploy freeze");
+  pauseTeam(root, now + 90 * 60_000, "deploy freeze");
   const out = checkPause(root, now);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /auto-resumes in/);
@@ -41,18 +41,18 @@ test("checkPause: paused roles alone are ok and named", () => {
   assert.match(out.detail, /cleanup/);
 });
 
-test("checkPause: fleet pause plus a paused role warns and names the role", () => {
+test("checkPause: team pause plus a paused role warns and names the role", () => {
   const root = tmpdir("tw-hold-");
-  pauseFleet(root);
+  pauseTeam(root);
   pauseRole(root, "cleanup");
   const out = checkPause(root);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /cleanup/);
 });
 
-test("checkPause: an expired fleet pause reads as not paused", () => {
+test("checkPause: an expired team pause reads as not paused", () => {
   const root = tmpdir("tw-hold-");
-  pauseFleet(root, Date.now() - 1000);
+  pauseTeam(root, Date.now() - 1000);
   assert.equal(checkPause(root).detail, "not paused");
 });
 
@@ -64,7 +64,7 @@ test("checkQuietHours: no config or an empty one is none configured", () => {
   assert.deepEqual(checkQuietHours(qcfg({}), at(12)), { level: "ok", detail: "none configured" });
 });
 
-test("checkQuietHours: a fleet window warns inside it (wrapping midnight) and is ok outside", () => {
+test("checkQuietHours: a team window warns inside it (wrapping midnight) and is ok outside", () => {
   const cfg = qcfg({ quietHours: "23:00-07:00" });
   for (const [h, m] of [[23, 30], [1, 0]]) {
     const r = checkQuietHours(cfg, at(h!, m));
@@ -91,7 +91,7 @@ test("checkQuietHours: the director's window is never named", () => {
   assert.doesNotMatch(r.detail, /director/);
 });
 
-test("checkQuietHours: fleet window plus a held role warns and names the role", () => {
+test("checkQuietHours: team window plus a held role warns and names the role", () => {
   const r = checkQuietHours(qcfg({ quietHours: "09:00-17:00", quietHoursPerRole: { cleanup: "09:00-17:00" } }), at(12));
   assert.equal(r.level, "warn");
   assert.match(r.detail, /; quiet roles: cleanup until 17:00/);
@@ -188,7 +188,7 @@ test("checkMaintenanceQuota: a full window warns and names the held loops", () =
   assert.match(r.detail, /: clean$/);
 });
 
-test("checkMaintenanceQuota: a dead fleet's running flag is not in flight", () => {
+test("checkMaintenanceQuota: a dead team's running flag is not in flight", () => {
   const root = mergedRoot("clean", 11);
   saveLoopState(root, { ...freshLoopState("clean"), running: true });
   assert.match(checkMaintenanceQuota(root, mcfg(), false, MNOW).detail, /^11\/12 /);

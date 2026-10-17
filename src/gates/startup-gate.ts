@@ -19,11 +19,11 @@ import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
  * three askers and they must get one answer: cmdRun (cli/cli-run.ts) fails fast on it at startup,
- * the self-redeploy (src/redeploy/redeployer.ts) asks it before it holds the fleet and again right
+ * the self-redeploy (src/redeploy/redeployer.ts) asks it before it holds the team and again right
  * before its swap, and the supervisor (src/process/supervisor.ts) asks it to name why a generation
  * died. On 2026-09-22 only the first existed: a redeploy swapped onto a build whose child found
  * tumwater.json missing, exited "not initialized", and the supervisor exited with it — 4 h 44 m
- * of a dead fleet and no event (BUGS.md 2026-09-23). The operator-facing wording lives in
+ * of a dead team and no event (BUGS.md 2026-09-23). The operator-facing wording lives in
  * readiness.ts, shared with doctor's per-check report.
  *
  * The one startup check deliberately outside the gate is cmdRun's "an orchestrator is already
@@ -36,7 +36,7 @@ import { seedClaudeAccount } from "../agent/claude/claude-account.js";
  * cli/cli-repo-gate.ts): git
  * on PATH, a repository, tumwater.json present, at least one commit. The first unmet one's
  * message, or null when the repo is ready. A missing tumwater.json is "not initialized" here,
- * never "use defaults": starting a fleet is the moment an operator's config must exist. */
+ * never "use defaults": starting a team is the moment an operator's config must exist. */
 export async function repoNotReady(root: string): Promise<string | null> {
   // Fail fast on a missing binary: without this, the probe below reads as "not a git
   // repository" — pointing at the wrong fix for a machine with no git installed.
@@ -81,7 +81,7 @@ export async function runStartupCheck(
   }
   // Seed the claude account state before the first run (plans/agent-backends.md part 6a):
   // `claude auth status` decides subscription vs API key, and an existing file is left alone.
-  // Gated on a claude seam so a pi-only fleet spawns nothing, and attempted once per root per
+  // Gated on a claude seam so a pi-only team spawns nothing, and attempted once per root per
   // process: runStartupCheck is also the redeploy/supervisor poll's ask (runStartupProblem),
   // and a logged-out claude would otherwise spawn a bounded probe on every poll. If the seed
   // fails, the first claude run's observation fills the file in.
@@ -115,7 +115,7 @@ export async function runStartupProblem(root: string, branchArg: string | null):
   return "problem" in check ? check.problem : null;
 }
 
-/** The branch the fleet targets: `--branch <name>` wins, then `baseBranch` in config, then
+/** The branch the team targets: `--branch <name>` wins, then `baseBranch` in config, then
  * whatever the primary checkout has checked out — the branch-agnostic default. An explicit
  * value must exist: failing at startup with the branches that do exist beats failing at the
  * first `git worktree add`. */

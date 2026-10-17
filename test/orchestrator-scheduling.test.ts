@@ -6,8 +6,8 @@ import { defaultConfig } from "../src/config/config.js";
 import { pollRunnerReasons } from "../src/orchestrator/orchestrator-scheduling.js";
 import { newMaintenanceQuotaGateState, pollMaintenanceQuotaGate } from "../src/gates/maintenance-quota.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
-import { pollFleetHold } from "../src/team/team-polls.js";
-import { FLEET_OPEN, heldProviders, windowHeldProviders, type FleetHold } from "../src/team/team-hold.js";
+import { pollTeamHold } from "../src/team/team-polls.js";
+import { TEAM_OPEN, heldProviders, windowHeldProviders, type TeamHold } from "../src/team/team-hold.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
@@ -91,14 +91,14 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
     ["dedupe", "Q"],
   ]);
 
-  // The fleet's runs: two roles fail with 429s on provider P inside the window; dry runs on
+  // The team's runs: two roles fail with 429s on provider P inside the window; dry runs on
   // the healthy provider Q. The hold poll trips P's hold only.
   const holdRunners = [
     { role: "feature", provider: "P", lastRateLimit: { at: T0 } },
     { role: "perf", provider: "P", lastRateLimit: { at: T0 + 1_000 } },
     { role: "dedupe", provider: "Q" },
   ];
-  const holds = pollFleetHold(root, new Map(), holdRunners, T0 + 1_000);
+  const holds = pollTeamHold(root, new Map(), holdRunners, T0 + 1_000);
   const held = heldProviders(holds);
   assert.deepEqual([...held], ["P"]);
 
@@ -115,7 +115,7 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
   // The lift: P's hold re-opens at its deadline; heldProviders() reads nothing. The
   // subsequent poll admits the previously held roles again — a lifted hold never keeps
   // blocking (the 2026-10-06 review's objection: key presence in the map is relapse memory).
-  const liftedHolds = pollFleetHold(root, holds, [], holds.get("P")!.until!);
+  const liftedHolds = pollTeamHold(root, holds, [], holds.get("P")!.until!);
   const lifted = heldProviders(liftedHolds);
   assert.equal(lifted.size, 0, "the lift clears the held-provider set");
   assert.notEqual(liftedHolds.get("P"), undefined, "the lifted entry stays keyed for its relapse memory");
@@ -135,8 +135,8 @@ test("a subscription-window hold stops the director too, while a 429-storm hold 
   const runners = [fakeRunner("director", config)];
   enqueueRolePrompt(root, "director", "hi");
   const roleProviders = new Map<string, string | undefined>([["director", "claude"]]);
-  const hold = (kind: "subscription-window" | "rate-limit"): ReadonlyMap<string | undefined, FleetHold> =>
-    new Map([["claude", { ...FLEET_OPEN, provider: "claude", until: T0 + HOUR, kind }]]);
+  const hold = (kind: "subscription-window" | "rate-limit"): ReadonlyMap<string | undefined, TeamHold> =>
+    new Map([["claude", { ...TEAM_OPEN, provider: "claude", until: T0 + HOUR, kind }]]);
 
   const window = schedulingCtx(root, runners, roleProviders);
   window.heldProviders = heldProviders(hold("subscription-window"));
@@ -353,7 +353,7 @@ test("a base with an outstanding revision and no claim also holds the group", as
   );
   assert.equal(feature2.state.claim, undefined, "the revision holds the group too");
   // The holder itself must still tick: only its revision can settle the hold, so skipping it
-  // too deadlocks every instance (the 2026-10-09 fleet stall).
+  // too deadlocks every instance (the 2026-10-09 team stall).
   assert.equal(reasons.has(feature), true, "the base still ticks to finish its revision");
   assert.equal(feature.state.claim, undefined, "and is assigned no new entry");
 });
@@ -421,7 +421,7 @@ test("the reviewer's provider being held blocks every role through scheduling, a
 /** Put a directory where the append-only events log belongs: every logEvent under `root`
  * throws EISDIR, while every other file under the real root still writes normally. The
  * scheduling pass runs inside the orchestrator's catch-less poll loop, so an unwritable
- * feed must not end the fleet: each converted event site has to survive the throw and
+ * feed must not end the team: each converted event site has to survive the throw and
  * still perform the bookkeeping the event reports. */
 
 test("a claim assignment survives an unwritable events feed", async () => {

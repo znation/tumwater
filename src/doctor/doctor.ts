@@ -43,7 +43,7 @@ import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefus
  * cmdRun adds pi-on-PATH and orchestrator-alive), so a user facing a partially initialized or
  * drifted environment gets one error at a time. doctor runs every check, reports each result
  * individually instead of stopping at the first failure, and exits 0/1 so it can be scripted —
- * the pre-flight sibling of `status --json`, which queries live fleet state while doctor
+ * the pre-flight sibling of `status --json`, which queries live team state while doctor
  * verdicts on the environment. Every check is read-only against .tumwater/ (works with or
  * without a running harness) and none runs the project's build/test: that can take minutes and
  * belongs in the review gate / red-main check, not a pre-flight. The individual checks live in
@@ -132,7 +132,7 @@ export async function runDoctor(
     { name: "stale bugs", ...checkStaleBugs(root) },
     { name: "stale merge-queue entries", ...checkStaleQueuedLandings(root, Date.now()) },
     { name: "uncommitted backlog", ...(await checkUncommittedBacklog(root, config)) },
-    // The running fleet's own view of its build (staleness and what auto-restart made of it)
+    // The running team's own view of its build (staleness and what auto-restart made of it)
     // when there is one; without it the check still stands on its own git comparison.
     { name: "update", ...(await checkBuild(root, undefined, undefined, (orchestratorAlive(root, info) && info?.build) || null)) },
     { name: "orphans", ...(await checkOrphans(root, probe)) },

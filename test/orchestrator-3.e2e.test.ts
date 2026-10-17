@@ -101,7 +101,7 @@ test("a user abort during a landing kills it and discards the pinned ref", async
     const markerFile = abortRequestPath(repo, "clean");
     writeMarker(markerFile, { at: Date.now() });
 
-    // The fleet consumes the request, aborts the in-flight landing, and the drain discards
+    // The team consumes the request, aborts the in-flight landing, and the drain discards
     // the pinned ref: a deliberate stop kills the work under review, the landing's
     // counterpart of the pre-3/5 mid-review user abort. (A shutdown abort keeps the ref.)
     await waitFor(
@@ -248,7 +248,7 @@ test("an entry whose sha main already holds is dropped at the drain without a la
   }
 });
 
-test("a stale marker beside an already-merged queue head is cleared so an idle fleet reads clean", async () => {
+test("a stale marker beside an already-merged queue head is cleared so an idle team reads clean", async () => {
   // The other crash ordering's residue: a landing wrote its 4/5 marker and the ff-merge made
   // main hold the entry's sha, but the process died before the write-back dropped the entry.
   // The dedup arm drops the entry; the marker must go with it, or a liveness-cross-checking
@@ -383,7 +383,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
     const markerFile = abortRequestPath(repo, "clean");
     writeMarker(markerFile, { at: Date.now() });
 
-    // The fleet consumes the request within a poll cycle: kills the run and removes the marker.
+    // The team consumes the request within a poll cycle: kills the run and removes the marker.
     await waitFor(() => !fs.existsSync(markerFile), "the abort marker to be consumed");
 
     const aborted = () => eventsOfType(repo, "run_aborted");

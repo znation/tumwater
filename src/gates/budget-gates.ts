@@ -2,7 +2,7 @@
  * fallback config view it derives, as the orchestrator polls it each cycle. Extracted from
  * orchestrator.ts's poll loop: the spend check, the fallback breaker's re-key, the
  * edge-triggered budget_* events, and the fallback view derivation are one concern beside the
- * other fleet gates (src/gates/pause-gates.ts, src/team/team-hold.ts's fleet hold) — the
+ * other team gates (src/gates/pause-gates.ts, src/team/team-hold.ts's team hold) — the
  * orchestrator owns only the wiring (the demotion publish and the per-runner config assignment). */
 
 import { MODEL_TIERS, type ModelTier, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
@@ -120,7 +120,7 @@ interface BudgetGatePoll {
   /** True on exactly the poll whose transition logged `budget_resumed` (fallback or paused →
    * open): the orchestrator hands the in-flight ticks still running on the fallback back to
    * the primary (PLANS.md 2026-09-30) — new ticks are gated live, but a tick that started on
-   * the fallback keeps it until it ends, so the reopen alone would leave the fleet's fresh
+   * the fallback keeps it until it ends, so the reopen alone would leave the team's fresh
    * budget waiting on the slow local model. The fallback pair the gate just left (below)
    * identifies those ticks. */
   resumed: boolean;
@@ -211,7 +211,7 @@ export function gateRoleConfig(
   return role === DIRECTOR_ROLE ? directorConfig : roleConfig;
 }
 
-/** Poll the daily cost budget gate: once the fleet's spend for the local day has reached
+/** Poll the daily cost budget gate: once the team's spend for the local day has reached
  * maxDailyCostUsd, role loops either switch to the configured cost-free fallback model and
  * keep working, or — with no usable one — start no new ticks at all (scheduled, main-moved
  * wake, or startup). The director is outside both: an explicit human prompt outranks the
@@ -235,7 +235,7 @@ export function pollBudgetGate(
   const reviewOn = liveConfig.review.enabled;
   // Whether the fallback is usable is a live question too: models.json is stat-cached
   // inside pi-models.ts, so an unchanged catalog costs one stat per poll, and an operator
-  // who fixes a mistyped model id sees the fleet switch over within a cycle. One snapshot
+  // who fixes a mistyped model id sees the team switch over within a cycle. One snapshot
   // serves both the engaged pair's check and the per-tier resolution below.
   const providers = readPiProviders(modelsPath);
   // The persisted billing answer (6a/7): a subscription claude seam is free money, so the
@@ -248,7 +248,7 @@ export function pollBudgetGate(
   // verdict. The resolution below deliberately prices alone (the map's keys are the pairs
   // that would run absent a demotion, so a demotion cannot churn them); part 5c/8 wires the
   // full predicate into the resolution so a demoted pair re-resolves only the tiers using it.
-  // A used-up subscription window (claudeWindowUsedUp, the rule the fleet hold reads too): while
+  // A used-up subscription window (claudeWindowUsedUp, the rule the team hold reads too): while
   // it stands a subscription claude pair is no fallback — it would meet the same window.
   // `claudeWindowReserve` makes a window past its fraction count as used up for the team; the
   // director's own reading (directorWindowOut) ignores it, as it runs the operator's prompts.
@@ -289,10 +289,10 @@ export function pollBudgetGate(
   // runs on it — and the paused tiers the demotion produces are held by the scheduler's
   // per-role set, so nobody but the probe ever reaches the demoted pair.
   const priceResolved = resolveTierFallbacks(liveConfig, pairFreeAt);
-  // The fleet-level engagement is the price-resolved `default` tier's pair: a map with no
+  // The team-level engagement is the price-resolved `default` tier's pair: a map with no
   // `default` entry still reports the free pair the tier borrows, so state.engaged and the
   // budget_fallback event name what the gate actually engages instead of reading null while
-  // the fleet runs one. fallbackReady is exactly a non-null resolved default. rejectedPair is
+  // the team runs one. fallbackReady is exactly a non-null resolved default. rejectedPair is
   // the default tier's own declared pair (fallbackPair's borrow order included) — the pair
   // the operator asked for when the price check refused it, named by the pause event.
   const pair = priceResolved.default.pair;
@@ -321,7 +321,7 @@ export function pollBudgetGate(
   // The demotion-aware resolution (part 5c/8): the same engine over the FULL usable predicate —
   // priced at zero AND its breaker entry serving — so a demoted pair re-resolves only the tiers
   // that use it: a demoted strong pair holds the strong roles beside the per-role cap set while
-  // small and default keep their own pairs, instead of the fleet-wide pause the single-pair
+  // small and default keep their own pairs, instead of the team-wide pause the single-pair
   // gate produced.
   const usable = (p: FallbackModelConfig) =>
     pairFreeAt(p) && fallbackServingPair(state.breakers, modelPairName(p));
