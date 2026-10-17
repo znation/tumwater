@@ -54,9 +54,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### OpenCode backend, part 5/7: The opencode adapter runs model jobs, with minted sessions, the export after each run, a PATH fake and its prompt dialect (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 3/7 and part 4/7 landed; design in plans/opencode-backend.md "Sessions", "The prompt dialect and role notes" and "The stream translator, and the export that completes it"; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/opencode/opencode-backend.ts (new) src/prompt/dialect.ts src/prompt/prompt.ts src/paths.ts test/fakes/fake-opencode.ts (new) test/test-runner.ts and their tests)
 
-**Needs replan 2026-10-17 by feature: rejected after 2 review rounds**
-1. (prior 2) The `!settled` failed-spawn guard still has no effective regression test. The new test's `!warnings.includes("opencode_usage_partial")` assertion observes a warning that `finish()` has already collected before the `close` handler (where `afterRun` would run) executes, so it passes whether the guard works or not — it never observes the run where `!settled` triggers.
-
 **Goal.** Register an `opencode` backend that runs real model jobs through `opencode run`: authoring, review, follow-ups and resolver runs.
 
 - Its cost and usage are complete: they come from the session export, not only from the lossy stream.
@@ -64,9 +61,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The prompts describe OpenCode's real tool surface.
 
 **Approach.**
-- **The seam hook.** `AgentBackend` (src/agent/agent-backend.ts) gains an optional `afterRun?(run: AgentRunSpec, invocation: AgentInvocation): string[]`.
-  - It returns canonical lines. src/agent/run-agent.ts calls it once after the process closes, before the parser's final fold, and writes and parses the lines like streamed ones.
-  - It is skipped for a run the harness killed.
+- **The seam hook.** `AgentBackend` (src/agent/agent-backend.ts) gains an optional `afterRun?(run: AgentRunSpec, invocation: AgentInvocation, translator: StreamTranslator): string[]` — the translator goes in so the hook can add `opencode_usage_partial` to the run's warnings, which `finish()` drains after the hook returns.
+  - It returns canonical lines. src/agent/run-agent.ts calls it in the child `close` handler, exactly once, only when `!settled` and the run was not killed (`!killed`), before the parser's final fold, and writes and parses the lines like streamed ones.
+  - The `!settled` guard is load-bearing: the spawn `error` handler calls `finish()`, which sets `settled` before `close` fires, so a run whose binary never started must not spend a 10 s export on a session that was never created.
   - pi and claude do not implement it.
 - **`opencodeBackend`** in src/agent/opencode/opencode-backend.ts:
   - `id: "opencode"`, `label: "OpenCode"`, `defaultBin: "opencode"`, `binEnv: "TUMWATER_OPENCODE_BIN"`.
@@ -114,7 +111,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - **Continue:**
   - With the id known to the fake's export, the same `--session` id is passed.
   - With an unknown id, or a record from another cwd, a new id is minted and `resumable` answers false.
-- **A run on the hanging fake that the quiet watchdog kills:** its group is killed, `afterRun` is skipped, and no classifier overrides the result.
+- **A run on the hanging fake that the quiet watchdog kills:** its group is killed, the fake's export is never invoked (assert `fake.exportsFile` is absent or empty), and no classifier overrides the result.
+- **A failed spawn never calls `afterRun`.** Register a stub `AgentBackend` (the shape test/agent-backend.test.ts already uses: id, label, defaultBin, binEnv, resolveBin, invocation, translator, classifyExit) whose `resolveBin` returns a nonexistent binary and whose `afterRun` increments a counter and returns `[]`; await `runAgent` and assert the result is not ok and the counter is 0. The counter is the assertion: `finish()` drains translator warnings in the spawn `error` handler before `close` runs, so a `!warnings.includes("opencode_usage_partial")` check would pass even with the `!settled` guard removed and must not be used.
 - **Prompts:** the opencode prompt has no notes instruction and carries both backend rules. The pi and claude prompts are byte-identical to before.
 - `npm test` passes.
 
