@@ -7,11 +7,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code merge, part 9/11: Rename the merge identifiers in the gates and doctor and backlog and git and operator and concurrency and check modules (planned 2026-10-16 by user; requires part 8/11 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/doctor/ src/backlog/ src/git/ src/operator/ src/concurrency/ src/baseline/ src/build/ and their tests)
 
-**Needs replan 2026-10-17 by feature: rejected after 2 review rounds**
-
-Objections from the final review:
-
-> 1. (prior 2) `test/worktree.test.ts:138`: the comment paragraph this change rewrote still says "the merge pipeline's concurrent vets"; it should say "verifies", as the sibling comment at `:356-357` already does.
+*Replanned 2026-10-17 by the plan role after two rejected reviews: the last objection was a
+rewritten comment paragraph in test/worktree.test.ts that still said "the merge pipeline's
+concurrent vets". This plan now gives the rule for the noun "vet", names the call sites outside
+the listed directories, and adds a grep for leftover words to the acceptance criteria.*
 
 **Goal.** These modules' merge-related identifiers, comments and test names say merge. The backlog heading grammar keeps its word. A rename of about 360 lines with no behavior change.
 
@@ -19,6 +18,15 @@ Objections from the final review:
 - **Rename rule**, as in this series:
   - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
   - comments, test names and assertion messages follow the Glossary ("unlanded" → "not yet merged");
+  - **the noun "vet" in prose becomes "verify", plural "verifies"**: test/worktree.test.ts's two
+    prune/add-race comments ("the landing pipeline's concurrent vets", "the loser's vet") become
+    "the merge pipeline's concurrent verifies" and "the loser's verify". Use the same word in
+    src/baseline/main-red.ts ("the landing pipeline's vets"), src/concurrency/provider-lease.ts
+    ("a vet task", "the vet: providerWaitStage", "or vet waiting"), src/doctor/doctor-backlog.ts
+    ("A vet plus a merge", "a vet under way"), src/gates/disk-gate.ts ("landing vets") and
+    src/gates/gate-polls.ts ("the land queue starts no new vet" → "the merge queue starts no new
+    verify"). Rewrite every comment sentence that holds a retired word, including ones you only
+    reflow;
   - comment lines wrap at 100 columns.
 - **Prose after the rename** (an earlier attempt was rejected three times on these alone): read each
   edited comment, test name and assertion message as a sentence, not as a word swap.
@@ -53,12 +61,17 @@ Objections from the final review:
   - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
 - Skip any name that an earlier series already renamed.
 
-**Files touched.** `src/gates/`, `src/doctor/`, `src/backlog/`, `src/git/`, `src/operator/`, `src/concurrency/`, `src/baseline/`, `src/build/`; `src/merge/merge-pipeline.ts` (`AbortableMerge` uses). Tests: `test/maintenance-quota.test.ts`, `test/*gate*.test.ts`, `test/doctor-*.test.ts`, `test/backlog-*.test.ts`, `test/git*.test.ts`, `test/worktree*.test.ts`, `test/operator-*.test.ts`, `test/retire.test.ts`, `test/check-permit.test.ts`, `test/semaphore.test.ts`, `test/provider-lease.test.ts`, `test/main-baseline*.test.ts`, `test/main-red.test.ts`, `test/attribute-red-check.test.ts`, `test/build-*.test.ts`, `test/dep-install.test.ts`.
+**Files touched.** `src/gates/`, `src/doctor/`, `src/backlog/`, `src/git/`, `src/operator/`, `src/concurrency/`, `src/baseline/`, `src/build/`. Call sites outside them, renamed and nothing else: `src/merge/merge-pipeline.ts` (`AbortableMerge` uses), `src/status/status-polls.ts` (the `perWorkLanding` parameter and its pass to `maintenanceQuota`), and `test/orchestrator-scheduling.test.ts` (a `hasQueuedLanding: false` literal). Tests: `test/maintenance-quota.test.ts`, `test/*gate*.test.ts`, `test/doctor-*.test.ts`, `test/backlog-*.test.ts`, `test/git*.test.ts`, `test/worktree*.test.ts`, `test/operator-*.test.ts`, `test/retire.test.ts`, `test/check-permit.test.ts`, `test/semaphore.test.ts`, `test/provider-lease.test.ts`, `test/main-baseline*.test.ts`, `test/main-red.test.ts`, `test/attribute-red-check.test.ts`, `test/build-*.test.ts`, `test/dep-install.test.ts`.
 
 **Acceptance criteria.**
 - `git grep -nE 'checkStaleQueuedLandings|LAND_QUEUE_STALE_MS|prerequisitesLanded|AbortableLanding|landingRefPresent|perWorkLanding|hasQueuedLanding' -- src test` prints nothing.
 - test/backlog-eligibility.test.ts still parses `requires part 2/5 landed` headings unchanged.
-- In the listed directories, no identifier, comment or test name uses a retired merge word, except `removeLegacyLandWorktrees`, the grammar keyword and quoted backlog titles.
+- In the listed directories, no identifier, comment or test name uses a retired merge word, except `removeLegacyLandWorktrees`, the grammar keyword and quoted backlog titles. Check it with
+  `git grep -nwiE 'vet|vets|vetted|vetting|unlanded|landing|landings|land|landed' -- src/gates src/doctor src/backlog src/git src/operator src/concurrency src/baseline src/build test/worktree.test.ts`
+  plus the test files listed above, run through `grep -v 'vocabulary-ok'`. It may print only
+  `requires … landed` grammar lines, quoted backlog titles, and user-visible strings or
+  expected-output literals this part leaves alone. In particular, no comment in
+  test/worktree.test.ts says "vet" or "vets".
 - `git grep -nE '\b(merged?|merging) merge' -- src test` prints no line this part introduced, and
   `git grep -nE 'not yet merged-' -- src test` prints nothing.
 - In every comment paragraph this part edits, only the last line is shorter than the wrap would allow
