@@ -1224,7 +1224,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor`'s `disk space` row says what reclaim passes freed over the last 24 h (planned 2026-10-16 by plan; independent of the waiting merge-rename series and the in-flight report fallbacks plan — touches only `src/doctor/doctor-checks.ts`, `test/doctor-checks.test.ts`, and `docs/cli.md`)
+## Done
+
+### `tumwater doctor`'s `disk space` row says what reclaim passes freed over the last 24 h (planned 2026-10-16 by plan; independent of the waiting merge-rename series and the in-flight report fallbacks plan — touches only `src/doctor/doctor-checks.ts`, `test/doctor-checks.test.ts`, and `docs/cli.md`) — done 2026-10-16
 
 **Goal.** The `disk_reclaim` event (logged once per pass by `reclaimPass` in `src/team/reclaim.ts`, carrying `mode`, `worktrees`, `freedGB`, `freeGB`, `durationMs`) has no consumer except its feed line in `eventMessage` (`src/events/event-format.ts`). An operator who runs `tumwater doctor` sees how much space is free now, but not that the team has been running reclaim passes to stay above the floor. Pressure passes in particular show the volume is tight even when the row reads ok. Append a reclaim phrase to the `disk space` row, the same way `checkBuildCheck` appends `checkDurationPhrase`. The dashboard's Health card and the TUI's Health tab run the same checks, so they pick up the phrase too.
 
@@ -1245,8 +1247,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A new test `checkDiskSpace appends the last 24h of reclaim passes` writes `disk_reclaim` events to a temp root's event log with the module's existing event-writing helper (`logEvent`, as the slot-wait and check-duration tests do). It asserts that the ok detail contains `· reclaim in the last 24h freed` and that the level stays `ok`. A second assertion logs a `disk_reclaim` event backdated 48 h with `logEvent(root, { ts: Date.now() - 48 * 3_600_000, … } as never)` (the backdating form `test/cli-run-window.test.ts` uses) and checks that the phrase still counts only the recent passes.
 - The existing `checkDiskSpace fails below the floor, …` test passes unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater report` gains a `Fallbacks by role` line counting each role's model-fallback episodes (planned 2026-10-16 by the plan role) — done 2026-10-16
 

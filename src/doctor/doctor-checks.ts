@@ -411,7 +411,9 @@ export function checkEventLog(root: string): CheckOutcome {
  * disabled and free space is above the hold). A statfs failure is a warning, not a failure: an
  * unmeasurable volume never holds the team, so it must not fail a scripted pre-flight. The
  * detail names the measured path, the free GB to one decimal, and the floor. `holdGB` 0
- * disables the hold, so a free space above `reclaimGB`'s own band (or `reclaimGB` 0) passes. */
+ * disables the hold, so a free space above `reclaimGB`'s own band (or `reclaimGB` 0) passes.
+ * After a successful sample the detail also carries `diskReclaimPhrase` (what `disk_reclaim`
+ * passes freed over the last 24 h); it is informational and never changes the level. */
 export function checkDiskSpace(
   root: string,
   holdGB: number,
@@ -424,12 +426,27 @@ export function checkDiskSpace(
     return warnOutcome(`cannot measure free space at ${where} (statfs failed) — the disk hold is off for this process`);
   const freeGB = free / BYTES_PER_GB;
   const freeText = `${formatGB(freeGB)} free at ${where}`;
+  const phrase = diskReclaimPhrase(readEventsSince(root, 24 * 60 * 60 * 1000).events);
+  const withReclaim = (detail: string) => (phrase ? `${detail} · ${phrase}` : detail);
   if (holdGB > 0 && freeGB < holdGB)
-    return failOutcome(`${freeText} — below the ${holdGB} GB diskHoldGB floor; the team waits to start new work until space recovers`);
+    return failOutcome(withReclaim(`${freeText} — below the ${holdGB} GB diskHoldGB floor; the team waits to start new work until space recovers`));
   if (reclaimGB > 0 && freeGB < reclaimGB)
-    return warnOutcome(`${freeText} — below the ${reclaimGB} GB diskReclaimGB threshold; a pressure reclaim pass deletes ignored build outputs from idle worktrees`);
+    return warnOutcome(withReclaim(`${freeText} — below the ${reclaimGB} GB diskReclaimGB threshold; a pressure reclaim pass deletes ignored build outputs from idle worktrees`));
   const floor = holdGB > 0 ? `above the ${holdGB} GB floor` : "diskHoldGB is 0 (hold disabled)";
-  return okOutcome(`${freeText}, ${floor}`);
+  return okOutcome(withReclaim(`${freeText}, ${floor}`));
+}
+
+/** The `reclaim in the last 24h freed …` phrase for the `disk space` row: the summed
+ * `freedGB` of the `disk_reclaim` passes, their count, and how many ran under pressure (an
+ * event without a `mode` counts as pressure, like its feed line). Each pass is a point event,
+ * so summing cannot straddle the window edge. Undefined when no pass ran. */
+export function diskReclaimPhrase(events: readonly HarnessEvent[]): string | undefined {
+  const passes = events.filter((e) => e.type === "disk_reclaim");
+  if (passes.length === 0) return undefined;
+  const freed = passes.reduce((sum, e) => sum + finiteNumber(e.freedGB, 0), 0);
+  const pressure = passes.filter((e) => (typeof e.mode === "string" && e.mode ? e.mode : "pressure") === "pressure").length;
+  const base = `reclaim in the last 24h freed ${formatGB(freed)} over ${plural(passes.length, "pass", "passes")}`;
+  return pressure > 0 ? `${base}, ${pressure} under pressure` : base;
 }
 
 /** Merge lock — read-only classification via classifyLock (the same three cases the breaker

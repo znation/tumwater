@@ -11,6 +11,7 @@ import {
   checkDurationPhrase,
   checkClaudeTranscripts,
   checkDiskSpace,
+  diskReclaimPhrase,
   checkEventLog,
   checkFlakyChecks,
   checkGitBinary,
@@ -446,6 +447,30 @@ test("checkDiskSpace fails below the floor, warns in the reclaim band, passes ab
   const unmeasurable = checkDiskSpace(root, 10, 40, () => null);
   assert.equal(unmeasurable.level, "warn");
   assert.match(unmeasurable.detail, /cannot measure free space/);
+});
+
+test("diskReclaimPhrase sums freed space and counts pressure passes", () => {
+  const pass = (mode: string, freedGB: unknown) =>
+    ({ ts: Date.now(), source: "reclaim", type: "disk_reclaim", message: "", mode, freedGB }) as HarnessEvent;
+  assert.equal(
+    diskReclaimPhrase([pass("pressure", 4.0), pass("idle", 2.4), pass("pressure", 6.0), buildEvent({ durationMs: 1000 })]),
+    "reclaim in the last 24h freed 12.4 GB over 3 passes, 2 under pressure",
+  );
+  assert.equal(diskReclaimPhrase([pass("idle", 2.4)]), "reclaim in the last 24h freed 2.4 GB over 1 pass");
+  assert.equal(diskReclaimPhrase([]), undefined);
+  assert.equal(
+    diskReclaimPhrase([pass("idle", "lots")]),
+    "reclaim in the last 24h freed 0.0 GB over 1 pass",
+  );
+});
+
+test("checkDiskSpace appends the last 24h of reclaim passes", () => {
+  const root = tmpdir("doctor-disk-reclaim-");
+  logEvent(root, { source: "reclaim", type: "disk_reclaim", message: "p", mode: "pressure", freedGB: 3 } as never);
+  logEvent(root, { ts: Date.now() - 48 * 3_600_000, source: "reclaim", type: "disk_reclaim", message: "old", mode: "pressure", freedGB: 50 } as never);
+  const out = checkDiskSpace(root, 10, 40, () => 50_000_000_000);
+  assert.equal(out.level, "ok");
+  assert.match(out.detail, /· reclaim in the last 24h freed 3\.0 GB over 1 pass, 1 under pressure$/);
 });
 
 test("checkMergeLock classifies absent, live (with and without pid), and stale locks", () => {
