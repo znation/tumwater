@@ -261,27 +261,33 @@ export function setMergeStage(root: string, role: string, stage: MergeStage): vo
   });
 }
 
+/** The merge cell's save-point hooks one of the pipeline's permit waits parks on: `wait` (the
+ * stage shown while the caller is parked) set on each of `roles`' records, and `granted` (the
+ * stage once the permit arrives). The three permit waits the pipeline uses — the build check's,
+ * the conflict resolver's, and the re-key verification's — share this one pair of callbacks,
+ * which differ only in their two stage names, so a fourth wait reuses it instead of re-copying
+ * the waiting/granted shape. A no-op for a role with no record, like setMergeStage. */
+function waitStageHooks(root: string, roles: readonly string[], wait: MergeStage, granted: MergeStage): PermitWaitHooks {
+  return {
+    waiting: () => roles.forEach((role) => setMergeStage(root, role, wait)),
+    granted: () => roles.forEach((role) => setMergeStage(root, role, granted)),
+  };
+}
+
 /** The merge cell's hooks around a build check's wait for its permit (runScopedBuildCheck's
  * `permitWait`): `check-wait` on each of `roles`' records while parked, `build-check` once the
  * permit arrives. Called only when the permit was not free, so an unqueued check never
- * flickers. A no-op for roles with no record, like setMergeStage. */
+ * flickers. */
 export function checkWaitStage(root: string, roles: readonly string[]): PermitWaitHooks {
-  return {
-    waiting: () => roles.forEach((role) => setMergeStage(root, role, "check-wait")),
-    granted: () => roles.forEach((role) => setMergeStage(root, role, "build-check")),
-  };
+  return waitStageHooks(root, roles, "check-wait", "build-check");
 }
 
 /** The merge cell's hooks around the merge's conflict resolver waiting for its agent permit
  * (merge-drain.ts's merge wiring): `resolve-wait` while parked, `resolving` once the permit
  * arrives — checkWaitStage's shape for the maxConcurrent semaphore, so a resolver queued behind
- * busy agents never reads as one running. Called only when the permit was not free. A no-op
- * for a role with no record, like setMergeStage. */
+ * busy agents never reads as one running. Called only when the permit was not free. */
 export function resolveWaitStage(root: string, role: string): PermitWaitHooks {
-  return {
-    waiting: () => setMergeStage(root, role, "resolve-wait"),
-    granted: () => setMergeStage(root, role, "resolving"),
-  };
+  return waitStageHooks(root, [role], "resolve-wait", "resolving");
 }
 
 /** The verification's hooks around a re-key onto a full provider (plans/provider-concurrency.md §5,
@@ -290,10 +296,7 @@ export function resolveWaitStage(root: string, role: string): PermitWaitHooks {
  * shape for the re-key path — a verification that normally shares its review seam never
  * re-keys, so the stage fires only when a run actually moves to a different, full provider. */
 export function providerWaitStage(root: string, role: string): PermitWaitHooks {
-  return {
-    waiting: () => setMergeStage(root, role, "provider-wait"),
-    granted: () => setMergeStage(root, role, "reviewing"),
-  };
+  return waitStageHooks(root, [role], "provider-wait", "reviewing");
 }
 
 /** The marker's per-change records, whichever shape it has: `changes` as written, or — for a
