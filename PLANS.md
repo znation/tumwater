@@ -1204,6 +1204,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater doctor`'s `disk space` row says what reclaim passes freed over the last 24 h (planned 2026-10-16 by plan; independent of the waiting merge-rename series and the in-flight report fallbacks plan — touches only `src/doctor/doctor-checks.ts`, `test/doctor-checks.test.ts`, and `docs/cli.md`)
+
+**Goal.** The `disk_reclaim` event (logged once per pass by `reclaimPass` in `src/team/reclaim.ts`, carrying `mode`, `worktrees`, `freedGB`, `freeGB`, `durationMs`) has no consumer except its feed line in `eventMessage` (`src/events/event-format.ts`). An operator who runs `tumwater doctor` sees how much space is free now, but not that the team has been running reclaim passes to stay above the floor. Pressure passes in particular show the volume is tight even when the row reads ok. Append a reclaim phrase to the `disk space` row, the same way `checkBuildCheck` appends `checkDurationPhrase`. The dashboard's Health card and the TUI's Health tab run the same checks, so they pick up the phrase too.
+
+**Approach.**
+- In `src/doctor/doctor-checks.ts`, add an exported pure `diskReclaimPhrase(events: readonly HarnessEvent[]): string | undefined`, placed next to `checkDurationPhrase`. It keeps `type === "disk_reclaim"` events, sums `finiteNumber(e.freedGB, 0)`, and counts the passes and the passes whose `mode` is `"pressure"`. It returns undefined when no event qualifies. Otherwise it returns `reclaim in the last 24h freed ${formatGB(total)} over ${plural(n, "pass", "passes")}`, plus `, ${p} under pressure` when `p > 0`. Example: `reclaim in the last 24h freed 12.4 GB over 3 passes, 2 under pressure`. Summing is safe here, unlike fallback durations: each pass is a point event, so it cannot straddle the window edge. An event with no `mode` field counts as pressure, matching the feed line's `textOr(e.mode, "pressure")`.
+- In `checkDiskSpace`, compute the phrase once from `readEventsSince(root, 24 * 60 * 60 * 1000).events` (already imported, same window as `checkBuildCheck`). Append it as ` · ${phrase}` to the detail of the fail, warn, and ok outcomes that follow a successful sample. Leave the statfs-failure warning unchanged. The phrase is informational only and never changes the row's level. Keep `checkDiskSpace`'s signature as it is: the existing test passes a temp root with no event log, and `readEventsSince` on a missing log yields no events.
+- Extend `checkDiskSpace`'s doc comment with one sentence naming the phrase.
+- In `docs/cli.md`'s Audit cell, change "the root checkout's `node_modules` drifting …" so the clause just before it reads: "free disk space against the hold floor and what reclaim passes freed over the last 24 h, the declared check and how long …".
+
+**Files touched.** `src/doctor/doctor-checks.ts`, `test/doctor-checks.test.ts`, `docs/cli.md`.
+
+**Acceptance criteria.**
+- A new test `diskReclaimPhrase sums freed space and counts pressure passes` in `test/doctor-checks.test.ts` covers four cases:
+  - Three `disk_reclaim` events (two `pressure` at 4.0 and 6.0 GB, one `idle` at 2.4 GB) plus one unrelated `build_check` event give exactly `reclaim in the last 24h freed 12.4 GB over 3 passes, 2 under pressure`.
+  - One `idle` pass gives `… over 1 pass` with no pressure clause.
+  - An empty list gives undefined.
+  - An event with a non-numeric `freedGB` adds 0 but still counts as a pass.
+- A new test `checkDiskSpace appends the last 24h of reclaim passes` writes `disk_reclaim` events to a temp root's event log with the module's existing event-writing helper (`logEvent`, as the slot-wait and check-duration tests do). It asserts that the ok detail contains `· reclaim in the last 24h freed` and that the level stays `ok`. A second assertion logs a `disk_reclaim` event backdated 48 h with `logEvent(root, { ts: Date.now() - 48 * 3_600_000, … } as never)` (the backdating form `test/cli-run-window.test.ts` uses) and checks that the phrase still counts only the recent passes.
+- The existing `checkDiskSpace fails below the floor, …` test passes unchanged.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater report` gains a `Fallbacks by role` line counting each role's model-fallback episodes (planned 2026-10-16 by the plan role) — done 2026-10-16
