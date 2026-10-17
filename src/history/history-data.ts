@@ -241,7 +241,7 @@ export function bucketMergeEvents(events: HarnessEvent[]): {
 }
 
 /** Resolve one queued tick row's eventual merge verdict: a "queued" run_end carries no
- * result until its merge batch lands or fails, so the row joins its `end` run_end to the
+ * result until its merge batch merges or fails, so the row joins its `end` run_end to the
  * tick's merge_queued pin and that pin's merge_done/merge_failed outcome (both from the
  * bucketMergeEvents maps, oldest-first per loop). The claim cursor `claimTop` (mutated in
  * place) walks the pin list newest-first and hands each queued tick the newest unclaimed pin

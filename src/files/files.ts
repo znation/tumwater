@@ -280,7 +280,7 @@ export function writeTextAtomic(file: string, text: string): void {
 
 /** Write raw `data` bytes to `file` — the byte entry point to writeAtomic's tmp+rename, for
  * writers that must preserve the source bytes exactly (merge-git.ts's restoreConfigBytes
- * writes back the live tumwater.json bytes a landing's merge deleted). */
+ * writes back the live tumwater.json bytes the merge deleted). */
 export function writeBytesAtomic(file: string, data: Uint8Array): void {
   writeAtomic(file, data);
 }

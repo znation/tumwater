@@ -300,7 +300,7 @@ export function consumeReclaimRequest(root: string, reclaim: { requestManual(): 
  * (flagged, then settled by the drain) — so `merges` lists them all and the request stops
  * whichever holds the role. The merge is a whole STACK (merge queue 5/5), so the request matches
  * ANY of its roles — `roles` is every role it is merging right now, and a stop for one of them
- * kills the whole stack: the lander cannot split it (abandoning mid-stack would leave the pinned
+ * kills the whole stack: the merger cannot split it (abandoning mid-stack would leave the pinned
  * refs of the not-yet-processed changes for one-at-a-time recovery, which is already the
  * fallback), and the merge discards every stacked ref when it ends. */
 export function consumeAbortRequests(

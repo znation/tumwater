@@ -117,7 +117,7 @@ uncommitted edits are in your worktree — review \`git diff\`, then finish or d
 }
 
 /** The one-turn follow-up sent into a tick's OWN session (--continue) when the run changed files
- * but its reply carried no SUMMARY line — 73 of the first 670 commits landed as "<role> tick N"
+ * but its reply carried no SUMMARY line — 73 of the first 670 commits merged as "<role> tick N"
  * because of that, most of them the largest diffs in the repo. The session still holds everything
  * the run did, so one short reply recovers the subject and body the commit deserves; the caller
  * bounds the run tightly and falls back to a diff-derived subject if this too yields nothing. */
@@ -135,7 +135,7 @@ ${SUMMARY_BLOCK}`;
 }
 
 /** The note injected into a role's next FRESH tick prompt after its previous run(s) were cut
- * off at the context ceiling without landing anything (the loop gave up resuming — see
+ * off at the context ceiling without merging anything (the loop gave up resuming — see
  * tick-apply.ts's CUT_OFF_RESUME_LIMIT — or a cut-off director prompt is re-running). The only
  * cross-tick memory that the last attempt was too big for the window. */
 export function buildCutOffNote(streak: number): string {

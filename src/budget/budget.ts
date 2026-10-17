@@ -178,7 +178,7 @@ export function modelPairName(p: { provider?: string; model?: string } | null): 
  * `strong` tiers resolved to a usable free pair (resolveTierFallbacks over the full usable
  * predicate — price AND breaker serving) — plus whether the review gate is on. The gate is
  * `paused` when `default` resolves to pause (nothing for the team's bulk to run on), or when
- * review is on and `strong` does (nothing could land, so every authoring tick is wasted work);
+ * review is on and `strong` does (nothing could merge, so every authoring tick is wasted work);
  * `fallback` otherwise, with the tiers that did resolve running their pairs and the rest held
  * per role. The single definition of the gate: the orchestrator enforces it and both dashboards
  * display it, so what an operator sees is what the scheduler is doing. */

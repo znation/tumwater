@@ -8,7 +8,7 @@ import { formatTimestamp } from "../text/datetime.js";
 import { numberedList } from "../text/markdown.js";
 import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-contract.js";
 
-/** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
+/** Prompts for the merge gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
  * (merge-to-main.ts), the adversarial pre-merge review (review.ts), and the notes that carry the
  * gate's verdicts back to the loop that authored the change (loop-tick.ts, tick-prompt.ts,
@@ -56,8 +56,8 @@ function conflictIntentBlocks(intent: ConflictIntent): string {
  * the harness will run (told only to keep the tests passing, the 2026-10-04 resolver guessed
  * `npx vitest run` in a node:test repo, BUGS.md 2026-10-05), and the rules tell it not to run
  * that check itself: merge-to-main.ts's verifyMerge runs it on the resolved tree before
- * anything lands, and the resolver runs inside the merge slot, so its own copy of the run held
- * every queued landing. On 2026-10-12 the resolvers' own suite runs were 86% of their wall time
+ * anything merges, and the resolver runs inside the merge slot, so its own copy of the run held
+ * every queued merge. On 2026-10-12 the resolvers' own suite runs were 86% of their wall time
  * (951 of 1,104 s over seven runs; one spent 6 min re-testing a tree identical to main).
  * Undefined keeps the generic sentence and adds no such rule: with no declared check the
  * harness verifies nothing. `intent` — this branch's own
@@ -126,16 +126,16 @@ interface PriorReviewPrompt {
  * green on this exact tree (e.g. "`npm run test` passed"), so the reviewer spends its run on what a
  * green suite cannot show instead of re-running it. The no-re-run instruction is its own line in
  * the rules list, not a clause in the context paragraph: stated there, reviewers read past it and
- * re-ran the suite in scratch copies under /tmp while holding the landing slot (BUGS.md
+ * re-ran the suite in scratch copies under /tmp while holding the merge slot (BUGS.md
  * 2026-09-23). It appears only when a verified result exists: after a timed-out, killed, or skipped
  * pre-check no green run stands behind the tree, and a reviewer running the suite itself is doing
  * its job. `baseRev` is the frozen revision the diff is measured against (changeBaseRev's
  * merge-base, resolved when the gate builds the diff): the prompt names it and tells the reviewer
- * to compare against it, never `main`, because other loops land on main while the review runs
+ * to compare against it, never `main`, because other loops merge to main while the review runs
  * (BUGS.md 2026-10-06). Omitted, the prompt keeps the generic "ahead of main" wording. `today` pins
  * the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The text must
  * contain the literal "VERDICT:" exactly twice — the two advertised forms — because a prompt
- * test derives the accepted forms from it. `priorReview` is present only when this landing is a
+ * test derives the accepted forms from it. `priorReview` is present only when this merge is a
  * revision of a previously rejected change (plans/revise-rejected.md part 2/2): it names the round
  * and shows the prior objections plus the interdiff so the re-review checks each one first.
  * Omitted, the prompt is unchanged from a fresh change's. */
@@ -195,7 +195,7 @@ never exercise, claims the diff does not back, work left half-done.`,
       `Design principles this project holds — your review standard; a violation of one is a finding:\n<principles>\n${principles}\n</principles>`,
     );
   }
-  // The base the diff is measured from, named in the prompt: main moves while a landing is vetted,
+  // The base the diff is measured from, named in the prompt: main moves while a merge is approved,
   // and a reviewer that double-checks scope with `git diff main` reads a newer merge, reversed, as
   // part of the change (BUGS.md 2026-10-06). Sentence only when a base is given; the callers that
   // omit it (unit tests of the prompt's other clauses) keep the generic wording.
@@ -312,7 +312,7 @@ reply with ONLY the closing block — no tool calls, no other text — one line 
 }
 
 /** The one-turn follow-up sent into a tick's OWN session (--continue) when the harness's
- * pre-queue self-check found deterministic faults the landing gate would reject. The session
+ * pre-queue self-check found deterministic faults the merge gate would reject. The session
  * still holds everything the run did, so the author fixes the faults before the change commits
  * and queues — the gate keeps its final say, and the fix costs one bounded turn instead of a
  * rejection cycle. A finding the author believes is wrong is answered in RISK rather than
@@ -357,9 +357,9 @@ export function buildRejectedReviewNote(review: {
   // notebook instead: it records the abandoned purpose and any instances that remain
   // unhandled, then takes a different theme on the next tick. Re-authoring the same purpose
   // from the same objections is what restarted the round and produced the long rejection
-  // runs this note exists to end. The markdown-only replan note lands review-exempt, but a
-  // landed change clears the standing rejection (clearSupersededRejection, tick-apply.ts), so
-  // the instruction does not re-inject once the note has landed.
+  // runs this note exists to end. The markdown-only replan note merges review-exempt, but a
+  // merged change clears the standing rejection (clearSupersededRejection, tick-apply.ts), so
+  // the instruction does not re-inject once the note has merged.
   let finality = "";
   if (review.exhausted) {
     finality =
@@ -443,7 +443,7 @@ function entryRangeLines(entries: readonly { title: string; start: number; end: 
   return lines;
 }
 
-/** The note appended to a series part's assignment when parts it requires already landed: each
+/** The note appended to a series part's assignment when parts it requires already merged: each
  * one's Done heading and PLANS.md line range, so the implementer reads exactly what that part
  * changed instead of searching a Done section that runs to thousands of lines. Lists at most
  * five, then a count of the rest. A pure function so its shape is pinned in tests. */
@@ -460,7 +460,7 @@ ${lines.join("\n")}
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change
  * at MERGE_CONFLICT_LIMIT (src/loop/leftover.ts): at the cap recovery ordinarily hands the
  * change back to its author with markers instead, so a discard means that lineage already used
- * its hand-back. The landing failures were harness-level, so without the note the author would
+ * its hand-back. The merge failures were harness-level, so without the note the author would
  * never learn its work is gone — or that redoing it from memory of the old diff would conflict
  * again. A pure function so its shape is pinned in tests. */
 export function buildConflictDiscardNote(summary: string, attempts: number): string {
@@ -473,9 +473,9 @@ export function buildConflictDiscardNote(summary: string, attempts: number): str
 }
 
 /** The note appended to a role's tick prompt when a change was handed back to it with the
- * conflict markers left in place (PLANS.md "Robust conflict landing, part 2/2"): the landing
+ * conflict markers left in place (PLANS.md "Robust conflict landing, part 2/2"): the merge
  * resolver could not settle it, so the author — who knows what the change was for — resolves it
- * over current main. `reason` says whether it was an approved change whose landing kept
+ * over current main. `reason` says whether it was an approved change whose merge kept
  * conflicting or a rejected change whose revision re-apply conflicted. The note names the
  * conflicted files and shows the same "What main changed in these files" intent block part 1/2
  * gives the resolver, so the author sees what main did without re-deriving it. A pure function

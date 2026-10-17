@@ -15,7 +15,7 @@ import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
  * SUMMARY/WHY/RISK/VERIFIED block format, the three endings, and the claims rules — lives in
  * reply-contract.ts; this module weaves it into each prompt. The follow-up prompts that pick a
  * session back up — the resume bridge, the missing-summary recovery, and the fresh-tick cut-off
- * note — live in prompt-followup.ts. The landing gate's pi runs (conflict resolution, build fix,
+ * note — live in prompt-followup.ts. The merge gate's pi runs (conflict resolution, build fix,
  * review) build their prompts in gate-prompts.ts; assembling a reply into the tick's commit message
  * lives in git/commit-message.ts.
  *
@@ -31,7 +31,7 @@ import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
  * lives in principles.ts (readPrinciples, with its injection cap). */
 
 /** The context-budget rule every run carries. Under the old 87k window half of all ticks ended
- * at the ceiling landing nothing (308 of 733 in the autonomous fortnight; 216 of 245 no-change
+ * at the ceiling merging nothing (308 of 733 in the autonomous fortnight; 216 of 245 no-change
  * ticks in the first week of September), almost all of it whole-file reads: the model, told only
  * to "work economically", read the codebase file by file (277 whole-file reads against 6 ranged
  * ones in the bugfix/improve/clean logs). Every token read is prefill and dilutes the model's
@@ -287,7 +287,7 @@ interface TickPromptInput {
   /** A per-role prompt the user queued for this loop's next tick (`tumwater prompt --role <id>`),
    * rendered as a labeled block near the top of the task text.
    * The loop still owns find-something-to-do: the request steers, the role's rules and the
-   * landing gate still apply unchanged. Omitted: no queued request this tick. */
+   * merge gate still apply unchanged. Omitted: no queued request this tick. */
   userRequest?: string;
   /** The project's resolved check (detectBuildCheck against the live config), when one is
    * configured or detected (plans/portability.md §6/7) — names the verify command in the

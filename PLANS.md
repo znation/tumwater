@@ -34,22 +34,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The `usage` render chain carries the new block: reading the edited `usage` render closure shows the `block("Backlog items opened", …)` term immediately before the `Backlog items done` term (the chain has no view-render test, as the sibling chart blocks also have none).
 - `npm run test` passes.
 
-### Plain terms code merge, part 11f/11: Rewrite the merge family in the backlog, prompt and support modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11b/11 and 11e/11; design in plans/terminology.md "Code names"; touches comments in src/prompt/ src/backlog/ src/doctor/ src/operator/ src/history/ src/text/ src/budget/ src/files/ src/inbox/ src/team/ src/init/ and src/paths.ts)
-
-**Goal.** The same comment rewrite as part 11b for the remaining support modules: the prompt builders, the backlog reader/writer, the doctor, the operator commands, the history, text, budget, files, inbox, team and init modules, and `src/paths.ts`.
-
-**Approach.**
-- Work only in the listed paths, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names"): `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`.
-- Keep the same four kinds of match as part 11a: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title, kept verbatim; a legacy name kept on purpose (the `requires … landed` regex in src/backlog/backlog-eligibility.ts, the `legacyLandingStatePath`/`legacyLandQueueDir`/`legacyLandingRefName` helpers in src/paths.ts, `refs/tumwater/landing/`, `re-landed` in `FIXED_DATE_RE`, and an old state key); and the ordinary English verb `land` meaning "arrive".
-- Do not rename identifiers or touch string literals; non-comment matches (those legacy helpers, the parser regex, the `// vocabulary-ok` literals) are outside this comment-only part and stay exactly as they are.
-
-**Files touched.** Comments in src/prompt/, src/backlog/, src/doctor/, src/operator/, src/history/, src/text/, src/budget/, src/files/, src/inbox/, src/team/, src/init/ and src/paths.ts. plans/terminology.md is read, not edited.
-
-**Acceptance criteria.**
-- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/prompt src/backlog src/doctor src/operator src/history src/text src/budget src/files src/inbox src/team src/init src/paths.ts`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
-- The diff changes comment lines only.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 11c/11: Rewrite the merge family in the first half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts a–m, plus test/helpers/ test/fakes/ and test/fixtures/)
 
 **Refused 2026-10-17 by feature: the acceptance grep cannot list only the four comment kept-kinds without touching string literals — its range also contains fabricated-data/test-name/role-name literals using merge terms (`summary: "land \u2026"`, `tmpdir("vet-permits-")`, role `"vetted-v"`, `"landed one"`, `"landing check red"`), which the same entry forbids changing and predecessor part 10/11's series convention keeps as expected-output/fabricated literals.**
@@ -1254,6 +1238,24 @@ view renders.
 - `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/config src/pi src/redeploy src/pi-extension src/agent`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
 - The diff changes comment lines only.
 - `npm run test` passes.
+
+
+### Plain terms code merge, part 11f/11: Rewrite the merge family in the backlog, prompt and support modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11b/11 and 11e/11; design in plans/terminology.md "Code names"; touches comments in src/prompt/ src/backlog/ src/doctor/ src/operator/ src/history/ src/text/ src/budget/ src/files/ src/inbox/ src/team/ src/init/ and src/paths.ts) — done 2026-10-17 by the feature role
+
+**Goal.** The same comment rewrite as part 11b for the remaining support modules: the prompt builders, the backlog reader/writer, the doctor, the operator commands, the history, text, budget, files, inbox, team and init modules, and `src/paths.ts`.
+
+**Approach.**
+- Work only in the listed paths, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names"): `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`.
+- Keep the same four kinds of match as part 11a: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title, kept verbatim; a legacy name kept on purpose (the `requires … landed` regex in src/backlog/backlog-eligibility.ts, the `legacyLandingStatePath`/`legacyLandQueueDir`/`legacyLandingRefName` helpers in src/paths.ts, `refs/tumwater/landing/`, `re-landed` in `FIXED_DATE_RE`, and an old state key); and the ordinary English verb `land` meaning "arrive".
+- Do not rename identifiers or touch string literals; non-comment matches (those legacy helpers, the parser regex, the `// vocabulary-ok` literals) are outside this comment-only part and stay exactly as they are.
+
+**Files touched.** Comments in src/prompt/, src/backlog/, src/doctor/, src/operator/, src/history/, src/text/, src/budget/, src/files/, src/inbox/, src/team/, src/init/ and src/paths.ts. plans/terminology.md is read, not edited.
+
+**Acceptance criteria.**
+- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/prompt src/backlog src/doctor src/operator src/history src/text src/budget src/files src/inbox src/team src/init src/paths.ts`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
+- The diff changes comment lines only.
+- `npm run test` passes.
+
 ### The GUI Usage view charts each day's output tokens per role, the dashboard twin of the day report's `Tokens by role` line (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites the merge-family comments in src/ui but not this file, whose merge terms are already plain; it shares the `report-chart` region and Usage render chain with the in-flight backlog-items/work-maintenance/provider-spend chart plans, but adds only its own builder and block, so it lands in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 
 **Goal.** The CLI day report prints `Tokens by role` — output tokens ranked per role (`rankedRoleTotals`/`rankedRoleLine` in `src/report/report-render.ts`) — and the dashboard Usage view draws only the unsplit `Output tokens` chart (`chartTokens`). Tokens are the resource the budget charges, so an operator who sees a token spike on the dashboard cannot point at the role that burned it without opening the CLI report or the raw event log. Add one stacked `Tokens by role` chart.

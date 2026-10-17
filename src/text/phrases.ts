@@ -68,7 +68,7 @@ export function agree(n: number, one: string, many: string): string {
 
 /** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here
  * once so the team-wide red-main warning (main-red.ts), the review gate's attribution detail
- * (review.ts), the landing check's attribution error (merge-check-failures.ts), and the redeploy
+ * (review.ts), the merge check's attribution error (merge-check-failures.ts), and the redeploy
  * hold's block reason (src/redeploy/redeployer.ts) cannot drift over how main's red is worded. Each
  * caller appends its own consequence — the gate's "— not this change's failure", the hold's "
  * — holding the restart until main is green". */
@@ -77,7 +77,7 @@ export function mainRedPhrase(sha: unknown): string {
 }
 
 /** The main-red attribution detail — main's redness is not this change's failure — the review
- * pre-check's reject detail (review-precheck.ts) and the landing check's lastError
+ * pre-check's reject detail (review-precheck.ts) and the merge check's lastError
  * (merge-check-failures.ts) both build as mainRedPhrase plus the consequence suffix. One
  * home beside mainRedPhrase so the two attribution surfaces cannot drift over the wording
  * their tests pin. The other mainRedPhrase callers keep their own consequences: main-red.ts
@@ -98,7 +98,7 @@ export function pauseReasonSuffix(reason: string | undefined): string {
 
 /** The harness warning a loop crossing the error-streak threshold raises — `3 consecutive
  * tick failures: <reason>` — shared by the tick-side crossing (tick-finalize.ts, an error or
- * recovery failure) and the landing-side crossing a review rejection resolves
+ * recovery failure) and the merge-side crossing a review rejection resolves
  * (merge-slot.ts), the two sites that build the message, so the operator-facing wording
  * their tests pin cannot drift between them. */
 export function consecutiveFailuresWarning(count: number, reason: string): string {

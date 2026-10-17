@@ -92,7 +92,7 @@ const DONE_DATE = /\bdone \d{4}-\d{2}-\d{2}/;
 /** A completion stamp: `done YYYY-MM-DD` introduced by a structural delimiter (`— done`,
  * `, done`, `; done`, `(done`) rather than by an English subject in prose. Every entry-own done
  * record in PLANS.md is delimiter-introduced (`…planned …, done …`, `…planned …; done …`,
- * `…) — done …`, `…) (done …)`); a "done DATE" that merely names PRIOR landed work is a
+ * `…) — done …`, `…) (done …)`); a "done DATE" that merely names PRIOR merged work is a
  * participle ("…part 2/2 … both done 2026-10-16, …") whose `done` follows a word, so this
  * narrower regex does not match it and a mention inside a heading's own `(planned …)` prose
  * cannot strand the entry. */
@@ -128,7 +128,7 @@ export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
       // stamp of its own. An entry still under `## Planned` is stranded only when its heading
       // carries a completion stamp — a `done YYYY-MM-DD` introduced by a structural delimiter
       // (`— done`, `, done`, `; done`, `(done`), the repo's completion shapes. A "done DATE" that
-      // merely describes PRIOR landed work ("…both done 2026-10-16, …") follows an English word,
+      // merely describes PRIOR merged work ("…both done 2026-10-16, …") follows an English word,
       // not a delimiter, so DONE_STAMP does not match it and the entry is not stranded.
       const misplaced = section === "Done"
         ? PLANNED_DATE.test(text) && !DONE_DATE.test(text)

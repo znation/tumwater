@@ -324,7 +324,7 @@ export function roleInboxDir(root: string, role: string): string {
 }
 
 /** The durable merge queue (src/merge/merge-queue.ts): a changed tick's pinned commit waits here
- * as one JSON file for the orchestrator's landing pipeline (plans/merge-queue.md 3/5, land-queue
+ * as one JSON file for the orchestrator's merge pipeline (plans/merge-queue.md 3/5, land-queue
  * speed 2c). Like the inbox it is a directory of timestamped files —
  * a crash between enqueue and drop loses nothing, and `tumwater status` can read it without the
  * scheduler. */

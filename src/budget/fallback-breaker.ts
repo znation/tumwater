@@ -118,12 +118,12 @@ export function abandonFallbackProbe(b: FallbackBreaker): FallbackBreaker {
  * and 33 of 33 did on 2026-09-19. (An `error` can also be local, e.g. a worktree that will not
  * reset; failureLimit of those in a row team-wide is still a team that cannot work, and the
  * probe wins the pause back.) `served` is a result only a model reply produces: a change bound
- * for landing (`queued`, `changed`), an explicit decision (`no_change`, `refused`), or a
+ * for merge (`queued`, `changed`), an explicit decision (`no_change`, `refused`), or a
  * reviewer's rejection. Everything else is no evidence: harness and operator kills (`aborted`,
  * `user_aborted`), ticks that never reached the model (`skipped`, `main_red`), a quiet kill
  * (the model had answered before the stall — a tool call or the stream stopped), and the
- * landing results (`merge_conflict`, `merge_blocked`, `review_error`) — a tick no longer
- * returns them since leftover recovery queues its pin instead of landing it, and they would
+ * merge results (`merge_conflict`, `merge_blocked`, `review_error`) — a tick no longer
+ * returns them since leftover recovery queues its pin instead of merging it, and they would
  * not say whether the backend was involved. */
 export function fallbackEvidence(result: TickResult): "served" | "failed" | "none" {
   switch (result) {
