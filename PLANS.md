@@ -1568,7 +1568,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/operator-commands.test.ts`, next to "cmdResume --role lifts one role and reports the was-not-paused wording when absent": `cmdPause --role feature-1` writes `feature-1` to the marker, and `cmdResume --role feature-1` removes it. Also assert that `--role feature-1` is rejected by a command that uses `namedRole` (e.g. `cmdWake` or `cmdAbort`, whichever its tests already drive).
 - `npm run test` passes.
 
-### The repeated-failure pause, part 2/2: Status, the dashboard and the role view show instance 1 paused under its own key (planned 2026-10-16 by plan; requires part 1/2 landed; touches src/status/status-data.ts, src/ui/status-model.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts, src/roles/role-view.ts, src/cli/cli-run.ts and their tests)
+### The repeated-failure pause, part 2/2: Status, the dashboard and the role view show instance 1 paused under its own key (planned 2026-10-16 by plan; requires part 1/2 landed; touches src/status/status-data.ts, src/ui/status-model.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts, src/roles/role-view.ts, src/cli/cli-run.ts, src/doctor/doctor-holds.ts and their tests)
 
 **Goal.** Part 1/2 makes the scheduler treat a runner as paused through `loopPaused` (`src/roles/loop-ids.ts`): its own id, its base role's id, or for instance 1 the `feature-1` key. The display surfaces still test `pausedRoles.includes(role)`. A breaker-paused instance 1 (marker `feature-1`) therefore shows as idle on `tumwater status`, the dashboard and `tumwater role feature`. A `feature-2` row under a whole-role `pause --role feature` already shows that way today. Have every surface read the scheduler's own answer.
 
@@ -1579,12 +1579,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `src/roles/role-view.ts`: `paused: pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
 - `src/cli/cli-run.ts`, the once-mode skip reason: `pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
 - Grep `src/` for other `pausedRoles(root).includes(` and `pausedRoles.includes(` reads of a loop's paused state. Switch each to `loopPaused`, except the TUI `p` toggle in `src/ui/tui/tui-editors.ts`: it decides what to write, so it keeps reading the raw marker.
+- `src/doctor/doctor-holds.ts`, `checkErrorStreaks`: its `paused.has(s.role)` test (a `Set`, so the grep above misses it) becomes `loopPaused(paused, s.role)`. The breaker hint's `tumwater resume --role ${s.role}` names the marker key that lifts the pause instead: the first of `s.role`, `${s.role}-1` and `baseRoleOf(s.role)` that `paused` holds. Today a `feature-2` at the bar under a whole-role `pause --role feature` already reads as not paused there.
 
 **Acceptance criteria.**
 - `test/status-model.test.ts`, new test: a snapshot with `pausedRoles: ["feature-1"]`, `pausedLoops: ["feature"]` and runners `feature` and `feature-2` gives the `feature` row the paused cell and leaves `feature-2` not paused. The paused cell is the same text a `pausedRoles: ["feature"]` single-instance snapshot renders.
 - A status-data test (grep `test/` for the one that asserts `pausedRoles` on the snapshot), new case: with feature at 2 instances and the marker holding `feature`, `pausedLoops` holds both `feature` and `feature-2`. With the marker holding `feature-1`, it holds only `feature`.
 - A role-view test (grep `test/` for `paused:` on the role view): `feature` with the marker holding `feature-1` reports `paused: true`.
+- A doctor test next to the existing `checkErrorStreaks` cases (grep `test/` for `checkErrorStreaks`): `feature` at `ERROR_STREAK_BREAKER` failed runs with the marker holding `feature-1` reads as paused, and its hint names `tumwater resume --role feature-1`.
 - Existing status, dashboard and role-view tests pass with `pausedLoops` added to their fixtures where the type requires it.
+- `npm run test` passes.
+
+### The assigned entry names its paths missing from the checkout (planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, src/tick/tick-prompt.ts, src/prompt/gate-prompts.ts and their tests)
+
+**Goal.** A plan waits in `## Planned` while other runs merge, and the Plain terms series alone renames dozens of files. A feature or bugfix instance handed an entry through its claim gets the `<assigned-entry>` note (`buildAssignmentNote`, `src/prompt/gate-prompts.ts`) naming the entry's title and line range. Nothing tells it that a path the entry names (`src/fleet/…`, a moved test file) is gone, so a mid-sized model spends its first calls reading a path that is not there, or rebuilds a deleted module. The pre-queue self-check already flags such paths in a change's own added lines (`missingPathFindings` in `src/tick/stage-check.ts`), but it deliberately spares PLANS.md and BUGS.md. Have the assignment note list the repo paths the assigned entry names that are absent from the run's checkout, so the run looks for each one's successor or knows it is meant to create it.
+
+**Approach.**
+- `src/tick/stage-check.ts`: move the path-token regex out of `missingPathFindings` into an exported `pathTokens(text: string): string[]`. It returns each distinct path-shaped token in first-appearance order (the same `tokenRe`: at least one slash and a final `.<ext>` segment). `missingPathFindings` calls `pathTokens(line.slice(1))` per added line. Its behavior stays the same, and the existing `test/stage-check.test.ts` cases pin that.
+- `src/tick/tick-prompt.ts`: add `missingEntryPaths(root, file, range): string[]`. It reads `file` from `root` with `readTextOrNull`, takes lines `range.start`..`range.end` (1-based, inclusive), and runs `pathTokens` over them. It keeps a token when its first segment is a directory in `root` (`statOrNull(...)?.isDirectory()`) and the token itself is absent (`statOrNull` is null). That is the self-check's top-level-directory rule, read from the working tree because the prompt is built without git. An unreadable file gives `[]`. In the claim branch of `assembleTickPrompt`, pass `range ? missingEntryPaths(root, claim.file, range) : []` as `buildAssignmentNote`'s new third argument.
+- `src/prompt/gate-prompts.ts`, `buildAssignmentNote`: add an optional third parameter `missingPaths: readonly string[] = []`. When it is non-empty, add one line before `</assigned-entry>`: ``The entry names paths that do not exist in your checkout: `a`, `b`. Each was renamed or removed after the entry was written (find its successor with `git log --follow --name-status -- <path>` or by grepping for the symbols the entry names), or is a file the entry asks you to create.`` List at most 10, then `, and N more`. With no missing paths the note is unchanged.
+- `docs/how-it-works.md`, the "Parallel work instances" bullet: one clause saying the assignment names any paths the entry cites that no longer exist.
+
+**Acceptance criteria.**
+- `test/stage-check.test.ts`, new test "pathTokens returns each distinct path-shaped token in order": the text ``see `src/a/b.ts`, src/a/b.ts and (test/c.test.ts).`` gives `["src/a/b.ts", "test/c.test.ts"]`. `plain words` and `README.md` (no slash) give `[]`.
+- `test/claims.test.ts`, next to "buildAssignmentNote names the entry, its range and the alternatives":
+  - With `["src/gone.ts"]`, the note holds ``do not exist in your checkout: `src/gone.ts`` and still holds the title, range and Refused wording.
+  - With 12 paths, it lists 10 and ends that line's list with `and 2 more`.
+  - With no third argument, the note equals its current text: that test's existing assertions pass unchanged, and a new assertion checks it does not match `do not exist in your checkout`.
+- `test/tick-prompt.test.ts`, next to "a bugfix instance's claim names the bug's line range from BUGS.md": the repo holds `src/kept.ts`. The claimed PLANS.md entry names `src/kept.ts`, `src/gone.ts` and `nodir/x.ts`. The prompt's `<assigned-entry>` names `src/gone.ts` and names neither `src/kept.ts` nor `nodir/x.ts`. A claim whose entry names only `src/kept.ts` gives no missing-paths line.
 - `npm run test` passes.
 
 ## Done
