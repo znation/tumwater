@@ -1266,6 +1266,36 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### Staging asks a bugfix run that adds a Progress note to an open bug, but leaves no Waiting for the next failure note under it, to write that note (planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/tick/stage-check.ts, docs/how-it-works.md and test/stage-check.test.ts; no src/merge, src/backlog, src/ui or src/doctor edit)
+
+**Goal.** Step 2 of bugfix's find text (src/roles/role-catalog.ts, the `bugfix` entry) says that when a bug cannot be reproduced, the run records a Progress note, writes `WAITING_FOR_FAILURE_NOTE` (src/roles/role-guidance.ts) as its own line under the heading, and ends. The note's hold then stops later bugfix runs from re-investigating without new evidence. Runs skip the second half. The open BUGS.md entry for the `startParentDeathWatch` flake gained four `**Progress 2026-10-16 (bugfix…)**` notes on one day. The fourth was a BUGS.md-only "no repro, no code change" run. None of them wrote the Waiting note, so the bug stayed eligible and each run spent a tick, a review and a landing. This plan adds a staging finding (the same one fix-up turn the other findings get, src/tick/tick-stage.ts) for a bugfix run whose diff adds a Progress note to an entry that stays under `## Open` with no Waiting note. The finding is advisory: the change commits and queues either way, and the gate does not run it (like `planDependencyFinding`).
+
+**Approach.** All code is in `src/tick/stage-check.ts`:
+- Add a pure, exported `waitingNoteFinding(head: string, base: string): string | undefined`. `head` is the edited BUGS.md and `base` is its text at the merge-base.
+  - Parse both with `parseEntryDetails(text, "Open")` (src/backlog/backlog-md.ts, already imported). Pair entries by `entryKey(title)` (src/backlog/backlog-eligibility.ts). Skip a head entry with no base entry: a newly filed bug is not a re-investigation.
+  - Count the entry's Progress lines: lines whose trimmed text matches `/^-\s+\*\*Progress\b/`. That is the form today's open entry uses (`- **Progress 2026-10-16 (bugfix, second):** …`).
+  - A head entry counts when its Progress count is greater than its base entry's, `waitingNote(body)` is null, and `refusalNote(body)` is null (both from src/backlog/backlog-eligibility.ts).
+  - Return undefined when no entry counts. Otherwise name the first in file order, with `moreSuffix(<number of other counting entries>)` (src/text/phrases.ts, already imported) appended: `BUGS.md bug "<title>" gained a Progress note but stays open with no Waiting for the next failure note — if this run could not reproduce it, add ${WAITING_FOR_FAILURE_NOTE} as its own line under the heading so later runs wait for new evidence (bugfix's step 2); if it did reproduce, leave the entry as it is`. Quote `<title>` in full, as `heldMovedFinding` does.
+- In `stageCheckFindings`, after the PLANS.md block, add: when `baseRoleOf(role) === "bugfix"` (src/roles/loop-ids.ts, so `bugfix-2` counts) and `files.includes("BUGS.md")`, read the head with `readTextOrNull` and the base with `fileContentAt(wt, await changeBaseRev(wt, mainBranch), "BUGS.md").catch(() => undefined)`, exactly as the PLANS.md block does. Push the finding when it is defined. Every other role is unaffected. A run that moves the bug to `## Fixed` gives no finding, because the entry is no longer under Open in head.
+- Update the module header comment: like `planDependencyFinding`, `waitingNoteFinding` is staging-only and bugfix-only.
+- docs/how-it-works.md, in the hold-note bullet that begins "A bug that bugfix cannot reproduce": add one sentence. A bugfix run that adds a Progress note to an open bug without writing the note is asked to write it in its staging fix-up turn.
+- Out of scope: role ids other than bugfix (selfcheck lifts notes, it does not write them); any gate or in-lock check; changing bugfix's find text.
+
+**Files touched.** src/tick/stage-check.ts, docs/how-it-works.md, test/stage-check.test.ts.
+
+**Acceptance criteria.**
+- Unit tests of `waitingNoteFinding` in test/stage-check.test.ts, over a two-entry `## Open` base where entry A has one Progress line:
+  - head adds a second Progress line to A and no Waiting note: the finding names A's title and contains `Waiting for the next failure`;
+  - the same head plus a `**Waiting for the next failure 2026-10-16 by bugfix: x**` line under A: undefined;
+  - the same head plus a `**Refused …**` line under A: undefined;
+  - head identical to base, or editing A's Symptom line only: undefined;
+  - head moving A to `## Fixed` with a new Progress line: undefined;
+  - a newly filed entry C carrying a Progress line: undefined;
+  - Progress lines added to both A and B: the finding names A and carries the `moreSuffix` count.
+- A `stageCheckFindings` test built with `repoWith` (as the "a duplicated ## Done heading" test is): BUGS.md on main has an Open entry with one Progress line, and the worktree adds a second. With role `"bugfix"` and with `"bugfix-2"`, the findings include the Waiting-note finding. With role `"feature"`, they do not.
+- The existing stage-check and tick-stage tests pass unchanged.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor` warns when a bug held by a Waiting for the next failure note has failed again, naming the failure and the release command (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-backlog.ts, docs/how-it-works.md, docs/cli.md and test/doctor-backlog.test.ts) — done 2026-10-16
