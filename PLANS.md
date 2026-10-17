@@ -1298,6 +1298,45 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater doctor` warns when a bug held by a Waiting for the next failure note has failed again, naming the failure and the release command (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-backlog.ts, docs/how-it-works.md, docs/cli.md and test/doctor-backlog.test.ts)
+
+**Goal.** A bug that bugfix cannot reproduce is held by a `**Waiting for the next failure …**` note until it fails again (docs/how-it-works.md). Two things lift the hold: whoever records a new occurrence deletes the note, or an operator runs `tumwater bug --release <n>`. In practice only selfcheck records occurrences, and selfcheck is opt-in (`roles.selfcheck.enabled`). On a default team, a waiting test can flake again in the gate or the merge check, and the event log records the failure. But nothing connects that failure to the held bug, so the bug stays parked with exactly the evidence it was waiting for. Doctor's `waiting bugs` row (`checkWaitingBugs`) already names each held bug and its release command, and today it always reports ok. This plan makes it warn when a held bug's test has failed in a gate or merge check since the day after its note was written. The warning names the failure and the release command. Doctor stays read-only: it writes nothing to BUGS.md.
+
+**Approach.** All of the change is in `src/doctor/doctor-backlog.ts`:
+- Add a pure, exported `quotedTestName(title: string): string | null`. It returns the first span between straight double quotes in a bug heading that is at least 12 characters long (`/"([^"]{12,})"/`), or null. Today's open bug heading quotes its test name this way (`… "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" …`). The test-runner failure line that `failureHeadline` (src/build/build-check-report.ts) puts into flake warnings and rejection reasons carries the same text verbatim, after `✖ `. The 12-character floor stops a short quoted word from matching unrelated failures.
+- Add a pure, exported `waitingNoteDate(note: string): string | null`. It returns the first `YYYY-MM-DD` in `waitingNote(entry.body)`'s text, or null.
+- Add a pure, exported `failureMentions(events: readonly HarnessEvent[], name: string, sinceMs: number): { ts: number; text: string }[]`. It collects every event with numeric `ts >= sinceMs` that falls under either rule:
+  - a `warning` whose string `message` includes `name`. This covers the gate's `FLAKY_WARNING_PREFIX`, the merge check's `MERGE_FLAKY_WARNING_PREFIX`, and the `merge check failed (kept for one retry): …` warning in src/merge/merge-check-failures.ts.
+  - a `review_rejected` event whose `stringList(e.reasons)` (src/files/json-object.ts) has an entry that includes `name`. For this event, `text` is the first such reason.
+
+  Results come back in event order.
+- In `checkWaitingBugs`, for each held bug (a waiting note and no refusal note, as today), take `quotedTestName(entry.title)` and `waitingNoteDate(note)`. When both are non-null, compute `since` as local midnight starting the day after the note date. The note carries only a date, so a same-day failure cannot be told apart from the failure the note was written about, and the day after is the conservative cutoff. Read events once per check with `readEventsSince(root, Date.now() - firstSince)` from src/events/event-window.ts, using the earliest `since` across held bugs. Skip the read entirely when no held bug yields both values. A bug with any `failureMentions` has recurred.
+- When any held bug recurred, return `warnOutcome`:
+  - Text: `BUGS.md bug #<n> "<title>" failed again since its Waiting for the next failure note (<formatTimestamp(ts) of the newest mention>: <truncate(text, REFUSAL_NOTE_MAX)>)<more> — record the occurrence under the entry and release it with \`tumwater bug --release <n>\``.
+  - `<more>` uses `andMore` over the other recurred bugs.
+  - `formatTimestamp` comes from src/text/datetime.ts.
+- With no recurrence, keep today's ok text unchanged.
+- Update the function's doc comment: it is now ok, or warn when a held bug's quoted test failed again. A warn is never a fail.
+- Docs:
+  - docs/how-it-works.md, in the hold-note bullet that begins "A bug that bugfix cannot reproduce": add one sentence saying `tumwater doctor` warns when the held bug's quoted test has failed again in a gate or merge check since the day after the note.
+  - docs/cli.md, in the Audit row's waiting-bugs clause (grep `open bugs held by a Waiting`): add "and warning when one has failed again since".
+- Out of scope: lifting the note automatically (that is a harness write to BUGS.md, and the note is a human or role decision); matching bugs whose heading quotes no test name; the dashboard and TUI.
+
+**Files touched.** src/doctor/doctor-backlog.ts, docs/how-it-works.md, docs/cli.md, test/doctor-backlog.test.ts.
+
+**Acceptance criteria.**
+- `quotedTestName('`test/x.test.ts` "startParentDeathWatch takes a grandchild down" flaked')` returns the quoted name. A heading with no quotes, or only a quoted span shorter than 12 characters, returns null.
+- `waitingNoteDate("Waiting for the next failure 2026-10-16 by bugfix: x")` is `"2026-10-16"`. A note with no date gives null.
+- `failureMentions` over synthetic events returns:
+  - a gate flake warning, a merge flake warning and a `review_rejected` whose reasons include the name, all at or after `sinceMs`;
+  - nothing for an event before `sinceMs`, a warning that does not include the name, or a `review_rejected` with no matching reason.
+- `checkWaitingBugs` fixtures in test/doctor-backlog.test.ts, built with `logEvent` the way test/doctor-checks.test.ts's `checkFlakyChecks` tests are:
+  - Recurrence: one held bug quotes a test name, its note is dated two days before today (`daysAgoStamp(2)`), and a `FLAKY_WARNING_PREFIX` warning naming the test is logged now. The check returns `level: "warn"`, and the detail contains `failed again`, the warning's text and `tumwater bug --release 1`.
+  - Same-day: the same fixture with the note dated today (`daysAgoStamp(0)`) stays ok with today's text.
+  - Unrelated: the same fixture with a flake warning that does not include the name stays ok.
+- The existing `checkWaitingBugs` and `checkStaleBugs` tests still pass, with no change to their expected text.
+- `npm run test` passes.
+
 ## Done
 
 ### The dashboard's entry drawer offers "Release this entry" on a bug held by a Waiting for the next failure note, as `tumwater bug --release <n>` already does (planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/gui/gui-endpoints.ts, src/gui/gui-backlog-commands.ts (doc comment), src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, docs/cli.md and their tests; no src/backlog, src/merge, src/tick or src/ui/tui edit) (done 2026-10-16)
