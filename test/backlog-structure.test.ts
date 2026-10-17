@@ -87,6 +87,52 @@ _None yet._`);
   ]);
 });
 
+test("a ## Planned heading that mentions a done date in its own stamp's prose is not stranded", () => {
+  // Mirrors the real 4f9dfd1e heading: a `## Planned` entry whose own `(planned …)`
+  // parenthetical describes the prior landed key-handling series with a prose participle
+  // "both done 2026-10-16" — that is not this entry's completion.
+  const md = plansDoc(`## Planned
+
+### Split the TUI prompt-line editor monolith \`src/ui/tui/tui-editors.ts\` into per-editor modules beside a shared prompt-line session (planned 2026-10-17 by the organize role; the natural second half of the landed "split the TUI key-handling monolith" series — part 1/2 made \`tui-editors\` the prompt-line editors and part 2/2 split the pane state into \`tui-panes\`, both done 2026-10-16, so the single largest source file left is this one factory closure)
+
+**Goal.** Still in flight; not finished.
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(strandedPlanEntries(md), []);
+});
+
+test("a ## Planned heading stamped '— done DATE' as its own completion is stranded", () => {
+  const md = plansDoc(`## Planned
+
+### Build a quick queue (planned 2026-10-01 by the x role) — done 2026-10-02 by the feature role
+
+**Goal.** The feature loop may implement this again.
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(strandedPlanEntries(md), [
+    { title: "Build a quick queue (planned 2026-10-01 by the x role) — done 2026-10-02 by the feature role", section: "Planned" },
+  ]);
+});
+
+test("a ## Planned heading stamped '; done DATE' (the (planned …; done …) shape) is stranded", () => {
+  const md = plansDoc(`## Planned
+
+### Build a quick queue (planned 2026-10-01 by the x role; done 2026-10-02 by the feature role)
+
+**Goal.** The feature loop may implement this again.
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(strandedPlanEntries(md), [
+    { title: "Build a quick queue (planned 2026-10-01 by the x role; done 2026-10-02 by the feature role)", section: "Planned" },
+  ]);
+});
+
 test("a stranded-looking heading inside a fenced block is ignored", () => {
   const md = plansDoc(`## Done
 
