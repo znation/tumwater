@@ -144,7 +144,7 @@ test("a changed tick schedules its next run at the role's own interval, not the 
     assert.equal((await runner.tick()).result, "queued");
     // The persisted state — what a restarted process would read — schedules ~1 h out.
     const s = loadLoopState(repo, "improve");
-    const ended = s.lastTickEndedAt;
+    const ended = s.lastRunEndedAt;
     assert.ok(ended !== undefined, "the tick recorded its end time");
     const gapMs = s.nextRunAt - ended;
     assert.ok(

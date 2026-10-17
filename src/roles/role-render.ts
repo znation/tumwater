@@ -234,7 +234,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
     if (dc.roleIds.length > 1) cap += ` · shared by ${dc.roleIds.join(", ")}`;
     lines.push(cap);
   }
-  // The loop's schedule (role-view.ts's nextRunAt/backoffSeconds/lastTickEndedAt, read from
+  // The loop's schedule (role-view.ts's nextRunAt/backoffSeconds/lastRunEndedAt, read from
   // the same persisted state): when it may tick again, and when it last did — the one
   // place the fleet's `next run`/`last tick` vocabulary was absent. Rendered from the
   // injected `now`, so the lines stay a pure function of the payload.

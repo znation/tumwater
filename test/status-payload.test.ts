@@ -489,7 +489,7 @@ test("the status payload carries each loop's last-landed epoch ms, null until it
   const repo = makeRepo();
   await initProject(repo, "gui last landed test");
   const s = freshLoopState("qa");
-  s.lastLandedAt = 123_456_789;
+  s.lastMergedAt = 123_456_789;
   saveLoopState(repo, s);
   saveLoopState(repo, freshLoopState("clean"));
   const payload = statusPayload(repo) as { roles: Array<{ role: string; lastMergedAt: number | null }> };

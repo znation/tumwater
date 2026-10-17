@@ -515,7 +515,7 @@ test("the maintenance quota holds a maintenance loop; a fresh wake admits one ti
   // does the bootstrap and need-based deferrals, so `tumwater wake clean` runs one tick.
   const clean = runners[0]!;
   clean.state.wokenAt = T0 + 5_000;
-  clean.state.lastTickEndedAt = T0 + 1_000;
+  clean.state.lastRunEndedAt = T0 + 1_000;
   const woken = await pollRunnerReasons(ctx);
   assert.equal(woken.has(clean), true, "a fresh wake admits one tick while the quota holds");
 });
@@ -563,7 +563,7 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   // The first tick ends without landing (so the landed count, and the allowance, are unchanged).
   // Its backoff now makes it not due; the second takes the slot on the next poll — one tick,
   // not two, between the two starts.
-  runners[0]!.state.lastTickEndedAt = now;
+  runners[0]!.state.lastRunEndedAt = now;
   runners[0]!.state.nextRunAt = now + HOUR;
   const second = schedulingCtx(
     root,
@@ -684,7 +684,7 @@ test("a nothing-eligible feature runner is still admitted on demand, startup, re
     return reasons.has(r);
   };
   assert.equal(await admitted(() => {}), false, "control: stands down");
-  assert.equal(await admitted((r) => { r.state.wokenAt = T0 + 5; r.state.lastTickEndedAt = T0; }), true, "wake");
+  assert.equal(await admitted((r) => { r.state.wokenAt = T0 + 5; r.state.lastRunEndedAt = T0; }), true, "wake");
   assert.equal(await admitted((r) => { r.state.runs = 0; }), true, "startup");
   assert.equal(await admitted((_r, root) => { enqueueRolePrompt(root, "feature", "hi"); }), true, "queued prompt");
   assert.equal(await admitted((r) => { r.state.revision = { feedback: "fix" } as never; }), true, "revision");
@@ -723,7 +723,7 @@ test("a held-only bugfix runner is still admitted on demand, startup, revision, 
     return (await pollRunnerReasons(ctx)).has(r);
   };
   assert.equal(await admitted(() => {}), false, "control: stands down");
-  assert.equal(await admitted((r) => { r.state.wokenAt = T0 + 5; r.state.lastTickEndedAt = T0; }), true, "wake");
+  assert.equal(await admitted((r) => { r.state.wokenAt = T0 + 5; r.state.lastRunEndedAt = T0; }), true, "wake");
   assert.equal(await admitted((r) => { r.state.runs = 0; }), true, "startup");
   assert.equal(await admitted((_r, root) => { enqueueRolePrompt(root, "bugfix", "hi"); }), true, "queued prompt");
   assert.equal(await admitted((r) => { r.state.revision = { feedback: "fix" } as never; }), true, "revision");

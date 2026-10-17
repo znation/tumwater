@@ -14,7 +14,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { LanderContext } from "./landing-core.js";
 
-/** Consecutive red in-lock landing checks of one patch (LoopState.landingCheckFailures) before
+/** Consecutive red in-lock landing checks of one patch (LoopState.mergeCheckFailures) before
  * the landing is attributed instead of retried: the first red keeps the pin for one more
  * attempt — a load flake gets its retry, as the gate's pre-check gets one (PLANS.md land-queue
  * 1/3) — and the second is judged by main's own verdict at its tip (attributeRedCheck). Without
@@ -34,7 +34,7 @@ function pinKept(patch: string | null, count: number): boolean {
 }
 
 /** Tally one deterministic failure of the same patch toward attribution: read the worktree's
- * head and its patch-id against main, carry LoopState.landingCheckFailures's count across
+ * head and its patch-id against main, carry LoopState.mergeCheckFailures's count across
  * re-lands of the identical patch (a clean rebase onto a moved main keeps the patch-id, so the
  * retries of one change add up while a different change starts fresh), and store the strike.
  * An unreadable patch-id cannot be matched, so pinKept never counts it toward the limit.
@@ -45,12 +45,12 @@ async function tallyCheckFailure(
 ): Promise<{ head: string; patch: string | null; count: number }> {
   const head = await headOf(wt, "HEAD");
   const patch = await patchId(wt, ctx.mainBranch, head);
-  const prior = ctx.state.landingCheckFailures;
+  const prior = ctx.state.mergeCheckFailures;
   const count = (patch !== null && prior?.patchId === patch ? prior.count : 0) + 1;
   if (pinKept(patch, count)) {
-    ctx.state.landingCheckFailures = patch === null ? undefined : { patchId: patch, count };
+    ctx.state.mergeCheckFailures = patch === null ? undefined : { patchId: patch, count };
   } else {
-    ctx.state.landingCheckFailures = undefined;
+    ctx.state.mergeCheckFailures = undefined;
   }
   return { head, patch, count };
 }

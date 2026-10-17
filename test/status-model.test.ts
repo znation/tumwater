@@ -47,7 +47,7 @@ test("workingDetail without a pi log shows only the elapsed time", () => {
   const root = tmpdir();
   assert.equal(workingDetail(root, freshLoopState("clean")), "working");
   const s = freshLoopState("clean");
-  s.lastTickStartedAt = Date.now() - 90_000;
+  s.lastRunStartedAt = Date.now() - 90_000;
   // ±1s of drift between setting the timestamp and formatting it.
   assert.match(workingDetail(root, s), /^working 1m(29|30|31)s$/);
 });
@@ -62,7 +62,7 @@ test("workingDetail folds live progress into turn, context, and last tool", () =
     toolStart("bash", { command: "npm test" }),
   ]);
   const s = freshLoopState("clean");
-  s.lastTickStartedAt = Date.now() - 5_000;
+  s.lastRunStartedAt = Date.now() - 5_000;
   const detail = workingDetail(root, s);
   assert.match(detail, /^working \ds · /, `unexpected shape: ${detail}`);
   assert.ok(detail.includes("turn 3"), "two completed turns means the third is in flight");
@@ -101,7 +101,7 @@ test("a tick's baseline check shows no previous run's detail and no false quiet 
   // A new tick started 99s ago and is still in its baseline check: pi has written nothing yet.
   const s = freshLoopState("clean");
   s.running = true;
-  s.lastTickStartedAt = Date.now() - 99_000;
+  s.lastRunStartedAt = Date.now() - 99_000;
   // The cell carries nothing of the earlier run — and no quiet time measured from before the
   // tick started, which fleetAlerts' STALL pattern would read as "looks stuck".
   assert.equal(workingDetail(root, s), "working 1m39s");
@@ -127,8 +127,8 @@ test("a quiet tail predating the tick never reaches the token metrics either", a
   s.generatedTokens = 1_000;
   s.peakContextTokens = 6_000;
   s.running = true;
-  s.lastTickStartedAt = Date.now() - 99_000;
-  const snap = snapshotWith([{ role: "feature", running: true, lastTickStartedAt: s.lastTickStartedAt }]);
+  s.lastRunStartedAt = Date.now() - 99_000;
+  const snap = snapshotWith([{ role: "feature", running: true, lastRunStartedAt: s.lastRunStartedAt }]);
   snap.running = true; // the orchestrator is up, so loopRowCells renders the live phase
   const cells = loopRowCells(snap, repo, s);
   assert.equal(cells.generated, 1_000, "only the persisted total — the stale tail contributes nothing");
@@ -142,7 +142,7 @@ test("a quiet tail predating the tick never reaches the token metrics either", a
 test("workingDetail names a stalled tool call in the state cell", () => {
   const root = tmpdir();
   const s = freshLoopState("clean");
-  s.lastTickStartedAt = Date.now() - 5_000;
+  s.lastRunStartedAt = Date.now() - 5_000;
   // A hand-built live tail (what readLiveProgress returns) with one open call backdated past
   // the five-minute stall threshold.
   const p = parseProgress([SESSION, toolStart("bash", { command: "find / -name x" })], 0);
@@ -164,7 +164,7 @@ test("workingDetail does not flag a fresh tool call as stalled", () => {
   const root = tmpdir();
   writePiLog(root, "clean", [SESSION, assistantLine("starting"), toolStart("bash", { command: "npm test" })]);
   const s = freshLoopState("clean");
-  s.lastTickStartedAt = Date.now() - 5_000;
+  s.lastRunStartedAt = Date.now() - 5_000;
   const detail = workingDetail(root, s);
   assert.ok(detail.endsWith("bash npm test"), `unexpected shape: ${detail}`);
   assert.doesNotMatch(detail, /tool call stalled/);
@@ -176,7 +176,7 @@ test("loopPhase surfaces the live detail only while a tick is in flight", () => 
   const s = freshLoopState("feature");
   assert.equal(loopPhase(s, true), "due", "idle loop is not working");
   s.running = true;
-  s.lastTickStartedAt = Date.now() - 5_000;
+  s.lastRunStartedAt = Date.now() - 5_000;
   assert.match(loopPhase(s, true, root), /^working \ds · turn 2/);
 });
 
@@ -192,7 +192,7 @@ test("loopPhase shows the review gate label without a log to read from", () => {
   const s = freshLoopState("feature");
   s.running = true;
   s.phase = "review";
-  s.lastTickStartedAt = Date.now() - 90_000;
+  s.lastRunStartedAt = Date.now() - 90_000;
   // ±1s of drift between setting the timestamp and formatting it.
   assert.match(loopPhase(s, true), /^reviewing 1m(29|30|31)s$/);
 
@@ -215,7 +215,7 @@ test("loopPhase shows the reviewer run's live detail while a tick is under revie
   const s = freshLoopState("feature");
   s.running = true;
   s.phase = "review";
-  s.lastTickStartedAt = Date.now() - 5_000;
+  s.lastRunStartedAt = Date.now() - 5_000;
   const phase = loopPhase(s, true, root);
   assert.match(phase, /^reviewing \ds · /, `unexpected shape: ${phase}`);
   assert.ok(phase.includes("turn 2"), "one completed reviewer turn means the second is in flight");
@@ -243,7 +243,7 @@ test("elapsed labels bucket into hours once a tick passes an hour", () => {
     const s = freshLoopState("feature");
     s.running = true;
     s.phase = "review";
-    s.lastTickStartedAt = Date.now() - msAgo;
+    s.lastRunStartedAt = Date.now() - msAgo;
     return loopPhase(s, true);
   };
 
@@ -391,7 +391,7 @@ test("loopPhase shows main red for idle loops whose last tick was blocked by a r
 test("loopPhase retires a stale main red when main's newest check passed after it", () => {
   const s = freshLoopState("feature");
   s.lastResult = "main_red";
-  s.lastTickEndedAt = Date.now() - 300_000; // the red tick ended 5m ago
+  s.lastRunEndedAt = Date.now() - 300_000; // the red tick ended 5m ago
   s.nextRunAt = Date.now() + 3_600_000; // and its next tick is an hour away
   // A green merge-scope check landed AFTER the red tick: main is green now, so the label
   // falls through to the ordinary sleep state and the banner never raises.
@@ -433,8 +433,8 @@ test("loopPhase retires a stale main red when main's newest check passed after i
 test("loopRowCells retires the stale main red and fleetAlerts raises no banner for it", () => {
   const s = freshLoopState("feature");
   s.lastResult = "main_red";
-  s.lastTickEndedAt = Date.now() - 300_000;
-  const snap = snapshotWith([{ role: "feature", lastResult: "main_red", lastTickEndedAt: s.lastTickEndedAt }]);
+  s.lastRunEndedAt = Date.now() - 300_000;
+  const snap = snapshotWith([{ role: "feature", lastResult: "main_red", lastRunEndedAt: s.lastRunEndedAt }]);
   snap.running = true;
   snap.mainCheck = { status: "passed", at: Date.now() - 60_000 };
   const cells = loopRowCells(snap, tmpdir(), s);
@@ -651,7 +651,7 @@ test("the reviewing landing stage carries the reviewer run's live detail, timed 
   const s = freshLoopState("clean");
   // The authoring tick started an hour ago; the cell's elapsed is the LANDING's (90s), and
   // the frame's `live` for a non-running loop is null — the branch reads the gate itself.
-  s.lastTickStartedAt = Date.now() - 3_600_000;
+  s.lastRunStartedAt = Date.now() - 3_600_000;
   const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
   assert.match(phase, /^merging 1m3[01]s · reviewing · turn 2 · ctx 22\.0k · bash npm test$/, `unexpected shape: ${phase}`);
 
@@ -761,7 +761,7 @@ test("a running director renders its own phase, outside the cap's active set", (
   assert.equal(loopPhase(d, true), "director working");
   assert.equal(loopPhase(freshLoopState("director"), true), "ready for messages", "an idle director keeps its exempt label");
   const root = tmpdir();
-  d.lastTickStartedAt = Date.now() - 90_000;
+  d.lastRunStartedAt = Date.now() - 90_000;
   assert.match(loopPhase(d, true, root), /^director working 1m(29|30|31)s$/);
   // Its own label is not a permit-holder phase: the active set against the cap is permit holders.
   assert.equal(isActivePhase(loopPhase(d, true)), false);
@@ -889,5 +889,5 @@ test("loopPhase names the scheduling poll's skip for a due, idle loop", () => {
   assert.equal(loopPhase(due("plan", { skipReason: "deferred-plans-full" }), true), "deferred (plans full)");
   assert.equal(loopPhase(due("clean", {}), true), "due");
   assert.match(loopPhase(due("clean", { skipReason: "claim-hold", nextRunAt: Date.now() + 600_000 }), true), /^sleeping \(/);
-  assert.match(loopPhase(due("clean", { skipReason: "claim-hold", running: true, lastTickStartedAt: Date.now() - 90_000 }), true), /^working/);
+  assert.match(loopPhase(due("clean", { skipReason: "claim-hold", running: true, lastRunStartedAt: Date.now() - 90_000 }), true), /^working/);
 });

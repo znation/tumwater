@@ -145,7 +145,7 @@ test("Ctrl+C interrupts a director tick in flight through the rendered snapshot,
   // phase (outside the permit-holder inFlight set, which the gate no longer keys off alone);
   // the orchestrator marker keeps the fleet live for the gate. The state column clips the
   // label at this width, so match its prefix.
-  saveLoopState(repo, { ...freshLoopState("director"), running: true, lastTickStartedAt: Date.now() - 60_000 });
+  saveLoopState(repo, { ...freshLoopState("director"), running: true, lastRunStartedAt: Date.now() - 60_000 });
   writeOrchestratorMarker(repo, ["clean", "director"]);
   await withTui(repo, async (tui) => {
     assert.match(tui.lines().join("\n"), /director[^\n]*director wo/); // the row the gate reads

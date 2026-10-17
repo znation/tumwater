@@ -26,7 +26,7 @@ interface FinalizeTickDeps {
    * documented running-fleet reset), so a finalize-time re-read could emit a run_end
    * numbered 0 (or a later tick's number) under a run_start that announced the real one. */
   tick: number;
-  /** When this tick started (the runner stamps state.lastTickStartedAt at tick start);
+  /** When this tick started (the runner stamps state.lastRunStartedAt at tick start);
    * captured once so the run_end span measures the tick's own wall clock. */
   tickStartedAt: number;
   /** The tick's usage accumulator (src/tick/tick-usage.ts): its costUsd rides the run_end
@@ -94,7 +94,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     logEventBestEffort(root, { source: role, type: "claim", action: "released", title, reason: outcome.result });
   }
   // A wake consumed while this tick ran stamped the shared state in place, but the outcome
-  // schedule above overwrites it (lastTickEndedAt past wokenAt, nextRunAt a fresh gap or
+  // schedule above overwrites it (lastRunEndedAt past wokenAt, nextRunAt a fresh gap or
   // backoff out), so a plain `tumwater wake --role` with an empty queue would silently wait
   // out the whole interval (BUGS.md 2026-09-25). Re-apply it here — exactly like a wake
   // arriving one poll after the tick ended.

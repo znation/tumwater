@@ -168,8 +168,8 @@ function mainCheckScanFor(root: string): MainCheckScan {
  * the verdict standing. Single-homed here beside heldByMainRed. */
 function mainCheckRecovered(mainCheck: MainCheckStatus | undefined, s: LoopState): boolean {
   return mainCheck?.status === "passed"
-    && s.lastTickEndedAt !== undefined
-    && mainCheck.at > s.lastTickEndedAt;
+    && s.lastRunEndedAt !== undefined
+    && mainCheck.at > s.lastRunEndedAt;
 }
 
 /** Is a loop's tick verdict still the red-main hold? The one predicate behind the status

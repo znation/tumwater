@@ -26,7 +26,7 @@ interface EligibilityOptions {
    * one-shot is an explicit demand for a round now, and without this a round started
    * shortly after a daemon run does nothing because every role's clock is still fresh.
    * The clock lives in two fields that must be overridden together: the gap check
-   * (`lastTickEndedAt`) and `nextRunAt`, which scheduleAtMinInterval also writes after a
+   * (`lastRunEndedAt`) and `nextRunAt`, which scheduleAtMinInterval also writes after a
    * productive tick. Error and idle backoff share `nextRunAt` with the clock, so the
    * override keys on `backoffSeconds === 0` — only scheduleAtMinInterval leaves it at
    * zero; every backoff ladder leaves it raised. Resume gating, `s.running`, and
@@ -104,12 +104,12 @@ export function isEligible(
     opts.bootstrapActive === true,
   ).minRunIntervalSeconds;
   const minGap = opts.once ? 0 : minGapSeconds * 1000 * mult;
-  const sinceLast = now - (s.lastTickEndedAt ?? 0);
+  const sinceLast = now - (s.lastRunEndedAt ?? 0);
   // An operator wake newer than the gap window's opening tick overrides the interval
   // (LoopState.wokenAt): an explicit "try again now" with an empty queue must not silently
   // wait out the remaining slow clock it ticked inside — a queued prompt carries its own
   // due-ness in the inbox check above, so it never depends on this stamp surviving.
-  const woken = s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0);
+  const woken = s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0);
   if (sinceLast < minGap && !woken) return { run: false };
   // Once mode's clock override, second half: a raised backoffSeconds means nextRunAt is a
   // backoff deadline, not the scheduled clock, and is honored; at zero it is the clock a
@@ -139,7 +139,7 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
     }
     const tier = roleTier(a.role) - roleTier(b.role);
     if (tier !== 0) return tier;
-    return (a.state.lastTickEndedAt ?? 0) - (b.state.lastTickEndedAt ?? 0);
+    return (a.state.lastRunEndedAt ?? 0) - (b.state.lastRunEndedAt ?? 0);
   });
 }
 
@@ -217,7 +217,7 @@ export type DeferReason = "backlog" | "no-work" | "plans-full";
  * before, inside DEFER_MAX_MS) while PLANS.md already holds its eligible-plan target
  * (planBacklogFull). `lastResult` does not matter: the charter would stop either way. */
 function planDeferral(s: LoopState, planBacklogFull: boolean, now: number): DeferReason | null {
-  const woken = s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0);
+  const woken = s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0);
   return planBacklogFull &&
     !woken &&
     !hasOutstandingWork(s) &&
@@ -245,7 +245,7 @@ export function deferTickReason(
   if (base === "plan") return planDeferral(s, planBacklogFull, now);
   const searchBugfix = base === BUGFIX_ROLE && !openBugsNow;
   const due =
-    !(s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0)) &&
+    !(s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0)) &&
     (DEFERRABLE_ROLES.has(base) || searchBugfix) &&
     s.lastResult === "no_change" &&
     s.lastMainHead !== "" &&

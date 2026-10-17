@@ -65,13 +65,13 @@ test("clearBackoff zeroes the backoff and pulls nextRunAt to now, preserving eve
 test("restoreMidTickWake re-applies a wake that was consumed while the tick was in flight", () => {
   // The residual race the queue-due-ness fix leaves (BUGS.md 2026-09-25): a plain
   // `tumwater wake --role` with an empty queue consumed mid-tick is clobbered by the
-  // end-save — applyTickOutcome re-stamps lastTickEndedAt past wokenAt and schedules
+  // end-save — applyTickOutcome re-stamps lastRunEndedAt past wokenAt and schedules
   // nextRunAt a fresh interval out, so the demand silently waits out qa's two-hour clock.
   // restoreMidTickWake, called by the tick's end-save after applyTickOutcome, re-applies the
   // demand exactly like a wake arriving one poll after the tick ended.
   const s = freshLoopState("qa");
   const start = Date.now() - 2000; // the tick began two seconds ago and is still running
-  s.lastTickStartedAt = start;
+  s.lastRunStartedAt = start;
   s.running = true;
   s.nextRunAt = start + 2 * 3600 * 1000;
   // One second into the tick, the operator wakes the loop — what consumeWakeRequest's
@@ -80,13 +80,13 @@ test("restoreMidTickWake re-applies a wake that was consumed while the tick was 
   assert.equal(s.wokenAt, start + 1000);
   // The tick ends: the outcome's own schedule overwrites the wake.
   applyTickOutcome(s, testConfig(), "qa", { result: "no_change" });
-  assert.ok(s.nextRunAt > (s.lastTickEndedAt ?? 0), "the outcome's fresh gap clock is armed");
-  assert.ok((s.wokenAt ?? 0) < (s.lastTickEndedAt ?? 0), "wokenAt no longer exempts the fresh gap");
+  assert.ok(s.nextRunAt > (s.lastRunEndedAt ?? 0), "the outcome's fresh gap clock is armed");
+  assert.ok((s.wokenAt ?? 0) < (s.lastRunEndedAt ?? 0), "wokenAt no longer exempts the fresh gap");
   // The end-save path re-applies the mid-tick wake.
   assert.equal(restoreMidTickWake(s), true);
   assert.equal(s.backoffSeconds, 0);
   assert.ok(s.nextRunAt <= Date.now() + 1, "due now, like a wake arriving after the tick (the +1 floors a same-ms wokenAt tie)");
-  assert.ok((s.wokenAt ?? 0) > (s.lastTickEndedAt ?? 0), "the min-gap exemption is re-armed");
+  assert.ok((s.wokenAt ?? 0) > (s.lastRunEndedAt ?? 0), "the min-gap exemption is re-armed");
 });
 
 test("restoreMidTickWake leaves a wake older than the tick's start alone", () => {
@@ -94,7 +94,7 @@ test("restoreMidTickWake leaves a wake older than the tick's start alone", () =>
   // start, e.g. an old wokenAt carried in state) must not re-arm itself at every end-save.
   const s = freshLoopState("qa");
   const now = Date.now();
-  s.lastTickStartedAt = now - 60_000;
+  s.lastRunStartedAt = now - 60_000;
   s.wokenAt = now - 120_000;
   s.nextRunAt = now + 2 * 3600 * 1000;
   applyTickOutcome(s, testConfig(), "qa", { result: "no_change" });
@@ -109,7 +109,7 @@ test("restoreMidTickWake does not pull a cut-off resume past its deliberate wait
   // already — isEligible's resume gate is documented as intentional).
   const s = freshLoopState("qa");
   const start = Date.now();
-  s.lastTickStartedAt = start;
+  s.lastRunStartedAt = start;
   s.running = true;
   Object.assign(s, clearBackoff(s, start + 1000));
   applyTickOutcome(s, testConfig(), "qa", { result: "no_change", cutOff: true });
@@ -205,8 +205,8 @@ test("applyTickOutcome records the outcome and schedules a changed tick at the r
   assert.equal(s.lastApprovedPatchId, undefined);
   assert.equal(s.lastResult, "changed");
   assert.equal(s.lastSummary, "did it");
-  const endedAt = s.lastTickEndedAt;
-  assert.ok(endedAt !== undefined && endedAt >= before && endedAt <= Date.now(), "lastTickEndedAt stamped");
+  const endedAt = s.lastRunEndedAt;
+  assert.ok(endedAt !== undefined && endedAt >= before && endedAt <= Date.now(), "lastRunEndedAt stamped");
   assert.equal(s.commits, 5);
   assert.equal(s.backoffSeconds, 0);
   assert.ok(
@@ -247,7 +247,7 @@ test("applyTickOutcome: a queued tick schedules like a change without counting a
   assert.equal(s.lastResult, "refused", "the prior completed result stays while the change is pending");
   assert.equal(s.lastSummary, "objected to the plan", "…next to its own summary");
   assert.deepEqual(s.queuedSummary, { sha: PINNED, summary: "did it" });
-  assert.ok(s.lastTickEndedAt !== undefined, "the tick itself did end");
+  assert.ok(s.lastRunEndedAt !== undefined, "the tick itself did end");
   assert.equal(s.commits, 4, "the commit is not counted until it lands");
   assert.equal(s.backoffSeconds, 0);
   assert.ok(
@@ -265,24 +265,24 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
   applyLandingOutcome(s, "changed", change);
   assert.equal(s.lastResult, "changed");
   assert.equal(s.commits, 1);
-  assert.ok(s.lastLandedAt !== undefined && s.lastLandedAt <= Date.now(), "a changed landing stamps lastLandedAt");
+  assert.ok(s.lastMergedAt !== undefined && s.lastMergedAt <= Date.now(), "a changed landing stamps lastMergedAt");
   assert.equal(s.phase, undefined);
   // The landed patch's approval is spent: the same patch authored again is a new change.
   assert.equal(s.lastApprovedPatchId, undefined);
 
   // A fresh loop starts with no last-landed stamp: the age reads "never" until it lands.
-  assert.equal(freshLoopState("feature").lastLandedAt, undefined);
+  assert.equal(freshLoopState("feature").lastMergedAt, undefined);
 
   // Non-terminal outcomes record the failure, count no commit, and clear the marker — the
   // retry rides next-tick leftover recovery, so the state just has to show the failure.
   for (const result of ["rejected", "review_error", "merge_conflict", "merge_blocked", "error"] as const) {
     const n = freshLoopState("feature");
     n.lastApprovedPatchId = "p1";
-    n.lastLandedAt = 12345; // a prior landing's stamp
+    n.lastMergedAt = 12345; // a prior landing's stamp
     applyLandingOutcome(n, result, change);
     assert.equal(n.lastResult, result);
     assert.equal(n.commits, 0, `${result} lands nothing on main`);
-    assert.equal(n.lastLandedAt, 12345, `${result} leaves the prior last-landed stamp`);
+    assert.equal(n.lastMergedAt, 12345, `${result} leaves the prior last-landed stamp`);
     assert.equal(n.phase, undefined);
     // Nothing landed, so the approval stands: a re-land whose rebase leaves the patch alone reuses
     // it.
@@ -457,10 +457,10 @@ test("applyLandingOutcome counts consecutive merge conflicts per pinned sha", ()
   for (const result of ["changed", "rejected"] as const) {
     const n = freshLoopState("feature");
     n.mergeConflicts = { sha: "aaa", count: 2 };
-    n.landingCheckFailures = { patchId: "p1", count: 1 };
+    n.mergeCheckFailures = { patchId: "p1", count: 1 };
     applyLandingOutcome(n, result, { sha: "aaa", summary: "x" });
     assert.equal(n.mergeConflicts, undefined, `${result} clears the streak`);
-    assert.equal(n.landingCheckFailures, undefined, `${result} clears the red-landing-check streak`);
+    assert.equal(n.mergeCheckFailures, undefined, `${result} clears the red-landing-check streak`);
   }
 });
 

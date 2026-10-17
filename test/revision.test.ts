@@ -286,7 +286,7 @@ test("a permanent reviewer config error still holds the pin when the events feed
     assert.equal(verdict.kind, "result");
     if (verdict.kind !== "result") return;
     assert.equal(verdict.result, "review_error", "the held pin reports review_error, not a throw");
-    assert.equal(state.landingReviewError?.selector, "bad/model", "the hold still names the selector");
+    assert.equal(state.mergeReviewError?.selector, "bad/model", "the hold still names the selector");
     assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin is kept for a config change");
   });
 });

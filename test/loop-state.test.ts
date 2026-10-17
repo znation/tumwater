@@ -155,7 +155,7 @@ test("loadLoopState fills fields missing from an older or partial file", () => {
   // spend recorded before dayStamp/dayCostUsd were fields is unknown, not infinite.
   assert.equal(dailyCost(s), 0);
   // Optional fields absent from the file stay absent rather than being injected as 0.
-  assert.equal("lastTickStartedAt" in s, false);
+  assert.equal("lastRunStartedAt" in s, false);
 });
 
 test("loadLoopState heals a corrupt persisted numeric field", () => {
@@ -178,8 +178,8 @@ test("loadLoopState heals a corrupt persisted numeric field", () => {
       peakContextTokens: -5,
       totalCostUsd: "1.23",
       dayCostUsd: 4, // a real number is kept, not healed away
-      lastTickStartedAt: "yesterday",
-      lastTickEndedAt: null,
+      lastRunStartedAt: "yesterday",
+      lastRunEndedAt: null,
       wokenAt: -9,
       cutOffStreak: "2",
       quietKillStreak: [1],
@@ -198,8 +198,8 @@ test("loadLoopState heals a corrupt persisted numeric field", () => {
     "generatedTokens",
     "peakContextTokens",
     "totalCostUsd",
-    "lastTickStartedAt",
-    "lastTickEndedAt",
+    "lastRunStartedAt",
+    "lastRunEndedAt",
     "wokenAt",
     "cutOffStreak",
     "quietKillStreak",
@@ -230,7 +230,7 @@ test("loadLoopState heals corrupt numeric fields inside nested records", () => {
       mergeConflicts: { sha: "abc", count: "many" },
       conflictDiscard: { sha: "abc", summary: "s", attempts: -3, at: {} },
       conflictHandback: { sha: "abc", at: "later", round: -4, reason: "landing", applied: false }, // vocabulary-ok: legacy state value read from old files
-      landingCheckFailures: { patchId: "p", count: [1] },
+      mergeCheckFailures: { patchId: "p", count: [1] },
       modelFallback: { failures: "3", since: -1, probeAt: null, cooldownMs: "500", reason: "r" },
     }),
   );
@@ -245,7 +245,7 @@ test("loadLoopState heals corrupt numeric fields inside nested records", () => {
   assert.equal(s.conflictHandback?.at, 0);
   assert.equal(s.conflictHandback?.round, 0);
   assert.equal(s.conflictHandback?.reason, "merge", "an old build's landing reason loads as merge");
-  assert.equal(s.landingCheckFailures?.count, 0);
+  assert.equal(s.mergeCheckFailures?.count, 0);
   assert.equal(s.modelFallback?.failures, 0);
   assert.equal(s.modelFallback?.since, 0);
   assert.equal(s.modelFallback?.probeAt, 0);
@@ -296,7 +296,7 @@ test("loadLoopState drops a nested record that is not a plain object, keeping re
       mergeConflicts: null,
       conflictDiscard: true,
       conflictHandback: 0,
-      landingCheckFailures: "none",
+      mergeCheckFailures: "none",
       modelFallback: "primary",
       claim: { file: "BUGS.md", key: "k", title: "t", at: 42, source: "staged" }, // real record kept
     }),
@@ -307,7 +307,7 @@ test("loadLoopState drops a nested record that is not a plain object, keeping re
   assert.equal(s.mergeConflicts, undefined);
   assert.equal(s.conflictDiscard, undefined);
   assert.equal(s.conflictHandback, undefined);
-  assert.equal(s.landingCheckFailures, undefined);
+  assert.equal(s.mergeCheckFailures, undefined);
   assert.equal(s.modelFallback, undefined);
   assert.equal(s.claim?.at, 42, "a valid record keeps its real values");
   assert.equal(s.claim?.key, "k");
@@ -366,8 +366,8 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
   s.lastMainHead = "abc123";
   s.lastResult = "changed";
   s.lastSummary = "did a thing";
-  s.lastTickStartedAt = 1;
-  s.lastTickEndedAt = 2;
+  s.lastRunStartedAt = 1;
+  s.lastRunEndedAt = 2;
   s.dayStamp = todayStamp(); // daily budget window — must survive a reset
   s.dayCostUsd = 12.5;
 
@@ -460,4 +460,32 @@ test("loadLoopState keeps `runs` and drops `ticks` when a file holds both", () =
   const s = loadLoopState(dir, "qa");
   assert.equal(s.runs, 9);
   assert.equal("ticks" in s, false);
+});
+
+test("loadLoopState maps the five legacy tick and landing keys, healing each as before", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "qa");
+  ensureParentDir(file);
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      role: "qa",
+      lastTickStartedAt: 100, // vocabulary-ok: legacy state key read from old files
+      lastTickEndedAt: 200, // vocabulary-ok: legacy state key read from old files
+      lastLandedAt: -5, // vocabulary-ok: legacy state key read from old files
+      landingReviewError: { sha: "abc", selector: "bad/model", message: "boom" }, // vocabulary-ok: legacy state key read from old files
+      landingCheckFailures: 3, // vocabulary-ok: legacy state key read from old files
+    }),
+  );
+  const s = loadLoopState(dir, "qa");
+  assert.equal(s.lastRunStartedAt, 100);
+  assert.equal(s.lastRunEndedAt, 200);
+  assert.equal(s.lastMergedAt, 0);
+  assert.equal(s.mergeReviewError?.selector, "bad/model");
+  assert.equal(s.mergeCheckFailures, undefined);
+  saveLoopState(dir, s);
+  const onDisk = readJson<Record<string, unknown>>(file);
+  for (const old of ["lastTickStartedAt", "lastTickEndedAt", "lastLandedAt", "landingReviewError", "landingCheckFailures"]) // vocabulary-ok: legacy state keys
+    assert.equal(old in onDisk, false);
+  assert.equal(onDisk.lastRunEndedAt, 200);
 });

@@ -183,7 +183,7 @@ test("renderStatus prepends the current work item to a working loop's state cell
     toolStart("bash", { command: "npm test" }),
   ]);
   // Orchestrator running (snap.running) so the in-flight tick renders as working.
-  const snap = { ...snapshotWith([{ role: "feature", running: true, lastTickStartedAt: Date.now() - 5_000 }]), running: true };
+  const snap = { ...snapshotWith([{ role: "feature", running: true, lastRunStartedAt: Date.now() - 5_000 }]), running: true };
   const out = renderStatus(root, snap);
   assert.match(out, /implement plan "Linear history on main" · working \ds · turn 2/);
 });
@@ -200,7 +200,7 @@ test("renderStatus does not leak a finished tick's work item into an idle loop's
 test("renderStatus leaves the state cell unchanged while working but before any text", () => {
   const root = tmpdir();
   writePiLog(root, "feature", [SESSION, toolStart("bash", { command: "npm test" })]); // no assistant text yet
-  const snap = { ...snapshotWith([{ role: "feature", running: true, lastTickStartedAt: Date.now() - 5_000 }]), running: true };
+  const snap = { ...snapshotWith([{ role: "feature", running: true, lastRunStartedAt: Date.now() - 5_000 }]), running: true };
   assert.match(renderStatus(root, snap), /working \ds · turn 1/);
 });
 
@@ -211,7 +211,7 @@ test("work items survive narrow-terminal clipping at the head of the state cell"
     "feature",
     [SESSION, assistantLine(`implement plan "${"x".repeat(50)}"`), toolStart("bash", { command: "npm test" })],
   );
-  const snap = { ...snapshotWith([{ role: "feature", running: true, lastTickStartedAt: Date.now() - 5_000 }]), running: true };
+  const snap = { ...snapshotWith([{ role: "feature", running: true, lastRunStartedAt: Date.now() - 5_000 }]), running: true };
   for (const width of [80, 60]) {
     for (const line of renderStatus(root, snap, width).split("\n")) {
       assert.ok(line.length <= width, `width ${width} violated: ${line.length}`);
@@ -407,11 +407,11 @@ test("status table groups a landing role above queued/sleeping rows with newer l
   // table. Before the fix renderStatus emitted payload order, so landing sank with the idles.
   const sleeping = freshLoopState("sleepy");
   sleeping.nextRunAt = Date.now() + 5 * 60_000;
-  sleeping.lastTickEndedAt = t(5);
+  sleeping.lastRunEndedAt = t(5);
   const queued = freshLoopState("queued-z");
-  queued.lastTickEndedAt = t(4);
+  queued.lastRunEndedAt = t(4);
   const landing = freshLoopState("landing-r");
-  landing.lastTickEndedAt = t(0);
+  landing.lastRunEndedAt = t(0);
   const snap: StatusSnapshot = {
     ...snapshotWith([sleeping, queued, landing]),
     running: true,
@@ -539,7 +539,7 @@ test("a rendered fleet shows active rows equal to permit holders: parked waiters
   // One permit-holding tick (running, no parkedSince) and two parked waiters.
   const holder = freshLoopState("feature");
   holder.running = true;
-  holder.lastTickStartedAt = Date.now() - 5_000; // renders the elapsed working detail
+  holder.lastRunStartedAt = Date.now() - 5_000; // renders the elapsed working detail
   saveLoopState(repo, holder);
   for (const role of ["clean", "organize"]) {
     const parked = freshLoopState(role);
@@ -644,7 +644,7 @@ function hostileWorkItem(): { root: string; snap: StatusSnapshot } {
   return {
     root,
     snap: {
-      ...snapshotWith([{ role: "feature", running: true, lastTickStartedAt: Date.now() - 5_000 }]),
+      ...snapshotWith([{ role: "feature", running: true, lastRunStartedAt: Date.now() - 5_000 }]),
       running: true,
     },
   };

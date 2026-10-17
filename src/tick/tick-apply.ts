@@ -133,7 +133,7 @@ export function applyTickOutcome(
   // re-review) the committed work fresh instead of resuming an author session whose task is
   // already committed.
   if (outcome.result !== "aborted") s.phase = undefined;
-  s.lastTickEndedAt = Date.now();
+  s.lastRunEndedAt = Date.now();
   // `lastResult`/`lastSummary` are the last COMPLETED result, the pair the dashboards' "last
   // result" cell renders, and they must describe ONE tick: a completed outcome without a
   // summary CLEARS `lastSummary`, so a summary-less result never renders beside another
@@ -301,7 +301,7 @@ export function applyLandingOutcome(
     // "time since the loop last actually landed on main" — a rejected/merge_conflict/aborted
     // landing, like a no_change tick, leaves the prior value standing (PLANS.md "Each loop's
     // last-landed age").
-    s.lastLandedAt = Date.now();
+    s.lastMergedAt = Date.now();
     s.lastApprovedPatchId = undefined; // see applyTickOutcome
     // A landing supersedes a stale rejection: a model-reviewed landing has already overwritten
     // lastReview with its approve, but a review-exempt (or review-disabled) landing records no
@@ -364,9 +364,9 @@ export function applyLandingOutcome(
     s.mergeConflicts = undefined;
   }
   // Likewise the red-landing-check streak (keyed by patch-id): its change is gone either way.
-  if (changeGone) s.landingCheckFailures = undefined;
+  if (changeGone) s.mergeCheckFailures = undefined;
   // A permanent-reviewer-config hold ends with its pin's life: landed, or rejected away.
-  if (changeGone) s.landingReviewError = undefined;
+  if (changeGone) s.mergeReviewError = undefined;
   // A hand-back ends with its change's life too: once the resolved change lands or is rejected,
   // a later change gets its own one-hand-back budget (PLANS.md "Robust conflict landing, part
   // 2/2"). A merge_conflict keeps it, so the resolved change's own cap discard fires.

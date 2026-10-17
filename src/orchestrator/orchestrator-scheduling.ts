@@ -239,7 +239,7 @@ export async function pollRunnerReasons(
   // drift on what counts as demand.
   const hasDemand = (runner: LoopRunner): boolean =>
     inboxSize(root, runner.role) > 0 ||
-    (runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastTickEndedAt ?? 0));
+    (runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastRunEndedAt ?? 0));
   // The new-project bootstrap hold (part 2/2): held unless the loop has a fresh operator wake
   // or a queued prompt.
   const bootstrapHeldNow = (runner: LoopRunner): boolean =>
@@ -432,7 +432,7 @@ export async function pollRunnerReasons(
     if (
       (standDownBase === "feature" || (standDownBase === BUGFIX_ROLE && openBugsNow)) &&
       (reason === "scheduled" || reason === "main moved") &&
-      !(runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastTickEndedAt ?? 0)) &&
+      !(runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastRunEndedAt ?? 0)) &&
       runner.state.claim === undefined &&
       !hasOutstandingWork(runner.state)
     ) {

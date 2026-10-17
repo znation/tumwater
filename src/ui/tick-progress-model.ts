@@ -30,7 +30,7 @@ export function duration(ms: number): string {
  * renders as just the bare label. (A landing's elapsed is its marker's, never the tick's —
  * loopPhase's landing branch builds that head itself.) */
 export function inFlightLabel(s: LoopState, label: string): string {
-  const elapsed = s.lastTickStartedAt ? duration(Date.now() - s.lastTickStartedAt) : "";
+  const elapsed = s.lastRunStartedAt ? duration(Date.now() - s.lastRunStartedAt) : "";
   return `${label} ${elapsed}`.trim();
 }
 
@@ -50,8 +50,8 @@ export function inFlightLabel(s: LoopState, label: string): string {
  * ("no log"); both read as no progress. */
 function progressOfTick(s: LoopState, p: LiveProgress | null | undefined): LiveProgress | null {
   if (!p) return null;
-  if (s.lastTickStartedAt === undefined) return p;
-  const elapsed = Math.max(0, Date.now() - s.lastTickStartedAt);
+  if (s.lastRunStartedAt === undefined) return p;
+  const elapsed = Math.max(0, Date.now() - s.lastRunStartedAt);
   if (p.quietMs > elapsed) return null; // Newest write predates this tick: a previous run's tail.
   return { ...p, quietMs: Math.min(p.quietMs, elapsed) };
 }

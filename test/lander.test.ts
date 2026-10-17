@@ -441,7 +441,7 @@ for (const main of ["green", "red"] as const) {
 
     assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one retry");
     assert.equal(await refSha(root, REF), sha);
-    assert.equal(state.landingCheckFailures?.count, 1);
+    assert.equal(state.mergeCheckFailures?.count, 1);
     assert.match(state.lastError ?? "", /^merge failed: merge_blocked — check failed .*planted landing failure/);
 
     const second = await landApprovedChange(ctx, request(sha));
@@ -457,7 +457,7 @@ for (const main of ["green", "red"] as const) {
       assert.match(state.lastError ?? "", /^merge check failed: main \S+ is red — not this change's failure$/);
       assert.equal(eventsOfType(root, "review_rejected").length, 0);
     }
-    assert.equal(state.landingCheckFailures, undefined, "the streak ends at the attribution");
+    assert.equal(state.mergeCheckFailures, undefined, "the streak ends at the attribution");
     assert.equal(calls.length, 0, "no model run");
     assert.equal(mainSha(root), tip, "nothing landed");
   });
@@ -526,12 +526,12 @@ test("a fix-claim-blocked landing retries once, then rejects with the block reas
 
   assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first block keeps the pin for one retry");
   assert.equal(await refSha(root, REF), sha);
-  assert.equal(state.landingCheckFailures?.count, 1);
+  assert.equal(state.mergeCheckFailures?.count, 1);
   assert.match(state.lastError ?? "", /merge failed: merge_blocked — .*phantomSymbolName/);
 
   assert.equal(await landApprovedChange(ctx, request(sha)), "rejected", "the second identical block is attributed to the change");
   assert.equal(await refSha(root, REF), null, "the pin is gone");
-  assert.equal(state.landingCheckFailures, undefined, "the streak ends at the attribution");
+  assert.equal(state.mergeCheckFailures, undefined, "the streak ends at the attribution");
   assert.equal(state.lastReview?.verdict, "reject");
   assert.match(state.lastReview!.reasons[0]!, /phantomSymbolName/);
   assert.equal(eventsOfType(root, "review_rejected").length, 1);
@@ -552,14 +552,14 @@ test("an unverified red in-lock check — the run timed out — keeps the pin wi
 
   assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "an unverified red is retriable, like any merge_blocked");
   assert.equal(await refSha(root, REF), sha, "the pin stays for the next attempt");
-  assert.equal(state.landingCheckFailures, undefined, "no strike: the check never judged the tree");
+  assert.equal(state.mergeCheckFailures, undefined, "no strike: the check never judged the tree");
   assert.match(state.lastError ?? "", /the tree is unverified/, "the state names the verdict-less run, not a test failure");
   assert.equal(mainSha(root), tip, "nothing landed");
 
   // A second attempt is the same weather: still no strike, still recoverable — an unverified
   // check can never accumulate into the strike-cap attribution that deletes the pin.
   assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked");
-  assert.equal(state.landingCheckFailures, undefined, "the streak never opens on an unverified red");
+  assert.equal(state.mergeCheckFailures, undefined, "the streak never opens on an unverified red");
   assert.equal(await refSha(root, REF), sha);
   assert.equal(calls.length, 0, "no model run");
 });

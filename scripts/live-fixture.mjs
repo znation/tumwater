@@ -51,7 +51,7 @@ export function seedLiveFleet(root, roles) {
     const st = {
       role, ticks: 3, commits: 2, nextRunAt: 0, backoffSeconds: 0, lastMainHead: "x",
       generatedTokens: 100, peakContextTokens: 4000, totalCostUsd: 0.5, dayStamp: "", dayCostUsd: 0.2,
-      running: true, phase: "pi", lastTickStartedAt: startedAt, lastTickEndedAt: endedAt,
+      running: true, phase: "pi", lastRunStartedAt: startedAt, lastRunEndedAt: endedAt,
     };
     fs.writeFileSync(path.join(root, ".tumwater", "state", `${role}.json`), JSON.stringify(st));
     fs.writeFileSync(path.join(root, ".tumwater", "log", `${role}.pi.jsonl`), LOG_LINES);

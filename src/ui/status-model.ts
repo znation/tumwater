@@ -297,7 +297,7 @@ export function loopPhase(
 interface LoopSortRow {
   role: string;
   phase: string;
-  lastTickEndedAt?: number | null;
+  lastRunEndedAt?: number | null;
 }
 
 /** One loop row's display derivation — the block both observer surfaces re-ran per loop
@@ -447,8 +447,8 @@ export function sortLoopsByState<T extends LoopSortRow>(loops: readonly T[]): T[
     const ra = loopRank(a.phase);
     const rb = loopRank(b.phase);
     if (ra !== rb) return ra - rb;
-    const ta = a.lastTickEndedAt ?? 0;
-    const tb = b.lastTickEndedAt ?? 0;
+    const ta = a.lastRunEndedAt ?? 0;
+    const tb = b.lastRunEndedAt ?? 0;
     if (ta !== tb) return tb - ta;
     return a.role.localeCompare(b.role);
   });

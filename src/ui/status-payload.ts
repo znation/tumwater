@@ -130,13 +130,13 @@ export function statusPayload(root: string, now = Date.now()): object {
       // The last failure's text (a tick error, a failed landing's reason); the dashboard shows it
       // beside a problem result that carries no summary of its own.
       lastError: s.lastError ?? null,
-      lastRunEndedAt: s.lastTickEndedAt ?? null,
+      lastRunEndedAt: s.lastRunEndedAt ?? null,
       // When the loop last actually landed a change on main (epoch ms; null until it ever
       // does) — the direct answer to "how long has the dry spell been", the productivity
-      // complement to lastError/lastTickEndedAt.
-      lastMergedAt: s.lastLandedAt ?? null,
+      // complement to lastError/lastRunEndedAt.
+      lastMergedAt: s.lastMergedAt ?? null,
       // The scheduling facts behind the `next run` column: raw epoch ms and seconds, formatted
-      // client-side like lastTickEndedAt/costUsd — the GUI's fmtNextRun twin applies the same
+      // client-side like lastRunEndedAt/costUsd — the GUI's fmtNextRun twin applies the same
       // rules nextRunCell does (see status-render.ts).
       nextRunAt: s.nextRunAt,
       backoffSeconds: s.backoffSeconds,

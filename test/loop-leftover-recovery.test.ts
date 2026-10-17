@@ -505,7 +505,7 @@ test("a permanent reviewer config error holds the pin instead of re-queuing it",
       const runner = makeLoopRunner(repo, "improve", config);
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await landHead(repo, runner, config, "improve"), "review_error");
-      assert.equal(runner.state.landingReviewError?.selector, "bad/model", "the hold names the failed reviewer selector");
+      assert.equal(runner.state.mergeReviewError?.selector, "bad/model", "the hold names the failed reviewer selector");
 
       // The next tick holds the pin: no re-queue and no second landing (which would pay another
       // full gate check for a request that can never succeed), and an error outcome so the loop

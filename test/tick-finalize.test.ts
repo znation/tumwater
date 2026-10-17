@@ -28,7 +28,7 @@ async function run(
   opts: { tick?: number; usage?: TickUsage; recoveryFailure?: string; mainBranch?: string } = {},
 ): Promise<TickOutcome> {
   const tick = opts.tick ?? 1;
-  state.lastTickStartedAt = Date.now() - 50;
+  state.lastRunStartedAt = Date.now() - 50;
   state.running = true;
   return finalizeTick({
     root,
@@ -38,7 +38,7 @@ async function run(
     state,
     outcome,
     tick,
-    tickStartedAt: state.lastTickStartedAt,
+    tickStartedAt: state.lastRunStartedAt,
     usage: opts.usage ?? new TickUsage(),
     ...(opts.recoveryFailure !== undefined ? { recoveryFailure: opts.recoveryFailure } : {}),
   });
@@ -252,7 +252,7 @@ test("finalizeTick restores a mid-tick wake instead of making it wait out the in
   // A wake consumed while the tick ran stamped wokenAt past the tick's start; the outcome
   // schedule overwrote it, so finalize must re-apply the demand: next run now, no backoff.
   const woken = freshLoopState("organize");
-  // A minute ahead, so it reads as stamped after lastTickStartedAt (run() sets that to now-50)
+  // A minute ahead, so it reads as stamped after lastRunStartedAt (run() sets that to now-50)
   // however long the host stalls between the two reads.
   woken.wokenAt = Date.now() + 60_000;
   await run(root, "organize", woken, { result: "no_change" });
@@ -263,7 +263,7 @@ test("finalizeTick restores a mid-tick wake instead of making it wait out the in
   // silent-wait the restore exists to prevent. Bounded by a read taken after the run, not by
   // the end stamp: a stall of over a millisecond between the end-save and the restore is
   // ordinary under load (BUGS.md 2026-09-30).
-  assert.ok(woken.nextRunAt > (woken.lastTickEndedAt ?? 0), "the wake reads newer than the tick's end");
+  assert.ok(woken.nextRunAt > (woken.lastRunEndedAt ?? 0), "the wake reads newer than the tick's end");
   assert.ok(woken.nextRunAt <= after + 1, "the wake was restored to now");
   // The restored wake persists with the state.
   assert.equal(loadLoopState(root, "organize").nextRunAt, woken.nextRunAt);

@@ -47,7 +47,7 @@ test("a running or recently-finished loop is not eligible", () => {
   r.state.running = true;
   assert.equal(isEligible(r, Date.now(), "abc", 0).run, false);
   r.state.running = false;
-  r.state.lastTickEndedAt = Date.now();
+  r.state.lastRunEndedAt = Date.now();
   r.state.nextRunAt = 0;
   assert.equal(isEligible(r, Date.now(), "abc", 0).run, false);
 });
@@ -57,7 +57,7 @@ test("a sleeping loop wakes when main moves, respecting the min gap", () => {
   const now = Date.now();
   const gap = r.config.minRunIntervalSeconds * 1000;
   r.state.runs = 1;
-  r.state.lastTickEndedAt = now - gap - 1000;
+  r.state.lastRunEndedAt = now - gap - 1000;
   r.state.nextRunAt = now + 60_000;
   r.state.lastMainHead = "old";
   assert.equal(isEligible(r, now, "old", 0).run, false);
@@ -65,7 +65,7 @@ test("a sleeping loop wakes when main moves, respecting the min gap", () => {
   assert.equal(woken.run, true);
   assert.equal(woken.reason, "main moved");
   // But not if it just finished a tick.
-  r.state.lastTickEndedAt = now - 1000;
+  r.state.lastRunEndedAt = now - 1000;
   assert.equal(isEligible(r, now, "new", 0).run, false);
 });
 
@@ -77,14 +77,14 @@ test("yield scaling stretches a quiet search role's gap — including the main-m
   const now = Date.now();
   const gap = configForRole(r.config, "clean").minRunIntervalSeconds * 1000; // 20 s
   r.state.runs = 1;
-  r.state.lastTickEndedAt = now - 3 * gap; // past the plain gap, inside the stretched one
+  r.state.lastRunEndedAt = now - 3 * gap; // past the plain gap, inside the stretched one
   r.state.nextRunAt = now + 60_000; // the main-moved branch is only reached past nextRunAt
   r.state.lastMainHead = "old";
   r.state.recentOutcomes = "n".repeat(16);
   assert.equal(isEligible(r, now, "abc", 0).run, false, "held inside the stretched gap");
   assert.equal(isEligible(r, now, "new", 0).run, false, "a main move does not cut the stretch");
   // Past the stretched gap the wake fires again.
-  r.state.lastTickEndedAt = now - (4 * gap + 1);
+  r.state.lastRunEndedAt = now - (4 * gap + 1);
   const due = isEligible(r, now, "new", 0);
   assert.equal(due.run, true);
   assert.equal(due.reason, "main moved");
@@ -94,7 +94,7 @@ test("yield scaling: a wake and a queued prompt bypass the stretch; observers sc
   const r = runner("clean");
   const now = Date.now();
   r.state.runs = 1;
-  r.state.lastTickEndedAt = now - 1000; // deep inside any stretched gap
+  r.state.lastRunEndedAt = now - 1000; // deep inside any stretched gap
   r.state.nextRunAt = now + 60_000;
   r.state.recentOutcomes = "n".repeat(20); // ×8
   assert.equal(isEligible(r, now, "abc", 0).run, false);
@@ -110,7 +110,7 @@ test("yield scaling: a wake and a queued prompt bypass the stretch; observers sc
   // The observers are scalable: qa's two-hour clock stretches to sixteen hours at ×8.
   const q = runner("qa");
   q.state.runs = 1;
-  q.state.lastTickEndedAt = now - 2 * 3600_000; // past qa's plain clock
+  q.state.lastRunEndedAt = now - 2 * 3600_000; // past qa's plain clock
   q.state.nextRunAt = now + 3600_000;
   q.state.recentOutcomes = "n".repeat(20);
   assert.equal(isEligible(q, now, "abc", 0).run, false, "qa's stretched clock holds");
@@ -122,7 +122,7 @@ test("yield scaling never applies to feature, plan, or the director", () => {
     const r = runner(role);
     const gap = configForRole(r.config, role).minRunIntervalSeconds * 1000;
     r.state.runs = 1;
-    r.state.lastTickEndedAt = now - gap - 1000; // past the PLAIN gap
+    r.state.lastRunEndedAt = now - gap - 1000; // past the PLAIN gap
     r.state.nextRunAt = now - 1000;
     r.state.recentOutcomes = "n".repeat(20); // would be ×8 if the role scaled
     assert.equal(isEligible(r, now, "abc", 0).run, true, `${role} keeps its plain gap`);
@@ -136,7 +136,7 @@ test("an operator wake newer than the last tick overrides the min gap", () => {
   const r = runner("qa");
   const now = Date.now();
   r.state.runs = 1;
-  r.state.lastTickEndedAt = now - 5 * 60 * 1000;
+  r.state.lastRunEndedAt = now - 5 * 60 * 1000;
   r.state.nextRunAt = now + 2 * 3600 * 1000;
   r.state.backoffSeconds = 0;
   r.state.lastMainHead = "abc";
@@ -149,13 +149,13 @@ test("an operator wake newer than the last tick overrides the min gap", () => {
 });
 
 test("a wake older than the last tick restores the ordinary min gap", () => {
-  // Self-clearing: the tick the wake caused re-stamps lastTickEndedAt past wokenAt, so a
+  // Self-clearing: the tick the wake caused re-stamps lastRunEndedAt past wokenAt, so a
   // stale wake must not keep exempting every later gap window.
   const r = runner("qa");
   const now = Date.now();
   r.state.runs = 2;
   r.state.wokenAt = now - 10 * 60 * 1000;
-  r.state.lastTickEndedAt = now - 5 * 60 * 1000;
+  r.state.lastRunEndedAt = now - 5 * 60 * 1000;
   r.state.nextRunAt = now + 2 * 3600 * 1000;
   r.state.backoffSeconds = 0;
   r.state.lastMainHead = "abc";
@@ -171,7 +171,7 @@ test("a queued per-role prompt is due by itself, past every schedule gate", () =
   const r = runner("qa");
   const now = Date.now();
   r.state.runs = 1;
-  r.state.lastTickEndedAt = now - 5 * 60 * 1000;
+  r.state.lastRunEndedAt = now - 5 * 60 * 1000;
   r.state.nextRunAt = now + 2 * 3600 * 1000;
   r.state.lastMainHead = "abc";
   assert.equal(isEligible(r, now, "abc", 0).run, false, "asleep inside its own gap");
@@ -209,7 +209,7 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   slow.roles.steward!.minRunIntervalSeconds = 3600;
   const r1 = makeLoopRunner(makeRepo(), "steward", slow);
   r1.state.runs = 1;
-  r1.state.lastTickEndedAt = now - 21_000; // past the global gap, deep inside the role's own
+  r1.state.lastRunEndedAt = now - 21_000; // past the global gap, deep inside the role's own
   r1.state.nextRunAt = now - 1000; // its schedule has passed too
   r1.state.lastMainHead = "old";
   assert.equal(
@@ -226,7 +226,7 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   fast.roles.qa!.minRunIntervalSeconds = 20;
   const r2 = makeLoopRunner(makeRepo(), "qa", fast);
   r2.state.runs = 1;
-  r2.state.lastTickEndedAt = now - 21_000; // past the role's own gap, deep inside the global
+  r2.state.lastRunEndedAt = now - 21_000; // past the role's own gap, deep inside the global
   r2.state.nextRunAt = now + 60_000; // schedule NOT passed — only a main-moved wake can run it
   r2.state.lastMainHead = "old";
   const woken = isEligible(r2, now, "new", 0);
@@ -268,7 +268,7 @@ test("an interrupted tick resumes promptly on restart despite the min gap", () =
   // Aborted (or crashed) moments ago — far inside the role's min gap, which would otherwise
   // hold its half-finished work for a full interval (e.g. the steward's ~6 h).
   r.state.runs = 5;
-  r.state.lastTickEndedAt = now - 1000;
+  r.state.lastRunEndedAt = now - 1000;
   r.state.nextRunAt = now - 1000; // aborted ticks schedule at "now"
   r.state.resumePending = true;
   const eligible = isEligible(r, now, "abc", 0);
@@ -280,7 +280,7 @@ test("a cut-off resume still waits out its interval even with the min-gap bypass
   const r = runner("clean");
   const now = Date.now();
   r.state.runs = 5;
-  r.state.lastTickEndedAt = now - 1000; // inside the min gap
+  r.state.lastRunEndedAt = now - 1000; // inside the min gap
   r.state.nextRunAt = now + 60_000; // cut-off ticks schedule one interval out
   r.state.resumePending = true;
   assert.equal(isEligible(r, now, "abc", 0).run, false);
@@ -297,7 +297,7 @@ test("the director only runs when the inbox has work", () => {
 test("the director ignores the min gap and backoff: queued prompts run back to back", () => {
   const r = runner("director");
   const now = Date.now();
-  r.state.lastTickEndedAt = now - 1000; // Just finished — a role loop would be gated.
+  r.state.lastRunEndedAt = now - 1000; // Just finished — a role loop would be gated.
   r.state.nextRunAt = now + 3600_000; // Even a (stale) backoff must not block prompts.
   assert.equal(isEligible(r, now, "abc", 1).run, true);
   assert.equal(isEligible(r, now, "abc", 0).run, false);
@@ -305,9 +305,9 @@ test("the director ignores the min gap and backoff: queued prompts run back to b
 
 test("fairOrder puts the director first even when it ticked most recently", () => {
   const director = runner("director");
-  director.state.lastTickEndedAt = 9999;
+  director.state.lastRunEndedAt = 9999;
   const feature = runner("feature");
-  feature.state.lastTickEndedAt = 1;
+  feature.state.lastRunEndedAt = 1;
   const fresh = runner("clean");
   // The work tier (feature) now outranks maintenance (clean) whatever their recency.
   assert.deepEqual(
@@ -326,12 +326,12 @@ test("role catalog puts shipping work before hygiene", () => {
 
 test("fairOrder orders the work tier ahead of maintenance; LRU (catalog order for fresh ties) within a tier", () => {
   const staleFeature = runner("feature");
-  staleFeature.state.lastTickEndedAt = 1000; // A stale-ticked feature still outranks…
+  staleFeature.state.lastRunEndedAt = 1000; // A stale-ticked feature still outranks…
   const freshOrganize = runner("organize"); // …a never-ticked maintenance role.
   const recentClean = runner("clean");
-  recentClean.state.lastTickEndedAt = 2000;
+  recentClean.state.lastRunEndedAt = 2000;
   const olderDry = runner("dry");
-  olderDry.state.lastTickEndedAt = 1500; // Within-tier LRU: dry before clean.
+  olderDry.state.lastRunEndedAt = 1500; // Within-tier LRU: dry before clean.
   const freshImprove = runner("improve"); // Fresh tie with organize: input order decides.
   assert.deepEqual(
     fairOrder([staleFeature, recentClean, freshOrganize, olderDry, freshImprove]).map((r) => r.role),
@@ -496,7 +496,7 @@ test("deferTick: bugfix with no open bugs defers like a maintenance role", () =>
   assert.equal(deferTick(latch, "bugfix", false, false, false, 1_000_000 + DEFER_MAX_MS), false);
 
   // A fresh operator wake overrides the deferral, as for any deferrable role.
-  base.lastTickEndedAt = NOW - 2000;
+  base.lastRunEndedAt = NOW - 2000;
   const woken = clearBackoff(base, NOW - 500);
   woken.nextRunAt = NOW - 1000;
   assert.equal(deferTick(woken, "bugfix", false, false, false, NOW), false);
@@ -541,7 +541,7 @@ test("deferTick: a fresh operator wake overrides the need-based deferral (an exp
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   // A completed idle tick: the gap window opened 2 s ago.
-  base.lastTickEndedAt = NOW - 2000;
+  base.lastRunEndedAt = NOW - 2000;
   // The operator's wake, stamped 0.5 s ago by requestWake's clearBackoff — newer than the gap
   // window's opening tick, the same predicate isEligible's min-gap exemption keys on. This is
   // the exact state a consumed `tumwater wake --role clean` leaves (BUGS.md 2026-09-25):
@@ -568,7 +568,7 @@ test("once mode overrides the scheduled clock, not just the min gap", () => {
   Object.assign(r.state, {
     runs: 1,
     lastResult: "changed",
-    lastTickEndedAt: now - 5_000,
+    lastRunEndedAt: now - 5_000,
     lastMainHead: "abc",
     nextRunAt: now + 30 * 60 * 1000,
     backoffSeconds: 0,
@@ -586,7 +586,7 @@ test("once mode still honors a raised backoff, which shares nextRunAt with the c
   Object.assign(r.state, {
     runs: 3,
     lastResult: "error",
-    lastTickEndedAt: now - 5_000,
+    lastRunEndedAt: now - 5_000,
     nextRunAt: now + 60_000,
     backoffSeconds: 60,
   });
@@ -602,7 +602,7 @@ test("deferTickReason: a due plan tick defers only while the plan backlog is ful
   assert.equal(deferTickReason(s, "plan", true, true, false, NOW, false), null);
   assert.equal(deferTickReason(s, "plan", true, true, false, NOW), null);
   assert.equal(
-    deferTickReason({ ...s, wokenAt: NOW, lastTickEndedAt: NOW - 1000 }, "plan", true, true, false, NOW, true),
+    deferTickReason({ ...s, wokenAt: NOW, lastRunEndedAt: NOW - 1000 }, "plan", true, true, false, NOW, true),
     null,
     "a fresh wake runs",
   );

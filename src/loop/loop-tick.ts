@@ -235,9 +235,9 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   // lands while the loop is idle must not leak into the next tick.
   ctx.resetTickAbort();
   s.running = true;
-  s.lastTickStartedAt = Date.now();
+  s.lastRunStartedAt = Date.now();
   const tick = s.runs;
-  const tickStartedAt = s.lastTickStartedAt;
+  const tickStartedAt = s.lastRunStartedAt;
   ctx.save();
   // The selector this tick's runs start on (plans/model-tiers.md "Observability"): with
   // the budget fallback active the config already names the fallback pair, so the logged
@@ -450,7 +450,7 @@ async function tickWithWorktreePhase(
     // reviewer selector changes, so fixing the model config recovers the pin automatically
     // (BUGS.md 2026-10-06).
     const reviewSelector = modelSelectorField(reviewRunConfig(ctx.config)).model;
-    if (s.landingReviewError && s.landingReviewError.selector !== reviewSelector) s.landingReviewError = undefined;
+    if (s.mergeReviewError && s.mergeReviewError.selector !== reviewSelector) s.mergeReviewError = undefined;
     const recovered = await recoverLeftover({
       root: ctx.root,
       role: ctx.role,
@@ -459,7 +459,7 @@ async function tickWithWorktreePhase(
       wt,
       mergeConflicts: s.mergeConflicts,
       conflictHandback: s.conflictHandback,
-      landingReviewError: s.landingReviewError,
+      mergeReviewError: s.mergeReviewError,
     });
     if (recovered?.kind === "handback") {
       // The pin hit the conflict cap and its lineage has not been handed back yet: keep the

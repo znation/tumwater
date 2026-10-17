@@ -669,7 +669,7 @@ test("role markdown renders the Recent runs section before the instructions", ()
 });
 
 // The loop's schedule (PLANS.md): the role view says when the loop next runs and when it
-// last ticked, derived from the persisted nextRunAt/backoffSeconds/lastTickEndedAt and in
+// last ticked, derived from the persisted nextRunAt/backoffSeconds/lastRunEndedAt and in
 // the same words and wording family as the status `next run`/`last tick` cells. The clock is
 // injected so every line is pinned by a fixed now (the renderer stays a pure function).
 test("role payload and render surface the role's schedule from persisted state", () => {
@@ -679,7 +679,7 @@ test("role payload and render surface the role's schedule from persisted state",
   const state = freshLoopState("feature");
   state.nextRunAt = now + 300_000; // 5m away
   state.backoffSeconds = 120;
-  state.lastTickEndedAt = now - 180_000; // 3m ago
+  state.lastRunEndedAt = now - 180_000; // 3m ago
   saveLoopState(dir, state);
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.nextRunAt, now + 300_000);
@@ -704,7 +704,7 @@ test("role payload and render surface the role's schedule from persisted state",
   assert.doesNotMatch(plain, /backoff/);
 
   // A never-ticked, never-scheduled default reads `not scheduled yet`/`never`, and the JSON
-  // payload omits lastTickEndedAt (and reads nextRunAt 0) until the loop has been scheduled.
+  // payload omits lastRunEndedAt (and reads nextRunAt 0) until the loop has been scheduled.
   const freshDir = root();
   const fresh = rolePayload(freshDir, "feature", NO_MODELS);
   assert.equal(fresh.nextRunAt, 0);

@@ -306,7 +306,7 @@ export function renderStatusSpans(
       live: cells.live,
       phase: cells.phase,
       role: s.role,
-      lastTickEndedAt: s.lastTickEndedAt,
+      lastRunEndedAt: s.lastRunEndedAt,
     };
   });
   // User-defined loops (snapshot's `custom` flag) get an asterisk beside their name — the
@@ -350,8 +350,8 @@ export function renderStatusSpans(
       cell(compactTokens(m.peakCtx)),
       cell(usd(s.totalCostUsd)),
       cell(usd(dailyCost(s))),
-      cell(lastTickCell(s.lastTickEndedAt)),
-      cell(lastLandedCell(s.lastLandedAt)),
+      cell(lastTickCell(s.lastRunEndedAt)),
+      cell(lastLandedCell(s.lastMergedAt)),
       s.lastResult
         ? [{ text: eventTypeLabel(s.lastResult), ...(resultT ? { tone: resultT } : {}) }, { text: s.lastSummary ? ` — ${s.lastSummary}` : "" }]
         : cell("-"),

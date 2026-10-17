@@ -55,7 +55,7 @@ test("lastLandedCell reuses the last-tick clock cell: absolute time plus relativ
 
 test("renderStatus shows the absolute last-tick time in the table row", () => {
   const ts = Date.now() - 180_000;
-  const snap = snapshotWith([{ role: "clean", lastTickEndedAt: ts }]);
+  const snap = snapshotWith([{ role: "clean", lastRunEndedAt: ts }]);
   const row = renderStatus(tmpdir(), snap).split("\n").find((l) => l.startsWith("clean")) ?? "";
   assert.ok(row.includes(`${stampOf(ts)} · 3m ago`), `row missing the stamp: ${JSON.stringify(row)}`);
 });
@@ -74,12 +74,12 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
       {
         role: "feature",
         running: true,
-        lastTickStartedAt: Date.now() - 5_000,
+        lastRunStartedAt: Date.now() - 5_000,
         runs: 3,
         commits: 1,
         lastResult: "changed",
         lastSummary: "y".repeat(120),
-        lastTickEndedAt: Date.now() - 180_000, // cell is exactly 17 chars: HH:MM:SS · 3m ago
+        lastRunEndedAt: Date.now() - 180_000, // cell is exactly 17 chars: HH:MM:SS · 3m ago
       },
     ]),
     running: true,
@@ -117,11 +117,11 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
 
 test("renderStatus shows the last-landed age in the table row, dash when never landed", () => {
   const ts = Date.now() - 180_000;
-  const landed = snapshotWith([{ role: "clean", lastTickEndedAt: ts, lastLandedAt: ts - 60_000 }]);
+  const landed = snapshotWith([{ role: "clean", lastRunEndedAt: ts, lastMergedAt: ts - 60_000 }]);
   const landedRow = renderStatus(tmpdir(), landed).split("\n").find((l) => l.startsWith("clean")) ?? "";
   assert.ok(landedRow.includes(`${stampOf(ts - 60_000)} · 4m ago`), `row missing the landed age: ${JSON.stringify(landedRow)}`);
   // A loop that has never landed shows the same dash as a never-ticked loop.
-  const fresh = snapshotWith([{ role: "new", lastTickEndedAt: ts }]);
+  const fresh = snapshotWith([{ role: "new", lastRunEndedAt: ts }]);
   const { lines: freshLines, cellAt, headers } = tableCells(renderStatus(tmpdir(), fresh));
   const freshRow = freshLines.find((l) => l.startsWith("new")) ?? "";
   assert.equal(cellAt(freshRow, headers.indexOf("last merged")), "-", "never-landed cell is the dash");
@@ -194,7 +194,7 @@ test("the today column keeps its natural width under overflow like cost", () => 
   ]);
   const s = freshLoopState("feature");
   s.running = true;
-  s.lastTickStartedAt = Date.now() - 5_000;
+  s.lastRunStartedAt = Date.now() - 5_000;
   s.lastResult = "changed";
   s.lastSummary = "y".repeat(120); // wide last result so the flexible columns have room to shrink
   s.dayStamp = todayStamp();

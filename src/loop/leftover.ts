@@ -48,10 +48,10 @@ export interface LeftoverContext {
   /** The role's outstanding hand-back (LoopState.conflictHandback): when one exists, a pin at
    * the cap means this lineage already used its one hand-back, so it is discarded. */
   conflictHandback?: LoopState["conflictHandback"];
-  /** The role's permanent-reviewer-config hold (LoopState.landingReviewError): while it names
+  /** The role's permanent-reviewer-config hold (LoopState.mergeReviewError): while it names
    * this pin's sha, recovery returns `held` instead of re-queueing, so a 4xx config error is
    * not retried at suite speed (BUGS.md 2026-10-06). */
-  landingReviewError?: LoopState["landingReviewError"];
+  mergeReviewError?: LoopState["mergeReviewError"];
 }
 
 /** What recovery did with a leftover, for the tick to end on:
@@ -131,7 +131,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   // full gate check for a request that can never succeed until the model config changes. The
   // caller clears the hold (and re-queues) once the resolved reviewer selector differs, so a
   // fixed config recovers automatically (BUGS.md 2026-10-06).
-  const held = ctx.landingReviewError;
+  const held = ctx.mergeReviewError;
   if (held?.sha === sha) return { kind: "held", sha, message: held.message };
   const attempts = ctx.mergeConflicts?.sha === sha ? ctx.mergeConflicts.count : 0;
   if (attempts >= MERGE_CONFLICT_LIMIT) {

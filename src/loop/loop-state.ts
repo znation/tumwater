@@ -57,8 +57,8 @@ export interface LoopState {
    * outcome next to the summary of the change it landed, never next to the prior tick's.
    * Persisted: the land queue is durable, so the landing can resolve in a later process. */
   queuedSummary?: { sha: string; summary: string };
-  lastTickStartedAt?: number;
-  lastTickEndedAt?: number;
+  lastRunStartedAt?: number;
+  lastRunEndedAt?: number;
   /** True while a tick is in flight (best-effort; cleared on orchestrator start). */
   running?: boolean;
   /** Epoch ms since the orchestrator reserved this loop but its tick still waits in the
@@ -116,7 +116,7 @@ export interface LoopState {
    * than the last tick's end, so an explicit "try again now" brings a slow-clock loop
    * (qa, steward) in within one poll instead of waiting out the interval it ticked inside
    * — the same exemption the director's inbox already grants user prompts. Self-clearing:
-   * the next tick's end re-stamps lastTickEndedAt past the wake, restoring the ordinary
+   * the next tick's end re-stamps lastRunEndedAt past the wake, restoring the ordinary
    * gap without a separate erase. */
   wokenAt?: number;
   /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
@@ -245,12 +245,12 @@ export interface LoopState {
    * 2026-10-06). `selector` is the resolved reviewer selector that failed — when the loop's
    * current reviewer selector differs, the config has changed and recovery clears the hold and
    * re-queues. Cleared when the pin lands or is rejected. */
-  landingReviewError?: { sha: string; selector?: string; message: string };
+  mergeReviewError?: { sha: string; selector?: string; message: string };
   /** Consecutive landings of one patch (git/git.ts patchId, stable across a clean rebase) whose
    * in-lock check went red on the rebased tree. At landing-check-failures.ts's
    * LANDING_CHECK_FAILURE_LIMIT the red is attributed through main's own verdict instead of
    * re-queued as merge_blocked again. */
-  landingCheckFailures?: { patchId: string; count: number };
+  mergeCheckFailures?: { patchId: string; count: number };
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick
    * window (loop-tick.ts resets it at tick start), not a lifetime total. */
   generatedTokens: number;
@@ -273,10 +273,10 @@ export interface LoopState {
   /** Epoch ms (Date.now()) of the last time this loop landed a change on main (set only in
    * applyLandingOutcome's `changed` branch, src/tick/tick-apply.ts). Absent until the first
    * landing, and absent on state files written before the field existed, so the last-landed
-   * age reads "never" until then. Mirrors lastTickEndedAt: an observational timestamp that
+   * age reads "never" until then. Mirrors lastRunEndedAt: an observational timestamp that
    * reset-counters deliberately leaves alone — the dry-spell question it answers is about
    * landed work, not counters. */
-  lastLandedAt?: number;
+  lastMergedAt?: number;
   /** The backlog entry this instance is assigned to implement or fix (plans/parallel-work-
    * instances.md "Claims", part 4/7): its file, the stamp-free key (backlog-eligibility.ts's
    * entryKey) that survives a done stamp or a Refused note, the verbatim heading at
@@ -344,7 +344,7 @@ export function freshLoopState(role: string): LoopState {
  * absent, foreign, NaN/±Infinity, or negative). Every numeric field on LoopState — top-level or
  * inside one of the nested records below — is a count, a duration, an epoch-ms stamp, or an
  * amount, so zero is the only sensible repair; the `tick-usage.ts` and `budget.ts` writers floor
- * the same three quantities they own. A guard count (mergeConflicts, landingCheckFailures,
+ * the same three quantities they own. A guard count (mergeConflicts, mergeCheckFailures,
  * unreviewFailures) heals to 0 like the rest: a corrupt strike tally re-accumulates from the
  * next attempt, the same "the field is unusable, start the count over" repair the top-level heal
  * already gives the error streak. */
@@ -392,6 +392,11 @@ function healRecord<T extends object>(value: T | undefined, heal: (v: T) => void
  * both keeps the new value and the next save writes only current keys. */
 const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
   ticks: "runs", // vocabulary-ok: legacy state key read from old files
+  lastTickStartedAt: "lastRunStartedAt", // vocabulary-ok: legacy state key read from old files
+  lastTickEndedAt: "lastRunEndedAt", // vocabulary-ok: legacy state key read from old files
+  landingReviewError: "mergeReviewError", // vocabulary-ok: legacy state key read from old files
+  landingCheckFailures: "mergeCheckFailures", // vocabulary-ok: legacy state key read from old files
+  lastLandedAt: "lastMergedAt", // vocabulary-ok: legacy state key read from old files
 };
 
 /** Apply LEGACY_STATE_KEYS to a parsed state object in place. */
@@ -425,9 +430,9 @@ export function loadLoopState(root: string, role: string): LoopState {
   s.totalCostUsd = healNumber(s.totalCostUsd, 0);
   s.dayCostUsd = healNumber(s.dayCostUsd, 0);
   if (s.dayCostByPair !== undefined) s.dayCostByPair = healPairCosts(s.dayCostByPair);
-  healOptionalNumber(s, "lastTickStartedAt");
-  healOptionalNumber(s, "lastTickEndedAt");
-  healOptionalNumber(s, "lastLandedAt");
+  healOptionalNumber(s, "lastRunStartedAt");
+  healOptionalNumber(s, "lastRunEndedAt");
+  healOptionalNumber(s, "lastMergedAt");
   healOptionalNumber(s, "wokenAt");
   healOptionalNumber(s, "cutOffStreak");
   healOptionalNumber(s, "quietKillStreak");
@@ -491,8 +496,8 @@ export function loadLoopState(root: string, role: string): LoopState {
       healOptionalNumber(v, "round");
       if ((v.reason as string) === "landing") v.reason = "merge"; // vocabulary-ok: legacy state value read from old files
     });
-  if (s.landingCheckFailures !== undefined)
-    s.landingCheckFailures = healRecord(s.landingCheckFailures, (v) => {
+  if (s.mergeCheckFailures !== undefined)
+    s.mergeCheckFailures = healRecord(s.mergeCheckFailures, (v) => {
       v.count = healNumber(v.count, 0);
     });
   if (s.modelFallback !== undefined)

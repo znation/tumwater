@@ -110,38 +110,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms state, part 2/5: Rename the remaining tick and landing fields of LoopState (planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/landing/ src/scheduling/ src/orchestrator/orchestrator-scheduling.ts src/roles/role-view.ts src/status/status-polls.ts src/ui/ test/)
-
-**Goal.** The state file's other old keys follow the "State and git" table, and old files load through the same legacy-key table:
-- `lastTickStartedAt` → `lastRunStartedAt`
-- `lastTickEndedAt` → `lastRunEndedAt`
-- `landingReviewError` → `mergeReviewError`
-- `landingCheckFailures` → `mergeCheckFailures`
-- `lastLandedAt` → `lastMergedAt`
-
-**Approach.**
-- Add the five pairs to `LEGACY_STATE_KEYS` (src/loop/loop-state.ts) and rename the `LoopState` properties and their doc comments.
-- In `loadLoopState`, the `healOptionalNumber` calls and `landingCheckFailures`' `healRecord` follow the new names. The legacy keys are mapped before healing, so an old value is healed exactly as before.
-- Consumers: tsc lists ~46 src sites in 13 files:
-  - the `applyTickOutcome`/`applyLandingOutcome` writers (tick-apply.ts);
-  - the interval, wake and backoff arithmetic (scheduling.ts, backoff.ts, orchestrator-scheduling.ts);
-  - the review-error pin hold (landing-core.ts, leftover.ts, loop-tick.ts);
-  - the check-failure counter (landing-check-failures.ts);
-  - the live-progress clock (src/ui/tick-progress-model.ts);
-  - role-view.ts and status-polls.ts;
-  - status-payload.ts and status-render.ts, where the `--json` keys are already renamed and only the right-hand sides change.
-- Keep `landing-check-failures.ts`'s file name and `LANDING_CHECK_FAILURE_LIMIT`; Plain terms code merge renames them.
-- Tests: ~123 typed sites in ~25 files. On-disk JSON fixtures keep old keys. Add loader cases.
-- **Self-hosting:** safe in one part. The new build maps the old build's keys on load, and the old build never loads the new build's file (see part 1/5).
-
-**Files touched.** src/loop/loop-state.ts, src/loop/loop-tick.ts, src/loop/leftover.ts, src/tick/tick-apply.ts, src/scheduling/scheduling.ts, src/scheduling/backoff.ts, src/orchestrator/orchestrator-scheduling.ts, src/landing/landing-core.ts, src/landing/landing-check-failures.ts, src/roles/role-view.ts, src/status/status-polls.ts, src/ui/tick-progress-model.ts, src/ui/status-payload.ts, src/ui/status-render.ts; test/loop-state.test.ts and the test files tsc lists.
-
-**Acceptance criteria.**
-- A state file with all five old keys loads them under the new names, each healed as before (a negative `lastLandedAt` reads 0, and a scalar `landingCheckFailures` is dropped). The next save holds only the new keys.
-- A role whose old state carries `landingReviewError` still holds its pin until the reviewer selector changes, read through `mergeReviewError`.
-- The sleeping-roles wake rule still compares the wake against `lastRunEndedAt`.
-- `npm run test` passes.
-
 ### Plain terms state, part 3/5: Add the startup migration hook and move the land queue to merge-queue (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "State and git"; touches src/orchestrator/ src/paths.ts src/landing/ src/loop/leftover.ts src/tick/tick-stage.ts src/status/status-data.ts src/events/ test/)
 
 **Goal.** tumwater gets one reusable registry of idempotent startup-migration steps. The orchestrator runs it before its first per-runner state read, and a CLI reader can run it safely too. Its first step moves `.tumwater/land-queue/` to `.tumwater/merge-queue/`. Queue entries carry `run` instead of `tick`, and older entries still read.
@@ -2096,6 +2064,38 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms state, part 2/5: Rename the remaining tick and landing fields of LoopState (planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/landing/ src/scheduling/ src/orchestrator/orchestrator-scheduling.ts src/roles/role-view.ts src/status/status-polls.ts src/ui/ test/) (done 2026-10-16)
+
+**Goal.** The state file's other old keys follow the "State and git" table, and old files load through the same legacy-key table:
+- `lastTickStartedAt` → `lastRunStartedAt`
+- `lastTickEndedAt` → `lastRunEndedAt`
+- `landingReviewError` → `mergeReviewError`
+- `landingCheckFailures` → `mergeCheckFailures`
+- `lastLandedAt` → `lastMergedAt`
+
+**Approach.**
+- Add the five pairs to `LEGACY_STATE_KEYS` (src/loop/loop-state.ts) and rename the `LoopState` properties and their doc comments.
+- In `loadLoopState`, the `healOptionalNumber` calls and `landingCheckFailures`' `healRecord` follow the new names. The legacy keys are mapped before healing, so an old value is healed exactly as before.
+- Consumers: tsc lists ~46 src sites in 13 files:
+  - the `applyTickOutcome`/`applyLandingOutcome` writers (tick-apply.ts);
+  - the interval, wake and backoff arithmetic (scheduling.ts, backoff.ts, orchestrator-scheduling.ts);
+  - the review-error pin hold (landing-core.ts, leftover.ts, loop-tick.ts);
+  - the check-failure counter (landing-check-failures.ts);
+  - the live-progress clock (src/ui/tick-progress-model.ts);
+  - role-view.ts and status-polls.ts;
+  - status-payload.ts and status-render.ts, where the `--json` keys are already renamed and only the right-hand sides change.
+- Keep `landing-check-failures.ts`'s file name and `LANDING_CHECK_FAILURE_LIMIT`; Plain terms code merge renames them.
+- Tests: ~123 typed sites in ~25 files. On-disk JSON fixtures keep old keys. Add loader cases.
+- **Self-hosting:** safe in one part. The new build maps the old build's keys on load, and the old build never loads the new build's file (see part 1/5).
+
+**Files touched.** src/loop/loop-state.ts, src/loop/loop-tick.ts, src/loop/leftover.ts, src/tick/tick-apply.ts, src/scheduling/scheduling.ts, src/scheduling/backoff.ts, src/orchestrator/orchestrator-scheduling.ts, src/landing/landing-core.ts, src/landing/landing-check-failures.ts, src/roles/role-view.ts, src/status/status-polls.ts, src/ui/tick-progress-model.ts, src/ui/status-payload.ts, src/ui/status-render.ts; test/loop-state.test.ts and the test files tsc lists.
+
+**Acceptance criteria.**
+- A state file with all five old keys loads them under the new names, each healed as before (a negative `lastLandedAt` reads 0, and a scalar `landingCheckFailures` is dropped). The next save holds only the new keys.
+- A role whose old state carries `landingReviewError` still holds its pin until the reviewer selector changes, read through `mergeReviewError`.
+- The sleeping-roles wake rule still compares the wake against `lastRunEndedAt`.
+- `npm run test` passes.
 
 ### `tumwater doctor` names disabled roles that still keep a branch, pointing at `tumwater retire --role <id>` (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/cli.md, test/doctor-checks.test.ts, test/doctor.test.ts) — done 2026-10-16
 

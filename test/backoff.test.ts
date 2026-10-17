@@ -48,8 +48,8 @@ test("clearBackoff: zeroes the ladder, pulls nextRunAt to now, stamps wokenAt, p
 
 test("restoreMidTickWake: no wake recorded — reports false, leaves the schedule alone", () => {
   const s = freshLoopState("tests");
-  s.lastTickStartedAt = 1_000;
-  s.lastTickEndedAt = 2_000;
+  s.lastRunStartedAt = 1_000;
+  s.lastRunEndedAt = 2_000;
   s.nextRunAt = 62_000;
   s.backoffSeconds = 60;
 
@@ -61,7 +61,7 @@ test("restoreMidTickWake: no wake recorded — reports false, leaves the schedul
 
 test("restoreMidTickWake: a wake older than the tick's start was already honored — not restored", () => {
   const s = freshLoopState("tests");
-  s.lastTickStartedAt = 1_000;
+  s.lastRunStartedAt = 1_000;
   s.wokenAt = 1_000; // tie with the tick's start: the ordinary self-clearing must hold
   assert.equal(restoreMidTickWake(s), false);
 
@@ -71,7 +71,7 @@ test("restoreMidTickWake: a wake older than the tick's start was already honored
 
 test("restoreMidTickWake: a cut-off tick's resumePending deliberately blocks the wake shortcut", () => {
   const s = freshLoopState("tests");
-  s.lastTickStartedAt = 1_000;
+  s.lastRunStartedAt = 1_000;
   s.wokenAt = 1_500;
   s.resumePending = true;
   assert.equal(restoreMidTickWake(s), false);
@@ -81,8 +81,8 @@ test("restoreMidTickWake: a cut-off tick's resumePending deliberately blocks the
 test("restoreMidTickWake: live wake re-applied — backoff cleared, nextRunAt re-stamped past the end", () => {
   const now = Date.now();
   const s = freshLoopState("tests");
-  s.lastTickStartedAt = now - 10_000;
-  s.lastTickEndedAt = now - 5_000;
+  s.lastRunStartedAt = now - 10_000;
+  s.lastRunEndedAt = now - 5_000;
   s.wokenAt = now - 3_000; // woke mid-tick
   s.backoffSeconds = 600;
   s.nextRunAt = now + 600_000; // applyTickOutcome scheduled a fresh backoff out
@@ -90,18 +90,18 @@ test("restoreMidTickWake: live wake re-applied — backoff cleared, nextRunAt re
   assert.equal(restoreMidTickWake(s), true);
   assert.equal(s.backoffSeconds, 0);
   assert.equal(s.wokenAt, s.nextRunAt); // clearBackoff stamped both to the same now
-  assert.ok(s.nextRunAt > s.lastTickEndedAt, "wake must read newer than the end stamp");
+  assert.ok(s.nextRunAt > s.lastRunEndedAt, "wake must read newer than the end stamp");
 });
 
 test("restoreMidTickWake: an end stamp in the future wins the max — wokenAt lands just past it", () => {
   const s = freshLoopState("tests");
-  s.lastTickStartedAt = 1_000;
-  s.lastTickEndedAt = Date.now() + 60_000; // clock skew / fast tick
+  s.lastRunStartedAt = 1_000;
+  s.lastRunEndedAt = Date.now() + 60_000; // clock skew / fast tick
   s.wokenAt = 2_000;
 
   assert.equal(restoreMidTickWake(s), true);
-  assert.equal(s.nextRunAt, s.lastTickEndedAt + 1);
-  assert.equal(s.wokenAt, s.lastTickEndedAt + 1);
+  assert.equal(s.nextRunAt, s.lastRunEndedAt + 1);
+  assert.equal(s.wokenAt, s.lastRunEndedAt + 1);
 });
 
 test("pushYieldOutcome: landings are L, everything productive-or-empty is n, error classes never enter the ring", () => {

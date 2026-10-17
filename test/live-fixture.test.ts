@@ -73,7 +73,7 @@ test("seedLiveFleet writes the orchestrator marker, one running state per role, 
     assert.equal(st.ticks, 3);
     assert.equal(st.running, true);
     assert.equal(st.phase, "pi");
-    assert.ok(st.lastTickStartedAt > st.lastTickEndedAt, "a still-running tick started after the last one ended");
+    assert.ok(st.lastRunStartedAt > st.lastRunEndedAt, "a still-running tick started after the last one ended");
 
     const lines = fs
       .readFileSync(path.join(root, ".tumwater", "log", `${role}.pi.jsonl`), "utf8")

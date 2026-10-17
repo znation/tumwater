@@ -345,7 +345,7 @@ export function rolePayload(
     nextRunAt: state.nextRunAt,
     backoffSeconds: state.backoffSeconds,
     yieldMultiplier: yieldMultiplierFor(state),
-    ...(state.lastTickEndedAt !== undefined ? { lastRunEndedAt: state.lastTickEndedAt } : {}),
+    ...(state.lastRunEndedAt !== undefined ? { lastRunEndedAt: state.lastRunEndedAt } : {}),
     ...(quietHours.length > 0 ? { quietHours } : {}),
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
     ...(usage.tokens !== 0 || usage.costUsd !== 0 || usage.notionalCostUsd !== 0 ? { usage } : {}),

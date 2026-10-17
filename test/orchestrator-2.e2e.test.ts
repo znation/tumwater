@@ -89,12 +89,12 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
 test("a wake request makes a backed-off loop due within one poll and logs it under the role", async () => {
   const repo = await makeFastRepo("wake request test", ["clean"]);
   // Deep backoff: the loop is two hours out and has ticked before, so the woken run reads as
-  // "scheduled", not "startup". lastTickEndedAt is long past, so no min-gap gate applies.
+  // "scheduled", not "startup". lastRunEndedAt is long past, so no min-gap gate applies.
   const seeded = freshLoopState("clean");
   seeded.runs = 3;
   seeded.backoffSeconds = 7680;
   seeded.nextRunAt = Date.now() + 2 * 3600 * 1000;
-  seeded.lastTickEndedAt = Date.now() - 3600 * 1000;
+  seeded.lastRunEndedAt = Date.now() - 3600 * 1000;
   saveLoopState(repo, seeded);
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
@@ -125,10 +125,10 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
 
 test("an operator wake brings a slow-clock loop in despite a fresh min-gap window", async () => {
   // The other wake shape: not backoff but the loop's OWN interval. qa-style slow clocks
-  // used to defeat the wake in isEligible — lastTickEndedAt minutes old and nextRunAt
+  // used to defeat the wake in isEligible — lastRunEndedAt minutes old and nextRunAt
   // hours out left the loop asleep for the rest of the interval no matter how many wake
   // markers landed, so `tumwater wake --role qa` and a queued per-role prompt's auto-wake
-  // silently did nothing. The earlier wake test dodged this by seeding lastTickEndedAt an
+  // silently did nothing. The earlier wake test dodged this by seeding lastRunEndedAt an
   // hour in the past; this one seeds the fresh-tick shape the operator actually hits.
   const repo = await makeFastRepo("wake vs min gap test", ["clean"]);
   const cfg = loadConfig(repo);
@@ -137,7 +137,7 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
   // Ticked moments ago, productive clock hours out, not backing off, main unmoved.
   const seeded = freshLoopState("clean");
   seeded.runs = 1;
-  seeded.lastTickEndedAt = Date.now() - 2000;
+  seeded.lastRunEndedAt = Date.now() - 2000;
   seeded.nextRunAt = Date.now() + 3600 * 1000;
   seeded.lastMainHead = "";
   saveLoopState(repo, seeded);
@@ -177,7 +177,7 @@ test("a queued per-role prompt pulls a slow-clock loop in even when its wake was
   // already won. The queued prompt is the only trace of the request.
   const seeded = freshLoopState("clean");
   seeded.runs = 1;
-  seeded.lastTickEndedAt = Date.now() - 2000;
+  seeded.lastRunEndedAt = Date.now() - 2000;
   seeded.nextRunAt = Date.now() + 3600 * 1000;
   seeded.lastMainHead = "";
   saveLoopState(repo, seeded);
@@ -202,7 +202,7 @@ test("a queued per-role prompt pulls a slow-clock loop in even when its wake was
 test("a plain wake consumed mid-tick survives the tick's end-save", async () => {
   // The bare-wake half of the mid-tick race (BUGS.md 2026-09-25): `tumwater wake --role`
   // with an EMPTY queue, consumed while the target's tick is running. r.wake() stamps the
-  // shared in-memory state, but the tick's end-save re-stamps lastTickEndedAt past wokenAt
+  // shared in-memory state, but the tick's end-save re-stamps lastRunEndedAt past wokenAt
   // and schedules a fresh gap out — the demand used to vanish and the loop slept out its
   // whole hour. restoreMidTickWake re-applies it at the end-save, so the next tick follows
   // within a poll, exactly like a wake arriving after the tick ended.
@@ -248,7 +248,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
     s.runs = 3;
     s.backoffSeconds = 7680;
     s.nextRunAt = Date.now() + 2 * 3600 * 1000;
-    s.lastTickEndedAt = Date.now() - 3600 * 1000;
+    s.lastRunEndedAt = Date.now() - 3600 * 1000;
     saveLoopState(repo, s);
   }
   const { restore, orch } = startIdleOrchestrator(repo);

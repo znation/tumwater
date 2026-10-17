@@ -454,7 +454,7 @@ test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an ope
   state.runs = 1;
   state.lastResult = "no_change";
   state.lastMainHead = headSha(repo);
-  state.lastTickEndedAt = Date.now() - 60_000;
+  state.lastRunEndedAt = Date.now() - 60_000;
   state.nextRunAt = Date.now() - DEFER_MAX_MS - 60_000;
   saveLoopState(repo, state);
 

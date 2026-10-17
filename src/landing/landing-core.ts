@@ -184,7 +184,7 @@ export async function reviewPinnedChange(
   // "Vets and merges"): vetRequest releases the lease in its finally, and a slot is reused, so
   // this path must not remove the worktree it ran in.
   const discardPin = async () => {
-    state.landingReviewError = undefined;
+    state.mergeReviewError = undefined;
     await deleteRef(root, ref);
   };
   // Already stopping: the gate never starts, so nothing is persisted or folded — the ref stays
@@ -257,7 +257,7 @@ export async function reviewPinnedChange(
     // 2026-10-06). A discarded pin is gone, so no hold is recorded for it.
     if (gate.configError && !gate.discarded) {
       const selector = modelSelectorField(reviewRunConfig(config)).model;
-      state.landingReviewError = {
+      state.mergeReviewError = {
         sha: req.sha,
         ...(selector ? { selector } : {}),
         message: state.lastError,
@@ -289,7 +289,7 @@ export async function reviewPinnedChange(
     req = { ...req, sha };
   }
   // The change may land: nothing is held against the previous reviewer selector any more.
-  state.landingReviewError = undefined;
+  state.mergeReviewError = undefined;
   return { kind: "gate", gate, sha };
 }
 

@@ -403,7 +403,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
     // Measured from the tick's own end stamp, not a clock read after waitFor noticed the end:
     // that read trails the schedule by the poll and the host's load, which ate the 1 s of
     // slack a `> now + 29 s` check left on the 30 s backoff (BUGS.md 2026-10-01).
-    assert.ok(s.nextRunAt - (s.lastTickEndedAt ?? 0) >= 29_000, "backed off, not immediate");
+    assert.ok(s.nextRunAt - (s.lastRunEndedAt ?? 0) >= 29_000, "backed off, not immediate");
 
     // A request for a loop that is NOT running is a silent no-op: the marker is removed and
     // no event logged — clean itself (now idle in its backoff) …
@@ -479,12 +479,12 @@ test("an abort for one queued role stops only that role's vet and discards its p
   saveConfig(repo, cfg);
   await seedLandQueue(repo, "clean", "dry");
   // The 300 s min-gap only throttles ticks AFTER the first: a never-run role has
-  // lastTickEndedAt 0, so it is startup-eligible on poll one and — under load — can finish a
+  // lastRunEndedAt 0, so it is startup-eligible on poll one and — under load — can finish a
   // no-op tick before the asserts below read `ticks`. Seed both roles as freshly ticked so NO
   // tick can start for the next 300 s: "no tick ever started" then asserts a deterministic fact.
   for (const role of ["clean", "dry"]) {
     const s = loadLoopState(repo, role);
-    s.lastTickEndedAt = Date.now();
+    s.lastRunEndedAt = Date.now();
     saveLoopState(repo, s);
   }
   // Each reviewer marks itself and parks until released (bounded ~60 s, so a failed assert can

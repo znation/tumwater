@@ -63,7 +63,7 @@ test("once: a role in error backoff is skipped and does not run, and the round s
     ...freshLoopState("clean"),
     runs: 3,
     lastResult: "error",
-    lastTickEndedAt: Date.now(),
+    lastRunEndedAt: Date.now(),
     nextRunAt: Date.now() + 60_000,
     backoffSeconds: 60,
   });
@@ -112,7 +112,7 @@ test("once: a round started right after a productive daemon tick still ticks the
     ...freshLoopState("clean"),
     runs: 1,
     lastResult: "changed",
-    lastTickEndedAt: Date.now(),
+    lastRunEndedAt: Date.now(),
     lastMainHead: "seed",
     nextRunAt: Date.now() + 30 * 60 * 1000,
     backoffSeconds: 0,

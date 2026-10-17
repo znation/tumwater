@@ -99,7 +99,7 @@ test("once: a fresh operator wake overrides the deferral — the demand ticks de
   openBacklog(repo);
   saveLoopState(repo, {
     ...idleDueState(repo),
-    lastTickEndedAt: Date.now() - 60_000,
+    lastRunEndedAt: Date.now() - 60_000,
     wokenAt: Date.now() - 1000, // newer than the last tick's end: an explicit "try again now"
   });
   await withIdlePi(async () => {

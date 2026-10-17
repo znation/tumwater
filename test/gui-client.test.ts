@@ -39,9 +39,9 @@ test("every phase label loopPhase renders maps to a known status on the page", (
   const at = (patch: Partial<ReturnType<typeof freshLoopState>>, role = "clean") => ({ ...freshLoopState(role), ...patch });
   const cases: Array<[string, string, boolean]> = [
     [loopPhase(at({}), false), "stopped", false],
-    [loopPhase(at({ running: true, lastTickStartedAt: now - 90_000 }), true), "working", true],
-    [loopPhase(at({ running: true, lastTickStartedAt: now - 90_000 }, "director"), true), "working", true],
-    [loopPhase(at({ running: true, phase: "review", lastTickStartedAt: now - 30_000 }), true), "reviewing", true],
+    [loopPhase(at({ running: true, lastRunStartedAt: now - 90_000 }), true), "working", true],
+    [loopPhase(at({ running: true, lastRunStartedAt: now - 90_000 }, "director"), true), "working", true],
+    [loopPhase(at({ running: true, phase: "review", lastRunStartedAt: now - 30_000 }), true), "reviewing", true],
     [loopPhase(at({}), true, undefined, false, null, false, { status: "landing", startedAt: now - 60_000, stage: "build-check" }), "landing", true],
     [loopPhase(at({}), true, undefined, false, null, false, { status: "vetted", startedAt: now }), "vetted", false],
     [loopPhase(at({ running: true, parkedSince: now - 5_000 }), true), "awaiting", false],

@@ -34,7 +34,7 @@ export function clearBackoff(s: LoopState, now: number): LoopState {
 
 /** Re-apply a wake that was consumed while the just-ended tick was still in flight. The tick
  * holds the same state object wake() mutated in place, but applyTickOutcome's own schedule
- * overwrites the wake: lastTickEndedAt is re-stamped past wokenAt (so the min-gap exemption
+ * overwrites the wake: lastRunEndedAt is re-stamped past wokenAt (so the min-gap exemption
  * reads stale) and nextRunAt is scheduled a fresh gap or backoff out — the operator's "try
  * again now" silently waits out the whole interval. Called by the tick's end-save after
  * applyTickOutcome (src/tick/tick-apply.ts), it re-applies the demand exactly like a wake
@@ -46,11 +46,11 @@ export function clearBackoff(s: LoopState, now: number): LoopState {
  * and a mid-tick wake must not shortcut that wait. */
 export function restoreMidTickWake(s: LoopState): boolean {
   if (s.resumePending) return false;
-  if (s.wokenAt === undefined || s.wokenAt <= (s.lastTickStartedAt ?? 0)) return false;
+  if (s.wokenAt === undefined || s.wokenAt <= (s.lastRunStartedAt ?? 0)) return false;
   // clearBackoff stamps wokenAt = now, which must read NEWER than the end-save's
-  // lastTickEndedAt for isEligible's exemption to fire — both are Date.now() reads, so a
+  // lastRunEndedAt for isEligible's exemption to fire — both are Date.now() reads, so a
   // same-millisecond tie would swallow the demand; floor it just past the end stamp.
-  Object.assign(s, clearBackoff(s, Math.max(Date.now(), (s.lastTickEndedAt ?? 0) + 1)));
+  Object.assign(s, clearBackoff(s, Math.max(Date.now(), (s.lastRunEndedAt ?? 0) + 1)));
   return true;
 }
 

@@ -309,7 +309,7 @@ const RED = "main abc is red (npm test: 2 failing) — authoring skipped until m
 
 function redRoot(extra: Record<string, unknown> = {}): string {
   const root = tmpdir("tw-mainred-");
-  saveLoopState(root, { ...freshLoopState("feature"), lastResult: "main_red", lastError: RED, lastTickEndedAt: 1000, ...extra });
+  saveLoopState(root, { ...freshLoopState("feature"), lastResult: "main_red", lastError: RED, lastRunEndedAt: 1000, ...extra });
   return root;
 }
 
