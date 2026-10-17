@@ -59,39 +59,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms role ids, part 2/5: Rename a legacy role id's branch and refs and files once at startup (planned 2026-10-16 by user; requires part 1/5 and Plain terms state 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/legacy-role-migration.ts and the startup migration hook plus a test)
-
-**Goal.** When a role's id changes, the first startup on the new build moves that role's on-disk artifacts to the new id before anything reads them. The role keeps its branch, pending merge, notes, inbox and sessions. The step is idempotent and does nothing while `LEGACY_ROLE_IDS` is empty.
-
-**Approach.**
-- New module `src/roles/legacy-role-migration.ts` with `migrateLegacyRoleIds(root: string, legacy = LEGACY_ROLE_IDS): Promise<string[]>`. It returns one line per artifact moved or skipped. For each `[old, new]`:
-  - **Branch:** when `branchName(old)` exists and `branchName(new)` does not, run `git branch -m tumwater/<old> tumwater/<new>`. git also repoints any worktree that has it checked out. When the new branch exists, leave both and report the skip.
-  - **Refs:** the merge ref (`refs/tumwater/merge/<id>`, through the name helper Plain terms state left in src/paths.ts) and `rejectedRefName(id)`. When the old ref exists and the new one does not, run `git update-ref <new> <sha>` and then `git update-ref -d <old> <sha>`.
-  - **Paths:** `statePath`, `roleNotesPath`, `roleInboxDir`, `sessionDir` and `reviewSessionDir` (src/paths.ts). When the old path exists and the new one does not, `fs.renameSync`. When both exist, leave both and report.
-  - **Not moved:** pi and native logs stay where they are, because they are history.
-  - Each artifact is its own try/catch. A failure is reported and never aborts startup or the other moves. Use the git helpers the codebase already has (`gitTry` and `runGit` from src/git/).
-- Register the step by appending one line at the end of src/orchestrator/startup-migration-steps.ts (the hook Plain terms state part 3/5 added): `registerStartupMigration({ name: "legacyRoleIds", run: (root) => migrateLegacyRoleIds(root) })`. It goes after `mergeRefs`, so its ref rename sees `refs/tumwater/merge/<old>` and never a legacy `landing/` ref. Its returned lines become the step's `state_migrated` detail, the hook's logging convention.
-- `cmdRun`'s once-mode path (src/cli/cli-run.ts) reads `loadLoopState` for its `ticksBefore` snapshot before `runOrchestrator` starts. Call `runStartupMigrations(root)` there first, so the snapshot reads the migrated `state/<new>.json`. The hook is idempotent, so the orchestrator's own call then moves nothing.
-- New `test/legacy-role-migration.test.ts` on a fixture repo (test/fixtures/repo-fixtures.ts), with the map `{ oldy: "newy" }`. Build:
-  - branch `tumwater/oldy` and both refs;
-  - `state/oldy.json`, `state/notes/oldy.md` and `inbox/oldy/x.md`;
-  - `sessions/oldy/` and `sessions/_review/oldy/`;
-  - a pi log.
-  - Then assert:
-    - after one run each artifact is under `newy` with its content intact, and the log has not moved;
-    - a second run moves nothing;
-    - with `tumwater/newy` already present, `tumwater/oldy` stays and the skip is reported;
-    - with the real, empty map, nothing happens.
-
-**Files touched.** src/roles/legacy-role-migration.ts (new), src/orchestrator/startup-migration-steps.ts, src/cli/cli-run.ts, test/legacy-role-migration.test.ts (new). Reads (does not edit): src/paths.ts, src/roles/legacy-role-ids.ts.
-
-**Acceptance criteria.**
-- On the fixture, every listed artifact moves to the new id, and nothing that already exists under the new id is overwritten.
-- A second run is a no-op.
-- The step is registered in the startup hook and runs before the first per-runner state read, which the hook's own test pattern pins.
-- With `LEGACY_ROLE_IDS` empty, startup does no new git or file work beyond the empty loop.
-- `npm run test` passes.
-
 ### Plain terms role ids, part 3/5: Rename the dry role to dedupe (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "Role names"; touches src/roles/ and test/vocabulary.test.ts plus the tests that use dry as a role id)
 
 **Goal.** Mechanical. The duplication remover's id becomes `dedupe` and its title "duplication remover". Configs that say `roles.dry`, `--role dry`, old events, and the role's branch, refs, state, notes, inbox and sessions all carry over through parts 1/5 and 2/5.
@@ -1809,6 +1776,39 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms role ids, part 2/5: Rename a legacy role id's branch and refs and files once at startup (planned 2026-10-16 by user; requires part 1/5 and Plain terms state 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/legacy-role-migration.ts and the startup migration hook plus a test) (done 2026-10-16)
+
+**Goal.** When a role's id changes, the first startup on the new build moves that role's on-disk artifacts to the new id before anything reads them. The role keeps its branch, pending merge, notes, inbox and sessions. The step is idempotent and does nothing while `LEGACY_ROLE_IDS` is empty.
+
+**Approach.**
+- New module `src/roles/legacy-role-migration.ts` with `migrateLegacyRoleIds(root: string, legacy = LEGACY_ROLE_IDS): Promise<string[]>`. It returns one line per artifact moved or skipped. For each `[old, new]`:
+  - **Branch:** when `branchName(old)` exists and `branchName(new)` does not, run `git branch -m tumwater/<old> tumwater/<new>`. git also repoints any worktree that has it checked out. When the new branch exists, leave both and report the skip.
+  - **Refs:** the merge ref (`refs/tumwater/merge/<id>`, through the name helper Plain terms state left in src/paths.ts) and `rejectedRefName(id)`. When the old ref exists and the new one does not, run `git update-ref <new> <sha>` and then `git update-ref -d <old> <sha>`.
+  - **Paths:** `statePath`, `roleNotesPath`, `roleInboxDir`, `sessionDir` and `reviewSessionDir` (src/paths.ts). When the old path exists and the new one does not, `fs.renameSync`. When both exist, leave both and report.
+  - **Not moved:** pi and native logs stay where they are, because they are history.
+  - Each artifact is its own try/catch. A failure is reported and never aborts startup or the other moves. Use the git helpers the codebase already has (`gitTry` and `runGit` from src/git/).
+- Register the step by appending one line at the end of src/orchestrator/startup-migration-steps.ts (the hook Plain terms state part 3/5 added): `registerStartupMigration({ name: "legacyRoleIds", run: (root) => migrateLegacyRoleIds(root) })`. It goes after `mergeRefs`, so its ref rename sees `refs/tumwater/merge/<old>` and never a legacy `landing/` ref. Its returned lines become the step's `state_migrated` detail, the hook's logging convention.
+- `cmdRun`'s once-mode path (src/cli/cli-run.ts) reads `loadLoopState` for its `ticksBefore` snapshot before `runOrchestrator` starts. Call `runStartupMigrations(root)` there first, so the snapshot reads the migrated `state/<new>.json`. The hook is idempotent, so the orchestrator's own call then moves nothing.
+- New `test/legacy-role-migration.test.ts` on a fixture repo (test/fixtures/repo-fixtures.ts), with the map `{ oldy: "newy" }`. Build:
+  - branch `tumwater/oldy` and both refs;
+  - `state/oldy.json`, `state/notes/oldy.md` and `inbox/oldy/x.md`;
+  - `sessions/oldy/` and `sessions/_review/oldy/`;
+  - a pi log.
+  - Then assert:
+    - after one run each artifact is under `newy` with its content intact, and the log has not moved;
+    - a second run moves nothing;
+    - with `tumwater/newy` already present, `tumwater/oldy` stays and the skip is reported;
+    - with the real, empty map, nothing happens.
+
+**Files touched.** src/roles/legacy-role-migration.ts (new), src/orchestrator/startup-migration-steps.ts, src/cli/cli-run.ts, test/legacy-role-migration.test.ts (new). Reads (does not edit): src/paths.ts, src/roles/legacy-role-ids.ts.
+
+**Acceptance criteria.**
+- On the fixture, every listed artifact moves to the new id, and nothing that already exists under the new id is overwritten.
+- A second run is a no-op.
+- The step is registered in the startup hook and runs before the first per-runner state read, which the hook's own test pattern pins.
+- With `LEGACY_ROLE_IDS` empty, startup does no new git or file work beyond the empty loop.
+- `npm run test` passes.
 
 ### The bugfix run's prompt lists the checks the merge gate excused as flaky in the last 24 h, with counts, so a flapping test gets fixed (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry; touches src/review/known-flakes.ts, src/doctor/doctor-checks.ts, src/tick/tick-prompt.ts and src/prompt/prompt.ts)
 

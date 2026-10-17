@@ -30,6 +30,7 @@ import { notifyFleetDown } from "../events/notify.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import type { TickResult } from "../tick/tick-outcome.js";
+import { runStartupMigrations } from "../orchestrator/startup-migration-steps.js";
 import { loadLoopState, stateSkipReason } from "../loop/loop-state.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
@@ -208,6 +209,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const unsubscribe = subscribeEvents((e) => say(formatEvent(e)));
   // Snapshot each role's tick counter so the once summary can tell this round's ticks from
   // the persisted history (the state file accumulates across rounds).
+  await runStartupMigrations(root); // so the snapshot reads a migrated state/<new>.json
   const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).runs] as const));
   let exit;
   try {

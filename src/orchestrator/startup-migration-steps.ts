@@ -2,6 +2,7 @@ import { migrateLandQueueDir } from "../landing/landing-queue.js";
 import fs from "node:fs";
 import { deleteRefIfAt, refSha, refsUnder, setRef } from "../git/git.js";
 import { landingRefName, legacyLandingStatePath } from "../paths.js";
+import { migrateLegacyRoleIds } from "../roles/legacy-role-migration.js";
 import { registerStartupMigration } from "./startup-migrations.js";
 
 /** The one place that fixes startup-migration step order. Callers import the runners from here,
@@ -41,5 +42,6 @@ registerStartupMigration({
     return notes;
   },
 });
+registerStartupMigration({ name: "legacyRoleIds", run: (root) => migrateLegacyRoleIds(root) });
 
 export { runStartupMigrations, runStartupMigrationsIfIdle } from "./startup-migrations.js";
