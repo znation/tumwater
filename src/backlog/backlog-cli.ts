@@ -18,6 +18,7 @@ import {
   openBugEntries,
   plannedPlanEntries, ageInDays,
   entryAgeSuffix,
+  entryMatches,
   filingDate,
 } from "./backlog.js";
 import { backlogHolds, backlogInProgress, holdMark, inProgressMark } from "./backlog-eligibility.js";
@@ -316,9 +317,12 @@ function positionRuns(positions: readonly number[]): string {
  * the two booleans this shell consumes (repeats refused), `--help`/`-h` is tolerated, and any
  * positional or other flag is refused through rejectUnknownArgs.
  *
- * `--done [-n <count>]` (each once; `-n` needs `--done`) lists the newest finished entries
- * instead (BUGS.md ## Fixed or PLANS.md ## Done, numbered, default 10) with `older` counting
- * those left out; --json carries each entry's `completedOn` heading date. `plan --list` prose
+ * `--done [-n <count>] [--grep <text>]` (each once; `-n` and `--grep` need `--done`) lists the
+ * newest finished entries instead (BUGS.md ## Fixed or PLANS.md ## Done, numbered, default 10)
+ * with `older` counting those left out; --json carries each entry's `position` and
+ * `completedOn` heading date. `--grep` keeps the entries whose heading or body contains the
+ * text (case-insensitive); each keeps its unfiltered number, so it is the `--show <n> --done`
+ * number, and `older` counts matches left out. `plan --list` prose
  * groups a series' blocked parts into one line (groupBlockedSeries). */
 export function listAndAnnounce(
   root: string,
@@ -331,9 +335,19 @@ export function listAndAnnounce(
   let list = false;
   let done = false;
   let count: number | null = null;
+  let grep: string | null = null;
   const rest: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
+    if (arg === "--grep") {
+      rejectRepeatFlag(grep !== null, "--grep");
+      const text = args[++i];
+      if (text === undefined || text === "") {
+        fail(`--grep needs text (usage: tumwater ${command} --list --done --grep <text>)`);
+      }
+      grep = text;
+      continue;
+    }
     if (arg === "--done") {
       rejectRepeatFlag(done, "--done");
       done = true;
@@ -362,29 +376,41 @@ export function listAndAnnounce(
   // both consumed above.
   rejectUnknownArgs(command, rest, []);
   if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
+  if (grep !== null && !done) fail("--grep needs --done (it searches the finished entries)");
   // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
   const bugSection = sectionTitle === "Open";
   if (done) {
-    const all = bugSection ? fixedBugEntries(root) : donePlanEntries(root);
+    const numbered = (bugSection ? fixedBugEntries(root) : donePlanEntries(root)).map((entry, i) => ({
+      entry,
+      position: i + 1,
+    }));
+    const pattern = grep;
+    const matches = pattern === null ? numbered : numbered.filter((m) => entryMatches(m.entry, pattern));
     const limit = count ?? 10;
-    const shown = all.slice(0, limit);
-    const older = all.length - shown.length;
+    const shown = matches.slice(0, limit);
+    const older = matches.length - shown.length;
     if (json) {
       const dateRe = bugSection ? FIXED_DATE_RE : DONE_DATE_RE;
       sayJson({
-        entries: shown.map((e) => ({ title: e.title, body: e.body, completedOn: completionDate(e.title, dateRe) })),
+        entries: shown.map(({ entry: e, position }) => ({
+          position,
+          title: e.title,
+          body: e.body,
+          completedOn: completionDate(e.title, dateRe),
+        })),
         older,
       });
       return;
     }
     const what = bugSection ? "fixed bugs" : "done plans";
     if (shown.length === 0) {
-      say(`no ${what}`);
+      say(pattern === null ? `no ${what}` : `no ${what} match "${pattern}"`);
       return;
     }
-    const lines = shown.map((e, i) => `${i + 1}. ${e.title}`);
-    if (older > 0) lines.push(`(${older} older; -n ${all.length} shows more)`);
-    say(`${what} in ${fileName}, newest first:\n${lines.join("\n")}`);
+    const lines = shown.map((m) => `${m.position}. ${m.entry.title}`);
+    if (older > 0) lines.push(`(${older} older; -n ${matches.length} shows more)`);
+    const header = pattern === null ? `${what} in ${fileName}, newest first:` : `${what} in ${fileName} matching "${pattern}", newest first:`;
+    say(`${header}\n${lines.join("\n")}`);
     return;
   }
   const entries = bugSection ? openBugEntries(root) : plannedPlanEntries(root);

@@ -194,6 +194,50 @@ test("help topics name the --list forms", async () => {
   assert.match(r.stdout, /tumwater plan --list --done/);
   r = await cli(repo, "help", "bug");
   assert.match(r.stdout, /tumwater bug --list --done/);
+  assert.match(r.stdout, /--grep <text>/);
+  assert.match((await cli(repo, "help", "plan")).stdout, /--grep <text>/);
+  assert.match((await cli(repo, "help", "questions")).stdout, /--grep <text>/);
+});
+
+test("plan|bug --list --done --grep keeps matches under their unfiltered numbers", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    "# Plans\n\n## Planned\n\n## Done\n\n### Alpha (done 2026-10-05)\n\nuses Widget here\n\n### Beta (done 2026-10-04)\n\nnothing\n\n### Gamma (done 2026-10-03)\n\nthe WIDGET again\n\n### Delta widget (done 2026-10-02)\n",
+  );
+  let r = await cli(repo, "plan", "--list", "--done", "--grep", "widget");
+  assert.equal(r.code, 0);
+  assert.equal(
+    r.stdout,
+    'done plans in PLANS.md matching "widget", newest first:\n1. Alpha (done 2026-10-05)\n3. Gamma (done 2026-10-03)\n4. Delta widget (done 2026-10-02)\n',
+  );
+  const shown = await cli(repo, "plan", "--show", "3", "--done");
+  assert.match(shown.stdout, /Gamma/);
+  r = await cli(repo, "plan", "--list", "--done", "--grep", "widget", "-n", "1");
+  assert.match(r.stdout, /^done plans in PLANS\.md matching "widget", newest first:\n1\. Alpha.*\n\(2 older; -n 3 shows more\)\n$/);
+  const doc = JSON.parse((await cli(repo, "plan", "--list", "--done", "--grep", "widget", "--json")).stdout) as {
+    entries: { position: number }[];
+    older: number;
+  };
+  assert.deepEqual(doc.entries.map((e) => e.position), [1, 3, 4]);
+  assert.equal(doc.older, 0);
+  assert.equal((await cli(repo, "plan", "--list", "--done", "--grep", "zzz")).stdout, 'no done plans match "zzz"\n');
+  fs.writeFileSync(path.join(repo, "BUGS.md"), "# Bugs\n\n## Open\n\n## Fixed\n\n### Crash (fixed 2026-10-01)\n\nNull Deref\n\n### Hang (fixed 2026-09-30)\n");
+  r = await cli(repo, "bug", "--list", "--done", "--grep", "deref");
+  assert.equal(r.stdout, 'fixed bugs in BUGS.md matching "deref", newest first:\n1. Crash (fixed 2026-10-01)\n');
+});
+
+test("--grep needs --done, a value, and appears once", async () => {
+  const repo = makeRepo();
+  let r = await cli(repo, "plan", "--list", "--grep", "x");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--grep needs --done/);
+  r = await cli(repo, "plan", "--list", "--done", "--grep", "x", "--grep", "y");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--grep may only be given once/);
+  r = await cli(repo, "plan", "--list", "--done", "--grep");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--grep needs text/);
 });
 
 test("plan --list --done lists the newest done plans, and bug --list --done an empty Fixed", async () => {

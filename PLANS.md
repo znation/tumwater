@@ -1117,7 +1117,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `plan|bug --list --done` and `questions --answered` take `--grep <text>` to find an old finished entry by its text (planned 2026-10-17 by the plan role)
+## Done
+
+### `plan|bug --list --done` and `questions --answered` take `--grep <text>` to find an old finished entry by its text (planned 2026-10-17 by the plan role) — done 2026-10-17
 
 **Goal.** PLANS.md ## Done, BUGS.md ## Fixed, and QUESTIONS.md ## Answered keep every finished
 entry, and they grow by several a day. The CLI shows only the newest N, and `-n` widens the
@@ -1189,8 +1191,6 @@ number printed beside a match is the one `--show <n> --done` / `--show <n> --ans
 - `tumwater help plan`, `help bug`, and `help questions` mention `--grep` (asserted in the
   existing "help topics name the --list forms" test or a new one).
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater report` shows each day's median merge wait, from a merge's enqueue to its commit on main (planned 2026-10-17 by the plan role) — done 2026-10-17
 

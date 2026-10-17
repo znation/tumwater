@@ -179,6 +179,12 @@ export function answeredQuestionEntries(root: string): BacklogEntry[] {
   return sectionEntries(root, "QUESTIONS.md", "Answered");
 }
 
+/** Whether an entry's heading or body contains `pattern`, ignoring case: the one matcher behind
+ * the finished-entry lists' `--grep`. */
+export function entryMatches(entry: BacklogEntry, pattern: string): boolean {
+  return `${entry.title}\n${entry.body}`.toLowerCase().includes(pattern.toLowerCase());
+}
+
 /** The backlog as one machine-readable document: the three entry arrays the Markdown renderer
  * and the GUI's /api/backlog endpoint serve, so `tumwater backlog --json` prints the same data
  * every surface reads (status --json's "print the endpoint's payload" pattern). Each array keeps

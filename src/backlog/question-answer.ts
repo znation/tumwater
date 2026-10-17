@@ -16,7 +16,7 @@
  */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "./backlog-md.js";
-import { answeredQuestionEntries, openQuestionEntries, ageInDays, ageSuffix } from "./backlog.js";
+import { answeredQuestionEntries, entryMatches, openQuestionEntries, ageInDays, ageSuffix } from "./backlog.js";
 import type { BacklogEntry } from "./backlog.js";
 import { normalizeEntryBody } from "./backlog-write.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
@@ -134,21 +134,31 @@ function answerPreview(body: string): string {
 }
 
 /** The newest `count` answered questions, newest first (the file appends, so it is reversed),
- * and how many older ones were left out. */
-function answeredQuestionsNewestFirst(root: string, count: number): { entries: BacklogEntry[]; older: number } {
-  const all = answeredQuestionEntries(root).reverse();
+ * each with its unfiltered newest-first position, and how many older matches were left out.
+ * A `pattern` keeps only the entries whose heading or body contains it (entryMatches). */
+function answeredQuestionsNewestFirst(
+  root: string,
+  count: number,
+  pattern?: string,
+): { entries: (BacklogEntry & { position: number })[]; older: number } {
+  const numbered = answeredQuestionEntries(root).reverse().map((e, i) => ({ ...e, position: i + 1 }));
+  const all = pattern === undefined ? numbered : numbered.filter((e) => entryMatches(e, pattern));
   return { entries: all.slice(0, count), older: Math.max(0, all.length - count) };
 }
 
 /** `tumwater questions --answered`: lines numbered by `--show <n> --answered` position, newest
  * first — a numbering separate from the `## Open` positions `questions answer <n>` takes. */
-export function answeredQuestionList(root: string, count: number): string {
-  const { entries, older } = answeredQuestionsNewestFirst(root, count);
-  if (entries.length === 0) return "no answered questions";
-  const lines = ["answered questions in QUESTIONS.md, newest first:"];
-  for (const [i, e] of entries.entries()) {
+export function answeredQuestionList(root: string, count: number, pattern?: string): string {
+  const { entries, older } = answeredQuestionsNewestFirst(root, count, pattern);
+  if (entries.length === 0) return pattern === undefined ? "no answered questions" : `no answered questions match "${pattern}"`;
+  const lines = [
+    pattern === undefined
+      ? "answered questions in QUESTIONS.md, newest first:"
+      : `answered questions in QUESTIONS.md matching "${pattern}", newest first:`,
+  ];
+  for (const e of entries) {
     const preview = answerPreview(e.body);
-    lines.push(`${i + 1}. ${e.title}${preview === "" ? "" : ` — ${preview}`}`);
+    lines.push(`${e.position}. ${e.title}${preview === "" ? "" : ` — ${preview}`}`);
   }
   if (older > 0) lines.push(`(${older} older; -n <count> shows more)`);
   return lines.join("\n");
@@ -173,10 +183,11 @@ export function answeredQuestionCount(root: string): number {
 export function answeredQuestionPayload(
   root: string,
   count: number,
-): { questions: { title: string; body: string; answeredOn: string | null }[]; older: number } {
-  const { entries, older } = answeredQuestionsNewestFirst(root, count);
+  pattern?: string,
+): { questions: { position: number; title: string; body: string; answeredOn: string | null }[]; older: number } {
+  const { entries, older } = answeredQuestionsNewestFirst(root, count, pattern);
   return {
-    questions: entries.map((e) => ({ title: e.title, body: e.body, answeredOn: answerDate(e.body) })),
+    questions: entries.map((e) => ({ position: e.position, title: e.title, body: e.body, answeredOn: answerDate(e.body) })),
     older,
   };
 }

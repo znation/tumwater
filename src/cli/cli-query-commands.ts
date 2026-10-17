@@ -188,6 +188,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   let file: string | undefined;
   let answeredFlag = false;
   let limit: number | undefined;
+  let grep: string | undefined;
   let show: number | undefined;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
@@ -206,6 +207,13 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
       limit = parseCountFlag("-n", args[++i]);
       continue;
     }
+    if (!numbered && arg === "--grep") {
+      rejectRepeatFlag(grep !== undefined, "--grep");
+      const text = args[++i];
+      if (text === undefined || text === "") fail("--grep needs text (usage: tumwater questions --answered --grep <text>)");
+      grep = text;
+      continue;
+    }
     if (arg === "--file") {
       rejectRepeatFlag(file !== undefined, "--file");
       file = promptFileValue(args[++i]);
@@ -217,8 +225,8 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
       continue;
     }
     if (arg.startsWith("--") && arg !== "--json") {
-      rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC, { names: ["--show"], value: true, valueName: "<n>" }]);
-      fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json, --file, --answered, --show)`);
+      rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC, { names: ["--show"], value: true, valueName: "<n>" }, { names: ["--grep"], value: true, valueName: "<text>" }]);
+      fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json, --file, --answered, --show, --grep)`);
     }
     if (!numbered) {
       // The position is a plain-decimal positive integer (parsePositiveInt's rule, the same
@@ -230,7 +238,9 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     words.push(arg);
   }
   if (limit !== undefined && !answeredFlag) fail("-n needs --answered (it limits the answered questions listed)");
+  if (grep !== undefined && !answeredFlag) fail("--grep needs --answered (it searches the answered questions)");
   if (show !== undefined) {
+    if (grep !== undefined) fail("--grep does not apply to --show");
     if (words.length > 0) fail("--show prints one open question; it takes no subcommand");
     if (file !== undefined) fail("--file only applies to questions answer <n>");
     if (answeredFlag) {
@@ -250,8 +260,8 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   if (answeredFlag) {
     if (words.length > 0) fail("--answered lists answered questions; it takes no subcommand");
     if (file !== undefined) fail("--file only applies to questions answer <n>");
-    if (jsonFlag) sayJson(answeredQuestionPayload(root, limit ?? 10));
-    else say(answeredQuestionList(root, limit ?? 10));
+    if (jsonFlag) sayJson(answeredQuestionPayload(root, limit ?? 10, grep));
+    else say(answeredQuestionList(root, limit ?? 10, grep));
     return;
   }
   if (words.length === 0 && file !== undefined) fail("--file only applies to questions answer <n>");

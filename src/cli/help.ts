@@ -205,10 +205,12 @@ Usage:
                                    --json prints the {entries} array — position, title, body,
                                    hold, inProgress — as data; \`[working on it: …]\` marks an
                                    entry a role is working on
-  tumwater bug --list --done [-n <count>] [--json]
+  tumwater bug --list --done [-n <count>] [--grep <text>] [--json]
                                    List the newest entries, numbered, in BUGS.md ## Fixed, newest first
                                    (default 10); --json prints {entries, older}, each entry
-                                   with title, body, completedOn
+                                   with position, title, body, completedOn
+                                   --grep keeps the entries whose heading or body contains the
+                                   text, case-insensitively, numbered as without it
   tumwater bug --show <n> [--json] Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);
                                    --json prints {position, title, body, hold}
@@ -254,10 +256,12 @@ Usage:
                                    body, hold, inProgress — as data; \`[working on it: …]\`
                                    marks an entry a role is working on; a series' blocked
                                    parts show as one line naming their positions
-  tumwater plan --list --done [-n <count>] [--json]
+  tumwater plan --list --done [-n <count>] [--grep <text>] [--json]
                                    List the newest entries, numbered, in PLANS.md ## Done, newest first
                                    (default 10); --json prints {entries, older}, each entry
-                                   with title, body, completedOn
+                                   with position, title, body, completedOn
+                                   --grep keeps the entries whose heading or body contains the
+                                   text, case-insensitively, numbered as without it
   tumwater plan --show <n> [--json]
                                    Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);
@@ -268,10 +272,12 @@ Usage:
   tumwater questions [--json]      List open questions numbered (the read half of the
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data
-  tumwater questions --answered [-n <count>] [--json]
+  tumwater questions --answered [-n <count>] [--grep <text>] [--json]
                                    List the newest answered questions, numbered, newest first
                                    (default 10), each with its answer line; --json prints {questions,
-                                   older}, each with title, body, answeredOn
+                                   older}, each with position, title, body, answeredOn
+                                   --grep keeps the questions whose heading or body contains the
+                                   text, case-insensitively, numbered as without it
   tumwater questions --show <n> --answered [--json]
                                    Print the Nth entry of "questions --answered" (newest
                                    first) in full, context and recorded answer; --json

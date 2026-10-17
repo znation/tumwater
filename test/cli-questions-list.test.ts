@@ -98,6 +98,29 @@ test("questions --answered lists the newest answers and refuses misuse", async (
   assert.match(bogus.stderr, /--answered/);
 });
 
+test("questions --answered --grep lists matches under their unfiltered numbers", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions grep");
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n## Answered\n\n### Old\n\nabout Budget\n\n**Answered 2026-10-01 by operator:** a\n\n### Mid\n\nother\n\n**Answered 2026-10-02 by operator:** b\n\n### New budget\n\n**Answered 2026-10-03 by operator:** c\n",
+  );
+  const r = await cli(repo, "questions", "--answered", "--grep", "BUDGET");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^answered questions in QUESTIONS\.md matching "BUDGET", newest first:\n1\. New budget.*\n3\. Old.*\n$/);
+  assert.doesNotMatch(r.stdout, /Mid/);
+  const j = JSON.parse((await cli(repo, "questions", "--answered", "--grep", "budget", "--json")).stdout) as {
+    questions: { position: number }[];
+  };
+  assert.deepEqual(j.questions.map((q) => q.position), [1, 3]);
+  assert.equal((await cli(repo, "questions", "--answered", "--grep", "zzz")).stdout, 'no answered questions match "zzz"\n');
+  const bare = await cli(repo, "questions", "--grep", "x");
+  assert.equal(bare.code, 1);
+  assert.match(bare.stderr, /--grep needs --answered/);
+  const show = await cli(repo, "questions", "--show", "1", "--answered", "--grep", "x");
+  assert.equal(show.code, 1);
+});
+
 const SHOW_QUESTIONS =
   "# q\n\n## Open\n\n### First one (asked by feature, 2026-10-10)\n\nshort\n\n### Second one (asked by plan, 2026-10-12)\n\nline a\nline b\n\n- option\n\n## Answered\n\n_None._\n";
 
