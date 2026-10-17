@@ -1626,6 +1626,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### A paused work instance gives its claimed entry back, so a sibling picks it up instead of it sitting held for up to a day (planned 2026-10-16 by plan; independent of every other entry — touches src/scheduling/claims.ts, src/orchestrator/orchestrator-scheduling.ts, test/claims.test.ts, test/orchestrator-scheduling.test.ts and docs/how-it-works.md)
+
+**Goal.** With `roles.feature.instances` above 1 (or `roles.bugfix.instances`), each instance holds a claim on one backlog entry. `claimReleaseReason` (`src/scheduling/claims.ts`) releases a claim when the entry left the section (`left`), turned ineligible (`ineligible`), the instance was disabled while idle (`disabled`), or the claim is older than `CLAIM_IDLE_MAX_MS` (24 h) while idle (`stale`). A paused instance releases nothing. That covers the repeated-failure pause (`pollStreakGate` in `src/gates/streak-gate.ts` calls `pauseRole(root, role)` with the loop id, e.g. `feature-2`) and your own per-role pause from the TUI or dashboard. Its entry stays in `heldKeys`. The scheduler skips the paused runner before assignment (`pausedRolesSet.has(runner.role)` in `pollRunnerReasons`), so the entry gets no work until the 24 h stale sweep. A sibling that is not paused never takes it. Release the claim when the instance alone is paused and idle, the same way `disabled` already does.
+
+**Approach.**
+- `src/scheduling/claims.ts`:
+  - Add `paused: boolean` to `ClaimReleaseCtx`, with a doc comment. It is true when this runner's own loop id is in the paused-roles set while its base role is not. With the base role paused, every instance is paused, so no sibling could take the entry and releasing it would only churn claims.
+  - Add `"paused"` to the `ClaimReleaseReason` union.
+  - In `claimReleaseReason`, after the `disabled` arm and before the `stale` arm, add `if (ctx.paused && idle) return "paused";`. The existing `idle` definition stays as it is: a paused runner with a revision, a queued landing or a pending resume keeps its claim, because that work is mid-entry.
+  - Update the doc comment above `claimReleaseReason` to read "`disabled`, `paused` and `stale` only release an idle runner".
+- `src/orchestrator/orchestrator-scheduling.ts`, `pollRunnerReasons`: the claim-release loop over `groupRunners` passes `paused: r.role !== base && pausedRolesSet.has(r.role) && !pausedRolesSet.has(base)`. `base` and `pausedRolesSet` are already in scope there. Do not add a warning for `paused`; `stale` is the only reason that warns. The `claim` released event already renders as `released "<title>" (paused)` through `formatEvent`'s `claim` case. Leave that case, the event type and its payload keys unchanged.
+- `docs/how-it-works.md`, the paragraph on parallel work instances (the one that ends with `tumwater doctor`'s `work instances` check): add one sentence. When an instance is paused on its own (by you, or by the repeated-failure pause) and is idle, it gives its entry back and a sibling takes it. Pausing the whole role keeps every claim.
+
+**Files touched.** `src/scheduling/claims.ts`, `src/orchestrator/orchestrator-scheduling.ts`, `test/claims.test.ts`, `test/orchestrator-scheduling.test.ts`, `docs/how-it-works.md`.
+
+**Acceptance criteria.**
+- `test/claims.test.ts`: add `paused: false` to the shared `ctx` in "claimReleaseReason releases left, ineligible, disabled-idle and stale-idle claims", rename it to also say paused-idle, and assert `{ ...ctx, paused: true }` gives `"paused"`. In "an idle extra with a revision, a queued landing, a resume or a running tick keeps its claim", add assertions that each of those four cases still gives `null` with `paused: true`.
+- `test/orchestrator-scheduling.test.ts`: a new test modeled on "lowering feature.instances releases a surplus instance's claim instead of holding it". After a first poll gives `feature-2` the claim on `beta`, a second poll whose `pausedRoles` is `new Set(["feature-2"])` leaves `feature2.state.claim` undefined, and `loadLoopState(root, "feature-2").claim` is undefined too. `feature` keeps `alpha`.
+- A second new test: with `pausedRoles` of `new Set(["feature", "feature-2"])` on the second poll, `feature2.state.claim?.key` is still `"beta"`. Pausing the whole role keeps the claim.
+- `npm run test` passes.
+
 ## Done
 
 ### A notify page the once-a-minute throttle holds back is sent when the minute ends, so a second question, refusal or failed merge in a burst still reaches the operator (planned 2026-10-16 by plan; independent of every other entry — touches src/events/notify.ts, test/notify.test.ts and docs/config.md) (done 2026-10-16)
