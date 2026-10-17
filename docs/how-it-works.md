@@ -143,6 +143,8 @@ discards a role's in-flight merge.
   The backlog index marks the entry `[blocked: waiting for the next failure]`, so bugfix skips it
   (and sleeps when it is the only open bug). The hold lifts when whoever records a new occurrence
   deletes the note line (selfcheck does this), or with `tumwater bug --release <n>`.
+  A bugfix run that adds a Progress note to an open bug without writing the note is asked to
+  write it in its staging fix-up turn.
   `tumwater doctor` warns when the held bug's quoted test has failed again in a gate or merge
   check since the day after the note.
 - A maintenance role whose last run did nothing is deferred until feature, bugfix, director,

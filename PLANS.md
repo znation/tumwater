@@ -1266,7 +1266,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### Staging asks a bugfix run that adds a Progress note to an open bug, but leaves no Waiting for the next failure note under it, to write that note (planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/tick/stage-check.ts, docs/how-it-works.md and test/stage-check.test.ts; no src/merge, src/backlog, src/ui or src/doctor edit)
+## Done
+
+### Staging asks a bugfix run that adds a Progress note to an open bug, but leaves no Waiting for the next failure note under it, to write that note (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/tick/stage-check.ts, docs/how-it-works.md and test/stage-check.test.ts; no src/merge, src/backlog, src/ui or src/doctor edit)
 
 **Goal.** Step 2 of bugfix's find text (src/roles/role-catalog.ts, the `bugfix` entry) says that when a bug cannot be reproduced, the run records a Progress note, writes `WAITING_FOR_FAILURE_NOTE` (src/roles/role-guidance.ts) as its own line under the heading, and ends. The note's hold then stops later bugfix runs from re-investigating without new evidence. Runs skip the second half. The open BUGS.md entry for the `startParentDeathWatch` flake gained four `**Progress 2026-10-16 (bugfix…)**` notes on one day. The fourth was a BUGS.md-only "no repro, no code change" run. None of them wrote the Waiting note, so the bug stayed eligible and each run spent a tick, a review and a landing. This plan adds a staging finding (the same one fix-up turn the other findings get, src/tick/tick-stage.ts) for a bugfix run whose diff adds a Progress note to an entry that stays under `## Open` with no Waiting note. The finding is advisory: the change commits and queues either way, and the gate does not run it (like `planDependencyFinding`).
 
@@ -1295,8 +1297,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A `stageCheckFindings` test built with `repoWith` (as the "a duplicated ## Done heading" test is): BUGS.md on main has an Open entry with one Progress line, and the worktree adds a second. With role `"bugfix"` and with `"bugfix-2"`, the findings include the Waiting-note finding. With role `"feature"`, they do not.
 - The existing stage-check and tick-stage tests pass unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor` warns when a bug held by a Waiting for the next failure note has failed again, naming the failure and the release command (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-backlog.ts, docs/how-it-works.md, docs/cli.md and test/doctor-backlog.test.ts) — done 2026-10-16
 
@@ -11849,3 +11849,4 @@ Out of scope: the marker holds one wake, so a later `wake` request overwrites a 
 - Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04; commit 9e00d29)
 - `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30, done 2026-09-30; commit 0dee85db)
 - `tumwater prompt --list` shows how long each prompt has waited — part 1/2, the shared stamp and the CLI (planned 2026-10-01, done 2026-10-01; commit bbd9f5b6)
+

@@ -22,7 +22,8 @@
  *
  * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
  * landing re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
- * anything that gets past the fix-up turn. */
+ * anything that gets past the fix-up turn. `waitingNoteFinding` is staging-only and bugfix-only
+ * for the same reason: it nudges a bugfix run that left a Progress note without the hold. */
 
 import path from "node:path";
 import { changedFiles } from "../git/git-diff.js";
@@ -35,7 +36,9 @@ import { falseFixReason } from "../verdict/fix-claim.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { readTextOrNull } from "../files/files.js";
 import { parseEntryDetails } from "../backlog/backlog-md.js";
-import { planDependencyProblems } from "../backlog/backlog-eligibility.js";
+import { entryKey, planDependencyProblems, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
+import { WAITING_FOR_FAILURE_NOTE } from "../roles/role-guidance.js";
 import { gitTry } from "../git/git-run.js";
 import { moreSuffix } from "../text/phrases.js";
 
@@ -102,6 +105,36 @@ export function planDependencyFinding(head: string, base: string): string | unde
   return `${first}${moreSuffix(total - 1)}`;
 }
 
+/** The number of `- **Progress …` lines in an entry body. */
+function progressCount(body: string): number {
+  return body.split("\n").filter((l) => /^-\s+\*\*Progress\b/.test(l.trim())).length;
+}
+
+/** The finding for a BUGS.md bug that `head` (the edited file) shows with more Progress notes
+ * than `base` (its text at the merge-base) while it stays under `## Open` with neither a Waiting
+ * note nor a Refused note — bugfix's step 2 asks a run that cannot reproduce a bug to write the
+ * Waiting note, and runs that skip it leave the bug open to re-investigation. A newly filed bug
+ * is not a re-investigation. Names the first such bug in file order, with a count of the rest. */
+export function waitingNoteFinding(head: string, base: string): string | undefined {
+  const was = new Map(parseEntryDetails(base, "Open").map((e) => [entryKey(e.title), e.body]));
+  const counting = parseEntryDetails(head, "Open").filter((e) => {
+    const before = was.get(entryKey(e.title));
+    return (
+      before !== undefined &&
+      progressCount(e.body) > progressCount(before) &&
+      waitingNote(e.body) === null &&
+      refusalNote(e.body) === null
+    );
+  });
+  if (counting.length === 0) return undefined;
+  return (
+    `BUGS.md bug "${counting[0]!.title}" gained a Progress note but stays open with no Waiting for the next ` +
+    `failure note — if this run could not reproduce it, add ${WAITING_FOR_FAILURE_NOTE} as its own line under ` +
+    `the heading so later runs wait for new evidence (bugfix's step 2); if it did reproduce, leave the entry ` +
+    `as it is${moreSuffix(counting.length - 1)}`
+  );
+}
+
 /** The deterministic findings the landing gate would reject this uncommitted change for, or an
  * empty list when it is clean. Checks the worktree at `wt` against `mainBranch`'s merge-base;
  * `exemptPaths` are the config's review-exemption globs that scope the false-fix check.
@@ -124,6 +157,12 @@ export async function stageCheckFindings(
     const base = await fileContentAt(wt, await changeBaseRev(wt, mainBranch), "PLANS.md").catch(() => undefined);
     const dependency = base === undefined ? undefined : planDependencyFinding(head, base);
     if (dependency !== undefined) findings.push(dependency);
+  }
+  if (baseRoleOf(role) === "bugfix" && files.includes("BUGS.md")) {
+    const head = readTextOrNull(path.join(wt, "BUGS.md")) ?? "";
+    const base = await fileContentAt(wt, await changeBaseRev(wt, mainBranch), "BUGS.md").catch(() => undefined);
+    const waiting = base === undefined ? undefined : waitingNoteFinding(head, base);
+    if (waiting !== undefined) findings.push(waiting);
   }
   const protectedReason = await protectedEditReason(wt, mainBranch, files, role).catch(() => undefined);
   if (protectedReason) findings.push(protectedReason);
