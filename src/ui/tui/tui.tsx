@@ -186,7 +186,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
       : view === roleIds.length + 1 ? { kind: "backlog" }
         : view === roleIds.length + 2 ? { kind: "usage", scope: s.scopeRole, window: s.reportSince }
           : view === roleIds.length + 3 ? { kind: "failures", scope: s.scopeRole, window: s.reportSince }
-            : view === roleIds.length + 4 ? { kind: "history", since: s.historySince, result: s.historyResult, role: s.historyRole, grep: s.historyGrep, trail: s.trailMode }
+            : view === roleIds.length + 4 ? { kind: "history", since: s.historySince, result: s.historyResult, role: s.historyRole, grep: s.historyGrep, trail: s.trailMode, summary: s.historySummary }
               : view === roleIds.length + 5 ? { kind: "pending" }
                 : view === roleIds.length + 6 ? { kind: "queued" }
                 : view === roleIds.length + 7 ? { kind: "health", problems: s.healthProblems }

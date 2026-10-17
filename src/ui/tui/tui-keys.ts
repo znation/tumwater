@@ -145,6 +145,9 @@ interface TuiKeysState {
   /** The History pane's active free-text search (the `/` editor), or null when none; named in
    * the pane's own `search:` header and in the hint line. */
   historyGrep: string | null;
+  /** The History pane's session Summary toggle (Ctrl+Y): false shows the per-run row list, true
+   * the per-loop tally (`history --summary`); named in the hint line. */
+  historySummary: boolean;
   eventBudget: number;
   entryBudget: number;
   roleIds: string[];

@@ -38,7 +38,7 @@ export type TuiView =
   | { kind: "backlog" }
   | { kind: "usage"; scope: string | null; window: string | null }
   | { kind: "failures"; scope: string | null; window: string | null }
-  | { kind: "history"; since: string | null; result: string | null; role: string | null; grep: string | null; trail: boolean }
+  | { kind: "history"; since: string | null; result: string | null; role: string | null; grep: string | null; trail: boolean; summary?: boolean }
   | { kind: "pending" }
   | { kind: "queued" }
   | { kind: "health"; problems?: boolean }
@@ -85,7 +85,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["Ctrl+X", "cancel entry"], ["Ctrl+E", "edit entry"], ["Ctrl+N", "new plan/bug"], ["Ctrl+A", "answer question"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: team"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+N", view.trail ? "history" : "run trail"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+Y", view.summary ? "rows" : "summary"], ["Ctrl+N", view.trail ? "history" : "run trail"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];

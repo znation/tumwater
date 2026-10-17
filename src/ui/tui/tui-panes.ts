@@ -11,9 +11,11 @@ import {
   historyClass,
   readTickRows,
   readTickRowsSince,
+  summarizeTickRows,
   tickRowsMatchingGrep,
   type HistoryResultClass,
 } from "../../history/history-data.js";
+import { renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
 import { readTickDetail, type TickDetail } from "../../tick/tick-detail-data.js";
 import { renderTickDetail } from "../../tick/tick-detail.js";
@@ -124,6 +126,7 @@ function historyPaneCache(
   resultClass: HistoryResultClass | null,
   role: string | null,
   grep: string | null,
+  summary: boolean,
 ): string {
   const { rows, covered } = sinceMs === null
     ? { rows: readTickRows(root, HISTORY_DEFAULT_TICKS, role), covered: true }
@@ -136,7 +139,12 @@ function historyPaneCache(
   const grepped = grep === null ? rows : tickRowsMatchingGrep(rows, grep);
   const afterGrep = grepped.length;
   const filtered = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
-  const body = historyPaneText(filtered);
+  // The session Summary toggle (Ctrl+Y) swaps the row list for the same per-loop tally the CLI's
+  // `history --summary` and the dashboard History view print (summarizeTickRows → renderSummary),
+  // folded over exactly the rows the window/scope/result/search selected, so the three surfaces
+  // cannot disagree. The non-empty guard matters: renderSummary always prints a header, so without
+  // it an empty read would bypass the pane's no-rows / no-runs wording below.
+  const body = summary && filtered.length > 0 ? renderSummary(summarizeTickRows(filtered)) : historyPaneText(filtered);
   // null when no class is active, so the header/empty-body paths below only name a result
   // filter the session actually holds (cycleLabel(HISTORY_RESULTS, null) is the "all" label).
   const resultLabel = resultClass === null ? null : cycleLabel(HISTORY_RESULTS, resultClass);
@@ -320,6 +328,10 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   // `tumwater history --grep` and the dashboard search use. null is no search; session-only
   // like the window/result/role, so the next Ctrl+T into History computes the cache with it.
   let historyGrep: string | null = null;
+  // The History pane's session Summary toggle (Ctrl+Y): false shows the per-run row list, true
+  // the per-loop tally (`history --summary`). Session-only like the window/result/role/search,
+  // so the next Ctrl+T into History computes the cache with it.
+  let historySummary = false;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
   // can page within it without re-deriving the height math. An open backlog entry spends the
   // pane's first line on its title, so its body pages by one line less (entryBudget).
@@ -342,7 +354,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
         ? usagePaneCache(root, reportWindow, scopeRole ?? undefined)
         : failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
     } else if ((changed === "history" || changed === "all") && isHistory) {
-      paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole, historyGrep);
+      paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole, historyGrep, historySummary);
     } else {
       return false;
     }
@@ -414,7 +426,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   // Enter calls through its applyHistorySearch dep.
   const applyHistorySearch = (pattern: string | null): void => {
     historyGrep = pattern;
-    paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole, historyGrep);
+    paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole, historyGrep, historySummary);
     paneScroll = 0;
   };
   // Apply a finished Activity search on the pane: set the grep and reset the scroll to the
@@ -722,6 +734,19 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       deps.requestRender();
       return true;
     }
+    if (key.ctrl && key.name === "y" && promptLineFree()) {
+      // Ctrl+Y toggles the History pane's Summary view (mnemonic: summar**Y**) — the same
+      // per-loop tally `tumwater history --summary` and the dashboard History view print,
+      // folded over the pane's already-selected rows. Guarded out of budget-edit and
+      // role-prompt modes like Ctrl+S/O beside it. The class is session state: toggling it off
+      // the History view only changes the label, and the next Ctrl+T into History computes the
+      // cache with it; on the History view this handler re-reads and re-renders now and resets
+      // the scroll so the changed body re-enters at its head.
+      historySummary = !historySummary;
+      refreshPaneCache("history");
+      deps.requestRender();
+      return true;
+    }
     if (
       key.ctrl && key.name === "x" && noteMode &&
       promptLineFree() &&
@@ -985,6 +1010,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     reportSince: reportWindow === null ? null : cycleLabel(REPORT_WINDOWS, reportWindow),
     historyResult: cycleLabel(HISTORY_RESULTS, historyResult),
     historyGrep,
+    historySummary,
     eventBudget,
     entryBudget,
     roleIds,

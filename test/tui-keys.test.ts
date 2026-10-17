@@ -1127,6 +1127,71 @@ test("Ctrl+O is inert in the prompt-line modes and off the History view only mov
   keys.handleKey(undefined, { name: "escape" });
 });
 
+test("Ctrl+Y toggles the History pane between the run rows and the per-role Summary table", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 },
+    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "none", tokens: 50, costUsd: 0.05 },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  assert.equal(keys.state().historySummary, false, "History opens in the row view");
+  const rows = keys.state().paneCache ?? "";
+  assert.match(rows, /feature #1/, "the row view holds a #-run row");
+  assert.match(rows, /qa #1/);
+
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().historySummary, true, "Ctrl+Y turns the summary on");
+  const summary = keys.state().paneCache ?? "";
+  const first = summary.split("\n")[0] ?? "";
+  assert.match(first, /role/);
+  assert.match(first, /runs/);
+  assert.match(first, /tokens/);
+  assert.match(first, /cost/);
+  assert.match(summary, /^feature\b/m, "the summary has one line per role");
+  assert.match(summary, /^qa\b/m);
+  assert.match(summary, /^total\b/m, "plus a total line");
+  assert.doesNotMatch(summary, /#1/, "the summary holds no #-run row");
+
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().historySummary, false, "a second Ctrl+Y restores the rows");
+  assert.match(keys.state().paneCache ?? "", /feature #1/);
+});
+
+test("Ctrl+Y is inert while budget mode holds the prompt line", () => {
+  const root = makeRoot();
+  writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().historySummary, true);
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().historySummary, true, "Ctrl+Y does nothing in budget mode");
+  keys.handleKey(undefined, { name: "escape" });
+});
+
+test("Ctrl+Y's summary folds the History pane's exact-loop scope, not the team read", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
+    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "none" },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "qa"]);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4 = 6)
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
+  assert.equal(keys.state().historyRole, "feature");
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  const summary = keys.state().paneCache ?? "";
+  assert.match(summary, /^feature\b/m, "the scoped summary lists the scoped role");
+  assert.match(summary, /^total\b/m);
+  assert.doesNotMatch(summary, /^qa\b/m, "and no other role");
+});
+
 test("the `/` search filters the History pane through tickRowGrepHaystack and clears on an empty line", () => {
   const root = makeRoot();
   writeEvents(root, [
