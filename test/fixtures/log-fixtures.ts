@@ -65,9 +65,9 @@ export function writeEvents(root: string, lines: unknown[]): void {
 /** Put a directory where the append-only events log belongs: every logEvent under `root`
  * throws EISDIR, while every other file under the real root still writes normally. The
  * fault the event-best-effort tests inject to prove a logging failure never cancels a
- * durable effect (a gate crossing, a queued prompt, the startup event, a landing decision, a
+ * durable effect (a gate crossing, a queued prompt, the startup event, a merge decision, a
  * scheduling bookkeeping). Callers: the three *-event-best-effort files,
- * orchestrator-scheduling, landing-drain, leftover, revision, tick-stage, and
+ * orchestrator-scheduling, merge-drain, leftover, revision, tick-stage, and
  * orchestrator-divergence. */
 export function unwritableEvents(root: string): void {
   const file = eventsLogPath(root);

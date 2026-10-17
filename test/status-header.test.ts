@@ -1,6 +1,6 @@
 /** The status header's badge tests: the header line renderStatus (src/ui/status-render.ts)
  * assembles from buildBadge, the questions and inbox counts, the timed-pause countdown, the
- * budget badge, the land-queue badge, and the merge-scope main check. The table-body suites
+ * budget badge, the merge queue badge, and the merge-scope main check. The table-body suites
  * live beside this in status-render.test.ts and status-model.test.ts, the badges' own unit
  * tests in badges.test.ts; the fixtures both assemble snapshots from are in
  * status-fixtures.ts. */
@@ -161,7 +161,7 @@ test("the header names the running build and flags a stale one", () => {
   assert.equal(buildBadge(null), "");
 });
 
-test("renderStatus shows the land-queue badge in the header and the label in the landing role's row", () => {
+test("renderStatus shows the merge queue badge in the header and the label in the merge role's row", () => {
   const root = tmpdir();
   // Idle queue: the header carries no badge (every existing byte stays intact)…
   const idle = renderStatus(root, {
@@ -169,33 +169,33 @@ test("renderStatus shows the land-queue badge in the header and the label in the
     running: true,
     pid: 4242,
   });
-  assert.doesNotMatch(idle, /land queue/);
+  assert.doesNotMatch(idle, /merge queue/);
   assert.match(idle, /^clean +due/m, "an idle loop keeps its ordinary state cell");
 
-  // Two queued landings: the header badge appears…
+  // Two queued merges: the header badge appears…
   const queued = {
     ...snapshotWith([{ role: "clean" }, { role: "bugfix" }]),
     running: true,
     pid: 4242,
-    landQueue: { depth: 2 } as StatusSnapshot["landQueue"],
+    mergeQueue: { depth: 2 } as StatusSnapshot["mergeQueue"],
   };
   const text = renderStatus(root, queued);
   assert.match(headerOf(text), /running \(pid 4242\) · merge queue: 2/, "badge after the running part, before the budget badge");
   assert.match(text, /clean +due/, "a merely queued role shows its normal state");
 
-  // …and the role whose in-flight record is attached reads `landing <elapsed> · <stage>` in
+  // …and the role whose in-flight record is attached reads `merge <elapsed> · <stage>` in
   // its row — no work-item prefix (the loop is not running, so stateCell returns the phase),
   // while the other row is untouched.
   const startedAt = Date.now() - 90_000;
-  const landing = {
+  const merge = {
     ...queued,
-    landQueue: {
+    mergeQueue: {
       depth: 2,
       inFlight: { role: "clean", sha: "abc123", summary: "tidy", startedAt, stage: "build-check" },
-    } as StatusSnapshot["landQueue"],
+    } as StatusSnapshot["mergeQueue"],
   };
-  const text2 = renderStatus(root, landing);
-  assert.match(text2, /clean +merging 1m3[01]s · checking/, "the landing role reads the marker's elapsed and stage");
+  const text2 = renderStatus(root, merge);
+  assert.match(text2, /clean +merging 1m3[01]s · checking/, "the merge role reads the marker's elapsed and stage");
   assert.match(text2, /bugfix +due/, "other roles are untouched");
 });
 

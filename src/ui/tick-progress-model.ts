@@ -4,7 +4,7 @@ import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./pro
 import { compactTokens } from "../text/format.js";
 
 /** The in-flight tick's PROGRESS display model (split from status-model.ts, which keeps the
- * loop-phase ladder, the landing cells, and the row derivations): how a running tick renders
+ * loop-phase ladder, the merge cells, and the row derivations): how a running tick renders
  * its live detail — elapsed, turn, context, current tool, stall — derived from the live log
  * tail (progress-data.ts) and shared by BOTH observer surfaces: the terminal table
  * (status-render.ts's state cell) and the JSON/GUI payload (status-payload.ts), plus the
@@ -13,7 +13,7 @@ import { compactTokens } from "../text/format.js";
  * precomputed) live log tail, while status-model.ts derives labels from the snapshot. */
 
 /** Seconds/minutes/hours elapsed formatting shared by the progress helpers and the phase
- * ladder's elapsed branches (loopPhase's landing and parked branches). The hours bucket
+ * ladder's elapsed branches (loopPhase's merge and parked branches). The hours bucket
  * rounds to whole minutes off the total, so a rounded-up 59m5Xs carries into the next hour
  * ("2h0m"); rounding the remainder alone would print the impossible "1h60m". */
 export function duration(ms: number): string {
@@ -27,8 +27,8 @@ export function duration(ms: number): string {
 /** The label for a loop's in-flight tick: `<label>` plus how long it has been running
  * ("working 3m", "reviewing 2m") — shared by workingDetail and the review-gate branch of
  * loopPhase so their elapsed formatting cannot drift. A tick with no recorded start time
- * renders as just the bare label. (A landing's elapsed is its marker's, never the tick's —
- * loopPhase's landing branch builds that head itself.) */
+ * renders as just the bare label. (A merge's elapsed is its marker's, never the tick's —
+ * loopPhase's merge branch builds that head itself.) */
 export function inFlightLabel(s: LoopState, label: string): string {
   const elapsed = s.lastRunStartedAt ? duration(Date.now() - s.lastRunStartedAt) : "";
   return `${label} ${elapsed}`.trim();
@@ -69,7 +69,7 @@ export const STALL_SOURCE = String.raw`tool call stalled[^·]*|no agent output f
 export const STALL_RE = new RegExp(STALL_SOURCE);
 
 /** The shared parts assembly for an in-flight state cell: `head` (the phase label with its
- * own elapsed — inFlightLabel for a tick, the landing branch's own for a landing) plus turn,
+ * own elapsed — inFlightLabel for a tick, the merge branch's own for a merge) plus turn,
  * live context, current tool, and the ≥5-min no-output stall flag. `p` is null when there is
  * no progress (no log yet) — falls back to the bare head. */
 export function inFlightDetail(head: string, p: LiveProgress | null): string {
@@ -104,7 +104,7 @@ export function progressKind(s: LoopState): ProgressRunKind {
  * role's log itself — the author accumulator by default, the gate one via `kind`. Every
  * tail-reading caller outside this module routes through it; status-model.ts's staged branch
  * is the one exception, keeping its raw readLiveProgress call because it feeds inFlightDetail
- * a freshly read gate tail for the landing label, not a per-frame threaded one. */
+ * a freshly read gate tail for the merge label, not a per-frame threaded one. */
 export function tickProgress(
   root: string,
   s: LoopState,

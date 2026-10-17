@@ -30,7 +30,7 @@ test("warm collectReport equals the cold read before and after appends", () => {
   ]);
   const cold = collectReport(root, 5);
   assert.deepEqual(warmed(root, 5), cold);
-  // Append a new tick plus a landing event: the warm fold must match a fresh full read.
+  // Append a new tick plus a merge event: the warm fold must match a fresh full read.
   fs.appendFileSync(
     eventsLogPath(root),
     [
@@ -44,7 +44,7 @@ test("warm collectReport equals the cold read before and after appends", () => {
   assert.equal(fresh.totals.mergeTokens, 42);
 });
 
-test("a legacy `landed` line appended after a warm fold folds as merge_done", () => {
+test("a legacy `merged` line appended after a warm fold folds as merge_done", () => {
   const root = tmpdir();
   writeEvents(root, [{ ts: at(1), loop: "feature", type: "run_end", tokens: 1 }]);
   warmed(root, 3);

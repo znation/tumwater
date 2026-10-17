@@ -14,7 +14,7 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
  * table (status-render.ts's renderStatus header) and the JSON/GUI payload
  * (status-payload.ts's preformatted badge fields). Split from status-model.ts, which keeps the
  * per-loop display model (phase, rows, token metrics) — the badges are header-scale team
- * facts (build, main check, budget, land queue, timed pause) rather than per-loop state, and
+ * facts (build, main check, budget, merge queue, timed pause) rather than per-loop state, and
  * their one-home rule ("the page cannot re-derive and drift from these strings") is easier to
  * see when the module is exactly the badges. The duration phrasing they share (humanSeconds)
  * lives in datetime.ts — core modules need it too, so it sits below the ui layer. */
@@ -241,13 +241,13 @@ export function budgetBadge(
   return ` · budget: ${usd(budget.spentUsd)} today · no cap${window}`;
 }
 
-/** The header's land-queue fragment (plans/merge-queue.md 4/5): `· land queue: N` while any
- * landing is queued or in flight, empty when the queue is idle — so an idle team keeps
+/** The header's merge queue fragment (plans/merge-queue.md 4/5): `· merge queue: N` while any
+ * merge is queued or in flight, empty when the queue is idle — so an idle team keeps
  * every existing header byte intact. One home for the rule, like buildBadge and budgetBadge:
  * renderStatus renders it in the TUI/status header and status-payload.ts ships its output
  * preformatted, so the GUI page cannot drift from this string. */
-export function landingBadge(landQueue: { depth: number }): string {
-  return landQueue.depth > 0 ? ` · merge queue: ${landQueue.depth}` : "";
+export function mergeBadge(mergeQueue: { depth: number }): string {
+  return mergeQueue.depth > 0 ? ` · merge queue: ${mergeQueue.depth}` : "";
 }
 
 /** The header's `run --for` window fragment: ` · stops in <duration>` while the deadline is

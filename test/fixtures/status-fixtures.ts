@@ -128,7 +128,7 @@ export function snapshotWith(
     build: null,
     // The fixture's queue is idle: depth 0 keeps every existing header line byte-identical
     // (the 4/5 badge is empty at depth 0) and renders no in-flight label.
-    landQueue: { depth: 0 },
+    mergeQueue: { depth: 0 },
   };
 }
 

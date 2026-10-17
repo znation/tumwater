@@ -95,9 +95,9 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   assert.equal("mainCheck" in (statusPayload(repo) as object), false);
 
   const base = 1_700_000_000_000;
-  // A landing check + the landed event after it: the check ran pre-merge, so the sha it
-  // verified is the landing's own — the
-  // landed event's `commit` field, exactly as writeMergeOutcome logs it. A gate-scope
+  // A merge check + the merged event after it: the check ran pre-merge, so the sha it
+  // verified is the merge's own — the
+  // merged event's `commit` field, exactly as writeMergeOutcome logs it. A gate-scope
   // check verifies a role worktree, not main — it never qualifies.
   writeEvents(repo, [
     { ts: base, loop: "lander", type: "build_check", scope: "gate", status: "passed" },
@@ -111,22 +111,22 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
     },
     { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) },
   ]);
-  const landed = snapshot(repo).mainCheck;
-  assert.ok(landed, "mainCheck present after a landing check");
-  assert.equal(landed!.sha, "a".repeat(40));
-  assert.equal(landed!.status, "passed");
-  assert.deepEqual(landed!.counts, { tests: 10, pass: 9, fail: 0, skipped: 1 });
-  assert.equal(landed!.at, base + 1000);
+  const mergeDone = snapshot(repo).mainCheck;
+  assert.ok(mergeDone, "mainCheck present after a merge check");
+  assert.equal(mergeDone!.sha, "a".repeat(40));
+  assert.equal(mergeDone!.status, "passed");
+  assert.deepEqual(mergeDone!.counts, { tests: 10, pass: 9, fail: 0, skipped: 1 });
+  assert.equal(mergeDone!.at, base + 1000);
   // The JSON payload carries the raw block plus its preformatted badge (GUI parity with the
   // TUI header — the badge is built once in status-model, both surfaces render it).
   const payload = statusPayload(repo) as { mainCheck: unknown; mainCheckBadge: string; mainCounts: string };
-  assert.deepEqual(payload.mainCheck, landed);
+  assert.deepEqual(payload.mainCheck, mergeDone);
   assert.match(payload.mainCheckBadge, / · main a{8}: green · 9\/10 \(1 skipped\)/);
   // The sidebar's counts fragment ships preformatted too (badges.ts's mainCountsFragment) —
   // the GUI must not re-derive pass/tests from the raw counts and drift (BUGS.md 2026-09-30).
   assert.equal(payload.mainCounts, "9/10 (1 skipped)");
 
-  // A newer baseline check with no landed event after it: the check ran ON main's tip, so the
+  // A newer baseline check with no merged event after it: the check ran ON main's tip, so the
   // sha is main's current head. A gate-scope check never displaces a merge-scope one.
   writeEvents(repo, [
     { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" },

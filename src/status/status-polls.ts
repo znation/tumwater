@@ -40,7 +40,7 @@ export interface MainCheckStatus {
 
 /** How far mainCheckForPoll may grow its event tail. The per-poll default
  * (event-read.ts's DEFAULT_EVENT_TAIL) covers a healthy team — a merge-scope check rides
- * every landing and every redeploy — but a burst of quiet or failing ticks logs hundreds
+ * every merge and every redeploy — but a burst of quiet or failing ticks logs hundreds
  * of events without moving main, and a tail
  * that ends before the last check makes the header badge vanish and reappear as ticks tick
  * by. Growing until the check is found keeps "absent" meaning what the field's contract says
@@ -52,9 +52,9 @@ export interface MainCheckStatus {
 const MAIN_CHECK_SCAN_MAX_EVENTS = 5_000;
 
 /** Per-root note that the previous scan had to grow past the default event tail
- * (DEFAULT_EVENT_TAIL) without finding a merge-scope check. A check rides every landing, so a poll
+ * (DEFAULT_EVENT_TAIL) without finding a merge-scope check. A check rides every merge, so a poll
  * that grew all the way to the cap is a burst of quiet or failing ticks — hundreds of events
- * between landings — and the next poll's growth starts straight at the cap instead of re-scanning
+ * between merges — and the next poll's growth starts straight at the cap instead of re-scanning
  * the ×4 ladder's intermediate windows (200→800→3200→5000 ≈ 9.2k re-parsed events per
  * fresh tail, vs 5.2k for 200→cap; measured on a 6k-event check-free log, ~2.3 ms → ~1.2 ms per
  * append+poll). A poll that finds a check clears the note, so the ordinary find-in-200 /
@@ -64,9 +64,9 @@ const mainCheckGrewFull = new Set<string>();
 const MAIN_CHECK_FULL_SET_MAX = 64;
 
 /** The log-derived half of the mainCheck derivation: the newest merge-scope build_check and
- * the landed commits bracketing it — everything the field needs that depends only on the
+ * the merged commits bracketing it — everything the field needs that depends only on the
  * event log. Split out so it can be cached per events.jsonl stat: the scan (the tail ladder,
- * its re-parses, and the landed collection) is a pure function of the log content, while the
+ * its re-parses, and the merged collection) is a pure function of the log content, while the
  * sha's branch fallback (readBranchHead/currentBranchFromHeadFile) and the config's
  * baseBranch stay per call, so a checkout or a config edit is still observed on the next
  * poll. */
@@ -74,30 +74,30 @@ interface MainCheckScan {
   /** The newest merge-scope check in the tail, or undefined when none is within the cap (or
    * the newest one found is malformed). */
   check?: HarnessEvent;
-  /** The newest landed commit before or at the check's ts — the fallback when nothing landed
+  /** The newest merged commit before or at the check's ts — the fallback when nothing merged
    * after it. */
-  landedBeforeCommit?: string;
-  /** The newest landed commit after the check's ts — the sha the check verified. */
-  landedAfterCommit?: string;
+  mergeDoneBeforeCommit?: string;
+  /** The newest merged commit after the check's ts — the sha the check verified. */
+  mergeDoneAfterCommit?: string;
 }
 
 /** Per-root scan cache (stat-cache.cachedByStat): both dashboards poll snapshot every second,
- * but events.jsonl is written only at tick boundaries and landings, so an unchanged log serves
+ * but events.jsonl is written only at tick boundaries and merges, so an unchanged log serves
  * the whole scan from one stat instead of re-listing the ladder, re-parsing its windows, and
- * re-collecting the landed events. Rotation swaps the inode and every append changes the size,
+ * re-collecting the merged events. Rotation swaps the inode and every append changes the size,
  * so both invalidate through the same freshness check; keyed by root so distinct repos never
  * collide. Bounded inside cachedByStat. */
 const mainCheckScanCache = new Map<string, StatKeyedValue<MainCheckScan>>();
 
 /** Scan the log for MainCheckScan, growing the tail until a merge-scope check is inside it (see
  * MAIN_CHECK_SCAN_MAX_EVENTS): a check older than the default tail must still badge the header,
- * and every event after the check — the landed pairing the sha needs — is newer, so one window
+ * and every event after the check — the merged pairing the sha needs — is newer, so one window
  * holds the whole derivation. */
 function scanMainCheck(root: string): MainCheckScan {
   let check: HarnessEvent | undefined;
-  // The final window's landed events, in scan order — collected in the same pass that
+  // The final window's merged events, in scan order — collected in the same pass that
   // finds the check instead of a second full scan of the window below.
-  let landed: HarnessEvent[] = [];
+  let mergeDone: HarnessEvent[] = [];
   const grewFull = mainCheckGrewFull.has(root);
   // A set note means the previous scan reached the cap without finding a check, so start
   // there: starting at DEFAULT_EVENT_TAIL would only re-read (and re-parse on a cache miss)
@@ -110,15 +110,15 @@ function scanMainCheck(root: string): MainCheckScan {
   ) {
     const events = readEvents(root, window);
     check = undefined;
-    landed = [];
+    mergeDone = [];
     // One pass collects both facts the derivation needs: the newest merge-scope check and
-    // every landed event. The landings are re-read against the check's ts below — a pass
-    // over the landings alone, not a second pass over every event in the window.
+    // every merged event. The merges are re-read against the check's ts below — a pass
+    // over the merges alone, not a second pass over every event in the window.
     for (const e of events) {
       if (e.type === "build_check" && (e.scope === "merge" || e.scope === "batch" || e.scope === "baseline")) {
         check = e;
       } else if (e.type === "merge_done" && typeof e.ts === "number") { 
-        landed.push(e);
+        mergeDone.push(e);
       }
     }
     // Found, the log is shorter than the window (nothing older exists to find), or the cap
@@ -133,16 +133,16 @@ function scanMainCheck(root: string): MainCheckScan {
   if (!check || typeof check.ts !== "number" || typeof check.status !== "string") {
     return { check: undefined };
   }
-  let landedAfter: HarnessEvent | undefined;
-  let landedBefore: HarnessEvent | undefined;
-  for (const e of landed) {
-    if (e.ts > check.ts) landedAfter = e;
-    else landedBefore = e;
+  let mergeDoneAfter: HarnessEvent | undefined;
+  let mergeDoneBefore: HarnessEvent | undefined;
+  for (const e of mergeDone) {
+    if (e.ts > check.ts) mergeDoneAfter = e;
+    else mergeDoneBefore = e;
   }
   return {
     check,
-    ...(typeof landedAfter?.commit === "string" ? { landedAfterCommit: landedAfter.commit } : {}),
-    ...(typeof landedBefore?.commit === "string" ? { landedBeforeCommit: landedBefore.commit } : {}),
+    ...(typeof mergeDoneAfter?.commit === "string" ? { mergeDoneAfterCommit: mergeDoneAfter.commit } : {}),
+    ...(typeof mergeDoneBefore?.commit === "string" ? { mergeDoneBeforeCommit: mergeDoneBefore.commit } : {}),
   };
 }
 
@@ -188,7 +188,7 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
   const check = scan.check;
   if (!check || typeof check.ts !== "number" || typeof check.status !== "string") return undefined;
   const branch = targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root));
-  const sha = scan.landedAfterCommit ?? readBranchHead(root, branch) ?? scan.landedBeforeCommit;
+  const sha = scan.mergeDoneAfterCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneBeforeCommit;
   const counts = asTestCounts(check.counts);
   return {
     ...(sha ? { sha } : {}),
@@ -203,7 +203,7 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
  * marker displays only while its sha is still queued; a marker with per-change records keeps
  * just its records whose sha is still queued — a change whose entry was dropped is finished,
  * whatever its record last said — and displays only while one of those is not `done`. */
-export function liveLandingMarker(marker: MergeInFlight, queued: ReadonlySet<string>): MergeInFlight | undefined {
+export function liveMergeMarker(marker: MergeInFlight, queued: ReadonlySet<string>): MergeInFlight | undefined {
   if (!Array.isArray(marker.changes)) return queued.has(marker.sha) ? marker : undefined;
   // Drop foreign entries before reading their sha/status: a `null`/scalar record in a
   // hand-edited marker would otherwise throw out of the every-second status poll.
@@ -212,12 +212,12 @@ export function liveLandingMarker(marker: MergeInFlight, queued: ReadonlySet<str
 }
 
 /** The marker observers display for a queue read: undefined unless the orchestrator is running
- * (`running`) and the marker has a live record for a queued entry (liveLandingMarker). The one
+ * (`running`) and the marker has a live record for a queued entry (liveMergeMarker). The one
  * home of this cross-check for the status snapshot, `tumwater queue`, and the TUI Pending pane. */
 export function queueInFlight(root: string, entries: readonly MergeEntry[], running: boolean): MergeInFlight | undefined {
   if (!running) return undefined;
   const marker = readMergeMarker(root);
-  return marker ? liveLandingMarker(marker, new Set(entries.map((e) => e.sha))) : undefined;
+  return marker ? liveMergeMarker(marker, new Set(entries.map((e) => e.sha))) : undefined;
 }
 
 // The last config each root loaded successfully. snapshot is polled every second by the
@@ -275,7 +275,7 @@ const maintenanceCounters = new Map<string, ReturnType<typeof newMaintenanceWind
 /** The maintenance allowance verdict as an observer sees it for this poll (status-data's
  * `maintenanceQuota` field): the rolling-window counts over the same event log the gate reads,
  * plus the enabled maintenance loops currently in flight (running a tick or holding a queued
- * landing, so the `used` figure matches the gate's). `held` names the enabled maintenance loop
+ * merge, so the `used` figure matches the gate's). `held` names the enabled maintenance loop
  * ids the scheduler holds while `used >= allowance`. Pure read — unlike the gate it logs nothing
  * and keeps no hold edge, so it can run in the TUI/GUI process every second. */
 export function maintenanceQuotaForPoll(

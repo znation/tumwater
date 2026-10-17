@@ -193,7 +193,7 @@ test("the page shows the payload's alerts, led by its own offline notice", () =>
   assert.deepEqual(model.pageAlerts({}, false), [], "an older server without alerts shows none");
   assert.equal(model.needsYou([...alerts, { key: "stopped", tone: "gray", title: "", actions: [] }]), 1, "information does not count");
 });
-test("activity items sort into landings, problems, questions, notices, and routine", () => {
+test("activity items sort into merges, problems, questions, notices, and routine", () => {
   const kind = (type: string, result?: string) => model.eventKind({ type, ...(result === undefined ? {} : { result }) });
   assert.equal(kind("merged"), "landing");
   assert.equal(kind("question_posted"), "attention");
@@ -201,7 +201,7 @@ test("activity items sort into landings, problems, questions, notices, and routi
   assert.equal(tsEventKind("entry_refused"), "attention", "the TS twin agrees");
   assert.equal(kind("run_end", "error"), "problem");
   assert.equal(kind("run_end", "rejected"), "problem");
-  assert.equal(kind("run_end", "queued"), "routine", "a queued change's landing is the notable part");
+  assert.equal(kind("run_end", "queued"), "routine", "a queued change's merge is the notable part");
   assert.equal(kind("run_end", "no_change"), "routine");
   assert.equal(kind("build_check", "passed"), "routine");
   assert.equal(kind("build_check", "failed"), "problem");
@@ -622,7 +622,7 @@ test("the pause control offers timed pauses and shows a timed pause's countdown"
 });
 
 test("the page's shortSha abbreviates like format.ts's 8-character rule", () => {
-  // The land-queue drawer and the running-build row both render sha cells through the page's
+  // The merge queue drawer and the running-build row both render sha cells through the page's
   // shortSha; it must stay byte-identical to the TypeScript single home it mirrors.
   const { shortSha } = clientScope<{ shortSha(sha: unknown): string }>(["format"], ["shortSha"]);
 
@@ -644,7 +644,7 @@ test("the page's money formatters match format.ts's usd/usdCap rules", () => {
 });
 
 test("the page's workSplit names the work/maintenance commit split", () => {
-  // The sidebar's "Landed today" tile and the report's "Commits landed" tile both render this
+  // The sidebar's "Merged today" tile and the report's "Commits merged" tile both render this
   // phrase; a totals payload from an older fold omits the counts and must read 0, not undefined.
   const { workSplit } = clientScope<{ workSplit(t: { workCommits?: number; maintenanceCommits?: number }): string }>(["format"], ["workSplit"]);
 

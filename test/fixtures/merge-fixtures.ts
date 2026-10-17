@@ -17,7 +17,7 @@ import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { defaultConfig } from "../../src/config/config.js";
 import { freshLoopState } from "../../src/loop/loop-state.js";
 import { snapshot } from "../../src/status/status-data.js";
-import { landingForRole, loopPhase } from "../../src/ui/status-model.js";
+import { mergeForRole, loopPhase } from "../../src/ui/status-model.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { MergeEntry } from "../../src/merge/merge-queue.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
@@ -166,7 +166,7 @@ export function busySlot(): InFlightMerge {
   return slot;
 }
 
-/** A role's row as the observers render it (snapshot → landingForRole → loopPhase). The
+/** A role's row as the observers render it (snapshot → mergeForRole → loopPhase). The
  * observers show a merge only for a live orchestrator, so this stands the test process in
  * for one. */
 export function rowReader(root: string, roles: string[]): (role: string) => string {
@@ -174,7 +174,7 @@ export function rowReader(root: string, roles: string[]): (role: string) => stri
   const noModels = path.join(tmpdir(), "no-models.json");
   return (role) => {
     const snap = snapshot(root, noModels);
-    return loopPhase(freshLoopState(role), snap.running, undefined, false, undefined, false, landingForRole(snap.landQueue, role));
+    return loopPhase(freshLoopState(role), snap.running, undefined, false, undefined, false, mergeForRole(snap.mergeQueue, role));
   };
 }
 

@@ -218,7 +218,7 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
   assert.ok(labels.length <= 7);
   assert.equal(reportDayLabels(series).at(-1), "09-14", "the newest day carries its label");
 
-  // Landed commits: plain counts in the tooltip.
+  // Merged commits: plain counts in the tooltip.
   const commitRects = parseRects(chartCommits(data));
   assert.equal(commitRects.length, 13);
   assert.ok(commitRects.some((r) => r.title === "2026-09-04: 2 commits merged"));

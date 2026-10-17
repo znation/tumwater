@@ -7,7 +7,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, permitsBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, permitsBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -44,16 +44,16 @@ export function lastTickCell(ts: number | undefined): string {
   return `${s} · ${ago(ts)}`;
 }
 
-/** The table's `last landed` cell: when the loop last landed a change on main, in the SAME
+/** The table's `last merged` cell: when the loop last merged a change on main, in the SAME
  * absolute-time-plus-relative-age shape as the `last tick` cell (lastTickCell), so the two
- * columns cannot drift on what "ago" means. A loop that has never landed shows the same dash
+ * columns cannot drift on what "ago" means. A loop that has never merged shows the same dash
  * lastTickCell uses for a never-ticked loop. */
-export function lastLandedCell(ts: number | undefined): string {
+export function lastMergedCell(ts: number | undefined): string {
   return lastTickCell(ts);
 }
 
 /** The table's `next run` cell: when the loop may tick again, or `-` when that is not the
- * operator's question — a loop in flight (an active rendered phase: working/reviewing/landing,
+ * operator's question — a loop in flight (an active rendered phase: working/reviewing/merge,
  * or `s.running`) has no next run to speak of, and a stopped team renders no schedule at all
  * (its `nextRunAt`s are stale leftovers, not plans). A due idle loop reads `now`; a future one
  * reads its remaining time through humanSeconds (the same bucketing the sleeping phase label
@@ -61,13 +61,13 @@ export function lastLandedCell(ts: number | undefined): string {
  * row-action clears exactly that, so the prefix is what makes waking meaningful. The GUI
  * renders the same rules from its own JS copy in gui-client.ts (fmtNextRun). The `phase` and
  * `teamRunning` arguments come from the caller because neither fact lives on LoopState: the
- * active-phase check needs the rendered label (a landing is visible only there), and the
+ * active-phase check needs the rendered label (a merge is visible only there), and the
  * team's running flag lives on the snapshot, not the loop. */
 export function nextRunCell(s: LoopState, phase: string, now: number, teamRunning: boolean): string {
   if (!teamRunning || s.running || isActivePhase(phase)) return "-";
   const remain = secondsUntil(s.nextRunAt, now);
   // The yield multiplier rides the cell as `×N` (yield-scaled clocks, PLANS.md): a scalable
-  // role whose recent ticks landed nothing keeps a longer effective gap than nextRunAt's
+  // role whose recent ticks merged nothing keeps a longer effective gap than nextRunAt's
   // countdown shows, and the suffix is what makes that visible. The multiplier gates the
   // scheduled gap and the main-moved wake in isEligible, so a `now`-due cell at ×4 is a
   // role waiting out its stretched gap, not a broken clock.
@@ -85,11 +85,11 @@ export function nextRunCell(s: LoopState, phase: string, now: number, teamRunnin
 function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgress | null): string {
   // While under review the log tail's "current work" is the reviewer's own output, not the
   // author's task — don't prepend it; the phase cell already carries the reviewer's live
-  // detail. The landing label rides the same guard: the landing role is not running, so its
-  // phase ("landing <elapsed> · <stage>", with the reviewer's live detail while it reviews)
+  // detail. The merge label rides the same guard: the merge role is not running, so its
+  // phase ("merge <elapsed> · <stage>", with the reviewer's live detail while it reviews)
   // is returned without a work-item prefix.
   if (!s.running || s.parkedSince || s.phase === "review") {
-    // Parallel work instances, part 6/7: an idle or landing instance leads with the entry it
+    // Parallel work instances, part 6/7: an idle or merge instance leads with the entry it
     // claimed (or, for an idle extra with none, the no-unclaimed note), so the operator can
     // see WHAT it is parked on without opening its drawer.
     const idle = idleClaimText(s, phase);
@@ -104,7 +104,7 @@ function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgres
  * first: `title` (the role's plain-terms description, dropped entirely before anything else
  * narrows), then `last result` (holds the tick summary), then `state` (live working
  * detail), then `last tick` — it shrinks last so on a narrow terminal it loses " · 3m ago"
- * before whole lines clip; its minimum is a bare HH:MM:SS. `last landed` sits right of
+ * before whole lines clip; its minimum is a bare HH:MM:SS. `last merged` sits right of
  * `last tick` and is not flexible: it is a short sibling time cell whose width follows
  * lastTickCell's, and the whole-line clip that already protects the header also bounds it.
  * Indices are positional in the `cols` array below — renumber when columns
@@ -184,7 +184,7 @@ export function alertLines(alerts: readonly TeamAlert[], width: number, max = 3)
   return lines;
 }
 
-/** A header badge (" · land queue: 2", ", build abc…") as a plain separator plus its toned
+/** A header badge (" · merge queue: 2", ", build abc…") as a plain separator plus its toned
  * words, so the TUI colors the words and not the dots. Empty badges add nothing. */
 function badgeSpans(badge: string, tone?: StatusSpan["tone"]): StatusSpan[] {
   if (!badge) return [];
@@ -250,7 +250,7 @@ export function renderStatusSpans(
     { text: ` · ${name} · ` },
     ...running,
     ...(snap.running ? badgeSpans(runWindowBadge(snap.runStopsAt, now), "blue") : []),
-    ...badgeSpans(landingBadge(snap.landQueue), "blue"),
+    ...badgeSpans(mergeBadge(snap.mergeQueue), "blue"),
     ...(snap.inbox ? [{ text: ` · inbox: ${snap.inbox}` }] : []),
     ...(snap.questions ? badgeSpans(` · questions: ${snap.questions}`, "magenta") : []),
     ...badgeSpans(budgetBadge(snap.budget, snap.claudeWindow, now, snap.chain), budgetTone(snap.budget, snap.claudeWindow)),
@@ -344,8 +344,8 @@ export function renderStatusSpans(
     const resultT = resultTone(s.lastResult);
     return [
       cell(name),
-      // Merge queue 4/5 — the landing role's phase label (the marker-driven record, filtered to
-      // this role by loopPhase's `landing` argument above) rides this same phase string.
+      // Merge queue 4/5 — the merge role's phase label (the marker-driven record, filtered to
+      // this role by loopPhase's `merge` argument above) rides this same phase string.
       [...stateSpans, { text: roleQueued(s.role) }, ...(wakeMark ? [{ text: wakeMark, tone: "blue" as const }] : [])],
       cell(String(s.runs)),
       cell(String(s.commits)),
@@ -354,7 +354,7 @@ export function renderStatusSpans(
       cell(usd(s.totalCostUsd)),
       cell(usd(dailyCost(s))),
       cell(lastTickCell(s.lastRunEndedAt)),
-      cell(lastLandedCell(s.lastMergedAt)),
+      cell(lastMergedCell(s.lastMergedAt)),
       s.lastResult
         ? [{ text: eventTypeLabel(s.lastResult), ...(resultT ? { tone: resultT } : {}) }, { text: s.lastSummary ? ` — ${s.lastSummary}` : "" }]
         : cell("-"),

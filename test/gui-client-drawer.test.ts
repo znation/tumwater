@@ -32,7 +32,7 @@ interface DrawerScope {
   toggleEntry(file: string, index: number): void;
   renderLoopDrawer(d: object): void;
   drawerChangeHtml(view: unknown): string;
-  landingSummary(d: object, role: string): string;
+  mergeSummary(d: object, role: string): string;
   transcriptHtml(lines: string[]): string;
   loadLoopTicks(force: boolean): Promise<void>;
   refreshEntry(): Promise<void>;
@@ -185,7 +185,7 @@ test("the loop drawer for a role the team no longer has says so, paints no actio
   assert.match(t.paintedFor("drawerhead"), /role-title'>custom role</);
   assert.equal(t.paintedFor("draweractions"), "");
   // The change section renders for a role absent from statusPayload.loops, so a disabled
-  // loop's unlanded patch is still visible in its drawer.
+  // loop's unmerged patch is still visible in its drawer.
   assert.match(t.paintedFor("drawermeta"), /Pending change/);
   await flush();
   const meta = t.paintedFor("drawermeta");
@@ -443,16 +443,16 @@ test("closing the drawer silences refreshDrawer", async () => {
   assert.equal(t.painted.length, paintsBefore, "a closed drawer still refreshed");
 });
 
-test("landingSummary picks the held change for a role, in both in-flight shapes, and stays empty otherwise", () => {
-  const t = openDrawer(["landingSummary"]);
+test("mergeSummary picks the held change for a role, in both in-flight shapes, and stays empty otherwise", () => {
+  const t = openDrawer(["mergeSummary"]);
   const single = { mergeQueue: { inFlight: { role: "clean", summary: "Sole change" } } };
-  assert.equal(t.scope.landingSummary(single, "clean"), "Sole change");
-  assert.equal(t.scope.landingSummary(single, "other"), "");
+  assert.equal(t.scope.mergeSummary(single, "clean"), "Sole change");
+  assert.equal(t.scope.mergeSummary(single, "other"), "");
   const batch = { mergeQueue: { inFlight: { changes: [{ role: "a", summary: "A" }, { role: "b", summary: "B" }] } } };
-  assert.equal(t.scope.landingSummary(batch, "b"), "B");
-  assert.equal(t.scope.landingSummary(batch, "c"), "");
-  assert.equal(t.scope.landingSummary({}, "a"), "");
-  assert.equal(t.scope.landingSummary({ mergeQueue: { inFlight: { changes: [{ role: "a", summary: "" }] } } }, "a"), "");
+  assert.equal(t.scope.mergeSummary(batch, "b"), "B");
+  assert.equal(t.scope.mergeSummary(batch, "c"), "");
+  assert.equal(t.scope.mergeSummary({}, "a"), "");
+  assert.equal(t.scope.mergeSummary({ mergeQueue: { inFlight: { changes: [{ role: "a", summary: "" }] } } }, "a"), "");
 });
 
 test("drawerChangeHtml renders the full patch for a ready view and degrades the rest", () => {

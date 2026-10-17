@@ -1,5 +1,5 @@
 // The queue facet of the status-data suite: snapshot()'s director inbox, per-role prompt
-// queues, and the landing queue with its per-change marker cross-check. Split by facet out of
+// queues, and the merge queue with its per-change marker cross-check. Split by facet out of
 // one status-data test file; the core contract and poll cache live in
 // status-data.test.ts.
 
@@ -55,23 +55,23 @@ test("snapshot carries queued director prompts as truncated previews, fresh per 
   assert.deepEqual(snap.inboxPrompts, [preview, "third"]);
 });
 
-// Merge queue 4/5 — the snapshot's landQueue: depth from the queue files, and inFlight only
+// Merge queue 4/5 — the snapshot's mergeQueue: depth from the queue files, and inFlight only
 // when the 4/5 marker, a matching queue entry, and a live orchestrator all agree. The
 // cross-check is the crash-safety pin: a stale marker alone (any crash ordering) never
 // displays, and neither does a dead harness — no cleanup pass needed.
-test("snapshot reports the land queue depth and the in-flight landing", async () => {
+test("snapshot reports the merge queue depth and the in-flight merge", async () => {
   const repo = makeRepo();
   await initProject(repo, "land queue snapshot");
 
   // Idle: depth 0, no inFlight, no entries (depth is unconditional, so JSON consumers see one
   // shape; the entries ride the same read pass and are absent when there is nothing to render —
-  // the roleInboxPrompts discipline the land-queue drawer's plan names).
+  // the roleInboxPrompts discipline the merge queue drawer's plan names).
   let snap = snapshot(repo);
-  assert.equal(snap.landQueue.depth, 0);
-  assert.equal(snap.landQueue.inFlight, undefined);
-  assert.equal(snap.landQueue.entries, undefined);
+  assert.equal(snap.mergeQueue.depth, 0);
+  assert.equal(snap.mergeQueue.inFlight, undefined);
+  assert.equal(snap.mergeQueue.entries, undefined);
 
-  // One queued entry (3/5's enqueue) lifts the depth — but a merely queued landing is not
+  // One queued entry (3/5's enqueue) lifts the depth — but a merely queued merge is not
   // in flight, and the queue file alone never names an in-flight record.
   enqueueMerge(repo, {
     role: "clean",
@@ -81,34 +81,34 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
     enqueuedAt: Date.now(),
   });
   snap = snapshot(repo);
-  assert.equal(snap.landQueue.depth, 1);
-  assert.equal(snap.landQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
+  assert.equal(snap.mergeQueue.depth, 1);
+  assert.equal(snap.mergeQueue.inFlight, undefined, "queued, not merge: no inFlight yet");
   // The queued change is listed in execution order with the fields the drawer paints —
   // role, sha, run, summary, enqueuedAt — without the entry's optional body/highFriction.
-  assert.deepEqual(snap.landQueue.entries, [
-    { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: snap.landQueue.entries![0]!.enqueuedAt },
+  assert.deepEqual(snap.mergeQueue.entries, [
+    { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: snap.mergeQueue.entries![0]!.enqueuedAt },
   ]);
 
   // Two queued entries list oldest first, in the queue's filename order.
   enqueueMerge(repo, { role: "feature", sha: "def5678", run: 2, summary: "add a thing", enqueuedAt: Date.now() });
   snap = snapshot(repo);
-  assert.equal(snap.landQueue.depth, 2);
-  assert.deepEqual(snap.landQueue.entries!.map((e) => e.role), ["clean", "feature"]);
+  assert.equal(snap.mergeQueue.depth, 2);
+  assert.deepEqual(snap.mergeQueue.entries!.map((e) => e.role), ["clean", "feature"]);
   assert.deepEqual(
-    snap.landQueue.entries!.map((e) => [e.sha, e.run, e.summary, typeof e.enqueuedAt]),
+    snap.mergeQueue.entries!.map((e) => [e.sha, e.run, e.summary, typeof e.enqueuedAt]),
     [["abc1234", 1, "tidy something", "number"], ["def5678", 2, "add a thing", "number"]],
   );
   // The entries are shallow copies, not the queue's own objects (the drawer never mutates
   // them, and nothing the queue file held beyond the listed fields leaks into the payload).
-  assert.equal("body" in snap.landQueue.entries![0]!, false);
-  assert.equal("highFriction" in snap.landQueue.entries![0]!, false);
+  assert.equal("body" in snap.mergeQueue.entries![0]!, false);
+  assert.equal("highFriction" in snap.mergeQueue.entries![0]!, false);
 
   // Back to the single queued entry the rest of this test reasons about.
   const featureFile = queuedMergeFiles(repo).find((e) => e.entry.sha === "def5678")!.file;
   fs.rmSync(featureFile);
 
   // The 4/5 marker plus a live orchestrator plus the matching entry → in flight, with the
-  // marker's identity (the dashboard's `landing <elapsed>` label reads startedAt from it).
+  // marker's identity (the dashboard's `merge <elapsed>` label reads startedAt from it).
   const startedAt = Date.now();
   writeOrchestratorMarker(repo, ["clean"]);
   const infoFile = orchestratorStatePath(repo);
@@ -120,15 +120,15 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   });
   snap = snapshot(repo);
   assert.equal(snap.running, true);
-  assert.deepEqual(snap.landQueue.inFlight, { role: "clean", sha: "abc1234", summary: "tidy something", startedAt });
+  assert.deepEqual(snap.mergeQueue.inFlight, { role: "clean", sha: "abc1234", summary: "tidy something", startedAt });
 
   // Crash orderings self-heal: a DEAD harness never displays in flight (the depth — queued
   // work that will drain on the next start — stays visible)…
   fs.rmSync(infoFile);
   snap = snapshot(repo);
   assert.equal(snap.running, false);
-  assert.equal(snap.landQueue.depth, 1, "queued work is visible even while the team is down");
-  assert.equal(snap.landQueue.inFlight, undefined, "a dead harness never shows a landing as in flight");
+  assert.equal(snap.mergeQueue.depth, 1, "queued work is visible even while the team is down");
+  assert.equal(snap.mergeQueue.inFlight, undefined, "a dead harness never shows a merge as in flight");
 
   // …and a marker whose sha no longer has a matching queue entry (a crash between the entry
   // drop and the marker removal) is stale — never displayed, even with a live orchestrator.
@@ -141,22 +141,22 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   });
   snap = snapshot(repo);
   assert.equal(snap.running, true);
-  assert.equal(snap.landQueue.inFlight, undefined, "a marker with no matching queue entry never displays");
+  assert.equal(snap.mergeQueue.inFlight, undefined, "a marker with no matching queue entry never displays");
 
   // The queue drains and the marker is removed (the drain's own bookkeeping): back to idle,
   // with the entries gone too.
   fs.rmSync(path.join(mergeQueueDir(repo), fs.readdirSync(mergeQueueDir(repo))[0]!));
   fs.rmSync(mergeStatePath(repo));
   snap = snapshot(repo);
-  assert.equal(snap.landQueue.depth, 0);
-  assert.equal(snap.landQueue.inFlight, undefined);
-  assert.equal(snap.landQueue.entries, undefined);
+  assert.equal(snap.mergeQueue.depth, 0);
+  assert.equal(snap.mergeQueue.inFlight, undefined);
+  assert.equal(snap.mergeQueue.entries, undefined);
 });
 
-// The marker carries one record per change the landing pipeline holds, and the snapshot
+// The marker carries one record per change the merge pipeline holds, and the snapshot
 // cross-checks each against its still-queued entry: every row then reads its OWN change's
 // state, and a change the merge is done with shows nothing (BUGS.md 2026-09-23 — a head-only
-// marker kept a rejected head reading `landing` for a whole batch).
+// marker kept a rejected head reading `merge` for a whole batch).
 test("the marker is cross-checked per change and each row reads its own change's state", async () => {
   const repo = makeRepo();
   await initProject(repo, "batch marker snapshot");
@@ -183,15 +183,15 @@ test("the marker is cross-checked per change and each row reads its own change's
   });
   let snap = snapshot(repo);
   assert.deepEqual(
-    snap.landQueue.inFlight?.changes?.map((c) => c.role),
+    snap.mergeQueue.inFlight?.changes?.map((c) => c.role),
     ["clean", "bugfix", "feature", "dedupe"],
     "only the records whose entry is still queued survive the cross-check",
   );
   const text = renderStatus(repo, snap);
-  assert.match(text, /^bugfix +merging 1m30s/m, "the change under review reads landing with its own elapsed");
+  assert.match(text, /^bugfix +merging 1m30s/m, "the change under review reads merge with its own elapsed");
   assert.match(text, /^feature +approved, waiting to merge/m);
-  assert.match(text, /^dedupe +merging 20m\S* · checking/m, "a second vet in flight reads its own elapsed and stage");
-  assert.doesNotMatch(text, /^clean +merging/m, "a finished change keeps no live landing label");
+  assert.match(text, /^dedupe +merging 20m\S* · checking/m, "a second verification in flight reads its own elapsed and stage");
+  assert.doesNotMatch(text, /^clean +merging/m, "a finished change keeps no live merge label");
   assert.match(text, /^clean +due/m, "its row reads its own state again");
   assert.doesNotMatch(text, /^plan +merging/m, "a record with no queued entry never displays");
 
@@ -202,8 +202,8 @@ test("the marker is cross-checked per change and each row reads its own change's
     }
   }
   snap = snapshot(repo);
-  assert.equal(snap.landQueue.depth, 1);
-  assert.equal(snap.landQueue.inFlight, undefined, "a marker whose live records are all done never displays");
+  assert.equal(snap.mergeQueue.depth, 1);
+  assert.equal(snap.mergeQueue.inFlight, undefined, "a marker whose live records are all done never displays");
   fs.rmSync(orchestratorStatePath(repo));
 });
 

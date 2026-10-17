@@ -95,7 +95,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // loop-sort:start
   // Loop order — status-model.ts's loopRank/sortLoopsByState, the TUI's order too: the running
   // director first (its own live work, outside the maxConcurrent cap it bypasses — BUGS.md
-  // 2026-10-06), then live work (working, reviewing, landing), then work waiting in the pipe
+  // 2026-10-06), then live work (working, reviewing, merge), then work waiting in the pipe
   // line (approved, awaiting a slot), then loops that need attention (failing, main red), then
   // paused, then idle; within a rank the most recent tick first, a never-ticked loop last, ties
   // by name. The phase → rank rules are status-model.ts's LOOP_RANK_RULES (interpolated at

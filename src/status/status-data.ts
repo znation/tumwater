@@ -89,9 +89,9 @@ export interface StatusSnapshot {
      * fallback (no episode, or a due probe on the primary), so the common row shape is
      * unchanged. */
     fallback?: ModelFallbackView;
-    /** The pooled worktree slot this loop holds (a live tick or vet lease) or is pinned to,
-     * named by basename; absent when the loop has no slot. `slotPinned` marks a pin (a pending
-     * resume waiting on the same checkout) rather than the slot's live lease. */
+    /** The pooled worktree slot this loop holds (a live tick or verification lease) or is
+     * pinned to, named by basename; absent when the loop has no slot. `slotPinned` marks a pin
+     * (a pending resume waiting on the same checkout) rather than the slot's live lease. */
     slot?: string;
     slotPinned?: boolean;
     /** The base role this row is an instance of (`feature-2` → `feature`), present only on an
@@ -194,7 +194,7 @@ export interface StatusSnapshot {
    * poll, and local midnight lifts the hold by itself. */
   capPaused: string[];
   /** The maintenance allowance (plans/work-ratio.md, part 1b/4): the rolling-24 h window's
-   * `allowance` and `used` (maintenance landings plus maintenance loops in flight), and the
+   * `allowance` and `used` (maintenance merges plus maintenance loops in flight), and the
    * enabled maintenance loop ids the scheduler holds while `used >= allowance`. Computed by the
    * same pure verdict the gate folds (maintenance-quota.ts) against this process's own memo of
    * the event log, so an observer shows the hold the scheduler enforces. Always present, empty
@@ -284,7 +284,7 @@ export interface StatusSnapshot {
    * keyed by role id for every enabled loop except the director — the director's queue IS the
    * shared `inbox` above, so counting it here too would double-report the same prompts. Every
    * enabled loop appears (0 included) so `status --json` consumers see one stable shape, like
-   * `landQueue`; the dashboards render a `p:N` marker and the GUI's per-row prompt affordance
+   * `mergeQueue`; the dashboards render a `p:N` marker and the GUI's per-row prompt affordance
    * from it. Counts only — full previews stay in each queue file, readable via
    * `tumwater prompt --list --role <id>`. Fresh per poll (a directory listing per role, no
    * content reads — the stat-keyed prompt cache), like `inbox`/`inboxPrompts`. */
@@ -297,18 +297,18 @@ export interface StatusSnapshot {
    * carries its enqueue stamp, queuedAtMs, for the Queued tab's age); filled only when
    * the count above is nonzero, so the common empty case costs one listing per role. */
   roleInboxPrompts: Record<string, Array<{ file: string; preview: string; queuedAtMs: number | null; notBeforeMs: number | null }>>;
-  /** The durable land queue (plans/merge-queue.md 4/5), unconditionally (depth 0 when
+  /** The durable merge queue (plans/merge-queue.md 4/5), unconditionally (depth 0 when
    * empty) so `status --json` consumers see one stable shape: the number of committed-but-
-   * unlanded changes in the landing pipeline, and — only while a landing is actually
+   * unmerged changes in the merge pipeline, and — only while a merge is actually
    * running — which ones. `inFlight` requires three things to agree: the 4/5 marker
    * exists, a queue entry with its sha still exists (entries are dropped only AFTER an
    * outcome — 3/5 — so in-flight always implies depth ≥ 1), and the orchestrator is alive.
    * The cross-check makes every crash ordering self-healing: a stale marker without a
-   * matching entry never displays. The check is liveLandingMarker's: an older-generation
+   * matching entry never displays. The check is liveMergeMarker's: an older-generation
    * single-change marker displays only while its sha is queued; one with per-change records
    * keeps just the records whose entry is still queued and displays while one is not yet
    * `done`. */
-  landQueue: {
+  mergeQueue: {
     depth: number;
     /** Each queued change in execution order (oldest first) for `status --json` readers —
      * position, role, summary, sha, age. Filled from the same
@@ -321,13 +321,13 @@ export interface StatusSnapshot {
     inFlight?: MergeInFlight;
   };
   /** Main's newest merge-scope build check:
-   * the latest `build_check` event at the `landing`/`batch`/`baseline` scope, read from the
+   * the latest `build_check` event at the `merge`/`batch`/`baseline` scope, read from the
    * event tail — the live replacement for the committed README stamp the readme role used to
-   * maintain. `sha` is the main commit the check verified: a `landed` event after the check
-   * names it via its `commit` field (a landing/batch check runs pre-merge; the landing's own
-   * `landed` commit is the head it produced), otherwise main's current tip (a baseline check
-   * runs ON the tip, and a later landing would have logged a newer check). Unresolvable from
-   * either source — no landing yet and no readable ref — drops the field. Absent entirely
+   * maintain. `sha` is the main commit the check verified: a `merged` event after the check
+   * names it via its `commit` field (a merge/batch check runs pre-merge; the merge's own
+   * `merged` commit is the head it produced), otherwise main's current tip (a baseline check
+   * runs ON the tip, and a later merge would have logged a newer check). Unresolvable from
+   * either source — no merge yet and no readable ref — drops the field. Absent entirely
    * before any merge-scope check has run (and in tests that assemble snapshots by hand). */
   mainCheck?: MainCheckStatus;
   /** The disk floor's measured state (plans/disk-floor.md, part 4/4), read from the running
@@ -381,8 +381,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
   // One slots.json read per poll serves every row: the pooled slot a role leases (a running
-  // tick or vet) or is pinned to — threaded into the roles collector so `running`, `disk` and
-  // the rows agree.
+  // tick or verification) or is pinned to — threaded into the roles collector so `running`,
+  // `disk` and the rows agree.
   const slots = readSlotsState(root).slots;
   const loops = collectRoleRows(root, cfg, now, slots, modelsPath);
   // The doctor's cached image-probe failures (part 5/5): one read per snapshot, labelled, so
@@ -399,18 +399,18 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // One read of the pending scheduled wakes feeds both the earliest and the full list, so they
   // cannot disagree.
   const wakes = scheduledWakes(root, now);
-  // One land-queue pass per poll (merge-queue.ts's stat cache keeps an unchanged queue at one
+  // One merge queue pass per poll (merge-queue.ts's stat cache keeps an unchanged queue at one
   // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator
   // still has a queue entry for what the marker names (per change, for a batch) — the
   // cross-check makes every crash ordering self-healing (a stale marker alone never displays,
   // and needs no cleanup pass).
   const queue = readMergeQueue(root);
-  const landings = queue.entries;
-  const landQueue: StatusSnapshot["landQueue"] = {
-    depth: landings.length + queue.unreadable,
+  const merges = queue.entries;
+  const mergeQueue: StatusSnapshot["mergeQueue"] = {
+    depth: merges.length + queue.unreadable,
   };
-  if (landings.length > 0) {
-    landQueue.entries = landings.map((e) => ({
+  if (merges.length > 0) {
+    mergeQueue.entries = merges.map((e) => ({
       role: e.role,
       sha: e.sha,
       run: e.run,
@@ -418,8 +418,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       enqueuedAt: e.enqueuedAt,
     }));
   }
-  const inFlight = queueInFlight(root, landings, running);
-  if (inFlight) landQueue.inFlight = inFlight;
+  const inFlight = queueInFlight(root, merges, running);
+  if (inFlight) mergeQueue.inFlight = inFlight;
   // Quiet hours 2/2 — one parse and one clock read per poll serve both the window string the
   // header badge renders and the in-window boolean the active reading turns on; the value is
   // read fresh from the same cached config load the budget block uses, so a live edit shows
@@ -463,13 +463,13 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     capPaused,
     // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
     // gate folds, over the same event log, so the dashboards show the hold the scheduler
-    // enforces. `landings` is the one land-queue snapshot read above, so in-flight maintenance
-    // landings count once here and in landQueue.
+    // enforces. `merges` is the one merge queue snapshot read above, so in-flight maintenance
+    // merges count once here and in mergeQueue.
     maintenanceQuota: maintenanceQuotaForPoll(
       root,
       cfg.maintenancePerWorkMerge,
       loops,
-      new Set(landings.map((e) => e.role)),
+      new Set(merges.map((e) => e.role)),
       now,
     ),
     // The new-project bootstrap hold (plans/work-ratio.md, part 2/2): the same read-only
@@ -501,7 +501,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     pauseReason: teamPause?.reason,
     quietHours: quiet.window ?? undefined,
     inQuietHours: quiet.inWindow,
-    landQueue,
+    mergeQueue,
     mainCheck: mainCheckForPoll(root, cfg),
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid

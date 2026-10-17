@@ -267,7 +267,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   let trailMode = false;
   let trailCache: string | null = null;
   let trailGen = 0; // bumped at every trail read or reset; a stat resolution applies only to its own gen
-  // Ctrl+N's third step: the viewed loop's collected unlanded change (the CLI's
+  // Ctrl+N's third step: the viewed loop's collected unmerged change (the CLI's
   // `renderRoleChange` text). changeCache is null until the async collector resolves, and the
   // pane paints a loading note meanwhile; both reset on leaving the mode or cycling the view.
   let changeMode = false;
@@ -461,7 +461,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       if (view === roleIds.length + 5) {
         // Pending is the cycle's one async collector: collectTeamChanges awaits git plumbing,
         // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
-        // The durable land queue needs no git plumbing, so read and render it through the CLI's
+        // The durable merge queue needs no git plumbing, so read and render it through the CLI's
         // own pair (`tumwater queue`) UP FRONT: the queue paints on entry, and the git-backed
         // roster is appended below it when the collector resolves, so the three surfaces
         // (CLI, dashboard, TUI) cannot drift on order, age, skips, or wording.

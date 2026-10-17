@@ -15,7 +15,7 @@ import { tickRowCells, type TickRow } from "../../history/history-data.js";
  * same way; an empty `usage` (neither tokens nor cost) and an empty
  * `detail` are omitted rather than leaving a gap. No rows renders `""`, which the pane's
  * `emptyNote` replaces. `row.result` is the string history-data.ts resolved (including a
- * joined landing verdict), never reclassified here. */
+ * joined merge verdict), never reclassified here. */
 export function historyPaneText(rows: readonly TickRow[]): string {
   return rows
     .map((row) => {

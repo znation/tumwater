@@ -76,10 +76,10 @@ test("pendingTableHtml escapes role, branch, and subject text", () => {
   assert.match(html, /x&lt;y/);
 });
 
-// The Merge queue card (pendingQueueHtml): the queued landings the status payload already
+// The Merge queue card (pendingQueueHtml): the queued merges the status payload already
 // carries, painted in execution order like `tumwater queue` — from a pure function of the
 // payload and a fixed `now` so the ages are pinned.
-test("pendingQueueHtml lists each queued landing in order with position, role, tick, short sha, age, and summary", () => {
+test("pendingQueueHtml lists each queued merge in order with position, role, tick, short sha, age, and summary", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
     ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],
@@ -94,7 +94,7 @@ test("pendingQueueHtml lists each queued landing in order with position, role, t
   assert.ok(html.indexOf("1. feature") < html.indexOf("2. bugfix"), "array order is the row order");
 });
 
-test("pendingQueueHtml adds a landing label per row, escaped, and ignores absent labels", () => {
+test("pendingQueueHtml adds a merge label per row, escaped, and ignores absent labels", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown): string }>(
     ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],

@@ -212,7 +212,7 @@ function mergeFailureSection(events: HarnessEvent[]): ClusterSection {
       lastWarning.delete(role);
     } else if (ev.type === "merge_failed") {
       const result = typeof ev.result === "string" ? ev.result : "";
-      // Rejected and review_error landings have their own sections; only a block or a conflict
+      // Rejected and review_error merges have their own sections; only a block or a conflict
       // is unaccounted for here.
       if (result !== "merge_blocked" && result !== "merge_conflict") {
         lastWarning.delete(role);
@@ -228,7 +228,7 @@ function mergeFailureSection(events: HarnessEvent[]): ClusterSection {
 }
 
 /** One role's window metrics, used for the delta row: runs/errors/quiet kills from
- * `run_end`, rejections from `review_rejected` (the landing slot logs it after the tick). */
+ * `run_end`, rejections from `review_rejected` (the merge slot logs it after the tick). */
 interface RoleStats {
   runs: number;
   errors: number;
@@ -241,7 +241,7 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   const statsFor = (role: string): RoleStats =>
     getOrCreate(byRole, role, () => ({ runs: 0, errors: 0, quietKills: 0, rejections: 0 }));
   for (const ev of events) {
-    // Ticks are run_end events; a rejection is now recorded by the landing slot, AFTER the
+    // Ticks are run_end events; a rejection is now recorded by the merge slot, AFTER the
     // authoring tick has already ended `queued` (plans/merge-queue.md 3/5). review_rejected is
     // the one event every reject path logs exactly once (src/review/review.ts), so it — not a
     // run_end result no production path emits — is the rejection source.
@@ -373,7 +373,7 @@ function assembleFailureReport(
   role?: string,
 ): FailureReportData {
   // Scope first when a role was named: every section below derives from these partitions, so
-  // narrowing them at the source scopes outcomes, deltas, clusters, landings, and time/spend at
+  // narrowing them at the source scopes outcomes, deltas, clusters, merges, and time/spend at
   // once. The unfiltered read's first event is kept for the retention line, so a scoped partial
   // window still names when the log starts, not when the scoped role's own first tick does.
   const base = role === undefined ? undefined : baseRoleOf(role);
@@ -438,12 +438,12 @@ function assembleFailureReport(
     );
 
   // Only runs that ENDED as errors carry a tick error: `state.lastError` is shared state the
-  // lander also writes, so a successful tick's `run_end` can carry a leftover landing failure's
+  // merge slot also writes, so a successful tick's `run_end` can carry a leftover merge failure's
   // text (BUGS.md 2026-09-21). `main_red` joins them because its cause is written for that result
   // — the baseline gate's own text (src/baseline/main-red.ts), never a leftover — so the
   // section itemizes the outcome that blocks every merge instead of leaving it a bare count
   // (BUGS.md 2026-09-28). The total therefore equals the Outcome table's error column PLUS its
-  // main_red cells; the render's section title says so, and landing failures still surface below.
+  // main_red cells; the render's section title says so, and merge failures still surface below.
   // The selection predicate is the Outcome table's own — raw `error`/`main_red` results, no
   // error-text test — so a malformed run_end that skipped the text can never be counted above
   // but itemized nowhere: those events cluster under a placeholder cause, keeping the section's
@@ -492,7 +492,7 @@ function assembleFailureReport(
 
   const mergeFailures = mergeFailureSection(current);
 
-  // Landing review failures: a reviewer that could not return a parseable verdict (a dead
+  // Merge review failures: a reviewer that could not return a parseable verdict (a dead
   // backend, a transport error) fails closed and keeps the commit, but its authoring tick ends
   // `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
   // `run_end.error`. Clustered on their own so the telemetry role can see a gate that keeps

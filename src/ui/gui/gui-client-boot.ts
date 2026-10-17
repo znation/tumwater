@@ -262,7 +262,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (drawer && drawer.kind === "loop") renderLoopDrawer(lastStatus); // vocabulary-ok: drawer kind
   }
   let lastEventKey = null;
-  // New events are what move the numbers the other panels show (today's landings, the History
+  // New events are what move the numbers the other panels show (today's merges, the History
   // rows, the open loop's recent ticks), so they refetch on that signal, each throttled.
   function onNewEvents() {
     refreshToday(false);

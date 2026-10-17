@@ -20,7 +20,7 @@ function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<s
       shortSha: (s: string) => String(s).slice(0, 8),
       localizeInstants: (s: string) => s,
       fmtAgo: () => "just now",
-      landingTitle: () => "",
+      mergeTitle: () => "",
       paintPanel: (id: string, html: string) => { panels[id] = html; },
       renderBudgetBadge: () => {},
       renderPauseBadge: () => {},

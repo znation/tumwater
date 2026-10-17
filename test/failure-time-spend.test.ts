@@ -2,7 +2,7 @@
 // out of failure-render.test.ts (2026-10-01) so that file holds the digest's collection,
 // rendering, and CLI-shell tests while this one owns the per-role × outcome-class pricing
 // (src/failure/time-spend.ts, folded in through collectFailureReport) and the "Top loss causes by
-// time" table's semantics: time-first ranking, the queued→landed join, and pooled timeouts.
+// time" table's semantics: time-first ranking, the queued→merged join, and pooled timeouts.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
@@ -67,13 +67,13 @@ test("time and spend folds role × outcome class, pairing old events with run_st
   assert.match(md, /no change on bugfix/);
 });
 
-test("a review-rejected change's authoring hours price into error-class, not landed", () => {
-  // The 2026-09-30 digest bug: a tick ends `queued` when it pins its change, and the landing
+test("a review-rejected change's authoring hours price into error-class, not merged", () => {
+  // The 2026-09-30 digest bug: a tick ends `queued` when it pins its change, and the merge
   // slot rejects that change AFTER the run_end — so the fold that reads only run_ends read
-  // the authoring span into the landed column, contradicting its own contract ("the review
+  // the authoring span into the merged column, contradicting its own contract ("the review
   // gate" is error-class) and never appearing in the loss ranking. The fold now joins each
   // queued run_end through its merge_queued pin to the same-sha merge_done/merge_failed outcome —
-  // history-data's exact join — and prices a rejected landing's authoring span as the loss it
+  // history-data's exact join — and prices a rejected merge's authoring span as the loss it
   // was. The fixture uses the live shape: merge_queued DURING the tick, review_rejected +
   // merge_failed after it, the merge_failed carrying the LANDING's own duration, not the tick's.
   const root = tmpdir();
@@ -84,11 +84,11 @@ test("a review-rejected change's authoring hours price into error-class, not lan
     { ts: at(0, 10), loop: "coverage", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 1.0 },
     { ts: at(0, 11), loop: "coverage", type: "review_rejected", head: head("a"), reasons: ["too big"] },
     { ts: at(0, 12), loop: "coverage", type: "merge_failed", commit: head("a"), result: "rejected", durationMs: 60_000 },
-    // Landed normally: the queued→landed reading survives the join.
+    // Merged normally: the queued→merged reading survives the join.
     { ts: at(0, 9), loop: "feature", type: "merge_queued", commit: head("b"), summary: "land a thing" },
     { ts: at(0, 10), loop: "feature", type: "run_end", run: 1, result: "queued", durationMs: 1_800_000, costUsd: 0.2 },
     { ts: at(0, 12), loop: "feature", type: "merge_done", commit: head("b"), result: "changed", durationMs: 5_000 },
-    // Still in the pipeline (no pin, no outcome yet): the conservative fallback keeps it landed.
+    // Still in the pipeline (no pin, no outcome yet): the conservative fallback keeps it merged.
     { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 600_000, costUsd: 0.1 },
     // A merge conflict also burns the authoring span into error-class — but is no
     // review-rejection loss cause, having no rejection to name.
@@ -98,12 +98,12 @@ test("a review-rejected change's authoring hours price into error-class, not lan
   ]);
   const data = collectFailureReport(root, 1);
   const coverage = data.timeSpend.find((r) => r.role === "coverage");
-  assert.deepEqual(coverage?.classes.error, { runs: 1, ms: 3_600_000, costUsd: 1.0 }, "the authoring span prices as error-class, not the landing's own 60s");
+  assert.deepEqual(coverage?.classes.error, { runs: 1, ms: 3_600_000, costUsd: 1.0 }, "the authoring span prices as error-class, not the merge's own 60s");
   assert.equal(coverage?.classes.merged.runs, 0);
   const feature = data.timeSpend.find((r) => r.role === "feature");
   assert.deepEqual(feature?.classes.merged, { runs: 1, ms: 1_800_000, costUsd: 0.2 }, "a merged change stays merged");
   const bugfix = data.timeSpend.find((r) => r.role === "bugfix");
-  assert.deepEqual(bugfix?.classes.merged, { runs: 1, ms: 600_000, costUsd: 0.1 }, "an unresolved landing keeps the conservative fallback");
+  assert.deepEqual(bugfix?.classes.merged, { runs: 1, ms: 600_000, costUsd: 0.1 }, "an unresolved merge keeps the conservative fallback");
   const organize = data.timeSpend.find((r) => r.role === "organize");
   assert.deepEqual(organize?.classes.error, { runs: 1, ms: 1_200_000, costUsd: 0.3 }, "a merge conflict's authoring span prices as error-class too");
 
@@ -181,7 +181,7 @@ test("a cluster that outlived a config change labels itself with its newest mess
   assert.match(loss?.example ?? "", /^timed out after 900s/, "the loss fold follows the same rule");
 });
 
-test("a review_error landing prices its authoring hours under the matching review_failed cause", () => {
+test("a review_error merge prices its authoring hours under the matching review_failed cause", () => {
   // BUGS.md 2026-10-07: a queued tick whose landing ended `review_error` — the reviewer's own
   // process failed (a timeout, a dead backend, no parseable verdict) and the pin was re-queued —
   // was priced into the error-class cell but owned by no loss cause, because the rejected-only
@@ -200,7 +200,7 @@ test("a review_error landing prices its authoring hours under the matching revie
   assert.deepEqual(
     data.timeSpend.find((r) => r.role === "bugfix")?.classes.error,
     { runs: 1, ms: 3_600_000, costUsd: 0.5 },
-    "the authoring span prices as error-class, not the landing's own 60s",
+    "the authoring span prices as error-class, not the merge's own 60s",
   );
   const loss = data.lossCauses.find((c) => c.roles.includes("bugfix"));
   assert.ok(loss, `the review_error tick owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
@@ -213,13 +213,15 @@ test("a review_error landing prices its authoring hours under the matching revie
   assert.match(md, /timed out after 900s .*\(bugfix\)/, `the loss row names the review failure: ${md}`);
 });
 
-test("a rebased review_error landing prices under its review_failed message, not the placeholder", () => {
-  // BUGS.md 2026-10-10: every vet rebases its pin onto main before the gate (syncPinToMain),
+test("a rebased review_error merge prices under its review_failed message, not the placeholder", () => {
+  // BUGS.md 2026-10-10: every verification rebases its pin onto main before the gate
+  // (syncPinToMain),
   // so `review_failed` records the rebased head while `merge_queued`/`merge_failed` keep the
-  // authored sha. Matching the event on exact sha missed every rebased vet — the common case on
-  // a busy team — and priced the span under the anonymous `(no error text recorded)` placeholder
+  // authored sha. Matching the event on exact sha missed every rebased verification — the common
+  // case on a busy team — and priced the span under the anonymous `(no error text recorded)`
+  // placeholder
   // even though the digest's review-failure section held the message. The arm now keys on the
-  // landing attempt (the claimed pin and its outcome), not the sha.
+  // merge attempt (the claimed pin and its outcome), not the sha.
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
@@ -239,11 +241,11 @@ test("a rebased review_error landing prices under its review_failed message, not
   assert.notEqual(loss?.example, "(no error text recorded)");
 });
 
-test("a rebased review-rejected landing names its reason, not an empty example", () => {
+test("a rebased review-rejected merge names its reason, not an empty example", () => {
   // The sibling of the review_error arm: the same pre-review rebase moves `review_rejected.head`
   // off the authored sha while `merge_queued`/`merge_failed` keep it, so exact-sha equality left
   // the review-rejected cause with no reason. The arm now keys on the claimed pin and its
-  // outcome, the landing attempt. The existing rejected fixture uses head === commit, which
+  // outcome, the merge attempt. The existing rejected fixture uses head === commit, which
   // matches the old filter and hid this.
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
@@ -264,7 +266,7 @@ test("a rebased review-rejected landing names its reason, not an empty example",
 
 test("a main_red tick prices its red-main cause into the loss ranking, not only the error clusters", () => {
   // BUGS.md 2026-10-07: a `main_red` tick is error-class, but the loss fold's CLUSTERED_RESULTS
-  // missed it, so its hours landed in the error-class cell and in the digest's error clusters
+  // missed it, so its hours merged in the error-class cell and in the digest's error clusters
   // while owned by no loss cause and not even counted by lossCausesHidden. Its run_end carries
   // the same verbatim redMainMessage the error-clusters section clusters, so it joins the fold.
   const root = tmpdir();

@@ -72,7 +72,7 @@ export const settle = () => sleep(5);
 export const IDLE = { roleInFlight: 0, directorInFlight: 0 };
 
 /** Drive one episode (green → compile → idle swap) to its completed restart; returns the `now`
- * at which it landed — the cooldown's start for what follows. */
+ * at which it merged — the cooldown's start for what follows. */
 export async function driveToRestart(r: Redeployer, f: ReturnType<typeof fakeDeps>, head: string, startNow: number): Promise<number> {
   let t = startNow;
   assert.equal(await r.poll(head, IDLE, true, t), "hold");

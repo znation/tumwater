@@ -22,7 +22,7 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     for (const ch of "check the clean queue") tui.key(ch, ch);
     tui.key(undefined, "return");
 
-    // The prompt landed in the viewed loop's own queue — verifiable with
+    // The prompt merged in the viewed loop's own queue — verifiable with
     // `tumwater prompt --list --role clean`'s core — and the wake marker names it.
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
     assert.deepEqual(readJson<{ roles: string[] }>(wakeRequestPath(repo)).roles, ["clean"]);

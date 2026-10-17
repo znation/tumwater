@@ -74,12 +74,12 @@ function totalsLine(t: ReportTotals, tail = ""): string {
   return `**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.runs} runs · ${t.commits} commits · ${usd(t.costUsd)}${tail}`;
 }
 
-/** The "of which landing runs …" line under a totals line — one home for the landing share's
- * wording. The caller decides when it prints: zero-means-absent, so a team with no landing
- * spend renders exactly as before (the budget charges the landing slot's runs too, so the
+/** The "of which merge runs …" line under a totals line — one home for the merge share's
+ * wording. The caller decides when it prints: zero-means-absent, so a team with no merge
+ * spend renders exactly as before (the budget charges the merge slot's runs too, so the
  * totals include them — this line says how much of the spend was reviewer + conflict
  * resolution work). */
-function landingShareLine(t: ReportTotals): string {
+function mergeShareLine(t: ReportTotals): string {
   const failed = (t.mergeFailed ?? 0) > 0 ? ` (${t.mergeFailed} failed)` : "";
   return `of which merge runs: ${t.mergeRuns} runs${failed} · ${compactTokens(t.mergeTokens)} tokens · ${usd(t.mergeCostUsd)} (reviewer + conflict resolution)`;
 }
@@ -87,13 +87,13 @@ function landingShareLine(t: ReportTotals): string {
 /** The notional-spend line (plans/agent-backends.md part 6a): the API-equivalent cost of
  * claude.ai subscription runs folded into the window. Never part of the totals' costUsd,
  * because a subscription run is exempt from the daily dollar cap; the caller prints it only
- * when a subscription run actually folded in (zero means absent, like the landing line), so
+ * when a subscription run actually folded in (zero means absent, like the merge line), so
  * an API-only team's report is unchanged. */
 function notionalLine(t: ReportTotals): string {
   return `claude subscription, API-equivalent: ${usd(t.notionalCostUsd ?? 0)} estimated`;
 }
 
-/** The scope note a `--role` report prints: landing runs belong to the landing slot and the
+/** The scope note a `--role` report prints: merge runs belong to the merge slot and the
  * features-done/bugs-fixed tallies come from day-granular backlog-file dates, so neither can
  * be scoped to a role and both are omitted from the scoped totals. Shared by the day and
  * --since renders so the two say the same thing. */
@@ -101,13 +101,13 @@ const ROLE_SCOPE_NOTE =
   "role scope: merge runs and backlog tallies (features done / bugs fixed) are team-wide and omitted";
 
 /** The summary block both report shapes print, in the same order: the totals line (carrying
- * the caller's extra `tail` cells), the landing-share line and the notional line when each is
- * nonzero (zero means absent, so an API-only or landing-free window renders as before), and the
+ * the caller's extra `tail` cells), the merge-share line and the notional line when each is
+ * nonzero (zero means absent, so an API-only or merge-free window renders as before), and the
  * role-scope note when the report is scoped. One home so the day report and the --since window
  * cannot drift on the order, the omission predicates, or the scope note. */
 function pushReportSummary(lines: string[], t: ReportTotals, tail = "", scoped = false): void {
   lines.push(totalsLine(t, tail));
-  if (t.mergeRuns > 0) lines.push(landingShareLine(t));
+  if (t.mergeRuns > 0) lines.push(mergeShareLine(t));
   if ((t.notionalCostUsd ?? 0) > 0) lines.push(notionalLine(t));
   if (scoped) lines.push(ROLE_SCOPE_NOTE);
 }
@@ -149,25 +149,25 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   lines.push(rankedRoleLine("Rejections by role", rankedRoleMap(data.rejectionsByRole).filter(([, r]) => r > 0), String));
   lines.push(rankedRoleLine("Revisions by role", rankedRoleMap(data.revisionsByRole).filter(([, r]) => r > 0), String));
   // The same breakdown for outright failures: error-class run_ends per role under the
-  // digest's OUTCOME_CLASS — the ticks that burned agent time and landed nothing without
+  // digest's OUTCOME_CLASS — the ticks that burned agent time and merged nothing without
   // going through review, which rejections/revisions would miss entirely. A window with
   // none renders "-" like the other lines.
   lines.push(rankedRoleLine("Failed runs by role", rankedRoleMap(data.failedRunsByRole).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Fallbacks by role", rankedRoleMap(data.fallbacksByRole).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Image reroutes by role", rankedRoleMap(data.imageReroutesByRole).filter(([, n]) => n > 0), String));
-  // The landed-commits split by base role, matching the day render's unfiltered line: the
+  // The merged-commits split by base role, matching the day render's unfiltered line: the
   // window's totals.commits carries the count; this line says which role's commits it was.
   lines.push(rankedRoleLine("Commits by role", rankedRoleMap(data.commitsByRole), String));
-  // The landed-outcomes split by base role, mirroring the day render's line: which roles'
+  // The merged-outcomes split by base role, mirroring the day render's line: which roles'
   // changes reach main and which bounce off the gate (merge_failed). Gated to the team
-  // report — a role-scoped window omits landing (ROLE_SCOPE_NOTE), so the per-role
+  // report — a role-scoped window omits merge (ROLE_SCOPE_NOTE), so the per-role
   // attribution would contradict it. Zero-means-absent: the failures line prints only when
-  // some role has one; a landing-free window renders `-` like the other lines.
+  // some role has one; a merge-free window renders `-` like the other lines.
   if (data.role === undefined) {
     lines.push(rankedRoleLine("Merged by role", rankedRoleMap(data.mergedByRole), String));
-    const landingFailures = rankedRoleMap(data.mergeFailedByRole).filter(([, n]) => n > 0);
-    if (landingFailures.length > 0)
-      lines.push(rankedRoleLine("Merge failures by role", landingFailures, String));
+    const mergeFailures = rankedRoleMap(data.mergeFailedByRole).filter(([, n]) => n > 0);
+    if (mergeFailures.length > 0)
+      lines.push(rankedRoleLine("Merge failures by role", mergeFailures, String));
   }
   // Subscription spend is notional: its own line, only when the window has any — the same
   // conditional/filtered `usd` form the day render's "Estimated by role" uses.
@@ -188,39 +188,39 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   return lines.join("\n");
 }
 
-/** Cost per landed commit by base role. Spend comes from costByRole (keyed by loop id, folded to
+/** Cost per merged commit by base role. Spend comes from costByRole (keyed by loop id, folded to
  * its base role so `feature-2` joins `feature`), commits from commitsByRole (already base-role
- * keyed). `landed` is [role, cost per commit, commits] for roles with both, ranked by cost per
- * commit desc then name asc; `idle` is roles that spent and landed nothing, ranked by spend.
- * Landing spend (the reviewer's) and notional subscription spend stay out by default, matching
+ * keyed). `merged` is [role, cost per commit, commits] for roles with both, ranked by cost per
+ * commit desc then name asc; `idle` is roles that spent and merged nothing, ranked by spend.
+ * Merge spend (the reviewer's) and notional subscription spend stay out by default, matching
  * `**Cost by role:**` (`pick` selects another per-loop-id spend map, e.g. notionalByRole); a
  * role with commits but no spend in the picked map appears in neither list. */
 function costPerCommitPairs(
   series: ReportDay[],
   pick: (d: ReportDay) => Record<string, number> = (d) => d.costByRole,
-): { landed: [string, number, number][]; idle: [string, number][] } {
+): { mergeDone: [string, number, number][]; idle: [string, number][] } {
   const cost: Record<string, number> = {};
   const commits: Record<string, number> = {};
   for (const d of series) {
     for (const [id, c] of Object.entries(pick(d))) addTo(cost, baseRoleOf(id), c);
     for (const [role, n] of Object.entries(d.commitsByRole ?? {})) addTo(commits, role, n);
   }
-  const landed: [string, number, number][] = [];
+  const mergeDone: [string, number, number][] = [];
   const idleCost: [string, number][] = [];
   for (const [role, c] of Object.entries(cost)) {
     if (c <= 0) continue;
     const n = commits[role] ?? 0;
-    if (n > 0) landed.push([role, c / n, n]);
+    if (n > 0) mergeDone.push([role, c / n, n]);
     else idleCost.push([role, c]);
   }
-  landed.sort((a, b) => b[1] - a[1] || compareCodeUnits(a[0], b[0]));
-  return { landed, idle: rankCountEntries(idleCost) };
+  mergeDone.sort((a, b) => b[1] - a[1] || compareCodeUnits(a[0], b[0]));
+  return { mergeDone, idle: rankCountEntries(idleCost) };
 }
 
 /** One `**<label>:** …` line from costPerCommitPairs output; `-` when there is nothing. */
 function costPerCommitLine(label: string, pairs: ReturnType<typeof costPerCommitPairs>): string {
   const parts = [
-    ...pairs.landed.map(([r, per, n]) => `${r} — ${usd(per)} (${n})`),
+    ...pairs.mergeDone.map(([r, per, n]) => `${r} — ${usd(per)} (${n})`),
     ...pairs.idle.map(([r, c]) => `${r} — ${usd(c)}, no commits`),
   ];
   return `**${label}:** ${parts.length === 0 ? "-" : parts.join(" · ")}`;
@@ -269,7 +269,7 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push(rankedRoleLine("Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0), usd));
   // The same breakdown per PROVIDER (plans: per-provider spend): which seam of a mixed team
   // spent what, straight from the events' providerCost maps (run_end's own runs and the
-  // landing's reviewer seam). Gated to the team report — a provider is not a role, so a
+  // merge's reviewer seam). Gated to the team report — a provider is not a role, so a
   // role-scoped report omits it (ROLE_SCOPE_NOTE covers the omission). Zero-means-absent: a
   // window with no provider spend prints no line. Ranked and formatted exactly like Cost by
   // role.
@@ -285,28 +285,28 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push(rankedRoleLine("Rejections by role", rankedRoleTotals(data.series, (d) => d.rejectionsByRole ?? {}).filter(([, r]) => r > 0), String));
   lines.push(rankedRoleLine("Revisions by role", rankedRoleTotals(data.series, (d) => d.revisionsByRole ?? {}).filter(([, r]) => r > 0), String));
   // The same breakdown for outright failures: error-class run_ends per role under the
-  // digest's OUTCOME_CLASS — ticks that burned agent time and landed nothing without going
+  // digest's OUTCOME_CLASS — ticks that burned agent time and merged nothing without going
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a
   // failure-free window renders no line and an all-zero window renders "-" like the others.
   lines.push(rankedRoleLine("Failed runs by role", rankedRoleTotals(data.series, (d) => d.failedRunsByRole ?? {}).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Fallbacks by role", rankedRoleTotals(data.series, (d) => d.fallbacksByRole ?? {}).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Image reroutes by role", rankedRoleTotals(data.series, (d) => d.imageReroutesByRole ?? {}).filter(([, n]) => n > 0), String));
-  // Work ratio 4/4: the landed commits split by base role and by tier. The totals line's
+  // Work ratio 4/4: the merged commits split by base role and by tier. The totals line's
   // `commits` carries the count; these lines say who made it and how much of it was work.
   lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
-  // The landed-outcomes split by base role: which authoring roles' changes reach main through
-  // the landing slot, and — the new signal — which roles' changes bounce off the gate (a
+  // The merged-outcomes split by base role: which authoring roles' changes reach main through
+  // the merge slot, and — the new signal — which roles' changes bounce off the gate (a
   // merge_failed: review rejection, under-cap review, a conflict, a blocked fast-forward, a
-  // shutdown abort). Gated to the team report — a role-scoped report omits landing runs
-  // (they are the landing slot's, per ROLE_SCOPE_NOTE), so the per-role attribution would
-  // contradict that stance. Zero-means-absent: a window with landings renders Merged by role;
+  // shutdown abort). Gated to the team report — a role-scoped report omits merge runs
+  // (they are the merge slot's, per ROLE_SCOPE_NOTE), so the per-role attribution would
+  // contradict that stance. Zero-means-absent: a window with merges renders Merged by role;
   // the failures line prints only when some role actually has one.
   if (data.role === undefined) {
-    const landed = rankedRoleTotals(data.series, (d) => d.mergedByRole ?? {});
-    lines.push(rankedRoleLine("Merged by role", landed, String));
-    const landingFailures = rankedRoleTotals(data.series, (d) => d.mergeFailedByRole ?? {}).filter(([, n]) => n > 0);
-    if (landingFailures.length > 0)
-      lines.push(rankedRoleLine("Merge failures by role", landingFailures, String));
+    const mergeDone = rankedRoleTotals(data.series, (d) => d.mergedByRole ?? {});
+    lines.push(rankedRoleLine("Merged by role", mergeDone, String));
+    const mergeFailures = rankedRoleTotals(data.series, (d) => d.mergeFailedByRole ?? {}).filter(([, n]) => n > 0);
+    if (mergeFailures.length > 0)
+      lines.push(rankedRoleLine("Merge failures by role", mergeFailures, String));
     // Per-day median passing check time, so a suite slowing over days shows; days without a
     // check are left out, and no line prints when no day has one (zero means absent).
     const medians = data.series.flatMap((d) =>

@@ -37,7 +37,7 @@ export function readyRepo(): string {
  * prints a canned launchservicesd port row. The CLI's probes must never read the host here:
  * the orphan scan's real table could carry a PPID-1 carrier of a dead run's mark anywhere on
  * the machine (a leak; they have happened, see the sweep entries in Fixed), flipping doctor's
- * exit to 1 and failing every landing's build check while the failure names an unrelated
+ * exit to 1 and failing every merge's build check while the failure names an unrelated
  * commit (found 2026-09-30); and the port check's live `top -l 1` sample can time out under
  * load in one invocation and not the other, so the plain and --json renders of the same
  * fixture disagree (found 2026-10-07). The tests assert the marker files exist, so a revert

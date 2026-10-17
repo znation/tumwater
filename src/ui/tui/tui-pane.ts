@@ -104,7 +104,7 @@ export function paneBody(
         emptyNote: "(nothing to inspect yet)",
       };
     }
-    // The change view (the second Ctrl+N step) windows the collected unlanded-change text the
+    // The change view (the second Ctrl+N step) windows the collected unmerged-change text the
     // same way; its async collector leaves the cache null for the first frames, so the pane
     // paints the loading note rather than entryBodyWindow's "no details" placeholder.
     if (pane.change) {

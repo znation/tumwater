@@ -9,13 +9,13 @@ import type { TickResult } from "../tick/tick-outcome.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
-import { resolveQueuedResult, bucketLandingEvents } from "../history/history-data.js";
+import { resolveQueuedResult, bucketMergeEvents } from "../history/history-data.js";
 import { nonNegativeNumber, stringList } from "../files/json-object.js";
 import { getOrCreate, groupBy, rankByCount } from "../collections.js";
 
 /** How the Outcome table's results collapse for costing:
  * "merged" made progress, "no_change" spent a tick and merged nothing, and every remaining
- * result is "error-class" — it burned agent time without landing, whether the cause was a
+ * result is "error-class" — it burned agent time without merge, whether the cause was a
  * hard failure or the review gate. Typed as a full Record so a result added to
  * src/tick/tick-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
  * src/failure/failure-render.ts. */
@@ -55,8 +55,8 @@ export interface TimeSpendRow {
 
 /** One ranked loss cause: an error cluster — the digest's
  * own clustering, applied to the runs that burned time — a role's total "no_change" spend,
- * the quiet loss no cluster names, or a role's total authoring spend on changes the landing
- * gate rejected (BUGS.md 2026-09-30), or a landing that failed to merge (BUGS.md 2026-10-10).
+ * the quiet loss no cluster names, or a role's total authoring spend on changes the merge
+ * gate rejected (BUGS.md 2026-09-30), or a merge that failed (BUGS.md 2026-10-10).
  * `example` is the newest verbatim occurrence for a cluster (the one at lastSeen, BUGS.md
  * 2026-09-30), a review-rejected cause's newest rejection reason, a refused cause's newest
  * refusal summary (the deliberate objection that blocks the entry), the shared no-text
@@ -82,7 +82,7 @@ const LOSS_TOP = 5;
 /** The raw results whose loss attributes to a cluster — an error, an abort, a quiet kill, or
  * a red-main skip, each carrying its own message on the run_end (main_red's is the
  * redMainMessage the error-clusters section already itemizes, BUGS.md 2026-10-07). A queued
- * tick's landing outcomes are owned by the joins below instead: review_error through its
+ * tick's merge outcomes are owned by the joins below instead: review_error through its
  * matching `review_failed` message, review-rejected through its review reasons, and
  * merge_conflict/merge_blocked by the result itself (BUGS.md 2026-10-10). (A raw
  * `user_aborted` run_end is also error-class but is not in this set, so it stays out of the
@@ -100,18 +100,18 @@ interface LossDraft {
   costUsd: number;
 }
 
-/** A queued tick's resolved landing outcome — the pin/outcome pair `resolveQueuedResult`
+/** A queued tick's resolved merge outcome — the pin/outcome pair `resolveQueuedResult`
  * returns, used as the attempt window an event must fall inside to belong to it. */
-type ResolvedLanding = NonNullable<ReturnType<typeof resolveQueuedResult>>;
+type ResolvedMerge = NonNullable<ReturnType<typeof resolveQueuedResult>>;
 
-/** The newest event for `role` inside a landing attempt's pin→outcome window — the attempt no
+/** The newest event for `role` inside a merge attempt's pin→outcome window — the attempt no
  * other can occupy. Shared by the review-rejected and review_error cause joins, so the two
  * agree on which event belongs to the attempt (BUGS.md 2026-10-10: the window, not the pin's
- * sha, is the match, since every vet rebases its pin before the gate). */
+ * sha, is the match, since every verification rebases its pin before the gate). */
 function newestAttemptEvent(
   eventsByLoop: Map<string, HarnessEvent[]>,
   role: string,
-  attempt: ResolvedLanding,
+  attempt: ResolvedMerge,
 ): HarnessEvent | undefined {
   return (eventsByLoop.get(role) ?? [])
     .filter((e) => e.ts >= attempt.pin.ts && e.ts <= attempt.outcome.ts)
@@ -142,12 +142,12 @@ function tally(target: { runs: number; ms: number; costUsd: number }, durationMs
 
 /** Fold the window's run_ends into the time-and-spend table and the loss ranking. Pairing
  * runs over BOTH windows' events (the caller passes the whole read), so a tick that opened
- * in the preceding day and ended in the current one still gets its span. The landing-outcome
+ * in the preceding day and ended in the current one still gets its span. The merge-outcome
  * join runs over that same whole read too (BUGS.md 2026-09-30): a queued run_end resolves
  * through its own merge_queued pin to the later merge_done/merge_failed outcome for the same
- * loop+sha — history-data.ts's exact join — so an authoring tick whose landing was rejected
+ * loop+sha — history-data.ts's exact join — so an authoring tick whose merge was rejected
  * prices into the error-class cell its contract names instead of the merged cell its
- * transient queued result suggested. A landing still in the pipeline, or an outcome event
+ * transient queued result suggested. A merge still in the pipeline, or an outcome event
  * matching no pin, keeps the queued→merged reading: the conservative fallback. */
 export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   timeSpend: TimeSpendRow[];
@@ -160,14 +160,14 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   const emptyCell = (): SpendCell => ({ runs: 0, ms: 0, costUsd: 0 });
   const byRole = new Map<string, Record<"merged" | "no_change" | "error", SpendCell>>();
   const losses = new Map<string, LossDraft>();
-  // The landing evidence rides history-data.ts's bucketLandingEvents — the same buckets
+  // The merge evidence rides history-data.ts's bucketMergeEvents — the same buckets
   // history's rows read — so the digest's join cannot drift from the rows' join.
-  const { landQueuedByLoop, outcomeByLoop } = bucketLandingEvents(allEvents);
+  const { mergeQueuedByLoop, outcomeByLoop } = bucketMergeEvents(allEvents);
   const rejectedByLoop = groupBy(
     allEvents.filter((e) => e.type === "review_rejected"),
     (e) => e.source,
   );
-  // A review_error landing kept its pin but left no message on its own merge_failed; the
+  // A review_error merge kept its pin but left no message on its own merge_failed; the
   // matching review_failed event for the same loop+sha carries it, so the span prices under
   // the same cluster key the digest's review-failure section already counts.
   const reviewFailedByLoop = groupBy(
@@ -188,17 +188,17 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the
   // history rows. tickEvents is oldest-first, hence the backward walk.
   const claimTop = new Map<string, number>();
-  const resolved = new Map<HarnessEvent, ResolvedLanding>();
+  const resolved = new Map<HarnessEvent, ResolvedMerge>();
   for (let i = tickEvents.length - 1; i >= 0; i--) {
     const ev = tickEvents[i]!;
     if (ev.result !== "queued") continue;
-    const joined = resolveQueuedResult(ev, landQueuedByLoop, outcomeByLoop, claimTop, new Map(), null);
+    const joined = resolveQueuedResult(ev, mergeQueuedByLoop, outcomeByLoop, claimTop, new Map(), null);
     if (joined !== null) resolved.set(ev, joined);
   }
   for (const ev of tickEvents) {
     let cls = OUTCOME_CLASS[ev.result as TickResult];
     if (cls === undefined) continue; // An unknown result is tallied in the Outcome table; costing it would need a class first.
-    let resolvedOutcome: ResolvedLanding | null = null;
+    let resolvedOutcome: ResolvedMerge | null = null;
     if (ev.result === "queued") {
       resolvedOutcome = resolved.get(ev) ?? null;
       if (resolvedOutcome) {
@@ -217,9 +217,9 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     tally(row[cls], durationMs, usage);
 
     // Loss causes: a clustered failure's cluster owns its time, a no_change's role does, and
-    // a landing-gate rejection prices its authoring span under a per-role cause of its own —
+    // a merge-gate rejection prices its authoring span under a per-role cause of its own —
     // unrepresentable as an error cluster, since the merge_failed event carries no message;
-    // the example is the matching review_rejected's first reason, matched by landing attempt.
+    // the example is the matching review_rejected's first reason, matched by merge attempt.
     let key: string | null = null;
     let kind: LossDraft["kind"] = "error-cluster";
     let example = "";
@@ -247,7 +247,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     } else if (ev.result === "queued" && resolvedOutcome?.result === "rejected") {
       key = `review-rejected\u0000${role}`;
       kind = "review-rejected";
-      // Match the landing ATTEMPT, not the pin's sha: every vet rebases its pin onto main
+      // Match the merge ATTEMPT, not the pin's sha: every verification rebases its pin onto main
       // before the gate (syncPinToMain), so `review_rejected.head` is the rebased commit while
       // `merge_queued` keeps the authored one — exact-sha equality names no reason for a rebased
       // rejection (BUGS.md 2026-10-10). The rejection for this attempt is the one inside the
@@ -261,10 +261,10 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // message the review-failure section already clusters. Price the authoring span under
       // that cluster's key — a review timeout pools into the shared `timed out after <dur>`
       // cause via poolTimeoutKey — and fall back to the shared placeholder when no event is
-      // visible, so the span is itemized rather than hidden. The match keys on the landing
-      // ATTEMPT, not the pin's sha: every vet rebases its pin onto main before the gate
+      // visible, so the span is itemized rather than hidden. The match keys on the merge
+      // ATTEMPT, not the pin's sha: every verification rebases its pin onto main before the gate
       // (syncPinToMain), so `review_failed.head` is the rebased commit while `merge_queued`
-      // keeps the authored one — exact-sha equality missed every rebased vet (BUGS.md
+      // keeps the authored one — exact-sha equality missed every rebased verification (BUGS.md
       // 2026-10-10). The review failure for this attempt is the one that falls inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
       const failed = newestAttemptEvent(reviewFailedByLoop, role, resolvedOutcome);
@@ -275,7 +275,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       ev.result === "queued" &&
       (resolvedOutcome?.result === "merge_conflict" || resolvedOutcome?.result === "merge_blocked")
     ) {
-      // The landing failed to merge (a conflict, or a blocked fast-forward/rebase): this
+      // The merge failed to merge (a conflict, or a blocked fast-forward/rebase): this
       // authoring span burned. The `merge_failed` event carries no message — writeMergeOutcome
       // logs only result/commit/durationMs/usage — so the cause is named by its own result and
       // takes the shared no-text placeholder, the same fallback a message-less aborted run_end

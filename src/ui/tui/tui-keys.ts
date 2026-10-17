@@ -111,7 +111,7 @@ interface TuiKeysState {
    * entry and windowed by paneBody; null while the rows are shown or when the newest
    * completed tick could not be read. */
   trailCache: string | null;
-  /** Whether the viewed loop's pane shows the collected unlanded change (the second Ctrl+N
+  /** Whether the viewed loop's pane shows the collected unmerged change (the second Ctrl+N
    * step) instead of the transcript — true only on a transcript view. */
   changeMode: boolean;
   /** The change view's rendered text (renderRoleChange), null until its async collector

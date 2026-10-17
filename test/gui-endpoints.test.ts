@@ -377,7 +377,7 @@ test("handleLogs serves the matched tail oldest-first as feed items, composing g
     tail.map(eventFeedItem),
     "statusPayload's eventItems come from the same eventFeedItem projection",
   );
-  // role is a filter and composes with grep: the landed failure is bugfix, so role=feature
+  // role is a filter and composes with grep: the merged failure is bugfix, so role=feature
   // drops it.
   const composed = await serveLogs(root, "?grep=land&role=feature");
   assert.deepEqual((composed.data as { events: unknown[] }).events, []);

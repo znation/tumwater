@@ -79,7 +79,7 @@ test("truncateExample never leaves a lone surrogate when the budget splits an as
   assert.equal(out, `${"x".repeat(EXAMPLE_MAX - 1)} … (+12 chars)`);
 });
 
-test("truncateExample honors a caller's own cap, as the landed summaries do", () => {
+test("truncateExample honors a caller's own cap, as the merged summaries do", () => {
   const message = "alpha beta gamma delta";
   const out = truncateExample(message, 10);
   // The 10-char head is "alpha beta"; the last space inside it is after "alpha", so the cut

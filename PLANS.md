@@ -5,45 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Plain terms code merge, part 10/11: Rename the merge identifiers in the status and dashboard and TUI and report and history and failure modules (planned 2026-10-16 by user; requires part 9/11 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/status/ src/report/ src/history/ src/failure/ src/gui/ and their tests)
-
-**Goal.** The presentation and reporting modules' merge-related identifiers say merge, including the dashboard's browser code. So do their comments and test names. A mechanical rename of about 540 lines with no behavior change.
-
-**Approach.**
-- **Rename rule**, as in this series:
-  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`;
-  - a bare `landed` → `mergeDone`, and `Landed` inside a name that counts or carries the old `landed` event → `MergeDone`;
-  - comments, test names and assertion messages follow the Glossary;
-  - comment lines wrap at 100 columns.
-- **Renames:**
-  - ui/status-model.ts: `landingForRole` → `mergeForRole`, `LandingCell` → `MergeCell`, local `landing` → `merge`.
-  - ui/status-render.ts: `lastLandedCell` → `lastMergedCell` (it renders `lastMergedAt`, so `Merged`).
-  - status/status-polls.ts: `liveLandingMarker` → `liveMergeMarker`, local `landed` → `mergeDone`.
-  - history/history-data.ts: `bucketLandingEvents` → `bucketMergeEvents`, and the member `landQueuedByLoop` → `mergeQueuedByLoop`. Rename both at every use, including src/tick/tick-detail-data.ts, src/failure/time-spend.ts and src/cli.ts.
-  - failure/failure-data.ts: `LANDED_TOP` → `MERGE_DONE_TOP`, `LandedCommit` → `MergeDoneCommit`, `allLanded` → `allMergeDone`.
-  - failure/time-spend.ts: `ResolvedLanding` → `ResolvedMerge`.
-  - report/report-data.ts: `zeroLandingCounts` → `zeroMergeCounts`.
-  - report/report-render.ts: `landingShareLine` → `mergeShareLine`, `landingFailures` → `mergeFailures`.
-  - ui/badges.ts: `landingBadge` → `mergeBadge`, if the scripting series left the function's name.
-  - Test locals: `landedRow`, `landedBefore`, `landedAfter`, `landedBeforeCommit`, `landedAfterCommit` and `landedFailed` → `mergeDone…`.
-- **Browser code.** The dashboard's browser code in `String.raw` templates is not typechecked: `landingSummary` → `mergeSummary` (gui-client-drawer.ts and gui-client-loops.ts) and the test scope stub `landingTitle` → `mergeTitle`. Grep src/ui/gui/ and test/ for each one, scope stubs and expected call logs included.
-- **Serialized fields.** `report --failures --json` and `/api/failures` serialize `landed`, `landedTotal` and the `landed` time class, so they belong to the scripting series. If any is still present, rename it by "Script interfaces" (`landed` → `merged`, `landedTotal` → `mergedTotal`; decision 3 allows the break) and say so in the commit body.
-- **Move off the aliases.** These files still use aliases from parts 2–6, such as `readMergeQueue`, `renderMergeQueue`, `queueEntryMergeLabel`, `MergeInFlight`, `MERGE_STAGE_LABELS`, `isMergeChange`, `MergeChange`, `mergeStatePath`, `RETRIABLE_MERGE_RESULTS` and `applyMergeOutcome`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
-- **docs/invariants.md:** `LANDED_TOP` and `landedTotal`. Also update the quoted test names "… price into error-class, not landed" and "a landed list over the newest-10 cap …" when this part renames those tests.
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-- Skip any name that an earlier series already renamed.
-
-**Files touched.** `src/ui/` (status-model.ts, status-render.ts, status-payload.ts, badges.ts, progress-data.ts, tone.ts, gui/*.ts, tui/*.ts), `src/status/`, `src/report/`, `src/history/`, `src/failure/`, `src/gui/`; the `landQueuedByLoop` uses in `src/tick/tick-detail-data.ts` and `src/cli.ts`. Tests: `test/gui*.test.ts`, `test/tui*.test.ts`, `test/status*.test.ts`, `test/report*.test.ts`, `test/history*.test.ts`, `test/failure*.test.ts`, `test/time-spend.test.ts`, `test/badges.test.ts`, `test/progress.test.ts`. Docs: docs/invariants.md.
-
-**Acceptance criteria.**
-- `git grep -nE 'landingForRole|lastLandedCell|liveLandingMarker|bucketLandingEvents|landQueuedByLoop|LANDED_TOP|LandedCommit|ResolvedLanding|landingSummary|landingTitle' -- src test docs` prints nothing.
-- In the listed directories, no identifier, comment or test name uses a retired merge word, except quoted backlog titles and legacy names.
-- The dashboard client tests that exercise the drawer and the roles table pass with `mergeSummary`.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 11/11: Finish the merge rename and add the merge family to the retired-names guard (planned 2026-10-16 by user; requires part 10/11 landed; design in plans/terminology.md "Code names" and "Guards"; touches the remaining src/ and test/ files and test/retired-names.test.ts)
 
 **Goal.** No identifier, file name, comment or test name in src/ or test/ uses landing, land, lander or vet. No deprecated alias of the family remains, and test/retired-names.test.ts fails if one comes back.
@@ -1311,6 +1272,47 @@ number printed beside a match is the one `--show <n> --done` / `--show <n> --ans
 - `tumwater help plan`, `help bug`, and `help questions` mention `--grep` (asserted in the
   existing "help topics name the --list forms" test or a new one).
 - `npm run test` passes.
+
+### Plain terms code merge, part 10/11: Rename the merge identifiers in the status and dashboard and TUI and report and history and failure modules (planned 2026-10-16 by user; requires part 9/11 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/status/ src/report/ src/history/ src/failure/ src/gui/ and their tests, done 2026-10-17)
+
+**Goal.** The presentation and reporting modules' merge-related identifiers say merge, including the dashboard's browser code. So do their comments and test names. A mechanical rename of about 540 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`;
+  - a bare `landed` → `mergeDone`, and `Landed` inside a name that counts or carries the old `landed` event → `MergeDone`;
+  - comments, test names and assertion messages follow the Glossary;
+  - comment lines wrap at 100 columns.
+- **Renames:**
+  - ui/status-model.ts: `landingForRole` → `mergeForRole`, `LandingCell` → `MergeCell`, local `landing` → `merge`.
+  - ui/status-render.ts: `lastLandedCell` → `lastMergedCell` (it renders `lastMergedAt`, so `Merged`).
+  - status/status-polls.ts: `liveLandingMarker` → `liveMergeMarker`, local `landed` → `mergeDone`.
+  - history/history-data.ts: `bucketLandingEvents` → `bucketMergeEvents`, and the member `landQueuedByLoop` → `mergeQueuedByLoop`. Rename both at every use, including src/tick/tick-detail-data.ts, src/failure/time-spend.ts and src/cli.ts.
+  - failure/failure-data.ts: `LANDED_TOP` → `MERGE_DONE_TOP`, `LandedCommit` → `MergeDoneCommit`, `allLanded` → `allMergeDone`.
+  - failure/time-spend.ts: `ResolvedLanding` → `ResolvedMerge`.
+  - report/report-data.ts: `zeroLandingCounts` → `zeroMergeCounts`.
+  - report/report-render.ts: `landingShareLine` → `mergeShareLine`, `landingFailures` → `mergeFailures`.
+  - ui/badges.ts: `landingBadge` → `mergeBadge`, if the scripting series left the function's name.
+  - Test locals: `landedRow`, `landedBefore`, `landedAfter`, `landedBeforeCommit`, `landedAfterCommit` and `landedFailed` → `mergeDone…`.
+- **Browser code.** The dashboard's browser code in `String.raw` templates is not typechecked: `landingSummary` → `mergeSummary` (gui-client-drawer.ts and gui-client-loops.ts) and the test scope stub `landingTitle` → `mergeTitle`. Grep src/ui/gui/ and test/ for each one, scope stubs and expected call logs included.
+- **Serialized fields.** `report --failures --json` and `/api/failures` serialize `landed`, `landedTotal` and the `landed` time class, so they belong to the scripting series. If any is still present, rename it by "Script interfaces" (`landed` → `merged`, `landedTotal` → `mergedTotal`; decision 3 allows the break) and say so in the commit body.
+- **Move off the aliases.** These files still use aliases from parts 2–6, such as `readMergeQueue`, `renderMergeQueue`, `queueEntryMergeLabel`, `MergeInFlight`, `MERGE_STAGE_LABELS`, `isMergeChange`, `MergeChange`, `mergeStatePath`, `RETRIABLE_MERGE_RESULTS` and `applyMergeOutcome`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
+- **docs/invariants.md:** `LANDED_TOP` and `landedTotal`. Also update the quoted test names "… price into error-class, not landed" and "a landed list over the newest-10 cap …" when this part renames those tests.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/ui/` (status-model.ts, status-render.ts, status-payload.ts, badges.ts, progress-data.ts, tone.ts, gui/*.ts, tui/*.ts), `src/status/`, `src/report/`, `src/history/`, `src/failure/`, `src/gui/`; the `landQueuedByLoop` uses in `src/tick/tick-detail-data.ts` and `src/cli.ts`. Tests: `test/gui*.test.ts`, `test/tui*.test.ts`, `test/status*.test.ts`, `test/report*.test.ts`, `test/history*.test.ts`, `test/failure*.test.ts`, `test/time-spend.test.ts`, `test/badges.test.ts`, `test/progress.test.ts`. Docs: docs/invariants.md.
+
+**Acceptance criteria.**
+- `git grep -nE 'landingForRole|lastLandedCell|liveLandingMarker|bucketLandingEvents|landQueuedByLoop|LANDED_TOP|LandedCommit|ResolvedLanding|landingSummary|landingTitle' -- src test docs` prints nothing.
+- In the listed directories, no identifier, comment or test name uses a retired merge word, except quoted backlog titles and legacy names.
+- The dashboard client tests that exercise the drawer and the roles table pass with `mergeSummary`.
+- `npm run test` passes.
+
+**Done notes.** Also renamed the status snapshot field `landQueue` → `mergeQueue` (and its fixtures); internal phase/EventKind keys marked `vocabulary-ok` (`landing`, `vetted`), the user-visible "Landed today" tile and "No unlanded work." text, the `lander` event loop id and the retired-key lists in test/script-keys.test.ts and test/status-payload.test.ts were left. No serialized `landed`/`landedTotal` field remained to rename.
 
 ### `tumwater report` shows each day's median merge wait, from a merge's enqueue to its commit on main (planned 2026-10-17 by the plan role) — done 2026-10-17
 

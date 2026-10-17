@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The dashboard's loops table, browser-side — the team's rows grouped by what the loops are
- * doing (working, landing, needs-attention, paused, idle), each with its status pill, current
+ * doing (working, merge, needs-attention, paused, idle), each with its status pill, current
  * work, spend, and per-row operator controls (prompt, wake, pause/resume, and the two-click
  * abort), patched cell by cell so a ticking row keeps focus and hover. renderLoops repaints it
  * from each /api/status poll; renderTeam (gui-client-team.ts) calls it. Spliced into
@@ -98,7 +98,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const slowed = / ×(\d+)$/.exec(raw);
     const next = slowed ? raw.slice(0, slowed.index) : raw;
     const backoff = next.startsWith("sleeping ") ? "sleeping — next check in " + next.slice(9) : "";
-    // A yield-scaled clock: the loop's recent ticks landed nothing, so it ticks less often.
+    // A yield-scaled clock: the loop's recent ticks merged nothing, so it ticks less often.
     const note = slowed ? " · slowed ×" + slowed[1] + ", nothing merged lately" : "";
     // The consecutive no-change streak (status-payload noChangeStreak, mirrored from
     // status-model loopPhase's · no change ×N suffix): how many completed ticks in a row
@@ -130,9 +130,9 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const status = pill(info) + (detail ? "<div class='sub" + (stalled ? " t-red" : "") + "' title='" + esc(l.phase) + "'>" + esc(detail) + "</div>" : "");
     let activity;
     if (info.live || info.key === "vetted") { // vocabulary-ok: internal phase key
-      // Parallel work instances, part 6/7: while idle or landing, show the entry the instance
-      // claimed before the landing summary placeholder.
-      const text = l.currentWork || l.claim || landingSummary(d, l.role);
+      // Parallel work instances, part 6/7: while idle or merge, show the entry the instance
+      // claimed before the merge summary placeholder.
+      const text = l.currentWork || l.claim || mergeSummary(d, l.role);
       const pending = info.key === "working" ? "Starting up…" : info.key === "reviewing" ? "Reviewing the change…" : "Merging the change…";
       activity = text ? "<div class='now clamp2' title='" + esc(text) + "'>" + esc(text) + "</div>" : "<div class='muted'>" + pending + "</div>";
     } else if (l.claim) {

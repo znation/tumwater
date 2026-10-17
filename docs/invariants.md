@@ -219,7 +219,7 @@ names no rejection and is not invented as one.
 (`collectFailureReport`).
 
 **Pinned by.** `test/failure-time-spend.test.ts` — "a review-rejected change's authoring hours
-price into error-class, not landed" (its `coverage` fixture prices a rejected merge's span as
+price into error-class, not merged" (its `coverage` fixture prices a rejected merge's span as
 error-class under a `review-rejected` cause carrying the reason; its `organize` fixture prices
 the `merge_conflict` arm as error-class under a `merge-conflict` cause with the shared no-text
 placeholder, not a review-rejection), and "a review_error landing prices its authoring hours
@@ -236,7 +236,7 @@ adds a capped view or a terminal outcome updates the record shape in the same co
 
 **Guarantee.** Every failure-digest list section that cuts its list — the top-N error, warning,
 review-failure and rejection clusters, the top-`LOSS_TOP` loss-cause ranking, the newest-
-`STATE_CHANGE_TOP` state transitions, and the newest-`LANDED_TOP` merges — prints a remainder
+`STATE_CHANGE_TOP` state transitions, and the newest-`MERGE_DONE_TOP` merges — prints a remainder
 line whose dropped count is derived from the same list the section itemized, so a cut section
 never reads as a complete itemization of the window.
 
@@ -247,7 +247,7 @@ never reads as a complete itemization of the window.
 
 **Pinned by.** `test/failure-render.test.ts` — "the top-N cluster sections mark their cut:
 remainder line, no silent truncation", "a state changes section over the newest-6 cap names its
-remainder instead of truncating silently", "a landed list over the newest-10 cap names its
+remainder instead of truncating silently", "a merged list over the newest-10 cap names its
 remainder instead of reading as the whole window", and "the loss-cause ranking's top-5 cut
 discloses its remainder, like every other capped section".
 

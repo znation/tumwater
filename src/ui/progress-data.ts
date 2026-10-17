@@ -19,7 +19,7 @@ import { statRoleLog, readCompleteLines, type TailState, withTail } from "../fil
  * The log is append-only across ticks AND runs: a role makes several kinds of pi run into
  * the one `piLogPath` file — the authoring tick's run in its own worktree, and the review
  * gate's runs (reviewer, conflict resolver) in a lease's pooled slot (legacy logs: its
- * `_land-<role>` lander worktree). Every run starts with the harness's `tumwater_run` marker
+ * `_land-<role>` merge slot worktree). Every run starts with the harness's `tumwater_run` marker
  * (src/agent/run-agent.ts), written before pi spawns so it precedes pi's first `session`
  * event; a kind-bearing marker names the run's kind, and a
  * session no kind-bearing marker preceded falls back to the legacy `cwd` test (the worktree
@@ -322,7 +322,7 @@ export function stalledToolLabel(
  * `tumwater_run` marker or a `session` event switches which accumulator following lines fold
  * into. A marker carries the run's kind, so a `session` preceded by one keeps that kind even
  * when author and gate runs share a worktree (part 1/5 of the worktree pool); only a session
- * no kind-bearing marker preceded falls back to the legacy `cwd` test (the lander worktree
+ * no kind-bearing marker preceded falls back to the legacy `cwd` test (the merge slot worktree
  * path = gate), which is how logs written before the marker carried a kind still demux. A
  * marker also starts that kind's accumulator fresh before the session lands, so a previous
  * run's turns/context can never show in the new run's cell. Everything else folds into the
@@ -343,7 +343,7 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
   if (event.type === "tumwater_run") {
     const kind = event.kind === "gate" || event.kind === "author" ? event.kind : undefined;
     if (kind) {
-      // Every run writes this marker before pi spawns, and the landing cell reads the
+      // Every run writes this marker before pi spawns, and the merge cell reads the
       // accumulator as soon as the marker's stage says `reviewing` — a poll that can land
       // before the session event. Resetting here means a previous run's turns/context (the
       // last review, or another run the gate spent) can never show in the new run's cell.

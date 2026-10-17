@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** The dashboard's Pending view, browser-side: every loop's unlanded change as /api/diff
+/** The dashboard's Pending view, browser-side: every loop's unmerged change as /api/diff
  * serves it (the same document `tumwater diff` prints from the shared change collectors). The
  * roster shows each role's branch, state, commits ahead of main with their subjects, and its
  * uncommitted-file count; a row opens that loop's drawer, whose Pending change section fetches
@@ -17,7 +17,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     if (r.ahead === 0 && (!r.dirtyFiles || r.dirtyFiles.length === 0)) return "<span class='muted'>no unmerged work</span>";
     return "<span class='res t-indigo'>pending</span>";
   }
-  // One role's ahead cell: the commit count plus each unlanded commit's sha and subject, or a
+  // One role's ahead cell: the commit count plus each unmerged commit's sha and subject, or a
   // dash for a degraded/empty role.
   function pendingAheadHtml(r) {
     if (r.state !== "ready" || !r.ahead) return "<span class='muted'>—</span>";
@@ -47,7 +47,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     return "<div class='table-wrap'><table class='table pending'><thead><tr><th class='c-loop'>Role</th><th>Branch</th>" + // vocabulary-ok: CSS class the stylesheet matches
       "<th>State</th><th>Ahead of " + esc(team.mainBranch) + "</th><th class='c-dirty num'>Uncommitted</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
   }
-  // The Land queue card's body: every queued landing in execution order (oldest first), one
+  // The Land queue card's body: every queued merge in execution order (oldest first), one
   // line each mirroring tumwater queue's renderMergeQueue — 1-based position, loop, tick,
   // short sha, age, summary — so the page and the CLI cannot drift. Painted from the status
   // payload the page already polls; depth counts the unreadable queue files the status reader

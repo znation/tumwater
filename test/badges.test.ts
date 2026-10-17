@@ -1,11 +1,11 @@
 /** The badges suite: the status header's badge fragments (budgetBadge, buildBadge,
- * mainCheckBadge, landingBadge, pauseBadge) and the humanSeconds phrasing they share. Split
+ * mainCheckBadge, mergeBadge, pauseBadge) and the humanSeconds phrasing they share. Split
  * out of status-model.test.ts when the badges moved from src/ui/status-model.ts to
  * src/ui/badges.ts — this suite travels with the new module the way status-model.test.ts
  * travels with the per-loop display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, chainBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, runWindowBadge, wakeBadge, loopWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, chainBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, runWindowBadge, wakeBadge, loopWakeMarker } from "../src/ui/badges.js";
 import type { StatusSnapshot } from "../src/status/status-data.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -112,15 +112,15 @@ test("budgetBadge appends the burn-rate forecast as · ~cap at HH:MM and stays b
   );
 });
 
-// Merge queue 4/5 — the land queue's one payload field, three renderers: the header badge,
+// Merge queue 4/5 — the merge queue's one payload field, three renderers: the header badge,
 // the marker-driven row label, and the payload's preformatted field.
-test("landingBadge shows the land queue depth and stays empty when idle", () => {
+test("mergeBadge shows the merge queue depth and stays empty when idle", () => {
   // Empty at depth 0 keeps every existing header byte identical; the count while anything
-  // is queued or landing (in-flight landings always count toward depth — their entry stays
+  // is queued or merge (in-flight merges always count toward depth — their entry stays
   // in the queue until its outcome).
-  assert.equal(landingBadge({ depth: 0 }), "", "idle queue adds nothing to the header");
-  assert.equal(landingBadge({ depth: 1 }), " · merge queue: 1");
-  assert.equal(landingBadge({ depth: 3 }), " · merge queue: 3");
+  assert.equal(mergeBadge({ depth: 0 }), "", "idle queue adds nothing to the header");
+  assert.equal(mergeBadge({ depth: 1 }), " · merge queue: 1");
+  assert.equal(mergeBadge({ depth: 3 }), " · merge queue: 3");
 });
 
 // The timed-pause countdown: the badge stands only while a

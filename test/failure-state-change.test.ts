@@ -51,7 +51,7 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
   ]) {
     assert.ok(STATE_CHANGE_TYPES.has(t), `missing ${t}`);
   }
-  // tick outcomes (run_end, landed, ...) are deliberately absent — they are the outcomes
+  // tick outcomes (run_end, merged, ...) are deliberately absent — they are the outcomes
   // section's business, not state changes.
   assert.ok(!STATE_CHANGE_TYPES.has("run_end"));
   assert.equal(STATE_CHANGE_TOP, 6);

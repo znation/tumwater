@@ -84,11 +84,11 @@ test("a corrupt run_end outcome renders as ?, never undefined", () => {
   }
 });
 
-test("a queued tick's torn landing outcome reads as its type default, never [object Object]", () => {
-  // resolveQueuedResult read the landing outcome's result through String(), so a torn or
-  // hand-edited `landed` event whose result parsed to an object rendered the literal
+test("a queued tick's torn merge outcome reads as its type default, never [object Object]", () => {
+  // resolveQueuedResult read the merge outcome's result through String(), so a torn or
+  // hand-edited `merged` event whose result parsed to an object rendered the literal
   // "[object Object]" in the history table and /api/history. The shared textOr read falls
-  // back to the landed type's own default instead.
+  // back to the merged type's own default instead.
   const events = [
     { ts: 40, source: "feature", type: "merge_queued", commit: "sha1", summary: "work" },
     { ts: 42, source: "feature", type: "run_end", run: 1, result: "queued", summary: "work" },
@@ -289,10 +289,10 @@ test("--role narrows the window to one loop", () => {
   assert.equal(feature.rows[0]!.durationMs, 10 * MIN);
 });
 
-test("a queued tick resolves to its change's landing outcome — landed or merge_failed (BUGS.md 2026-09-30)", () => {
+test("a queued tick resolves to its change's merge outcome — merged or merge_failed (BUGS.md 2026-09-30)", () => {
   const root = tmpdir();
   const t = (mins: number) => Date.now() - mins * MIN;
-  // The real order: merge_queued is logged DURING the tick (before its run_end); the landing
+  // The real order: merge_queued is logged DURING the tick (before its run_end); the merge
   // slot logs merge_done/merge_failed with the same commit sha later.
   writeEvents(root, [
     { ts: t(50), source: "feature", type: "run_start", run: 1 },
@@ -306,7 +306,7 @@ test("a queued tick resolves to its change's landing outcome — landed or merge
   ]);
   const { rows } = readTickRowsSince(root, TWO_HOURS, null);
   // Each queued row joins its OWN change: the newest merge_queued at or before its run_end,
-  // then the FINAL same-sha landing outcome after that pin — never the other tick's.
+  // then the FINAL same-sha merge outcome after that pin — never the other tick's.
   assert.deepEqual(
     rows.map((r) => [r.run, r.result, r.detail]),
     [
@@ -316,13 +316,13 @@ test("a queued tick resolves to its change's landing outcome — landed or merge
   );
 });
 
-test("a queued tick resolves past a rebased retriable failure to the recovery's landed verdict (BUGS.md 2026-10-10)", () => {
+test("a queued tick resolves past a rebased retriable failure to the recovery's merged verdict (BUGS.md 2026-10-10)", () => {
   const root = tmpdir();
   const t = (mins: number) => Date.now() - mins * MIN;
-  // A retriable landing failure (merge_blocked) keeps the pin. When main moved first, the
-  // vet's syncPinToMain rebased the ref before the gate, so recovery re-enqueues the REBASED
-  // sha (sha2) while the failed attempt logged its authored sha (sha1), and the recovery's
-  // `landed` logs sha2. The authoring tick's row must read the FINAL outcome ("changed"),
+  // A retriable merge failure (merge_blocked) keeps the pin. When main moved first, the
+  // verification's syncPinToMain rebased the ref before the gate, so recovery re-enqueues the
+  // REBASED sha (sha2) while the failed attempt logged its authored sha (sha1), and the recovery's
+  // `merged` logs sha2. The authoring tick's row must read the FINAL outcome ("changed"),
   // not latch sha1's first, non-terminal failure.
   writeEvents(root, [
     { ts: t(50), source: "feature", type: "run_start", run: 1 },
@@ -372,7 +372,7 @@ test("a retriable failure keeps its verdict while its recovery pin is still pend
 test("a queued tick whose pin sits before the --since cutoff still resolves (BUGS.md 2026-09-30)", () => {
   const root = tmpdir();
   // Tick 1 SPANS the cutoff: its run_start and merge_queued pin sit before it, its run_end
-  // and landing outcome after it. The row set (ts-filtered at the cutoff) keeps the run_end
+  // and merge outcome after it. The row set (ts-filtered at the cutoff) keeps the run_end
   // and the outcome but cuts the pin — so the join reads wider evidence (TICK_ROW_JOIN_BACK
   // SLACK_MS) for the pins and claims them only while the row's tick block is whole there.
   // Tick 2 sits fully inside the window; both changes land, so both rows must resolve.
@@ -403,7 +403,7 @@ test("a queued row whose run_start predates the join read's floor keeps the raw 
   // The guard, unit-pinned on the pure collector: a row whose tick block is not whole in the
   // join set (here the floor sits between the run_start and the pin) cannot prove its own
   // pin survived the read, and a pre-cutoff tick's pin IS in the join set — claiming it would
-  // join another change's landing. Conservative fallback: the raw label.
+  // join another change's merge. Conservative fallback: the raw label.
   const events: HarnessEvent[] = [
     { ts: 1_000, source: "feature", type: "run_start", run: 1 },
     { ts: 1_100, source: "feature", type: "merge_queued", commit: "shaOld", summary: "old work" },
@@ -424,7 +424,7 @@ test("a queued row whose run_start predates the join read's floor keeps the raw 
   assert.deepEqual(resolved.map((r) => [r.run, r.result]), [[2, "changed"]]);
 });
 
-test("a queued tick whose landing is still in the pipeline keeps the raw label", () => {
+test("a queued tick whose merge is still in the pipeline keeps the raw label", () => {
   const root = tmpdir();
   writeEvents(root, [
     { ts: Date.now() - 10 * MIN, source: "feature", type: "run_start", run: 1 },
@@ -437,9 +437,9 @@ test("a queued tick whose landing is still in the pipeline keeps the raw label",
   );
 });
 
-test("a queued tick stays raw when no landing outcome matches its pinned sha", () => {
+test("a queued tick stays raw when no merge outcome matches its pinned sha", () => {
   const root = tmpdir();
-  // The only landing outcome in the log resolved a DIFFERENT change (an older retry's sha):
+  // The only merge outcome in the log resolved a DIFFERENT change (an older retry's sha):
   // joining by loop alone would steal it, so the sha must match and the unmatched row keeps
   // the raw label (its verdict is genuinely not in the log — still in the pipeline).
   writeEvents(root, [
@@ -472,7 +472,7 @@ test("the resolution survives the --role filter and never crosses loops", () => 
       ["feature", 1, "changed"],
     ],
   );
-  // The role-filtered scope carries each loop's own landing events, so the join holds there too.
+  // The role-filtered scope carries each loop's own merge events, so the join holds there too.
   const clean = readTickRowsSince(root, TWO_HOURS, "clean");
   assert.deepEqual(clean.rows.map((r) => [r.role, r.result]), [["clean", "rejected"]]);
 });

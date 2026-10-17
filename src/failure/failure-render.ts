@@ -59,7 +59,7 @@ function deltaCell(prevRuns: number, prev: string | number, runs: number, cur: s
 }
 
 /** The rejections column's cell. It cannot reuse deltaCell: a rejection is logged by the
- * landing slot, so its authoring run_end can fall in the other window — a role with a
+ * merge slot, so its authoring run_end can fall in the other window — a role with a
  * rejection must show it even when its tick count is 0. Presence is judged on the rejection
  * count itself (the role is "absent" from the column only with neither runs nor rejections). */
 function rejectionCell(prevRuns: number, prevRejections: number, runs: number, rejections: number): string {

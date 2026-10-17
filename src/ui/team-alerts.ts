@@ -184,7 +184,7 @@ export function teamAlerts(
   // A loop whose own failure streak is at or past the alarm threshold (onErrorStreak — an
   // error streak at ERROR_STREAK_WARN, or a quiet-kill streak): the red "failing tick after
   // tick" banner. Keyed on the streak, not on the rendered phase, so it stays up while the
-  // loop's next tick runs — where loopPhase reads "working"/"landing"/"reviewing" rather
+  // loop's next tick runs — where loopPhase reads "working"/"merge"/"reviewing" rather
   // than "failing" — and clears only when the streak resets (BUGS.md 2026-10-14). The
   // wording names what happened (a streak of failed or rejected ticks), not a single repeated
   // error, because a rejection streak is three different rejected changes.

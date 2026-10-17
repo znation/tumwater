@@ -125,7 +125,7 @@ export function prefixWidth(prefix: readonly StatusSpan[]): number {
 }
 
 /** An activity line's tone, by the event's kind (tone.ts's eventKind — the dashboard's
- * activity card uses the same rule): landings green, problems in their outcome's color,
+ * activity card uses the same rule): merges green, problems in their outcome's color,
  * questions magenta, routine bookkeeping dim. */
 export function eventTone(e: HarnessEvent): Tone | undefined {
   const result = eventResult(e);

@@ -27,10 +27,10 @@ import { commitTier } from "../roles/roles.js";
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
  * and the totals each render prints. `ticks` is counted only where a consumer needs a window
  * total (the trailing-window report); the per-day series derives it later by summing
- * runsByRole, so a day carries no redundant counter. The landing fields mirror that split
- * for the landing slot's own pi runs (reviewer + conflict resolution): their tokens/cost
+ * runsByRole, so a day carries no redundant counter. The merge fields mirror that split
+ * for the merge slot's own pi runs (reviewer + conflict resolution): their tokens/cost
  * always accumulate into `mergeTokens`/`mergeCostUsd` — never into `tokensOut`/`costUsd`
- * here, so each collector decides once how the landing share joins its surfaced totals (the
+ * here, so each collector decides once how the merge share joins its surfaced totals (the
  * budget charges these same events, so the totals must include it) — and `mergeRuns` counts
  * `merge_done`/`merge_failed` events on every target: unlike ticks there is no per-role map a day
  * could derive a run count from, so the day must fold it for the totals to sum. */
@@ -42,14 +42,14 @@ interface UsageFold {
   rejectionsByRole: Record<string, number>;
   /** revision events per loop id — the rework rounds a rejected change is re-applied through,
    * split by role so a loop whose every iteration is a fresh rework is visible (the author-side
-   * share of the rejection, where the reviewer's objection cost is the landing slot's). */
+   * share of the rejection, where the reviewer's objection cost is the merge slot's). */
   revisionsByRole: Record<string, number>;
   /** Wall-clock ms of each passing full-suite build_check (isPassingFullCheck), unsorted. */
   checkDurationsMs: number[];
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
   /** run_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
-   * ticks that burned agent time and landed nothing without going through review. Split by role,
+   * ticks that burned agent time and merged nothing without going through review. Split by role,
    * a parallel tally to runsByRole (never subtracted from it). */
   failedRunsByRole: Record<string, number>;
   /** model_fallback_started events per loop id, so a role whose primary keeps failing is
@@ -69,19 +69,19 @@ interface UsageFold {
   /** Subscription spend (plans/agent-backends.md part 6a): API-equivalent, never in costUsd. */
   notionalCostUsd: number;
   /** The notional share per role, so a role-scoped report can carry a role's own
-   * subscription spend (the landing slot's notional is team-wide like its cost). */
+   * subscription spend (the merge slot's notional is team-wide like its cost). */
   notionalByRole: Record<string, number>;
   mergeRuns?: number;
   mergeTokens?: number;
   mergeCostUsd?: number;
   mergeFailed?: number; // of those runs, the merge_failed events (absent when none)
-  /** The landed outcomes keyed by base authoring role, so a report can name which roles'
-   * changes reach main through the landing slot (the same base-role keying as commitsByRole,
+  /** The merged outcomes keyed by base authoring role, so a report can name which roles'
+   * changes reach main through the merge slot (the same base-role keying as commitsByRole,
    * so `feature-2` aggregates into `feature`). A parallel tally, never subtracted from the
    * team totals. */
   mergedByRole: Record<string, number>;
   /** The merge_failed outcomes keyed by base authoring role — the changes that bounced off
-   * the landing gate (review rejection, under-cap review, a conflict, a blocked fast-forward,
+   * the merge gate (review rejection, under-cap review, a conflict, a blocked fast-forward,
    * a shutdown abort), so an operator can see whether gate failures concentrate in one role. */
   mergeFailedByRole: Record<string, number>;
   /** Per-provider spend folded from the events' `providerCost` maps (run_end's own runs and
@@ -120,9 +120,9 @@ function foldProviderCost(target: UsageFold, providerCost: unknown): void {
  * the target counts ticks, in total), their output tokens, and their cost — zero-cost ticks
  * contribute nothing, so they leave no costByRole key, keeping the render's "$0 roles are
  * omitted" rule true on the aggregation itself, not just at display time; merged events add
- * a commit; merge_done/merge_failed events add a landing run and
- * accumulate their tokens/cost into the landing fields only — costByRole stays a ticks-only
- * breakdown, and the landing line is how the reviewer's share is named. Both collectors fold
+ * a commit; merge_done/merge_failed events add a merge run and
+ * accumulate their tokens/cost into the merge fields only — costByRole stays a ticks-only
+ * breakdown, and the merge line is how the reviewer's share is named. Both collectors fold
  * through this one place, so the two windows' aggregation rules cannot drift apart. */
 function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   if (ev.type === "run_end") {
@@ -164,7 +164,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     addTo(target.imageReroutesByRole, eventRole(ev), 1);
   } else if (ev.type === "merged") {
     target.commits++;
-    // Work ratio 4/4: split landed commits by base role and by tier. Instance suffixes fold
+    // Work ratio 4/4: split merged commits by base role and by tier. Instance suffixes fold
     // into their role (`feature-2` counts as feature) so the split does not fragment.
     const role = baseRoleOf(eventRole(ev));
     addTo(target.commitsByRole, role, 1);
@@ -188,11 +188,11 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     target.mergeTokens = (target.mergeTokens ?? 0) + tokens;
     target.mergeCostUsd = (target.mergeCostUsd ?? 0) + costUsd;
-    // A subscription landing's API-equivalent spend joins the notional line, never the
+    // A subscription merge's API-equivalent spend joins the notional line, never the
     // budgeted cost totals (plans/agent-backends.md part 6a).
     target.notionalCostUsd += notionalCostUsd;
-    // The landing's per-provider spend (merge-slot.ts keys it to its reviewer seam), so a
-    // landing's costs appear under the provider that ran the reviewer, matching the author
+    // The merge's per-provider spend (merge-slot.ts keys it to its reviewer seam), so a
+    // merge's costs appear under the provider that ran the reviewer, matching the author
     // side's foldMergeUsage charge.
     foldProviderCost(target, ev.providerCost);
   }
@@ -265,7 +265,7 @@ const reportFoldCache = new Map<string, ReportFoldEntry>();
 const REPORT_FOLD_CACHE_MAX = 8;
 
 /** The empty commit-family counters every accumulator starts from: the total and per-base-role
- * landed-commit count plus the work/maintenance split (Work ratio 4/4). Four shapes carry them —
+ * merged-commit count plus the work/maintenance split (Work ratio 4/4). Four shapes carry them —
  * DayFold, UsageFold, the ReportDay series slots, and the window totals — so the empty quartet
  * lives once here and a new commit counter is added in one place. */
 function zeroCommitCounts(): {
@@ -277,11 +277,11 @@ function zeroCommitCounts(): {
   return { commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0 };
 }
 
-/** The empty landing-run counters every accumulator starts from: the landing slot's run count
+/** The empty merge-run counters every accumulator starts from: the merge slot's run count
  * and its own token/cost share (foldUsageEvent's merge_done/merge_failed branch). Four shapes carry
  * them — DayFold, UsageFold, the scoped window totals, and the window totals — so the empty
- * triple lives once here and a new landing counter is added in one place. */
-function zeroLandingCounts(): {
+ * triple lives once here and a new merge counter is added in one place. */
+function zeroMergeCounts(): {
   mergeRuns: number;
   mergeTokens: number;
   mergeCostUsd: number;
@@ -330,7 +330,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       tokensByRole: {},
       costByRole: {},
       notionalByRole: {},
-      ...zeroLandingCounts(),
+      ...zeroMergeCounts(),
       mergedByRole: {},
       mergeFailedByRole: {},
       costByProvider: {},
@@ -429,11 +429,11 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
  * (never a second pass), so its per-day sum equals the day's costUsd by construction.
  * `notionalCostUsd`/`notionalByRole` carry subscription spend the same way, kept apart
  * because it never charges the cap (plans/agent-backends.md part 6a).
- * Landing usage (`merge_done`/`merge_failed`) is sparse: the landing fields are absent until the
- * day folds a landing event, and a day's tokensOut/costUsd already include the landing's
+ * Merge usage (`merge_done`/`merge_failed`) is sparse: the merge fields are absent until the
+ * day folds a merge event, and a day's tokensOut/costUsd already include the merge's
  * real-money share by the time they are read (the collector folds it in right after the event
  * pass), so the series keeps summing to the totals the budget also reports; a subscription
- * landing's notional share joins notionalCostUsd instead. */
+ * merge's notional share joins notionalCostUsd instead. */
 export interface ReportDay {
   date: string; // "YYYY-MM-DD" local day key
   tokensOut: number;
@@ -462,7 +462,7 @@ export interface ReportDay {
   /** image_reroute events per loop id; absent when the day has none (zero means absent). */
   imageReroutesByRole?: Record<string, number>;
   commits: number;
-  commitsByRole?: Record<string, number>; // landed commits by base role (Work ratio 4/4)
+  commitsByRole?: Record<string, number>; // merged commits by base role (Work ratio 4/4)
   workCommits?: number; // of those, feature/bugfix/director
   maintenanceCommits?: number; // of those, code-maintenance + readme
   costUsd: number;
@@ -472,7 +472,7 @@ export interface ReportDay {
   mergeTokens?: number; // their output tokens, also included in tokensOut above
   mergeCostUsd?: number; // their cost, also included in costUsd above
   mergeFailed?: number; // of those runs, the merge_failed events (absent when none)
-  /** landed outcomes by base role; absent when the day has none (zero means absent). */
+  /** merged outcomes by base role; absent when the day has none (zero means absent). */
   mergedByRole?: Record<string, number>;
   /** merge_failed outcomes by base role; absent when the day has none (zero means absent). */
   mergeFailedByRole?: Record<string, number>;
@@ -487,20 +487,20 @@ export interface ReportDay {
   notionalByProvider?: Record<string, number>;
 }
 
-/** The window totals both reports surface — output tokens (the landing share included), the
- * tick and commit counts, cost (the landing share included), and the landing share named for
+/** The window totals both reports surface — output tokens (the merge share included), the
+ * tick and commit counts, cost (the merge share included), and the merge share named for
  * itself. SinceReport carries it directly; ReportData adds the day-granular backlog tallies
- * on top. The single home of this shape, so report-render.ts's totalsLine/landingShareLine
+ * on top. The single home of this shape, so report-render.ts's totalsLine/mergeShareLine
  * read exactly the fields the collectors produce. */
 export interface ReportTotals {
-  tokensOut: number; // includes landing spend — the same events the daily budget charges
+  tokensOut: number; // includes merge spend — the same events the daily budget charges
   runs: number;
   commits: number;
-  costUsd: number; // includes landing spend, so the report and the budget agree
+  costUsd: number; // includes merge spend, so the report and the budget agree
   /** Subscription spend, API-equivalent: never in costUsd, shown on its own line
    * (plans/agent-backends.md part 6a). Optional so pre-feature test literals still typecheck. */
   notionalCostUsd?: number;
-  mergeRuns: number; // the landing share of the above, named for itself
+  mergeRuns: number; // the merge share of the above, named for itself
   mergeTokens: number;
   mergeCostUsd: number;
   mergeFailed?: number; // of those runs, the merge_failed events (absent when none)
@@ -555,12 +555,12 @@ export interface SinceReport {
   /** Output tokens per loop id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;
-  /** Landed commits per base role, so the --since render can print the day report's
+  /** Merged commits per base role, so the --since render can print the day report's
    * `Commits by role` line; always present (the collector's accumulator is pre-filled by
    * zeroCommitCounts, so a commit-free window carries an empty map — the `-` render). */
   commitsByRole: Record<string, number>;
-  /** landed outcomes by base role; always present (the collector pre-fills the empty map, so
-   * a landing-free window renders `-` like the other lines). */
+  /** merged outcomes by base role; always present (the collector pre-fills the empty map, so
+   * a merge-free window renders `-` like the other lines). */
   mergedByRole: Record<string, number>;
   /** merge_failed outcomes by base role; always present (empty map when none), so the render
    * can gate its new failure line on the window's own merge_failed events. */
@@ -618,7 +618,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     costUsd: 0,
     notionalCostUsd: 0,
     notionalByRole: {},
-    ...zeroLandingCounts(),
+    ...zeroMergeCounts(),
     mergedByRole: {},
     mergeFailedByRole: {},
     costByProvider: {},
@@ -634,7 +634,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
   // the window and the render notes the possible truncation.
   const coversFullWindow = eventWindowCovers(raw, cutoff);
   // Role scope: every total derives from the fold's per-role maps for the named base role alone
-  // — landing usage (the landing slot's, not the role's) and the team-only fields stay out, so
+  // — merge usage (the merge slot's, not the role's) and the team-only fields stay out, so
   // a scoped --since report sums exactly the same events the scoped day report would. The scope
   // is the base role, so instances (`feature-2`) aggregate into their group as the cap does.
   const base = role === undefined ? undefined : baseRoleOf(role);
@@ -652,7 +652,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
           ...((acc.mergeFailed ?? 0) > 0 ? { mergeFailed: acc.mergeFailed } : {}),
         }
       : (() => {
-          // The role's own notional spend, from its run_end events; the landing slot's
+          // The role's own notional spend, from its run_end events; the merge slot's
           // notional is team-wide and stays out like its cost.
           const notional = roleSum(acc.notionalByRole, base);
           return {
@@ -661,7 +661,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
             commits: roleSum(acc.commitsByRole, base),
             costUsd: roleSum(acc.costByRole, base),
             ...(notional > 0 ? { notionalCostUsd: notional } : {}),
-            ...zeroLandingCounts(),
+            ...zeroMergeCounts(),
           };
         })();
   // The --since render/JSON's Notional by role line is conditional on the window's own
@@ -763,8 +763,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       day.mergeCostUsd = fold.mergeCostUsd;
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
       if ((fold.mergeFailed ?? 0) > 0) day.mergeFailed = fold.mergeFailed;
-      // Only set when a role actually landed/failed that day (zero means absent), so a
-      // landing-free day keeps its exact pre-feature shape.
+      // Only set when a role actually merged/failed that day (zero means absent), so a
+      // merge-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.mergedByRole).length > 0) day.mergedByRole = fold.mergedByRole;
       if (Object.keys(fold.mergeFailedByRole).length > 0)
         day.mergeFailedByRole = fold.mergeFailedByRole;
@@ -772,8 +772,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       // Role scope: derive this day from the fold's per-role maps, so the series carries only
       // the named role's ticks/tokens/cost and (base-role-keyed) commits. The scope is the
       // base role, so an instance id's usage and its siblings' commits fold into one group and
-      // the numbers match the per-role cap, which is base-role keyed too. The landing fields
-      // stay unset — landing runs are the landing slot's, not this role's — and the work /
+      // the numbers match the per-role cap, which is base-role keyed too. The merge fields
+      // stay unset — merge runs are the merge slot's, not this role's — and the work /
       // maintenance split follows the base role's own tier rather than the day's whole split.
       const base = baseRoleOf(role);
       const commits = roleSum(fold.commitsByRole, base);
@@ -802,19 +802,19 @@ export function collectReport(root: string, days: number, role?: string): Report
         day.notionalCostUsd = notional;
         day.notionalByRole = narrowToRole(fold.notionalByRole, base);
       }
-      // Landing runs belong to the landing slot, not this role, so the role-scoped series
-      // keeps them unset (matching the landing-share fields) — the render omits the landing
+      // Merge runs belong to the merge slot, not this role, so the role-scoped series
+      // keeps them unset (matching the merge-share fields) — the render omits the merge
       // line for a scoped report, so these are carried only for shape consistency.
-      const landed = narrowToRole(fold.mergedByRole, base);
-      if (Object.keys(landed).length > 0) day.mergedByRole = landed;
-      const landedFailed = narrowToRole(fold.mergeFailedByRole, base);
-      if (Object.keys(landedFailed).length > 0) day.mergeFailedByRole = landedFailed;
+      const mergeDone = narrowToRole(fold.mergedByRole, base);
+      if (Object.keys(mergeDone).length > 0) day.mergedByRole = mergeDone;
+      const mergeDoneFailed = narrowToRole(fold.mergeFailedByRole, base);
+      if (Object.keys(mergeDoneFailed).length > 0) day.mergeFailedByRole = mergeDoneFailed;
     }
   }
 
-  // The landing share joins its day's tokensOut/costUsd (the budget charges these same
+  // The merge share joins its day's tokensOut/costUsd (the budget charges these same
   // events, so the day series must sum to the totals the budget agrees with) while the
-  // landing fields keep the reviewer's part of it visible on its own.
+  // merge fields keep the reviewer's part of it visible on its own.
   for (const d of series) {
     d.tokensOut += d.mergeTokens ?? 0;
     d.costUsd += d.mergeCostUsd ?? 0;
@@ -840,11 +840,11 @@ export function collectReport(root: string, days: number, role?: string): Report
     costUsd: 0,
     featuresDone: 0,
     bugsFixed: 0,
-    ...zeroLandingCounts(),
+    ...zeroMergeCounts(),
   };
   // Notional spend is kept out of the totals object until it is nonzero, so a pre-feature
-  // window's totals keep their exact shape. Landing failures likewise: a failure-free window
-  // carries no mergeFailed (zero means absent, like the landing-share line's other fields
+  // window's totals keep their exact shape. Merge failures likewise: a failure-free window
+  // carries no mergeFailed (zero means absent, like the merge-share line's other fields
   // are folded in below).
   let notionalCostUsd = 0;
   let mergeFailed = 0;

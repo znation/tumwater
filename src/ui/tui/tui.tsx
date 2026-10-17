@@ -159,8 +159,8 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     // render already computes the per-loop rows, so it feeds them back rather than re-deriving.
     // The row's `inFlight` flag is the permit-holder set, which deliberately excludes the
     // exempt director's own `director working` tick (BUGS.md 2026-10-06), so accept that phase
-    // too — the same live set the GUI's row actions read. A director landing still carries
-    // `landing …` (inFlight true) because loopPhase checks the landing marker first.
+    // too — the same live set the GUI's row actions read. A director merge still carries
+    // `merge …` (inFlight true) because loopPhase checks the merge marker first.
     const director = status.loops.find((r) => r.role === "director");
     keys.syncSnapshot(snap.budget.capUsd, snap.budget.free, snap.loops.map((l) => l.role),
       director?.inFlight === true || director?.phase.startsWith("director working") === true);

@@ -5,7 +5,7 @@ import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 // The dashboard's loops table, row by row (src/ui/gui/gui-client-loops.ts's loops-table region):
 // the status pill's second line (what the phase carried, when an idle loop wakes, the
 // backoff and yield-scaled-clock notes) and each row's cells — the activity line's choice
-// between live work, the landing placeholder, and the last result, the stalled-work red
+// between live work, the merge placeholder, and the last result, the stalled-work red
 // flag, and the per-row operator controls.
 
 interface PhaseInfo { key: string; label: string; tone: string; live: boolean; detail: string }
@@ -18,7 +18,7 @@ const { phaseDetail, loopCells, phaseInfo } = clientScope<Loops>(
   ["format", "labels", "view-model", "loops-table"], ["phaseInfo", "phaseDetail", "loopCells"], {
     icon: iconStub,
     pill: (info: PhaseInfo) => "<span class='pill t-" + info.tone + "'>" + info.label + "</span>",
-    landingSummary: (d: { landing?: Record<string, string> }, role: string) => d.landing?.[role] || "",
+    mergeSummary: (d: { merge?: Record<string, string> }, role: string) => d.merge?.[role] || "",
     abortConfirming: (role: string) => role === "confirming",
     rolePauseMenuOpen: (role: string) => role === "choosing",
     ROLE_PAUSE_CHOICES: [[1800, "30m"], [3600, "1h"], [7200, "2h"], [28800, "8h"], [0, "standing"]],
@@ -125,9 +125,9 @@ test("a live loop's activity shows its current work, or the stage's placeholder"
   // No work text yet — the stage's own placeholder, not a blank cell.
   assert.ok(row({ role: "feature", phase: "working 0s" }).activity.includes("Starting up…"));
   assert.ok(row({ role: "feature", phase: "reviewing 1m" }).activity.includes("Reviewing the change…"));
-  // A landing in progress prefers its summary from the payload.
-  assert.ok(row({ role: "feature", phase: "merging 1m" }, { landing: { feature: "Landing 3 commits" } })
-    .activity.includes("Landing 3 commits"));
+  // A merge in progress prefers its summary from the payload.
+  assert.ok(row({ role: "feature", phase: "merging 1m" }, { merge: { feature: "Merge 3 commits" } })
+    .activity.includes("Merge 3 commits"));
 });
 
 test("a stalled working loop's detail line is flagged red", () => {
@@ -198,12 +198,12 @@ test("a row's name cell tags custom loops and queued prompts, and shows today's 
   assert.equal(cells[3], "<div>$1.50</div><div class='sub'>$20.25 total</div>");
 });
 
-test("a row's name line names when the loop last landed, or 'never' when it has not", () => {
-  const landed = loopCells({ role: "feature", phase: "sleeping", runs: 4, commits: 2, todayUsd: 0, costUsd: 0,
+test("a row's name line names when the loop last merged, or 'never' when it has not", () => {
+  const mergeDone = loopCells({ role: "feature", phase: "sleeping", runs: 4, commits: 2, todayUsd: 0, costUsd: 0,
     lastMergedAt: Date.now() - 180_000 }, {}).cells.map(String)[0] ?? "";
-  assert.match(landed, /merged 3m ago/, "the row names the last-landed age through fmtAgo");
+  assert.match(mergeDone, /merged 3m ago/, "the row names the last-merged age through fmtAgo");
   const fresh = loopCells({ role: "new", phase: "sleeping", runs: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
-  assert.match(fresh, /merged never/, "a loop that has never landed says never");
+  assert.match(fresh, /merged never/, "a loop that has never merged says never");
 });
 
 test("a loop row renders its model tier tag and selector when the payload carries them", () => {

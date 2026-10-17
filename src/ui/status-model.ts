@@ -19,7 +19,7 @@ import {
 } from "./tick-progress-model.js";
 import { mergeChanges, MERGE_STAGE_LABELS, type MergeChange } from "../merge/merge-slot.js";
 
-/** The status DISPLAY MODEL: the loop's cycle position (the phase ladder), its landing cell,
+/** The status DISPLAY MODEL: the loop's cycle position (the phase ladder), its merge cell,
  * and its per-loop row derivation (the header badges live next door in badges.ts, the
  * in-flight tick's live progress detail in tick-progress-model.ts) — derived from the status
  * data (status/status-data.ts) and shared by BOTH observer surfaces: the terminal table
@@ -29,25 +29,25 @@ import { mergeChanges, MERGE_STAGE_LABELS, type MergeChange } from "../merge/mer
  * (status-render.ts). Depends on status/status-data.ts one way: deriving reads the snapshot
  * and never collects team state itself (live tick detail is display-only). */
 
-type LandingCell = Pick<MergeChange, "status" | "startedAt" | "stage" | "stageSince">;
+type MergeCell = Pick<MergeChange, "status" | "startedAt" | "stage" | "stageSince">;
 
-/** The snapshot's in-flight landing record (merge queue 4/5) filtered to one role: this
- * role's change record while the pipeline holds it — vetting or merging it (`landing`), or
- * keeping it for the merge slot (`vetted`) — and null otherwise, including once the merge is
+/** The snapshot's in-flight merge record (merge queue 4/5) filtered to one role: this
+ * role's change record while the pipeline holds it — verifying or merging it (`merge`), or
+ * keeping it for the merge slot (`approved`) — and null otherwise, including once the merge is
  * `done` with it (a change that reached its outcome must not keep a live label while the rest of
  * its stack lands — BUGS.md 2026-09-23). An older generation's one-change marker reads as one
- * `landing` record (mergeChanges). The single home of the "is this role landing" filter —
- * every phase call site derives its `landing` argument through this so the filtering cannot
+ * `merge` record (mergeChanges). The single home of the "is this role merge" filter —
+ * every phase call site derives its `merge` argument through this so the filtering cannot
  * drift between them. */
-export function landingForRole(landQueue: StatusSnapshot["landQueue"], role: string): LandingCell | null {
-  if (!landQueue.inFlight) return null;
-  const change = mergeChanges(landQueue.inFlight).find((c) => c.role === role);
+export function mergeForRole(mergeQueue: StatusSnapshot["mergeQueue"], role: string): MergeCell | null {
+  if (!mergeQueue.inFlight) return null;
+  const change = mergeChanges(mergeQueue.inFlight).find((c) => c.role === role);
   return change && change.status !== "done"
     ? { status: change.status, startedAt: change.startedAt, stage: change.stage, stageSince: change.stageSince }
     : null;
 }
 
-/** The work text a row shows in place of live progress while it is idle or landing
+/** The work text a row shows in place of live progress while it is idle or merge
  * (plans/parallel-work-instances.md "Observability", part 6/7): the claim's heading when the
  * instance holds one. Returns null otherwise, so the state cell keeps its plain phase — an
  * idle instance's phase label (`idle: no unclaimed plans`) carries its own reason. */
@@ -57,7 +57,7 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
 
 /** The loop's state label — the one precedence ladder shared by the status table and both
  * dashboards (renderStatus, statusPayload). First match wins: a stopped harness; an in-flight
- * landing (the role's tick already ended "queued" while its change lands, so the marker
+ * merge (the role's tick already ended "queued" while its change lands, so the marker
  * supplies the label); a running tick ("working", or "reviewing" while the review gate holds
  * it — in-flight work finishes through both team gates); the director's "waiting for
  * prompts" (exempt from those gates); user pause; budget pause; a red main ("main red"); an
@@ -72,11 +72,12 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
  * ticking. `userPaused` marks an operator pause (`tumwater pause` marker present): idle role
  * loops show `paused`, checked before the budget gate because user intent is more specific
  * than spend state — while both hold, "paused" tells the operator what to do (`resume`).
- * `landing`, when given for this role, is its change's record in the snapshot's in-flight
- * landing — build it with landingForRole so the marker's role filter lives in one place. A
- * change the pipeline holds but is not working on reads `vetted, awaiting merge`, with no
- * elapsed since nothing of its own is running: its vet approved it and it waits for the merge
- * slot. (A queued change whose vet is still parked for a permit has no record: it reads
+ * `merge`, when given for this role, is its change's record in the snapshot's in-flight
+ * merge — build it with mergeForRole so the marker's role filter lives in one place. A
+ * change the pipeline holds but is not working on reads `approved, awaiting merge`, with no
+ * elapsed since nothing of its own is running: its verification approved it and it waits for the
+ * merge slot. (A queued change whose verification is still parked for a permit has no record:
+ * it reads
  * plainly queued.)
  * `mainCheck`, when given (loopRowCells passes the snapshot's), lets the main-red label
  * retire itself between ticks: main's newest merge-scope check passing AFTER this loop's red
@@ -86,12 +87,12 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
  * teamAlerts banner follows. A check that is newer but failed keeps the label (main is
  * genuinely red); so does one older than the red tick or with no known pass at all — the
  * blockage stands until the loop's own next tick re-verdicts it.
- * Otherwise its elapsed is the CHANGE's own landing (its record's startedAt — from its vet's
+ * Otherwise its elapsed is the CHANGE's own merge (its record's startedAt — from its verification's
  * start, never another change's), never the authoring tick's,
- * and its stage scopes the cell to the phase the landing is actually in: `reviewing` carries
- * the reviewer run's live detail exactly as a reviewing tick does (`landing 3m · reviewing ·
+ * and its stage scopes the cell to the phase the merge is actually in: `reviewing` carries
+ * the reviewer run's live detail exactly as a reviewing tick does (`merge 3m · reviewing ·
  * turn 2 · ctx 18.0k · bash npm test`), and `resolving` the conflict resolver's the same way;
- * `build-check`, `resolve-wait` and `merging` render just the stage (`landing 1m · build
+ * `build-check`, `resolve-wait` and `merging` render just the stage (`merge 1m · build
  * check`) and never read the log — no reviewer or resolver is running then, and the log's
  * newest run is typically a finished one (the author's, a previous review) whose turns are
  * stale and whose silence would read as a false stall; a record with no stage (an older
@@ -101,7 +102,7 @@ export function onErrorStreak(s: Pick<LoopState, "consecutiveErrors" | "lastResu
   // a quiet-kill streak at the give-up threshold (BUGS.md 2026-09-18): the exact condition
   // that makes loopPhase read "failing", split out so the team alert (team-alerts.ts) can
   // key its red "failing tick after tick" banner on the streak rather than on the rendered
-  // phase — an in-flight tick hides the streak behind a `working`/`landing` label (loopPhase
+  // phase — an in-flight tick hides the streak behind a `working`/`merge` label (loopPhase
   // ranks running work above failing), but the alert must stay up while the loop's next tick
   // runs and clear only when the streak resets (BUGS.md 2026-10-14).
   return (
@@ -117,7 +118,7 @@ export function loopPhase(
   budgetPaused = false,
   live?: LiveProgress | null,
   userPaused = false,
-  landing?: LandingCell | null,
+  merge?: MergeCell | null,
   mainCheck?: StatusSnapshot["mainCheck"],
   capPaused = false,
   quietHold?: string,
@@ -128,19 +129,19 @@ export function loopPhase(
   pausedUntilMs?: number,
 ): string {
   if (!orchestratorRunning) return "stopped";
-  // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
-  // passed gets it (callers derive it via landingForRole), and a stopped harness never
+  // Merge queue 4/5 — the marker-driven merge label: only a role whose change record was
+  // passed gets it (callers derive it via mergeForRole), and a stopped harness never
   // shows it — a dead team's marker is stale by definition.
-  if (landing) {
-    if (landing.status === "approved") return "approved, waiting to merge";
-    const head = landing.startedAt === undefined ? "merging" : `merging ${duration(Date.now() - landing.startedAt)}`;
-    if (!landing.stage) return head;
-    const base = `${head} · ${MERGE_STAGE_LABELS[landing.stage]}`;
-    const staged = landing.stageSince === undefined ? base : `${base} ${duration(Date.now() - landing.stageSince)}`;
-    if (landing.stage !== "reviewing" && landing.stage !== "resolving") return staged;
+  if (merge) {
+    if (merge.status === "approved") return "approved, waiting to merge";
+    const head = merge.startedAt === undefined ? "merging" : `merging ${duration(Date.now() - merge.startedAt)}`;
+    if (!merge.stage) return head;
+    const base = `${head} · ${MERGE_STAGE_LABELS[merge.stage]}`;
+    const staged = merge.stageSince === undefined ? base : `${base} ${duration(Date.now() - merge.stageSince)}`;
+    if (merge.stage !== "reviewing" && merge.stage !== "resolving") return staged;
     // The reviewer writes the role's own log from its leased pooled slot, and the conflict
     // resolver from the merge worktree, both as gate runs (loop-pi.ts): the GATE accumulator,
-    // read here rather than taken from `live` — the landing role's tick has ended, so the
+    // read here rather than taken from `live` — the merge role's tick has ended, so the
     // frame's per-running-loop tail is not this run's (callers pass null for it). Each run's
     // `tumwater_run` marker resets that accumulator, so neither shows the other's counts.
     return inFlightDetail(staged, root ? readLiveProgress(root, s.role, "gate") : null);
@@ -148,7 +149,7 @@ export function loopPhase(
   if (s.running) {
     // A parked waiter is reserved against double-scheduling but holds no maxConcurrent permit
     // and runs no pi yet: render its true state and keep it OUT of the active set (isActivePhase)
-    // so the operator can count active rows against the cap — a landing visibly counts, a
+    // so the operator can count active rows against the cap — a merge visibly counts, a
     // parked waiter visibly does not (BUGS.md 2026-09-24).
     if (s.parkedSince) {
       const parkedTime = duration(Date.now() - s.parkedSince);
@@ -225,10 +226,10 @@ export function loopPhase(
   if (maintenanceQuotaHold) return maintenanceQuotaHold;
   // Main's own suite is known red at this loop's last tick: code-producing loops are blocked
   // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
-  // because it explains why the loop keeps waking and landing nothing; self-correcting, since
+  // because it explains why the loop keeps waking and merge nothing; self-correcting, since
   // each blocked tick re-records main_red while red and a green wake overwrites lastResult.
   // Except a green wake that queues a change: `queued` is in flight, not a completed result,
-  // so it leaves the main_red pair in place until its landing resolves (tick-apply.ts's
+  // so it leaves the main_red pair in place until its merge resolves (tick-apply.ts's
   // applyTickOutcome) — its stashed summary is the tell that the loop's latest tick got past
   // the red-main gate, so main was green then and "main red" would be stale.
   // Except too when main's newest merge-scope check PASSED after this loop's red tick ended:
@@ -253,7 +254,7 @@ export function loopPhase(
   // healthy idle loop. Observational only: a legitimately idle maintenance loop with an empty
   // backlog can hold a long streak and that is expected, so it never warns (unlike
   // consecutiveErrors/quietKillStreak). N=1 and an absent field read 0 and render the label
-  // byte-identically; the error/quiet-kill/landing/paused cells return earlier and never carry
+  // byte-identically; the error/quiet-kill/merge/paused cells return earlier and never carry
   // the suffix. `noChangeStreak` is on the state accumulator, so its type is on the full
   // LoopState.
   let cell: string;
@@ -306,7 +307,7 @@ interface LoopSortRow {
  * over that tail, and the rendered phase string. The phase's snapshot-level gates are
  * derived here too — budget paused (only `paused` stops a loop; `fallback` keeps it ticking
  * on the free model, which the header badge names), the team pause plus the per-role one
- * (one `paused` flag to loopPhase covers both), and the role's landing cell (merge queue
+ * (one `paused` flag to loopPhase covers both), and the role's merge cell (merge queue
  * 4/5) — so the two dashboards' per-loop cells cannot drift apart. */
 export function loopRowCells(
   snap: StatusSnapshot,
@@ -330,7 +331,7 @@ export function loopRowCells(
     // The per-role pause reads the same `paused` cell as the team pause: one flag to
     // loopPhase covers both gates (status-model has no per-role branch of its own).
     snap.paused || snap.pausedLoops.includes(s.role),
-    landingForRole(snap.landQueue, s.role),
+    mergeForRole(snap.mergeQueue, s.role),
     // The snapshot's newest merge-scope check lets a stale main-red phase retire itself
     // between ticks (BUGS.md 2026-09-30) — the banner (teamAlerts) reads this same phase.
     snap.mainCheck,
@@ -362,7 +363,7 @@ export function loopRowCells(
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
 
-/** The phase prefixes that make a loop a permit holder — working, reviewing, landing. The
+/** The phase prefixes that make a loop a permit holder — working, reviewing, merge. The
  * browser dashboard (gui-client.ts) interpolates this list into its isActivePhase, exactly as
  * gui-client-model.ts interpolates LOOP_RANK_RULES, so the two dashboards cannot disagree
  * about which phases are in flight. */
@@ -380,8 +381,8 @@ function isBindingLimit(permits: PermitSnapshot, key: string): boolean {
 
 /** Is this phase one of the PERMIT-HOLDER in-flight states — the rows an operator counts
  * against maxConcurrent? The three labels come from loopPhase: `working …`, `reviewing …`,
- * and the marker-driven `landing …` (merge queue 4/5) — a vetted change waiting for the merge
- * slot (`vetted, awaiting merge`) runs nothing, so it is not in flight. The running director's
+ * and the marker-driven `merge …` (merge queue 4/5) — a approved change waiting for the merge
+ * slot (`approved, awaiting merge`) runs nothing, so it is not in flight. The running director's
  * `director working …` label is deliberately outside the set: the director never calls
  * `semaphore.acquire`, so the cap-mirroring rows are exactly the permit holders (BUGS.md
  * 2026-10-06). Named once so the two rendered tables and their lockstep test share the rule
@@ -396,7 +397,7 @@ export function isActivePhase(phase: string): boolean {
 /** A loop's rank in the rendered tables, from its phase label (loopPhase): -1 a RUNNING
  * DIRECTOR — live work of its own, outside the maxConcurrent cap it bypasses, so it groups
  * apart and never inflates the permit-holder count (BUGS.md 2026-10-06); 0 live work —
- * working, reviewing, landing (isActivePhase); 1 work waiting in the pipeline — a vetted change
+ * working, reviewing, merge (isActivePhase); 1 work waiting in the pipeline — a approved change
  * awaiting the merge slot, or a tick parked awaiting a permit; 2 needs attention — failing, or
  * blocked by a red main; 3 paused — by the operator, by the budget, or by the loop's own
  * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a

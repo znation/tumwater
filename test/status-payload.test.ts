@@ -487,9 +487,9 @@ test("the status payload carries each loop's last error for the rows that failed
   assert.equal(payload.roles.find((l) => l.role === "clean")?.lastError, null);
 });
 
-test("the status payload carries each loop's last-landed epoch ms, null until it lands", async () => {
+test("the status payload carries each loop's last-merged epoch ms, null until it merges", async () => {
   const repo = makeRepo();
-  await initProject(repo, "gui last landed test");
+  await initProject(repo, "gui last merged test");
   const s = freshLoopState("qa");
   s.lastMergedAt = 123_456_789;
   saveLoopState(repo, s);

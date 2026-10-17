@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The dashboard's Usage and Failures views, browser-side. Usage renders /api/report as six
- * totals (each with its per-day average) over five daily bar charts — landed commits, ticks by
+ * totals (each with its per-day average) over five daily bar charts — merged commits, ticks by
  * loop, output tokens, spend by loop, rejections by loop — with gridlines, a scale, and one
  * shared color per loop; a window picker switches between 7, 14, 30, and 90 days and a
  * Loop picker scopes the report to one loop group (`?role=`, the browser twin of

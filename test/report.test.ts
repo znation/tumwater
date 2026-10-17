@@ -189,11 +189,11 @@ test("renderReportMarkdown prints commits by role and the work/maintenance split
   assert.match(md, /\*\*Commits:\*\* 2 work \/ 3 maintenance · 2\.5 commits per backlog item/);
 });
 
-test("renderReportMarkdown shows the landing line under Totals only when landing ran", () => {
+test("renderReportMarkdown shows the merge line under Totals only when merge ran", () => {
   const base = collectReport(tmpdir(), 2);
-  // Zero landing runs: the line is omitted entirely, so a team with no landing spend
-  // renders byte-identically to the pre-landing-line shape.
-  assert.ok(!renderReportMarkdown(base).includes("landing runs"));
+  // Zero merge runs: the line is omitted entirely, so a team with no merge spend
+  // renders byte-identically to the pre-merge-line shape.
+  assert.ok(!renderReportMarkdown(base).includes("merge runs"));
   const data: ReportData = {
     ...base,
     totals: { ...base.totals, tokensOut: 45_500, costUsd: 0.95, mergeRuns: 12, mergeTokens: 45_200, mergeCostUsd: 0.84 },
@@ -204,7 +204,7 @@ test("renderReportMarkdown shows the landing line under Totals only when landing
   );
 });
 
-test("renderReportMarkdown shows (N failed) on the landing line only when some landing failed", () => {
+test("renderReportMarkdown shows (N failed) on the merge line only when some merge failed", () => {
   const base = collectReport(tmpdir(), 2);
   const data: ReportData = {
     ...base,
@@ -217,7 +217,7 @@ test("renderReportMarkdown shows (N failed) on the landing line only when some l
     renderReportMarkdown(data),
     /of which merge runs: 12 runs \(3 failed\) · 45\.2k tokens · \$0\.84 \(reviewer \+ conflict resolution\)/,
   );
-  // Zero failures: the annotation stays off — a landing-ful but failure-free line is untouched.
+  // Zero failures: the annotation stays off — a merge-ful but failure-free line is untouched.
   const clean: ReportData = {
     ...base,
     totals: { ...base.totals, tokensOut: 45_500, costUsd: 0.95, mergeRuns: 12, mergeTokens: 45_200, mergeCostUsd: 0.84 },
@@ -320,7 +320,7 @@ test("renderReportMarkdown prints a Cost by role line ranked by spend desc then 
 test("renderReportMarkdown folds providerCost into Cost by provider and Estimated by provider, team-only", () => {
   const root = makeRepo();
   // A multi-provider day: the default provider's real spend and a claude subscription seam's
-  // notional spend ride two run_ends' providerCost, and a landing's reviewer spend keys to
+  // notional spend ride two run_ends' providerCost, and a merge's reviewer spend keys to
   // the reviewer's provider.
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 1.5, providerCost: { deepinfra: { costUsd: 1.5, notionalCostUsd: 0 } } }),
@@ -328,14 +328,14 @@ test("renderReportMarkdown folds providerCost into Cost by provider and Estimate
     JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", tokens: 5, costUsd: 0.4, providerCost: { claude: { costUsd: 0.4, notionalCostUsd: 0 } } }),
   ]);
   const md = renderReportMarkdown(collectReport(root, 2));
-  // The parallel provider line: real spend per provider, the landing's reviewer spend folding
+  // The parallel provider line: real spend per provider, the merge's reviewer spend folding
   // under claude, ranked by spend desc then name asc.
   assert.match(md, /\*\*Cost by provider:\*\* deepinfra — \$1\.50 · claude — \$0\.40/);
   // A subscription seam's API-equivalent spend lands on its own notional provider line.
   assert.match(md, /\*\*Estimated by provider:\*\* claude — \$2\.00/);
   // The provider maps are a parallel tally, never subtracted: the per-role lines keep their
   // exact current values (Cost by role from run_end costByRole alone — clean's notional tick
-  // adds no real costByRole entry), and the totals still sum the landing share.
+  // adds no real costByRole entry), and the totals still sum the merge share.
   assert.match(md, /\*\*Cost by role:\*\* feature — \$1\.50/);
   assert.match(md, /\*\*Totals:\*\* 35 output tokens · 2 runs · 0 commits · \$1\.90 ·/);
   // A role-scoped report prints no provider line — a provider is not a role, so the attribution
@@ -488,7 +488,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   assert.match(data, /backlog tallies \(features done \/ bugs fixed\) need the day report \(--days\)/);
 });
 
-test("renderSinceReportMarkdown shows the landing line under Totals only when landing ran", () => {
+test("renderSinceReportMarkdown shows the merge line under Totals only when merge ran", () => {
   const zero = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
@@ -508,7 +508,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     notionalByProvider: {},
     coversFullWindow: true,
   });
-  assert.ok(!zero.includes("landing runs"), "zero landing runs omit the line entirely");
+  assert.ok(!zero.includes("merge runs"), "zero merge runs omit the line entirely");
 
   const data = renderSinceReportMarkdown({
     sinceMs: HOUR,
@@ -532,7 +532,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
   assert.match(data, /of which merge runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
 });
 
-test("renderSinceReportMarkdown shows (N failed) on the landing line when a landing failed", () => {
+test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge failed", () => {
   const data = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
@@ -791,7 +791,7 @@ test("report --json --since prints the window totals with the coverage proof", a
   assert.ok(!("series" in parsed), "the since shape carries totals, not a day series");
 });
 
-test("report --json carries the landing fields in totals and the day series", async () => {
+test("report --json carries the merge fields in totals and the day series", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
@@ -805,10 +805,10 @@ test("report --json carries the landing fields in totals and the day series", as
   assert.ok(Math.abs(parsed.totals.mergeCostUsd - 0.84) < 1e-9);
   const today = parsed.series[parsed.series.length - 1];
   assert.equal(today.mergeCostUsd, 0.84, "the day series carries mergeCostUsd");
-  assert.ok(Math.abs(today.tokensOut - 45_300) < 1e-9, "the day's tokensOut includes the landing share");
+  assert.ok(Math.abs(today.tokensOut - 45_300) < 1e-9, "the day's tokensOut includes the merge share");
 });
 
-test("report --json --days carries mergeFailed on the day and totals when a landing fails; lands 2 runs with 1 failed", async () => {
+test("report --json --days carries mergeFailed on the day and totals when a merge fails; merges 2 runs with 1 failed", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
@@ -818,14 +818,14 @@ test("report --json --days carries mergeFailed on the day and totals when a land
   const json = await runCli(root, "report", "--json", "--days", "2");
   assert.equal(json.code, 0);
   const parsed = JSON.parse(json.out);
-  // mergeRuns still counts both landed and merge_failed together; mergeFailed names the flops.
+  // mergeRuns still counts both merged and merge_failed together; mergeFailed names the flops.
   assert.equal(parsed.totals.mergeRuns, 2, "totals.mergeRuns unchanged — counts both outcomes");
   assert.equal(parsed.totals.mergeFailed, 1);
   const today = parsed.series[parsed.series.length - 1];
   assert.equal(today.mergeRuns, 2);
   assert.equal(today.mergeFailed, 1, "the day series carries mergeFailed when that day has one");
 
-  // The landing share's token/cost totals fold both outcomes, untouched by the new counter.
+  // The merge share's token/cost totals fold both outcomes, untouched by the new counter.
   assert.equal(parsed.totals.mergeTokens, 55_200);
   assert.ok(Math.abs(parsed.totals.mergeCostUsd - 1.34) < 1e-9);
 
@@ -848,7 +848,7 @@ test("report --json leaves mergeFailed absent on a failure-free window", async (
   assert.ok(!md.out.includes("0 failed"), "a failure-free window never prints (0 failed)");
 });
 
-test("report --json --since carries mergeFailed when a landing fails and omits it otherwise", async () => {
+test("report --json --since carries mergeFailed when a merge fails and omits it otherwise", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
@@ -868,7 +868,7 @@ test("report --json --since carries mergeFailed when a landing fails and omits i
   assert.ok(!("mergeFailed" in cleanParsed.totals), "a failure-free --since window omits mergeFailed");
 });
 
-test("team day report breaks landing outcomes down by role, folding instances into their base", async () => {
+test("team day report breaks merge outcomes down by role, folding instances into their base", async () => {
   const root = makeRepo();
   // feature-2's destination event must aggregate under feature (the same base-role keying as
   // Commits by role); bufixes' merge_failed bounces off the gate under bugfix.
@@ -878,7 +878,7 @@ test("team day report breaks landing outcomes down by role, folding instances in
   ]);
   const md = await runCli(root, "report", "--days", "2");
   assert.equal(md.code, 0);
-  assert.match(md.out, /\*\*Merged by role:\*\* feature — 1/, "landed outcome folds feature-2 into feature");
+  assert.match(md.out, /\*\*Merged by role:\*\* feature — 1/, "merged outcome folds feature-2 into feature");
   assert.match(md.out, /\*\*Merge failures by role:\*\* bugfix — 1/, "the gate's merge_failed names its authoring role");
   // The team totals stay exactly what they were: the per-role maps are a parallel tally.
   assert.match(md.out, /of which merge runs: 2 runs \(1 failed\)/);
@@ -892,7 +892,7 @@ test("team day report breaks landing outcomes down by role, folding instances in
   assert.equal(direct.totals.mergeFailed, 1);
 });
 
-test("team day report omits Merge failures by role when none fail; a landing-free window omits both", async () => {
+test("team day report omits Merge failures by role when none fail; a merge-free window omits both", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
@@ -903,19 +903,19 @@ test("team day report omits Merge failures by role when none fail; a landing-fre
   assert.ok(!md.out.includes("**Merge failures by role:"), "no merge_failed omits the failure line entirely");
 });
 
-test("role-scoped day report omits the landing lines (landing runs are the landing slot's)", async () => {
+test("role-scoped day report omits the merge lines (merge runs are the merge slot's)", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const md = await runCli(root, "report", "--role", "feature", "--days", "2");
   assert.equal(md.code, 0);
-  assert.ok(!md.out.includes("**Merged by role:"), "a scoped report omits the landed line");
+  assert.ok(!md.out.includes("**Merged by role:"), "a scoped report omits the merged line");
   assert.ok(!md.out.includes("**Merge failures by role:"), "a scoped report omits the failures line");
   assert.match(md.out, /role scope: merge runs and backlog tallies \(features done \/ bugs fixed\) are team-wide and omitted/);
 });
 
-test("team report --since breaks landing outcomes by role and the scoped --since omits them; JSON carries the maps", async () => {
+test("team report --since breaks merge outcomes by role and the scoped --since omits them; JSON carries the maps", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: ago(5 * 60_000), loop: "feature-2", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
@@ -932,14 +932,14 @@ test("team report --since breaks landing outcomes by role and the scoped --since
 
   const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
   assert.equal(scoped.code, 0);
-  assert.ok(!scoped.out.includes("**Merged by role:"), "a scoped --since omits the landed line");
+  assert.ok(!scoped.out.includes("**Merged by role:"), "a scoped --since omits the merged line");
   assert.ok(!scoped.out.includes("**Merge failures by role:"), "a scoped --since omits the failures line");
 });
 
 test("report --json omits mergedByRole/mergeFailedByRole when no role has either; carries them when one does", async () => {
   const clean = makeRepo();
   const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--days", "2")).out);
-  assert.ok(!("mergedByRole" in cleanParsed.series[cleanParsed.series.length - 1]), "a landing-free day omits mergedByRole");
+  assert.ok(!("mergedByRole" in cleanParsed.series[cleanParsed.series.length - 1]), "a merge-free day omits mergedByRole");
 
   const root = makeRepo();
   writeEvents(root, [
@@ -947,7 +947,7 @@ test("report --json omits mergedByRole/mergeFailedByRole when no role has either
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
   assert.deepEqual(parsed.series[parsed.series.length - 1].mergedByRole, { feature: 1 });
-  // The --since payload always carries both maps, like commitsByRole: a within-window landing
+  // The --since payload always carries both maps, like commitsByRole: a within-window merge
   // fills mergedByRole, and a failure-free window's mergeFailedByRole stays empty.
   const sinceRoot = makeRepo();
   writeEvents(sinceRoot, [
@@ -992,7 +992,7 @@ test("renderReportMarkdown scopes a role report: role line, no backlog tail, sco
   assert.match(out, /^role: feature$/m);
   assert.match(out, /^\*\*Totals:\*\* 500 output tokens · 1 runs · 1 commits · \$0\.50$/m);
   assert.ok(!out.includes('features done · 0 bugs fixed'), "the team backlog cells are dropped from the totals line");
-  assert.ok(!out.includes("of which merge runs"), "no landing-share line prints");
+  assert.ok(!out.includes("of which merge runs"), "no merge-share line prints");
   assert.match(out, /role scope: merge runs and backlog tallies \(features done \/ bugs fixed\) are team-wide and omitted/);
 });
 
@@ -1054,7 +1054,7 @@ test("tumwater report --role scopes the report, scopes --since/--json, and valid
   assert.match(trailing.out, /--role needs a role id/);
 });
 
-test("renderReportMarkdown prints each role's cost per landed commit, folding instances and days", () => {
+test("renderReportMarkdown prints each role's cost per merged commit, folding instances and days", () => {
   const day = (date: string, costByRole: Record<string, number>, commitsByRole: Record<string, number>) => ({
     date, tokensOut: 0, runsByRole: {}, costByRole, commits: 0, commitsByRole, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
   });

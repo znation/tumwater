@@ -2,7 +2,7 @@
  * A small neutral design system of tumwater's own: the platform's UI and monospace fonts, a
  * neutral gray scale, flat surfaces with hairline borders, and one accent — teal, for water —
  * for the primary action, links, focus, and progress. Status reads through a fixed set of
- * tones (blue working, violet reviewing, orange landing, green landed, amber held, red broken,
+ * tones (blue working, violet reviewing, orange merge, green merged, amber held, red broken,
  * gray idle) that every chip, pill, and alert shares. Every color is a token on :root,
  * redefined for dark mode both for the OS preference (unless the viewer chose light) and for
  * an explicit `data-theme="dark"`, so the page follows the system until the theme toggle

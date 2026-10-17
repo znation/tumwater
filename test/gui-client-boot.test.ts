@@ -121,7 +121,7 @@ test("route follows #role/<role> into the drawer over team, and idempotently on 
   scope.route();
   assert.deepEqual(calls, [], "the already-open drawer is left alone");
 
-  // Landing on a different loop's link does open that drawer.
+  // Merge on a different loop's link does open that drawer.
   hash = "#role/qa";
   scope.route();
   assert.deepEqual(calls, ["openLoop qa"]);

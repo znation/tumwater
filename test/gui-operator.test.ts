@@ -74,11 +74,11 @@ test("status payload carries the daily budget while enabled and null when disabl
 });
 
 // Merge queue 4/5 — the payload's mergeQueue field: depth always present, inFlight only
-// while a landing is actually running (marker + matching entry + live orchestrator), and
+// while a merge is actually running (marker + matching entry + live orchestrator), and
 // the preformatted mergeBadge the page renders in its header.
-test("status payload carries the land queue depth and the in-flight landing", async () => {
+test("status payload carries the merge queue depth and the in-flight merge", async () => {
   const repo = makeRepo();
-  await initProject(repo, "gui land queue test");
+  await initProject(repo, "gui merge queue test");
   const payload = statusPayload(repo) as {
     mergeQueue: { depth: number; inFlight?: { role: string; sha: string; summary: string; startedAt: number; stage?: string } };
     mergeBadge: string;
@@ -89,15 +89,15 @@ test("status payload carries the land queue depth and the in-flight landing", as
   assert.equal(payload.mergeQueue.depth, 0);
   assert.equal(payload.mergeBadge, "");
 
-  // One queued entry lifts the depth — but a merely queued landing is not in flight.
+  // One queued entry lifts the depth — but a merely queued merge is not in flight.
   enqueueMerge(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
   let p = statusPayload(repo) as typeof payload;
   assert.equal(p.mergeQueue.depth, 1);
   assert.equal(p.mergeBadge, " · merge queue: 1");
-  assert.equal(p.mergeQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
+  assert.equal(p.mergeQueue.inFlight, undefined, "queued, not merge: no inFlight yet");
 
   // A live orchestrator plus the 4/5 marker with a matching entry → in flight, and the
-  // landing role's row phase reads `landing <elapsed> · <stage>` while every other row is
+  // merge role's row phase reads `merge <elapsed> · <stage>` while every other row is
   // untouched.
   writeOrchestratorMarker(repo, ["clean"]);
   const startedAt = Date.now();
@@ -111,15 +111,15 @@ test("status payload carries the land queue depth and the in-flight landing", as
   assert.match(
     p.roles.find((l) => l.role === "clean")!.phase,
     /^merging \d+s · checking$/,
-    "the landing role's phase is marker-driven, stage included",
+    "the merge role's phase is marker-driven, stage included",
   );
   assert.equal(p.mergeQueue.inFlight?.stage, "build-check", "the raw record carries the stage for `status --json`");
   assert.equal(p.roles.find((l) => l.role === "bugfix")!.phase, "due", "other roles keep their normal phase");
   // The row-level inFlight flag (isActivePhase over the rendered phase) is the permit-holder
-  // cap set the payload exports: the landing role is in flight, every other row is not. (The
+  // cap set the payload exports: the merge role is in flight, every other row is not. (The
   // GUI's row actions read their own live flag from the phase, which also includes the exempt
   // running director — BUGS.md 2026-10-06.)
-  assert.equal(p.roles.find((l) => l.role === "clean")!.inFlight, true, "the landing row is in flight");
+  assert.equal(p.roles.find((l) => l.role === "clean")!.inFlight, true, "the merge row is in flight");
   assert.equal(p.roles.find((l) => l.role === "bugfix")!.inFlight, false, "idle rows are not");
 });
 
@@ -659,7 +659,7 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
 
 // POST /api/prompt-role — the dashboard's per-row prompt control, backed by the same submit
 // path `tumwater prompt --role <id>` uses (submitRolePrompt + a single-role wake), so the
-// surfaces cannot drift on queue format or wording. Here: the queue landing, the role
+// surfaces cannot drift on queue format or wording. Here: the queue merge, the role
 // validation shared with /api/transcript, and the body discipline shared with /api/prompt.
 test("POST /api/prompt-role queues for the named loop and rejects bad bodies like its peers", async () => {
   const repo = makeRepo();

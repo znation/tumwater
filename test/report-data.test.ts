@@ -1,5 +1,5 @@
 // --- src/report/report-data.ts: the usage collectors (collectReport, collectReportSince) ---
-// The day-window collector buckets run_end/merged/landing events by LOCAL calendar day and
+// The day-window collector buckets run_end/merged/merge events by LOCAL calendar day and
 // tallies the backlog trackers' completions; the trailing-window collector totals a --since
 // window with a coverage proof. The Markdown render of both lives one layer up in
 // src/report/report-render.ts (test/report.test.ts); these tests pin the collectors' data contract.
@@ -84,7 +84,7 @@ test("collectReport folds review_rejected events into per-day per-role rejection
     JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected" }),
     JSON.stringify({ ts: at(0), loop: "qa", type: "review_rejected" }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    // Merely landing a commit is not a rejection: it must fold no rejection anywhere.
+    // Merely merge a commit is not a rejection: it must fold no rejection anywhere.
     JSON.stringify({ ts: at(1), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
   ]);
   const data = collectReport(root, 4);
@@ -162,7 +162,7 @@ test("collectReport skips a future-dated or timestamp-less event instead of fold
   }
 });
 
-test("collectReport folds merge_done/merge_failed usage into the day and totals, with the landing share named", () => {
+test("collectReport folds merge_done/merge_failed usage into the day and totals, with the merge share named", () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
@@ -172,10 +172,10 @@ test("collectReport folds merge_done/merge_failed usage into the day and totals,
   ]);
   const data = collectReport(root, 3);
   const today = data.series[2];
-  // The day's tokensOut/costUsd include the landing share (the budget charges these same
-  // events, so the day series must keep summing to the totals), while the landing fields
-  // name the reviewer's part of it: both landing events' tokens/cost, 2 runs.
-  assert.equal(today?.tokensOut, 45_600); // 100 tick tokens + 45,500 landing tokens
+  // The day's tokensOut/costUsd include the merge share (the budget charges these same
+  // events, so the day series must keep summing to the totals), while the merge fields
+  // name the reviewer's part of it: both merge events' tokens/cost, 2 runs.
+  assert.equal(today?.tokensOut, 45_600); // 100 tick tokens + 45,500 merge tokens
   assert.ok(Math.abs((today?.costUsd ?? -1) - 0.95) < 1e-9);
   assert.equal(today?.mergeRuns, 2);
   assert.equal(today?.mergeTokens, 45_500);
@@ -187,11 +187,11 @@ test("collectReport folds merge_done/merge_failed usage into the day and totals,
   assert.ok(Math.abs(data.totals.costUsd - 0.95) < 1e-9);
   assert.equal(data.totals.runs, 1);
   assert.equal(data.totals.commits, 1, "merged still counts only as a commit");
-  // costByRole stays a ticks-only breakdown — the landing line is how the reviewer's share
+  // costByRole stays a ticks-only breakdown — the merge line is how the reviewer's share
   // is named, not a role entry.
   assert.ok(Math.abs(Object.values(today?.costByRole ?? {}).reduce((a, b) => a + b, 0) - 0.1) < 1e-9);
-  // Landing fields are sparse: a day that folded no landing event carries none.
-  assert.ok(data.series.slice(0, 2).every((d) => !("mergeCostUsd" in d)), "no landing keys on landing-free days");
+  // Merge fields are sparse: a day that folded no merge event carries none.
+  assert.ok(data.series.slice(0, 2).every((d) => !("mergeCostUsd" in d)), "no merge keys on merge-free days");
 });
 
 test("collectReport reads a grown event log with bounded backwards I/O", () => {
@@ -346,7 +346,7 @@ test("a body bullet that mentions a completion date is not an entry; an epitaph'
   // ("- same shape as the sibling bug (fixed 2026-09-24)") — those are body text, not entries,
   // and before the epitaph guard each one inflated the report's fixed count on the sibling's
   // day. An epitaph bullet keeps counting: its trailing parenthetical carries the date beside
-  // its landing commit.
+  // its merge commit.
   const root = tmpdir();
   const d1 = dayKey(at(2));
   const d2 = dayKey(at(1));
@@ -374,8 +374,8 @@ And a closing note.
 
 test("an epitaph whose trailing parenthetical quotes a nested parenthetical still counts; a body bullet with one still does not", () => {
   // The epitaph guard reads the trailing parenthetical to separate entries from body bullets.
-  // The flat [^()] match could not span a nested group: "(…; commit abc (re-landed after
-  // review fix))" matched only the innermost "(re-landed after review fix)", whose text
+  // The flat [^()] match could not span a nested group: "(…; commit abc (re-merged after
+  // review fix))" matched only the innermost "(re-merged after review fix)", whose text
   // carries neither the date nor the commit reference, so the epitaph's completion date
   // vanished from the day report with no error. The nesting-aware backward scan keeps it.
   const root = tmpdir();
@@ -395,9 +395,9 @@ test("an epitaph whose trailing parenthetical quotes a nested parenthetical stil
   assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 0); // zero-filled, not counted
 });
 
-test("a Fixed heading whose completion is recorded as re-landed counts on that date; an undated fixed mention counts nowhere", () => {
-  // The bugfix prompt pins the completion DATE, not the verb: an entry whose first landing was
-  // rejected in review is completed by the re-land, and its epitaph says "re-landed <date>" —
+test("a Fixed heading whose completion is recorded as re-merged counts on that date; an undated fixed mention counts nowhere", () => {
+  // The bugfix prompt pins the completion DATE, not the verb: an entry whose first merge was
+  // rejected in review is completed by the re-land, and its epitaph says "re-merged <date>" —
   // the real BUGS.md entry this reproduces. Before the fix the collector's verb list
   // (fixed|closed|resolved) matched nothing in that heading and the day's bug count came up one
   // short, silently. A heading that mentions "was fixed" with no dated verb still counts
@@ -426,7 +426,7 @@ test("a Fixed heading's completion date is its LAST dated verb; a sibling's earl
   // Headings routinely mention siblings with their own dated verbs ("decomposed from the X bug
   // fixed <date>") before the entry's own completion record. The collector read the FIRST
   // verb+date match in the meta, so the sibling's date won and the entry was counted on the
-  // wrong day — silently, whenever the sibling landed the day before. The completion record is
+  // wrong day — silently, whenever the sibling merged the day before. The completion record is
   // conventionally the meta's last dated verb (found-by and decomposition mentions precede it).
   const root = tmpdir();
   const d1 = dayKey(at(3));
@@ -450,7 +450,7 @@ test("an epitaph bullet's completion date is the LAST dated verb in its trailing
   // The heading branch takes the meta's LAST dated verb (the previous fix), but the bullet
   // branch matched the trailing parenthetical's FIRST verb+date — so a decomposition
   // cross-reference inside the epitaph ("decomposed from the sibling bug fixed <date>, fixed
-  // <date>") put the entry on the sibling's day, silently, whenever the sibling landed first.
+  // <date>") put the entry on the sibling's day, silently, whenever the sibling merged first.
   // The convention is the same for both shapes: found-by and sibling mentions precede the
   // completion record, so the last dated verb is the completion.
   const root = tmpdir();
@@ -545,7 +545,7 @@ test("collectReportSince folds merge_done/merge_failed usage into the window tot
   assert.equal(data.totals.mergeRuns, 2);
   assert.equal(data.totals.mergeTokens, 45_500);
   assert.ok(Math.abs(data.totals.mergeCostUsd - 0.85) < 1e-9);
-  // The surfaced totals include the landing share — the same events the daily budget
+  // The surfaced totals include the merge share — the same events the daily budget
   // charges — so the report and the budget header agree.
   assert.equal(data.totals.tokensOut, 45_600);
   assert.ok(Math.abs(data.totals.costUsd - 0.95) < 1e-9);
@@ -660,7 +660,7 @@ test("collectReport scopes the day series and totals to one role, leaving team c
   const scoped = collectReport(root, 5, "feature");
   const today = scoped.series[scoped.series.length - 1];
   assert.equal(scoped.role, "feature");
-  assert.equal(today?.tokensOut, 500, "only feature's tick tokens; not bugfix's or the landing share");
+  assert.equal(today?.tokensOut, 500, "only feature's tick tokens; not bugfix's or the merge share");
   assert.deepEqual(today?.runsByRole, { feature: 1 });
   assert.deepEqual(today?.costByRole, { feature: 0.5 });
   assert.equal(today?.commits, 1);
@@ -668,7 +668,7 @@ test("collectReport scopes the day series and totals to one role, leaving team c
   assert.equal(today?.workCommits, 1);
   assert.equal(today?.maintenanceCommits, 0);
   assert.ok(Math.abs((today?.costUsd ?? -1) - 0.5) < 1e-9);
-  assert.equal(today?.mergeRuns, undefined, "landing fields stay off the scoped series");
+  assert.equal(today?.mergeRuns, undefined, "merge fields stay off the scoped series");
   assert.equal(today?.featuresDone, 0);
   assert.equal(today?.bugsFixed, 0);
   assert.equal(scoped.totals.tokensOut, 500);
@@ -682,7 +682,7 @@ test("collectReport scopes the day series and totals to one role, leaving team c
   // The same fixture without a role totals every role and reads the day-granular backlog tallies.
   const team = collectReport(root, 5);
   assert.equal(team.role, undefined);
-  assert.equal(team.totals.tokensOut, 640); // 500 + 100 + the 40 landing tokens
+  assert.equal(team.totals.tokensOut, 640); // 500 + 100 + the 40 merge tokens
   assert.equal(team.totals.runs, 2);
   assert.equal(team.totals.commits, 2);
   assert.ok(Math.abs(team.totals.costUsd - 1.1) < 1e-9);
@@ -730,7 +730,7 @@ test("collectReport scopes an instance id to its base role, aggregating its sibl
   assert.ok(Math.abs((since.costByRole.feature ?? -1) - 0.4) < 1e-9);
 });
 
-test("collectReportSince scopes a trailing window to one role, excluding the landing share", () => {
+test("collectReportSince scopes a trailing window to one role, excluding the merge share", () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
@@ -802,9 +802,9 @@ test("collectReport carries notionalByRole per loop id and narrows it for a role
   assert.equal("notionalByRole" in (collectReport(empty, 1).series[0] ?? {}), false);
 });
 
-// A subscription landing's API-equivalent spend joins the notional line, while only the real
+// A subscription merge's API-equivalent spend joins the notional line, while only the real
 // share reaches the budgeted cost totals (plans/agent-backends.md part 6a).
-test("a subscription landing's spend is notional, never in the cost totals", () => {
+test("a subscription merge's spend is notional, never in the cost totals", () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc", tokens: 40, costUsd: 0.5, notionalCostUsd: 2 }),
@@ -820,7 +820,7 @@ test("a subscription landing's spend is notional, never in the cost totals", () 
 });
 
 // Role scoping carries a role's OWN notional spend (its run_end events), so `report --role`
-// does not misreport a subscription loop as $0; the landing slot's notional stays team-wide
+// does not misreport a subscription loop as $0; the merge slot's notional stays team-wide
 // and omitted, exactly like its real cost (plans/agent-backends.md part 6a).
 test("collectReport scopes notional spend to the role, like cost", () => {
   const root = tmpdir();

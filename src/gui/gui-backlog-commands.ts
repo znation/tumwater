@@ -101,7 +101,7 @@ export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.
  * bugfix/feature loop). Body `{"kind": "bug"|"plan", "title": "...", "body": "optional
  * markdown"}`. The empty-title and wake-length checks run here, before anything is written:
  * the body is normalized and checked by bodyStructureProblem too, and an over-long wake
- * would throw after the entry landed. */
+ * would throw after the entry merged. */
 export async function handleBacklogFile(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "plan", "title": "...", "body": "optional markdown"}');
   if (!body) return;

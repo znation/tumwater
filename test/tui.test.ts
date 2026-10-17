@@ -107,12 +107,12 @@ test("runTui honors NO_COLOR: no escapes at all in the frame, layout unchanged",
   }
 });
 
-// Merge queue 4/5 — the TUI header shows the land queue badge while anything is queued or
-// landing, and nothing when idle (the badge is empty at depth 0, so every existing
+// Merge queue 4/5 — the TUI header shows the merge queue badge while anything is queued or
+// merge, and nothing when idle (the badge is empty at depth 0, so every existing
 // header byte stays intact). The frame carries renderStatus's full output, header line
 // included; the badge lands well inside the faked 100 columns (the budget badge after it
 // is what clips on a long name).
-test("runTui shows the land queue badge in the header while a landing is queued", async () => {
+test("runTui shows the merge queue badge in the header while a merge is queued", async () => {
   const repo = await makeTuiRepo();
   enqueueMerge(repo, {
     role: "clean",
@@ -126,10 +126,10 @@ test("runTui shows the land queue badge in the header while a landing is queued"
   });
 });
 
-test("runTui shows no land queue badge when the queue is idle", async () => {
+test("runTui shows no merge queue badge when the queue is idle", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
-    assert.doesNotMatch(tui.lastFrame(), /land queue/);
+    assert.doesNotMatch(tui.lastFrame(), /merge queue/);
   });
 });
 
@@ -770,7 +770,7 @@ test("aborting runTui's injected signal closes it like a quit, not a hang", asyn
 
 test("runTui resolves without a keypress when its injected signal was already aborted at mount", async () => {
   // The executor's `aborted` check (`if (... || seams.abortSignal?.aborted) resolve()`)
-  // exists for the ordering where the abort landed before runTui reached its main await — a
+  // exists for the ordering where the abort merged before runTui reached its main await — a
   // `run --tui` window that already closed or a team already stopped before the TUI's
   // executor ran. The listener-only test above aborts after mount; this pins the other
   // half: an already-aborted signal must end runTui through the same teardown, not hang

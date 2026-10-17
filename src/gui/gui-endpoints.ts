@@ -105,7 +105,7 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
   sendJson(res, 200, { title: entry.title, body: entry.body, refused: refusalNote(entry.body) !== null, waiting: waitingNote(entry.body) !== null });
 }
 
-/** Handle GET /api/diff[?role=<id>]: the unlanded-change view the CLI prints from the same
+/** Handle GET /api/diff[?role=<id>]: the unmerged-change view the CLI prints from the same
  * collectors — no `role` → collectTeamChanges (exactly `tumwater diff --json`'s document:
  * `{ mainBranch, roles }`, no per-role patch halves); `?role=<id>` → collectRoleChange (the
  * full per-role view with `diff`/`uncommittedDiff`, `tumwater diff --role <id> --json`). The

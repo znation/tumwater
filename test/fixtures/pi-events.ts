@@ -32,7 +32,7 @@ export const reviewerPi = (reply: string, recordTo?: string): string =>
 export const APPROVE_PI = reviewerPi("VERDICT: approve");
 
 /** Shell that prints the role leasing the current pooled checkout into `$role`, read from
- * slots.json — how a fake-pi shim names the change under review now that a vet runs in a
+ * slots.json — how a fake-pi shim names the change under review now that a verification runs in a
  * pooled `_slot-<n>` instead of a `_land-<role>` path (plans/worktree-pool.md, part 2b/5). A
  * slot sits at `<root>/.tumwater/worktrees/_slot-<n>`, so the root is three levels up; the role
  * is the lease record whose slot dir realpaths to this cwd. Prints nothing when the cwd is not

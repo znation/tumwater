@@ -13,7 +13,7 @@
 export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "loop", role } | { kind: "entry", file, index } while open
   let drawerTicks = null; // the open loop's recent history rows (null until fetched)
   let drawerTicksAt = 0;
-  let drawerChange = null; // the open loop's unlanded change: { role, state: "loading"|"ok"|"error", view, message }
+  let drawerChange = null; // the open loop's unmerged change: { role, state: "loading"|"ok"|"error", view, message }
   let drawerRole = null; // the open loop's /api/role payload: { role, state: "loading"|"ok"|"error", view, message }
   const openEntryKey = () => (drawer && drawer.kind === "entry" ? drawer.file + ":" + drawer.index : null);
   const openLoopRole = () => (drawer && drawer.kind === "loop" ? drawer.role : null); // vocabulary-ok: the drawer kind stays "loop"
@@ -82,8 +82,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (openEntryKey() === file + ":" + index) closeDrawer();
     else openEntry(file, index);
   }
-  // The change the landing slot holds for a role — what a landing (or approved) row is about.
-  function landingSummary(d, role) {
+  // The change the merge slot holds for a role — what a merge (or approved) row is about.
+  function mergeSummary(d, role) {
     const f = d.mergeQueue && d.mergeQueue.inFlight;
     if (!f) return "";
     const change = (Array.isArray(f.changes) ? f.changes : [f]).find((c) => c.role === role);
@@ -135,7 +135,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const working = info.live || info.key === "vetted"; // vocabulary-ok: the persisted phase key
     const now = working
       ? "<section><div class='sec-head'><h3>" + (info.key === "working" ? "Working on" : info.key === "reviewing" ? "Under review" : "Merging") +
-        "</h3></div><div class='note'>" + esc(l.currentWork || landingSummary(d, l.role) || (info.key === "working" ? "Starting up…" : "Waiting for its first words…")) + "</div></section>"
+        "</h3></div><div class='note'>" + esc(l.currentWork || mergeSummary(d, l.role) || (info.key === "working" ? "Starting up…" : "Waiting for its first words…")) + "</div></section>"
       : "";
     const r = l.lastResult ? resultInfo(l.lastResult) : null;
     const why = resultWhy(l);
@@ -176,7 +176,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     paintPanel("drawerrole", drawerRoleSection());
   }
 
-  // The open loop's unlanded change, as /api/diff?role serves it: the full patch the CLI's
+  // The open loop's unmerged change, as /api/diff?role serves it: the full patch the CLI's
   // tumwater diff --role prints. Degrades like the collector — a missing worktree, a missing
   // base branch, or no work each get a plain statement, and an unreadable payload says so
   // rather than rendering a half-view. Pure of side effects; the view paints what it returns.
@@ -224,7 +224,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     }
     if (lastStatus) renderLoopDrawer(lastStatus);
   }
-  // The open loop's unlanded change, as /api/diff?role serves it.
+  // The open loop's unmerged change, as /api/diff?role serves it.
   function loadDrawerChange(role) {
     return loadDrawerSection(role, "/api/diff?role=", "Pending change unavailable", (v) => { drawerChange = v; });
   }

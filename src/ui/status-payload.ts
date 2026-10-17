@@ -9,13 +9,13 @@ import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
 import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
 import { snapshot } from "../status/status-data.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, permitsBadge, quietBadge, runWindowBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, quietBadge, runWindowBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts } from "./team-alerts.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
- * still show a screenful of notable events (landings, failures, questions) after it filters
+ * still show a screenful of notable events (merges, failures, questions) after it filters
  * out the routine ones (tick starts, wakes, passing checks). */
 const RECENT_EVENTS = 80;
 /** How many answered questions the dashboard lists under the open ones (a default, not a knob). */
@@ -92,7 +92,7 @@ export function statusPayload(root: string, now = Date.now()): object {
       ...(s.slot ? { slot: s.slot, slotPinned: s.slotPinned === true } : {}),
       // Parallel work instances (plans/parallel-work-instances.md "Observability", part
       // 6/7): the backlog entry this instance claimed, shown by the dashboards while it is
-      // idle or landing, and the base role it belongs to (`feature-2` → `feature`). `claim`
+      // idle or merge, and the base role it belongs to (`feature-2` → `feature`). `claim`
       // is the claimed heading text, not the persisted record; both are absent on a bare,
       // unclaimed row so the common payload shape is unchanged.
       ...(s.claim ? { claim: s.claim.title } : {}),
@@ -105,7 +105,7 @@ export function statusPayload(root: string, now = Date.now()): object {
       ...(s.imageRerouteLabel !== undefined ? { imageReroute: s.imageRerouteLabel } : {}),
       phase,
       // In-flight flag derived from the same rendered phase (isActivePhase's
-      // permit-holder prefixes: working/reviewing/landing). The running director is excluded
+      // permit-holder prefixes: working/reviewing/merge). The running director is excluded
       // (it holds no maxConcurrent permit), so this is the cap count, not the abort set — the
       // GUI's row actions derive their own live flag from the phase instead (BUGS.md
       // 2026-10-06).
@@ -127,11 +127,11 @@ export function statusPayload(root: string, now = Date.now()): object {
       todayUsd: dailyCost(s),
       lastResult: s.lastResult ?? null,
       lastSummary: s.lastSummary ?? null,
-      // The last failure's text (a tick error, a failed landing's reason); the dashboard shows it
+      // The last failure's text (a tick error, a failed merge's reason); the dashboard shows it
       // beside a problem result that carries no summary of its own.
       lastError: s.lastError ?? null,
       lastRunEndedAt: s.lastRunEndedAt ?? null,
-      // When the loop last actually landed a change on main (epoch ms; null until it ever
+      // When the loop last actually merged a change on main (epoch ms; null until it ever
       // does) — the direct answer to "how long has the dry spell been", the productivity
       // complement to lastError/lastRunEndedAt.
       lastMergedAt: s.lastMergedAt ?? null,
@@ -184,16 +184,16 @@ export function statusPayload(root: string, now = Date.now()): object {
     ...(snap.runStopsAt !== undefined ? { runStopsAt: snap.runStopsAt } : {}),
     ...(snap.scheduledStopAt !== undefined ? { scheduledStopAt: snap.scheduledStopAt } : {}),
     runWindowBadge: runWindowBadge(snap.runStopsAt, now),
-    // The land queue (plans/merge-queue.md 4/5): depth always (machine-readable for
-    // `status --json`; 0 when idle) plus the in-flight landing's identity only while one is
+    // The merge queue (plans/merge-queue.md 4/5): depth always (machine-readable for
+    // `status --json`; 0 when idle) plus the in-flight merge's identity only while one is
     // actually running. Raw data here, like budget — and the display-ready header badge
-    // preformatted through badges.ts's landingBadge, so the page cannot re-derive it.
-    mergeQueue: snap.landQueue,
-    mergeBadge: landingBadge(snap.landQueue),
-    // One bracketed landing label per land-queue entry (queueEntryMergeLabel, "" for none),
-    // parallel to landQueue.entries — display-ready like landingBadge, since browser JS cannot
+    // preformatted through badges.ts's mergeBadge, so the page cannot re-derive it.
+    mergeQueue: snap.mergeQueue,
+    mergeBadge: mergeBadge(snap.mergeQueue),
+    // One bracketed merge label per merge queue entry (queueEntryMergeLabel, "" for none),
+    // parallel to mergeQueue.entries — display-ready like mergeBadge, since browser JS cannot
     // import the TypeScript stage labels.
-    mergeQueueLabels: (snap.landQueue.entries ?? []).map((e) => queueEntryMergeLabel(e.sha, snap.landQueue.inFlight, now)),
+    mergeQueueLabels: (snap.mergeQueue.entries ?? []).map((e) => queueEntryMergeLabel(e.sha, snap.mergeQueue.inFlight, now)),
     // Main's newest merge-scope check: the
     // raw block is machine-readable for `status --json`, and the header badge is
     // preformatted through badges.ts's mainCheckBadge — the same string the TUI/status

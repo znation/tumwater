@@ -10,7 +10,7 @@ import { loopRank } from "./status-model.js";
  * (gui-client-model.ts phaseInfo/resultInfo; its eventKind is generated from this file's
  * PROBLEM_RESULTS/ROUTINE_EVENTS/PROBLEM_EVENTS lists; test/gui-client.test.ts and
  * test/tui-frame.test.ts keep the copies aligned): in-progress work blue, a loop that needs
- * attention red, a held loop yellow, a landed change green, a change on its way to landing
+ * attention red, a held loop yellow, a merged change green, a change on its way to merge
  * cyan; idle states and neutral outcomes stay uncolored. */
 
 /** The colors the observer surfaces share for loop state and tick outcomes, as the terminal's
@@ -24,8 +24,8 @@ export function phaseTone(phase: string): Tone | undefined {
   return rank <= 1 ? "blue" : rank === 2 ? "red" : rank === 3 ? "yellow" : undefined;
 }
 
-/** A tick result's tone (tick-outcome.ts TickResult): a completed landing (changed) green,
- * queued to land cyan, the failures red, the held-back outcomes (refused, rejected, aborted,
+/** A tick result's tone (tick-outcome.ts TickResult): a completed merge (changed) green,
+ * queued to merge cyan, the failures red, the held-back outcomes (refused, rejected, aborted,
  * quiet_killed) yellow. */
 export function resultTone(result: string | undefined | null): Tone | undefined {
   switch (result) {
@@ -49,7 +49,7 @@ export function resultTone(result: string | undefined | null): Tone | undefined 
   }
 }
 
-/** What kind of news an event is, for the activity feeds: a landing, a problem, a question for
+/** What kind of news an event is, for the activity feeds: a merge, a problem, a question for
  * the operator, a notice about the team, or routine bookkeeping (a tick starting, a passing
  * check). The dashboard's activity card filters on it and both surfaces tone by it; the page's
  * browser copy (gui-client-model.ts eventKind) is pinned to this one by test. */

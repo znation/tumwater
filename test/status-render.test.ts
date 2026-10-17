@@ -247,7 +247,7 @@ test("loopPhase shows failing for idle loops stuck on an error streak, not sleep
   deep.consecutiveErrors = 4;
   assert.equal(loopPhase(deep, true), "failing");
 
-  // A streak fed by leftover-recovery landing failures reads failing even though the tick's
+  // A streak fed by leftover-recovery merge failures reads failing even though the tick's
   // own result is healthy (BUGS.md 2026-09-21): the landing failure, not `lastResult`, is the
   // tell. Before the fix this cell showed "sleeping" while a dead reviewer backend wedged the
   // pin forever.
@@ -400,32 +400,32 @@ test("renderStatus keeps role loops working under the fallback and pauses them w
   assert.match(stopped, /feature\s+waiting: budget spent/);
 });
 
-test("status table groups a landing role above queued/sleeping rows with newer last ticks", () => {
+test("status table groups a merge role above queued/sleeping rows with newer last ticks", () => {
   const root = tmpdir();
   const t = (min: number) => Date.parse("2026-09-11T00:00:00Z") + min * 60000;
-  // A sleeping role and a queued role, both with a NEWER last tick than the landing role —
-  // grouping must still put the landing role first, the same active-first rule as the GUI
-  // table. Before the fix renderStatus emitted payload order, so landing sank with the idles.
+  // A sleeping role and a queued role, both with a NEWER last tick than the merge role —
+  // grouping must still put the merge role first, the same active-first rule as the GUI
+  // table. Before the fix renderStatus emitted payload order, so merge sank with the idles.
   const sleeping = freshLoopState("sleepy");
   sleeping.nextRunAt = Date.now() + 5 * 60_000;
   sleeping.lastRunEndedAt = t(5);
   const queued = freshLoopState("queued-z");
   queued.lastRunEndedAt = t(4);
-  const landing = freshLoopState("landing-r");
-  landing.lastRunEndedAt = t(0);
+  const mergeCell = freshLoopState("landing-r");
+  mergeCell.lastRunEndedAt = t(0);
   const snap: StatusSnapshot = {
-    ...snapshotWith([sleeping, queued, landing]),
+    ...snapshotWith([sleeping, queued, mergeCell]),
     running: true,
-    landQueue: {
+    mergeQueue: {
       depth: 1,
       inFlight: { role: "landing-r", sha: "abc1234", summary: "tidy", startedAt: Date.now() - 90_000 },
-    } as StatusSnapshot["landQueue"],
+    } as StatusSnapshot["mergeQueue"],
   };
   const lines = renderStatus(root, snap).split("\n");
   const rowOf = (role: string) => lines.findIndex((l) => l.startsWith(role));
-  assert.ok(rowOf("landing-r") >= 0, "the landing role has a row");
-  assert.ok(rowOf("landing-r") < rowOf("sleepy"), "landing sorts above a sleeping row with a newer last tick");
-  assert.ok(rowOf("landing-r") < rowOf("queued-z"), "landing sorts above a queued row with a newer last tick");
+  assert.ok(rowOf("landing-r") >= 0, "the merge role has a row");
+  assert.ok(rowOf("landing-r") < rowOf("sleepy"), "merge sorts above a sleeping row with a newer last tick");
+  assert.ok(rowOf("landing-r") < rowOf("queued-z"), "merge sorts above a queued row with a newer last tick");
   assert.match(lines[rowOf("landing-r")]!, /merging \dm\d+s/);
 });
 

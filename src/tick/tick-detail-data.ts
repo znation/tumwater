@@ -8,7 +8,7 @@
  * Every datum rides the events the harness already writes, so this is a distillation of the
  * existing record, not a new one. The rendering half — the summary header, formatEvent, the
  * CLI command — lives in tick-detail.ts. */
-import { HISTORY_SCAN_MAX_EVENTS, bucketLandingEvents, resolveQueuedResult } from "../history/history-data.js";
+import { HISTORY_SCAN_MAX_EVENTS, bucketMergeEvents, resolveQueuedResult } from "../history/history-data.js";
 import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -122,8 +122,8 @@ function detailFrom(
   if (end !== null && result === "queued") {
     // A fresh claim cursor suits one tick: the walk starts at the newest pin at or before this
     // tick's end, which is its own pin, since later ticks' pins sit after it.
-    const { landQueuedByLoop, outcomeByLoop } = bucketLandingEvents(scoped);
-    const resolved = resolveQueuedResult(end, landQueuedByLoop, outcomeByLoop, new Map(), tickStartMap(scoped), null);
+    const { mergeQueuedByLoop, outcomeByLoop } = bucketMergeEvents(scoped);
+    const resolved = resolveQueuedResult(end, mergeQueuedByLoop, outcomeByLoop, new Map(), tickStartMap(scoped), null);
     if (resolved !== null) {
       result = resolved.result;
       merge = resolved.outcome;

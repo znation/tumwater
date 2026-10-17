@@ -154,15 +154,15 @@ test("review rejections cluster on (role, reasons[0]), not role alone", () => {
   assert.equal(data.rejections.clusters.length, 3);
 });
 
-test("run errors cluster only on error-result ticks; landing review failures get their own section", () => {
+test("run errors cluster only on error-result ticks; merge review failures get their own section", () => {
   const root = tmpdir();
   writeEvents(root, [
-    // A tick that did NOT end as an error but carries a stale `lastError` — the lander wrote the
-    // shared slot during leftover recovery. It must not be counted as a tick error (BUGS.md
-    // 2026-09-21).
+    // A tick that did NOT end as an error but carries a stale `lastError` — the merge slot
+    // wrote the shared slot during leftover recovery. It must not be counted as a tick error
+    // (BUGS.md 2026-09-21).
     { ts: at(0), loop: "clean", type: "run_end", result: "no_change", error: 'review failed: 429 "Rate limit exceeded"' },
     { ts: at(0), loop: "dedupe", type: "run_end", result: "queued", error: 'review failed: 429 "Rate limit exceeded"' },
-    // The landing failure itself is surfaced from its own event.
+    // The merge failure itself is surfaced from its own event.
     { ts: at(0), loop: "clean", type: "review_failed", head: "a".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
     { ts: at(0), loop: "dedupe", type: "review_failed", head: "b".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
     // A real tick error still clusters.
@@ -354,7 +354,7 @@ test("deltas report new roles as absent, not an infinite increase", () => {
 
 test("deltas count quiet kills and rejections per role, both windows", () => {
   // The delta table has dedicated quiet-kills and rejections columns. A rejection is recorded
-  // by the landing slot AFTER its authoring tick has ended `queued` (plans/merge-queue.md 3/5),
+  // by the merge slot AFTER its authoring tick has ended `queued` (plans/merge-queue.md 3/5),
   // so the fixture pairs a `queued` run_end with a `review_rejected` event — the shape the
   // live team emits. A fixture that fabricates a `rejected` run_end would pass even while the
   // counter reads 0 on every real rejection, the regression an operator could not notice.
@@ -586,7 +586,7 @@ test("a state changes section over the newest-6 cap names its remainder instead 
   assert.doesNotMatch(renderFailureMarkdown(collectFailureReport(quiet, 1)), /older transitions hidden/);
 });
 
-test("a landed list over the newest-10 cap names its remainder instead of reading as the whole window", () => {
+test("a merged list over the newest-10 cap names its remainder instead of reading as the whole window", () => {
   const root = tmpdir();
   // 12 merges an hour apart, oldest first: the digest lists the newest 10 and must say that 2
   // older ones were cut — a busy window must not read as a 10-merge day (BUGS.md 2026-09-23).

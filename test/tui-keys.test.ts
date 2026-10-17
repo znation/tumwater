@@ -1258,7 +1258,7 @@ test("the Pending pane caches the rendered team roster when collectPending resol
   assert.ok(renders > before, "a resolution repaints the pane");
 });
 
-test("the Pending pane renders the durable land queue on entry, above the resolved team roster", async () => {
+test("the Pending pane renders the durable merge queue on entry, above the resolved team roster", async () => {
   const root = makeRoot();
   enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 0 });
   const team = {

@@ -360,7 +360,7 @@ test("loopPhase reads waiting: daily cap spent for idle role loops held by their
 });
 
 test("loopPhase shows main red for idle loops whose last tick was blocked by a red main", () => {
-  // Blocked: the label explains why the loop keeps waking and landing nothing — ahead of its
+  // Blocked: the label explains why the loop keeps waking and merge nothing — ahead of its
   // sleep/queue state, like waiting: budget spent.
   const s = freshLoopState("feature");
   s.lastResult = "main_red";
@@ -393,7 +393,7 @@ test("loopPhase retires a stale main red when main's newest check passed after i
   s.lastResult = "main_red";
   s.lastRunEndedAt = Date.now() - 300_000; // the red tick ended 5m ago
   s.nextRunAt = Date.now() + 3_600_000; // and its next tick is an hour away
-  // A green merge-scope check landed AFTER the red tick: main is green now, so the label
+  // A green merge-scope check merged AFTER the red tick: main is green now, so the label
   // falls through to the ordinary sleep state and the banner never raises.
   assert.match(
     loopPhase(s, true, undefined, false, undefined, false, undefined, { status: "passed", at: Date.now() - 60_000 }),
@@ -555,18 +555,18 @@ test("loopPhase prefers paused over waiting: budget spent and main red", () => {
 });
 
 // The landing cell (BUGS.md 2026-09-22, re-opened 2026-09-23): the marker's stage scopes the
-// cell to the phase the landing is in. This used to pin a bare `landing <elapsed>` as the
-// correct output for every landing — the featureless countdown the bug is about.
-test("loopPhase renders the landing cell ahead of every idle state, only when the record is passed", () => {
+// cell to the phase the merge is in. This used to pin a bare `merge <elapsed>` as the
+// correct output for every merge — the featureless countdown the bug is about.
+test("loopPhase renders the merge cell ahead of every idle state, only when the record is passed", () => {
   const s = freshLoopState("clean");
   s.nextRunAt = Date.now() + 90_000; // would read "sleeping (for 2m)" without the record
-  const startedAt = Date.now() - 90_000; // 90s of landing → "1m30s"
+  const startedAt = Date.now() - 90_000; // 90s of merge → "1m30s"
   // The record wins over the idle state…
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, { status: "merging", startedAt, stage: "merging" }),
     "merging 1m30s · finishing the merge",
   );
-  // …and it is the caller's job to pass it only for the landing role: without it the loop
+  // …and it is the caller's job to pass it only for the merge role: without it the loop
   // keeps its ordinary state (the "other roles" case — the record is filtered upstream).
   assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
   // A stopped harness never shows it — a dead team's marker is stale by definition.
@@ -574,7 +574,7 @@ test("loopPhase renders the landing cell ahead of every idle state, only when th
   // Only a record with no stage at all — an older writer's marker mid-upgrade — keeps the
   // bare elapsed label: there is nothing more it can honestly say.
   assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "merging", startedAt }), "merging 1m30s");
-  // A change the vetting stage approved waits for the merge slot: it reads that state instead —
+  // A change the verifying stage approved waits for the merge slot: it reads that state instead —
   // no elapsed and no stage, because nothing of its own is running (BUGS.md 2026-09-23).
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, { status: "approved", startedAt, stage: "merging" }),
@@ -582,9 +582,9 @@ test("loopPhase renders the landing cell ahead of every idle state, only when th
   );
 });
 
-test("the build-check and merging landing stages render their label and never read the log", () => {
+test("the build-check and merging merge stages render their label and never read the log", () => {
   const root = tmpdir();
-  // The log's newest run is a FINISHED reviewer (a previous landing's), silent for ten
+  // The log's newest run is a FINISHED reviewer (a previous merge's), silent for ten
   // minutes: read during a stage with no live pi run, it would show stale turns/context and
   // a false `no pi output` flag counted against a run that ended long ago.
   const file = writePiLog(root, "clean", [
@@ -610,9 +610,9 @@ test("the build-check and merging landing stages render their label and never re
 // The per-stage elapsed (PLANS.md 2026-10-15): a landing cell carrying stageSince appends it
 // after the stage for every staged arm (build-check/merging and the reviewing/resolving tail),
 // and omits it when absent, so an older generation's cell keeps its current label.
-test("loopPhase appends the per-stage elapsed after a staged landing, when the cell carries stageSince", () => {
+test("loopPhase appends the per-stage elapsed after a staged merge, when the cell carries stageSince", () => {
   const s = freshLoopState("clean");
-  const startedAt = Date.now() - 90_000; // 90s of landing → "1m30s"
+  const startedAt = Date.now() - 90_000; // 90s of merge → "1m30s"
   const stageSince = Date.now() - 30_000; // 30s in THIS stage → "30s"
   // build-check (a plain staged arm): the stage elapsed appends after the stage.
   assert.equal(
@@ -636,9 +636,9 @@ test("loopPhase appends the per-stage elapsed after a staged landing, when the c
   );
 });
 
-test("the reviewing landing stage carries the reviewer run's live detail, timed from the landing", () => {
+test("the reviewing merge stage carries the reviewer run's live detail, timed from the merge", () => {
   const root = tmpdir();
-  // The landing's reviewer writes the role's own raw log from its lander worktree — the gate
+  // The merge's reviewer writes the role's own raw log from its merge slot worktree — the gate
   // accumulator, exactly what a reviewing tick's cell reads (BUGS.md 2026-09-22).
   writePiLog(root, "clean", [
     SESSION, // the authoring tick's finished run
@@ -660,10 +660,11 @@ test("the reviewing landing stage carries the reviewer run's live detail, timed 
   assert.equal(bare, "merging 1m30s · reviewing");
 });
 
-test("the resolving landing stage carries the conflict resolver's live detail, not the review's", () => {
+test("the resolving merge stage carries the conflict resolver's live detail, not the review's", () => {
   const root = tmpdir();
-  // The vet's reviewer finished; the merge's resolver then started as another gate run, and its
-  // `tumwater_run` marker reset the gate accumulator — the cell counts the resolver's turns only.
+  // The verification's reviewer finished; the merge's resolver then started as another gate run,
+  // and its `tumwater_run` marker reset the gate accumulator — the cell counts the resolver's
+  // turns only.
   writePiLog(root, "clean", [
     JSON.stringify({ type: "tumwater_run", kind: "gate", label: "review" }),
     GATE_SESSION(root, "clean"),
@@ -674,13 +675,13 @@ test("the resolving landing stage carries the conflict resolver's live detail, n
     assistantLine("resolving PLANS.md", { tokens: 12_000 }),
     toolStart("bash", { command: "grep -n '<<<<<<<' PLANS.md" }),
   ]);
-  const landing = { status: "merging", startedAt: Date.now() - 90_000, stage: "resolving" } as const;
-  const phase = loopPhase(freshLoopState("clean"), true, root, false, null, false, landing);
+  const mergeCell = { status: "merging", startedAt: Date.now() - 90_000, stage: "resolving" } as const;
+  const phase = loopPhase(freshLoopState("clean"), true, root, false, null, false, mergeCell);
   assert.match(phase, /^merging 1m3[01]s · resolving conflicts · turn 2 · ctx 12\.0k · bash grep/, `unexpected shape: ${phase}`);
-  assert.equal(loopPhase(freshLoopState("clean"), true, undefined, false, null, false, landing), "merging 1m30s · resolving conflicts");
+  assert.equal(loopPhase(freshLoopState("clean"), true, undefined, false, null, false, mergeCell), "merging 1m30s · resolving conflicts");
 });
 
-test("a landing cell with no recorded start renders the bare `landing` head", () => {
+test("a merge cell with no recorded start renders the bare `merge` head", () => {
   // A change record from an older writer can carry no startedAt (the marker shape allows it):
   // no honest elapsed exists, so the head degrades to the bare label — staged or not.
   const s = freshLoopState("feature");
@@ -694,9 +695,9 @@ test("a landing cell with no recorded start renders the bare `landing` head", ()
   );
 });
 
-test("a new landing's reviewing cell starts at its run's label line, not at the previous review's counts", () => {
+test("a new merge's reviewing cell starts at its run's label line, not at the previous review's counts", () => {
   const root = tmpdir();
-  // A previous review ran to completion; the next landing's reviewer has only written its
+  // A previous review ran to completion; the next merge's reviewer has only written its
   // label line so far (runPi writes it before pi spawns). The stage already says reviewing.
   writePiLog(root, "clean", [
     JSON.stringify({ type: "tumwater_run", label: "review" }),
@@ -742,7 +743,7 @@ test("a parked waiter renders `waiting to start` and stays out of the active set
   s.parkedSince = undefined;
   assert.equal(loopPhase(s, true), "working");
   // The parked label is not an active phase: sortLoopsByState puts it behind the working and
-  // landing rows, so active-row counting never includes a waiter.
+  // merge rows, so active-row counting never includes a waiter.
   const sorted = sortLoopsByState([
     { role: "clean", phase: "waiting to start 5s" },
     { role: "feature", phase: "working 5s" },
@@ -865,7 +866,7 @@ test("loopPhase reads waiting: bootstrap for idle role loops while bootstrap hol
   );
 });
 
-// Parallel work instances, part 6/7: the idle/landing work text — the claim's title, the
+// Parallel work instances, part 6/7: the idle/merge work text — the claim's title, the
 // and null for everything else.
 test("idleClaimText names the claimed entry, or why an extra instance is idle", () => {
   const claim = { file: "PLANS.md" as const, key: "plan a", title: "Plan A", at: 1, source: "assigned" as const };

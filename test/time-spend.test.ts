@@ -6,7 +6,7 @@ import type { HarnessEvent } from "../src/events/events.js";
 // The failure digest's time-and-spend fold: how the window's run_ends price into the
 // per-role × outcome-class table and the loss-cause ranking. These tests pin the rules the
 // digest's numbers live on — the result→class mapping, the duration source chain (own
-// durationMs, then the run_start pairing, then 0), the queued→landing-outcome join, and the
+// durationMs, then the run_start pairing, then 0), the queued→merge-outcome join, and the
 // loss-cause keys (error cluster, per-role no_change, per-role review-rejected, and per-role
 // merge-conflict/merge-blocked) with their newest-wins example and the top-5 cap.
 
@@ -14,7 +14,7 @@ function ev(extra: Partial<HarnessEvent> & { ts?: number }): HarnessEvent {
   return { ts: 1000, source: "coverage", type: "run_end", ...extra } as HarnessEvent;
 }
 
-test("outcome classes fold per role: landed, no_change, error; unknown results cost nothing", () => {
+test("outcome classes fold per role: merged, no_change, error; unknown results cost nothing", () => {
   const { timeSpend } = timeAndSpend(
     [
       ev({ ts: 100, result: "changed", durationMs: 1000, costUsd: 0.1 }),
@@ -70,7 +70,7 @@ test("rows rank by summed wall-clock ms, roles tie-broken by name", () => {
   );
 });
 
-test("a queued tick whose landing was rejected prices into the error cell and a review-rejected cause", () => {
+test("a queued tick whose merge was rejected prices into the error cell and a review-rejected cause", () => {
   const tickEnd = ev({
     source: "coverage",
     ts: 100,
@@ -100,8 +100,8 @@ test("a queued tick whose landing was rejected prices into the error cell and a 
       }),
     ],
   );
-  // The authoring tick's transient queued result resolves to the landing gate's rejection,
-  // so its agent-hours leave the landed cell the queued label suggested.
+  // The authoring tick's transient queued result resolves to the merge gate's rejection,
+  // so its agent-hours leave the merged cell the queued label suggested.
   assert.deepEqual(timeSpend[0]!.classes.error, { runs: 1, ms: 5000, costUsd: 0.25 });
   assert.deepEqual(timeSpend[0]!.classes.merged, { runs: 0, ms: 0, costUsd: 0 });
   assert.deepEqual(lossCauses, [
@@ -116,9 +116,9 @@ test("a queued tick whose landing was rejected prices into the error cell and a 
   ]);
 });
 
-test("a queued tick with no visible landing outcome keeps the conservative queued→landed reading", () => {
-  // Landing still in the pipeline (no outcome event), and an outcome event whose commit does
-  // not match the pin: both keep the queued tick in the landed cell with no loss cause.
+test("a queued tick with no visible merge outcome keeps the conservative queued→merged reading", () => {
+  // Merge still in the pipeline (no outcome event), and an outcome event whose commit does
+  // not match the pin: both keep the queued tick in the merged cell with no loss cause.
   const queued = ev({ ts: 100, result: "queued", durationMs: 1000 });
   const { timeSpend, lossCauses } = timeAndSpend(
     [queued],
@@ -128,7 +128,7 @@ test("a queued tick with no visible landing outcome keeps the conservative queue
   assert.deepEqual(lossCauses, []);
 });
 
-test("a queued tick whose landing failed to merge owns a cause named by its result", () => {
+test("a queued tick whose merge failed to merge owns a cause named by its result", () => {
   // BUGS.md 2026-10-10: the queued→landing join repriced merge_conflict/merge_blocked authoring
   // spans into the error-class cell but gave them no loss cause, so those hours were owned by
   // no cause and were not counted by lossCausesHidden. Each now itemizes under its own result,
@@ -157,7 +157,7 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
   assert.equal(lossCausesHidden, 0, "both merge causes are owned, not hidden");
 });
 
-test("a merge_blocked landing whose merge-scope check was killed at its own deadline names that cause", () => {
+test("a merge_blocked merge whose merge-scope check was killed at its own deadline names that cause", () => {
   const blocked = ev({ ts: 100, source: "feature", run: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
   const { lossCauses } = timeAndSpend(
     [blocked],
@@ -173,10 +173,10 @@ test("a merge_blocked landing whose merge-scope check was killed at its own dead
   assert.match(lossCauses[0]!.example, /batch build check killed at its 300s deadline/);
 });
 
-test("a queued tick that failed retriably, was rebased, and recovered into a landing prices into the landed cell (BUGS.md 2026-10-10)", () => {
-  // A first merge_blocked keeps the pin; the vet had already rebased the ref to sha2, so
+test("a queued tick that failed retriably, was rebased, and recovered into a merge prices into the merged cell (BUGS.md 2026-10-10)", () => {
+  // A first merge_blocked keeps the pin; the verification had already rebased the ref to sha2, so
   // recovery re-enqueues sha2 while the failed attempt logged sha1, and sha2's retry lands.
-  // The authoring tick's span must price under `landed`, with no loss cause, rather than
+  // The authoring tick's span must price under `merged`, with no loss cause, rather than
   // latch the retriable failure and burn agent-hours into the error cell.
   const queued = ev({ ts: 100, source: "feature", run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
   const { timeSpend, lossCauses } = timeAndSpend(
