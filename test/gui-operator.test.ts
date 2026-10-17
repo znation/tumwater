@@ -34,7 +34,7 @@ async function postRaw<T>(base: string, path: string, body: string): Promise<T> 
 }
 // The daily cost budget on the GUI surface (plans/daily-cost-budget.md): /api/status carries
 // raw `budget` while enabled and null when disabled plus the preformatted `budgetBadge` the
-// page renders as its header badge, and a paused fleet's idle roles read `waiting: budget spent`
+// page renders as its header badge, and a paused team's idle roles read `waiting: budget spent`
 // in their phase payload.
 
 test("status payload carries the daily budget while enabled and null when disabled", async () => {
@@ -49,7 +49,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   now.setHours(12, 0, 0, 0);
   const atNoon = () => statusPayload(repo, now.getTime()) as typeof payload;
   let payload = atNoon() as { budget: { spentUsd: number; capUsd: number; capHitAt: number | null; free: boolean; fallback: { provider?: string; model?: string } | null } | null; budgetBadge: string };
-  // No provider/model configured (pi's own default) — the fleet cannot be verified as free.
+  // No provider/model configured (pi's own default) — the team cannot be verified as free.
   assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null }, "enabled by default with no spend yet");
   assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the TUI header string");
 
@@ -64,7 +64,7 @@ test("status payload carries the daily budget while enabled and null when disabl
 
   // 0 disables: the raw data stays (spend is still reported; capUsd 0 says disabled) and
   // the preformatted badge switches to the standing `· no cap` form — it never disappears,
-  // because the badge is also the affordance for setting a cap from a disabled fleet.
+  // because the badge is also the affordance for setting a cap from a disabled team.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
@@ -126,7 +126,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
 // Regression (review of the editable-budget feature): the payload's budget object is now
 // unconditional, so a DISABLED cap must not read as reached — with a running orchestrator,
 // spend ≥ 0 = cap would otherwise export every idle role loop as `waiting: budget spent`.
-test("a disabled cap never pauses the fleet in the phase payload", async () => {
+test("a disabled cap never pauses the team in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui no-cap test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
@@ -170,12 +170,12 @@ test("GUI_CLIENT_JS carries the operator module as a byte-exact contiguous splic
   );
 });
 
-test("a paused fleet's idle role loops read waiting: budget spent in the phase payload", async () => {
+test("a paused team's idle role loops read waiting: budget spent in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget pause test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
   writeOrchestratorMarker(repo, ["clean"]);
-  // …and spend at the cap so the fleet-wide pause flag is set.
+  // …and spend at the cap so the team-wide pause flag is set.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 10;
   saveConfig(repo, cfg);
@@ -282,7 +282,7 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
 // team/team-state.ts
 // writers the CLI uses, so the GUI and `tumwater pause`/`resume` cannot drift.
 
-test("POST /api/pause writes and removes the fleet pause marker and rejects bad bodies", async () => {
+test("POST /api/pause writes and removes the team pause marker and rejects bad bodies", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui pause route test");
   await withGui(repo, async ({ base }) => {
@@ -322,7 +322,7 @@ test("POST /api/pause writes and removes the fleet pause marker and rejects bad 
 });
 
 // The pause menu's optional reason rides the same route and lands in the marker as the CLI's
-// `pause --reason` does (pauseFleet folds and caps it).
+// `pause --reason` does (pauseTeam folds and caps it).
 test("POST /api/pause with a reason stores it folded and capped and rejects bad reasons", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui pause reason test");
@@ -408,7 +408,7 @@ test("POST /api/pause with forSeconds writes a timed pause and rejects bad durat
 // --- POST /api/wake and POST /api/abort — the dashboard's per-row controls, backed by the
 // same marker-writing cores (requestWake/requestAbort in operator/operator-intent.ts) the CLI
 // commands call, so the two surfaces cannot drift on the state they write or the text they
-// report. The fleet-side marker consumption is pinned in test/orchestrator.e2e.test.ts;
+// report. The team-side marker consumption is pinned in test/orchestrator.e2e.test.ts;
 // here we pin the HTTP layer: the markers it writes, its validation, and its status codes.
 
 test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bodies", async () => {
@@ -435,8 +435,8 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
   fs.rmSync(wakeRequestPath(repo));
   res = await fetch(base + "/api/wake", { method: "POST", body: "{}" });
   assert.equal(res.status, 200);
-  const fleetMarker = readJson(wakeRequestPath(repo)) as { roles: string[] };
-  assert.deepEqual([...fleetMarker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
+  const teamMarker = readJson(wakeRequestPath(repo)) as { roles: string[] };
+  assert.deepEqual([...teamMarker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
 
   // Unknown / non-string roles get the transcript endpoint's 400 wording, and change nothing.
   for (const body of ['{"role": "bogus"}', '{"role": 7}']) {
@@ -514,7 +514,7 @@ test("POST /api/reset-counters zeroes counters like `tumwater reset-counters` an
   });
 });
 
-test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 400 for bad roles", async () => {
+test("POST /api/abort writes the marker for a live team, answers 409 when not, 400 for bad roles", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui abort test");
   await withGui(repo, async ({ base }) => {
@@ -584,7 +584,7 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
     "the idempotent repeat leaves one marker entry",
   );
 
-  // Resume: the role leaves the marker, and a fully-resumed fleet leaves no file behind.
+  // Resume: the role leaves the marker, and a fully-resumed team leaves no file behind.
   res = await post({ role: "feature", paused: false });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, changed: true, paused: false });

@@ -20,7 +20,7 @@ import { makeTuiRepo, startTui, withTui } from "./fixtures/tui-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 import { setEnv } from "./helpers/env.js";
 
-test("runTui renders the fleet table and an empty activity pane on start", async () => {
+test("runTui renders the team table and an empty activity pane on start", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     const frame = tui.lastFrame();
@@ -42,14 +42,14 @@ test("runTui degrades a reported 0×0 window to the default frame budget", async
   await withTui(repo, async (tui) => {
     const frame = tui.lastFrame();
     assert.match(frame, /\[Activity\]/); // the tab strip survives, not clipped to empty
-    assert.match(frame, /clean/); // the fleet table renders
+    assert.match(frame, /clean/); // the team table renders
     assert.ok(frame.trim().split("\n").length > 2, "the frame carries dashboard content");
   }, { rows: 0, columns: 0 });
 });
 
 // Repaint-on-change: a re-render whose composed frame is byte-identical to the last one
 // written must not touch the terminal again — the per-second timer re-renders an idle
-// fleet's identical screen ~59 times a minute otherwise, and every keypress handler
+// team's identical screen ~59 times a minute otherwise, and every keypress handler
 // re-render follows the same rule (an inert keypress produces no frame). An inert key
 // (f1: no handler branch claims it, applyKey passes it through unchanged) proves the
 // skip without any state change; a following content-changing keypress still repaints.
@@ -585,12 +585,12 @@ test("Ctrl+G scopes the Activity feed and `/` searches it, narrowing what the pa
   ]);
 
   await withTui(repo, async (tui) => {
-    const fleet = tui.lastFrame();
-    assert.match(fleet, /\[Activity\]/, "Activity opens fleet-wide");
-    assert.match(fleet, /widget landed/);
-    assert.match(fleet, /gizmo swept/);
-    assert.match(fleet, /tidy imports/);
-    assert.match(fleet, /Ctrl\+G scope: team · \/ search/, "the hint names the fleet scope and the search key");
+    const team = tui.lastFrame();
+    assert.match(team, /\[Activity\]/, "Activity opens team-wide");
+    assert.match(team, /widget landed/);
+    assert.match(team, /gizmo swept/);
+    assert.match(team, /tidy imports/);
+    assert.match(team, /Ctrl\+G scope: team · \/ search/, "the hint names the team scope and the search key");
 
     // Ctrl+G scopes the feed to the roster's clean loop: the tab strip and hint name it, and
     // the feature loop's event leaves the pane.
@@ -621,7 +621,7 @@ test("Ctrl+G scopes the Activity feed and `/` searches it, narrowing what the pa
     assert.match(frame, /widget landed/);
     assert.doesNotMatch(frame, /tidy imports/, "the same loop's non-matching event is filtered out");
 
-    // Ctrl+G back to the fleet keeps the search; only the matching event is fleet-visible too.
+    // Ctrl+G back to the team keeps the search; only the matching event is team-visible too.
     tui.key(undefined, "g", { ctrl: true });
     frame = tui.lastFrame();
     assert.match(frame, /\[Activity\]/);
@@ -756,7 +756,7 @@ test("aborting runTui's injected signal closes it like a quit, not a hang", asyn
   let settled = false;
   void tui.done.then(() => { settled = true; });
   // `run --tui` hosts the TUI inside the supervisor, which must be able to end it from
-  // outside: a `--for` window closes (or the fleet stops) with the TUI still up, and
+  // outside: a `--for` window closes (or the team stops) with the TUI still up, and
   // runTui's promise otherwise only settles on a keypress or a reload — so a windowed run
   // would hang on `await tui`. The supervisor aborts the injected signal; this pins that
   // the abort closes the TUI through the same clean quit teardown, not a hang.
@@ -771,7 +771,7 @@ test("aborting runTui's injected signal closes it like a quit, not a hang", asyn
 test("runTui resolves without a keypress when its injected signal was already aborted at mount", async () => {
   // The executor's `aborted` check (`if (... || seams.abortSignal?.aborted) resolve()`)
   // exists for the ordering where the abort landed before runTui reached its main await — a
-  // `run --tui` window that already closed or a fleet already stopped before the TUI's
+  // `run --tui` window that already closed or a team already stopped before the TUI's
   // executor ran. The listener-only test above aborts after mount; this pins the other
   // half: an already-aborted signal must end runTui through the same teardown, not hang
   // waiting for a keypress.

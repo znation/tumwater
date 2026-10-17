@@ -5,7 +5,7 @@ import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 
 // The dashboard's Pending view (src/ui/gui/gui-client-pending.ts): the roster it paints from
-// /api/diff's fleet document — each role's branch, state, commits ahead with their subjects,
+// /api/diff's team document — each role's branch, state, commits ahead with their subjects,
 // and uncommitted-file count — and its place in the assembled script. The drawer's full-patch
 // half lives beside the drawer (test/gui-client-drawer.test.ts).
 
@@ -14,11 +14,11 @@ test("GUI_CLIENT_JS carries the pending module verbatim", () => {
 });
 
 test("pendingTableHtml lists every role's branch, state, commits ahead with subjects, and dirty count", () => {
-  const { pendingTableHtml } = clientScope<{ pendingTableHtml(fleet: unknown): string }>(
+  const { pendingTableHtml } = clientScope<{ pendingTableHtml(team: unknown): string }>(
     ["format", "labels", "pending-table"],
     ["pendingTableHtml"],
   );
-  const fleet = {
+  const team = {
     mainBranch: "main",
     roles: [
       { role: "feature", branch: "tumwater/feature", state: "ready", ahead: 2, commits: [
@@ -29,7 +29,7 @@ test("pendingTableHtml lists every role's branch, state, commits ahead with subj
       { role: "clean", branch: "tumwater/clean", state: "absent", ahead: 0, commits: [], dirtyFiles: [] },
     ],
   };
-  const html = pendingTableHtml(fleet);
+  const html = pendingTableHtml(team);
   // Every role is listed and every row opens that loop's drawer.
   for (const role of ["feature", "qa", "clean"]) {
     assert.match(html, new RegExp(`data-open='${role}'`), `${role} row opens its drawer`);
@@ -46,7 +46,7 @@ test("pendingTableHtml lists every role's branch, state, commits ahead with subj
 });
 
 test("pendingTableHtml degrades empty, all-no-base, and absent documents without throwing", () => {
-  const { pendingTableHtml } = clientScope<{ pendingTableHtml(fleet: unknown): string }>(
+  const { pendingTableHtml } = clientScope<{ pendingTableHtml(team: unknown): string }>(
     ["format", "labels", "pending-table"],
     ["pendingTableHtml"],
   );
@@ -61,7 +61,7 @@ test("pendingTableHtml degrades empty, all-no-base, and absent documents without
 });
 
 test("pendingTableHtml escapes role, branch, and subject text", () => {
-  const { pendingTableHtml } = clientScope<{ pendingTableHtml(fleet: unknown): string }>(
+  const { pendingTableHtml } = clientScope<{ pendingTableHtml(team: unknown): string }>(
     ["format", "labels", "pending-table"],
     ["pendingTableHtml"],
   );

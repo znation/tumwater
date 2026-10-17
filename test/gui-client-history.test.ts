@@ -31,8 +31,8 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
     { ts: now - 20 * 60_000, time: "2026-09-29 15:18:00", role: "qa", run: 2, result: "error", durationMs: 240_000, usage: "900 tok", detail: "<script>x</script>" },
   ];
   const html = historyTableHtml(rows, "all", new Set(["coverage", "qa"]));
-  assert.match(html, /<tr class='clickable' data-open='coverage'>/, "a fleet loop's row opens its drawer");
-  assert.match(html, /<tr><td class='c-x'><\/td><td title='2026-09-29 15:29:00'>/, "a row for a loop no longer in the fleet is plain and carries no toggle");
+  assert.match(html, /<tr class='clickable' data-open='coverage'>/, "a team loop's row opens its drawer");
+  assert.match(html, /<tr><td class='c-x'><\/td><td title='2026-09-29 15:29:00'>/, "a row for a loop no longer in the team is plain and carries no toggle");
   assert.match(html, /5m ago/);
   assert.match(html, /#5/);
   assert.match(html, /<span class='res t-indigo'>Waiting to merge<\/span>/);
@@ -41,7 +41,7 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   assert.match(html, /<td class='num c-dur'>—<\/td>/, "a missing duration is a dash, never NaN");
   assert.doesNotMatch(html, /NaN|<script>/);
   assert.match(html, /&lt;script&gt;x&lt;\/script&gt;/);
-  // The per-row drill-down toggle: a fleet loop's row carries one, addressed by role+tick.
+  // The per-row drill-down toggle: a team loop's row carries one, addressed by role+tick.
   assert.match(html, /data-tickdetail='1' data-role='coverage' data-tick='5' aria-expanded='false'/);
   assert.match(html, /data-tickdetail='1' data-role='qa' data-tick='2'/);
   // The outcome filter's buckets.
@@ -313,7 +313,7 @@ test("a malformed tick-detail payload errors naming the endpoint, the tick, and 
   assert.match(html, /tumwater may not match/, "the card's esc() escapes the message's apostrophe");
 });
 
-test("fetchHistory drops and re-persists a loop scope the fleet no longer lists", async () => {
+test("fetchHistory drops and re-persists a loop scope the team no longer lists", async () => {
   // A persisted hist-role naming a retired loop: syncHistoryRoles repaints the picker to All
   // loops, and the scope variable must follow it. Otherwise the picker shows All loops while
   // the request keeps `&role=<vanished>`, so the view reads as an empty log the operator cannot

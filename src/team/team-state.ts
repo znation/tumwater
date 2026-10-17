@@ -24,9 +24,6 @@ export function standingTeamPause(root: string): PauseMarker | null {
   return standingMarker(pausedPath(root));
 }
 
-/** @deprecated Use standingTeamPause. */
-export const standingFleetPause = standingTeamPause;
-
 /** True while the operator has paused the team (`tumwater pause` wrote its marker). The
  * marker is persistent state, not a one-shot request: presence means paused until `resume`
  * removes it — pausing before startup starts an already-paused team. Never throws (a missing

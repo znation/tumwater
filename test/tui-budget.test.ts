@@ -68,13 +68,13 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
   });
 });
 
-// Free-state budget (BUGS.md, 2026-09-14): a fleet whose models are all free has no spend
+// Free-state budget (BUGS.md, 2026-09-14): a team whose models are all free has no spend
 // a cap could bind, so Ctrl+B flashes a notice instead of opening the editor — the prompt
 // line stays byte-for-byte (no pre-filled cap, nothing to save on Enter).
-test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet", async () => {
+test("Ctrl+B flashes a notice instead of opening the editor on an all-free team", async () => {
   const repo = await makeTuiRepo();
   // snapshot() resolves pi's model catalog at $HOME/.pi/agent/models.json (src/pi/pi-models.ts):
-  // aim a temp home at an unpriced model the repo config points at, so the fleet reads free.
+  // aim a temp home at an unpriced model the repo config points at, so the team reads free.
   const home = tmpdir("tui-free-home-");
   fs.mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });
   fs.writeFileSync(

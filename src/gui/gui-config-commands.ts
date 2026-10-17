@@ -51,7 +51,7 @@ function configKeyError(res: http.ServerResponse, key: string, result: { error: 
 /** Handle POST /api/config-set: the Settings view's per-key Save — one curated key set to
  * one JSON value, through setConfigKey so the browser cannot drift from the CLI's rules
  * (unknown-key refusal, the per-key validators' messages, whole-candidate validateConfig,
- * atomic write the running fleet picks up live). A key outside EDITABLE_CONFIG_KEYS is
+ * atomic write the running team picks up live). A key outside EDITABLE_CONFIG_KEYS is
  * refused 400 with the key named — a known-but-not-curated key (customRoles) included, so
  * the panel's reach stays exactly EDITABLE_CONFIG_KEYS. The body's value is re-encoded with
  * JSON.stringify before setConfigKey parses it back, so `set model gpt-5`'s
@@ -76,7 +76,7 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
 
 /** Handle POST /api/config-unset: the Settings view's per-key Clear — one curated key removed,
  * through unsetConfigKey so the browser cannot drift from `tumwater config unset`'s rules
- * (unknown-key refusal, whole-candidate validateConfig, atomic write the running fleet picks
+ * (unknown-key refusal, whole-candidate validateConfig, atomic write the running team picks
  * up live). The same EDITABLE_CONFIG_KEYS gate as /api/config-set, so the panel's reach stays
  * exactly the curated set; a key outside it is refused 400 with the key named. Same body
  * discipline (readPostBody → 400 malformed/non-object, 413 oversized). The 200 body omits

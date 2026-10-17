@@ -12,7 +12,7 @@ import { snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, permitsBadge, quietBadge, runWindowBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { fleetAlerts } from "./team-alerts.js";
+import { teamAlerts } from "./team-alerts.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (landings, failures, questions) after it filters
@@ -29,7 +29,7 @@ export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title
   return entries.slice(0, DASHBOARD_RECENT_FINISHED).map((e) => ({ title: finishedTitle(e.title, dateRe), completedOn: completionDate(e.title, dateRe) }));
 }
 
-/** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
+/** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
  * newer build and reload), while `tumwater status --json` (cli.ts) prints it verbatim — every
  * other field is shared, so the dashboard and the CLI can never drift apart. Assembled here —
@@ -166,7 +166,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // not be re-derived client-side where it could drift from the TUI header.
     buildBadge: buildBadge(snap.build),
     // The header's daily-cost-budget badge preformatted through badges.ts's budgetBadge —
-    // the same string the TUI/status table renders (n/a for an all-free fleet; `· no cap`
+    // the same string the TUI/status table renders (n/a for an all-free team; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
     budgetBadge: budgetBadge(snap.budget, snap.claudeWindow, now, snap.chain),
     // The disk floor (plans/disk-floor.md, part 4/4): the raw block is machine-readable for
@@ -236,7 +236,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // the preformatted `budgetBadge`.
     budget: snap.budget,
     // The subscription usage-window block (part 6d/7), absent on a pi-only or API-claude
-    // fleet — the same raw shape `status --json` carries, which the GUI's spend card reads
+    // team — the same raw shape `status --json` carries, which the GUI's spend card reads
     // to render the window (the preformatted budgetBadge above already folds it into the
     // header for the TUI/status). Raw data, like budget.
     ...(snap.claudeWindow ? { claudeWindow: snap.claudeWindow } : {}),
@@ -265,7 +265,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // window, machine-readable for `status --json` beside capPaused; the dashboards render
     // the loop's own `quiet until <end>` from it through loopPhase.
     roleQuietPaused: snap.roleQuietPaused,
-    // The fleet marker's standing timed-pause deadline (ms epoch), absent when the fleet is
+    // The team marker's standing timed-pause deadline (ms epoch), absent when the team is
     // not timed-paused (undefined drops from the JSON). Raw data, like paused/pausedRoles —
     // machine-readable for `status --json`; the planned GUI pause-badge countdown reads it
     // client-side.
@@ -322,8 +322,8 @@ export function statusPayload(root: string, now = Date.now()): object {
     // fresh each poll. Badges and alerts keep counting open entries only.
     donePlans: recentFinished(donePlanEntries(root), DONE_DATE_RE),
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
-    // What needs the operator (team-alerts.ts's fleetAlerts): the dashboard's alert banners and
+    // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: fleetAlerts(snap, questions, roles, now),
+    alerts: teamAlerts(snap, questions, roles, now),
   };
 }

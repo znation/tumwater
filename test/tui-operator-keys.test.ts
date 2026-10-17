@@ -1,7 +1,7 @@
 /** The TUI per-loop operator controls (extracted from tui.test.ts): Ctrl+P (a duration editor
- * on an unpaused loop, an immediate resume on a paused one) and its fleet-pause interplay
+ * on an unpaused loop, an immediate resume on a paused one) and its team-pause interplay
  * note, Ctrl+A's abort confirmation and liveness gate, Ctrl+W's wake editor, Ctrl+Q's
- * scheduled fleet stop, and the keys' inertness outside transcript views and in budget mode.
+ * scheduled team stop, and the keys' inertness outside transcript views and in budget mode.
  * Like the other topic-named slices (loop-refusal,
  * orchestrator-budget, review-precheck), this file holds one coherent topic; the shared
  * fake-TTY harness lives in fixtures/tui-fixtures.ts. Each test file gets its own process, so the
@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isFleetPaused, scheduledStopAt, pauseFleet, pausedRoles, standingFleetPause } from "../src/team/team-state.js";
+import { isTeamPaused, scheduledStopAt, pauseTeam, pausedRoles, standingTeamPause } from "../src/team/team-state.js";
 import { listWakes, requestWake } from "../src/operator/operator-intent.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
@@ -40,20 +40,20 @@ test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wordin
     tui.key(undefined, "p", { ctrl: true });
     assert.deepEqual(pausedRoles(repo), []);
     assert.match(tui.lastFrame(), /role clean resumed — it starts new runs again/);
-    // No fleet pause is active, so the interplay note stays out of the flash.
+    // No team pause is active, so the interplay note stays out of the flash.
     assert.doesNotMatch(tui.lastFrame(), /team pause is still active/);
   });
 });
 
-test("Ctrl+P's resume flash carries the fleet-pause interplay note while the fleet is paused", async () => {
+test("Ctrl+P's resume flash carries the team-pause interplay note while the team is paused", async () => {
   const repo = await makeTuiRepo();
-  pauseFleet(repo); // the stronger gate: a resumed role still starts no ticks under it
+  pauseTeam(repo); // the stronger gate: a resumed role still starts no ticks under it
   await withTui(repo, async (tui) => {
     // The interplay note makes the resume flash longer than the default fake 100 columns, and
     // every rendered line is clipped to the width — widen the fake terminal so the note fits.
     (process.stdout as { columns?: number }).columns = 220;
     tui.key(undefined, "t", { ctrl: true });
-    tui.key(undefined, "p", { ctrl: true }); // pause the role under the fleet pause
+    tui.key(undefined, "p", { ctrl: true }); // pause the role under the team pause
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /role clean paused/);
     tui.key(undefined, "p", { ctrl: true }); // resume it
@@ -143,7 +143,7 @@ test("Ctrl+C interrupts a director tick in flight through the rendered snapshot,
   saveConfig(repo, cfg);
   // A director mid-tick: running with a started-at stamp renders its own `director working`
   // phase (outside the permit-holder inFlight set, which the gate no longer keys off alone);
-  // the orchestrator marker keeps the fleet live for the gate. The state column clips the
+  // the orchestrator marker keeps the team live for the gate. The state column clips the
   // label at this width, so match its prefix.
   saveLoopState(repo, { ...freshLoopState("director"), running: true, lastRunStartedAt: Date.now() - 60_000 });
   writeOrchestratorMarker(repo, ["clean", "director"]);
@@ -238,40 +238,40 @@ test("a second Ctrl+W closes the wake editor without writing", async () => {
   });
 });
 
-test("Ctrl+F toggles the fleet pause marker through pauseFleet/resumeFleet and flashes the shared wording", async () => {
+test("Ctrl+F toggles the team pause marker through pauseTeam/resumeTeam and flashes the shared wording", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
-    assert.equal(isFleetPaused(repo), false);
+    assert.equal(isTeamPaused(repo), false);
     tui.key(undefined, "f", { ctrl: true }); // opens the pause editor
-    assert.equal(isFleetPaused(repo), false, "the editor writes nothing until Enter");
+    assert.equal(isTeamPaused(repo), false, "the editor writes nothing until Enter");
     tui.key(undefined, "return"); // empty line: pause until resumed
-    assert.equal(isFleetPaused(repo), true);
+    assert.equal(isTeamPaused(repo), true);
     assert.match(tui.lastFrame(), /team paused — roles start no new runs/);
-    // The next frame's fleet alert reads the marker, so the resume action is visible too.
+    // The next frame's team alert reads the marker, so the resume action is visible too.
     assert.match(tui.lastFrame(), /The team is paused/);
 
     tui.key(undefined, "f", { ctrl: true });
-    assert.equal(isFleetPaused(repo), false);
+    assert.equal(isTeamPaused(repo), false);
     assert.match(tui.lastFrame(), /team resumed — roles run again/);
     assert.doesNotMatch(tui.lastFrame(), /The team is paused/);
   });
 });
 
-test("Ctrl+F then '1h maintenance' pauses with a deadline and reason shown in the fleet alert", async () => {
+test("Ctrl+F then '1h maintenance' pauses with a deadline and reason shown in the team alert", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     const before = Date.now();
     tui.key(undefined, "f", { ctrl: true });
     for (const ch of "1h maintenance") tui.key(ch, ch);
     tui.key(undefined, "return");
-    const marker = standingFleetPause(repo);
+    const marker = standingTeamPause(repo);
     assert.ok(marker?.until !== undefined && Math.abs(marker.until - (before + 3_600_000)) < 60_000, "until is about one hour ahead");
     assert.equal(marker?.reason, "maintenance");
     assert.match(tui.lastFrame(), /maintenance/);
   });
 });
 
-test("Esc in the pause editor leaves the fleet unpaused and restores the draft", async () => {
+test("Esc in the pause editor leaves the team unpaused and restores the draft", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     for (const ch of "draft text") tui.key(ch, ch);
@@ -279,7 +279,7 @@ test("Esc in the pause editor leaves the fleet unpaused and restores the draft",
     assert.match(tui.lines().at(-1) ?? "", /^pause ›/);
     for (const ch of "2h") tui.key(ch, ch);
     tui.key(undefined, "escape");
-    assert.equal(isFleetPaused(repo), false);
+    assert.equal(isTeamPaused(repo), false);
     assert.match(tui.lines().at(-1) ?? "", /director › draft text/);
   });
 });
@@ -291,7 +291,7 @@ test("Ctrl+F during a / search is inert: no pause editor opens over the search",
     for (const ch of "foo") tui.key(ch, ch);
     tui.key(undefined, "f", { ctrl: true });
     tui.key(undefined, "return");
-    assert.equal(isFleetPaused(repo), false);
+    assert.equal(isTeamPaused(repo), false);
     assert.doesNotMatch(tui.lines().at(-1) ?? "", /^pause ›/);
   });
 });
@@ -302,7 +302,7 @@ test("a 91d pause entry flashes the cap error and keeps the editor open; Ctrl+B 
     tui.key(undefined, "f", { ctrl: true });
     for (const ch of "91d") tui.key(ch, ch);
     tui.key(undefined, "return");
-    assert.equal(isFleetPaused(repo), false);
+    assert.equal(isTeamPaused(repo), false);
     assert.match(tui.lastFrame(), /pause is capped at 90d/);
     assert.match(tui.lines().at(-1) ?? "", /^pause › 91d/);
     tui.key(undefined, "b", { ctrl: true });
@@ -320,14 +320,14 @@ test("Ctrl+F is inert while the budget editor or the role-prompt editor holds th
     tui.key(undefined, "b", { ctrl: true }); // enter budget mode
     assert.match(tui.lastFrame(), /edit daily cost budget/);
     tui.key(undefined, "f", { ctrl: true });
-    assert.equal(isFleetPaused(repo), false);
+    assert.equal(isTeamPaused(repo), false);
     assert.equal(tui.lines().at(-1), "daily cap $ 50", "still editing the cap, Ctrl+F inert");
 
     tui.key(undefined, "escape"); // leave budget mode
     tui.key(undefined, "r", { ctrl: true }); // enter role-prompt mode for the viewed loop
     assert.match(tui.lastFrame(), /prompt for clean/);
     tui.key(undefined, "f", { ctrl: true });
-    assert.equal(isFleetPaused(repo), false);
+    assert.equal(isTeamPaused(repo), false);
   });
 });
 

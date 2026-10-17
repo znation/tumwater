@@ -13,14 +13,14 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
  * table (status-render.ts's renderStatus header) and the JSON/GUI payload
  * (status-payload.ts's preformatted badge fields). Split from status-model.ts, which keeps the
- * per-loop display model (phase, rows, token metrics) — the badges are header-scale fleet
+ * per-loop display model (phase, rows, token metrics) — the badges are header-scale team
  * facts (build, main check, budget, land queue, timed pause) rather than per-loop state, and
  * their one-home rule ("the page cannot re-derive and drift from these strings") is easier to
  * see when the module is exactly the badges. The duration phrasing they share (humanSeconds)
  * lives in datetime.ts — core modules need it too, so it sits below the ui layer. */
 
 /** The header's build fragment: which commit the running harness was compiled from and, when
- * main's build inputs have moved past it, how far — the fleet is then executing code main no
+ * main's build inputs have moved past it, how far — the team is then executing code main no
  * longer describes (auto-restart lands the new build; off, restart `tumwater run` by hand).
  * A stale build also says what auto-restart is doing about it: `restart pending` resolves
  * itself, `restart BLOCKED` never will until main moves, and telling them apart at a glance is
@@ -76,7 +76,7 @@ export function mainCheckVerdict(
 /** Main's newest merge-scope check as a header badge (PLANS.md "Retire the README freshness
  * stamp"): `· main <sha>: green · N/N (N skipped)` — the live replacement for the committed
  * README stamp the readme role used to maintain. Empty when the snapshot carries no check
- * (none has run yet), so a quiet header stays byte-identical to a pre-check fleet. The
+ * (none has run yet), so a quiet header stays byte-identical to a pre-check team. The
  * verdict maps passed→green, failed→red; anything else (a skipped scope check) renders its
  * raw word — an unverified tree must not read green. The counts fragment (mainCountsFragment)
  * omits parentheticals for zero counts, matching the stamp wording the README carried. */
@@ -89,11 +89,11 @@ export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"]): string {
   return ` · main ${sha}${verdict}${counts}`;
 }
 
-/** The fleet's current budget-gate state, derived from a snapshot's budget block — the header
- * badge's default-tier story (part 5c/8): the badge names the fleet's bulk fallback, so it
+/** The team's current budget-gate state, derived from a snapshot's budget block — the header
+ * badge's default-tier story (part 5c/8): the badge names the team's bulk fallback, so it
  * reads the `default` tier's verdict alone (the per-tier pause lives on the loop rows, via
  * status-data.ts's budgetPausedRoles). */
-function fleetBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
+function teamBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
   return budgetGate(budgetReached(budget), { default: budget.fallback !== null, strong: budget.fallback !== null }, false);
 }
 
@@ -183,8 +183,8 @@ export function claudeWindowTone(claudeWindow: StatusSnapshot["claudeWindow"]): 
 }
 
 /** The header's daily-cost-budget fragment, standing in every cap state (the badge is also
- * the affordance for editing the cap, so a disabled fleet needs it too): `· budget: n/a`
- * for a fleet whose models are all free (spend can never accumulate against a cap that
+ * the affordance for editing the cap, so a disabled team needs it too): `· budget: n/a`
+ * for a team whose models are all free (spend can never accumulate against a cap that
  * cannot be reached — and no priced model means no daily spend to count, hence no "today"
  * — checked first, in every cap state), `· budget: $X.XX/$Y today` while enabled with
  * priced models, and `· budget: $X today · no cap` when disabled. One
@@ -213,8 +213,8 @@ export function budgetBadge(
   // spend for a dollar figure to report. Mixed and none fall through to the daily spend.
   if (claudeWindow?.only) return window;
   if (budget.free) return ` · budget: n/a${window}`;
-  // Only while the fallback is actually carrying the fleet (plans/fallback-model.md): the cap
-  // is spent, so the dollar figure alone would read like a stopped fleet. Naming the model
+  // Only while the fallback is actually carrying the team (plans/fallback-model.md): the cap
+  // is spent, so the dollar figure alone would read like a stopped team. Naming the model
   // answers the operator's next question — what is it running on now? Its cost is n/a by
   // construction (the gate engages nothing else), so no second figure is shown. When the
   // snapshot carries the per-tier map (tiers, part 7b/8 — non-null exactly when the tiers
@@ -224,10 +224,10 @@ export function budgetBadge(
   // identical to before either way.
   const tierEntries = fallbackTierEntries(budget.tiers);
   // The backend-default label when the engaged pair names neither half: `<agent> default`
-  // (plans/agent-backends.md part 4f/7), `pi default` for a pi fleet as before.
+  // (plans/agent-backends.md part 4f/7), `pi default` for a pi team as before.
   const agentDefault = `${budget.backend && budget.backend !== "pi" ? budget.backend : "pi"} default`;
   const fallback =
-    fleetBudgetGate(budget) === "fallback"
+    teamBudgetGate(budget) === "fallback"
       ? tierEntries.length >= 2
         ? ` · over-cap model: ${tierEntries.join(", ")} (cost n/a)`
         : ` · over-cap model: ${fallbackDisplayPair(budget.fallback, agentDefault)} (cost n/a)`
@@ -242,7 +242,7 @@ export function budgetBadge(
 }
 
 /** The header's land-queue fragment (plans/merge-queue.md 4/5): `· land queue: N` while any
- * landing is queued or in flight, empty when the queue is idle — so an idle fleet keeps
+ * landing is queued or in flight, empty when the queue is idle — so an idle team keeps
  * every existing header byte intact. One home for the rule, like buildBadge and budgetBadge:
  * renderStatus renders it in the TUI/status header and status-payload.ts ships its output
  * preformatted, so the GUI page cannot drift from this string. */
@@ -251,7 +251,7 @@ export function landingBadge(landQueue: { depth: number }): string {
 }
 
 /** The header's `run --for` window fragment: ` · stops in <duration>` while the deadline is
- * ahead, ` · stopping` once it has passed (the drain), empty for an unwindowed fleet. */
+ * ahead, ` · stopping` once it has passed (the drain), empty for an unwindowed team. */
 export function runWindowBadge(stopsAt: number | undefined, now: number): string {
   if (stopsAt === undefined) return "";
   return stopsAt > now ? ` · stops in ${humanSeconds(secondsUntil(stopsAt, now))}` : " · stopping";
@@ -283,11 +283,11 @@ export function loopWakeMarker(
   return at === undefined ? "" : ` · wake in ${humanSeconds(secondsUntil(at, now))}`;
 }
 
-/** The header's fleet timed-pause fragment: `· paused — auto-resumes in <duration>` while a
+/** The header's team timed-pause fragment: `· paused — auto-resumes in <duration>` while a
  * timed pause stands, empty otherwise — so an operator can tell at a glance whether a paused
- * fleet will come back on its own or needs a manual `resume` (the Timed pause plan left the
- * display out on purpose). The snapshot's `pausedUntil` is the FLEET marker's deadline (ms
- * epoch, plans/daily-cost-budget.md item 5), so the badge stands exactly when the fleet
+ * team will come back on its own or needs a manual `resume` (the Timed pause plan left the
+ * display out on purpose). The snapshot's `pausedUntil` is the TEAM marker's deadline (ms
+ * epoch, plans/daily-cost-budget.md item 5), so the badge stands exactly when the team
  * itself is timed-paused: a role-only timed pause leaves the header unchanged, and an absent
  * or already-expired deadline renders nothing — the read side treats an expired marker as
  * unpaused, so the badge never claims a countdown that is over. The duration goes through
@@ -309,9 +309,9 @@ export function pauseBadge(pausedUntil: number | undefined, now: number, reason?
   return left ? ` · paused — auto-resumes in ${left}${why}` : ` · paused${why}`;
 }
 
-/** The countdown a timed fleet pause has left, as humanSeconds — `null` when there is none
+/** The countdown a timed team pause has left, as humanSeconds — `null` when there is none
  * (no deadline, or an already-expired one: the read side treats an expired marker as
- * unpaused). The one home of the guard + ms→seconds rounding behind the fleet's pause
+ * unpaused). The one home of the guard + ms→seconds rounding behind the team's pause
  * countdowns, shared by pauseBadge's header fragment and team-alerts.ts's paused alert
  * title, so the two surfaces cannot disagree about how much time remains. The guard is this
  * function's own; the ms→seconds rounding rides datetime.ts's secondsUntil. The GUI's pause
@@ -326,7 +326,7 @@ export function pauseCountdown(pausedUntil: number | undefined, now: number): st
  * schedule as standing information in every configured state — `· quiet until 07:00` while
  * the local clock sits inside the window (the active reading answers "why are the loops
  * idle?" with when they start again) and `· quiet 23:00-07:00` otherwise — and empty when
- * the snapshot carries no window, so a fleet without the schedule keeps its header
+ * the snapshot carries no window, so a team without the schedule keeps its header
  * byte-identical. The window end comes from quiet-hours.ts's quietWindowEnd — read back out of
  * the window string, not re-parsed into minutes — so the badge renders the operator's own
  * spelling.
@@ -341,7 +341,7 @@ export function quietBadge(quietHours: string | undefined, inQuietHours: boolean
 
 /** The header's disk-floor fragment (plans/disk-floor.md, part 4/4): shown while the disk hold
  * is on (`— holding new work`) or free space sits below the reclaim threshold, so an operator
- * sees why the fleet stopped without reading events. A finished reclaim is not standing
+ * sees why the team stopped without reading events. A finished reclaim is not standing
  * information here; it surfaces as a `disk_reclaim` item in the Activity log's Notable feed.
  * Empty when the snapshot carries no disk block (an older orchestrator, or an unmeasurable
  * volume) and space is comfortable. One home for the rule, like budgetBadge: renderStatus
@@ -357,9 +357,9 @@ export function diskBadge(disk: StatusSnapshot["disk"]): string {
 }
 
 /** The permit pool's header fragment (plans/provider-concurrency.md §8): `slots 5/8 · omlx
- * 3/3 · claude 2/6` — the fleet total's in-use/cap followed by each capped provider key's own
+ * 3/3 · claude 2/6` — the team total's in-use/cap followed by each capped provider key's own
  * in-use/cap. The WHOLE fragment appears only while at least one key carries a cap (the
- * `maxConcurrentPerProvider` map is set), so a fleet without it renders the header exactly
+ * `maxConcurrentPerProvider` map is set), so a team without it renders the header exactly
  * as before; uncapped keys that happen to be in the snapshot are dropped rather than shown
  * with a bare in-use that would read like a cap. */
 export function permitsBadge(permits: StatusSnapshot["permits"]): string {

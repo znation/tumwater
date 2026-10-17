@@ -373,12 +373,12 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
   keys.setLineBudgets(5, 4);
-  assert.equal(keys.state().activityRole, null, "Activity opens fleet-wide");
+  assert.equal(keys.state().activityRole, null, "Activity opens team-wide");
 
   // The unfiltered total is 24 and each loop's own is 12, so PgUp's clamped offset proves
   // which filtered list the handler paged over (24 − 5 = 19 vs 12 − 5 = 7).
   keys.handleKey(undefined, { name: "pageup" });
-  assert.equal(keys.state().activityScroll, 14, "the fleet-wide read pages over all 24 events");
+  assert.equal(keys.state().activityScroll, 14, "the team-wide read pages over all 24 events");
   keys.handleKey(undefined, { ctrl: true, name: "g" });
   assert.equal(keys.state().activityRole, "feature", "the first Ctrl+G scopes to the first raw roster id");
   assert.equal(keys.state().activityScroll, null, "a filter change resets the pane to the live tail");
@@ -388,7 +388,7 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
   keys.handleKey(undefined, { ctrl: true, name: "g" });
   assert.equal(keys.state().activityRole, "clean", "the cycle walks each raw roster id in turn");
   keys.handleKey(undefined, { ctrl: true, name: "g" });
-  assert.equal(keys.state().activityRole, null, "the cycle wraps back to the fleet");
+  assert.equal(keys.state().activityRole, null, "the cycle wraps back to the team");
 
   // A roster that drops the scoped id clears the scope; the scroll resets with it.
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
@@ -607,7 +607,7 @@ test("Ctrl+N on an empty History flashes and leaves the rows shown", () => {
 
 test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () => {
   const root = makeRoot();
-  // clean's tick is newer than qa's, so the fleet read and the qa-scoped read differ.
+  // clean's tick is newer than qa's, so the team read and the qa-scoped read differ.
   writeEvents(root, [
     { ts: 1_700_000_000_000, loop: "qa", type: "run_start", run: 1 },
     { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" },
@@ -617,19 +617,19 @@ test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () =>
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean", "qa"]);
   for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4)
-  keys.handleKey(undefined, { ctrl: true, name: "g" }); // fleet → clean
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // team → clean
   assert.equal(keys.state().historyRole, "clean");
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.match(keys.state().trailCache ?? "", /clean work/);
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // clean → qa
   assert.equal(keys.state().historyRole, "qa");
   assert.match(keys.state().trailCache ?? "", /qa work/, "the trail follows the new scope");
-  keys.handleKey(undefined, { ctrl: true, name: "g" }); // qa → fleet
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // qa → team
   assert.equal(keys.state().historyRole, null);
-  assert.match(keys.state().trailCache ?? "", /clean work/, "the fleet trail is the newest tick of any loop");
+  assert.match(keys.state().trailCache ?? "", /clean work/, "the team trail is the newest tick of any loop");
 });
 
-test("a roster change that retires the trail's scope re-reads it from the fleet", () => {
+test("a roster change that retires the trail's scope re-reads it from the team", () => {
   const root = makeRoot();
   writeEvents(root, [
     { ts: 1_700_000_000_000, loop: "qa", type: "run_start", run: 1 },
@@ -640,12 +640,12 @@ test("a roster change that retires the trail's scope re-reads it from the fleet"
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean", "qa"]);
   for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4)
-  keys.handleKey(undefined, { ctrl: true, name: "g" }); // fleet → clean
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // team → clean
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // clean → qa
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.match(keys.state().trailCache ?? "", /qa work/);
   keys.syncSnapshot(0, false, ["clean"]); // qa retires
-  assert.equal(keys.state().historyRole, null, "the retired scope drops to the fleet");
+  assert.equal(keys.state().historyRole, null, "the retired scope drops to the team");
   assert.equal(keys.state().trailMode, true, "the trail stays on screen");
   assert.match(keys.state().trailCache ?? "", /clean work/, "the trail follows the retired scope's drop");
 });
@@ -660,7 +660,7 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
-  assert.equal(keys.state().scopeRole, null, "a fresh TUI starts fleet-wide");
+  assert.equal(keys.state().scopeRole, null, "a fresh TUI starts team-wide");
 
   // Off a report view the key only moves the scope; no cache is computed. (View 0 now belongs
   // to the Activity feed's own Ctrl+G scope, so start from a transcript view.)
@@ -670,28 +670,28 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
   keys.handleKey(undefined, { ctrl: true, name: "g" });
   assert.equal(keys.state().scopeRole, "clean");
   keys.handleKey(undefined, { ctrl: true, name: "g" });
-  assert.equal(keys.state().scopeRole, null, "the cycle wraps back to the fleet");
+  assert.equal(keys.state().scopeRole, null, "the cycle wraps back to the team");
 
   // Usage: each press recomputes the cached Markdown, and the scoped text differs.
   for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
   assert.equal(keys.state().view, 4);
-  const fleetUsage = keys.state().paneCache;
+  const teamUsage = keys.state().paneCache;
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
   assert.equal(keys.state().scopeRole, "feature");
   const featureUsage = keys.state().paneCache;
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // → clean
   assert.equal(keys.state().scopeRole, "clean");
   const cleanUsage = keys.state().paneCache;
-  assert.notEqual(featureUsage, fleetUsage, "the feature-scoped usage cache differs from the fleet-wide one");
-  assert.notEqual(cleanUsage, fleetUsage, "the clean-scoped usage cache differs from the fleet-wide one");
+  assert.notEqual(featureUsage, teamUsage, "the feature-scoped usage cache differs from the team-wide one");
+  assert.notEqual(cleanUsage, teamUsage, "the clean-scoped usage cache differs from the team-wide one");
 
-  // Failures under the same clean scope caches a digest unlike the fleet-wide one.
+  // Failures under the same clean scope caches a digest unlike the team-wide one.
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → failures (view 5), scope clean
   assert.equal(keys.state().view, 5);
   const cleanFailures = keys.state().paneCache;
-  keys.handleKey(undefined, { ctrl: true, name: "g" }); // clean → fleet
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // clean → team
   assert.equal(keys.state().scopeRole, null);
-  assert.notEqual(cleanFailures, keys.state().paneCache, "the scoped failure digest differs from the fleet-wide one");
+  assert.notEqual(cleanFailures, keys.state().paneCache, "the scoped failure digest differs from the team-wide one");
 });
 
 test("Ctrl+G cycles base roles only, so an instance id never labels another scope's body", () => {
@@ -717,7 +717,7 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
   // On the Usage pane the tab-strip scope and the collected body's own `role:` name agree.
   for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
   assert.equal(keys.state().view, 4);
-  keys.handleKey(undefined, { ctrl: true, name: "g" }); // fleet → feature
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // team → feature
   assert.equal(keys.state().scopeRole, "feature");
   assert.match(keys.state().paneCache ?? "", /^role: feature$/m, "the scoped body names the role the scope shows");
 });
@@ -735,11 +735,11 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
   keys.syncSnapshot(0, false, ["feature", "feature-2", "clean"]);
   for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4)
   assert.equal(keys.state().view, 7);
-  assert.equal(keys.state().historyRole, null, "History opens fleet-wide");
+  assert.equal(keys.state().historyRole, null, "History opens team-wide");
 
-  const fleet = keys.state().paneCache;
-  assert.match(fleet ?? "", /feature #1/, "the fleet-wide read holds feature's row");
-  assert.match(fleet ?? "", /feature-2 #1/, "...and the instance's row");
+  const team = keys.state().paneCache;
+  assert.match(team ?? "", /feature #1/, "the team-wide read holds feature's row");
+  assert.match(team ?? "", /feature-2 #1/, "...and the instance's row");
 
   const seen: Array<string | null> = [];
   const caches: Array<string | null> = [];
@@ -753,7 +753,7 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
   assert.match(caches[0] ?? "", /feature #1/);
   assert.doesNotMatch(caches[0] ?? "", /feature-2/, "an instance's rows stay out of its base loop's scope");
   assert.match(caches[1] ?? "", /feature-2 #1/);
-  assert.notEqual(caches[0], fleet, "the feature-scoped cache differs from the fleet-wide one");
+  assert.notEqual(caches[0], team, "the feature-scoped cache differs from the team-wide one");
   assert.notEqual(caches[1], caches[0], "feature-2 is its own scope, unlike the report cycle");
 
   // Budget mode owns the prompt line: the History scope must not move.
@@ -816,7 +816,7 @@ test("Ctrl+G is inert while an editor holds the prompt line, and a shrinking ros
 
 test("syncSnapshot recomputes an on-screen report pane when it clears a retired scope", () => {
   const root = makeRoot();
-  // A failed feature tick with tokens: scoping to the fleet and to feature render differently.
+  // A failed feature tick with tokens: scoping to the team and to feature render differently.
   writeEvents(root, [
     { ts: Date.now(), loop: "feature", type: "run_start", run: 1 },
     { ts: Date.now(), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 500, costUsd: 0.5 },
@@ -824,15 +824,15 @@ test("syncSnapshot recomputes an on-screen report pane when it clears a retired 
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
-  const fleetUsage = keys.state().paneCache;
+  const teamUsage = keys.state().paneCache;
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
-  assert.notEqual(keys.state().paneCache, fleetUsage, "the feature-scoped body differs from the fleet one");
+  assert.notEqual(keys.state().paneCache, teamUsage, "the feature-scoped body differs from the team one");
 
   // A rename keeps the roster length but retires the scoped name: the scope drops and the
-  // still-visible pane body must recompute fleet-wide to match the tab strip and hint.
+  // still-visible pane body must recompute team-wide to match the tab strip and hint.
   keys.syncSnapshot(0, false, ["feat", "clean"]);
   assert.equal(keys.state().scopeRole, null);
-  assert.equal(keys.state().paneCache, fleetUsage, "the pane body follows the cleared scope");
+  assert.equal(keys.state().paneCache, teamUsage, "the pane body follows the cleared scope");
 });
 
 test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and resets the scroll", () => {
@@ -1189,17 +1189,17 @@ test("`/` opens a search on Activity and History with an empty line, types elsew
   keys.handleKey(undefined, { name: "escape" });
 });
 
-test("the Pending pane caches the rendered fleet roster when collectPending resolves, and a cycle away drops it", async () => {
+test("the Pending pane caches the rendered team roster when collectPending resolves, and a cycle away drops it", async () => {
   const root = makeRoot();
-  const fleet = {
+  const team = {
     mainBranch: "main",
     roles: [
       { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, behind: 0, commits: [], dirtyFiles: [] },
       { role: "clean", branch: "tumwater/clean", state: "ready" as const, ahead: 0, behind: 0, commits: [], dirtyFiles: ["a.ts"] },
     ],
   };
-  let resolvePending!: (view: typeof fleet) => void;
-  const pending = new Promise<typeof fleet>((resolve) => (resolvePending = resolve));
+  let resolvePending!: (view: typeof team) => void;
+  const pending = new Promise<typeof team>((resolve) => (resolvePending = resolve));
   let renders = 0;
   const keys = createTuiKeys({
     root,
@@ -1218,28 +1218,28 @@ test("the Pending pane caches the rendered fleet roster when collectPending reso
   );
   const before = renders;
 
-  resolvePending(fleet);
+  resolvePending(team);
   await pending;
   assert.equal(
     keys.state().paneCache,
     "merge queue empty\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
-    "the pane caches the queue above renderFleetChange's roster text",
+    "the pane caches the queue above renderTeamChange's roster text",
   );
   assert.ok(renders > before, "a resolution repaints the pane");
 });
 
-test("the Pending pane renders the durable land queue on entry, above the resolved fleet roster", async () => {
+test("the Pending pane renders the durable land queue on entry, above the resolved team roster", async () => {
   const root = makeRoot();
   enqueueLanding(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 0 });
-  const fleet = {
+  const team = {
     mainBranch: "main",
     roles: [
       { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, behind: 0, commits: [], dirtyFiles: [] },
       { role: "clean", branch: "tumwater/clean", state: "ready" as const, ahead: 0, behind: 0, commits: [], dirtyFiles: ["a.ts"] },
     ],
   };
-  let resolvePending!: (view: typeof fleet) => void;
-  const pending = new Promise<typeof fleet>((resolve) => (resolvePending = resolve));
+  let resolvePending!: (view: typeof team) => void;
+  const pending = new Promise<typeof team>((resolve) => (resolvePending = resolve));
   const keys = createTuiKeys({
     root,
     quit: () => {},
@@ -1253,7 +1253,7 @@ test("the Pending pane renders the durable land queue on entry, above the resolv
   // The queue needs no git read, so it is already rendered when the collector is still in flight.
   assert.equal(keys.state().paneCache, renderLandingQueue(readLandingQueue(root), 0));
 
-  resolvePending(fleet);
+  resolvePending(team);
   await pending;
   assert.equal(
     keys.state().paneCache,
@@ -1265,15 +1265,15 @@ test("the Pending pane renders the durable land queue on entry, above the resolv
 
 test("a Pending collector resolution after the operator cycled away does not cache onto the new view", async () => {
   const root = makeRoot();
-  const fleet = { mainBranch: "main", roles: [] };
-  let resolveLate!: (view: typeof fleet) => void;
+  const team = { mainBranch: "main", roles: [] };
+  let resolveLate!: (view: typeof team) => void;
   let renders = 0;
   const keys = createTuiKeys({
     root,
     quit: () => {},
     requestRender: () => (renders += 1),
     now: () => 0,
-    collectPending: () => new Promise<typeof fleet>((resolve) => (resolveLate = resolve)),
+    collectPending: () => new Promise<typeof team>((resolve) => (resolveLate = resolve)),
   });
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
@@ -1283,7 +1283,7 @@ test("a Pending collector resolution after the operator cycled away does not cac
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Brief
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // cycle away to Activity before it resolves
   assert.equal(keys.state().view, 0);
-  resolveLate(fleet);
+  resolveLate(team);
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(keys.state().paneCache, null, "a late resolution does not cache onto Activity");
@@ -1291,14 +1291,14 @@ test("a Pending collector resolution after the operator cycled away does not cac
 
 test("a Pending collector resolution after the roster size changed caches onto the still-selected Pending pane", async () => {
   const root = makeRoot();
-  const fleet = { mainBranch: "main", roles: [] };
-  let resolveLate!: (view: typeof fleet) => void;
+  const team = { mainBranch: "main", roles: [] };
+  let resolveLate!: (view: typeof team) => void;
   const keys = createTuiKeys({
     root,
     quit: () => {},
     requestRender: () => {},
     now: () => 0,
-    collectPending: () => new Promise<typeof fleet>((resolve) => (resolveLate = resolve)),
+    collectPending: () => new Promise<typeof team>((resolve) => (resolveLate = resolve)),
   });
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending (index 5, no roles)
@@ -1309,7 +1309,7 @@ test("a Pending collector resolution after the roster size changed caches onto t
   // History under the same raw index.
   keys.syncSnapshot(0, false, ["feature"], false);
   assert.equal(keys.state().view, 6, "Pending keeps its selection when the roster grows");
-  resolveLate(fleet);
+  resolveLate(team);
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(

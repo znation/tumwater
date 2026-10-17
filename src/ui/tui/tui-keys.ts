@@ -17,8 +17,8 @@ import {
 import { historyPaneText } from "./tui-history.js";
 import { readTickDetail, type TickDetail } from "../../tick/tick-detail-data.js";
 import { renderTickDetail, tickDetailStat } from "../../tick/tick-detail.js";
-import { collectFleetChanges, collectRoleChange, type FleetChangeView, type RoleChangeView } from "../../change/change-data.js";
-import { renderFleetChange, renderRoleChange } from "../../change/change-render.js";
+import { collectTeamChanges, collectRoleChange, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
+import { renderTeamChange, renderRoleChange } from "../../change/change-render.js";
 import { readBrief, renderBrief } from "../../brief/brief.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import { renderDoctor } from "../../doctor/doctor-render.js";
@@ -85,7 +85,7 @@ const HISTORY_WINDOWS: ReadonlyArray<[number | null, string]> = [
   ...SESSION_WINDOW_TAIL,
 ];
 
-/** The Ctrl+G scope cycle: fleet-wide (null), then each unique base role the roster names, in
+/** The Ctrl+G scope cycle: team-wide (null), then each unique base role the roster names, in
  * roster order. An instance id (`feature-2`) folds into its base role because the scoped
  * collectors aggregate by base role — report-data.ts's role scope groups an instance's usage
  * with its siblings' — so cycling through the instance ids would relabel the same body with
@@ -212,9 +212,9 @@ interface TuiKeysDeps {
   requestRender(): void;
   /** Injectable clock for the flash expiry; production uses Date.now. */
   now?(): number;
-  /** The Pending pane's async collector; production uses change-data's collectFleetChanges.
+  /** The Pending pane's async collector; production uses change-data's collectTeamChanges.
    * Injectable so tests can resolve a fixed roster without git plumbing. */
-  collectPending?(root: string): Promise<FleetChangeView>;
+  collectPending?(root: string): Promise<TeamChangeView>;
   /** Seam for the Health tab's checks; defaults to `runDoctor` so tests need not probe
    * binaries or git. */
   runDoctor?(root: string): Promise<DoctorReport>;
@@ -236,22 +236,22 @@ interface TuiKeysState {
   rolePromptFor: string | null;
   /** Whether the prompt line is editing the next prompt's defer delay (Ctrl+L). */
   deferMode: boolean;
-  /** Whether the prompt line is editing the fleet pause's duration and reason (Ctrl+F). */
+  /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
-  /** The loop the pause editor pauses, null for the fleet editor (Ctrl+F). */
+  /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */
   pauseEditRole: string | null;
   /** the per-loop editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P) */
   pauseEditWake: boolean;
-  /** the fleet editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F) */
+  /** the team editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F) */
   pauseEditStop: boolean;
   /** The pending defer delay as a human label (durationLabel), or null when the next prompt
    * delivers immediately; named in the prompt prefix and the Ctrl+L hint. */
   defer: string | null;
   view: number;
   /** The session-scoped role the Usage and Failures panes collect for (Ctrl+G), null for the
-   * fleet; cleared when the incoming roster no longer names it. */
+   * team; cleared when the incoming roster no longer names it. */
   scopeRole: string | null;
-  /** The History pane's exact-loop scope (Ctrl+G), a raw roster id or null for the fleet's
+  /** The History pane's exact-loop scope (Ctrl+G), a raw roster id or null for the team's
    * full read; cleared when the incoming roster no longer names it. Separate from scopeRole:
    * History filters by exact loop (`history --role`), where `feature-2` is its own slot. */
   historyRole: string | null;
@@ -307,7 +307,7 @@ interface TuiKeysState {
    * live tail. Paged by PgUp/PgDn and reset to null on every Ctrl+T view cycle. */
   activityScroll: number | null;
   /** The Activity pane's session exact-loop scope (Ctrl+G), a raw roster id or null for the
-   * fleet's full tail; cleared when the incoming roster no longer names it. Separate from
+   * team's full tail; cleared when the incoming roster no longer names it. Separate from
    * scopeRole for the same reason historyRole is: the feed filters by exact loop (`eventRole`),
    * where `feature-2` is its own slot. */
   activityRole: string | null;
@@ -367,7 +367,7 @@ export interface TuiKeys {
 export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
-  const collectPending = deps.collectPending ?? collectFleetChanges;
+  const collectPending = deps.collectPending ?? collectTeamChanges;
   const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r, undefined, undefined, "never"));
   const collectChange = deps.collectChange ?? collectRoleChange;
   const tickStat = deps.tickStat ?? tickDetailStat;
@@ -408,8 +408,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // Ctrl+T.
   let view = 0;
   // The session-scoped role the Usage and Failures panes collect for, cycled by Ctrl+G, null
-  // for the fleet. Session-only, like the view/selection/scroll state: a fresh TUI starts
-  // fleet-wide, and syncSnapshot clears it when the roster drops the role.
+  // for the team. Session-only, like the view/selection/scroll state: a fresh TUI starts
+  // team-wide, and syncSnapshot clears it when the roster drops the role.
   let scopeRole: string | null = null;
   // The project-status pane's entry selection (null = list mode): the flat index of the
   // entry shown in full — plans first, then bugs, then questions. Cleared on every Ctrl+T,
@@ -463,7 +463,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // re-entering Activity always starts at the live tail.
   let activityScroll: number | null = null;
   // The Activity pane's session exact-loop scope (Ctrl+G), a raw roster id or null for the
-  // fleet's full tail. Session-only like the view/scroll state; syncSnapshot clears it when the
+  // team's full tail. Session-only like the view/scroll state; syncSnapshot clears it when the
   // roster drops the id. The raw ids, not scopeCycle's base roles: the feed filters by exact
   // loop (eventRole), so `feature-2` is its own slot.
   let activityRole: string | null = null;
@@ -484,7 +484,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // filter. Session-only like the window; the next Ctrl+T into History computes with it.
   let historyResult: HistoryResultClass | null = null;
   // The History pane's session exact-loop scope (Ctrl+G), a raw roster id or null for the
-  // fleet's full read. Session-only like the window/result; syncSnapshot clears it when the
+  // team's full read. Session-only like the window/result; syncSnapshot clears it when the
   // roster drops the id. The raw ids, not scopeCycle's base roles: History filters by exact
   // loop (`history --role`), where `feature-2` is its own slot.
   let historyRole: string | null = null;
@@ -632,7 +632,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // Ctrl+D): when the director row is in flight, write the same abort marker the
       // CLI's `abort --role director` does, through the shared requestAbort core so the
       // marker format and wording cannot drift; when none is, flash a notice and leave
-      // the fleet untouched. A failed marker write flashes the reason instead of
+      // the team untouched. A failed marker write flashes the reason instead of
       // escaping the handler — the same contract the per-loop controls above honor.
       if (!directorInFlight) {
         flashMessage("no director task in flight");
@@ -696,7 +696,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           trailCache = null;
         } else {
           // The newest completed tick in the pane's scope: the loop's when Ctrl+G set
-          // historyRole, else the fleet's. A log holding none flashes and leaves the rows.
+          // historyRole, else the team's. A log holding none flashes and leaves the rows.
           const row = readTickRows(root, 1, historyRole)[0];
           if (row === undefined) {
             flashMessage("no completed runs to inspect");
@@ -963,7 +963,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // drop it on leaving — a visit's first frame is fresh, later frames only re-window.
       if (!refreshPaneCache("all")) {
         if (view === roleIds.length + 5) {
-          // Pending is the cycle's one async collector: collectFleetChanges awaits git plumbing,
+          // Pending is the cycle's one async collector: collectTeamChanges awaits git plumbing,
           // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
           // The durable land queue needs no git plumbing, so read and render it through the CLI's
           // own pair (`tumwater queue`) UP FRONT: the queue paints on entry, and the git-backed
@@ -978,9 +978,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           const queueText = renderLandingQueue(queueView, now(), queueInFlight(root, queueView.entries, orchestratorAlive(root)));
           paneCache = queueText;
           void collectPending(root).then(
-            (fleet) => {
+            (team) => {
               if (view !== roleIds.length + 5) return;
-              paneCache = queueText + "\n\n" + renderFleetChange(fleet);
+              paneCache = queueText + "\n\n" + renderTeamChange(team);
               deps.requestRender();
             },
             (err: unknown) => {
@@ -1138,21 +1138,21 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       view = Math.min(view, roleIds.length + 8); // clamp a stale index if roles changed
       // A retired or renamed loop must not leave the report panes silently scoped to an
       // absent role — drop the scope with the stale view index. The tab strip and hint then
-      // read "fleet", so a report pane still on screen must recompute its cached Markdown
-      // from the fleet-wide collector (and re-enter at the body's head) to match; the other
+      // read "team", so a report pane still on screen must recompute its cached Markdown
+      // from the team-wide collector (and re-enter at the body's head) to match; the other
       // views compute with the scope on their next Ctrl+T.
       if (scopeRole !== null && !roleIds.includes(scopeRole)) {
         scopeRole = null;
         refreshPaneCache("report");
       }
       // The same drop for History's exact-loop scope: a retired or renamed loop must not keep
-      // labeling an empty pane. An on-screen History pane recomputes from the fleet-wide read
+      // labeling an empty pane. An on-screen History pane recomputes from the team-wide read
       // so its rows and its `role:` header clear together.
       if (historyRole !== null && !roleIds.includes(historyRole)) {
         historyRole = null;
         refreshPaneCache("history");
         // The retired scope may have been feeding an on-screen trail: re-read it from the
-        // fleet so the pane and the tab strip cannot name a loop the roster no longer has.
+        // team so the pane and the tab strip cannot name a loop the roster no longer has.
         if (trailMode) refreshTrail();
       }
       // The same drop for the Activity feed's exact-loop scope: a retired or renamed loop must

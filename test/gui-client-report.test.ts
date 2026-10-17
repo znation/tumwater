@@ -163,14 +163,14 @@ test("the report hover chip is created once and lives outside #report", () => {
 
 test("rolePickerOptions renders All roles plus one escaped option per role, order preserved", () => {
   // The Loop picker's options are the pure half of the role scope every picker shares (the
-  // Usage/Failures views and History): the fleet list comes from /api/status's loops, custom
+  // Usage/Failures views and History): the team list comes from /api/status's loops, custom
   // loops included, so a role name can carry HTML metacharacters and must be escaped in both
   // the option's value and its label.
   const { rolePickerOptions } = clientScope<{ rolePickerOptions(roles?: string[]): string }>(
     ["format", "report-role"],
     ["rolePickerOptions"],
   );
-  assert.equal(rolePickerOptions([]), "<option value=''>All roles</option>", "no roles leaves only the fleet-wide option");
+  assert.equal(rolePickerOptions([]), "<option value=''>All roles</option>", "no roles leaves only the team-wide option");
   assert.equal(
     rolePickerOptions(["feature", "bugfix"]),
     "<option value=''>All roles</option>" +
@@ -183,7 +183,7 @@ test("rolePickerOptions renders All roles plus one escaped option per role, orde
   assert.match(hostile, /<option value='&lt;b&gt;x&lt;\/b&gt;'>&lt;b&gt;x&lt;\/b&gt;<\/option>/, "value and label are escaped");
 });
 
-test("reportBaseRoles folds each instance into its `instanceOf` base role, once, in fleet order", () => {
+test("reportBaseRoles folds each instance into its `instanceOf` base role, once, in team order", () => {
   // The report views' Loop picker must offer the same roles the scoped collectors honor. The
   // status payload names an instance's base as `instanceOf`; a bare row has none, so its own
   // role is the base. Dedupe keeps a multi-instance base to a single option.

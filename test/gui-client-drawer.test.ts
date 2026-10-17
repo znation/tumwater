@@ -88,7 +88,7 @@ function drawerEnv(opts: { status?: object | null; responses?: Record<string, un
       return true;
     },
     lastStatus: opts.status ?? null,
-    renderFleet: () => {},
+    renderTeam: () => {},
     location,
     history: {
       replaceState(_s: unknown, _t: string, hash: string) { historyLog.push(hash); location.hash = hash; },
@@ -130,7 +130,7 @@ function openDrawer(names: string[], opts: Parameters<typeof drawerEnv>[0] = {})
   return { scope: drawerScope(names, env.env), ...env };
 }
 
-/** A fleet status whose only loop is a working, in-flight, unpaused "clean". */
+/** A team status whose only loop is a working, in-flight, unpaused "clean". */
 function workingStatus() {
   const now = Date.now();
   return {
@@ -145,7 +145,7 @@ function workingStatus() {
   };
 }
 
-test("opening a loop routes the hash, toggling the same role closes it back to the fleet view", async () => {
+test("opening a loop routes the hash, toggling the same role closes it back to the team view", async () => {
   const t = openDrawer(["toggleLoop", "openLoopRole"], { status: workingStatus() });
   t.scope.toggleLoop("clean");
   assert.equal(t.scope.openLoopRole(), "clean");
@@ -174,7 +174,7 @@ test("switching roles while a loop drawer is open moves it without closing", () 
   assert.equal(t.scope.openLoopRole(), "bugfix");
 });
 
-test("the loop drawer for a role the fleet no longer has says so, paints no actions, and still renders its pending change", async () => {
+test("the loop drawer for a role the team no longer has says so, paints no actions, and still renders its pending change", async () => {
   const t = openDrawer(["toggleLoop"], {
     status: { roles: [] },
     responses: { "/api/diff?role=gone": { state: "ready", branch: "tumwater/gone", mainBranch: "main", ahead: 1, commits: [{ sha: "deadbee", subject: "unlanded" }], diff: "diff --git a/x b/x\n", dirtyFiles: [] } },
@@ -629,7 +629,7 @@ test("the Configuration section paints a Quiet hours row per window, worded like
   });
   const t = mk({ quietHours: [
     { scope: "role", window: "23:00-07:00", inWindow: true },
-    { scope: "fleet", window: "12:00-13:00", inWindow: false },
+    { scope: "team", window: "12:00-13:00", inWindow: false },
   ] });
   t.scope.toggleLoop("clean");
   await flush();
@@ -642,8 +642,8 @@ test("the Configuration section paints a Quiet hours row per window, worded like
   assert.doesNotMatch(none.paintedFor("drawerrole"), /Quiet hours/);
 });
 
-test("the Configuration section omits absent fields (cap-less fleet, no fallback, image-\nyes, notes-only)", async () => {
-  // A cap-less fleet carries no provider row; no fallbacks, no images-reroute.
+test("the Configuration section omits absent fields (cap-less team, no fallback, image-\nyes, notes-only)", async () => {
+  // A cap-less team carries no provider row; no fallbacks, no images-reroute.
   const partial = openDrawer(["toggleLoop"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": {
@@ -734,7 +734,7 @@ test("the loop drawer renders a Daily cap row only when the payload has a dailyC
   assert.doesNotMatch(none.paintedFor("drawerrole"), /Daily cap/);
 });
 
-// A default pi fleet runs on pi's own saved default model: rolePayload sets `piDefault`
+// A default pi team runs on pi's own saved default model: rolePayload sets `piDefault`
 // (a formatted selector) and leaves `provider`/`model` undefined, and the CLI's role view
 // names that default in its Model line (modelLine's `pi default (…)` branch). The
 // Configuration section must render the same model for such a loop, so the page and

@@ -17,7 +17,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   }
   // ---- views ----
   // view-routing:start
-  const VIEWS = { team: "fleet-view", history: "history", usage: "report", failures: "failures", pending: "pending", settings: "settings-view" }; // vocabulary-ok: view ids
+  const VIEWS = { team: "team-view", history: "history", usage: "report", failures: "failures", pending: "pending", settings: "settings-view" }; // vocabulary-ok: view ids
   function switchView(v) {
     if (v === "fleet") v = "team"; // vocabulary-ok: legacy dashboard hash, still routed
     if (!VIEWS[v]) v = "team";
@@ -29,7 +29,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       if (k === v) tab.setAttribute("aria-current", "page");
       else tab.removeAttribute("aria-current");
     }
-    if (v === "team" && lastStatus) renderFleet(lastStatus);
+    if (v === "team" && lastStatus) renderTeam(lastStatus);
     if (v === "history") fetchHistory();
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
@@ -37,7 +37,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (v === "settings") { fetchSettings(); fetchDoctor(); fetchRetirable(); fetchBrief(); }
   }
   // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open
-  // tab refetches its data. #role/<role> opens that loop's drawer (over Fleet on a fresh load),
+  // tab refetches its data. #role/<role> opens that loop's drawer (over Team on a fresh load),
   // and the address bar follows the open drawer, so a loop's live view can be linked to.
   let routed = false;
   function route() {
@@ -101,7 +101,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     else if (act === "close") closeDrawer();
     else if (act === "view") location.hash = arg;
     else if (act === "budget") openBudgetEditor();
-    else if (act === "resume") setFleetPause(false);
+    else if (act === "resume") setTeamPause(false);
     else if (act === "copy") copyText(arg);
     else if (act === "restart")
       postAction("/api/restart", {}, (d) =>
@@ -257,7 +257,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // ---- the poll ----
   function rerender() {
     if (!lastStatus) return;
-    if (activeView === "team") renderFleet(lastStatus);
+    if (activeView === "team") renderTeam(lastStatus);
     if (activeView === "pending") renderPendingQueue(lastStatus);
     if (drawer && drawer.kind === "loop") renderLoopDrawer(lastStatus); // vocabulary-ok: drawer kind
   }
@@ -274,7 +274,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     let d;
     try {
       // The guarded getJson: the server's 500 sends a JSON {error} body, which must never be
-      // taken for fleet state — a failed poll keeps the last good frame and says so. The
+      // taken for team state — a failed poll keeps the last good frame and says so. The
       // bounded wait covers the other failure a bare fetch never reports: a connection the
       // server accepted but never answers (pollSignal).
       d = await getJson("/api/status", pollSignal());
@@ -298,10 +298,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       renderSidebar(d);
       renderAlerts(d);
       renderComposer(d);
-      if (activeView === "team") renderFleet(d);
+      if (activeView === "team") renderTeam(d);
       if (activeView === "pending") renderPendingQueue(d);
       if (activeView === "history") syncHistoryRoles(d);
-      // Keep the Usage/Failures Loop pickers in step with the fleet while either is open.
+      // Keep the Usage/Failures Loop pickers in step with the team while either is open.
       if (activeView === "usage" || activeView === "failures") syncReportRoles(d);
       const items = d.eventItems || [];
       const last = items[items.length - 1];

@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The pieces of a TUI frame, pure so they test without a terminal: the attention lines under the
- * header (team-alerts.ts's fleetAlerts — the dashboard's alert banners, one line each); the view
+ * header (team-alerts.ts's teamAlerts — the dashboard's alert banners, one line each); the view
  * tab strip; the per-view key hints; the prompt line's target; and the tones of activity and
  * transcript lines. The TUI shares the dashboard's vocabulary — the same view names (Activity,
  * Transcript, Backlog, Usage, Failures, History, Pending), the same alert wording, the same
@@ -22,7 +22,7 @@ import { stripTerminalControls } from "../../text/text.js";
  * lines, queued-prompt previews, the pane body, flash/hint/input) just before ink draws it.
  * This is what closes the same gap say() closes for the CLI: model-written text (tick
  * summaries, lastError, backlog/QUESTION titles, transcript turns) reaches the terminal
- * through fleetAlerts, renderStatusSpans, and paneBody, not through say(), so sanitizing the
+ * through teamAlerts, renderStatusSpans, and paneBody, not through say(), so sanitizing the
  * final spans — rather than each producer — covers every current and future line builder. */
 export function sanitizeFrameLines(lines: readonly StatusLine[]): StatusLine[] {
   return lines.map((line) => line.map((span) => ({ ...span, text: stripTerminalControls(span.text) })));

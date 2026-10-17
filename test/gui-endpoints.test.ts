@@ -24,7 +24,7 @@ import { writeEvents } from "./fixtures/log-fixtures.js";
 import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brief.js";
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
-import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
+import { collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
@@ -195,14 +195,14 @@ function serveRestart(root: string, body = "{}") {
 
 /** Seed an orchestrator info file whose pid is this test process (alive, by definition) with
  * the given published build — the staleness requestRestart consults. */
-function seedFleet(root: string, build: Record<string, unknown> | null): void {
+function seedTeam(root: string, build: Record<string, unknown> | null): void {
   fs.mkdirSync(path.dirname(orchestratorStatePath(root)), { recursive: true });
   fs.writeFileSync(orchestratorStatePath(root), JSON.stringify({ pid: process.pid, ...(build ? { build } : {}) }));
 }
 
 test("handleRestart writes the marker and replies ok while the running build is stale", async () => {
   const root = tmpdir();
-  seedFleet(root, { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 3 });
+  seedTeam(root, { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 3 });
   const { captured, data } = await serveRestart(root);
   assert.equal(captured.status, 200);
   assert.equal((data as { ok: boolean }).ok, true);
@@ -221,7 +221,7 @@ test("handleReclaim with no worktrees answers nothing to reclaim", async () => {
 
 test("handleReclaim with a live team drops the reclaim marker", async () => {
   const root = makeRepo();
-  seedFleet(root, null);
+  seedTeam(root, null);
   const { captured, data } = await captureJson((res) => handleReclaim(fakeReq("{}"), res, root));
   assert.equal(captured.status, 200);
   assert.match((data as { message: string }).message, /reclaim requested/);
@@ -230,7 +230,7 @@ test("handleReclaim with a live team drops the reclaim marker", async () => {
 
 test("handleReclaim rejects a malformed body with 400 and writes no marker", async () => {
   const root = makeRepo();
-  seedFleet(root, null);
+  seedTeam(root, null);
   const { captured } = await captureJson((res) => handleReclaim(fakeReq("{nope"), res, root));
   assert.equal(captured.status, 400);
   assert.equal(fs.existsSync(reclaimRequestPath(root)), false);
@@ -238,7 +238,7 @@ test("handleReclaim rejects a malformed body with 400 and writes no marker", asy
 
 test("handleRestart refuses with nothing written when the running build is not stale", async () => {
   const root = tmpdir();
-  seedFleet(root, { sha: "a".repeat(40), builtAt: 1, stale: false });
+  seedTeam(root, { sha: "a".repeat(40), builtAt: 1, stale: false });
   const { captured, data } = await serveRestart(root);
   assert.equal(captured.status, 409);
   assert.match((data as { error: string }).error, /no update is waiting/);
@@ -261,7 +261,7 @@ test("handleRestart with no team running writes the marker harmlessly and says s
 // while the button 404s. This pins the wiring through a real listening server.
 test("the live server routes POST /api/restart to the handler and refuses other methods", async () => {
   const root = tmpdir();
-  seedFleet(root, { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 3 });
+  seedTeam(root, { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 3 });
   const { server, base } = await startLocalGui(root);
   try {
     const res = await fetch(base + "/api/restart", {
@@ -295,7 +295,7 @@ function serveStopSchedule(root: string, body: unknown) {
 
 test("handleStopSchedule schedules a stop on a live team and cancel drops it", async () => {
   const root = tmpdir();
-  seedFleet(root, null);
+  seedTeam(root, null);
   const { captured, data } = await serveStopSchedule(root, { inSeconds: 7200 });
   assert.equal(captured.status, 200);
   assert.match((data as { message: string }).message, /stop scheduled in 2h/);
@@ -318,7 +318,7 @@ test("handleStopSchedule refuses a stopped team with 409 and writes no marker", 
 
 test("handleStopSchedule rejects a missing, invalid, over-cap, or combined body with 400", async () => {
   const root = tmpdir();
-  seedFleet(root, null);
+  seedTeam(root, null);
   for (const body of [{}, { inSeconds: -1 }, { inSeconds: 8_000_000 }, { cancel: true, inSeconds: 60 }]) {
     const { captured } = await serveStopSchedule(root, body);
     assert.equal(captured.status, 400, JSON.stringify(body));
@@ -328,7 +328,7 @@ test("handleStopSchedule rejects a missing, invalid, over-cap, or combined body 
 
 test("the live server routes POST /api/stop-schedule and refuses GET", async () => {
   const root = tmpdir();
-  seedFleet(root, null);
+  seedTeam(root, null);
   const { server, base } = await startLocalGui(root);
   try {
     const res = await fetch(base + "/api/stop-schedule", {
@@ -659,7 +659,7 @@ test("handleConfigSet round-trips: set, then GET shows the new value and the fil
   assert.deepEqual(data, { ok: true, key: "maxDailyCostUsd", value: 30, oldValue: 25 });
   const after = await serveConfig(root);
   assert.equal((after.data as Record<string, unknown>).maxDailyCostUsd, 30);
-  // The file on disk is what the running fleet polls — the write went through setConfigKey.
+  // The file on disk is what the running team polls — the write went through setConfigKey.
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal(onDisk.maxDailyCostUsd, 30);
 });
@@ -700,7 +700,7 @@ test("handleConfigUnset removes one curated key and leaves its siblings", async 
   const { captured, data } = await serveConfigUnset(root, { key: "model" });
   assert.equal(captured.status, 200);
   assert.deepEqual(data, { ok: true, key: "model", oldValue: "gpt-5" });
-  // The file on disk is what the running fleet polls — the removal went through unsetConfigKey.
+  // The file on disk is what the running team polls — the removal went through unsetConfigKey.
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal("model" in onDisk, false);
   assert.equal(onDisk.quietHours, "23:00-07:00");
@@ -747,14 +747,14 @@ test("handleConfigSet refuses a bad value through setConfigKey's validator, nami
 
 // ---- GET /api/diff: the Pending view's collector surface ----
 // The handler only adapts HTTP onto change-data.ts's collectors, so these tests pin that the
-// fleet document matches collectFleetChanges (same mainBranch/roles, no per-role patch fields)
+// team document matches collectTeamChanges (same mainBranch/roles, no per-role patch fields)
 // and the role document matches collectRoleChange — the documents `tumwater diff --json` and
 // `tumwater diff --role <id> --json` print. The role is a target, so an unknown id is a 400.
 function serveDiff(root: string, query = "") {
   return captureJson((res) => handleDiff(new URLSearchParams(query), res, root));
 }
 
-test("handleDiff serves the team roster with no patch fields, matching collectFleetChanges", async () => {
+test("handleDiff serves the team roster with no patch fields, matching collectTeamChanges", async () => {
   const root = makeRepo();
   await initProject(root, "gui diff team");
   fs.writeFileSync(path.join(root, "notes.txt"), "seeded\n");
@@ -767,7 +767,7 @@ test("handleDiff serves the team roster with no patch fields, matching collectFl
   const { captured, data } = await serveDiff(root);
   assert.equal(captured.status, 200);
   assert.equal(captured.contentType, "application/json");
-  assert.deepEqual(data, await collectFleetChanges(root), "the endpoint serves the collector document unchanged");
+  assert.deepEqual(data, await collectTeamChanges(root), "the endpoint serves the collector document unchanged");
   const feature = (data as unknown as { roles: Array<Record<string, unknown>> }).roles.find((r) => r.role === "feature")!;
   assert.equal(feature.ahead, 1);
   const commits = feature.commits as Array<{ sha: string; subject: string }>;
@@ -805,11 +805,11 @@ test("handleDiff degrades an absent worktree and a fresh repo without throwing",
   assert.equal((absent.data as { state: string }).state, "absent");
 
   // A directory that was never initialized has no git repo and no config: every role's entry
-  // is no-base, and the fleet query still answers 200 rather than throwing.
+  // is no-base, and the team query still answers 200 rather than throwing.
   const fresh = tmpdir();
-  const fleet = await serveDiff(fresh);
-  assert.equal(fleet.captured.status, 200);
-  const doc = fleet.data as { mainBranch: string; roles: Array<{ state: string }> };
+  const team = await serveDiff(fresh);
+  assert.equal(team.captured.status, 200);
+  const doc = team.data as { mainBranch: string; roles: Array<{ state: string }> };
   assert.ok(doc.roles.length > 0);
   assert.ok(doc.roles.every((r) => r.state === "no-base"));
 });

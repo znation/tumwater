@@ -95,7 +95,7 @@ export async function cmdGui(root: string, args: string[], seams: GuiSeams = {})
   if (allInterfaces) {
     // Name the concrete URLs teammates can open (token included, so they are openable
     // as printed), and say what exposure means: without a token the dashboard has no
-    // auth and its prompt box steers the fleet; with one, the token is the gate.
+    // auth and its prompt box steers the team; with one, the token is the gate.
     for (const addr of lan()) print(`             also at http://${addr}:${port}${tokenSuffix}`);
     print(
       token

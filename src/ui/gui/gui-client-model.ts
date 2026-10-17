@@ -33,7 +33,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p.startsWith("waiting to start")) return { key: "awaiting", label: "Waiting to start", tone: "gray", live: false, detail: after(16) ? "for " + after(16) : "" };
     // A waiter parked on a full provider key (provider-concurrency part 5/5): the phase reads
     // waiting for <key> 2m, and this chip names the provider alongside the wait, so the
-    // operator sees which cap is full — the same chip and tone as a fleet-total waiter.
+    // operator sees which cap is full — the same chip and tone as a team-total waiter.
     if (p.startsWith("waiting for ")) {
       const m = after(12).match(/^(\S+)(?:\s+(.*))?$/);
       const prov = m ? m[1] : "";
@@ -122,12 +122,12 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     });
   }
   // loop-sort:end
-  // The fleet table's section for each rank. The running director has its own section so it
+  // The team table's section for each rank. The running director has its own section so it
   // does not join the In-progress rows an operator scans against maxConcurrent; the permit
   // holders (rank 0) and the pipeline waiters (rank 1, labeled "Waiting to start") keep
   // sharing In progress (BUGS.md 2026-10-06).
   const LOOP_GROUPS = [["Director", -1], ["In progress", 0, 1], ["Needs attention", 2], ["Paused", 3], ["Idle", 4]];
-  // The payload's alerts (team-alerts.ts fleetAlerts — the TUI's attention lines use the same
+  // The payload's alerts (team-alerts.ts teamAlerts — the TUI's attention lines use the same
   // list), plus the one only the page can know: that its server stopped answering.
   const OFFLINE_ALERT = { key: "offline", tone: "red", title: "Lost contact with the dashboard server",
     detail: "Retrying every second. Everything below is the last state it reported.", actions: [] };
@@ -145,7 +145,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   const needsYouKeys = (alerts) => alerts.filter(NEEDS_YOU).map((a) => a.key);
   // The needs-you keys of the given alerts that prevKeys (the previous poll's set, or null on
   // the first poll) lacks — exactly the alerts a new cue should announce. A null prev yields
-  // every needs-you key, so a page opened onto an already-alerting fleet cues once.
+  // every needs-you key, so a page opened onto an already-alerting team cues once.
   const newNeedsYouKeys = (prevKeys, alerts) => {
     const prior = new Set(prevKeys || []);
     return needsYouKeys(alerts).filter((k) => !prior.has(k));

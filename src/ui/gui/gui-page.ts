@@ -1,10 +1,10 @@
 /** The dashboard page shell served at `/` by `tumwater gui`: the markup of the zero-dependency
  * single-file app, with its stylesheet (gui-styles.ts) and browser logic (gui-client.ts)
- * inlined. The shell is a sidebar beside a main column. The sidebar is the fleet's frame on
- * every view: which project this is and whether its fleet is up (build, main check), the
- * views — Fleet's carrying a badge while something needs a human — and the fleet-wide
+ * inlined. The shell is a sidebar beside a main column. The sidebar is the team's frame on
+ * every view: which project this is and whether its team is up (build, main check), the
+ * views — Team's carrying a badge while something needs a human — and the team-wide
  * controls: today's spend against the cap, and pause. The main column shows one view at a
- * time: Fleet (alerts for whatever needs a human, the composer that steers the director or
+ * time: Team (alerts for whatever needs a human, the composer that steers the director or
  * one loop, today's progress, every loop grouped by what it is doing, the backlog, and the
  * notable activity), History, Usage, Failures, Pending, or Settings. A drawer opens any
  * loop's detail and live transcript, or any backlog entry in full. Kept apart from
@@ -56,9 +56,9 @@ export const GUI_PAGE = `<!doctype html>
   </div>
 </aside>
 <main id="main" class="main">
-  <section id="fleet-view" class="view" aria-labelledby="fleet-title">
+  <section id="team-view" class="view" aria-labelledby="team-title">
     <div class="view-head">
-      <div><h1 id="fleet-title">Team</h1><p id="fleetsub">&nbsp;</p></div>
+      <div><h1 id="team-title">Team</h1><p id="teamsub">&nbsp;</p></div>
     </div>
     <div id="alerts" class="alerts" aria-live="polite"></div>
     <form id="promptform" class="composer" autocomplete="off">

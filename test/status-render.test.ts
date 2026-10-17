@@ -58,7 +58,7 @@ test("totals row shows zeros without breaking alignment", () => {
 });
 
 // User-defined loops (tumwater.json's customRoles) are marked with an asterisk beside their
-// name plus one footnote line under the table — and a fleet without any of them renders the
+// name plus one footnote line under the table — and a team without any of them renders the
 // exact same table as before the marker existed.
 
 test("status table marks custom roles with an asterisk and a footnote", () => {
@@ -66,7 +66,7 @@ test("status table marks custom roles with an asterisk and a footnote", () => {
   const text = renderStatus(tmpdir(), snap);
   assert.match(text, /nightly\*/);
   assert.doesNotMatch(text, /clean\*/, "built-ins stay unmarked");
-  // The footnote is the line under the table — one per fleet, not per loop.
+  // The footnote is the line under the table — one per team, not per loop.
   const lines = text.split("\n");
   assert.equal(lines[lines.length - 1], "* custom role");
   assert.match(text, /nightly\*.*custom role\n/, "a custom role's title cell reads custom role");
@@ -225,8 +225,8 @@ test("work items survive narrow-terminal clipping at the head of the state cell"
 });
 
 test("loopPhase shows failing for idle loops stuck on an error streak, not sleeping", () => {
-  // BUGS.md 2026-09-15: a fleet whose every loop is failing must read as failing, not as
-  // an ordinary quiet/sleeping fleet.
+  // BUGS.md 2026-09-15: a team whose every loop is failing must read as failing, not as
+  // an ordinary quiet/sleeping team.
   const s = freshLoopState("feature");
   s.lastResult = "error";
   s.consecutiveErrors = 3;
@@ -305,9 +305,9 @@ test("renderStatus shows waiting: budget spent in idle role loops' state cells w
 });
 
 // Per-role pause (`tumwater pause --role <id>`): the snapshot's pausedRoles set gates the same
-// `paused` cell as the fleet flag, but only for the named role — every other idle row keeps
+// `paused` cell as the team flag, but only for the named role — every other idle row keeps
 // its ordinary label, and the director keeps its own phase (its cell branch precedes the
-// pause checks, like under the fleet pause).
+// pause checks, like under the team pause).
 test("renderStatus shows paused only for the individually paused idle role", () => {
   const root = tmpdir();
   const out = renderStatus(
@@ -322,7 +322,7 @@ test("renderStatus shows paused only for the individually paused idle role", () 
   assert.doesNotMatch(out, /feature\s+paused/);
   assert.match(out, /director\s+ready for messages/);
 
-  // An empty set changes nothing — the fleet-wide flag alone drives the cell, as before.
+  // An empty set changes nothing — the team-wide flag alone drives the cell, as before.
   const none = renderStatus(
     root,
     { ...snapshotWith([{ role: "docs" }], DEFAULT_BUDGET, false, []), running: true },
@@ -332,7 +332,7 @@ test("renderStatus shows paused only for the individually paused idle role", () 
 
 // Regression (review of the editable-budget feature): the snapshot's budget object is now
 // unconditional, so a DISABLED cap (capUsd 0) must not read as reached — spend ≥ 0 would
-// otherwise flag every idle loop `waiting: budget spent` on a fleet with no cap at all.
+// otherwise flag every idle loop `waiting: budget spent` on a team with no cap at all.
 test("renderStatus never reads waiting: budget spent while the cap is disabled, even past any spend", () => {
   const root = tmpdir();
   // Cap disabled (0) with today's spend far above zero: the gate is off by definition.
@@ -386,12 +386,12 @@ test("renderStatus keeps role loops working under the fallback and pauses them w
     ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" } }),
     running: true,
   });
-  assert.doesNotMatch(degraded, /waiting: budget spent/, "a fallback fleet is not a stopped fleet");
+  assert.doesNotMatch(degraded, /waiting: budget spent/, "a fallback team is not a stopped team");
   assert.match(degraded, /feature\s+due/);
   assert.match(headerOf(degraded), /· budget: \$50\.00\/\$50 today · over-cap model: local-free \(cost n\/a\)$/);
 
   // The same spend with no usable fallback pauses the role loops, exactly as before — per
-  // role now (part 5c/8): the snapshot's budgetPausedRoles set, not a fleet-wide verdict.
+  // role now (part 5c/8): the snapshot's budgetPausedRoles set, not a team-wide verdict.
   const stopped = renderStatus(root, {
     ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }),
     budgetPausedRoles: ["feature"],
@@ -532,7 +532,7 @@ test("no rendered line carries trailing padding, blank trailing cells included",
   assert.equal(t.cellAt(t.lines[t.lines.length - 1] ?? "", 7), "$0.00");
 });
 
-test("a rendered fleet shows active rows equal to permit holders: parked waiters read `waiting to start`", async () => {
+test("a rendered team shows active rows equal to permit holders: parked waiters read `waiting to start`", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
   // A live-looking orchestrator (this process's pid) so loopPhase renders in-flight states.
@@ -600,7 +600,7 @@ test("the state cell hides the pooled worktree slot and its pin", () => {
 });
 
 // The disk floor (plans/disk-floor.md, part 4/4): a published hold reads in the header badge
-// AND in each idle loop's state cell, so the rendered table explains the stopped fleet
+// AND in each idle loop's state cell, so the rendered table explains the stopped team
 // itself.
 test("renderStatus shows a waiting: low disk in the header and the loop's state cell", () => {
   const held = snapshotWith([{ role: "clean" }]);
@@ -671,7 +671,7 @@ test("sanitizeFrameLines strips the status table's currentWork in the TUI frame"
   assert.ok(frame.includes("fix ]52;c;AAAA now"), `the stripped work item still renders: ${JSON.stringify(frame)}`);
 });
 
-test("renderStatus shows the run --for countdown only on a running windowed fleet", () => {
+test("renderStatus shows the run --for countdown only on a running windowed team", () => {
   const snap = snapshotWith([{ role: "clean" }]);
   snap.running = true;
   snap.pid = 4242;
@@ -683,23 +683,23 @@ test("renderStatus shows the run --for countdown only on a running windowed flee
   assert.doesNotMatch(headerOf(renderStatus(tmpdir(), snap)), /stops in/);
 });
 
-test("status renders the fleet-attention banners for a spent budget and an open question", () => {
+test("status renders the team-attention banners for a spent budget and an open question", () => {
   const root = tmpdir();
   writeBacklogFile(root, "QUESTIONS.md", [{ heading: "## Open", body: "### Should we ship it? (asked 2026-10-01 by user)\n\nBody." }]);
   const snap = snapshotWith([{ role: "feature" }], { spentUsd: 60, capUsd: 50, capHitAt: null, free: false, fallback: null });
   const lines = renderStatus(root, snap).split("\n");
   // The banner block sits between the header's blank line and the table: one line per alert,
   // its mark and title in the alert's tone, then the detail — the exact wording the
-  // dashboard and TUI draw from the same fleetAlerts source.
+  // dashboard and TUI draw from the same teamAlerts source.
   assert.match(lines[2] ?? "", /^! Today's budget is spent, so the roles are paused — Spent \$60\.00 of the \$50 cap\. They resume at midnight, or as soon as you raise the cap\.$/);
   assert.match(lines[3] ?? "", /^\? 1 question needs your answer — Should we ship it\?$/);
 });
 
-test("status renders no banner block on an alert-free fleet", () => {
+test("status renders no banner block on an alert-free team", () => {
   const snap = snapshotWith([{ role: "clean" }]);
   const lines = renderStatus(tmpdir(), snap).split("\n");
   // Header at 0, its blank line at 1, then the table's header/separator at 2+ — a healthy
-  // fleet keeps the banner block empty, so the output is byte-identical to a pre-banner status.
+  // team keeps the banner block empty, so the output is byte-identical to a pre-banner status.
   assert.equal(lines[1], "");
   assert.match(lines[2] ?? "", /^role\b/, "the line after the header blank is the table, not a banner");
 });

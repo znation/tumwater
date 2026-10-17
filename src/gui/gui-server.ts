@@ -164,7 +164,7 @@ function recordServerError(root: string, err: unknown): void {
 
 /** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
  * binds the unspecified address (every interface, IPv4 and IPv6), making the dashboard —
- * including the director prompt box, which anyone reaching it can use to steer the fleet —
+ * including the director prompt box, which anyone reaching it can use to steer the team —
  * available to the whole network. There is no authentication by default — exposing it is
  * the caller's deliberate choice — and an optional shared token (`gui --token <secret>`,
  * passed as `token`) gates every route: requests must carry it as `Authorization: Bearer
@@ -282,7 +282,7 @@ export function startGui(
       // Cross-origin gate, ahead of every state-changing route: a hostile webpage can POST
       // to the open localhost server with a CORS-safelisted text/plain body (no preflight,
       // no readable response) and the side effect alone is the payload — a forged director
-      // prompt, a fleet pause, an abort. Browsers mark every cross-site POST with an Origin
+      // prompt, a team pause, an abort. Browsers mark every cross-site POST with an Origin
       // naming the hostile server, so one header check here refuses the forgery while the
       // dashboard's own POSTs (same-host Origin) and non-browser clients (no Origin) pass.
       if (req.method === "POST" && crossOriginRequest(req)) {

@@ -211,11 +211,11 @@ test("a reload with no injected reexec seam falls back to reexecSelf", async () 
 
 test("a hosted run's TUI (reloadDisabled) ignores a dist swap: no re-exec, no resolve-as-quit", async () => {
   // The one behavior a `run --tui` self-redeploy depends on: the hosted TUI must NOT treat the
-  // fleet's own dist swap as a reload. Its watch firing would resolve runTui, which the host
+  // team's own dist swap as a reload. Its watch firing would resolve runTui, which the host
   // reads as a quit and aborts the run's controller — process.exit-ing the supervisor — and
   // spawn a re-exec replacement the dying supervisor would then kill. The whole point of
   // reloadDisabled is that a hosted TUI stays on the supervisor's build and the redeploy is
-  // the supervisor's (respawn the fleet children), so this pins that the seam wins over the
+  // the supervisor's (respawn the team children), so this pins that the seam wins over the
   // watch seams that WOULD have fired a reload in the standalone path.
   const repo = makeRepo();
   await initProject(repo, "tui hosted reload-disabled");

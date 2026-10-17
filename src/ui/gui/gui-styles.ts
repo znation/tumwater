@@ -116,7 +116,7 @@ export const GUI_STYLES = String.raw`
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .spacer { flex: 1; }
 
-  /* ---- shell: the sidebar (project, fleet status, views, fleet controls) beside the main
+  /* ---- shell: the sidebar (project, team status, views, team controls) beside the main
      column ---- */
   .shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
   .sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 18px; padding: 16px 12px;

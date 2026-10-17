@@ -24,7 +24,7 @@ function fakeEl(log: string[], tag: string) {
  * assertions read the elements' final state. */
 function bootScope(inject: Record<string, unknown>, log: string[]) {
   const els: Record<string, ReturnType<typeof fakeEl>> = {};
-  for (const id of ["fleet-view", "history", "report", "failures", "pending", "settings-view", "tab-team", "tab-history", "tab-usage", "tab-failures", "tab-pending", "tab-settings"]) {
+  for (const id of ["team-view", "history", "report", "failures", "pending", "settings-view", "tab-team", "tab-history", "tab-usage", "tab-failures", "tab-pending", "tab-settings"]) {
     els[id] = fakeEl(log, id);
   }
   return clientScope<{ switchView(v: string): void; route(): void; openLoopRole(): string | null }>(
@@ -38,7 +38,7 @@ test("switchView shows one view's section, marks its tab, and refetches that vie
   const calls: string[] = [];
   const scope = bootScope({
     lastStatus: { roles: [] },
-    renderFleet: () => calls.push("renderFleet"),
+    renderTeam: () => calls.push("renderTeam"),
     fetchHistory: () => calls.push("fetchHistory"),
     fetchReport: () => calls.push("fetchReport"),
     fetchFailures: () => calls.push("fetchFailures"),
@@ -49,7 +49,7 @@ test("switchView shows one view's section, marks its tab, and refetches that vie
   // Only the history section is visible, and only its tab carries the active mark —
   // the others are hidden and lose any stale aria-current from a previous view.
   assert.equal(log.filter((l) => l.startsWith("history ")).join("|"), "history hidden=false");
-  assert.equal(log.filter((l) => l.startsWith("fleet-view ")).join("|"), "fleet-view hidden=true");
+  assert.equal(log.filter((l) => l.startsWith("team-view ")).join("|"), "team-view hidden=true");
   assert.equal(log.filter((l) => l.startsWith("tab-history ")).join("|"), "tab-history active+|tab-history aria-current=page");
   assert.equal(log.filter((l) => l.startsWith("tab-team ")).join("|"), "tab-team active-|tab-team -aria-current");
   // The view's own fetch ran, and no other view's did.
@@ -76,26 +76,26 @@ test("switchView falls back to team for an unknown view and repaints team from t
   const calls: string[] = [];
   const scope = bootScope({
     lastStatus: { roles: [] },
-    renderFleet: (d: unknown) => calls.push("renderFleet " + JSON.stringify(d)),
+    renderTeam: (d: unknown) => calls.push("renderTeam " + JSON.stringify(d)),
     fetchHistory: () => calls.push("fetchHistory"),
   }, log);
 
   scope.switchView("bogus");
-  // The unknown name became fleet: its section shows, its tab leads, and the last
+  // The unknown name became team: its section shows, its tab leads, and the last
   // status payload is what got painted (no fetch happens for the fallback).
-  assert.equal(log.filter((l) => l.startsWith("fleet-view ")).join("|"), "fleet-view hidden=false");
+  assert.equal(log.filter((l) => l.startsWith("team-view ")).join("|"), "team-view hidden=false");
   assert.equal(log.filter((l) => l.startsWith("tab-team ")).join("|"), "tab-team active+|tab-team aria-current=page");
-  assert.deepEqual(calls, ["renderFleet {\"roles\":[]}"]);
+  assert.deepEqual(calls, ["renderTeam {\"roles\":[]}"]);
 
   // With no status ever received, the fallback still routes but paints nothing —
   // the pre-poll boot state must not crash on a missing payload.
   const quietLog: string[] = [];
-  const quiet = bootScope({ lastStatus: null, renderFleet: () => calls.push("renderFleet") }, quietLog);
+  const quiet = bootScope({ lastStatus: null, renderTeam: () => calls.push("renderTeam") }, quietLog);
   quiet.switchView("bogus");
-  assert.equal(quietLog.filter((l) => l.startsWith("fleet-view ")).join("|"), "fleet-view hidden=false");
+  assert.equal(quietLog.filter((l) => l.startsWith("team-view ")).join("|"), "team-view hidden=false");
 });
 
-test("route follows #role/<role> into the drawer over fleet, and idempotently on re-route", () => {
+test("route follows #role/<role> into the drawer over team, and idempotently on re-route", () => {
   const log: string[] = [];
   const calls: string[] = [];
   let hash = "#role/feature";
@@ -103,20 +103,20 @@ test("route follows #role/<role> into the drawer over fleet, and idempotently on
   const scope = bootScope({
     location: { get hash() { return hash; } },
     lastStatus: { roles: [] },
-    renderFleet: () => calls.push("renderFleet"),
+    renderTeam: () => calls.push("renderTeam"),
     fetchHistory: () => calls.push("fetchHistory"),
     openLoopRole: () => openRole,
     openLoop: (role: string) => { calls.push("openLoop " + role); openRole = role; },
   }, log);
 
-  // A fresh load straight to #role/feature: fleet is shown behind the drawer and the
+  // A fresh load straight to #role/feature: team is shown behind the drawer and the
   // feature drawer opens.
   scope.route();
-  assert.deepEqual(calls, ["renderFleet", "openLoop feature"]);
+  assert.deepEqual(calls, ["renderTeam", "openLoop feature"]);
   assert.equal(scope.openLoopRole(), "feature");
 
   // A poll-driven re-route to the same loop is a no-op: no rebuilt drawer (the live
-  // transcript the reader is pinned to would reset) and no fleet re-render either.
+  // transcript the reader is pinned to would reset) and no team re-render either.
   calls.length = 0;
   scope.route();
   assert.deepEqual(calls, [], "the already-open drawer is left alone");
@@ -130,9 +130,9 @@ test("route follows #role/<role> into the drawer over fleet, and idempotently on
   hash = "#history";
   calls.length = 0;
   scope.route();
-  assert.deepEqual(calls, ["fetchHistory"], "the history view fetched, fleet not re-painted");
+  assert.deepEqual(calls, ["fetchHistory"], "the history view fetched, team not re-painted");
 
-  // A later #loop route on an already-routed page must not force fleet back on.
+  // A later #loop route on an already-routed page must not force team back on.
   hash = "#role/feature";
   calls.length = 0;
   log.length = 0;
@@ -147,16 +147,16 @@ test("route survives a malformed percent-escape in the fragment instead of abort
   const scope = bootScope({
     location: { hash: "#%" },
     lastStatus: { roles: [] },
-    renderFleet: () => calls.push("renderFleet"),
+    renderTeam: () => calls.push("renderTeam"),
     fetchHistory: () => calls.push("fetchHistory"),
   }, log);
 
   // decodeURIComponent("%") throws; the raw fragment is no known view, so routing falls back
-  // to fleet. The assertion that matters is doesNotThrow: route() runs before pollLoop() at
+  // to team. The assertion that matters is doesNotThrow: route() runs before pollLoop() at
   // boot, so a throw here would abort the served script and freeze the whole dashboard.
   assert.doesNotThrow(() => scope.route());
-  assert.equal(log.filter((l) => l.startsWith("fleet-view ")).join("|"), "fleet-view hidden=false");
-  assert.deepEqual(calls, ["renderFleet"]);
+  assert.equal(log.filter((l) => l.startsWith("team-view ")).join("|"), "team-view hidden=false");
+  assert.deepEqual(calls, ["renderTeam"]);
 });
 
 test("answer-record posts the trimmed answer for the Nth question, and nothing when empty", () => {
@@ -338,16 +338,16 @@ test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
   const scope = bootScope({
     location: { get hash() { return hash; } },
     lastStatus: { roles: [] },
-    renderFleet: () => calls.push("renderFleet"),
+    renderTeam: () => calls.push("renderTeam"),
     openLoopRole: () => null,
     openLoop: (role: string) => calls.push("openLoop " + role),
   }, log);
   scope.route();
-  assert.deepEqual(calls, ["renderFleet", "openLoop qa"]);
+  assert.deepEqual(calls, ["renderTeam", "openLoop qa"]);
 
   calls.length = 0;
   hash = "#fleet";
   scope.route();
-  assert.deepEqual(calls, ["renderFleet"]);
+  assert.deepEqual(calls, ["renderTeam"]);
   assert.equal(log.filter((l) => l.startsWith("tab-team ")).pop(), "tab-team aria-current=page");
 });

@@ -1,16 +1,16 @@
 /** The renderer behind `tumwater diff` — the operator-facing text for the change views the
  * collector (change-data.ts, beside src/report/report-data.ts and history-data.ts) gathers: one
- * role's pending work (`--role <id>`) and the fleet-wide roster (no --role). Pure function of the
+ * role's pending work (`--role <id>`) and the team-wide roster (no --role). Pure function of the
  * collected view — no I/O, no clock reads. */
 
 import { plural } from "../text/phrases.js";
-import type { FleetChangeView, RoleChangeView } from "./change-data.js";
+import type { TeamChangeView, RoleChangeView } from "./change-data.js";
 
 /** The work-summary phrase both change views open their work lines with — `N commits ahead
  * of <main>` plus `, K commits behind` when the branch lags main, plus `, M uncommitted
  * file(s)` when the worktree is dirty (each count through plural, so the singular/plural
- * wording the tests pin cannot drift between the fleet roster and the per-role header).
- * Exactly two call sites: renderFleetChange's per-role line and renderRoleChange's header line. */
+ * wording the tests pin cannot drift between the team roster and the per-role header).
+ * Exactly two call sites: renderTeamChange's per-role line and renderRoleChange's header line. */
 function workSummary(
   ahead: number,
   behind: number,
@@ -27,8 +27,8 @@ function workSummary(
 /** Render the roster as the operator-facing text `tumwater diff` (no --role) prints: one
  * line per role that holds pending work, in roster order; roles with no worktree and roles
  * holding nothing are skipped. Every entry no-base means the baseline itself is gone — the
- * per-role view's line says so, fleet-wide, exit 0 like every other degraded case. */
-export function renderFleetChange(view: FleetChangeView): string {
+ * per-role view's line says so, team-wide, exit 0 like every other degraded case. */
+export function renderTeamChange(view: TeamChangeView): string {
   if (view.roles.length > 0 && view.roles.every((r) => r.state === "no-base")) {
     return `main branch ${view.mainBranch} does not exist`;
   }
@@ -54,3 +54,6 @@ export function renderRoleChange(view: RoleChangeView): string {
   }
   return lines.join("\n");
 }
+
+/** @deprecated Use renderTeamChange. */
+export const renderFleetChange = renderTeamChange;

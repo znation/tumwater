@@ -4,7 +4,7 @@
  * integer parsing. (Number, money, and hash formats — compactTokens, shortSha, usd, usdCap —
  * live in format.ts; local date/time formatting and calendar-day arithmetic live in
  * datetime.ts; terminal-column geometry — the wcwidth table and the displayWidth/
- * padToWidth/clipToWidth clippers — lives in text-width.ts; the fleet's shared wording
+ * padToWidth/clipToWidth clippers — lives in text-width.ts; the team's shared wording
  * fragments — the red-main phrase, the pause-reason suffix, the hold, budget, and backend
  * phrasings, tool-call labels — live in text/phrases.ts; the did-you-mean suggestion layer —
  * suggestClosest, didYouMean, typoSuffix — lives in text/suggest.ts; the Markdown table

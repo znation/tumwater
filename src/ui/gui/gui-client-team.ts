@@ -1,15 +1,15 @@
 // vocabulary: plain
-/** The dashboard's fleet view, browser-side — the main screen between polls: the sidebar's
- * project name and fleet status (loops running, build state, main's check, quiet hours),
+/** The dashboard's team view, browser-side — the main screen between polls: the sidebar's
+ * project name and team status (loops running, build state, main's check, quiet hours),
  * the alerts band for whatever needs a human (a failing loop, a red main, a spent budget,
  * an old build, open questions, a pause), today's progress tiles with their
  * per-day bar chart, the backlog with its questions/plans/bugs tabs, and the notable activity
  * feed (the loops table with its per-row actions lives in gui-client-loops.ts; the composer
- * rendered onto this view lives in gui-client-composer.ts). renderFleet repaints all of it
+ * rendered onto this view lives in gui-client-composer.ts). renderTeam repaints all of it
  * from each /api/status poll. Spliced into gui-client.ts's script, reaching its helpers (esc,
  * icon, getJson, postJson, postAction, plural, agree, recall, fmtAgo, fmtTokens, fmtUsd,
  * paintPanel, showFlash) through that concatenation. */
-export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet status, budget and pause controls ----
+export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team status, budget and pause controls ----
   // restart-button:start
   // The restart affordance's exact markup — one home shared by the sidebar's stale-build row
   // and alertParts()'s build alert, so styling and the global [data-act='restart'] handler
@@ -86,7 +86,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       // The permit pool (plans/provider-concurrency.md §8): the payload's preformatted
       // permitsBadge — running 5 of 8 · omlx 3/3 · claude 2/6 — upcased for the row's label
       // style, the same reading the TUI/status header carries, so the two surfaces cannot
-      // drift. Empty on a map-less fleet, so the sidebar stays unchanged.
+      // drift. Empty on a map-less team, so the sidebar stays unchanged.
       if (d.permitsBadge) {
         const tok = String(d.permitsBadge).replace(/^ · /, "");
         rows += row("blue", icon("gauge"), esc(tok),
@@ -103,7 +103,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       // standing information, amber while the local clock is inside it — the same
       // inside/outside wording the TUI/status header's quietBadge carries, derived from the
       // payload's raw quietHours/inQuietHours fields (the active case also raises the
-      // fleet-alerts quiet alert above).
+      // team-alerts quiet alert above).
       if (d.quietHours) {
         const end = String(d.quietHours).split("-")[1] || "";
         rows += row(d.inQuietHours ? "amber" : "", icon("pause"),
@@ -137,7 +137,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   // i * 2000 spacing exists for the test path, which passes a stepped clock so each fresh
   // alert clears the window and sounds its own cue. The keys seen now are kept for the next
   // poll's diff; lastNeedsYouKeys starts null, so a page opened onto an already-alerting
-  // fleet cues once.
+  // team cues once.
   let lastNeedsYouKeys = null;
   function cueNewNeedsYou(alerts, now) {
     const fresh = newNeedsYouKeys(lastNeedsYouKeys, alerts);
@@ -154,7 +154,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   // from under a click in progress.
   function alertParts(a, restartable) {
     // A stale-build alert's refresh icon IS the restart button (PLANS.md 2026-09-30): pressing
-    // it forces the fleet's self-redeploy onto main's head now instead of waiting out the
+    // it forces the team's self-redeploy onto main's head now instead of waiting out the
     // cooldown. Only the build alert carries it, and only while the build is actually stale —
     // a fresh build's icon stays inert decoration.
     const glyph = icon(ALERT_ICONS[a.key] || "info");
@@ -518,8 +518,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     }
     if (lastStatus) renderFeed(lastStatus);
   }
-  // The Loop picker's options follow the fleet's role list (custom loops included), keyed so a
-  // poll with no roster change repaints nothing. A role the fleet dropped falls back to All
+  // The Loop picker's options follow the team's role list (custom loops included), keyed so a
+  // poll with no roster change repaints nothing. A role the team dropped falls back to All
   // loops and persists, exactly as syncRolePicker does for the report and History pickers.
   function syncFeedRoles(d) {
     if (!d) return;
@@ -627,11 +627,11 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   });
   // activity:end
 
-  function renderFleet(d) {
+  function renderTeam(d) {
     const loops = d.roles || [];
     const sub = plural(loops.length, "role") + " · " + (d.running ? loops.filter((l) => phaseInfo(l.phase).live).length + " in flight" : "the team is stopped") +
       (d.paused ? " · paused" : "");
-    if ($("fleetsub").textContent !== sub) $("fleetsub").textContent = sub;
+    if ($("teamsub").textContent !== sub) $("teamsub").textContent = sub;
     renderStats(d);
     renderLoops(d);
     renderBacklog(d);

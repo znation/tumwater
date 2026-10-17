@@ -7,7 +7,7 @@
  * per-domain command modules, each a thin HTTP adapter touching no socket beyond its own `res`:
  * prompt queueing/cancel/edit (gui/gui-prompt-commands), backlog entry file/cancel/edit +
  * question-answer (gui/gui-backlog-commands), config set/unset + budget + notify-test
- * (gui/gui-config-commands), fleet pause/role-pause/wake (gui/gui-team-commands),
+ * (gui/gui-config-commands), team pause/role-pause/wake (gui/gui-team-commands),
  * and operator lifecycle restart/reclaim/abort/reset-counters/stop-schedule/role-notes/
  * retire/brief-edit (gui/gui-operator-commands).
  */

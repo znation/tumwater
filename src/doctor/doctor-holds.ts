@@ -239,7 +239,7 @@ export function checkProviderHolds(root: string, now: number = Date.now()): Chec
 
 /** The `error streaks` check: names each enabled loop whose `consecutiveErrors` is at or past
  * ERROR_STREAK_WARN, with its streak and last error, and whether it is paused. Read-only; it reads
- * the same `consecutiveErrors` the error-streak breaker and `fleetAlerts` read, and the same
+ * the same `consecutiveErrors` the error-streak breaker and `teamAlerts` read, and the same
  * `pausedRoles` marker the scheduler reads. The marker does not record who wrote it, so a paused
  * loop at ERROR_STREAK_BREAKER's bar is described, not attributed to the breaker. A warn, not a
  * fail: a failing loop does not stop the team from running. */

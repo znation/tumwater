@@ -59,7 +59,7 @@ test("the token gate accepts the credential as a Bearer header or ?token=, then 
     const payload = (await status.json()) as { running: boolean };
     assert.equal(payload.running, false);
 
-    const post = await postJson(base, "/api/prompt?token=s3cret", { text: "hello fleet" });
+    const post = await postJson(base, "/api/prompt?token=s3cret", { text: "hello team" });
     assert.equal(post.status, 200);
     assert.deepEqual(await post.json(), { ok: true });
     assert.equal(inboxSize(repo), 1, "the prompt actually landed behind the gate");

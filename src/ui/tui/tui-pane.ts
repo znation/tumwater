@@ -55,7 +55,7 @@ const ACTIVITY_EVENTS = 200;
 /** The Activity pane's loaded event tail, narrowed by its loop and text filters: the one read
  * the pane body and the PgUp/PgDn total share, so their filtered lists cannot drift. Both
  * match rules are the CLI's and dashboard's own: `eventRole` for the exact-loop scope (`null`
- * = the fleet's full tail), and `eventMatchesGrep` over the type-prefixed rendered line for the
+ * = the team's full tail), and `eventMatchesGrep` over the type-prefixed rendered line for the
  * case-insensitive search (`null` = no search) — `tumwater logs --grep` and `GET /api/logs`
  * call the same two, so the three surfaces cannot disagree about what a filter matches. */
 export function activityEvents(root: string, role: string | null, grep: string | null): HarnessEvent[] {

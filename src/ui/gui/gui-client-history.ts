@@ -144,8 +144,8 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     renderHistory();
   }
   // history-detail:end
-  // The loop picker's options follow the fleet's role list (custom loops included), keyed so a
-  // poll with no roster change repaints nothing. A role the fleet dropped falls back to All
+  // The loop picker's options follow the team's role list (custom loops included), keyed so a
+  // poll with no roster change repaints nothing. A role the team dropped falls back to All
   // loops and persists, exactly as syncRolePicker does for the report and Activity pickers.
   function syncHistoryRoles(d) {
     if (!d) return;
@@ -209,7 +209,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   }
   // The History table for rows (/api/history's, newest first) under a grep (already applied
   // server-side) and an outcome filter; known is
-  // the set of the fleet's loop ids, whose rows open that loop's drawer. Pure — the view's
+  // the set of the team's loop ids, whose rows open that loop's drawer. Pure — the view's
   // render paints what this returns.
   function historyTableHtml(rows, filter, known, grep, sinceKey) {
     const shown = (rows || []).filter((r) => filter === "all" || historyClass(r.result) === filter);
@@ -229,7 +229,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       shown.map((r) => {
         const res = resultInfo(r.result);
         // The drill-down toggle rides the drawer's button style and lives in its own leading
-        // cell; only a fleet loop's row carries one, the same rows that open the drawer (the
+        // cell; only a team loop's row carries one, the same rows that open the drawer (the
         // /api/run endpoint validates the role, so an id the config no longer knows would
         // only ever answer 400).
         const key = histDetailKey(r.role, r.run);

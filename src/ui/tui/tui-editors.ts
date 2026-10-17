@@ -15,11 +15,11 @@ import {
   roleResumeMessage,
 } from "../../operator/operator-intent.js";
 import {
-  isFleetPaused,
+  isTeamPaused,
   pausedRoles,
-  pauseFleet,
+  pauseTeam,
   pauseRole,
-  resumeFleet,
+  resumeTeam,
   resumeRole,
   scheduledStopAt,
 } from "../../team/team-state.js";
@@ -27,7 +27,7 @@ import { durationLabel } from "../../cli/cli-args.js";
 import { questionAsker, tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE } from "../../backlog/question-answer.js";
 import { editQueuedFile, readQueuedPromptBody } from "../../inbox/inbox-edit.js";
 import { collapseWhitespace } from "../../text/text.js";
-import { fleetPausePhrase, fleetResumePhrase } from "../../text/phrases.js";
+import { teamPausePhrase, teamResumePhrase } from "../../text/phrases.js";
 import { usdCap } from "../../text/format.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import type { labeledBacklogEntries } from "./tui-backlog.js";
@@ -112,13 +112,13 @@ interface TuiEditorState {
   /** The pending defer delay as a human label (durationLabel), or null when the next prompt
    * delivers immediately. */
   defer: string | null;
-  /** Whether the prompt line is editing the fleet pause's duration and reason (Ctrl+F). */
+  /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
-  /** The loop the pause editor pauses, null for the fleet editor (Ctrl+F). */
+  /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */
   pauseEditRole: string | null;
   /** The per-loop editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P). */
   pauseEditWake: boolean;
-  /** The fleet editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F). */
+  /** The team editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F). */
   pauseEditStop: boolean;
   /** The Queued pane's in-place editor (Ctrl+E): the role and queue-file basename of the entry
    * the prompt line is editing, or null when no edit is open. */
@@ -203,7 +203,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   // The last snapshot's cap, synced by render so the Ctrl+B handler can pre-fill without
   // re-reading config itself (render already polls snapshot every second).
   let currentCapUsd = 0;
-  // The last snapshot's free flag: true when every model the fleet could use is unpriced,
+  // The last snapshot's free flag: true when every model the team could use is unpriced,
   // so a cap could never bind — the Ctrl+B handler flashes a notice instead of opening
   // the editor (BUGS.md 2026-09-14), leaving the prompt line untouched.
   let currentBudgetFree = false;
@@ -374,7 +374,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       if (budgetMode) {
         exitBudgetMode();
       } else if (currentBudgetFree) {
-        // An all-free fleet has no spend a cap could bind: the editor would pre-fill a
+        // An all-free team has no spend a cap could bind: the editor would pre-fill a
         // value that can never take effect, so Ctrl+B flashes a one-line notice and
         // leaves the prompt line untouched (toggle/Esc logic unchanged).
         deps.flashMessage("budget n/a — all models free");
@@ -419,13 +419,13 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       return true;
     }
     if (key.ctrl && key.name === "f" && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor) {
-      // Ctrl+F toggles the whole-fleet pause (mnemonic: **F**leet) through the same
-      // pauseFleet/resumeFleet marker writers `tumwater pause`/`resume` and the dashboard's
+      // Ctrl+F toggles the whole-team pause (mnemonic: **F**leet) through the same
+      // pauseTeam/resumeTeam marker writers `tumwater pause`/`resume` and the dashboard's
       // /api/pause call use, so the surfaces cannot drift on marker format or idempotence.
-      // The shared fleetPausePhrase/fleetResumePhrase base lines keep the flash wording the
+      // The shared teamPausePhrase/teamResumePhrase base lines keep the flash wording the
       // event feed and failure digest already read; a no-op flashes the same
       // already-paused/was-not-paused contract the CLI prints. Guarded out of the budget and
-      // role-prompt editors, whose prompt line the fleet toggle must not disturb — the same
+      // role-prompt editors, whose prompt line the team toggle must not disturb — the same
       // inertness the per-loop keys honor below. The write can fail (a lock timeout, a torn
       // fs), so flash the reason instead of letting the throw kill the TUI.
       if (pauseEditMode) {
@@ -433,11 +433,11 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         return true;
       }
       try {
-        if (isFleetPaused(root)) {
-          deps.flashMessage(resumeFleet(root) ? fleetResumePhrase() : "team was not paused");
+        if (isTeamPaused(root)) {
+          deps.flashMessage(resumeTeam(root) ? teamResumePhrase() : "team was not paused");
         } else {
-          // An unpaused fleet opens the one-line editor: "[duration] [reason]", empty pauses
-          // until resumed. A paused fleet resumes at once.
+          // An unpaused team opens the one-line editor: "[duration] [reason]", empty pauses
+          // until resumed. A paused team resumes at once.
           settleDraft((t) => (pauseSavedInput = t), (n) => (pauseSavedCursor = n));
           pauseEditMode = true;
           input = "";
@@ -450,7 +450,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       return true;
     }
     if (key.ctrl && key.name === "q" && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor) {
-      // Ctrl+Q (mnemonic: **q**uit later) schedules or cancels a graceful fleet stop through
+      // Ctrl+Q (mnemonic: **q**uit later) schedules or cancels a graceful team stop through
       // the same requestScheduledStop/cancelScheduledStopMessage cores `tumwater stop --in` /
       // `--cancel` and the dashboard use. A pending stop cancels at once; otherwise it opens
       // the duration editor. A second press closes any open pause/wake/stop editor unwritten.
@@ -842,15 +842,15 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             deps.flashError(err);
           }
         } else {
-          const fleet = parsed as Extract<ReturnType<typeof parsePauseInput>, { ok: true }>;
+          const team = parsed as Extract<ReturnType<typeof parsePauseInput>, { ok: true }>;
           try {
-            const until = fleet.forMs === undefined ? undefined : deps.now() + fleet.forMs;
-            const changed = pauseFleet(root, until, fleet.reason);
+            const until = team.forMs === undefined ? undefined : deps.now() + team.forMs;
+            const changed = pauseTeam(root, until, team.reason);
             exitPauseEditMode();
-            const forSuffix = fleet.forMs === undefined ? "" : ` for ${durationLabel(fleet.forMs)}`;
+            const forSuffix = team.forMs === undefined ? "" : ` for ${durationLabel(team.forMs)}`;
             deps.flashMessage(
               changed || until !== undefined
-                ? `${fleetPausePhrase()}${forSuffix}${changed && fleet.reason ? `: ${fleet.reason}` : ""}`
+                ? `${teamPausePhrase()}${forSuffix}${changed && team.reason ? `: ${team.reason}` : ""}`
                 : "team is already paused",
             );
           } catch (err) {
@@ -876,7 +876,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         // Enter in role-prompt mode submits for the viewed loop through the same path
         // `tumwater prompt --role` uses: the shared submitRolePromptAndWake enqueues into
         // that loop's own queue (length-capped by the shared rule), logs under the loop,
-        // and wakes it so a live fleet's loop comes in within one poll. An invalid
+        // and wakes it so a live team's loop comes in within one poll. An invalid
         // (whitespace-only) line flashes and STAYS in edit mode; a failed queue write
         // flashes the reason and keeps the text, the same contract the director path
         // below honors; success restores the saved draft.

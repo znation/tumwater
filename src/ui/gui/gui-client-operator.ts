@@ -1,13 +1,13 @@
 // vocabulary: plain
 import { PAUSE_REASON_MAX } from "../../team/team-state.js";
 
-/** The dashboard's fleet-wide operator controls, browser-side, all living in the sidebar so
+/** The dashboard's team-wide operator controls, browser-side, all living in the sidebar so
  * they are in reach from every view: the daily spend badge — today's spend against the cap
  * with a meter, a button that opens a small editor for the cap (POST /api/budget, the same
  * setter as the TUI's Ctrl+B) — the pause control, a menu of timed pauses with an
  * optional reason (POST /api/pause with `forSeconds` and `reason`, the CLI's
  * `pause --for`/`--reason`) that turns into a Resume button with the countdown while the
- * fleet is paused, and the sound toggle that mutes the alert cue (a per-browser preference,
+ * team is paused, and the sound toggle that mutes the alert cue (a per-browser preference,
  * no server call). Neither keeps optimistic state: after a successful
  * POST the next status poll re-renders them from the server's answer, and a failed one toasts
  * the error and leaves the editor open. Spliced into gui-client.ts's script, where it reaches
@@ -60,7 +60,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   }
   // The subscription usage window (plans/agent-backends.md §8, PLANS.md part 6d/7): the
   // sidebar's spend card renders it beside the daily spend, or in its place for a
-  // subscription-only fleet. The label/status/clock rules mirror badges.ts's
+  // subscription-only team. The label/status/clock rules mirror badges.ts's
   // claudeWindowBadge — the preformatted header fragment the TUI uses cannot be reused here
   // because the card lists EVERY window, not just the most constrained one.
   function windowLabel(type) {
@@ -129,11 +129,11 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       return line + "<span class='meter" + windowLineTone(w) + "'><span style='width:" + pct + "%'></span></span>";
     }).join("") + chainLinesHtml(chain);
   }
-  // The sidebar's spend card for a payload's budget block: a plain card for an all-free fleet
+  // The sidebar's spend card for a payload's budget block: a plain card for an all-free team
   // (no spend a cap could bind, so no editor), otherwise the button that opens the cap editor,
   // with a meter while a cap is set.
   function budgetCardHtml(b, cw, chain) {
-    // A subscription-only fleet has no priced spend for a cap to bind, so the window card
+    // A subscription-only team has no priced spend for a cap to bind, so the window card
     // stands in place of the spend card and carries no editor.
     if (cw && cw.only) {
       return "<div class='side-card' title='Claude.ai subscription usage windows — a rejected window pauses claude model jobs until it resets'>" +
@@ -241,11 +241,11 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   let pauseMenuOpen = false;
   // The timed pauses the menu offers; 0 is a standing pause that lasts until Resume.
   const PAUSE_CHOICES = [[1800, "For 30 minutes"], [3600, "For 1 hour"], [7200, "For 2 hours"], [28800, "For 8 hours"], [0, "Until I resume it"]];
-  // How long a timed fleet pause has left (humanSeconds), or "" for a standing one.
+  // How long a timed team pause has left (humanSeconds), or "" for a standing one.
   function pauseLeft(d) {
     return d.pausedUntil ? humanSeconds(Math.max(0, Math.round((d.pausedUntil - Date.now()) / 1000))) : "";
   }
-  // The sidebar's pause control: Resume (with a timed pause's countdown) while the fleet is
+  // The sidebar's pause control: Resume (with a timed pause's countdown) while the team is
   // paused, otherwise the button that opens the menu of timed pauses.
   function pauseControlHtml(d) {
     if (d.paused) {
@@ -285,7 +285,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const first = pop.querySelector("button");
     if (first) first.focus({ preventScroll: true });
   }
-  async function setFleetPause(paused, forSeconds, reason) {
+  async function setTeamPause(paused, forSeconds, reason) {
     const body = { paused: paused };
     if (paused && forSeconds > 0) body.forSeconds = forSeconds;
     const why = paused && reason ? String(reason).trim() : "";
@@ -298,7 +298,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   onClick((t, ev) => {
     if (t.closest("#pausebadge")) {
       ev.preventDefault();
-      if (lastStatus && lastStatus.paused) setFleetPause(false);
+      if (lastStatus && lastStatus.paused) setTeamPause(false);
       else if (pauseMenuOpen) closeMenus();
       else openPauseMenu();
       return;
@@ -306,7 +306,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const choice = t.closest("[data-pause]");
     if (choice) {
       const input = $("pausereason");
-      setFleetPause(true, Number(choice.dataset.pause), input ? input.value : "");
+      setTeamPause(true, Number(choice.dataset.pause), input ? input.value : "");
     }
   });
   // pause-control:end
@@ -315,7 +315,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   let stopMenuOpen = false;
   // The delays the menu offers for a scheduled graceful stop.
   const STOP_CHOICES = [[3600, "In 1 hour"], [7200, "In 2 hours"], [14400, "In 4 hours"], [28800, "In 8 hours"]];
-  // The sidebar's scheduled-stop control: nothing while the fleet is stopped; Cancel while a
+  // The sidebar's scheduled-stop control: nothing while the team is stopped; Cancel while a
   // stop is scheduled; otherwise the button that opens the menu of delays. No immediate stop:
   // under run --gui it would take the page down mid-click.
   function stopControlHtml(d) {
@@ -366,7 +366,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
 
   // sound-control:start
   // The sidebar's sound control, beside the theme toggle: a speaker icon that flips between
-  // the unmuted and muted glyph. A per-browser preference (setSoundMuted stores it), not fleet
+  // the unmuted and muted glyph. A per-browser preference (setSoundMuted stores it), not team
   // state — no server call; the choice takes effect on the next cue.
   function soundControlHtml() {
     return "<button type='button' class='icon-btn' id='soundtoggle' title='" +

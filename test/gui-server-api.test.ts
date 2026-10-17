@@ -332,7 +332,7 @@ test("gui /api/history grows its role-filtered scan window until it reaches the 
 test("gui /api/history serves an empty row set when the event log is missing, and the page carries the history tab", async () => {
   const repo = makeRepo();
   await initProject(repo, "history empty test");
-  // No events.jsonl seeded — the endpoint reads files directly, so it serves with no fleet
+  // No events.jsonl seeded — the endpoint reads files directly, so it serves with no team
   // running and no log at all: an empty row set, never a 500.
   const { server, base } = await startLocalGui(repo);
   try {

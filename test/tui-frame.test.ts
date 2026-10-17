@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { clipToWidth, displayWidth } from "../src/text/text-width.js";
 import { clipSpans, renderStatusSpans, type StatusSpan } from "../src/ui/status-render.js";
 import { eventKind } from "../src/ui/tone.js";
-import type { FleetAlert } from "../src/ui/team-alerts.js";
+import type { TeamAlert } from "../src/ui/team-alerts.js";
 import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init/init.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
@@ -67,7 +67,7 @@ test("a status render's spans read exactly as the plain text, clipped to width",
 });
 
 test("attention lines mark each alert and fold the overflow into a count", () => {
-  const alert = (key: string, tone: FleetAlert["tone"], title: string, detail = ""): FleetAlert => ({ key, tone, title, detail, actions: [] });
+  const alert = (key: string, tone: TeamAlert["tone"], title: string, detail = ""): TeamAlert => ({ key, tone, title, detail, actions: [] });
   const alerts = [
     alert("failing", "red", "qa is failing run after run", "qa: 429"),
     alert("questions", "indigo", "1 question needs your answer", "Q1"),
@@ -108,7 +108,7 @@ test("the tab strip names every view and brackets the current one", () => {
 test("the hint line says what the keys do in each view and mode", () => {
   const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, deferMode = false, defer: string | null = null, queuedEditFor: { role: string; file: string } | null = null, answerFor: { position: number; title: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, deferMode, defer, queuedEditFor, answerFor }, 300));
   assert.equal(hint({ kind: "activity", role: null, grep: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+G scope: team · / search · Ctrl+T next view · Ctrl+F pause team · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+D quit · Ctrl+L send later");
-  // The Activity pane names its exact-loop scope and its text search, the raw id or the fleet
+  // The Activity pane names its exact-loop scope and its text search, the raw id or the team
   // and "search" or the active pattern, matching the History pane's conventions.
   assert.match(hint({ kind: "activity", role: "feature", grep: null }), /Ctrl\+G scope: feature · \/ search/);
   assert.match(hint({ kind: "activity", role: null, grep: "widget" }), /Ctrl\+G scope: team · \/ search: widget/);
@@ -160,7 +160,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   // The History pane names its outcome class in the Ctrl+O hint, "all" or the active class.
   assert.match(hint({ kind: "history", since: null, result: "problems", role: null, grep: null, trail: false }), /Ctrl\+O result: problems/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+O result: all/);
-  // The History pane names its exact-loop scope in the Ctrl+G hint, the raw id or the fleet.
+  // The History pane names its exact-loop scope in the Ctrl+G hint, the raw id or the team.
   assert.match(hint({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }), /Ctrl\+G scope: feature/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+G scope: team/);
   // The History pane names its free-text search in the `/` hint, "search" or the pattern.
@@ -237,7 +237,7 @@ test("activity and transcript lines take the tones of what they report", () => {
 });
 
 test("sanitizeFrameLines strips terminal controls from attention and pane lines", () => {
-  // The two TUI paths the review flagged: a QUESTIONS.md title in a fleet alert's detail, and
+  // The two TUI paths the review flagged: a QUESTIONS.md title in a team alert's detail, and
   // a backlog line (backlogLines -> toneLine). Both are composed into the final line list that
   // tui.tsx runs through sanitizeFrameLines before ink draws it.
   const osc = "\u001b]52;c;AAAA\u0007";

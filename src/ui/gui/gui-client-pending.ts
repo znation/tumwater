@@ -6,7 +6,7 @@
  * the full patch (`/api/diff?role=<id>`). It refetches when the view opens and when its
  * Refresh button is pressed — never on a timer of its own. Spliced into gui-client.ts's
  * script, reaching its helpers (esc, getJson, icon, errorPanel) through that concatenation. */
-export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
+export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // pending-table:start
   // One role's state cell: the collector's three states, with "ready" split into pending vs
   // idle work. Never colors a degraded state as an active one.
@@ -31,12 +31,12 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
   }
   // The Pending roster: one clickable row per known role (the collector's config order), each
   // opening that loop's drawer. Pure — the view paints what this returns.
-  function pendingTableHtml(fleet) {
-    if (!fleet || !Array.isArray(fleet.roles) || fleet.roles.length === 0)
+  function pendingTableHtml(team) {
+    if (!team || !Array.isArray(team.roles) || team.roles.length === 0)
       return "<div class='empty'><strong>No roles yet</strong>Roles appear here once the team is configured.</div>";
-    if (fleet.roles.every((r) => r.state === "no-base"))
-      return "<div class='empty'><strong>Main branch " + esc(fleet.mainBranch) + " does not exist</strong>There is no base to compare unmerged work against.</div>";
-    const rows = fleet.roles.map((r) =>
+    if (team.roles.every((r) => r.state === "no-base"))
+      return "<div class='empty'><strong>Main branch " + esc(team.mainBranch) + " does not exist</strong>There is no base to compare unmerged work against.</div>";
+    const rows = team.roles.map((r) =>
       "<tr class='clickable' data-open='" + esc(r.role) + "'>" +
       "<td class='mono'>" + esc(roleLabel(r.role)) + "</td>" +
       "<td class='mono muted'>" + esc(r.branch) + "</td>" +
@@ -45,7 +45,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
       "<td class='num'>" + pendingDirtyHtml(r) + "</td></tr>",
     ).join("");
     return "<div class='table-wrap'><table class='table pending'><thead><tr><th class='c-loop'>Role</th><th>Branch</th>" + // vocabulary-ok: CSS class the stylesheet matches
-      "<th>State</th><th>Ahead of " + esc(fleet.mainBranch) + "</th><th class='c-dirty num'>Uncommitted</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
+      "<th>State</th><th>Ahead of " + esc(team.mainBranch) + "</th><th class='c-dirty num'>Uncommitted</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
   }
   // The Land queue card's body: every queued landing in execution order (oldest first), one
   // line each mirroring tumwater queue's renderLandingQueue — 1-based position, loop, tick,
@@ -89,12 +89,12 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
       "<div class='card' id='pendingbody'><div class='empty'>Loading…</div></div>")) return;
     $("pendingrefresh").addEventListener("click", () => fetchPending());
   }
-  // Load the fleet-wide change roster. Called when the view opens and by the Refresh button;
+  // Load the team-wide change roster. Called when the view opens and by the Refresh button;
   // no timer of its own, and the roster only changes when a loop lands or edits its worktree.
   async function fetchPending() {
     buildPendingView();
     try {
-      pendingFleet = await getJson("/api/diff");
+      pendingTeam = await getJson("/api/diff");
     } catch (err) {
       const body = $("pendingbody");
       if (body) body.innerHTML = errorPanel("Pending unavailable", err);
@@ -106,6 +106,6 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
   function renderPending() {
     const body = $("pendingbody");
     if (!body) return;
-    body.innerHTML = pendingTableHtml(pendingFleet);
+    body.innerHTML = pendingTableHtml(pendingTeam);
   }
 `;

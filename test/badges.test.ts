@@ -10,25 +10,25 @@ import type { StatusSnapshot } from "../src/status/status-data.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
   // One home for the badge string (renderStatus's header and the payload's preformatted
-  // budgetBadge field): n/a for an all-free fleet (checked first, in EVERY cap state — a
-  // disabled free fleet still cannot accumulate spend), $X/$Y while enabled with priced
+  // budgetBadge field): n/a for an all-free team (checked first, in EVERY cap state — a
+  // disabled free team still cannot accumulate spend), $X/$Y while enabled with priced
   // models, `· no cap` when disabled. Whole-dollar caps stay bare ($50); fractional ones
   // keep their cents ($12.34).
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null }), " · budget: n/a", "all-free fleet reads n/a");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null }), " · budget: n/a", "all-free team reads n/a");
   assert.equal(budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }), " · budget: $12.34/$50 today", "whole-dollar cap stays bare");
   assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, capHitAt: null, free: false, fallback: null }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
   assert.equal(budgetBadge({ spentUsd: 7.5, capUsd: 0, capHitAt: null, free: false, fallback: null }), " · budget: $7.50 today · no cap", "disabled: spend shown, gate off");
   assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, capHitAt: null, free: true, fallback: null }), " · budget: n/a", "free outranks disabled too");
 });
 
-// The cost n/a fallback model (plans/fallback-model.md): while it carries the fleet the badge
+// The cost n/a fallback model (plans/fallback-model.md): while it carries the team the badge
 // names it, and the loops keep their ordinary state cells — they are working, not stopped.
-test("budgetBadge names the fallback model only while it is carrying the fleet", () => {
+test("budgetBadge names the fallback model only while it is carrying the team", () => {
   const fallback = { provider: "omlx", model: "local-free" };
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback }),
     " · budget: $50.00/$50 today · over-cap model: local-free (cost n/a)",
-    "at the cap with a usable fallback: the badge says what the fleet is running on now",
+    "at the cap with a usable fallback: the badge says what the team is running on now",
   );
   assert.equal(
     budgetBadge({ spentUsd: 10, capUsd: 50, capHitAt: null, free: false, fallback }),
@@ -38,7 +38,7 @@ test("budgetBadge names the fallback model only while it is carrying the fleet",
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }),
     " · budget: $50.00/$50 today",
-    "at the cap with no usable fallback: the fleet is paused, nothing to name",
+    "at the cap with no usable fallback: the team is paused, nothing to name",
   );
   // A fallback naming only a provider still identifies itself.
   assert.equal(
@@ -108,7 +108,7 @@ test("budgetBadge appends the burn-rate forecast as · ~cap at HH:MM and stays b
   assert.equal(
     budgetBadge({ spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null }),
     " · budget: n/a",
-    "an all-free fleet never carries a forecast",
+    "an all-free team never carries a forecast",
   );
 });
 
@@ -124,10 +124,10 @@ test("landingBadge shows the land queue depth and stays empty when idle", () => 
 });
 
 // The timed-pause countdown: the badge stands only while a
-// FUTURE fleet deadline stands, so a role-only or indefinite pause and an expired marker
+// FUTURE team deadline stands, so a role-only or indefinite pause and an expired marker
 // leave the header unchanged — the read side treats an expired marker as unpaused, and the
 // badge must never claim a countdown that is over.
-test("pauseBadge counts down a standing fleet timed pause and stays empty otherwise", () => {
+test("pauseBadge counts down a standing team timed pause and stays empty otherwise", () => {
   const now = 1_800_000_000_000;
   assert.equal(pauseBadge(undefined, now), "", "no timed pause: no badge");
   assert.equal(pauseBadge(now - 1, now), "", "an expired deadline renders nothing, matching the unpaused read");
@@ -144,7 +144,7 @@ test("pauseBadge counts down a standing fleet timed pause and stays empty otherw
 });
 
 // pauseCountdown is the guard + rounding behind both pause countdowns (the badge and the
-// fleet-alerts title): none when the deadline is absent or already past — an expired marker
+// team-alerts title): none when the deadline is absent or already past — an expired marker
 // reads as unpaused — else humanSeconds of the remaining milliseconds.
 test("pauseCountdown returns the remaining duration, or null when no countdown stands", () => {
   const now = 1_800_000_000_000;
@@ -180,12 +180,12 @@ test("mainCheckBadge renders the shared counts fragment", () => {
 // header stays byte-identical. A disk block absent (an older orchestrator, an unmeasurable
 // volume) renders nothing, exactly as before the field existed. A recorded reclaim rides the
 // fragment whenever it has run, so its size and age stand even after space recovers.
-test("permitsBadge shows the fleet line slots and stays byte-identical without a pool", () => {
+test("permitsBadge shows the team line slots and stays byte-identical without a pool", () => {
   assert.equal(permitsBadge(undefined), "", "no permit snapshot: header unchanged");
-  // A map-less fleet publishes an empty byKey (no caps), so the whole badge stays empty and
+  // A map-less team publishes an empty byKey (no caps), so the whole badge stays empty and
   // the header is unchanged.
   assert.equal(permitsBadge({ inUse: 5, limit: 8, reserve: 0, byKey: {} }), "");
-  // With a per-provider cap map set, the fleet total and each capped key ride the badge;
+  // With a per-provider cap map set, the team total and each capped key ride the badge;
   // uncapped keys that happen to be in the snapshot are dropped.
   assert.equal(
     permitsBadge({ inUse: 5, limit: 8, reserve: 0, byKey: {
@@ -210,7 +210,7 @@ test("diskBadge leaves the last reclaim to the Activity log, held or recovered",
   assert.equal(
     diskBadge({ freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true, lastReclaim: reclaimed }),
     " · disk 8.2 GB free — holding new work",
-    "a held fleet names the hold, not the reclaim that ran",
+    "a held team names the hold, not the reclaim that ran",
   );
   assert.equal(
     diskBadge({ freeGB: 100, holdGB: 10, reclaimGB: 40, held: false, lastReclaim: reclaimed }),
@@ -220,7 +220,7 @@ test("diskBadge leaves the last reclaim to the Activity log, held or recovered",
 });
 
 // The subscription usage-window fragment (plans/agent-backends.md §8, PLANS.md part 6d/7):
-// the window replaces the daily spend on a subscription-only fleet and joins it on a mixed one.
+// the window replaces the daily spend on a subscription-only team and joins it on a mixed one.
 // The reset clock is built from a LOCAL Date, so the expected HH:MM holds in any test timezone.
 test("budgetBadge renders the subscription window in place of or beside the daily spend", () => {
   const at = (h: number, m: number) => new Date(2026, 9, 10, h, m).getTime();
@@ -298,9 +298,9 @@ test("budgetBadge renders the subscription window in place of or beside the dail
   assert.equal(claudeWindowTone(undefined), undefined);
 });
 
-test("budgetBadge's backend-default fallback label follows the fleet agent", () => {
+test("budgetBadge's backend-default fallback label follows the team agent", () => {
   // Part 4f/7: an engaged fallback pair that names neither half reads `<agent> default`; a
-  // claude fleet says so, a pi fleet stays byte-identical to before.
+  // claude team says so, a pi team stays byte-identical to before.
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {}, backend: "claude" }),
     " · budget: $50.00/$50 today · over-cap model: claude default (cost n/a)",

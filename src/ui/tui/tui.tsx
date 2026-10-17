@@ -4,7 +4,7 @@ import { TuiApp, type TuiAppView } from "./tui-app.js";
 import { openQuestions } from "../../backlog/backlog.js";
 import { snapshot } from "../../status/status-data.js";
 import { renderStatusSpans, type StatusLine } from "../status-render.js";
-import { fleetAlerts } from "../team-alerts.js";
+import { teamAlerts } from "../team-alerts.js";
 import {
   captureStartupBuild,
   createReloadWatch,
@@ -70,15 +70,15 @@ export interface TuiSeams {
   watch?: ReloadWatchSeams & { reexec?: () => void };
   supervisor?: SupervisorWatchSeams;
   /** When a hosted run (`run --tui`) must end this TUI from outside — the supervising run's
-   * window (`--for`) closes or the fleet stops — the supervisor aborts this signal and the
+   * window (`--for`) closes or the team stops — the supervisor aborts this signal and the
    * TUI takes the same quit teardown a keypress does (restoring the cursor and raw mode).
    * A standalone `tumwater tui` passes none, so its lifecycle is unchanged. */
   abortSignal?: AbortSignal;
   /** A hosted run (`run --tui`) hosts this TUI inside its supervisor, which — like a plain
-   * `run` supervisor — never re-execs onto a new build; it respawns its fleet children
+   * `run` supervisor — never re-execs onto a new build; it respawns its team children
    * instead. So the host disables the self-reload watch: a standalone `tumwater tui` re-execs
-   * so a long-lived observer picks up fleet code changes, but a hosted TUI must not — its
-   * watch would otherwise fire on the fleet's own first self-redeploy dist swap, resolve this
+   * so a long-lived observer picks up team code changes, but a hosted TUI must not — its
+   * watch would otherwise fire on the team's own first self-redeploy dist swap, resolve this
    * promise and read as a quit (aborting the run's controller), and spawn a re-exec
    * replacement the dying supervisor would then kill. A hosted TUI stays on the build the
    * supervisor runs, exactly as the supervisor itself does, and gets fresh code on the next
@@ -105,7 +105,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   let reloadRequested = false;
   let resolveMain: (() => void) | null = null;
   // A hosted run disables the reload watch (see TuiSeams.reloadDisabled): only the host
-  // supervisor may survive a self-redeploy, and it respawns its fleet children rather than
+  // supervisor may survive a self-redeploy, and it respawns its team children rather than
   // re-execing. When disabled, no watch is created, so a dist swap under a hosted TUI never
   // resolves this promise or spawns a replacement.
   const reloadDisabled = seams.reloadDisabled === true;
@@ -166,9 +166,9 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const s = keys.state(); // the handler's state this frame renders
     const roleIds = s.roleIds;
     const view = s.view;
-    // What needs the operator — the dashboard's alert banners (team-alerts.ts's fleetAlerts), as
+    // What needs the operator — the dashboard's alert banners (team-alerts.ts's teamAlerts), as
     // attention lines under the header. Each consumes one line of the height budget.
-    const attention = alertLines(fleetAlerts(snap, openQuestions(root), status.loops, Date.now()), width);
+    const attention = alertLines(teamAlerts(snap, openQuestions(root), status.loops, Date.now()), width);
     const statusLines = [status.lines[0] ?? [], ...attention, ...status.lines.slice(1)];
     // Numbered previews of prompts queued for the director, between the table and the
     // activity pane: what will run next, in execution order. Each line consumes exactly

@@ -14,14 +14,14 @@ import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel, roleTitle } from "../roles/role-labels.js";
 import { yieldMultiplierFor, yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
-import { fleetAlerts } from "./team-alerts.js";
-import type { FleetAlert } from "./team-alerts.js";
+import { teamAlerts } from "./team-alerts.js";
+import type { TeamAlert } from "./team-alerts.js";
 import { openQuestions } from "../backlog/backlog.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
  * `tumwater status` and the TUI. The labels, badges, and metrics it draws come from the shared
  * display model (status-model.ts); this module decides column widths and layout. Depends on
- * status/status-data.ts one way — rendering reads the snapshot; it never collects fleet state
+ * status/status-data.ts one way — rendering reads the snapshot; it never collects team state
  * itself (live tick detail is display-only). */
 
 function ago(ts: number | undefined): string {
@@ -53,17 +53,17 @@ export function lastLandedCell(ts: number | undefined): string {
 
 /** The table's `next run` cell: when the loop may tick again, or `-` when that is not the
  * operator's question — a loop in flight (an active rendered phase: working/reviewing/landing,
- * or `s.running`) has no next run to speak of, and a stopped fleet renders no schedule at all
+ * or `s.running`) has no next run to speak of, and a stopped team renders no schedule at all
  * (its `nextRunAt`s are stale leftovers, not plans). A due idle loop reads `now`; a future one
  * reads its remaining time through humanSeconds (the same bucketing the sleeping phase label
  * uses, so the two cannot drift), prefixed `backoff ` while `backoffSeconds > 0` — the wake
  * row-action clears exactly that, so the prefix is what makes waking meaningful. The GUI
  * renders the same rules from its own JS copy in gui-client.ts (fmtNextRun). The `phase` and
- * `fleetRunning` arguments come from the caller because neither fact lives on LoopState: the
+ * `teamRunning` arguments come from the caller because neither fact lives on LoopState: the
  * active-phase check needs the rendered label (a landing is visible only there), and the
- * fleet's running flag lives on the snapshot, not the loop. */
-export function nextRunCell(s: LoopState, phase: string, now: number, fleetRunning: boolean): string {
-  if (!fleetRunning || s.running || isActivePhase(phase)) return "-";
+ * team's running flag lives on the snapshot, not the loop. */
+export function nextRunCell(s: LoopState, phase: string, now: number, teamRunning: boolean): string {
+  if (!teamRunning || s.running || isActivePhase(phase)) return "-";
   const remain = secondsUntil(s.nextRunAt, now);
   // The yield multiplier rides the cell as `×N` (yield-scaled clocks, PLANS.md): a scalable
   // role whose recent ticks landed nothing keeps a longer effective gap than nextRunAt's
@@ -155,7 +155,7 @@ export function clipSpans(line: readonly StatusSpan[], width: number): StatusSpa
 
 /** The attention line's mark and tone, per alert tone — shared by the TUI and `tumwater
  * status` (status-render.ts alertLines), so the two surfaces draw the same banner glyphs. */
-const ALERT_MARKS: Record<FleetAlert["tone"], { mark: string; tone: Tone | undefined }> = {
+const ALERT_MARKS: Record<TeamAlert["tone"], { mark: string; tone: Tone | undefined }> = {
   red: { mark: "!", tone: "red" },
   amber: { mark: "!", tone: "yellow" },
   indigo: { mark: "?", tone: "magenta" },
@@ -172,7 +172,7 @@ export function toneLine(text: string, width: number, tone?: StatusSpan["tone"])
  * the detail — at most `max` of them, the rest counted on a last line. This is the banner
  * block the TUI draws under its header and `tumwater status` pushes under its own, so the two
  * surfaces render the same wording from the one shared alert source (team-alerts.ts). */
-export function alertLines(alerts: readonly FleetAlert[], width: number, max = 3): StatusLine[] {
+export function alertLines(alerts: readonly TeamAlert[], width: number, max = 3): StatusLine[] {
   const shown = alerts.length > max ? alerts.slice(0, max - 1) : alerts;
   const lines = shown.map((a) => {
     const { mark, tone } = ALERT_MARKS[a.tone];
@@ -235,11 +235,11 @@ export function renderStatusSpans(
   // The questions badge (like the inbox one) appears only when something needs an answer.
   // The budget badge is standing information for a money-spending system in EVERY cap state
   // (disabled reads `· no cap` — and it is the affordance for editing the cap); on narrow
-  // terminals the header's existing last-resort whole-line clipping applies. A fleet whose
+  // terminals the header's existing last-resort whole-line clipping applies. A team whose
   // models are all free reads n/a — spend can never accumulate against a cap that cannot be
   // reached, so a dollar figure would mislead. The timed-pause badge (plans/pause-countdown
-  // wording) rides last so a fleet under a timed pause reads how long until it comes back —
-  // empty unless the fleet marker's deadline stands in the future, so a role-only or
+  // wording) rides last so a team under a timed pause reads how long until it comes back —
+  // empty unless the team marker's deadline stands in the future, so a role-only or
   // indefinite pause keeps today's header byte-identical.
   const running: StatusSpan[] = snap.running
     ? [{ text: "running", tone: "green" }, { text: ` (pid ${snap.pid}` }, ...badgeSpans(buildBadge(snap.build), snap.build?.stale ? "yellow" : undefined), { text: ")" }]
@@ -257,9 +257,9 @@ export function renderStatusSpans(
     // while the hold is on, or the bare reading below the reclaim threshold. Empty in every
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.
     ...badgeSpans(diskBadge(snap.disk), snap.disk?.held ? "yellow" : "blue"),
-    // The permit pool's live state (plans/provider-concurrency.md §8): the fleet line reads
+    // The permit pool's live state (plans/provider-concurrency.md §8): the team line reads
     // `slots 5/8 · omlx 3/3` only while the per-provider cap map is set (permitsBadge already
-    // omits the providers on a map-less fleet, so the header stays byte-identical).
+    // omits the providers on a map-less team, so the header stays byte-identical).
     ...badgeSpans(permitsBadge(snap.permits), "blue"),
     // New-project bootstrap (plans/work-ratio.md, part 2/2): the progress reading while the
     // hold is active. Empty in every normal project, so the header stays byte-identical.
@@ -369,7 +369,7 @@ export function renderStatusSpans(
     compactTokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
     compactTokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
     usd(snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0)),
-    // The fleet's today-spend, from the snapshot's budget block — the same number the header
+    // The team's today-spend, from the snapshot's budget block — the same number the header
     // badge reads, so table and badge cannot drift. While the orchestrator runs that figure is
     // the scheduler's live sum over its in-memory states, which can sit ABOVE the per-loop
     // `today` cells above (each loop's persisted copy, written only at its saves): the gap is
@@ -448,7 +448,7 @@ export function renderStatusSpans(
   lines.push(separator);
   lines.push(fmt(totalsRow, "bold"));
   // One footnote under the table when any custom loop exists — explains the asterisk without
-  // taking a column. Absent (byte-identical table) on a fleet with no user-defined loops.
+  // taking a column. Absent (byte-identical table) on a team with no user-defined loops.
   if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* custom role", tone: "dim" }]);
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.
@@ -460,16 +460,16 @@ export function renderStatusSpans(
  * (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
   const { lines, loops } = renderStatusSpans(root, snap, maxWidth);
-  // The fleet-attention banners (team-alerts.ts) drop under the header's blank line here, on
+  // The team-attention banners (team-alerts.ts) drop under the header's blank line here, on
   // the CLI-only plain-text surface — the same spelled-out banners the dashboard and TUI draw,
   // from the one shared source, so the CLI/GUI/TUI cannot drift on wording. One QUESTIONS.md
   // read (openQuestions) for the pending-questions alert — the dashboard's cadence. The CLI
-  // omits the not-running banner: the header's first line already spells out the fleet's state,
-  // so a `status` run on a stopped fleet does not lead with a banner that duplicates it.
+  // omits the not-running banner: the header's first line already spells out the team's state,
+  // so a `status` run on a stopped team does not lead with a banner that duplicates it.
   // Composed here, NOT inside renderStatusSpans: the TUI re-slices that function's shared
   // `lines` (lines[0], its own attention block, then lines.slice(1)), so a banner embedded
   // there would render twice in the TUI.
-  const alerts = fleetAlerts(snap, openQuestions(root), loops, Date.now()).filter((a) => a.key !== "stopped");
+  const alerts = teamAlerts(snap, openQuestions(root), loops, Date.now()).filter((a) => a.key !== "stopped");
   const banner = alertLines(alerts, maxWidth ?? Number.MAX_SAFE_INTEGER, alerts.length).map(plainText);
   const text = lines.map(plainText);
   return [...text.slice(0, 2), ...banner, ...text.slice(2)].join("\n");

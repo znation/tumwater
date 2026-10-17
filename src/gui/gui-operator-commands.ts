@@ -3,7 +3,7 @@
  * The dashboard's POST operator-lifecycle command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): reset-counters,
  * restart, reclaim, abort, stop-schedule, role-notes, retire, and brief-edit — every POST
- * handler that is not prompt/backlog/config/fleet. Each handler adapts HTTP onto the domain work
+ * handler that is not prompt/backlog/config/team. Each handler adapts HTTP onto the domain work
  * one layer down (operator-intent, role-notes-write, brief-edit) and touches no socket beyond
  * its own `res`.
  */
@@ -32,11 +32,11 @@ export async function handleResetCounters(req: http.IncomingMessage, res: http.S
   });
 }
 
-/** Handle POST /api/stop-schedule: the dashboard's "Stop the fleet later" control — the same
+/** Handle POST /api/stop-schedule: the dashboard's "Stop the team later" control — the same
  * cores `tumwater stop --in`/`--cancel` call (requestScheduledStop, cancelScheduledStopMessage).
- * `{"cancel": true}` drops the marker (no live fleet needed, like the CLI); otherwise
+ * `{"cancel": true}` drops the marker (no live team needed, like the CLI); otherwise
  * `inSeconds` is required and takes /api/wake's positive-finite-and-capped rule. A stopped
- * fleet answers 409 with the not-running error. */
+ * team answers 409 with the not-running error. */
 export async function handleStopSchedule(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"inSeconds": 7200}');
   if (!body) return;

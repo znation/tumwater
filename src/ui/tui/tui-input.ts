@@ -195,7 +195,7 @@ export function parseDeferInput(
  * reason; a leading parseDurationMs word is the duration (`forMs`, not an epoch, so this stays
  * pure) and the rest the reason; otherwise the whole text is the reason. Durations over the
  * 90d cap `pause --for` and /api/pause enforce are refused. The reason is left raw —
- * pauseFleet folds and caps it. */
+ * pauseTeam folds and caps it. */
 export function parsePauseInput(
   text: string,
 ): { ok: true; forMs?: number; reason?: string } | { ok: false; error: string } {

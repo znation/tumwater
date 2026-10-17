@@ -27,7 +27,7 @@ import { landingChanges, LANDING_STAGE_LABELS, type LandingChange } from "../lan
  * Kept apart from status-render.ts so the GUI payload depends on the shared model, not on the
  * TUI table module — "what to show" (here) is separate from "how a terminal lays it out"
  * (status-render.ts). Depends on status/status-data.ts one way: deriving reads the snapshot
- * and never collects fleet state itself (live tick detail is display-only). */
+ * and never collects team state itself (live tick detail is display-only). */
 
 type LandingCell = Pick<LandingChange, "status" | "startedAt" | "stage" | "stageSince">;
 
@@ -59,7 +59,7 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
  * dashboards (renderStatus, statusPayload). First match wins: a stopped harness; an in-flight
  * landing (the role's tick already ended "queued" while its change lands, so the marker
  * supplies the label); a running tick ("working", or "reviewing" while the review gate holds
- * it — in-flight work finishes through both fleet gates); the director's "waiting for
+ * it — in-flight work finishes through both team gates); the director's "waiting for
  * prompts" (exempt from those gates); user pause; budget pause; a red main ("main red"); an
  * error or quiet-kill streak at its threshold ("failing"); sleep; then the scheduling
  * poll's recorded skip (`idle: …` / `deferred (…)`, from LoopState.skipReason), else
@@ -67,7 +67,7 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
  * Pass `root` so an in-flight tick expands into live detail (elapsed · turn · ctx · tool);
  * without it a working loop shows plain "working". `live`, when given, is the frame's
  * precomputed tail (see workingDetail) — it skips the log read; without it an in-flight tick
- * reads on its own. `budgetPaused` marks the fleet's daily cost budget as reached: idle role
+ * reads on its own. `budgetPaused` marks the team's daily cost budget as reached: idle role
  * loops show `budget paused` instead of their sleep/queue state — that is why they are not
  * ticking. `userPaused` marks an operator pause (`tumwater pause` marker present): idle role
  * loops show `paused`, checked before the budget gate because user intent is more specific
@@ -83,7 +83,7 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
  * tick ended means main is green now — the loop's `main_red` verdict is stale until its next
  * tick, which sleep, a full slot pool, a pause, or a spent budget can defer for hours
  * (BUGS.md 2026-09-30), so the label falls through to the ordinary idle state and the
- * fleetAlerts banner follows. A check that is newer but failed keeps the label (main is
+ * teamAlerts banner follows. A check that is newer but failed keeps the label (main is
  * genuinely red); so does one older than the red tick or with no known pass at all — the
  * blockage stands until the loop's own next tick re-verdicts it.
  * Otherwise its elapsed is the CHANGE's own landing (its record's startedAt — from its vet's
@@ -99,7 +99,7 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
 export function onErrorStreak(s: Pick<LoopState, "consecutiveErrors" | "lastResult" | "quietKillStreak">): boolean {
   // An error streak at or past the warning threshold (tick-apply.ts's ERROR_STREAK_WARN), or
   // a quiet-kill streak at the give-up threshold (BUGS.md 2026-09-18): the exact condition
-  // that makes loopPhase read "failing", split out so the fleet alert (team-alerts.ts) can
+  // that makes loopPhase read "failing", split out so the team alert (team-alerts.ts) can
   // key its red "failing tick after tick" banner on the streak rather than on the rendered
   // phase — an in-flight tick hides the streak behind a `working`/`landing` label (loopPhase
   // ranks running work above failing), but the alert must stay up while the loop's next tick
@@ -130,7 +130,7 @@ export function loopPhase(
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
   // passed gets it (callers derive it via landingForRole), and a stopped harness never
-  // shows it — a dead fleet's marker is stale by definition.
+  // shows it — a dead team's marker is stale by definition.
   if (landing) {
     if (landing.status === "approved") return "approved, waiting to merge";
     const head = landing.startedAt === undefined ? "merging" : `merging ${duration(Date.now() - landing.startedAt)}`;
@@ -154,7 +154,7 @@ export function loopPhase(
       const parkedTime = duration(Date.now() - s.parkedSince);
       // The parked waiter's provider key, named only while that key is the binding limit in
       // the published permit snapshot (plans/provider-concurrency.md §8): the key is at its
-      // cap, so THIS waiter is queued on its provider, not on the fleet total — `awaiting
+      // cap, so THIS waiter is queued on its provider, not on the team total — `awaiting
       // omlx slot` tells the operator exactly which cap is full. A role parked on the total
       // (no key, or an uncapped one) reads today's `awaiting slot` as before.
       if (
@@ -190,29 +190,29 @@ export function loopPhase(
   if (s.role === DIRECTOR_ROLE) return "ready for messages"; // exempt from both gates
   if (userPaused) {
     // A timed per-role pause (`pause --role <id> --for`): the marker's `until` gives the
-    // operator a countdown, mirroring the fleet header badge and the GUI loop-list's
-    // `· resumes in <s>` — an indefinite per-role pause or a fleet-wide pause (deadline
+    // operator a countdown, mirroring the team header badge and the GUI loop-list's
+    // `· resumes in <s>` — an indefinite per-role pause or a team-wide pause (deadline
     // absent) keeps today's bare `paused`, so the surfaces cannot drift.
     if (pausedUntilMs !== undefined && pausedUntilMs > Date.now()) {
       return `paused · resumes in ${humanSeconds(Math.max(0, Math.round((pausedUntilMs - Date.now()) / 1000)))}`;
     }
-    // An absent deadline (indefinite per-role pause, fleet-wide pause) or an expired one
-    // (the marker fleet-state already reads as unpaused) keeps today's bare `paused` — never
+    // An absent deadline (indefinite per-role pause, team-wide pause) or an expired one
+    // (the marker team-state already reads as unpaused) keeps today's bare `paused` — never
     // a stale `resumes in 0s`.
     return "paused";
   }
   // The loop's OWN daily cap: the more specific spend
-  // state, so it names itself ahead of the fleet's budget pause — the ladder's existing
+  // state, so it names itself ahead of the team's budget pause — the ladder's existing
   // "user intent is more specific than spend state" argument extended one level down.
   if (capPaused) return "waiting: daily cap spent";
-  // The loop's OWN quiet-hours window (PLANS.md, quietHoursPerRole): the fleet gate's own
+  // The loop's OWN quiet-hours window (PLANS.md, quietHoursPerRole): the team gate's own
   // wording — `quiet until <end>` — scoped to the one loop the operator scheduled. Shown
-  // after the cap and before the fleet's budget pause: the loop's own schedule is more
+  // after the cap and before the team's budget pause: the loop's own schedule is more
   // specific than either.
   if (quietHold) return `quiet until ${quietWindowEnd(quietHold)}`;
   if (budgetPaused) return "waiting: budget spent";
-  // The disk floor (plans/disk-floor.md, part 4/4): the fleet starts no new work below the
-  // floor, so an idle loop reads "disk hold" — the fleet-wide gate's own wording, ranked with
+  // The disk floor (plans/disk-floor.md, part 4/4): the team starts no new work below the
+  // floor, so an idle loop reads "disk hold" — the team-wide gate's own wording, ranked with
   // the budget pause (LOOP_RANK_RULES). In-flight ticks keep their live detail above, exactly
   // as under every autonomous gate.
   if (diskHeld) return "waiting: low disk";
@@ -232,7 +232,7 @@ export function loopPhase(
   // applyTickOutcome) — its stashed summary is the tell that the loop's latest tick got past
   // the red-main gate, so main was green then and "main red" would be stale.
   // Except too when main's newest merge-scope check PASSED after this loop's red tick ended:
-  // the fleet-level verdict is fresher than the loop's own, so the label is stale until the
+  // the team-level verdict is fresher than the loop's own, so the label is stale until the
   // loop's next tick — which can be hours away (BUGS.md 2026-09-30). A check older than the
   // red tick, a failed or skipped one, or an unknown tick end all keep the label.
   if (heldByMainRed(s, mainCheck)) return "main's check is failing";
@@ -305,7 +305,7 @@ interface LoopSortRow {
  * (the running-and-not-parked gate, read at the phase's progressKind), the token metrics
  * over that tail, and the rendered phase string. The phase's snapshot-level gates are
  * derived here too — budget paused (only `paused` stops a loop; `fallback` keeps it ticking
- * on the free model, which the header badge names), the fleet pause plus the per-role one
+ * on the free model, which the header badge names), the team pause plus the per-role one
  * (one `paused` flag to loopPhase covers both), and the role's landing cell (merge queue
  * 4/5) — so the two dashboards' per-loop cells cannot drift apart. */
 export function loopRowCells(
@@ -322,32 +322,32 @@ export function loopRowCells(
     snap.running,
     root,
     // The per-tier budget pause (part 5c/8): a loop whose model tier resolved to no usable
-    // free pair reads `budget paused` — per role, not the fleet-wide verdict, so a demoted
-    // strong pair no longer paints the whole fleet paused while small and default keep
+    // free pair reads `budget paused` — per role, not the team-wide verdict, so a demoted
+    // strong pair no longer paints the whole team paused while small and default keep
     // ticking on their own pairs.
     snap.budgetPausedRoles.includes(s.role),
     live,
-    // The per-role pause reads the same `paused` cell as the fleet pause: one flag to
+    // The per-role pause reads the same `paused` cell as the team pause: one flag to
     // loopPhase covers both gates (status-model has no per-role branch of its own).
     snap.paused || snap.pausedRoles.includes(s.role),
     landingForRole(snap.landQueue, s.role),
     // The snapshot's newest merge-scope check lets a stale main-red phase retire itself
-    // between ticks (BUGS.md 2026-09-30) — the banner (fleetAlerts) reads this same phase.
+    // between ticks (BUGS.md 2026-09-30) — the banner (teamAlerts) reads this same phase.
     snap.mainCheck,
     // The per-role cap's verdict, computed once per poll in the snapshot (status/status-data.ts
     // roleCapPaused): an idle loop over its own cap reads `cap paused` on every surface.
     snap.capPaused.includes(s.role),
     // The per-role quiet window's verdict (status/status-data.ts roleQuietPaused): an idle loop
-    // inside its own window reads `quiet until <end>` — the fleet badge's wording, scoped.
+    // inside its own window reads `quiet until <end>` — the team badge's wording, scoped.
     snap.roleQuietPaused?.[s.role],
     // The disk floor's verdict (status/status-data.ts disk): an idle loop while the hold is on
-    // reads `disk hold` — the fleet-wide gate, ranked with the budget pause.
+    // reads `disk hold` — the team-wide gate, ranked with the budget pause.
     snap.disk?.held === true,
     // The new-project bootstrap's verdict (status/status-data.ts bootstrapHeld): an idle loop
-    // it holds reads `held: bootstrap` — the fleet gate's own wording.
+    // it holds reads `held: bootstrap` — the team gate's own wording.
     snap.bootstrapHeld.includes(s.role),
     // The maintenance allowance's verdict (status/status-data.ts maintenanceQuota): an idle loop
-    // it holds reads `held: maintenance quota <used>/<allowance>` — the fleet gate's figures.
+    // it holds reads `held: maintenance quota <used>/<allowance>` — the team gate's figures.
     snap.maintenanceQuota.held.includes(s.role)
       ? `waiting: maintenance allowance used ${snap.maintenanceQuota.used}/${snap.maintenanceQuota.allowance}`
       : undefined,
@@ -355,8 +355,8 @@ export function loopRowCells(
     // waiter's provider key in `awaiting <key> slot` when that key is at its cap.
     snap.permits,
     // A timed per-role pause's deadline — only when the loop itself is individually paused
-    // (in `pausedRoles`) and not under a fleet-wide pause, matching the GUI's phaseDetail
-    // guard, so the fleet pause (whose countdown rides the header badge) never double-appends.
+    // (in `pausedRoles`) and not under a team-wide pause, matching the GUI's phaseDetail
+    // guard, so the team pause (whose countdown rides the header badge) never double-appends.
     snap.paused || !snap.pausedRoles.includes(s.role) ? undefined : snap.pausedRolesUntil,
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
@@ -370,7 +370,7 @@ export const ACTIVE_PHASE_PREFIXES = ["working", "reviewing", "merging"] as cons
 
 /** Whether `key` is the binding limit in the published permit snapshot: its cap is set and
  * its in-use already meets or exceeds it, so the pool is granting nothing more on that key and
- * a waiter carrying it is queued on the key, not on the fleet total. A key without a cap in
+ * a waiter carrying it is queued on the key, not on the team total. A key without a cap in
  * the snapshot (uncapped) is never binding. One home for the rule, shared by status-model's
  * `awaiting <key> slot` and the GUI chip's provider detail. */
 function isBindingLimit(permits: PermitSnapshot, key: string): boolean {
@@ -400,7 +400,7 @@ export function isActivePhase(phase: string): boolean {
  * awaiting the merge slot, or a tick parked awaiting a permit; 2 needs attention — failing, or
  * blocked by a red main; 3 paused — by the operator, by the budget, or by the loop's own
  * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a
- * stopped fleet). The dashboard groups its loop table by these ranks; the TUI/status table
+ * stopped team). The dashboard groups its loop table by these ranks; the TUI/status table
  * orders by them.
  *
  * The rank → phase mapping is LOOP_RANK_RULES, one home for the phase literals so the

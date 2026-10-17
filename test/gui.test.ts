@@ -716,7 +716,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   const ap = /\/\/ active-phase-fmt:start\n([\s\S]*?)\n  \/\/ active-phase-fmt:end/.exec(GUI_PAGE);
   assert.ok(ap, "active-phase-fmt region found in the page");
   const fmtNextRun = new Function(`${hs[1]}\n${ap[1]}\n${m[1]}\nreturn fmtNextRun;`)() as
-    (l: { phase: string; nextRunAt: number; backoffSeconds: number; yieldMultiplier?: number }, fleetRunning: boolean) => string;
+    (l: { phase: string; nextRunAt: number; backoffSeconds: number; yieldMultiplier?: number }, teamRunning: boolean) => string;
 
   const now = Date.now();
   // Each case pins the TUI helper and the GUI twin to the same output, so the two copies
@@ -724,39 +724,39 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   const cases: Array<{
     state: Partial<LoopState>;
     phase: string;
-    fleet: boolean;
+    team: boolean;
     want: string;
   }> = [
-    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", fleet: true, want: "3m" },
-    { state: { nextRunAt: now + 180_000, backoffSeconds: 240 }, phase: "queued", fleet: true, want: "sleeping 3m" },
-    { state: { nextRunAt: now - 5_000, backoffSeconds: 0 }, phase: "queued", fleet: true, want: "now" },
-    { state: { nextRunAt: now + 180_000, backoffSeconds: 0, running: true }, phase: "working 3m", fleet: true, want: "-" },
-    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "merging 1m · checking", fleet: true, want: "-" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", team: true, want: "3m" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 240 }, phase: "queued", team: true, want: "sleeping 3m" },
+    { state: { nextRunAt: now - 5_000, backoffSeconds: 0 }, phase: "queued", team: true, want: "now" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 0, running: true }, phase: "working 3m", team: true, want: "-" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "merging 1m · checking", team: true, want: "-" },
     // A parked waiter: reserved (running) but holding no permit, rendered "waiting to start" —
     // an INACTIVE phase prefix, so the phase-prefix check alone misclassifies it. The TUI
     // catches it via s.running; the GUI copy must too, or a parked loop reads "1h" (or
     // "backoff 1h") while it is actually queued behind a slot and may run at any moment.
-    { state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", fleet: true, want: "-" },
-    { state: { nextRunAt: now + 3_600_000, backoffSeconds: 900, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", fleet: true, want: "-" },
+    { state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", team: true, want: "-" },
+    { state: { nextRunAt: now + 3_600_000, backoffSeconds: 900, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", team: true, want: "-" },
     // A provider-key waiter ("waiting for <provider> 5s") is active too.
     {
       state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 },
       phase: "waiting for anthropic 5s",
-      fleet: true,
+      team: true,
       want: "-",
     },
-    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", fleet: false, want: "-" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", team: false, want: "-" },
     // Yield-scaled clocks: the payload's yieldMultiplier rides the cell as ×N, the same
     // rule nextRunCell applies — a quiet role's effective gap is longer than the countdown.
-    { state: { nextRunAt: now - 5_000, backoffSeconds: 0, recentOutcomes: "n".repeat(16) }, phase: "queued", fleet: true, want: "now ×4" },
-    { state: { nextRunAt: now + 180_000, backoffSeconds: 240, recentOutcomes: "n".repeat(20) }, phase: "queued", fleet: true, want: "sleeping 3m ×8" },
+    { state: { nextRunAt: now - 5_000, backoffSeconds: 0, recentOutcomes: "n".repeat(16) }, phase: "queued", team: true, want: "now ×4" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 240, recentOutcomes: "n".repeat(20) }, phase: "queued", team: true, want: "sleeping 3m ×8" },
   ];
   for (const c of cases) {
     const s = { ...freshLoopState("clean"), ...c.state } as LoopState;
-    const label = `${c.phase} / fleet ${c.fleet ? "running" : "stopped"}`;
-    assert.equal(nextRunCell(s, c.phase, now, c.fleet), c.want, `TUI: ${label}`);
+    const label = `${c.phase} / team ${c.team ? "running" : "stopped"}`;
+    assert.equal(nextRunCell(s, c.phase, now, c.team), c.want, `TUI: ${label}`);
     assert.equal(
-      fmtNextRun({ phase: c.phase, nextRunAt: s.nextRunAt, backoffSeconds: s.backoffSeconds, yieldMultiplier: yieldMultiplierFor(s) }, c.fleet),
+      fmtNextRun({ phase: c.phase, nextRunAt: s.nextRunAt, backoffSeconds: s.backoffSeconds, yieldMultiplier: yieldMultiplierFor(s) }, c.team),
       c.want,
       `GUI: ${label}`,
     );
@@ -782,7 +782,7 @@ test("the dashboard page is one self-contained document: sidebar, views, compose
     assert.match(GUI_PAGE, new RegExp(`<a href="${href}" id="${id}" class="tab`), `${id} links to ${href}`);
   }
   // Each view's container, the composer (with its target picker), the alerts, and the drawer.
-  for (const id of ["fleet-view", "history", "report", "failures", "promptform", "prompttarget", "prompt", "alerts", "rolerows", "backlog", "feed", "drawer", "soundwrap", "budgetwrap", "pausewrap"]) {
+  for (const id of ["team-view", "history", "report", "failures", "promptform", "prompttarget", "prompt", "alerts", "rolerows", "backlog", "feed", "drawer", "soundwrap", "budgetwrap", "pausewrap"]) {
     assert.match(GUI_PAGE, new RegExp(`id="${id}"`), `#${id} is in the shell`);
   }
   // The page makes no request off its own server: no remote scripts, styles, fonts, or images.

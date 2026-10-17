@@ -13,7 +13,7 @@ import { parseProgress, stalledToolLabel } from "../src/ui/progress-data.js";
 import { idleClaimText, isActivePhase, loopPhase, loopRank, loopRowCells, sortLoopsByState } from "../src/ui/status-model.js";
 import { phaseTone } from "../src/ui/tone.js";
 import { workingDetail } from "../src/ui/tick-progress-model.js";
-import { fleetAlerts } from "../src/ui/team-alerts.js";
+import { teamAlerts } from "../src/ui/team-alerts.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -35,7 +35,7 @@ test("a parked waiter names its provider key when that key is the binding limit"
     loopPhase(s2, true, root, false, null, false, null, undefined, false, undefined, false, false, undefined, permits);
   // omlx is at its cap (inUse 3 == limit 3): the parked waiter is queued on it.
   assert.match(phase(s), /^waiting for omlx 2m/);
-  // Parked on a key under its cap (claude 1/6) is a fleet-total wait: bare `waiting to start`.
+  // Parked on a key under its cap (claude 1/6) is a team-total wait: bare `waiting to start`.
   s.parkedOn = "claude";
   assert.match(phase(s), /^waiting to start 2m/);
   // No permit snapshot published: bare `waiting to start` regardless of parkedOn.
@@ -103,7 +103,7 @@ test("a tick's baseline check shows no previous run's detail and no false quiet 
   s.running = true;
   s.lastRunStartedAt = Date.now() - 99_000;
   // The cell carries nothing of the earlier run — and no quiet time measured from before the
-  // tick started, which fleetAlerts' STALL pattern would read as "looks stuck".
+  // tick started, which teamAlerts' STALL pattern would read as "looks stuck".
   assert.equal(workingDetail(root, s), "working 1m39s");
   // The same rule drives the phase string the alert pattern-matches (and the GUI payload reads).
   assert.equal(loopPhase(s, true, root), "working 1m39s");
@@ -334,7 +334,7 @@ test("loopPhase reads waiting: daily cap spent for idle role loops held by their
   // Not held: ordinary phase labels are untouched.
   assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false), "due");
   // Held by its own cap: the label names the specific spend state, ahead of its sleep/queue
-  // state and ahead of the fleet's budget pause (which is the less specific one).
+  // state and ahead of the team's budget pause (which is the less specific one).
   assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, true), "waiting: daily cap spent");
   assert.equal(loopPhase(s, true, undefined, true, null, false, undefined, undefined, true), "waiting: daily cap spent");
 
@@ -386,7 +386,7 @@ test("loopPhase shows main red for idle loops whose last tick was blocked by a r
 // BUGS.md 2026-09-30 — a main_red verdict outlived main's recovery: the phase came from the
 // loop's own last tick result and nothing compared it with main's newer green check, so the
 // GUI raised "main is red — 1 loop is blocked" while the sidebar read "Main green". Main's
-// newest merge-scope check (mainCheck) is fresher fleet-level evidence; only a PASSED one
+// newest merge-scope check (mainCheck) is fresher team-level evidence; only a PASSED one
 // stamped after the red tick ended retires the label.
 test("loopPhase retires a stale main red when main's newest check passed after it", () => {
   const s = freshLoopState("feature");
@@ -429,8 +429,8 @@ test("loopPhase retires a stale main red when main's newest check passed after i
 });
 
 // The same staleness through the single-homed row derivation and the alert it feeds: the
-// banner (fleetAlerts) reads the rendered phase, so a retired phase must raise no mainred.
-test("loopRowCells retires the stale main red and fleetAlerts raises no banner for it", () => {
+// banner (teamAlerts) reads the rendered phase, so a retired phase must raise no mainred.
+test("loopRowCells retires the stale main red and teamAlerts raises no banner for it", () => {
   const s = freshLoopState("feature");
   s.lastResult = "main_red";
   s.lastRunEndedAt = Date.now() - 300_000;
@@ -440,7 +440,7 @@ test("loopRowCells retires the stale main red and fleetAlerts raises no banner f
   const cells = loopRowCells(snap, tmpdir(), s);
   assert.notEqual(cells.phase, "main's check is failing", "the row derivation sees the snapshot's newer green check");
   assert.equal(
-    fleetAlerts(snap, [], [{ role: "feature", phase: cells.phase, errorStreak: false, inFlight: false }], Date.now())
+    teamAlerts(snap, [], [{ role: "feature", phase: cells.phase, errorStreak: false, inFlight: false }], Date.now())
       .some((a) => a.key === "mainred"),
     false,
     "no 'main is red' banner for a loop whose blockage main has already recovered from",
@@ -450,7 +450,7 @@ test("loopRowCells retires the stale main red and fleetAlerts raises no banner f
   const stale = loopRowCells(snap, tmpdir(), s).phase;
   assert.equal(stale, "main's check is failing");
   assert.ok(
-    fleetAlerts(snap, [], [{ role: "feature", phase: stale, errorStreak: false, inFlight: false }], Date.now())
+    teamAlerts(snap, [], [{ role: "feature", phase: stale, errorStreak: false, inFlight: false }], Date.now())
       .some((a) => a.key === "mainred"),
   );
 });
@@ -478,7 +478,7 @@ test("loopPhase shows failing for a quiet-kill streak at the give-up threshold",
 // of waiting: budget spent, because user intent is the most specific reason: it tells the
 // operator what to do (`resume`).
 
-test("loopPhase reads paused for idle role loops while the fleet is user-paused", () => {
+test("loopPhase reads paused for idle role loops while the team is user-paused", () => {
   const s = freshLoopState("feature");
   // Not paused (the flag defaults off): ordinary phase labels are untouched.
   assert.equal(loopPhase(s, true), "due");
@@ -513,7 +513,7 @@ test("loopPhase appends the per-role pause resume countdown only for a live dead
   const s = freshLoopState("feature");
   const now = Date.now();
 
-  // A future deadline renders the countdown in the fleet-header wording family.
+  // A future deadline renders the countdown in the team-header wording family.
   const future = now + 120_000; // ~120s → humanSeconds → "2m" (mid-bucket, deterministic)
   assert.equal(
     loopPhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, future),
@@ -569,7 +569,7 @@ test("loopPhase renders the landing cell ahead of every idle state, only when th
   // …and it is the caller's job to pass it only for the landing role: without it the loop
   // keeps its ordinary state (the "other roles" case — the record is filtered upstream).
   assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
-  // A stopped harness never shows it — a dead fleet's marker is stale by definition.
+  // A stopped harness never shows it — a dead team's marker is stale by definition.
   assert.equal(loopPhase(s, false, undefined, false, undefined, false, { status: "merging", startedAt, stage: "merging" }), "stopped");
   // Only a record with no stage at all — an older writer's marker mid-upgrade — keeps the
   // bare elapsed label: there is nothing more it can honestly say.
@@ -784,29 +784,29 @@ test("a stalled running director still raises the stuck alert", () => {
   const snap = snapshotWith([{ role: "director" }]);
   const stalled = [{ role: "director", phase: "director working 6m · tool call stalled: bash find /", errorStreak: false, inFlight: false }];
   assert.ok(
-    fleetAlerts(snap, [], stalled, Date.now()).some((a) => a.key === "stuck"),
+    teamAlerts(snap, [], stalled, Date.now()).some((a) => a.key === "stuck"),
     "a stalled director is stuck even though it holds no permit",
   );
   const idle = [{ role: "director", phase: "ready for messages", errorStreak: false, inFlight: false }];
   assert.equal(
-    fleetAlerts(snap, [], idle, Date.now()).some((a) => a.key === "stuck"),
+    teamAlerts(snap, [], idle, Date.now()).some((a) => a.key === "stuck"),
     false,
     "an idle director raises nothing",
   );
 });
 
 // Per-role quiet hours (PLANS.md quietHoursPerRole): an idle loop inside its own window
-// reads the fleet gate's own quiet wording, scoped to its window — `quiet until <end>`.
+// reads the team gate's own quiet wording, scoped to its window — `quiet until <end>`.
 test("loopPhase reads quiet until <end> for idle loops held by their own quietHoursPerRole window", () => {
   const s = freshLoopState("feature");
   // Not held: ordinary phase labels are untouched.
   assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false), "due");
-  // Held by its own wrapping window: the fleet badge's wording with the loop's own end.
+  // Held by its own wrapping window: the team badge's wording with the loop's own end.
   assert.equal(
     loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, "23:00-07:00"),
     "quiet until 07:00",
   );
-  // The loop's own schedule is more specific than the fleet's budget pause.
+  // The loop's own schedule is more specific than the team's budget pause.
   assert.equal(
     loopPhase(s, true, undefined, true, null, false, undefined, undefined, false, "23:00-07:00"),
     "quiet until 07:00",
@@ -826,7 +826,7 @@ test("loopPhase reads quiet until <end> for idle loops held by their own quietHo
 });
 
 // The disk floor (plans/disk-floor.md, part 4/4): an idle role reads `waiting: low disk` while the
-// gate holds — the fleet-wide verdict, ranked with the budget pause. In-flight ticks keep
+// gate holds — the team-wide verdict, ranked with the budget pause. In-flight ticks keep
 // their detail, the director keeps its prompt label, and a stopped orchestrator still reads
 // stopped.
 test("loopPhase reads waiting: low disk for idle role loops while the disk floor holds", () => {
@@ -842,7 +842,7 @@ test("loopPhase reads waiting: low disk for idle role loops while the disk floor
 });
 
 // New-project bootstrap (plans/work-ratio.md, part 2/2): an idle held loop reads
-// `waiting: bootstrap` — the fleet gate's own wording, ranked with the waiting: low disk. In-flight
+// `waiting: bootstrap` — the team gate's own wording, ranked with the waiting: low disk. In-flight
 // ticks keep their detail, and a stopped orchestrator still reads stopped.
 test("loopPhase reads waiting: bootstrap for idle role loops while bootstrap holds", () => {
   const s = freshLoopState("clean");

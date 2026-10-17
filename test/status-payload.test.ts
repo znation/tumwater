@@ -388,11 +388,11 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
 
 // The operator pause on the GUI surface: /api/status — and
 // therefore `status --json`, same payload — carries `paused` while the marker exists, and a
-// paused fleet's idle roles read `paused` in their phase payload ahead of waiting: budget spent.
+// paused team's idle roles read `paused` in their phase payload ahead of waiting: budget spent.
 
 test("the status payload carries the operator pause flag; its phase outranks waiting: budget spent", async () => {
   const repo = makeRepo();
-  await initProject(repo, "gui fleet pause test");
+  await initProject(repo, "gui team pause test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
   writeOrchestratorMarker(repo, ["clean"]);
 
@@ -575,7 +575,7 @@ test("status payload ships the disk block and its preformatted badge", async () 
   assert.equal(payload.diskBadge, " · disk 8.2 GB free — holding new work");
 });
 
-// The pinned clock reaches the alerts too: fleetAlerts' pause countdown must read the
+// The pinned clock reaches the alerts too: teamAlerts' pause countdown must read the
 // payload's `now`, or a test pinning the clock cannot assert the countdown and the passed
 // instant and the displayed one disagree.
 test("status payload's paused alert countdown honors the pinned clock", async () => {
@@ -588,7 +588,7 @@ test("status payload's paused alert countdown honors the pinned clock", async ()
   // would still report the full 30m remaining here.
   const payload = statusPayload(repo, until - 20 * 60_000) as { alerts: Array<{ key: string; title: string }> };
   const paused = payload.alerts.find((a) => a.key === "paused");
-  assert.ok(paused, "the fleet pause raises its alert");
+  assert.ok(paused, "the team pause raises its alert");
   assert.match(paused.title, /resumes in 20m/, "the countdown reads the payload's pinned now");
 });
 
@@ -631,7 +631,7 @@ test("status payload carries scheduledStopAt only while running with a stop mark
   const now = Date.now();
   scheduleStop(repo, now + 3600_000);
   let payload = statusPayload(repo, now) as { scheduledStopAt?: number };
-  assert.equal(payload.scheduledStopAt, undefined, "a stopped fleet omits it");
+  assert.equal(payload.scheduledStopAt, undefined, "a stopped team omits it");
   writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: now, roles: [] });
   payload = statusPayload(repo, now) as typeof payload;
   assert.equal(payload.scheduledStopAt, now + 3600_000);

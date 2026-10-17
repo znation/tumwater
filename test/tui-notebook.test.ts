@@ -19,7 +19,7 @@ function seedNote(repo: string, role: string, text: string): void {
 
 test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles back", async () => {
   const repo = await makeTuiRepo();
-  seedNote(repo, "clean", "the scheduler lives in fleet.ts\n");
+  seedNote(repo, "clean", "the scheduler lives in team.ts\n");
   enqueueRolePrompt(repo, "clean", "check the scheduler first");
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (the one enabled role: clean)
@@ -29,7 +29,7 @@ test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles 
     tui.key(undefined, "n", { ctrl: true });
     assert.match(tui.lastFrame(), /Notes: clean \(1\/1\)/); // the tab strip names the mode
     assert.match(tui.lastFrame(), /## Notes/);
-    assert.match(tui.lastFrame(), /the scheduler lives in fleet\.ts/);
+    assert.match(tui.lastFrame(), /the scheduler lives in team\.ts/);
     assert.match(tui.lastFrame(), /## Next run's prompt/);
     // The assembled prompt opens the block (the queued prompt embeds further down, past the
     // pane window): the preview seam's output is what renders, not a placeholder.

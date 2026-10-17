@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** The fleet ALERT model: everything about the fleet that needs the operator — or that they
+/** The team ALERT model: everything about the team that needs the operator — or that they
  * should know — phrased once for both observer surfaces: the dashboard's alert banners
  * (shipped in the status payload as `alerts`) and the TUI's attention lines
  * (tui-frame.ts alertLines). Split from status-model.ts, whose per-loop derivation this reads
@@ -20,12 +20,12 @@ import { formatGB, usd, usdCap } from "../text/format.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 
-/** Something that needs the operator — or that they should know — about the fleet as a whole,
+/** Something that needs the operator — or that they should know — about the team as a whole,
  * phrased once for both observer surfaces: the dashboard's alert banners (shipped in the status
  * payload as `alerts`) and the TUI's attention lines. `tone` ranks it (red and amber ask for
  * action, indigo asks a question, blue and gray inform); `actions` are the dashboard's buttons
  * (`act` names a page action — open a loop, a view, the cap editor…). */
-export interface FleetAlert {
+export interface TeamAlert {
   key: string;
   tone: "red" | "amber" | "indigo" | "blue" | "gray";
   title: string;
@@ -33,7 +33,7 @@ export interface FleetAlert {
   actions: Array<{ label: string; act: string; arg?: string }>;
 }
 
-/** The loop facts fleetAlerts reads: whether the loop's OWN failure streak is at or past the
+/** The loop facts teamAlerts reads: whether the loop's OWN failure streak is at or past the
  * alert threshold (onErrorStreak, src/ui/status-model.ts) — the tell the red "failing tick
  * after tick" banner keys on, independent of the rendered phase, so the alert stays up while
  * the loop's next tick runs (its phase reads "working") and clears only once the streak
@@ -80,11 +80,11 @@ function localizeInstants(text: string): string {
   return text.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (iso) => formatTimestamp(Date.parse(iso)));
 }
 
-/** Everything about the fleet that needs the operator, most urgent first: a spent budget, a red
+/** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, loops failing tick after tick, loops that look stuck, a stale running build, open
- * questions, a pause, a stopped fleet. `now` is passed so a timed pause's countdown agrees with
+ * questions, a pause, a stopped team. `now` is passed so a timed pause's countdown agrees with
  * the rest of the frame. */
-export function fleetAlerts(
+export function teamAlerts(
   snap: Pick<
     StatusSnapshot,
     | "running"
@@ -102,8 +102,8 @@ export function fleetAlerts(
   questions: readonly string[],
   loops: readonly AlertLoop[],
   now: number,
-): FleetAlert[] {
-  const out: FleetAlert[] = [];
+): TeamAlert[] {
+  const out: TeamAlert[] = [];
   const b = snap.budget;
   const onFallback = chainFragments(snap.chain);
   if (onFallback) {
@@ -142,7 +142,7 @@ export function fleetAlerts(
   }
   // The disk floor holding new work (plans/disk-floor.md, part 4/4): the header badge and the
   // loop rows say what is happening, but the banner names the threshold and the way out, so an
-  // operator hitting a full volume does not have to read events. An amber ask — the fleet is
+  // operator hitting a full volume does not have to read events. An amber ask — the team is
   // stopped and needs room, not merely informed. Only while the hold is on; below the reclaim
   // threshold but not yet held is the badge's quieter business.
   if (snap.disk?.held) {
@@ -226,8 +226,8 @@ export function fleetAlerts(
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
-  // the fleet holding to a schedule is not a problem, but an operator watching idle loops
-  // inside the window needs the same explanation the pause alert gives a paused fleet —
+  // the team holding to a schedule is not a problem, but an operator watching idle loops
+  // inside the window needs the same explanation the pause alert gives a paused team —
   // why nothing ticks, and when it starts again. The window end comes from quiet-hours.ts's
   // quietWindowEnd, the same helper quietBadge uses for the header.
   if (snap.inQuietHours && snap.quietHours) {
@@ -246,7 +246,7 @@ export function fleetAlerts(
       key: "paused",
       tone: "amber",
       // The operator's pause reason (`pause --reason <text>`) states verbatim, so an
-      // operator returning to a paused fleet knows why without digging through history.
+      // operator returning to a paused team knows why without digging through history.
       title: left
         ? `The team is paused and resumes in ${left}${pauseReasonSuffix(snap.pauseReason)}`
         : `The team is paused${pauseReasonSuffix(snap.pauseReason)}`,
@@ -303,6 +303,6 @@ export function fleetAlerts(
 }
 
 /** Does this alert ask something of the operator (red, amber, indigo), rather than inform? */
-export function alertNeedsYou(alert: FleetAlert): boolean {
+export function alertNeedsYou(alert: TeamAlert): boolean {
   return alert.tone === "red" || alert.tone === "amber" || alert.tone === "indigo";
 }

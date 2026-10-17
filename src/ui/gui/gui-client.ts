@@ -1,9 +1,9 @@
 // vocabulary: plain
 /** The browser-side dashboard app inlined as the GUI page's only <script>. It polls /api/status
- * every second and renders, in the order an operator needs them: the masthead's fleet status
- * (running, build, main check) and fleet controls (budget, pause); alerts for whatever needs a
+ * every second and renders, in the order an operator needs them: the masthead's team status
+ * (running, build, main check) and team controls (budget, pause); alerts for whatever needs a
  * human (a failing loop, a red main, a spent budget, an old build, open questions, a pause);
- * the composer that steers the director or one loop; and the fleet view — today's progress,
+ * the composer that steers the director or one loop; and the team view — today's progress,
  * the loops grouped by what they are doing, the backlog, and the notable activity. The
  * view-model, the drawer, the History/Usage/Failures/Pending views, the operator controls, the
  * composer, the Markdown renderer, and the routing/poll boot live in their own modules and
@@ -14,7 +14,7 @@
 import { GUI_CLIENT_BOOT_JS } from "./gui-client-boot.js";
 import { GUI_CLIENT_COMPOSER_JS } from "./gui-client-composer.js";
 import { GUI_CLIENT_DRAWER_JS } from "./gui-client-drawer.js";
-import { GUI_CLIENT_FLEET_JS } from "./gui-client-team.js";
+import { GUI_CLIENT_TEAM_JS } from "./gui-client-team.js";
 import { GUI_CLIENT_HISTORY_JS } from "./gui-client-history.js";
 import { GUI_CLIENT_LABELS_JS } from "./gui-client-labels.js";
 import { GUI_CLIENT_LOOPS_JS } from "./gui-client-loops.js";
@@ -104,13 +104,13 @@ const CORE_JS = String.raw`  const esc = (s) => String(s).replace(/[&<>"']/g, (c
   }
   // post-action:start
   // Fire one POST and report its outcome in the flash bar, then close any open popover and
-  // repaint: on success the message — a string, or the derived form the fleet callers build
+  // repaint: on success the message — a string, or the derived form the team callers build
   // from the endpoint's answer (which can be null when it sent no JSON) — on failure
   // "error: <reason>" with the popover left open and the standing 1s status poll repainting
-  // from the server's state. The one POST-and-toast step every fleet and operator control
+  // from the server's state. The one POST-and-toast step every team and operator control
   // shares. Single-homed here, in the core before every splice: a second declaration in a
   // later splice would shadow this one (function declarations hoist; the last in one scope
-  // wins), which is how the budget editor once called the fleet shape with a string message.
+  // wins), which is how the budget editor once called the team shape with a string message.
   async function postAction(path, body, okMsg) {
     let d;
     try {
@@ -198,16 +198,16 @@ const FORMAT_JS = String.raw`  // format:start
   // last-tick-fmt:end
   // next-run-fmt:start
   // When an idle loop may tick again — status-render.ts's nextRunCell: "-" for a loop in flight
-  // or parked awaiting a slot (it has no next run to speak of) and for a stopped fleet; "now"
+  // or parked awaiting a slot (it has no next run to speak of) and for a stopped team; "now"
   // when due; otherwise the remaining time, prefixed "backoff " while backing off. A yield-scaled
   // clock rides as a " ×N" suffix: a quiet role's effective gap is longer than the countdown.
-  const fmtNextRun = (l, fleetRunning) => {
+  const fmtNextRun = (l, teamRunning) => {
     // A torn loop object — a payload missing its phase field — reads as the empty (inactive)
     // phase rather than throwing: the browser copy is untyped, and its sibling phaseInfo/
     // loopRank already coerce the same way, so one bad row must not blank the whole table.
     const phase = String(l.phase || "");
     const active = isActivePhase(phase) || phase.startsWith("waiting to start") || phase.startsWith("waiting for ") || phase.startsWith("director working");
-    if (!fleetRunning || active) return "-";
+    if (!teamRunning || active) return "-";
     const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
     const suffix = l.yieldMultiplier > 1 ? " ×" + l.yieldMultiplier : "";
     if (sec <= 0) return "now" + suffix;
@@ -264,7 +264,7 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
   }
   // click-delegate:end
   const pill = (info) => "<span class='pill t-" + info.tone + "'><span class='dot" + (info.live ? " live" : "") + "'></span>" + esc(info.label) + "</span>";
-  // Repaint a panel only when its markup changed: an idle fleet's payload is identical poll
+  // Repaint a panel only when its markup changed: an idle team's payload is identical poll
   // after poll, and rewriting identical HTML re-parses it, churns layout, and drops the
   // reader's text selection for nothing. Returns true when it repainted.
   const lastPaint = {};
@@ -349,5 +349,5 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
   let activeView = "team";
 `;
 
-export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_LABELS_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_SOUND_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_LOOPS_JS, GUI_CLIENT_FLEET_JS, GUI_CLIENT_COMPOSER_JS,
+export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_LABELS_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_SOUND_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_LOOPS_JS, GUI_CLIENT_TEAM_JS, GUI_CLIENT_COMPOSER_JS,
   GUI_CLIENT_DRAWER_JS, GUI_CLIENT_HISTORY_JS, GUI_CLIENT_PENDING_JS, GUI_CLIENT_REPORT_JS, GUI_CLIENT_SETTINGS_JS, GUI_CLIENT_BOOT_JS].join("\n");

@@ -70,7 +70,7 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   assert.equal(rbad.status, 400, "an unknown role is a 400, not a scope");
   assert.match(((await rbad.json()) as { error: string }).error, /unknown role "bogus" \(valid ids: /);
   const rempty = await fetch(base + "/api/report?role=");
-  assert.equal(rempty.status, 400, "an empty role is present-but-unknown, not fleet-wide");
+  assert.equal(rempty.status, 400, "an empty role is present-but-unknown, not team-wide");
 
   // days follows windowDays's rule via WINDOW_DAY_CASES: missing or non-decimal → default,
   // out-of-range clamped — never an error.
@@ -135,7 +135,7 @@ test("the Usage and Failures views fetch their window on activation, never on a 
   assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs\) => \(sinceMs \? "\/api\/failures\?sinceMs=" \+ sinceMs : "\/api\/failures\?days=" \+ days\)/);
   assert.match(GUI_PAGE, /if \(v === "usage"\) fetchReport\(\)/);
   assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
-  // The fleet view's "today" tiles read a one-day report, refreshed on new events.
+  // The team view's "today" tiles read a one-day report, refreshed on new events.
   assert.match(GUI_PAGE, /getJson\("\/api\/report\?days=1", pollSignal\(\)\)/);
   assert.equal(GUI_PAGE.match(/setTimeout\(pollLoop, 1000\)/g)?.length ?? 0, 1, "the only poll is the 1 s status refresh");
 });
@@ -398,11 +398,11 @@ test("the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim", 
     "the sparse-window sentence is the shared constant, not a re-typed copy");
 });
 
-test("the scoped Usage render drops the fleet-only tiles and prints the scope line", async () => {
-  // The Usage summary must not present the fleet-wide backlog tallies as the scoped role's:
+test("the scoped Usage render drops the team-only tiles and prints the scope line", async () => {
+  // The Usage summary must not present the team-wide backlog tallies as the scoped role's:
   // when the payload carries a role, the Features done/Bugs fixed tiles stay out and one scope
   // line names the role and the omission. Both the whole report blob (the sparse-window test's
-  // seam) and the scoped/unscoped payloads run here so the fleet-wide render is checked too.
+  // seam) and the scoped/unscoped payloads run here so the team-wide render is checked too.
   const day = {
     date: "2026-10-07", tokensOut: 100, runsByRole: { feature: 1 }, costByRole: { feature: 0.01 },
     commits: 1, costUsd: 0.01, featuresDone: 0, bugsFixed: 0,
@@ -443,13 +443,13 @@ test("the scoped Usage render drops the fleet-only tiles and prints the scope li
   const scoped = await runWith({ ...window, role: "feature" });
   assert.match(scoped, /Role scope: feature/, "the scoped render names the role");
   assert.match(scoped, /merge runs and backlog tallies .* are team-wide and omitted/, "and states the omission");
-  assert.doesNotMatch(scoped, /Features done/, "the fleet-only backlog tiles stay out");
+  assert.doesNotMatch(scoped, /Features done/, "the team-only backlog tiles stay out");
   assert.doesNotMatch(scoped, /Bugs fixed/);
 
-  const fleet = await runWith(window);
-  assert.match(fleet, /Features done/, "the fleet-wide render keeps the backlog tiles");
-  assert.match(fleet, /Bugs fixed/);
-  assert.doesNotMatch(fleet, /Role scope:/, "and prints no scope line");
+  const team = await runWith(window);
+  assert.match(team, /Features done/, "the team-wide render keeps the backlog tiles");
+  assert.match(team, /Bugs fixed/);
+  assert.doesNotMatch(team, /Role scope:/, "and prints no scope line");
 });
 
 test("the report Loop picker offers base roles only, so an instance id never labels another scope's body", async () => {

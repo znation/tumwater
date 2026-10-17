@@ -58,7 +58,7 @@ test("a sleeping loop's second line says when it wakes, and names a backoff", ()
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 0 }), info, { running: true }), "wakes in 2m");
   // Due now.
   assert.equal(phaseDetail(l({ nextRunAt: now - 1_000, backoffSeconds: 0 }), info, { running: true }), "wakes now");
-  // A fleet that is not running has no next run to speak of.
+  // A team that is not running has no next run to speak of.
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 0 }), info, { running: false }), "");
   // Backing off after failures — named, not left to look like a normal schedule.
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 30 }), info, { running: true }),
@@ -169,7 +169,7 @@ test("the pause-for control offers duration choices and a timed pause shows its 
   assert.match(paused.status, /resumes in 1h/);
   assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedRoles: ["docs"] }).status, /resumes in/);
   const until = Date.now() + 3_600_000;
-  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedRoles: ["docs"], pausedRolesUntil: until, paused: true }).status, /resumes in/, "a fleet pause overrides the role deadline");
+  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedRoles: ["docs"], pausedRolesUntil: until, paused: true }).status, /resumes in/, "a team pause overrides the role deadline");
   assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedRoles: ["other"], pausedRolesUntil: until }).status, /resumes in/, "a loop outside the timed set shows no deadline");
 });
 

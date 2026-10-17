@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
-import { GUI_CLIENT_FLEET_JS } from "../src/ui/gui/gui-client-team.js";
+import { GUI_CLIENT_TEAM_JS } from "../src/ui/gui/gui-client-team.js";
 import { GUI_PAGE } from "../src/ui/gui/gui-page.js";
 
-// The dashboard's fleet-view backlog panel (src/ui/gui/gui-client-team.ts's marked backlog
+// The dashboard's team-view backlog panel (src/ui/gui/gui-client-team.ts's marked backlog
 // region), exercised the way the page runs it: the shared view-model region supplies
 // queuedPrompts/splitTitle, the format region supplies fmtAgo, and a recording paintPanel
 // stands in for the DOM.
@@ -102,11 +102,11 @@ test("switching tabs abandons an open Queued editor", () => {
 });
 
 test("the queued row's delegated handler carries the edit arms", () => {
-  assert.match(GUI_CLIENT_FLEET_JS, /button\.rowaction\[data-action='promptedit'\]/);
-  assert.match(GUI_CLIENT_FLEET_JS, /button\.rowaction\[data-action='prompteditsave'\]/);
-  assert.match(GUI_CLIENT_FLEET_JS, /button\.rowaction\[data-action='prompteditcancel'\]/);
-  assert.match(GUI_CLIENT_FLEET_JS, /"\/api\/prompt-text\?role="/);
-  assert.match(GUI_CLIENT_FLEET_JS, /"\/api\/prompt-edit"/);
+  assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='promptedit'\]/);
+  assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='prompteditsave'\]/);
+  assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='prompteditcancel'\]/);
+  assert.match(GUI_CLIENT_TEAM_JS, /"\/api\/prompt-text\?role="/);
+  assert.match(GUI_CLIENT_TEAM_JS, /"\/api\/prompt-edit"/);
 });
 
 test("the other backlog tabs render unchanged alongside the queued age", () => {
@@ -561,8 +561,8 @@ test("the Activity feed tallies the server-backed /api/logs slice it displays", 
 });
 
 test("the Activity filter persists its choices and the page ships the controls in the card head", () => {
-  assert.match(GUI_CLIENT_FLEET_JS, /store\("feed-role"/);
-  assert.match(GUI_CLIENT_FLEET_JS, /store\("feed-grep"/);
+  assert.match(GUI_CLIENT_TEAM_JS, /store\("feed-role"/);
+  assert.match(GUI_CLIENT_TEAM_JS, /store\("feed-grep"/);
   const card = GUI_PAGE.slice(GUI_PAGE.indexOf('aria-labelledby="activity-title"'));
   const head = card.slice(0, card.indexOf("</header>"));
   assert.match(head, /id="feedrole"/);
@@ -579,7 +579,7 @@ test("the Plans and Bugs tabs offer a New form that survives polls and drops on 
     const html = panels["backlog"] ?? "";
     assert.match(html, /<input id='backlognew'/);
     assert.match(html, /<textarea id='backlognewbody'/);
-    assert.match(GUI_CLIENT_FLEET_JS, /body: bodyBox \? bodyBox\.value : ""/);
+    assert.match(GUI_CLIENT_TEAM_JS, /body: bodyBox \? bodyBox\.value : ""/);
     assert.match(html, new RegExp(`data-action='backlognewsave' data-kind='${kind}'`));
     assert.match(html, /data-action='backlognewcancel'/);
     scope.renderBacklog(status);

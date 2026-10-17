@@ -1,7 +1,7 @@
 // vocabulary: plain
 /** The dashboard's detail drawer, browser-side: a sheet on the right that opens over the page
  * without losing it. For a loop it shows the state, the loop's controls (prompt, wake now or later,
- * pause/resume, abort), what it is working on, its last result, the metrics the fleet table
+ * pause/resume, abort), what it is working on, its last result, the metrics the team table
  * leaves out (tokens, context, cost, timings), its recent ticks (/api/history filtered to the
  * loop), and its live transcript (/api/transcript, re-fetched on the 1 s poll and kept pinned
  * to the bottom while the reader is there). For a backlog entry it shows the entry in full
@@ -44,7 +44,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     $("drawerhead").innerHTML = "";
     $("drawerbody").innerHTML = "";
     for (const id of ["drawerhead", "draweractions", "drawermeta", "drawerrole", "transcript", "entrybody"]) delete lastPaint[id];
-    if (lastStatus) renderFleet(lastStatus); // drop the row highlight
+    if (lastStatus) renderTeam(lastStatus); // drop the row highlight
   }
 
   function openLoop(role) {
@@ -60,7 +60,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       "<pre id='transcript' class='transcript'><span class='muted'>Loading…</span></pre></section>");
     if (lastStatus) {
       renderLoopDrawer(lastStatus);
-      renderFleet(lastStatus);
+      renderTeam(lastStatus);
     }
     loadLoopTicks(true);
     loadDrawerChange(role);
@@ -75,7 +75,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     drawer = { kind: "entry", file, index: Number(index) };
     entryEditing = null;
     showDrawer("<div id='entrybody'><div class='empty'>Loading…</div></div>");
-    if (lastStatus) renderFleet(lastStatus);
+    if (lastStatus) renderTeam(lastStatus);
     refreshEntry();
   }
   function toggleEntry(file, index) {
@@ -281,7 +281,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // cannot drift: what the loop RUNS ON (model/tier, provider cap, image reading, the
   // fallback pairs, billing, min tick interval) and CARRIES (queued prompts, the instructions
   // override, find text). Each row is guarded by a present/own check so an absent field
-  // renders no row — a cap-less fleet shows no Provider row, no fallback shows no fallback
+  // renders no row — a cap-less team shows no Provider row, no fallback shows no fallback
   // rows, and a notes-only payload adds an empty (omitted) section. Labels and wording mirror
   // role-render.ts's family; no backticks allowed here (this whole script is one big
   // String.raw template).
@@ -295,7 +295,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     // A role that runs on pi's own saved default carries no provider/model but a piDefault
     // selector (rolePayload's resolvedModelFields leaves both undefined), and the CLI's
     // Model line names that default (<agent> default (<selector>), agentDefault). Mirror
-    // that branch so the drawer names the model a default pi fleet actually runs on.
+    // that branch so the drawer names the model a default pi team actually runs on.
     const defaultLine = typeof view.piDefault === "string"
       ? (view.backend && view.backend !== "pi" ? view.backend : "pi") + " default (" + view.piDefault + ")"
       : "";

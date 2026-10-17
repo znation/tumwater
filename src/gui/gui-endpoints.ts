@@ -25,7 +25,7 @@ import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderSinceReportMarkdown } from "../report/report-render.js";
 import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
-import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
+import { collectTeamChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, summarizeTickRows, tickRowsMatchingGrep } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
@@ -98,7 +98,7 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
 }
 
 /** Handle GET /api/diff[?role=<id>]: the unlanded-change view the CLI prints from the same
- * collectors — no `role` → collectFleetChanges (exactly `tumwater diff --json`'s document:
+ * collectors — no `role` → collectTeamChanges (exactly `tumwater diff --json`'s document:
  * `{ mainBranch, roles }`, no per-role patch halves); `?role=<id>` → collectRoleChange (the
  * full per-role view with `diff`/`uncommittedDiff`, `tumwater diff --role <id> --json`). The
  * role is a target, not a filter, so it validates through rejectBadRole exactly like
@@ -106,11 +106,11 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
  * `parseRoleFlag` accepts on the CLI, including disabled and user-defined loops. The
  * collectors degrade absent worktrees and missing base branches to their `state` instead of
  * throwing, so a fresh or half-built repo still answers 200. Reads git plumbing directly, so
- * it works whether or not the fleet is running. */
+ * it works whether or not the team is running. */
 export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
   if (role === null) {
-    sendJson(res, 200, await collectFleetChanges(root));
+    sendJson(res, 200, await collectTeamChanges(root));
     return;
   }
   if (rejectBadRole(root, res, role)) return;
@@ -121,10 +121,10 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
  * usage report — the day series (collectReport's ReportData) as JSON the dashboard's report tab
  * charts, or, when sinceMs is set, the trailing-window totals rendered through
  * renderSinceReportMarkdown as { markdown } (the CLI's `report --since` shape), bounded by the
- * reportSinceMs helper. The day window follows windowDays. An absent role is the fleet-wide
+ * reportSinceMs helper. The day window follows windowDays. An absent role is the team-wide
  * report exactly as before; a present one is a filter, validated through rejectBadRole (unknown,
  * including the empty string → 400 naming the valid ids) and handed to the collector's role
- * scope. Reads files directly, so it works whether or not the fleet is running. */
+ * scope. Reads files directly, so it works whether or not the team is running. */
 export function handleReport(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
   if (role !== null && rejectBadRole(root, res, role)) return;
@@ -156,9 +156,9 @@ function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | n
  * --failures` prints, as JSON ({ markdown }) — the dashboard's failures tab renders it; with
  * sinceMs it is the trailing-window digest (collectFailureReportSince) through the same render,
  * the CLI's `report --failures --since` shape. The days window follows windowDays (so it can
- * never drift from /api/report's). role rides the same absent-fleet / present-filter rule as
- * handleReport: absent → the fleet digest, present → validated and scoped. Reads files
- * directly, so it works with no fleet running. */
+ * never drift from /api/report's). role rides the same absent-team / present-filter rule as
+ * handleReport: absent → the team digest, present → validated and scoped. Reads files
+ * directly, so it works with no team running. */
 export function handleFailures(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
   if (role !== null && rejectBadRole(root, res, role)) return;
@@ -174,7 +174,7 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
 /** Handle GET /api/history?role=<id>&n=N[&grep=<text>] — or ?role=<id>&sinceMs=<ms> for a
  * trailing window: the per-tick rows the CLI's `tumwater history` derives from the event log,
  * the dashboard's history tab renders them. The count shape ({ rows }) rides readTickRows (the
- * shared scan, window growth included, so a role-filtered ask on a busy fleet cannot silently
+ * shared scan, window growth included, so a role-filtered ask on a busy team cannot silently
  * come back short); n is optional: absent → HISTORY_DEFAULT_TICKS; present but not a plain
  * non-negative integer → 400 (the handleBacklog index discipline — an explicit count that does
  * not parse is a client error, unlike the report's degrade-to-default typo rule); then clamped
@@ -199,7 +199,7 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * mere presence, a bad value ignored like a missing one) adds an additive `summary` folding the
  * exact served rows through the shared summarizeTickRows collector, the same tally
  * `tumwater history --summary` prints, so the dashboard Summary and the table cannot disagree
- * about what a tick was. Reads files directly, so it works whether or not the fleet is running. */
+ * about what a tick was. Reads files directly, so it works whether or not the team is running. */
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role") || null; // "" and absent both read all loops
   const grep = q.get("grep") || null; // "" and absent both filter nothing
@@ -245,7 +245,7 @@ const LOGS_SEARCH_MAX_EVENTS = 5000;
  * Reads the tail through readEvents' stat-keyed cache (no covered byte end, unlike the CLI's
  * follow), so a dashboard search that repeats on an unchanged log — the debounced filter fires
  * one per filter change — costs one stat instead of re-reading and re-parsing the scanned tail.
- * Reads files directly, so it works whether or not the fleet is running. */
+ * Reads files directly, so it works whether or not the team is running. */
 export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const parsed = intQuery(q, res, "n", "non-negative", LOGS_SEARCH_EVENTS);
   if (parsed === null) return;
@@ -270,7 +270,7 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
  * through intQuery (missing or not a positive integer → 400); and a tick the scanned window
  * does not hold — never ran, or rotation ate it — answers 404 with tickNotFoundMessage, the
  * CLI's exact not-found wording,
- * never a crash. Reads files directly, so it works whether or not the fleet is running. */
+ * never a crash. Reads files directly, so it works whether or not the team is running. */
 export async function handleTick(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
@@ -289,7 +289,7 @@ export async function handleTick(q: URLSearchParams, res: http.ServerResponse, r
  * is a target here, so it validates through rejectBadRole exactly like /api/transcript and
  * /api/run (unknown/missing → the shared 400 naming the valid ids and correcting typos);
  * rolePayload is only reached with an id rejectBadRole accepted, so its own unknown-role
- * throw never fires. Reads files directly, so it works whether or not the fleet is running. */
+ * throw never fires. Reads files directly, so it works whether or not the team is running. */
 export function handleRole(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
@@ -306,7 +306,7 @@ export function handleRole(q: URLSearchParams, res: http.ServerResponse, root: s
  * rejectBadQueueFileName guard is a user-input error answered 400 with nothing read. A
  * vanished file answers 200 { ok: true, status: "gone" } — the loop already dequeued
  * it, which is data for the UI, not a server fault. Reads one file directly, so it works
- * whether or not the fleet is running. */
+ * whether or not the team is running. */
 export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const roleParam = q.get("role");
   if (roleParam !== null && rejectBadRole(root, res, roleParam)) return;
@@ -322,7 +322,7 @@ export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, r
 }
 /** Handle GET /api/doctor: the same DoctorReport `tumwater doctor --json` prints, so the
  * Settings view's Health check card and the CLI cannot disagree. Read-only — the checks write
- * nothing (runDoctor's own contract) — and it works whether or not the fleet is running. `run`
+ * nothing (runDoctor's own contract) — and it works whether or not the team is running. `run`
  * exists so tests can skip the host probes; a throw reaches the server's outer 500. */
 export async function handleDoctor(
   res: http.ServerResponse,
@@ -333,7 +333,7 @@ export async function handleDoctor(
 }
 /** Handle GET /api/config: the Settings view's resolved values for exactly
  * EDITABLE_CONFIG_KEYS — read through the same load path `tumwater config get` uses
- * (loadConfigSafe, defaults merged in), so the page shows what the fleet would actually
+ * (loadConfigSafe, defaults merged in), so the page shows what the team would actually
  * load. A broken or invalid tumwater.json answers 500 with validateConfig's message instead
  * of serving a half-empty panel. */
 export function handleConfig(res: http.ServerResponse, root: string): void {

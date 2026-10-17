@@ -4,7 +4,7 @@ import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js"
 import { squash } from "./text.js";
 import { shortSha, usd } from "./format.js";
 
-/** The single home of each human-facing PHRASE the fleet renders — the wording fragments (a pause
+/** The single home of each human-facing PHRASE the team renders — the wording fragments (a pause
  * reason's suffix, a rate-limit hold's "for 60s", a backend hold's kind, a budget transition's "$x
  * of $y", main's red-tip naming, a tool call's one-line label, the plural helper) shared by the
  * event feed (event-format.ts), the failure digest (src/failure/failure-render.ts and
@@ -39,7 +39,7 @@ export function firstReason(reasons: readonly unknown[] | undefined): string {
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
  * the singular/plural selection the CLI's once summary (cli/cli-run.ts), the day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the
- * fleet alerts' banner titles (ui/team-alerts.ts, whose local copy this replaces), and the
+ * team alerts' banner titles (ui/team-alerts.ts, whose local copy this replaces), and the
  * build_stale lines' "N commit(s) ahead" (event-format.ts, src/failure/failure-state-change.ts —
  * the singular/plural wording their tests pin, once "N commit(s)" with the old literal, now "N
  * commits"/"1 commit"), and the stage self-check and dropped-attachment notes
@@ -55,7 +55,7 @@ export function plural(n: number, one: string, many = `${one}s`): string {
  * → `is`, `agree(2, "cause", "causes")` → `causes` — the companion to plural for the slots
  * plural's count-plus-noun shape cannot fill: a subject or noun whose count is printed elsewhere in
  * the sentence (a subject phrase such as listRoles's role list, a count named earlier) still needs
- * the right number form. The fleet alerts' banner titles (ui/team-alerts.ts), the resume
+ * the right number form. The team alerts' banner titles (ui/team-alerts.ts), the resume
  * confirmation's still-paused note (operator/operator-commands.ts), the dropped-attachment note
  * (inbox-attachments.ts), the failure digest's loss-cause and cluster remainders
  * (failure/failure-render.ts), the doctor's oh-my-pi and model notes
@@ -67,7 +67,7 @@ export function agree(n: number, one: string, many: string): string {
 }
 
 /** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here
- * once so the fleet-wide red-main warning (main-red.ts), the review gate's attribution detail
+ * once so the team-wide red-main warning (main-red.ts), the review gate's attribution detail
  * (review.ts), the landing check's attribution error (landing-check-failures.ts), and the redeploy
  * hold's block reason (src/redeploy/redeployer.ts) cannot drift over how main's red is worded. Each
  * caller appends its own consequence — the gate's "— not this change's failure", the hold's "
@@ -105,29 +105,29 @@ export function consecutiveFailuresWarning(count: number, reason: string): strin
   return `${count} runs failed in a row: ${reason}`;
 }
 
-/** The base line for an operator fleet pause — `fleet paused — role loops stop starting new
+/** The base line for an operator team pause — `team paused — role loops stop starting new
  * ticks` — built here so the event feed (event-format.ts, which appends its own `(director
- * keeps running)` consequence) and the failure digest's Fleet state changes lines
+ * keeps running)` consequence) and the failure digest's Team state changes lines
  * (src/failure/failure-state-change.ts, which keeps the short form) cannot drift on the base
  * wording. `tumwater pause`'s confirmation (operator/operator-commands.ts) interleaves its
  * `--for`/`--reason` spans before the dash, so it composes its own line and keeps that wording
  * inline. */
-export function fleetPausePhrase(): string {
+export function teamPausePhrase(): string {
   return "team paused — roles start no new runs";
 }
 
-/** The base line for lifting the fleet pause — `team resumed — roles run again` —
- * shared by the event feed (event-format.ts), the failure digest's Fleet state changes lines
+/** The base line for lifting the team pause — `team resumed — roles run again` —
+ * shared by the event feed (event-format.ts), the failure digest's Team state changes lines
  * (src/failure/failure-state-change.ts), and `tumwater resume`'s confirmation
  * (operator/operator-commands.ts, which appends its `--for` and still-paused-role spans), so the
  * three cannot drift. */
-export function fleetResumePhrase(): string {
+export function teamResumePhrase(): string {
   return "team resumed — roles run again";
 }
 
 /** The base line for a per-role pause — `role <id> paused — it starts no new runs` —
- * shared by the event feed (event-format.ts, which appends `(the rest of the fleet keeps running)`)
- * and the failure digest's Fleet state changes lines (src/failure/failure-state-change.ts, which
+ * shared by the event feed (event-format.ts, which appends `(the rest of the team keeps running)`)
+ * and the failure digest's Team state changes lines (src/failure/failure-state-change.ts, which
  * deliberately keeps the short form), so the two cannot drift on the base wording. The role is
  * coerced, so the digest's byte-sliced `field()` output and the feed's raw field both render. */
 export function rolePausePhrase(role: unknown): string {
@@ -135,7 +135,7 @@ export function rolePausePhrase(role: unknown): string {
 }
 
 /** The base line for a per-role resume — `role <id> resumed — it runs again` — shared by the
- * event feed (event-format.ts) and the failure digest's Fleet state changes lines
+ * event feed (event-format.ts) and the failure digest's Team state changes lines
  * (src/failure/failure-state-change.ts), so the two cannot drift. The role is coerced, like
  * rolePausePhrase. */
 export function roleResumePhrase(role: unknown): string {
@@ -143,7 +143,7 @@ export function roleResumePhrase(role: unknown): string {
 }
 
 /** The line for an orchestrator shutdown — the event feed (event-format.ts) and the failure
- * digest's Fleet state changes lines (src/failure/failure-state-change.ts) both render it. */
+ * digest's Team state changes lines (src/failure/failure-state-change.ts) both render it. */
 export const ORCHESTRATOR_STOPPED = "tumwater stopped";
 
 /** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the
@@ -167,7 +167,7 @@ export function rolesPhrase(
 }
 
 /** The `$<spent> of $<cap>` fragment every budget-transition event renders — the one home of that
- * phrasing, shared by the event feed (event-format.ts) and the failure digest's Fleet state changes
+ * phrasing, shared by the event feed (event-format.ts) and the failure digest's Team state changes
  * lines (src/failure/failure-state-change.ts), so a budget transition reads the same on both
  * surfaces. Both fields arrive loosely typed on HarnessEvent, so each is coerced through
  * finiteNumber (a non-number or non-finite value reads as 0, exactly as event-read.ts's eventUsage
@@ -188,7 +188,7 @@ export function shortSpanPhrase(ms: number): string {
 }
 
 /** The `for <duration>[ (relapse N)]` fragment the rate_limit_hold event renders — the one home
- * of that phrasing, shared by the event feed (event-format.ts) and the failure digest's Fleet state
+ * of that phrasing, shared by the event feed (event-format.ts) and the failure digest's Team state
  * changes lines (src/failure/failure-state-change.ts), like budgetPhrase. The duration is
  * shortSpanPhrase (seconds under two minutes, so the one-minute base hold reads `60s`); the relapse
  * count is named only when the storm resumed right after an earlier hold, the one fact that says
@@ -200,8 +200,8 @@ export function holdPhrase(holdMs: unknown, escalation: unknown): string {
   return `for ${span}${relapse > 0 ? ` (relapse ${relapse})` : ""}`;
 }
 
-/** The human phrase for a fleet hold's backend-failure kind — the one home of that phrasing,
- * shared by the event feed (event-format.ts) and the failure digest's Fleet state changes
+/** The human phrase for a team hold's backend-failure kind — the one home of that phrasing,
+ * shared by the event feed (event-format.ts) and the failure digest's Team state changes
  * lines (src/failure/failure-state-change.ts), like holdPhrase above. A "rate-limit" hold (or a
  * hold with no readable kind — a torn line) never renders through this: those keep the 429
  * wording, which is the shape every historical event already has. */
@@ -253,3 +253,9 @@ export function describeToolCall(toolName: string, args: unknown): string {
 export function moreSuffix(count: number): string {
   return count > 0 ? ` (+${count} more)` : "";
 }
+
+/** @deprecated Use teamPausePhrase. */
+export const fleetPausePhrase = teamPausePhrase;
+
+/** @deprecated Use teamResumePhrase. */
+export const fleetResumePhrase = teamResumePhrase;

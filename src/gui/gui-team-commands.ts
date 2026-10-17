@@ -1,11 +1,11 @@
 /**
- * The dashboard's POST fleet-pause/wake command handlers (barrelled into
+ * The dashboard's POST team-pause/wake command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): pause,
  * pause-role, wake, and wake-cancel — with the `pauseForSecondsMs` / `pauseReasonField` /
  * `wakeInSecondsMs` body rules they share. Each handler adapts HTTP onto the domain work one
  * layer down (team/team-state, operator-intent) and touches no socket beyond its own `res`.
  */
-import { normalizePauseReason, pauseFleet, pauseRole, resumeFleet, resumeRole } from "../team/team-state.js";
+import { normalizePauseReason, pauseTeam, pauseRole, resumeTeam, resumeRole } from "../team/team-state.js";
 import { cancelWakes, PAUSE_FOR_MAX_MS, requestWake } from "../operator/operator-intent.js";
 import { requirePausedFlag, validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
@@ -57,7 +57,7 @@ function pauseForSecondsMs(res: http.ServerResponse, body: Record<string, unknow
 }
 
 /** The optional `reason` of /api/pause: undefined when absent or blank, the raw string when
- * given with `paused: true` (pauseFleet folds and caps it), null after sending the 400. */
+ * given with `paused: true` (pauseTeam folds and caps it), null after sending the 400. */
 function pauseReasonField(res: http.ServerResponse, body: Record<string, unknown>, pausing: boolean): string | undefined | null {
   const reason = body.reason;
   if (reason === undefined) return undefined;
@@ -74,13 +74,13 @@ function pauseReasonField(res: http.ServerResponse, body: Record<string, unknown
 
 /** Handle POST /api/pause: the dashboard's pause control — the same operator gate
  * `tumwater pause [--for <duration>]` and `resume` write, via team/team-state.ts's shared writers
- * (pauseFleet/resumeFleet) so the CLI and the GUI cannot drift on the marker's format or
+ * (pauseTeam/resumeTeam) so the CLI and the GUI cannot drift on the marker's format or
  * idempotence. Same body discipline as /api/prompt and /api/budget (readJsonObject → 400
  * malformed/non-object, 413 oversized); the target state is explicit (`paused: true|false`)
  * rather than a toggle, so a retried request is idempotent. An optional `forSeconds` makes it
  * a timed pause (the marker's `until`, capped like the CLI's `--for`); it only accompanies
  * `paused: true`, as does an optional `reason` (the CLI's `pause --reason`, stored folded and
- * capped by pauseFleet; the 200 body echoes what was stored). */
+ * capped by pauseTeam; the 200 body echoes what was stored). */
 export async function handlePause(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"paused": true, "forSeconds": 3600}');
   if (!body) return;
@@ -90,8 +90,8 @@ export async function handlePause(req: http.IncomingMessage, res: http.ServerRes
   if (untilMs === null) return;
   const reason = pauseReasonField(res, body, value);
   if (reason === null) return;
-  if (value) pauseFleet(root, untilMs, reason);
-  else resumeFleet(root);
+  if (value) pauseTeam(root, untilMs, reason);
+  else resumeTeam(root);
   const stored = normalizePauseReason(reason);
   sendJson(res, 200, { ok: true, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }), ...(stored ? { reason: stored } : {}) });
 }
@@ -134,7 +134,7 @@ export async function handleWakeCancel(req: http.IncomingMessage, res: http.Serv
  * marker-writing core `tumwater pause --role` / `resume --role` call (pauseRole/resumeRole),
  * so the CLI and the GUI cannot drift on the marker's format or idempotence. The target state
  * is explicit (`paused: true|false`) like /api/pause, so a retried request is idempotent; the
- * fleet-wide pause composes freely — its gate is checked first at scheduling, and the role
+ * team-wide pause composes freely — its gate is checked first at scheduling, and the role
  * marker still records the operator's per-row intent. Same body discipline as /api/wake
  * (readJsonObject → 400 malformed/non-object, 413 oversized; the role validates through the
  * shared rejectBadRole wording). */

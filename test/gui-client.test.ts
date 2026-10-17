@@ -311,7 +311,7 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   const flashes: string[] = [];
   const calls: string[] = [];
   const answers: Record<string, unknown> = {
-    "/api/wake": { ok: true, message: "wake requested for feature — a running fleet applies it within ~2s" },
+    "/api/wake": { ok: true, message: "wake requested for feature — a running team applies it within ~2s" },
     "/api/pause-role": { ok: true, changed: true },
     "/api/abort": { ok: true, message: "abort requested for feature" },
   };
@@ -440,9 +440,9 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
     parseBudgetField(raw: string): { ok: true; value: number } | { ok: false; error: string };
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
-    setFleetPause(paused: boolean, forSeconds?: number, reason?: string): Promise<void>;
+    setTeamPause(paused: boolean, forSeconds?: number, reason?: string): Promise<void>;
     stopControlHtml(d: object | null): string;
-  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control", "stop-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setFleetPause", "windowLinesHtml", "stopControlHtml"], {
+  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control", "stop-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setTeamPause", "windowLinesHtml", "stopControlHtml"], {
     document: { addEventListener: () => {}, createElement: () => ({ setAttribute() {}, remove() {} }) },
     $: (id: string) => els[id] ?? null,
     paintPanel: (id: string, html: string) => { panels[id] = html; return true; },
@@ -466,9 +466,9 @@ test("the stop control is empty when stopped, a menu opener when running, and Ca
   assert.match(scope.stopControlHtml({ running: true, scheduledStopAt: Date.now() + 1000 }), /Cancel scheduled stop/);
 });
 
-test("the assembled script declares postAction exactly once — both operator and fleet callers go through it", () => {
+test("the assembled script declares postAction exactly once — both operator and team callers go through it", () => {
   // Two `async function postAction` declarations in one concatenated script scope: the later
-  // declaration wins everywhere, so the operator's string-typed calls went through the fleet
+  // declaration wins everywhere, so the operator's string-typed calls went through the team
   // variant that invokes its third argument as a function ("message is not a function") even
   // though the POST itself succeeded.
   const declarations = GUI_CLIENT_JS.match(/async function postAction/g) ?? [];
@@ -478,7 +478,7 @@ test("the assembled script declares postAction exactly once — both operator an
 test("the spend card is an editor button unless every model is free", () => {
   const { scope } = operatorScope();
   const free = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: true, fallback: null });
-  assert.doesNotMatch(free, /id='budgetbadge'|<button/, "an all-free fleet has no cap editor to open");
+  assert.doesNotMatch(free, /id='budgetbadge'|<button/, "an all-free team has no cap editor to open");
   assert.match(free, /Free models/);
   const priced = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null });
   assert.match(priced, /<button type='button' class='side-card' id='budgetbadge'/);
@@ -487,13 +487,13 @@ test("the spend card is an editor button unless every model is free", () => {
   assert.match(scope.budgetCardHtml({ spentUsd: 13, capUsd: 15, free: false }), /class='meter t-amber'/, "85% of the cap turns amber");
   assert.match(scope.budgetCardHtml({ spentUsd: 16, capUsd: 15, free: false }), /class='meter t-red'><span style='width:100\.0%'/, "a spent cap is red and full");
   const uncapped = scope.budgetCardHtml({ spentUsd: 2, capUsd: 0, free: false, fallback: null });
-  assert.match(uncapped, /id='budgetbadge'/, "a fleet without a cap can still set one");
+  assert.match(uncapped, /id='budgetbadge'/, "a team without a cap can still set one");
   assert.match(uncapped, /Set a cap/);
   assert.doesNotMatch(uncapped, /meter/);
 });
 
 // The subscription usage window (plans/agent-backends.md §8, PLANS.md part 6d/7): the sidebar
-// spend card renders it in place of the daily spend when the fleet's seams are all subscription
+// spend card renders it in place of the daily spend when the team's seams are all subscription
 // claude, beside it when some are priced, and lists every window.
 test("the spend card renders the subscription window in place of or beside the daily spend", () => {
   const { scope } = operatorScope();
@@ -506,12 +506,12 @@ test("the spend card renders the subscription window in place of or beside the d
     heldUntil: null,
   };
   const only = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false, fallback: null }, cw);
-  assert.doesNotMatch(only, /id='budgetbadge'/, "a subscription-only fleet has no cap editor");
+  assert.doesNotMatch(only, /id='budgetbadge'/, "a subscription-only team has no cap editor");
   assert.match(only, /Claude window/);
   assert.match(only, /Claude 5h · 64% · resets in 4h 12m/);
 
   const mixed = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, { ...cw, only: false });
-  assert.match(mixed, /id='budgetbadge'/, "a mixed fleet keeps the spend editor");
+  assert.match(mixed, /id='budgetbadge'/, "a mixed team keeps the spend editor");
   assert.match(mixed, /\$4\.09 <small>of \$15<\/small>/);
   assert.match(mixed, /Claude 5h · 64% · resets in 4h 12m/);
 
@@ -606,17 +606,17 @@ test("the pause control offers timed pauses and shows a timed pause's countdown"
   assert.match(standing, /Resume the team/);
   assert.match(standing, /<span class='btn-note' id='pausenote'><\/span>/, "a standing pause has no countdown");
   assert.match(scope.pauseControlHtml({ paused: true, pausedUntil: Date.now() + 12 * 60_000 }), /id='pausenote'>12m left</);
-  await scope.setFleetPause(true, 3600);
+  await scope.setTeamPause(true, 3600);
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: true, forSeconds: 3600 } });
   assert.match(flashes.shift() ?? "", /^Team paused for 1h/);
-  await scope.setFleetPause(true, 0);
+  await scope.setTeamPause(true, 0);
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: true } }, "until-resumed sends no deadline");
-  await scope.setFleetPause(true, 3600, " why ");
+  await scope.setTeamPause(true, 3600, " why ");
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: true, forSeconds: 3600, reason: "why" } });
-  await scope.setFleetPause(true, 0, "  ");
+  await scope.setTeamPause(true, 0, "  ");
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: true } }, "a blank reason is omitted");
   assert.match(scope.pauseControlHtml({ paused: true, pauseReason: "deploy" }), /id='pausebadge' title='[^']*deploy/);
-  await scope.setFleetPause(false);
+  await scope.setTeamPause(false);
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: false } });
   assert.equal(flashes.pop(), "Team resumed");
 });
@@ -632,7 +632,7 @@ test("the page's shortSha abbreviates like format.ts's 8-character rule", () => 
 });
 
 test("the page's money formatters match format.ts's usd/usdCap rules", () => {
-  // The usage report and the fleet tiles render money through the page's fmtUsd/fmtCap; the
+  // The usage report and the team tiles render money through the page's fmtUsd/fmtCap; the
   // browser runtime cannot import text/format.ts, so the copies must stay byte-identical to
   // the TypeScript single home they mirror.
   const { fmtUsd, fmtCap } = clientScope<{ fmtUsd(n: number): string; fmtCap(n: number): string }>(["format"], ["fmtUsd", "fmtCap"]);

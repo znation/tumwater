@@ -1,7 +1,7 @@
 // vocabulary: plain
 /** The dashboard's sound layer, browser-side: one short synthesized cue when a new needs-you
  * alert appears (a failing loop, a red main, a spent budget, a lost server), scoped from
- * docs/feature-gui-audio-sound-effects.md to the alerts cue — the one moment the fleet
+ * docs/feature-gui-audio-sound-effects.md to the alerts cue — the one moment the team
  * genuinely needs a human. Client-side only: Web Audio is a browser built-in, so the zero
  * runtime dependencies principle holds, and every path degrades to silence — no AudioContext,
  * no user gesture yet, or a muted preference all leave the page quiet and error-free. Spliced

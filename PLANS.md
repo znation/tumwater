@@ -21,39 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code team, part 4/6: Rename the fleet identifiers in the dashboard and TUI and change and text modules (planned 2026-10-16 by user; requires part 3/6 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/gui/ src/change/ src/text/ and their tests)
-
-**Goal.** The UI layers' identifiers, comments, test names and the dashboard's internal DOM ids say team. That includes the browser code the dashboard ships as `String.raw` templates. A mechanical rename of about 500 lines with no behavior change.
-
-**Approach.**
-- **Rename rule** (the fleet row of "Code names"): `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM` in identifiers, comments, test names, temp-dir prefixes and assertion messages.
-- **Exports, renamed at their declarations:**
-  - src/ui/team-alerts.ts: `fleetAlerts` → `teamAlerts` and `FleetAlert` → `TeamAlert`. Also move src/doctor's call to `teamAlerts`, since part 3/6 left it.
-  - `GUI_CLIENT_FLEET_JS` → `GUI_CLIENT_TEAM_JS`.
-  - src/change/change-data.ts: `collectFleetChanges` → `collectTeamChanges`, `FleetChangeView` → `TeamChangeView`, `FleetRoleChange` → `TeamRoleChange`.
-  - src/change/change-render.ts: `renderFleetChange` → `renderTeamChange`.
-  - src/text/phrases.ts: `fleetPausePhrase` → `teamPausePhrase` and `fleetResumePhrase` → `teamResumePhrase`.
-- **Aliases.** src/cli, src/events, src/operator and src/failure call `collectFleetChanges`, `renderFleetChange`, `fleetPausePhrase` and `fleetResumePhrase`, and parts 5–6 own those files. Keep each of these four old names as a two-line `/** @deprecated Use …. */` alias.
-- **Browser code.** The dashboard's browser code in the `String.raw` templates of src/ui/gui/gui-client-*.ts is not typechecked, so grep each renamed name across src/ui/gui/ and test/:
-  - rename `renderFleet` → `renderTeam`, `pendingFleet` → `pendingTeam`, `setFleetPause` → `setTeamPause`, `fleetRunning`, `fleetBudgetGate` and `fleetMarker`;
-  - update the tests that reach these names as strings: scope stubs like `renderFleet: () => …` in test/gui-client-boot.test.ts and test/gui-client-drawer.test.ts, expected call logs like `"renderFleet"`, and the `renderFleetChange's` test name in test/tui-keys.test.ts.
-- **Internal DOM ids.** In src/ui/gui/gui-page.ts, the client modules and their tests, `fleet-view` → `team-view`, `fleet-title` → `team-title` and `fleetsub` → `teamsub`. If the scripting series left the internal view key `fleet` (the `VIEWS` map in gui-client-boot.ts, `activeView`), rename it to `team`. Keep the old-hash route that series added.
-- Drop any `// vocabulary-ok:` marker whose only reason was a fleet-named id or identifier renamed here.
-- **Move off the aliases.** In these directories, move every remaining part 2/6 alias use to the new names. Delete each alias that test/exports.test.ts then reports as unused.
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - legacy names kept on purpose;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-
-**Files touched.** `src/ui/` (team-alerts.ts, badges.ts, status-*.ts, tone.ts, gui/*.ts, tui/*.ts), `src/gui/`, `src/change/`, `src/text/`, `src/doctor/` (one call). Tests: `test/team-alerts.test.ts`, `test/gui*.test.ts`, `test/tui*.test.ts`, `test/status-model.test.ts`, `test/status-render*.test.ts`, `test/status-payload.test.ts`, `test/badges.test.ts`, `test/change-data.test.ts`, `test/change-render.test.ts`, `test/phrases.test.ts`.
-
-**Acceptance criteria.**
-- `git grep -nE 'renderFleet|pendingFleet|setFleetPause|fleet-view|fleet-title|fleetsub|GUI_CLIENT_FLEET_JS|fleetAlerts|FleetAlert' -- src test` prints nothing.
-- In the listed directories, no identifier, comment or test name says fleet, apart from the four aliases, quoted backlog titles and legacy names.
-- The dashboard still boots in test/gui-client-boot.test.ts, and the views switch with the renamed ids.
-- `npm run test` passes.
-
 ### Plain terms code team, part 5/6: Rename the fleet identifiers in the budget and pi and config and events and process and CLI layers (planned 2026-10-16 by user; requires part 4/6 landed; design in plans/terminology.md "Code names"; touches src/budget/ src/pi/ src/config/ src/events/ src/process/ src/cli/ src/operator/ src/loop/ src/report/ the src/ root files and test/helpers/)
 
 **Goal.** These directories' identifiers, comments and test names say team, and the remaining fleet exports take their team names. A mechanical rename of about 490 lines with no behavior change.
@@ -1590,6 +1557,39 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms code team, part 4/6: Rename the fleet identifiers in the dashboard and TUI and change and text modules (planned 2026-10-16 by user; done 2026-10-16; requires part 3/6 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/gui/ src/change/ src/text/ and their tests)
+
+**Goal.** The UI layers' identifiers, comments, test names and the dashboard's internal DOM ids say team. That includes the browser code the dashboard ships as `String.raw` templates. A mechanical rename of about 500 lines with no behavior change.
+
+**Approach.**
+- **Rename rule** (the fleet row of "Code names"): `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM` in identifiers, comments, test names, temp-dir prefixes and assertion messages.
+- **Exports, renamed at their declarations:**
+  - src/ui/team-alerts.ts: `fleetAlerts` → `teamAlerts` and `FleetAlert` → `TeamAlert`. Also move src/doctor's call to `teamAlerts`, since part 3/6 left it.
+  - `GUI_CLIENT_FLEET_JS` → `GUI_CLIENT_TEAM_JS`.
+  - src/change/change-data.ts: `collectFleetChanges` → `collectTeamChanges`, `FleetChangeView` → `TeamChangeView`, `FleetRoleChange` → `TeamRoleChange`.
+  - src/change/change-render.ts: `renderFleetChange` → `renderTeamChange`.
+  - src/text/phrases.ts: `fleetPausePhrase` → `teamPausePhrase` and `fleetResumePhrase` → `teamResumePhrase`.
+- **Aliases.** src/cli, src/events, src/operator and src/failure call `collectFleetChanges`, `renderFleetChange`, `fleetPausePhrase` and `fleetResumePhrase`, and parts 5–6 own those files. Keep each of these four old names as a two-line `/** @deprecated Use …. */` alias.
+- **Browser code.** The dashboard's browser code in the `String.raw` templates of src/ui/gui/gui-client-*.ts is not typechecked, so grep each renamed name across src/ui/gui/ and test/:
+  - rename `renderFleet` → `renderTeam`, `pendingFleet` → `pendingTeam`, `setFleetPause` → `setTeamPause`, `fleetRunning`, `fleetBudgetGate` and `fleetMarker`;
+  - update the tests that reach these names as strings: scope stubs like `renderFleet: () => …` in test/gui-client-boot.test.ts and test/gui-client-drawer.test.ts, expected call logs like `"renderFleet"`, and the `renderFleetChange's` test name in test/tui-keys.test.ts.
+- **Internal DOM ids.** In src/ui/gui/gui-page.ts, the client modules and their tests, `fleet-view` → `team-view`, `fleet-title` → `team-title` and `fleetsub` → `teamsub`. If the scripting series left the internal view key `fleet` (the `VIEWS` map in gui-client-boot.ts, `activeView`), rename it to `team`. Keep the old-hash route that series added.
+- Drop any `// vocabulary-ok:` marker whose only reason was a fleet-named id or identifier renamed here.
+- **Move off the aliases.** In these directories, move every remaining part 2/6 alias use to the new names. Delete each alias that test/exports.test.ts then reports as unused.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - legacy names kept on purpose;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+
+**Files touched.** `src/ui/` (team-alerts.ts, badges.ts, status-*.ts, tone.ts, gui/*.ts, tui/*.ts), `src/gui/`, `src/change/`, `src/text/`, `src/doctor/` (one call). Tests: `test/team-alerts.test.ts`, `test/gui*.test.ts`, `test/tui*.test.ts`, `test/status-model.test.ts`, `test/status-render*.test.ts`, `test/status-payload.test.ts`, `test/badges.test.ts`, `test/change-data.test.ts`, `test/change-render.test.ts`, `test/phrases.test.ts`.
+
+**Acceptance criteria.**
+- `git grep -nE 'renderFleet|pendingFleet|setFleetPause|fleet-view|fleet-title|fleetsub|GUI_CLIENT_FLEET_JS|fleetAlerts|FleetAlert' -- src test` prints nothing.
+- In the listed directories, no identifier, comment or test name says fleet, apart from the four aliases, quoted backlog titles and legacy names.
+- The dashboard still boots in test/gui-client-boot.test.ts, and the views switch with the renamed ids.
+- `npm run test` passes.
 
 ### A paused work instance gives its claimed entry back, so a sibling picks it up instead of it sitting held for up to a day (planned 2026-10-16 by plan; independent of every other entry — touches src/scheduling/claims.ts, src/orchestrator/orchestrator-scheduling.ts, test/claims.test.ts, test/orchestrator-scheduling.test.ts and docs/how-it-works.md; done 2026-10-16 by feature)
 

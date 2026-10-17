@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alertNeedsYou, fleetAlerts, type AlertLoop } from "../src/ui/team-alerts.js";
+import { alertNeedsYou, teamAlerts, type AlertLoop } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 
-// team-alerts.ts's fleetAlerts: what needs the operator, phrased once for the dashboard's alert
+// team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
 // banners and the TUI's attention lines.
 
-type Snap = Parameters<typeof fleetAlerts>[0];
+type Snap = Parameters<typeof teamAlerts>[0];
 const base: Snap = {
   running: true,
   budget: { spentUsd: 1, capUsd: 10, capHitAt: null, free: false, fallback: null },
@@ -17,20 +17,20 @@ const base: Snap = {
   imageProbeFailures: [],
 };
 
-test("a healthy fleet raises nothing; a stopped one says how to start it", () => {
-  assert.deepEqual(fleetAlerts(base, [], [], Date.now()), []);
-  const stopped = fleetAlerts({ ...base, running: false }, [], [], Date.now());
+test("a healthy team raises nothing; a stopped one says how to start it", () => {
+  assert.deepEqual(teamAlerts(base, [], [], Date.now()), []);
+  const stopped = teamAlerts({ ...base, running: false }, [], [], Date.now());
   assert.deepEqual(stopped.map((a) => [a.key, a.tone]), [["stopped", "gray"]]);
   assert.equal(stopped.filter(alertNeedsYou).length, 0, "information does not count as needing you");
 });
 
 test("a tier on a fallback step raises one informational alert", () => {
   const chain = { default: { pair: "DeepSeek-V4-Flash", step: 2, of: 2, reason: "window" as const } };
-  const alerts = fleetAlerts({ ...base, chain }, [], [], Date.now());
+  const alerts = teamAlerts({ ...base, chain }, [], [], Date.now());
   assert.equal(alerts.length, 1);
   assert.match(alerts[0]?.detail ?? "", /^running on fallback: default → DeepSeek-V4-Flash/);
   assert.equal(alertNeedsYou(alerts[0]!), false);
-  assert.deepEqual(fleetAlerts({ ...base, chain: {} }, [], [], Date.now()), []);
+  assert.deepEqual(teamAlerts({ ...base, chain: {} }, [], [], Date.now()), []);
 });
 
 test("a spent budget pauses the loops, or hands them to the free fallback", () => {
@@ -38,18 +38,18 @@ test("a spent budget pauses the loops, or hands them to the free fallback", () =
     ...base,
     budget: { spentUsd: 10.5, capUsd: 10, capHitAt: null, free: false, fallback: null },
   };
-  const [budget] = fleetAlerts(spent, [], [], Date.now());
+  const [budget] = teamAlerts(spent, [], [], Date.now());
   assert.equal(budget?.key, "budget");
   assert.equal(budget?.tone, "red");
   assert.match(budget?.detail ?? "", /Spent \$10\.50 of the \$10 cap/);
   assert.deepEqual(budget?.actions.map((a) => a.act), ["budget"]);
-  const onFallback = fleetAlerts({ ...spent, budget: { ...spent.budget, fallback: { provider: "local", model: "small-model" } } }, [], [], Date.now());
+  const onFallback = teamAlerts({ ...spent, budget: { ...spent.budget, fallback: { provider: "local", model: "small-model" } } }, [], [], Date.now());
   assert.equal(onFallback[0]?.key, "fallback");
-  assert.equal(onFallback[0]?.tone, "blue", "the fleet keeps working, so it informs rather than alarms");
+  assert.equal(onFallback[0]?.tone, "blue", "the team keeps working, so it informs rather than alarms");
   assert.match(onFallback[0]?.detail ?? "", /^small-model carries them/);
   // A claude fallback (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): the pair's
   // provider IS the backend id, so it renders agent-qualified, never a bare model id.
-  const claudeFallback = fleetAlerts(
+  const claudeFallback = teamAlerts(
     { ...spent, budget: { ...spent.budget, fallback: { provider: "claude", model: "claude-sonnet-5-5" } } },
     [],
     [],
@@ -57,13 +57,13 @@ test("a spent budget pauses the loops, or hands them to the free fallback", () =
   )[0];
   assert.equal(claudeFallback?.key, "fallback");
   assert.match(claudeFallback?.detail ?? "", /claude\/claude-sonnet-5-5 carries them/);
-  assert.deepEqual(fleetAlerts({ ...spent, budget: { ...spent.budget, free: true } }, [], [], Date.now()), [], "an all-free fleet has no cap to hit");
-  assert.deepEqual(fleetAlerts({ ...spent, budget: { ...spent.budget, capUsd: 0 } }, [], [], Date.now()), [], "no cap, nothing spent against it");
+  assert.deepEqual(teamAlerts({ ...spent, budget: { ...spent.budget, free: true } }, [], [], Date.now()), [], "an all-free team has no cap to hit");
+  assert.deepEqual(teamAlerts({ ...spent, budget: { ...spent.budget, capUsd: 0 } }, [], [], Date.now()), [], "no cap, nothing spent against it");
 
   // Tiered fallback (part 7b/8): with the snapshot's tier map standing (two or more distinct
   // pairs), the detail lists each tier's pair, borrowed ones marked, instead of naming just
   // the default tier's.
-  const tiered = fleetAlerts(
+  const tiered = teamAlerts(
     { ...spent, budget: { ...spent.budget, fallback: { provider: "free", model: "qwen-free" }, tiers: { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" } } },
     [], [], Date.now(),
   );
@@ -71,14 +71,14 @@ test("a spent budget pauses the loops, or hands them to the free fallback", () =
   assert.match(tiered[0]?.detail ?? "", /^small: free\/qwen-free \(from default\), default: free\/qwen-free, strong: free\/llama-free carry them/);
 });
 
-// Quiet hours 2/2: the schedule holding the fleet informs rather than asks (blue, no
+// Quiet hours 2/2: the schedule holding the team informs rather than asks (blue, no
 // actions), and only while the local clock is actually inside the window — outside it the
 // header's standing quiet badge already carries the schedule, so an alert would be noise.
 test("quiet hours raise one informational alert only while the window holds", () => {
-  const outside = fleetAlerts({ ...base, quietHours: "23:00-07:00", inQuietHours: false }, [], [], Date.now());
+  const outside = teamAlerts({ ...base, quietHours: "23:00-07:00", inQuietHours: false }, [], [], Date.now());
   assert.deepEqual(outside.filter((a) => a.key === "quiet"), []);
 
-  const [quiet] = fleetAlerts({ ...base, quietHours: "23:00-07:00", inQuietHours: true }, [], [], Date.now());
+  const [quiet] = teamAlerts({ ...base, quietHours: "23:00-07:00", inQuietHours: true }, [], [], Date.now());
   assert.equal(quiet?.key, "quiet");
   assert.equal(quiet?.tone, "blue");
   assert.match(quiet?.title ?? "", /Quiet hours — roles start no new runs until 07:00/);
@@ -97,7 +97,7 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
     { role: "docs", phase: "working 1m · turn 1 · no agent output for 6m00s", errorStreak: false, inFlight: true, stuckMs: 360_000 },
     { role: "idle", phase: "sleeping (for 5m)", errorStreak: false, inFlight: false },
   ];
-  const alerts = fleetAlerts(
+  const alerts = teamAlerts(
     { ...base, paused: true, pausedUntil: now + 12 * 60_000,
       build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 3, restartBlocked: "cooldown until 2026-09-30T10:00:54.269Z" } },
     ["Q1: which database? (asked 2026-09-29)", "Q2: tabs or spaces?"],
@@ -123,16 +123,16 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
   assert.equal(by.paused?.title, "The team is paused and resumes in 12m");
   assert.equal(alerts.filter(alertNeedsYou).length, 6);
   // A build that is only behind (the restart will happen on its own) informs.
-  const pending = fleetAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 1, restartPending: true } }, [], [], now);
+  const pending = teamAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 1, restartPending: true } }, [], [], now);
   assert.deepEqual(pending.map((a) => [a.key, a.tone, a.title]), [["build", "blue", "Update available (1 commit behind) — restarts when idle"]]);
   // A standing pause has no countdown; an expired deadline is not claimed.
-  assert.equal(fleetAlerts({ ...base, paused: true }, [], [], now)[0]?.title, "The team is paused");
-  assert.equal(fleetAlerts({ ...base, paused: true, pausedUntil: now - 1 }, [], [], now)[0]?.title, "The team is paused");
+  assert.equal(teamAlerts({ ...base, paused: true }, [], [], now)[0]?.title, "The team is paused");
+  assert.equal(teamAlerts({ ...base, paused: true, pausedUntil: now - 1 }, [], [], now)[0]?.title, "The team is paused");
 
   // The operator's why (`pause --reason <text>`) states verbatim in the title, timed or not.
-  const withWhy = fleetAlerts({ ...base, paused: true, pauseReason: "deploying to prod" }, [], [], now);
+  const withWhy = teamAlerts({ ...base, paused: true, pauseReason: "deploying to prod" }, [], [], now);
   assert.equal(withWhy[0]?.title, "The team is paused — \"deploying to prod\"");
-  const timedWhy = fleetAlerts({ ...base, paused: true, pausedUntil: now + 12 * 60_000, pauseReason: "deploying to prod" }, [], [], now);
+  const timedWhy = teamAlerts({ ...base, paused: true, pausedUntil: now + 12 * 60_000, pauseReason: "deploying to prod" }, [], [], now);
   assert.equal(timedWhy[0]?.title, "The team is paused and resumes in 12m — \"deploying to prod\"");
 });
 
@@ -141,7 +141,7 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
 // points at the transcripts instead of repeating an empty error list.
 test("a lone failing or stuck loop reads singular; three loops list as a, b, and c", () => {
   const now = Date.now();
-  const [one] = fleetAlerts(base, [], [{ role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "pi exited null" }], now);
+  const [one] = teamAlerts(base, [], [{ role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "pi exited null" }], now);
   assert.equal(one?.title, "bugfix is failing run after run");
   assert.equal(one?.detail, "bugfix: pi exited null");
   const three: AlertLoop[] = [
@@ -149,11 +149,11 @@ test("a lone failing or stuck loop reads singular; three loops list as a, b, and
     { role: "qa", phase: "failing", errorStreak: true, inFlight: false },
     { role: "docs", phase: "failing", errorStreak: true, inFlight: false },
   ];
-  const [many] = fleetAlerts(base, [], three, now);
+  const [many] = teamAlerts(base, [], three, now);
   assert.equal(many?.title, "bugfix, qa, and docs are failing run after run");
   assert.equal(many?.detail, "The streak clears only on the next healthy run; the transcript names each failure.");
   assert.deepEqual(many?.actions.map((a) => a.arg), ["bugfix", "qa", "docs"]);
-  const [stuckOne] = fleetAlerts(
+  const [stuckOne] = teamAlerts(
     base,
     [],
     [{ role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash", errorStreak: false, inFlight: true }],
@@ -174,7 +174,7 @@ test("a streak behind a working label still raises the failing alert; a healthil
   const streakWorking: AlertLoop[] = [
     { role: "bugfix", phase: "working 30s · turn 2 · reading BUGS.md", errorStreak: true, inFlight: true, lastError: "review rejected: not converging" },
   ];
-  const [alert] = fleetAlerts(base, [], streakWorking, now);
+  const [alert] = teamAlerts(base, [], streakWorking, now);
   assert.equal(alert?.key, "failing");
   assert.equal(alert?.tone, "red");
   assert.equal(alert?.title, "bugfix is failing run after run");
@@ -185,24 +185,24 @@ test("a streak behind a working label still raises the failing alert; a healthil
     { role: "feature", phase: "working 30s · turn 1", errorStreak: false, inFlight: true },
     { role: "qa", phase: "merging 1s · build-check", errorStreak: false, inFlight: true },
   ];
-  assert.equal(fleetAlerts(base, [], healthyWorking, now).filter((a) => a.key === "failing").length, 0);
+  assert.equal(teamAlerts(base, [], healthyWorking, now).filter((a) => a.key === "failing").length, 0);
 });
 
 // The detail arms the two-loop case above cannot reach: a fallback named by provider alone
 // (model unset) or by nothing at all, and a stale build that is neither restart-blocked nor
-// already restarting — the operator has to restart the fleet by hand, so the alert says so.
+// already restarting — the operator has to restart the team by hand, so the alert says so.
 test("a fallback names its provider or nothing; a plain stale build asks for a manual restart", () => {
   const spent = (fallback: Snap["budget"]["fallback"]): Snap => ({
     ...base,
     budget: { spentUsd: 10, capUsd: 10, capHitAt: null, free: false, fallback },
   });
-  const byProvider = fleetAlerts(spent({ provider: "local" }), [], [], Date.now());
+  const byProvider = teamAlerts(spent({ provider: "local" }), [], [], Date.now());
   assert.equal(byProvider[0]?.key, "fallback");
   assert.match(byProvider[0]?.detail ?? "", /^local carries them/);
-  const unnamed = fleetAlerts(spent({}), [], [], Date.now());
+  const unnamed = teamAlerts(spent({}), [], [], Date.now());
   assert.match(unnamed[0]?.detail ?? "", /^The fallback carries them/);
 
-  const stale = fleetAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 2 } }, [], [], Date.now());
+  const stale = teamAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 2 } }, [], [], Date.now());
   assert.deepEqual(stale.map((a) => [a.key, a.tone, a.title]), [
     ["build", "blue", "Update available (2 commits behind)"],
   ]);
@@ -236,7 +236,7 @@ test("the terminal's tones and the dashboard's tell the same story", () => {
 // reading and the floor. Below the reclaim threshold but not held is the header badge's
 // quieter business, so it raises no alert; no disk block raises nothing.
 test("a waiting: low disk raises one amber alert naming the free space and the floor", () => {
-  const held = fleetAlerts(
+  const held = teamAlerts(
     { ...base, disk: { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true } },
     [], [], Date.now(),
   );
@@ -245,11 +245,11 @@ test("a waiting: low disk raises one amber alert naming the free space and the f
   assert.match(disk?.title ?? "", /8\.2 GB free/);
   assert.match(disk?.detail ?? "", /10 GB floor/);
   assert.deepEqual(
-    fleetAlerts({ ...base, disk: { freeGB: 30, holdGB: 10, reclaimGB: 40, held: false } }, [], [], Date.now()).filter((a) => a.key === "disk"),
+    teamAlerts({ ...base, disk: { freeGB: 30, holdGB: 10, reclaimGB: 40, held: false } }, [], [], Date.now()).filter((a) => a.key === "disk"),
     [],
     "low but not held: no alert",
   );
-  assert.deepEqual(fleetAlerts(base, [], [], Date.now()), [], "no disk block: nothing new");
+  assert.deepEqual(teamAlerts(base, [], [], Date.now()), [], "no disk block: nothing new");
 });
 
 // Image input, part 5/5 (plans/image-input.md "Surfaces"): the images alert. No alert when
@@ -257,23 +257,23 @@ test("a waiting: low disk raises one amber alert naming the free space and the f
 // as text-only). Blue when every text-only loop has a reroute target (a blind read reruns — an
 // inform, not an ask); amber when some text-only loop has none (a blind read fails and image
 // submissions are refused). A separate amber when a claimed model failed doctor's live probe.
-test("images alert: parity needs no alert; a text-only fleet with targets is blue", () => {
+test("images alert: parity needs no alert; a text-only team with targets is blue", () => {
   const vision: AlertLoop[] = [
     { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: true, imageReroute: null },
     { role: "plan", phase: "idle", errorStreak: false, inFlight: false, imageInput: true, imageReroute: null },
   ];
-  assert.deepEqual(fleetAlerts(base, [], vision, Date.now()).filter((a) => a.key === "images"), []);
+  assert.deepEqual(teamAlerts(base, [], vision, Date.now()).filter((a) => a.key === "images"), []);
   // Unknown capability is not counted as text-only — no alert, matching the doctor's stance.
   const unknown: AlertLoop[] = [
     { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: null, imageReroute: null },
   ];
-  assert.deepEqual(fleetAlerts(base, [], unknown, Date.now()).filter((a) => a.key === "images"), []);
+  assert.deepEqual(teamAlerts(base, [], unknown, Date.now()).filter((a) => a.key === "images"), []);
 
   const rerouting: AlertLoop[] = [
     { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
     { role: "organize", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
   ];
-  const [images] = fleetAlerts(base, [], rerouting, Date.now()).filter((a) => a.key === "images");
+  const [images] = teamAlerts(base, [], rerouting, Date.now()).filter((a) => a.key === "images");
   assert.equal(images?.tone, "blue");
   assert.equal(images?.title, "feature and organize run on models that can't read images");
   assert.match(images?.detail ?? "", /stops and reruns on strong \(claude-opus-5-5\)\./);
@@ -285,7 +285,7 @@ test("images alert: a text-only loop with no target is amber and asks", () => {
     { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: null },
     { role: "bugfix", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
   ];
-  const [images] = fleetAlerts(base, [], noTarget, Date.now()).filter((a) => a.key === "images");
+  const [images] = teamAlerts(base, [], noTarget, Date.now()).filter((a) => a.key === "images");
   assert.equal(images?.tone, "amber");
   assert.equal(images?.title, "No configured model can read images for feature");
   assert.match(images?.detail ?? "", /image attachments to these roles are refused/);
@@ -294,7 +294,7 @@ test("images alert: a text-only loop with no target is amber and asks", () => {
 });
 
 test("images alert: a cached probe failure is amber, whatever the loops resolved to", () => {
-  const over = fleetAlerts({ ...base, imageProbeFailures: ["local/vision"] }, [], [], Date.now());
+  const over = teamAlerts({ ...base, imageProbeFailures: ["local/vision"] }, [], [], Date.now());
   const [probe] = over.filter((a) => a.key === "images-probe");
   assert.equal(probe?.tone, "amber");
   assert.match(probe?.title ?? "", /failed doctor's probe/);

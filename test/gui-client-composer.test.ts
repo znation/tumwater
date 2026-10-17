@@ -82,7 +82,7 @@ function composerEls() {
   };
 }
 
-/** Everything the composer blob reaches beyond its own helpers: the DOM, the fleet view state
+/** Everything the composer blob reaches beyond its own helpers: the DOM, the team view state
  * it inherits from the concatenation, and the server. `failRead` makes the FileReader stand-in
  * error, to drive the unreadable-attachment path. */
 function composerScope(opts: { activeView?: string; innerWidth?: number; failRead?: boolean } = {}) {
@@ -154,7 +154,7 @@ const IMG = { name: "a.png", type: "image/png", size: 1048576 };
 const STATUS = { roles: [{ role: "qa" }, { role: "bugfix" }], inbox: 2, roleInbox: { qa: 1 } };
 const SUBMIT = { preventDefault: () => {} };
 
-test("the target picker rebuilds only when the fleet's roles change, and a vanished target falls back to the director", () => {
+test("the target picker rebuilds only when the team's roles change, and a vanished target falls back to the director", () => {
   const s = composerScope();
   s.scope.renderComposer(STATUS);
   const select = s.el("prompttarget");
@@ -172,7 +172,7 @@ test("the target picker rebuilds only when the fleet's roles change, and a vanis
   s.scope.renderComposer(STATUS);
   assert.equal(select.innerHTML, "SENTINEL");
 
-  // A fleet without qa: rebuilt without qa, and a composer aimed at qa falls back to the
+  // A team without qa: rebuilt without qa, and a composer aimed at qa falls back to the
   // director (its placeholder switches back with the target).
   s.scope.setTarget("qa");
   s.scope.renderComposer({ roles: [{ role: "bugfix" }], inbox: 0, roleInbox: {} });
@@ -229,13 +229,13 @@ test("draftForDirector puts text in the box and leaves the cursor at its end", (
   assert.deepEqual(input.selections, [[17, 17]], "the cursor lands at the end of the text");
   assert.deepEqual(input.focusCalls, [{ preventScroll: true }]);
   assert.equal(input.placeholder, "Tell the team what to do next…");
-  assert.equal(s.location.hash, "", "already on the fleet view, no hash change");
+  assert.equal(s.location.hash, "", "already on the team view, no hash change");
 });
 
-test("focusComposer routes to the fleet view from anywhere and closes the drawer on a narrow window", () => {
+test("focusComposer routes to the team view from anywhere and closes the drawer on a narrow window", () => {
   const s = composerScope({ activeView: "history", innerWidth: 1000 });
   s.scope.focusComposer();
-  assert.equal(s.location.hash, "team", "a composer off the fleet view is brought into sight by hash");
+  assert.equal(s.location.hash, "team", "a composer off the team view is brought into sight by hash");
   assert.deepEqual(s.closeDrawerCalls, ["close"], "narrow windows keep the composer clear of the drawer");
   assert.deepEqual(s.form().scrollCalls, [{ behavior: "smooth", block: "center" }]);
   assert.deepEqual(s.input().focusCalls, [{ preventScroll: true }]);

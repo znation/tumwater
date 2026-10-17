@@ -50,7 +50,7 @@ export function resultTone(result: string | undefined | null): Tone | undefined 
 }
 
 /** What kind of news an event is, for the activity feeds: a landing, a problem, a question for
- * the operator, a notice about the fleet, or routine bookkeeping (a tick starting, a passing
+ * the operator, a notice about the team, or routine bookkeeping (a tick starting, a passing
  * check). The dashboard's activity card filters on it and both surfaces tone by it; the page's
  * browser copy (gui-client-model.ts eventKind) is pinned to this one by test. */
 type EventKind = "landing" | "problem" | "attention" | "info" | "routine";

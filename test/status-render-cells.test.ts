@@ -173,7 +173,7 @@ test("the totals row's today cell sums the loops' daily windows like the header 
   const b = freshLoopState("dedupe");
   b.dayStamp = todayStamp();
   b.dayCostUsd = 0.66;
-  // A stale loop contributes nothing to the fleet total…
+  // A stale loop contributes nothing to the team total…
   const c = freshLoopState("organize");
   c.dayStamp = todayStamp(Date.now() - 86_400_000);
   c.dayCostUsd = 9.99;
@@ -277,7 +277,7 @@ test("a pending change after a main-red tick does not keep the state cell readin
 });
 // The `next run` column: nextRunCell's rules — a due idle
 // loop reads `now`, a future one its remaining time (`backoff `-prefixed while backing off),
-// in-flight loops and a stopped fleet read `-` — and the column is appended last so
+// in-flight loops and a stopped team read `-` — and the column is appended last so
 // FLEXIBLE_COLUMNS' positional indices stay untouched.
 
 test("nextRunCell reads now for a due idle loop and the remaining time for a future one", () => {
@@ -318,7 +318,7 @@ test("nextRunCell shows ×N beside the time for a role whose yield scales its cl
   assert.equal(nextRunCell(landed, "queued", now, true), "now");
 });
 
-test("nextRunCell reads - for a loop in flight or a fleet that is not running", () => {
+test("nextRunCell reads - for a loop in flight or a team that is not running", () => {
   const now = Date.now();
   const working = freshLoopState("clean");
   working.nextRunAt = now + 60_000;
@@ -330,7 +330,7 @@ test("nextRunCell reads - for a loop in flight or a fleet that is not running", 
   assert.equal(nextRunCell(landing, "merging 1m · checking", now, true), "-");
   const idle = freshLoopState("feature");
   idle.nextRunAt = now + 60_000;
-  assert.equal(nextRunCell(idle, "queued", now, false), "-", "a stopped fleet's nextRunAts are stale leftovers, not plans");
+  assert.equal(nextRunCell(idle, "queued", now, false), "-", "a stopped team's nextRunAts are stale leftovers, not plans");
 });
 
 test("status table appends the next run column after last result", () => {

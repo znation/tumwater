@@ -30,7 +30,7 @@ export function clockHm(ms: number): string {
  * zero the same way for the future direction (a countdown never reads negative once its
  * deadline has passed). The one home of the clamp + rounding behind every elapsed age and
  * countdown — status-render.ts's lastTickCell and nextRunCell, the queued-prompt age and
- * deliver-in suffix, the fleet pause's auto-resume countdown, and status-model.ts's sleeping
+ * deliver-in suffix, the team pause's auto-resume countdown, and status-model.ts's sleeping
  * phase label (which re-floors at 1s) all render through. The GUI page's browser
  * script keeps its own one-line twins (gui-client.ts's ageSec and its inline countdown
  * rounding — a separate runtime that cannot import TypeScript), pinned by its marked regions'
@@ -128,7 +128,7 @@ export function dayWindow(days: number, now: Date): { from: string; to: string }
 
 /** Compact whole-second duration: `45s`, `12m`, `3h`, or `2d` — the phrasing every relative
  * time renders through (ago labels, sleeping-remaining countdowns, `prompt --list`'s queued
- * age, the fleet pause's auto-resume countdown), so the s/m/h/d bucketing and rounding cannot
+ * age, the team pause's auto-resume countdown), so the s/m/h/d bucketing and rounding cannot
  * drift per consumer. A day or more reads days, not an hour count (`pause --for 90d`'s
  * countdown reads `90d`, not `2160h`). Lives here, beside the other time phrasing, so core
  * modules (which may not import src/ui) share the same bucketing too. */

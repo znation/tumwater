@@ -4,11 +4,11 @@
  * the image attachments (dropped or pasted onto the box, rendered as removable chips), and
  * the submit that reads the bytes and queues the prompt through the same endpoints the CLI's
  * "prompt" and "prompt --role" use. Split out of gui-client-team.ts, which keeps the
- * read-only status rendering the composer sits on top of. renderFleet calls renderComposer
+ * read-only status rendering the composer sits on top of. renderTeam calls renderComposer
  * each poll; gui-client-boot.ts's question and backlog actions and gui-client-loops.ts's row
  * actions call draftForDirector and focusComposer. Spliced into gui-client.ts's script right
- * after the fleet view, reaching its helpers ($, esc, postJson, plural, showFlash, refresh)
- * and the fleet view's activeView/drawer state through that concatenation. */
+ * after the team view, reaching its helpers ($, esc, postJson, plural, showFlash, refresh)
+ * and the team view's activeView/drawer state through that concatenation. */
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../../inbox/inbox-submit.js";
 import { PROMPT_IMAGE_EXTENSIONS, PROMPT_IMAGE_MAX_BYTES, PROMPT_IMAGES_MAX_COUNT } from "../../inbox/inbox-attachments.js";
 export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for the director or any single loop ----
@@ -91,7 +91,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     focusComposer();
     promptInput.setSelectionRange(text.length, text.length);
   }
-  // The composer sits on the Fleet view; bring it into sight from anywhere and focus it.
+  // The composer sits on the Team view; bring it into sight from anywhere and focus it.
   function focusComposer() {
     if (activeView !== "team") location.hash = "team";
     if (window.innerWidth <= 1180 && drawer) closeDrawer();

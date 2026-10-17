@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
+import { collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
 import { loadConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
@@ -34,11 +34,11 @@ test("a configured base branch that does not exist degrades to no-base", async (
   assert.equal(view.diff, "");
   assert.equal(view.uncommittedDiff, "");
 
-  // The fleet view degrades the same way, per role, and takes its baseline from the entries.
-  const fleet = await collectFleetChanges(repo);
-  assert.equal(fleet.mainBranch, "ghost");
-  assert.ok(fleet.roles.length > 0, "every known role gets an entry");
-  assert.ok(fleet.roles.every((r) => r.state === "no-base"));
+  // The team view degrades the same way, per role, and takes its baseline from the entries.
+  const team = await collectTeamChanges(repo);
+  assert.equal(team.mainBranch, "ghost");
+  assert.ok(team.roles.length > 0, "every known role gets an entry");
+  assert.ok(team.roles.every((r) => r.state === "no-base"));
 });
 
 test("a fully merged branch with a dirty worktree shows only the uncommitted half", async () => {
@@ -120,16 +120,16 @@ test("a malformed slots.json degrades to no pooled slot instead of crashing the 
   const view = await collectRoleChange(repo, "feature");
   assert.equal(view.state, "ready", "the legacy worktree still answers");
   assert.equal(view.ahead, 0);
-  // The fleet-wide reader (the dashboard's /api/diff) survives the same file.
-  const fleet = await collectFleetChanges(repo);
-  assert.ok(fleet.roles.some((r) => r.role === "feature"));
+  // The team-wide reader (the dashboard's /api/diff) survives the same file.
+  const team = await collectTeamChanges(repo);
+  assert.ok(team.roles.some((r) => r.role === "feature"));
   // The raw legacy path still resolves past the corrupt pool.
   assert.ok(fs.existsSync(legacy));
 });
 
-test("the fleet view keeps the counts and drops the patch fields", async () => {
+test("the team view keeps the counts and drops the patch fields", async () => {
   const repo = makeRepo();
-  await initProject(repo, "change-data fleet view");
+  await initProject(repo, "change-data team view");
   fs.writeFileSync(path.join(repo, "notes.txt"), "seeded\n");
   commitIn(repo, "seed notes.txt");
   const wt = await ensureWorktree(repo, "feature", "main");
@@ -137,15 +137,15 @@ test("the fleet view keeps the counts and drops the patch fields", async () => {
   commitIn(wt, "feature work");
   fs.appendFileSync(path.join(wt, "notes.txt"), "uncommitted\n");
 
-  const fleet = await collectFleetChanges(repo);
-  assert.equal(fleet.mainBranch, "main");
-  const feature = fleet.roles.find((r) => r.role === "feature");
+  const team = await collectTeamChanges(repo);
+  assert.equal(team.mainBranch, "main");
+  const feature = team.roles.find((r) => r.role === "feature");
   assert.ok(feature, "the holding role appears");
   assert.equal(feature.state, "ready");
   assert.equal(feature.ahead, 1);
   assert.deepEqual(feature.commits.map((c) => c.subject), ["feature work"]);
   assert.deepEqual(feature.dirtyFiles, ["notes.txt"]);
-  assert.ok(!("diff" in feature) && !("uncommittedDiff" in feature), "the patch halves never ride the fleet view");
+  assert.ok(!("diff" in feature) && !("uncommittedDiff" in feature), "the patch halves never ride the team view");
 });
 
 test("a branch whose base lags main reports behind beside ahead, in both views", async () => {
@@ -162,8 +162,8 @@ test("a branch whose base lags main reports behind beside ahead, in both views",
   const view = await collectRoleChange(repo, "feature");
   assert.equal(view.ahead, 1);
   assert.equal(view.behind, 2);
-  const fleet = await collectFleetChanges(repo);
-  const feature = fleet.roles.find((r) => r.role === "feature");
+  const team = await collectTeamChanges(repo);
+  const feature = team.roles.find((r) => r.role === "feature");
   assert.equal(feature?.behind, 2);
-  assert.equal(fleet.roles.find((r) => r.state === "absent")?.behind ?? 0, 0);
+  assert.equal(team.roles.find((r) => r.state === "absent")?.behind ?? 0, 0);
 });

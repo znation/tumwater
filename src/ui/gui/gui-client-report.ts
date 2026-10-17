@@ -147,7 +147,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return roleStackChart(data, "notionalByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
 
-  // The fleet's review friction, per loop, on a tick-like count axis: one segment per
+  // The team's review friction, per loop, on a tick-like count axis: one segment per
   // (day, loop) with a rejection, empty when the report has none.
   function chartRejectionsByRole(data) {
     return roleStackChart(data, "rejectionsByRole", (n) => plural(n, "rejection"), countAxis, true);
@@ -222,8 +222,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   }
 
   // report-role:start
-  // The Loop picker's options: the fleet-wide "All loops" empty option plus one option per
-  // role, in the fleet's own order. syncRolePicker escapes every role through it, so the three
+  // The Loop picker's options: the team-wide "All loops" empty option plus one option per
+  // role, in the team's own order. syncRolePicker escapes every role through it, so the three
   // Loop pickers (the report views', History's, and the Activity feed's) render role names the
   // same way — role names are dynamic (custom loops) and the custom-loop charset admits HTML
   // metacharacters. Pure, so a test can drive it without a DOM.
@@ -231,10 +231,10 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return "<option value=''>All roles</option>" +
       (roles || []).map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("");
   }
-  // Repaint one Loop picker from the fleet's role list, returning the scope to keep filtering
+  // Repaint one Loop picker from the team's role list, returning the scope to keep filtering
   // with. Every picker (the report views' syncRoles, History's syncHistoryRoles, the Activity
   // feed's syncFeedRoles) does the same thing: rebuild only when the roster changes, keep the
-  // persisted choice while the fleet still lists it, and fall back to All loops — persisting
+  // persisted choice while the team still lists it, and fall back to All loops — persisting
   // that fallback — when it does not, so a dimmed picker never scopes the request to a ghost
   // loop. The last-painted roster is tracked per select id, so the pickers never share a key.
   const rolePickerKeys = {};
@@ -258,7 +258,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // GUI twin of the TUI's Ctrl+G scope cycle (src/ui/tui/tui-keys.ts scopeCycle). The status
   // payload already carries the base role as instanceOf on an instance row (src/status/
   // status-data.ts), so this borrows the server's own fold rather than re-deriving it. History's
-  // picker (gui-client-history.ts) filters by exact loop id and keeps the raw fleet list. Pure,
+  // picker (gui-client-history.ts) filters by exact loop id and keeps the raw team list. Pure,
   // so a test can drive it without a DOM.
   function reportBaseRoles(loops) {
     const bases = [];
@@ -269,7 +269,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return bases;
   }
   // Repaint both report views' Loop pickers from a status payload: each view's persisted
-  // choice is kept while the fleet still lists it and falls back to All loops otherwise. The
+  // choice is kept while the team still lists it and falls back to All loops otherwise. The
   // views are defined below; the boot poll and each fetch call this once they exist.
   function syncReportRoles(d) {
     for (const view of [usage, failures]) view.syncRoles(d);
@@ -281,7 +281,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function viewHead(title, blurb, pickerId, choices, current, refreshId, rolePickerId, sinceChoices) {
     // A dropped blurb renders as no subtitle at all, never the string "undefined". The Loop
     // picker rides the toolbar when the view has one (the shared Usage/Failures shape); the
-    // options are filled by syncRoles from the fleet's role list. The trailing-window buttons
+    // options are filled by syncRoles from the team's role list. The trailing-window buttons
     // (a view that configured sinceChoices) sit in the same segmented control after the day
     // buttons; each carries its length as data-since so windowView can mark exactly one active.
     const rolePicker = rolePickerId
@@ -316,11 +316,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     // fetch still uses it.
     const sinceChoice = o.sinceChoices ? Number(recall(o.sinceKey)) : NaN;
     let sinceMs = (o.sinceChoices || []).some(([ms]) => ms === sinceChoice) ? sinceChoice : null;
-    // The persisted Loop scope for this view: "" is the fleet-wide report. Only a view that
+    // The persisted Loop scope for this view: "" is the team-wide report. Only a view that
     // configured a rolePickerId reads it, so a view without a picker never touches storage.
     let role = o.roleKey ? recall(o.roleKey) || "" : "";
     let fetchedAt = 0;
-    // Keep this view's Loop picker in step with the fleet's role list (custom loops included).
+    // Keep this view's Loop picker in step with the team's role list (custom loops included).
     function syncRoles(d) {
       if (!o.rolePickerId || !d) return;
       role = syncRolePicker(o.rolePickerId, reportBaseRoles(d.roles), role, o.roleKey);
@@ -399,7 +399,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       const block = (title, svg, sub) => "<section class='card chart-card'><header class='card-head'><h2>" + esc(title) +
         "</h2><span class='muted'>" + esc(sub || "per day") + "</span></header><div class='chart'>" + svg + "</div></section>";
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
-      // CLI's --role report. The fleet-wide render is unchanged.
+      // CLI's --role report. The team-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
         block("Merged commits", chartCommits(d)) + block("Runs by role", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Spend by role", chartCostByRole(d)) +
