@@ -433,6 +433,21 @@ ${titles.map((t) => `- "${t}"`).join("\n")}
 </held-entries>`;
 }
 
+/** The note appended to a series part's assignment when parts it requires already landed: each
+ * one's Done heading and PLANS.md line range, so the implementer reads exactly what that part
+ * changed instead of searching a Done section that runs to thousands of lines. Lists at most
+ * five, then a count of the rest. A pure function so its shape is pinned in tests. */
+export function buildLandedPrerequisitesNote(
+  entries: readonly { title: string; start: number; end: number }[],
+): string {
+  const lines = entries.slice(0, 5).map((e) => `- "${e.title}" (PLANS.md lines ${e.start}-${e.end})`);
+  if (entries.length > 5) lines.push(`- …and ${entries.length - 5} more`);
+  return `<merged-prerequisites>
+Your assigned entry builds on parts that are already merged. Each one's Done entry records what it actually changed; read one by its range when your entry depends on its details, rather than searching PLANS.md:
+${lines.join("\n")}
+</merged-prerequisites>`;
+}
+
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change
  * at MERGE_CONFLICT_LIMIT (src/loop/leftover.ts): at the cap recovery ordinarily hands the
  * change back to its author with markers instead, so a discard means that lineage already used

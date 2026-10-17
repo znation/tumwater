@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildConflictHandbackNote,
+  buildLandedPrerequisitesNote,
   buildConflictPrompt,
   buildMainRedNote,
   buildRejectedReviewNote,
@@ -457,4 +458,17 @@ test("buildStageFixPrompt lists every finding, forbids git state changes, and as
   assert.match(p, /SUMMARY:/);
   assert.match(p, /RISK:/);
   assert.match(p, /closing block again/);
+});
+
+test("buildLandedPrerequisitesNote lists each entry's title and range and caps at five", () => {
+  const one = buildLandedPrerequisitesNote([{ title: "S, part 1/3: a", start: 10, end: 20 }]);
+  assert.ok(one.startsWith("<merged-prerequisites>"));
+  assert.ok(one.includes('"S, part 1/3: a" (PLANS.md lines 10-20)'));
+  assert.ok(one.endsWith("</merged-prerequisites>"));
+  const seven = buildLandedPrerequisitesNote(
+    Array.from({ length: 7 }, (_, i) => ({ title: `t${i}`, start: i, end: i + 1 })),
+  );
+  assert.equal(seven.split("\n").filter((l) => l.startsWith('- "')).length, 5);
+  assert.ok(seven.includes("- …and 2 more"));
+  assert.ok(!seven.includes('"t5"'));
 });

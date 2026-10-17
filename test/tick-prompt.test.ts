@@ -5,6 +5,7 @@ import path from "node:path";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
+import { entryKey } from "../src/backlog/backlog-eligibility.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/brief/brief.js";
@@ -259,6 +260,27 @@ test("a bugfix instance's claim names the bug's line range from BUGS.md", () => 
   assert.ok(result);
   assert.match(result.prompt, /<assigned-entry>/);
   assert.match(result.prompt, /BUGS\.md lines 3-4/);
+});
+
+test("a feature instance's claimed series part names its landed prerequisites", () => {
+  const dir = root();
+  const c = "S, part 3/3: c (requires parts 1/3–2/3 landed)";
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    `# Plans\n## Planned\n### ${c}\nbody c\n### Plain\nx\n## Done\n### s, part 2/3: b (done 2026-10-16)\nbody b\n### S, part 1/3: a (done 2026-10-15)\nbody a\n`,
+  );
+  const claimOf = (title: string, key: string) => ({
+    file: "PLANS.md" as const, key, title, at: 1, source: "assigned" as const,
+  });
+  const result = promptFor(dir, "feature-2", { state: { claim: claimOf(c, entryKey(c)) } });
+  assert.ok(result);
+  assert.match(result.prompt, /<assigned-entry>/);
+  assert.match(result.prompt, /<merged-prerequisites>/);
+  assert.match(result.prompt, /"s, part 2\/3: b \(done 2026-10-16\)" \(PLANS\.md lines 8-9\)/);
+  assert.match(result.prompt, /"S, part 1\/3: a \(done 2026-10-15\)" \(PLANS\.md lines 10-11\)/);
+  const plain = promptFor(dir, "feature-2", { state: { claim: claimOf("Plain", "plain") } });
+  assert.ok(plain);
+  assert.doesNotMatch(plain.prompt, /<merged-prerequisites>/);
 });
 
 test("the assignment names the claimed entry's paths missing from the checkout", () => {

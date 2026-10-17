@@ -124,6 +124,29 @@ function partKey(series: string, part: string): string {
   return `${series.toLowerCase()}\u0000${part}`;
 }
 
+/** The Done entries of the parts `title` requires, in the order its requires clause names them:
+ * for each requiredParts ref, the first `## Done` entry of root's PLANS.md whose seriesPart has
+ * the same partKey. Done is newest-first, so the first match is the most recent landing. A ref
+ * with no Done match (still planned, or renamed) adds nothing, so a title with no requires
+ * clause, or a missing PLANS.md, gives []. Lets the assignment prompt point at the exact range
+ * to read instead of leaving the implementer to search a Done section that runs to thousands of
+ * lines. */
+export function landedPrerequisiteRanges(root: string, title: string): EligibleEntry[] {
+  const refs = requiredParts(title);
+  if (refs.length === 0) return [];
+  const done = actionableEntryRangesFor(root, "PLANS.md", "Done");
+  const out: EligibleEntry[] = [];
+  for (const ref of refs) {
+    const want = partKey(ref.series, ref.part);
+    const hit = done.find((e) => {
+      const part = seriesPart(e.title);
+      return part !== null && partKey(part.series, part.part) === want;
+    });
+    if (hit !== undefined) out.push({ key: entryKey(hit.title), title: hit.title, start: hit.start, end: hit.end });
+  }
+  return out;
+}
+
 /** The prerequisite-set identities of the still-planned entries — seriesPart(title) of each,
  * keyed by partKey — built once for a batch and reused across every entry judged against it, so
  * judging n entries is n seriesPart parses rather than n² (entryHold rebuilt the set per entry).

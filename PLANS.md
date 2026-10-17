@@ -1478,37 +1478,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Existing status, dashboard and role-view tests pass with `pausedLoops` added to their fixtures where the type requires it.
 - `npm run test` passes.
 
-### An assigned series part names the Done entries of the parts it requires (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/prompt/gate-prompts.ts, src/tick/tick-prompt.ts and their tests)
-
-**Goal.** A series part such as "Plain terms code team, part 6/6" builds on what its prerequisites did. The heading lists those prerequisites in a `requires part 5/6 landed` clause. When the claim allocator hands a feature instance that part, its prompt gets the `<assigned-entry>` note (`buildAssignmentNote`, `src/prompt/gate-prompts.ts`) with only the part's own title and line range. The prerequisites' Done entries record which files and names they actually changed. Those entries sit somewhere in PLANS.md's `## Done`, which runs to thousands of lines, and the charter says never to read PLANS.md wholesale. So the implementer either greps for them blind or works from the plan's assumptions about code the earlier part may have changed. This plan adds a short `<landed-prerequisites>` note that gives each landed prerequisite's Done heading and line range, so the implementer can read exactly that range.
-
-**Approach.**
-- `src/backlog/backlog-eligibility.ts`: add and export
-  `landedPrerequisiteRanges(root: string, title: string): EligibleEntry[]`. For each ref in `requiredParts(title)`, in order, it finds the first entry of `actionableEntryRangesFor(root, "PLANS.md", "Done")` whose `seriesPart(e.title)` has the same `partKey` as the ref (series compared case-insensitively, the part token verbatim, through the module's existing `partKey`). Done is newest-first, so the first match is the most recent landing. It returns `{ key: entryKey(e.title), title: e.title, start, end }` for each match. A ref with no Done match is skipped, so a prerequisite still in Planned, or one that was renamed, adds nothing. A title with no parseable requires clause returns `[]`. A missing PLANS.md returns `[]`, because `actionableEntryRangesFor` already reads a missing file as no ranges. Write the doc comment in the module's style.
-- `src/prompt/gate-prompts.ts`: add a pure `buildLandedPrerequisitesNote(entries: readonly { title: string; start: number; end: number }[]): string`. Put it next to `buildHeldEntriesNote`, and leave `buildAssignmentNote` alone; "The assigned entry names its paths missing from the checkout" (now landed) changed that function's signature. The note is:
-  ```
-  <landed-prerequisites>
-  Your assigned entry builds on parts that already landed. Each one's Done entry records what it actually changed; read one by its range when your entry depends on its details, rather than searching PLANS.md:
-  - "<title>" (PLANS.md lines <start>-<end>)
-  </landed-prerequisites>
-  ```
-  List at most 5 entries. After the fifth, add one more line, `- …and N more`, built with the existing `moreSuffix` from `src/text/phrases.ts` if its wording fits, else a literal. Give it a doc comment saying why it is a pure function, the same as its neighbours.
-- `src/tick/tick-prompt.ts`, in the `if (claim && userPrompt === null)` block after the assignment-note append: when `claim.file === "PLANS.md"`, compute `landedPrerequisiteRanges(root, claim.title)`. When the result is non-empty, add `buildLandedPrerequisitesNote(...)` to the prompt with `appendPromptNote`. A BUGS.md claim gets no such note. Neither does a tick that runs a dequeued user request, because that block is already skipped.
-
-**Files touched.** `src/backlog/backlog-eligibility.ts`, `src/prompt/gate-prompts.ts`, `src/tick/tick-prompt.ts`, `test/backlog-eligibility.test.ts`, `test/gate-prompts.test.ts`, `test/tick-prompt.test.ts`.
-
-**Acceptance criteria.**
-- `test/backlog-eligibility.test.ts`, new test "landedPrerequisiteRanges names each landed prerequisite's newest Done entry". A temp root's PLANS.md has `## Planned`, holding `### S, part 3/3: c (requires parts 1/3–2/3 landed)`, and `## Done`, holding (newest first) `### s, part 2/3: b (done 2026-10-16)`, `### S, part 1/3: a (done 2026-10-15)` and an older duplicate `### S, part 1/3: a-old (done 2026-10-01)`. The test checks:
-  - The result is part 2/3, then part 1/3 `a`, not `a-old`. Each range matches the entry's real heading line and last body line.
-  - A title with no requires clause gives `[]`.
-  - A title requiring `part 9/9 landed` (no Done match) gives `[]`.
-  - A root with no PLANS.md gives `[]`.
-- `test/gate-prompts.test.ts`, new test "buildLandedPrerequisitesNote lists each entry's title and range and caps at five":
-  - With one entry, the note starts with `<landed-prerequisites>`, holds `"S, part 1/3: a" (PLANS.md lines 10-20)`, and ends with `</landed-prerequisites>`.
-  - With 7 entries, it lists 5 and names the 2 left out.
-- `test/tick-prompt.test.ts`, next to "a bugfix instance's claim names the bug's line range from BUGS.md", new test "a feature instance's claimed series part names its landed prerequisites". It writes the PLANS.md above and calls `promptFor(dir, "feature-2", { state: { claim: { file: "PLANS.md", key: …, title: <part 3/3 heading>, at: 1, source: "assigned" } } })`. The prompt holds `<assigned-entry>` and `<landed-prerequisites>`, naming both Done titles with their ranges. A claim on an entry with no requires clause gives a prompt with no `<landed-prerequisites>`.
-- `npm run test` passes.
-
 ### An assigned series part names the later parts waiting on it (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/prompt/gate-prompts.ts, src/tick/tick-prompt.ts and their tests; it adds code next to "An assigned series part names the Done entries of the parts it requires", so whichever lands second rebases onto the other)
 
 **Goal.** A feature instance assigned a series part such as "Plain terms code merge, part 1/11" gets an `<assigned-entry>` note (`buildAssignmentNote`, `src/prompt/gate-prompts.ts`) that tells it to "Implement or fix only that entry". It is not told which later parts are waiting on this one, and each of those later parts already plans its own share of the work. If the implementer cannot see where its part ends, it may do a later part's work early, which leaves that part with nothing to do and makes the diff bigger than its plan. Or it may change a name that a later part's plan relies on. Those parts are in PLANS.md's `## Planned`, which the charter says never to read wholesale. This plan adds a short `<waiting-parts>` note that lists, by title and line range, the planned parts that require this one. The implementer then knows where its part ends and what the later parts expect it to leave in place.
@@ -1541,6 +1510,38 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+### An assigned series part names the Done entries of the parts it requires (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/prompt/gate-prompts.ts, src/tick/tick-prompt.ts and their tests; done 2026-10-16)
+
+**Goal.** A series part such as "Plain terms code team, part 6/6" builds on what its prerequisites did. The heading lists those prerequisites in a `requires part 5/6 landed` clause. When the claim allocator hands a feature instance that part, its prompt gets the `<assigned-entry>` note (`buildAssignmentNote`, `src/prompt/gate-prompts.ts`) with only the part's own title and line range. The prerequisites' Done entries record which files and names they actually changed. Those entries sit somewhere in PLANS.md's `## Done`, which runs to thousands of lines, and the charter says never to read PLANS.md wholesale. So the implementer either greps for them blind or works from the plan's assumptions about code the earlier part may have changed. This plan adds a short `<landed-prerequisites>` note that gives each landed prerequisite's Done heading and line range, so the implementer can read exactly that range.
+
+**Approach.**
+- `src/backlog/backlog-eligibility.ts`: add and export
+  `landedPrerequisiteRanges(root: string, title: string): EligibleEntry[]`. For each ref in `requiredParts(title)`, in order, it finds the first entry of `actionableEntryRangesFor(root, "PLANS.md", "Done")` whose `seriesPart(e.title)` has the same `partKey` as the ref (series compared case-insensitively, the part token verbatim, through the module's existing `partKey`). Done is newest-first, so the first match is the most recent landing. It returns `{ key: entryKey(e.title), title: e.title, start, end }` for each match. A ref with no Done match is skipped, so a prerequisite still in Planned, or one that was renamed, adds nothing. A title with no parseable requires clause returns `[]`. A missing PLANS.md returns `[]`, because `actionableEntryRangesFor` already reads a missing file as no ranges. Write the doc comment in the module's style.
+- `src/prompt/gate-prompts.ts`: add a pure `buildLandedPrerequisitesNote(entries: readonly { title: string; start: number; end: number }[]): string`. Put it next to `buildHeldEntriesNote`, and leave `buildAssignmentNote` alone; "The assigned entry names its paths missing from the checkout" (now landed) changed that function's signature. The note is:
+  ```
+  <landed-prerequisites>
+  Your assigned entry builds on parts that already landed. Each one's Done entry records what it actually changed; read one by its range when your entry depends on its details, rather than searching PLANS.md:
+  - "<title>" (PLANS.md lines <start>-<end>)
+  </landed-prerequisites>
+  ```
+  List at most 5 entries. After the fifth, add one more line, `- …and N more`, built with the existing `moreSuffix` from `src/text/phrases.ts` if its wording fits, else a literal. Give it a doc comment saying why it is a pure function, the same as its neighbours.
+- `src/tick/tick-prompt.ts`, in the `if (claim && userPrompt === null)` block after the assignment-note append: when `claim.file === "PLANS.md"`, compute `landedPrerequisiteRanges(root, claim.title)`. When the result is non-empty, add `buildLandedPrerequisitesNote(...)` to the prompt with `appendPromptNote`. A BUGS.md claim gets no such note. Neither does a tick that runs a dequeued user request, because that block is already skipped.
+
+**Landing note.** The tag is `<merged-prerequisites>` and the prose says "already merged", not `<landed-prerequisites>`: `test/vocabulary.test.ts` bans "landed" in `src/prompt/gate-prompts.ts`. The `- …and N more` line is a literal, since `moreSuffix` words it ` (+N more)`.
+
+**Files touched.** `src/backlog/backlog-eligibility.ts`, `src/prompt/gate-prompts.ts`, `src/tick/tick-prompt.ts`, `test/backlog-eligibility.test.ts`, `test/gate-prompts.test.ts`, `test/tick-prompt.test.ts`.
+
+**Acceptance criteria.**
+- `test/backlog-eligibility.test.ts`, new test "landedPrerequisiteRanges names each landed prerequisite's newest Done entry". A temp root's PLANS.md has `## Planned`, holding `### S, part 3/3: c (requires parts 1/3–2/3 landed)`, and `## Done`, holding (newest first) `### s, part 2/3: b (done 2026-10-16)`, `### S, part 1/3: a (done 2026-10-15)` and an older duplicate `### S, part 1/3: a-old (done 2026-10-01)`. The test checks:
+  - The result is part 2/3, then part 1/3 `a`, not `a-old`. Each range matches the entry's real heading line and last body line.
+  - A title with no requires clause gives `[]`.
+  - A title requiring `part 9/9 landed` (no Done match) gives `[]`.
+  - A root with no PLANS.md gives `[]`.
+- `test/gate-prompts.test.ts`, new test "buildLandedPrerequisitesNote lists each entry's title and range and caps at five":
+  - With one entry, the note starts with `<landed-prerequisites>`, holds `"S, part 1/3: a" (PLANS.md lines 10-20)`, and ends with `</landed-prerequisites>`.
+  - With 7 entries, it lists 5 and names the 2 left out.
+- `test/tick-prompt.test.ts`, next to "a bugfix instance's claim names the bug's line range from BUGS.md", new test "a feature instance's claimed series part names its landed prerequisites". It writes the PLANS.md above and calls `promptFor(dir, "feature-2", { state: { claim: { file: "PLANS.md", key: …, title: <part 3/3 heading>, at: 1, source: "assigned" } } })`. The prompt holds `<assigned-entry>` and `<landed-prerequisites>`, naming both Done titles with their ranges. A claim on an entry with no requires clause gives a prompt with no `<landed-prerequisites>`.
+- `npm run test` passes.
 
 ### The repeated-failure pause, part 1/2: Pause only the failing feature instance, including instance 1 (closed 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/roles/loop-ids.ts, src/gates/streak-gate.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-commands.ts and their tests)
 

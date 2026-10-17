@@ -12,8 +12,8 @@ import { readBrief } from "../brief/brief.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
-import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildRejectedReviewNote } from "../prompt/gate-prompts.js";
-import { eligibleEntries } from "../backlog/backlog-eligibility.js";
+import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildLandedPrerequisitesNote, buildRejectedReviewNote } from "../prompt/gate-prompts.js";
+import { eligibleEntries, landedPrerequisiteRanges } from "../backlog/backlog-eligibility.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 import { readEventsSince } from "../events/event-window.js";
@@ -255,6 +255,8 @@ export function assembleTickPrompt(
   if (claim && userPrompt === null) {
     const range = eligibleEntries(root, role).find((e) => e.key === claim.key);
     prompt = appendPromptNote(prompt, buildAssignmentNote(claim, range, range ? missingEntryPaths(root, claim.file, range) : []));
+    const landed = claim.file === "PLANS.md" ? landedPrerequisiteRanges(root, claim.title) : [];
+    if (landed.length > 0) prompt = appendPromptNote(prompt, buildLandedPrerequisitesNote(landed));
   }
   if (!claim && userPrompt === null && role !== DIRECTOR_ROLE && state.heldElsewhere?.length) {
     prompt = appendPromptNote(prompt, buildHeldEntriesNote(state.heldElsewhere));

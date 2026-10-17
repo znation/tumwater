@@ -12,6 +12,7 @@ import {
   entryKey,
   holdMark,
   holdsBacklogReaders,
+  landedPrerequisiteRanges,
   plannedPartKeys,
   prerequisitesLanded,
   refusalNote,
@@ -437,4 +438,27 @@ test("plansWaitingOn follows requires clauses transitively and stops on a cycle"
     "X, part 2/2: b (requires part 1/2 landed)",
   ].map(entry);
   assert.deepEqual(plansWaitingOn(cycle, 0), [1]);
+});
+
+test("landedPrerequisiteRanges names each landed prerequisite's newest Done entry", () => {
+  const dir = tmpdir();
+  const c = "S, part 3/3: c (requires parts 1/3–2/3 landed)";
+  const lines = [
+    "# Plans", "## Planned", `### ${c}`, "body c", "## Done",
+    "### s, part 2/3: b (done 2026-10-16)", "body b",
+    "### S, part 1/3: a (done 2026-10-15)", "body a",
+    "### S, part 1/3: a-old (done 2026-10-01)", "body old",
+  ];
+  fs.writeFileSync(path.join(dir, "PLANS.md"), lines.join("\n") + "\n");
+  const got = landedPrerequisiteRanges(dir, c);
+  assert.deepEqual(
+    got.map((e) => [e.title, e.start, e.end]),
+    [
+      ["S, part 1/3: a (done 2026-10-15)", 8, 9],
+      ["s, part 2/3: b (done 2026-10-16)", 6, 7],
+    ],
+  );
+  assert.deepEqual(landedPrerequisiteRanges(dir, "Plain"), []);
+  assert.deepEqual(landedPrerequisiteRanges(dir, "S, part 3/3: c (requires part 9/9 landed)"), []);
+  assert.deepEqual(landedPrerequisiteRanges(tmpdir(), c), []);
 });
