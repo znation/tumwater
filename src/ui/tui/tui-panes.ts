@@ -29,7 +29,7 @@ import { renderMergeQueue } from "../../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
-import { tryCancelEntry, tryReleaseEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
+import { tryCancelEntry, tryMoveEntryToTop, tryReleaseEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
 import { requestWake } from "../../operator/operator-intent.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { saveRoleNote } from "../../agent/role-notes-write.js";
@@ -848,6 +848,52 @@ export function createTuiPanes(deps: TuiPanesDeps) {
           } else {
             cancelArmed = target;
             flashMessage(`press Ctrl+X again to cancel ${kind} #${position} — any other key keeps it`);
+          }
+        }
+      }
+      deps.requestRender();
+      return true;
+    }
+    if (
+      key.ctrl && key.name === "v" &&
+      promptLineFree() &&
+      view === roleIds.length + 1
+    ) {
+      // Ctrl+V moves the selected plan or bug to the head of its section through the
+      // non-exiting core the dashboard drawer uses; the title check inside tryMoveEntryToTop
+      // refuses a stale selection. It is the terminal twin of `tumwater plan|bug --top <n>`
+      // and the dashboard's Move to top: one press, like the drawer's single click, and moving
+      // changes no entry's eligibility, so no role is woken. A plan or bug at the head answers
+      // already_first with no write.
+      if (selectedEntry !== null) {
+        const entries = flat();
+        const sel = Math.min(selectedEntry, entries.length - 1);
+        const picked = entries[sel];
+        if (picked === undefined) {
+          // an emptied list has nothing to move
+        } else if (picked.label === "done" || picked.label === "fixed" || picked.label === "answered") {
+          flashMessage("a done plan, fixed bug or answered question is read-only");
+        } else if (picked.label === "question") {
+          flashMessage("only a plan or open bug can be moved here");
+        } else {
+          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
+          const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
+          try {
+            const outcome = tryMoveEntryToTop(root, kind, position, picked.title);
+            if (outcome.status === "moved_to_top") {
+              commitBacklogEdit(outcome.file, `Prioritize ${kind}: ${outcome.title}`);
+            }
+            selectedEntry = null;
+            entryScroll = 0;
+            flashMessage(
+              outcome.status === "moved_to_top"
+                ? `moved ${kind} #${position} to the top: ${outcome.title}`
+                : outcome.status === "already_first"
+                  ? `that ${kind} is already at the top`
+                  : `that ${kind} was already removed or moved — nothing moved`,
+            );
+          } catch (err) {
+            flashError(err);
           }
         }
       }

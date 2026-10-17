@@ -252,8 +252,9 @@ function backlogCancelRig() {
     for (let i = 0; i < n; i++) keys.handleKey(undefined, { name: "down" });
   };
   const ctrlX = (): void => keys.handleKey(undefined, { ctrl: true, name: "x" });
+  const ctrlV = (): void => keys.handleKey(undefined, { ctrl: true, name: "v" });
   const read = (f: string): string => fs.readFileSync(path.join(root, f), "utf8");
-  return { root, keys, down, ctrlX, read, plans, bugs };
+  return { root, keys, down, ctrlX, ctrlV, read, plans, bugs };
 }
 
 test("backlog Ctrl+X arms, then a second Ctrl+X cancels the selected bug", () => {
@@ -338,6 +339,55 @@ test("backlog Ctrl+X on a moved entry cancels nothing, and the budget editor blo
   ctrlX();
   assert.equal(keys.state().cancelArmed, null);
   assert.equal(read("PLANS.md"), rewritten);
+});
+
+test("backlog Ctrl+V moves the selected bug to the head of its section", () => {
+  const { keys, down, ctrlV, read, plans } = backlogCancelRig();
+  down(4); // plan 1, plan 2, bug 1, bug 2
+  ctrlV();
+  assert.ok(read("BUGS.md").indexOf("Bug two") < read("BUGS.md").indexOf("Bug one"));
+  assert.equal(read("PLANS.md"), plans);
+  assert.equal(keys.state().selectedEntry, null);
+  assert.match(keys.state().flash ?? "", /moved bug #2/);
+});
+
+test("backlog Ctrl+V moves the selected plan to the head of its section", () => {
+  const { keys, down, ctrlV, read, bugs } = backlogCancelRig();
+  down(2); // plan 1, plan 2
+  ctrlV();
+  assert.ok(read("PLANS.md").indexOf("Plan two") < read("PLANS.md").indexOf("Plan one"));
+  assert.equal(read("BUGS.md"), bugs);
+  assert.match(keys.state().flash ?? "", /moved plan #2/);
+});
+
+test("backlog Ctrl+V on the first entry, an answered row, or a question refuses, and budget mode blocks it", () => {
+  const { root, keys, down, ctrlV, read, plans, bugs } = backlogCancelRig();
+  down(1); // the first plan is already at the head
+  ctrlV();
+  assert.equal(read("PLANS.md"), plans);
+  assert.equal(read("BUGS.md"), bugs);
+  assert.match(keys.state().flash ?? "", /already at the top/);
+  // an answered question row is read-only
+  const withDone = plans + "\n## Done\n\n### Shipped (planned 2026-09-01, done 2026-10-06)\n\nbody\n";
+  fs.writeFileSync(path.join(root, "PLANS.md"), withDone);
+  const withAnswered =
+    read("QUESTIONS.md") + "\n## Answered\n\n### Decided (asked by test 2026-10-01)\n\nbody\n\n**Answered 2026-10-02 by operator:** go\n";
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), withAnswered);
+  down(6); // 5 open entries, then the answered row
+  assert.equal(keys.state().selectedEntry, 5);
+  ctrlV();
+  assert.match(keys.state().flash ?? "", /a done plan, fixed bug or answered question is read-only/);
+  assert.equal(read("PLANS.md"), withDone);
+  keys.handleKey(undefined, { name: "up" }); // back onto the open question
+  ctrlV();
+  assert.match(keys.state().flash ?? "", /only a plan or open bug can be moved here/);
+  assert.equal(read("PLANS.md"), withDone);
+  // the budget editor blocks the move through the promptLineFree guard
+  keys.handleKey(undefined, { name: "down" }); // back onto the answered row
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  ctrlV();
+  assert.equal(read("PLANS.md"), withDone);
+  assert.equal(read("BUGS.md"), bugs);
 });
 
 function backlogReleaseRig() {
