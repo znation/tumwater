@@ -137,26 +137,47 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       (v) => fmtSpan(v), false);
   }
 
-  // Stacked bars, one color per role in reportRoleOrder's order (the first role at the bottom),
-  // with a legend in the same order. Role names are dynamic (custom loops): escaped everywhere.
-  function roleStackChart(data, field, fmt, fmtAxis, integer) {
-    const roles = reportRoleOrder(data);
+  // Window totals per provider — spend desc, then name — so both provider charts share one
+  // color and one legend position, the dashboard twin of the day report's "Cost by provider".
+  // Provider keys are dynamic seams, so reads and seeds use Object.hasOwn as reportRoleOrder
+  // does; a provider that only spent notionally still counts.
+  function reportProviderOrder(data) {
+    const byProvider = {};
+    for (const d of data.series) {
+      for (const [provider, n] of Object.entries(d.costByProvider || {})) byProvider[provider] = (Object.hasOwn(byProvider, provider) ? byProvider[provider] : 0) + n;
+      for (const provider of Object.keys(d.costByProvider || {})) if (!Object.hasOwn(byProvider, provider)) byProvider[provider] = 0;
+      for (const provider of Object.keys(d.notionalByProvider || {})) if (!Object.hasOwn(byProvider, provider)) byProvider[provider] = 0;
+    }
+    return Object.entries(byProvider).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+
+  // Stacked bars, one color per entry in the caller's order (the first at the bottom), with a
+  // legend in the same order. entries is the ordered [key, total][] list that drives the
+  // colors, stack order, and legend; keys are dynamic (roles, providers): escaped everywhere.
+  function stackChart(data, entries, field, fmt, fmtAxis, integer) {
     const colorOf = (i) => REPORT_PALETTE[i % REPORT_PALETTE.length];
     const svg = reportSvg(
       data.series,
-      (d) => roles.map(([role], i) => {
-        // hasOwn again: an absent role must read 0, not Object.prototype's inherited value.
+      (d) => entries.map(([key], i) => {
+        // hasOwn again: an absent key must read 0, not Object.prototype's inherited value.
         const m = d[field] || {};
-        const value = Object.hasOwn(m, role) ? m[role] : 0;
-        return { value, color: colorOf(i), title: d.date + " · " + role + ": " + fmt(value) };
+        const value = Object.hasOwn(m, key) ? m[key] : 0;
+        return { value, color: colorOf(i), title: d.date + " · " + key + ": " + fmt(value) };
       }),
       fmtAxis,
       integer,
     );
-    const legend = roles.length
-      ? "<div class='legend'>" + roles.map(([role], i) => "<span><span class='swatch' style='background:" + colorOf(i) + "'></span>" + esc(role) + "</span>").join("") + "</div>"
+    const legend = entries.length
+      ? "<div class='legend'>" + entries.map(([key], i) => "<span><span class='swatch' style='background:" + colorOf(i) + "'></span>" + esc(key) + "</span>").join("") + "</div>"
       : "";
     return svg + legend;
+  }
+
+  // Stacked bars, one color per role in reportRoleOrder's order (the first role at the
+  // bottom), with a legend in the same order. Role names are dynamic (custom loops): escaped
+  // everywhere. The role-keyed form of stackChart.
+  function roleStackChart(data, field, fmt, fmtAxis, integer) {
+    return stackChart(data, reportRoleOrder(data), field, fmt, fmtAxis, integer);
   }
 
   function chartTicksByRole(data) {
@@ -171,6 +192,19 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // the cap spend.
   function chartNotionalByRole(data) {
     return roleStackChart(data, "notionalByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+  }
+
+  // The team's real spend, per day, stacked by provider: each segment one (day, provider), on
+  // the same axis as the role spend. Both provider maps are sparse, so a day with none keeps
+  // its empty slot, as the role charts do.
+  function chartCostByProvider(data) {
+    return stackChart(data, reportProviderOrder(data), "costByProvider", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+  }
+
+  // The API-equivalent (notional) spend of subscription runs, per provider, on the same axis
+  // as the estimated role spend; the provider twin of chartNotionalByRole.
+  function chartNotionalByProvider(data) {
+    return stackChart(data, reportProviderOrder(data), "notionalByProvider", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
 
   // The team's review friction, per loop, on a tick-like count axis: one segment per
@@ -482,6 +516,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
         block("Merged commits", chartCommits(d)) + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Spend by role", chartCostByRole(d)) +
+        (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +
         block("Rejections by role", chartRejectionsByRole(d)) +
         (seriesHasAny(d, "revisionsByRole") ? block("Revisions by role", chartRevisionsByRole(d)) : "") +
         (seriesHasAny(d, "fallbacksByRole") ? block("Fallbacks by role", chartFallbacksByRole(d)) : "") +
@@ -492,7 +527,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (seriesHasCheckFailures(d) ? block("Red merge checks", chartCheckFailures(d), "per day · failed full-suite checks") : "") +
         (seriesHasMergeWaitMedian(d) ? block("Merge wait median", chartMergeWaitMedian(d), "per day · enqueue to merged on main") : "") +
         (d.totals.notionalCostUsd > 0
-          ? block("Estimated spend by role", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
+          ? block("Estimated spend by role", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") +
+        (!d.role && seriesHasAny(d, "notionalByProvider") ? block("Estimated spend by provider", chartNotionalByProvider(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
         (d.role ? "<p class='muted scope-note'>Role scope: " + esc(d.role) +
           " · merge runs and backlog tallies (features done / bugs fixed) are team-wide and omitted.</p>" : "") +
         (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) +

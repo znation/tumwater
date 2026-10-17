@@ -460,3 +460,42 @@ test("the Backlog items chart stacks features and bugs per day and seriesHasBack
   assert.equal(seriesHasBacklogItems(mk([mkDay("2026-09-01"), mkDay("2026-09-02")])), false);
   assert.equal(seriesHasBacklogItems(data), true);
 });
+
+test("the Spend by provider charts stack per provider and reportProviderOrder lists each provider once", () => {
+  // The provider charts are the dashboard twin of the day report's "Cost by provider" lines:
+  // one segment per (day, provider) stacked in reportProviderOrder's order, with the two
+  // charts (real and notional) sharing one color and one legend position per provider. Both
+  // maps are sparse, so a day with none keeps its empty slot.
+  interface Builders {
+    reportProviderOrder(d: ReportData): Array<[string, number]>;
+    chartCostByProvider(d: ReportData): string;
+    chartNotionalByProvider(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportProviderOrder, chartCostByProvider, chartNotionalByProvider, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportProviderOrder", "chartCostByProvider", "chartNotionalByProvider", "seriesHasAny"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { costByProvider: { hf: 1.2 }, notionalByProvider: { claude: 0.5 } }),
+    mkDay("2026-09-02", { costByProvider: { claude: 0.8 } }),
+    mkDay("2026-09-03", { notionalByProvider: { omlx: 0.25 } }),
+  ]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  // Spend desc, then name; a provider that only shows up notionally (omlx) still gets a row.
+  assert.deepEqual(reportProviderOrder(data), [["hf", 1.2], ["claude", 0.8], ["omlx", 0]]);
+  assert.deepEqual(titles(chartCostByProvider(data)), ["2026-09-01 · hf: $1.20", "2026-09-02 · claude: $0.80"]);
+  assert.deepEqual(titles(chartNotionalByProvider(data)), ["2026-09-01 · claude: $0.50", "2026-09-03 · omlx: $0.25"]);
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartCostByProvider(data)), legendOf(chartNotionalByProvider(data)), "both charts share the provider order and colors");
+  const empty = mk([mkDay("2026-09-01"), mkDay("2026-09-02"), mkDay("2026-09-03")]);
+  assert.equal(seriesHasAny(empty, "costByProvider"), false);
+  assert.equal(seriesHasAny(empty, "notionalByProvider"), false);
+  assert.equal(seriesHasAny(data, "costByProvider"), true);
+  assert.equal(seriesHasAny(data, "notionalByProvider"), true);
+});
