@@ -22,7 +22,7 @@ const NOW = Date.now();
  * rotation-cut log produces, which must render an em dash for its duration. */
 function repoWithTicks(): string {
   const repo = makeRepo();
-  logEvent(repo, { ts: NOW - 120_000, source: "dedupe", type: "run_start", run: 1 });
+  logEvent(repo, { ts: NOW - 120_000, source: "dedupe", type: "run_start", run: 1, model: "huggingface/x" });
   logEvent(repo, {
     ts: NOW - 60_000,
     source: "dedupe",
@@ -33,7 +33,7 @@ function repoWithTicks(): string {
     tokens: 400,
     costUsd: 0.01,
   });
-  logEvent(repo, { ts: NOW - 60_000, source: "clean", type: "run_start", run: 1 });
+  logEvent(repo, { ts: NOW - 60_000, source: "clean", type: "run_start", run: 1, model: "acme/m1" });
   logEvent(repo, {
     ts: NOW - 30_000,
     source: "clean",
@@ -62,9 +62,9 @@ test("history renders the last ticks newest-first with duration, usage, and deta
   const testsIdx = out.indexOf("dedupe");
   assert.ok(cleanIdx >= 0 && testsIdx >= 0, `both rows print: ${JSON.stringify(out)}`);
   assert.ok(cleanIdx < testsIdx, "newest first: clean's run_end is the newest");
-  assert.match(out, /clean\s+#1\s+merged\s+30s\s+1200 tok · \$0\.03\s+Fix the flake/);
-  assert.match(out, /dedupe\s+#1\s+error\s+60s\s+400 tok · \$0\.01\s+the suite went red/);
-  // The unpaired run_end (its run_start never logged) renders the em dash for duration.
+  assert.match(out, /clean\s+#1\s+merged\s+acme\/m1\s+30s\s+1200 tok · \$0\.03\s+Fix the flake/);
+  assert.match(out, /dedupe\s+#1\s+error\s+huggingface\/x\s+60s\s+400 tok · \$0\.01\s+the suite went red/);
+  // The unpaired run_end (no run_start) renders the em dash for duration and no model.
   assert.match(out, /docs\s+#2\s+merged\s+—\s+touch up the readme/);
 });
 
@@ -86,7 +86,7 @@ test("history --grep filters on the rendered row line (plus the run_end type), c
   const repo = repoWithTicks();
   // Matches through the detail column — the row as it renders.
   const { stdout: rendered } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "FLAKE"]));
-  assert.match(rendered, /clean\s+#1\s+merged\s+30s/);
+  assert.match(rendered, /clean\s+#1\s+merged\s+acme\/m1\s+30s/);
   assert.ok(!rendered.includes("dedupe"), `unmatched rows are filtered out: ${JSON.stringify(rendered)}`);
 
   // The raw event type id is greppable the way logs --grep's haystack carries it.
@@ -94,6 +94,11 @@ test("history --grep filters on the rendered row line (plus the run_end type), c
   assert.match(raw, /clean\s+#1/);
   assert.match(raw, /dedupe\s+#1/);
   assert.match(raw, /docs\s+#2/);
+
+  // The model selector rides the haystack, so a run on a given model is greppable by it.
+  const { stdout: byModel } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "acme/m1"]));
+  assert.match(byModel, /clean\s+#1\s+merged\s+acme\/m1/);
+  assert.ok(!byModel.includes("dedupe"), `the dedupe row ran on another model: ${JSON.stringify(byModel)}`);
 });
 
 test("history --grep with no matches names the pattern, not the empty-log prose", async () => {
@@ -113,7 +118,7 @@ test("history on an empty log prints the empty-log prose; --json prints a bare d
 test("history --json serves the rows as raw data, newest first", async () => {
   const repo = repoWithTicks();
   const { stdout } = await expectOkAsync(() => cmdHistory(repo, ["--json"]));
-  const parsed = JSON.parse(stdout) as { rows: Array<{ role: string; ts: number; tokens: number; costUsd: number; result: string }> };
+  const parsed = JSON.parse(stdout) as { rows: Array<{ role: string; ts: number; tokens: number; costUsd: number; result: string; model: string | null }> };
   assert.deepEqual(
     parsed.rows.map((r) => r.role),
     ["docs", "clean", "dedupe"],
@@ -123,6 +128,10 @@ test("history --json serves the rows as raw data, newest first", async () => {
   assert.equal(clean.tokens, 1200);
   assert.equal(clean.costUsd, 0.03);
   assert.equal(clean.result, "changed");
+  // The model each run started on rides the JSON rows; a start-less run is null.
+  assert.equal(clean.model, "acme/m1");
+  assert.equal(parsed.rows[2]!.model, "huggingface/x");
+  assert.equal(parsed.rows[0]!.model, null);
 });
 
 test("history --since prints the windowed rows and the rotation caveat; an empty window says so", async () => {

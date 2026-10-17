@@ -8,11 +8,12 @@
  * handed. */
 import { tickRowCells, type TickRow } from "../../history/history-data.js";
 
-/** The pane body for a set of tick rows: `time  loop #tick  result  duration`, then `usage`
- * and `detail` when they carry anything, joined newest-first by newlines. The cells come from
- * history-data.ts's tickRowCells, the one home the CLI's table builds on too, so a null
- * `durationMs` (the tick's start sits outside the scanned window) shows the em dash here the
- * same way; an empty `usage` (neither tokens nor cost) and an empty
+/** The pane body for a set of tick rows: `time  loop #tick  result  duration`, then `model`
+ * (between the result and the duration), and `usage` and `detail` when they carry anything,
+ * joined newest-first by newlines. The cells come from history-data.ts's tickRowCells, the one
+ * home the CLI's table builds on too, so a null `durationMs` (the tick's start sits outside
+ * the scanned window) shows the em dash here the same way; an empty `model` (the start named
+ * none or sat outside the window), an empty `usage` (neither tokens nor cost), and an empty
  * `detail` are omitted rather than leaving a gap. No rows renders `""`, which the pane's
  * `emptyNote` replaces. `row.result` is the string history-data.ts resolved (including a
  * joined merge verdict), never reclassified here. */
@@ -20,7 +21,9 @@ export function historyPaneText(rows: readonly TickRow[]): string {
   return rows
     .map((row) => {
       const { duration } = tickRowCells(row);
-      const parts = [row.time, `${row.role} #${row.run}`, row.result, duration];
+      const parts = [row.time, `${row.role} #${row.run}`, row.result];
+      if (row.model) parts.push(row.model);
+      parts.push(duration);
       if (row.usage) parts.push(row.usage);
       if (row.detail) parts.push(row.detail);
       return parts.join("  ");

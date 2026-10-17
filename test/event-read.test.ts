@@ -6,6 +6,8 @@ import {
   eventUsage,
   tickSpanMs,
   tickStartMap,
+  tickStartModel,
+  tickStartModelMap,
 } from "../src/events/event-read.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import { dayKey as dayKeyOracle } from "./helpers/oracles.js";
@@ -78,6 +80,21 @@ test("tickStartMap pairs only run_start events by loop#tick", () => {
       ["feature#8", 300],
     ],
   );
+});
+
+test("tickStartModelMap pairs only model-carrying run_start events, and tickStartModel reads null for an unpaired end", () => {
+  const models = tickStartModelMap([
+    ev({ type: "run_start", source: "feature", run: 7, ts: 100, model: "huggingface/x" }),
+    ev({ type: "run_end", source: "feature", run: 7, ts: 150 }), // not a start: ignored
+    ev({ type: "run_start", source: "director", run: 7, ts: 200, model: "" }), // empty model: no entry
+    ev({ type: "run_start", source: "feature", run: 8, ts: 300 }), // no model: no entry
+  ]);
+  assert.deepEqual([...models.entries()], [["feature#7", "huggingface/x"]]);
+  // tickStartModel reads the pairing for one run_end; an unpaired end is null.
+  assert.equal(tickStartModel(ev({ run: 7 }), models), "huggingface/x");
+  assert.equal(tickStartModel(ev({ run: 8 }), models), null);
+  assert.equal(tickStartModel(ev({ run: 9 }), models), null);
+  assert.equal(tickStartModel(ev({ run: 1 }), tickStartModelMap([])), null);
 });
 
 test("tickSpanMs measures start→end, clamps negatives to 0, and reads an unpaired end as null", () => {

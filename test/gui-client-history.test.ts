@@ -26,11 +26,15 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   }>(HISTORY_REGIONS, ["historyTableHtml", "historyClass"], { icon: iconStub });
   const now = Date.now();
   const rows = [
-    { ts: now - 5 * 60_000, time: "2026-09-29 15:33:31", role: "coverage", run: 5, result: "queued", durationMs: 45_000, usage: "12.0k tok · $0.04", detail: "bumped coverage" },
-    { ts: now - 9 * 60_000, time: "2026-09-29 15:29:00", role: "gone-loop", run: 7, result: "no_change", durationMs: null, usage: "", detail: "" },
-    { ts: now - 20 * 60_000, time: "2026-09-29 15:18:00", role: "qa", run: 2, result: "error", durationMs: 240_000, usage: "900 tok", detail: "<script>x</script>" },
+    { ts: now - 5 * 60_000, time: "2026-09-29 15:33:31", role: "coverage", run: 5, result: "queued", model: "acme/m1", durationMs: 45_000, usage: "12.0k tok · $0.04", detail: "bumped coverage" },
+    { ts: now - 9 * 60_000, time: "2026-09-29 15:29:00", role: "gone-loop", run: 7, result: "no_change", model: null, durationMs: null, usage: "", detail: "" },
+    { ts: now - 20 * 60_000, time: "2026-09-29 15:18:00", role: "qa", run: 2, result: "error", model: "claude/x", durationMs: 240_000, usage: "900 tok", detail: "<script>x</script>" },
   ];
   const html = historyTableHtml(rows, "all", new Set(["coverage", "qa"]));
+  assert.match(html, /<th class='c-model'>Model<\/th>/, "the History table names a Model column after Result");
+  assert.match(html, /<td class='c-model'><span class='clamp1' title='acme\/m1'>acme\/m1<\/span><\/td>/, "a row that ran on a model shows its selector");
+  assert.match(html, /<td class='c-model'><span class='clamp1' title='claude\/x'>claude\/x<\/span><\/td>/);
+  assert.match(html, /<td class='c-model'><span class='clamp1' title=''><span class='muted'>—<\/span><\/span><\/td>/, "a row with no model shows a muted dash");
   assert.match(html, /<tr class='clickable' data-open='coverage'>/, "a team loop's row opens its drawer");
   assert.match(html, /<tr><td class='c-x'><\/td><td title='2026-09-29 15:29:00'>/, "a row for a loop no longer in the team is plain and carries no toggle");
   assert.match(html, /5m ago/);
@@ -223,7 +227,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
   // Expanding installs the loading entry synchronously and paints it before the fetch answers.
   toggleHistDetail("clean", "9");
   assert.equal(histDetails.get("clean#9")?.state, "loading", "the loading entry is the fetch's synchronous prefix");
-  assert.match(htmlWith(), /<tr class='detail-row'><td colspan='8'><div class='empty'>Loading run detail…<\/div>/);
+  assert.match(htmlWith(), /<tr class='detail-row'><td colspan='9'><div class='empty'>Loading run detail…<\/div>/);
   assert.match(htmlWith(), /aria-expanded='true'/, "the open row's toggle says so");
 
   // The fetch answers into the cache; the card then shows the pre-rendered trail.

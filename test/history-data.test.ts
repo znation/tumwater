@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-import { readTickRowsSince, summarizeTickRows, tickRowGrepHaystack, tickRows, type HistorySummaryRow, type TickRow } from "../src/history/history-data.js";
+import { readTickRowsSince, summarizeTickRows, tickRowCells, tickRowGrepHaystack, tickRows, type HistorySummaryRow, type TickRow } from "../src/history/history-data.js";
 import { renderSummary } from "../src/history/history-render.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
@@ -41,6 +41,7 @@ test("tickRowGrepHaystack is the canonical unpadded row line, run_end-prefixed",
     role: "feature",
     run: 7,
     result: "changed",
+    model: "acme/m1",
     durationMs: 45_000,
     tokens: 1234,
     costUsd: 0.5,
@@ -49,12 +50,12 @@ test("tickRowGrepHaystack is the canonical unpadded row line, run_end-prefixed",
   };
   assert.equal(
     tickRowGrepHaystack(row),
-    "run_end 2026-10-10 12:00:00  feature  #7  merged  45s  1234 tok · $0.50  added a widget feature changed",
+    "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  45s  1234 tok · $0.50  added a widget feature changed",
   );
   // A row whose run_end lost its start keeps the em dash the renderer shows — not a
   // fabricated duration; the trailing empty cells trim away exactly as renderRow's trimEnd does.
   const unpaired: TickRow = { ...row, durationMs: null, usage: "", detail: "" };
-  assert.equal(tickRowGrepHaystack(unpaired), "run_end 2026-10-10 12:00:00  feature  #7  merged  — feature changed");
+  assert.equal(tickRowGrepHaystack(unpaired), "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  — feature changed");
 });
 
 test("a corrupt event's loop renders as ? like the reports", () => {
@@ -126,6 +127,40 @@ test("tickRows pairs each run_end with its run_start for the duration", () => {
   assert.equal(row.result, "changed");
   assert.equal(row.durationMs, 45_000); // 45s, not 46s: measured from the start event.
   assert.equal(row.detail, "tidy up");
+});
+
+test("tickRows names the model its run_start carried, or none when the start is absent or unnamed", () => {
+  // A run_start's model is the selector string (a per-role override, fallback, or primary);
+  // the row carries it into the cells and the grep haystack so every surface can name it.
+  const rows = tickRows(
+    [
+      startEvent({ ts: 1000, source: "feature", run: 1, model: "acme/m1" }),
+      endEvent({ ts: 2000, source: "feature", run: 1, result: "changed", summary: "tidy" }),
+    ],
+    20,
+    null,
+  );
+  assert.equal(rows.length, 1);
+  const row = rows[0]!;
+  assert.equal(row.model, "acme/m1");
+  assert.equal(tickRowCells(row).model, "acme/m1");
+  assert.match(tickRowGrepHaystack(row), /acme\/m1/);
+  // A run_end whose start is absent (rotation cut it) names no model — an empty cell, never
+  // a fabricated selector.
+  const unpaired = tickRows([endEvent({ ts: 5000, run: 2, result: "skipped" })], 20, null);
+  assert.equal(unpaired[0]!.model, null);
+  assert.equal(tickRowCells(unpaired[0]!).model, "");
+  // A run_start that carried no model names none, even though the start is present.
+  const unnamed = tickRows(
+    [
+      startEvent({ ts: 1000, source: "feature", run: 3 }),
+      endEvent({ ts: 2000, source: "feature", run: 3, result: "changed" }),
+    ],
+    20,
+    null,
+  );
+  assert.equal(unnamed[0]!.model, null);
+  assert.equal(tickRowCells(unnamed[0]!).model, "");
 });
 
 test("tickRows renders no duration when the tick's start is outside the scanned window", () => {
@@ -498,7 +533,7 @@ test("covered is false while the log starts inside the window, true once an even
 
 test("summarizeTickRows tallies each loop's outcome classes in name order with a total", () => {
   const row = (role: string, result: string, ts = 0): TickRow => ({
-    ts, time: "", role, run: 1, result, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
+    ts, time: "", role, run: 1, result, model: null, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
   const summary = summarizeTickRows([
     row("feature", "changed", 100),
@@ -520,7 +555,7 @@ test("summarizeTickRows tallies each loop's outcome classes in name order with a
 
 test("summarizeTickRows sums tokens and cost per loop and into the total", () => {
   const row = (role: string, tokens: number, costUsd: number): TickRow => ({
-    ts: 0, time: "", role, run: 1, result: "changed", durationMs: null, tokens, costUsd, usage: "", detail: "",
+    ts: 0, time: "", role, run: 1, result: "changed", model: null, durationMs: null, tokens, costUsd, usage: "", detail: "",
   });
   const summary = summarizeTickRows([
     row("feature", 1000, 0.1),
@@ -537,7 +572,7 @@ test("summarizeTickRows sums tokens and cost per loop and into the total", () =>
 
 test("summarizeTickRows sums each loop's run time into the total, skipping null spans", () => {
   const row = (role: string, durationMs: number | null): TickRow => ({
-    ts: 0, time: "", role, run: 1, result: "changed", durationMs, tokens: 0, costUsd: 0, usage: "", detail: "",
+    ts: 0, time: "", role, run: 1, result: "changed", model: null, durationMs, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
   const summary = summarizeTickRows([
     row("feature", 60_000),
@@ -554,7 +589,7 @@ test("summarizeTickRows sums each loop's run time into the total, skipping null 
 
 test("summarizeTickRows leaves durationMs absent when every row's span is null", () => {
   const row = (role: string): TickRow => ({
-    ts: 0, time: "", role, run: 1, result: "changed", durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
+    ts: 0, time: "", role, run: 1, result: "changed", model: null, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
   const summary = summarizeTickRows([row("feature"), row("bugfix")]);
   for (const r of [...summary.roles, summary.total]) assert.equal("durationMs" in r, false);

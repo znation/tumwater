@@ -8,7 +8,7 @@
  * which change for different reasons — and keeps core data collection out of the
  * presentation layer, so a core consumer (as the GUI's /api/history already is) never
  * forces a core→ui import. */
-import { eventRole, eventTick, eventUsage, readEvents, tickSpanMs, tickStartMap } from "../events/event-read.js";
+import { eventRole, eventTick, eventUsage, readEvents, tickSpanMs, tickStartMap, tickStartModel, tickStartModelMap } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { readEventsSinceJoined } from "../events/event-window.js";
 import { formatTimestamp } from "../text/datetime.js";
@@ -141,13 +141,18 @@ interface TickRowJoin {
  * numbers `usage` folds into one string (0 when the event carries none — eventUsage's
  * loose-typing coercion, shared with the event feed's fragment): the three fields
  * `tumwater history --json` and the GUI's /api/history serve so a script gets the
- * numbers, not the table's rendering of them. */
+ * numbers, not the table's rendering of them. `model` is the selector string the tick's
+ * run_start named (the agent-qualified selector — a per-role override, a fallback, or the
+ * primary), or null when the start is outside the scanned window or carried no model — the
+ * same absent-start rule durationMs uses, so a run whose start sits outside a `--since`
+ * cutoff still names its model whenever the log holds the start. */
 export interface TickRow {
   ts: number;
   time: string;
   role: string;
   run: number;
   result: string;
+  model: string | null;
   durationMs: number | null;
   tokens: number;
   costUsd: number;
@@ -165,6 +170,7 @@ export interface TickRowCells {
   loop: string;
   tick: string;
   result: string;
+  model: string;
   duration: string;
   usage: string;
 }
@@ -174,16 +180,18 @@ export function tickRowCells(row: TickRow): TickRowCells {
     loop: roleLabel(row.role),
     tick: String(row.run),
     result: eventTypeLabel(row.result),
+    model: row.model ?? "",
     duration: row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
     usage: row.usage,
   };
 }
 
-/** One tick row's line: its timestamp, the five tickRowCells values, then the free-text detail,
- * joined by two spaces and stripped of trailing padding. This is the one home for the row's
- * column order and separator; renderRow (history-render.ts) passes a per-column padding function to
- * align the CLI table, while tickRowGrepHaystack below passes none. The tick cell's "#" prefix
- * rides outside the padding, so its column width measures the number alone. */
+/** One tick row's line: its timestamp, the six tickRowCells values (the model cell between
+ * the result and the duration), then the free-text detail, joined by two spaces and stripped
+ * of trailing padding. This is the one home for the row's column order and separator;
+ * renderRow (history-render.ts) passes a per-column padding function to align the CLI table,
+ * while tickRowGrepHaystack below passes none. The tick cell's "#" prefix rides outside the
+ * padding, so its column width measures the number alone. */
 export function tickRowLine(
   row: TickRow,
   pad: (column: keyof TickRowCells, value: string) => string = (_c, v) => v,
@@ -194,6 +202,7 @@ export function tickRowLine(
     pad("loop", c.loop), // vocabulary-ok: column key, not shown
     `#${pad("tick", c.tick)}`, // vocabulary-ok: column key, not shown
     pad("result", c.result),
+    pad("model", c.model),
     pad("duration", c.duration),
     pad("usage", c.usage),
     row.detail,
@@ -345,6 +354,7 @@ export function tickRows(
   // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
   // and the digest's fold cannot drift into different notions of a tick's span.
   const starts = tickStartMap(scoped);
+  const models = tickStartModelMap(scoped);
   // The merge bookkeeping resolveQueuedResult joins over: per loop, the merge_queued pins
   // (oldest first) and the merge_done/merge_failed outcomes (oldest first). Both ride the role
   // filter with their tick, so the scoped events hold them exactly when they hold the row.
@@ -357,6 +367,7 @@ export function tickRows(
       : join.events.filter((e) => e.source === role)
     : scoped;
   const joinStarts = join ? tickStartMap(joinScoped) : starts;
+  const joinModels = join ? tickStartModelMap(joinScoped) : models;
   const floorTs = join ? join.floorTs : null;
   const { mergeQueuedByLoop, outcomeByLoop } = bucketMergeEvents(joinScoped);
   const claimTop = new Map<string, number>();
@@ -379,6 +390,7 @@ export function tickRows(
       role: eventRole(e),
       run: eventTick(e),
       result,
+      model: tickStartModel(e, join ? joinModels : models),
       durationMs: tickSpanMs(e, starts),
       usage: usageText(e),
       detail: squash(textOr(e.summary, textOr(e.error, "")), DETAIL_MAX),

@@ -507,7 +507,7 @@ export const GUI_STYLES = String.raw`
     .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     table.loops .c-today { display: none; }
     .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .history .c-usage, .history .c-dur { display: none; }
+    .history .c-usage, .history .c-dur, .history .c-model { display: none; }
   }
   @media (max-width: 680px) {
     .stats.six { grid-template-columns: repeat(2, minmax(0, 1fr)); }

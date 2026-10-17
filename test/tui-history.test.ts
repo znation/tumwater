@@ -15,6 +15,7 @@ function row(over: Partial<TickRow> = {}): TickRow {
     role: "feature",
     run: 7,
     result: "changed",
+    model: null,
     durationMs: 90_000,
     tokens: 0,
     costUsd: 0,
@@ -26,6 +27,18 @@ function row(over: Partial<TickRow> = {}): TickRow {
 
 test("a seeded row renders its time, loop, tick, result, duration, usage, and detail", () => {
   assert.equal(historyPaneText([row()]), "14:03  feature #7  changed  90s  $0.42  Add the history pane");
+});
+
+test("a row's model sits between the result and the duration when present, and is omitted when empty", () => {
+  assert.equal(
+    historyPaneText([row({ model: "acme/m1" })]),
+    "14:03  feature #7  changed  acme/m1  90s  $0.42  Add the history pane",
+  );
+  // A model carries no padding when empty — omitted like usage and detail.
+  assert.equal(
+    historyPaneText([row({ model: null, usage: "", detail: "" })]),
+    "14:03  feature #7  changed  90s",
+  );
 });
 
 test("a null duration renders the em dash the CLI table uses", () => {

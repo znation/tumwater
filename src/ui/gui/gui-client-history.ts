@@ -225,7 +225,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
         : "<div class='empty'><strong>No runs yet</strong>Completed runs show up here as the roles work.</div>";
     }
     return "<div class='table-wrap'><table class='table history'><thead><tr><th class='c-x'></th><th>When</th><th>Role</th><th class='c-tick num'>Run</th>" + // vocabulary-ok: the c-tick class stays
-      "<th>Result</th><th class='c-detail'>Detail</th><th class='num c-dur'>Took</th><th class='num c-usage'>Usage</th></tr></thead><tbody>" +
+      "<th>Result</th><th class='c-model'>Model</th><th class='c-detail'>Detail</th><th class='num c-dur'>Took</th><th class='num c-usage'>Usage</th></tr></thead><tbody>" +
       shown.map((r) => {
         const res = resultInfo(r.result);
         // The drill-down toggle rides the drawer's button style and lives in its own leading
@@ -244,11 +244,12 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
           "<td class='mono'>" + esc(roleLabel(r.role)) + "</td>" +
           "<td class='c-tick num muted'>#" + esc(r.run) + "</td>" + // vocabulary-ok: the c-tick class stays
           "<td><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span></td>" +
+          "<td class='c-model'><span class='clamp1' title='" + esc(r.model || "") + "'>" + (r.model ? esc(r.model) : "<span class='muted'>—</span>") + "</span></td>" +
           "<td class='c-detail'><span class='clamp2' title='" + esc(r.detail) + "'>" + (r.detail ? esc(r.detail) : "<span class='muted'>—</span>") + "</span></td>" +
           "<td class='num c-dur'>" + (r.durationMs === null || r.durationMs === undefined ? "—" : esc(fmtSpan(Number(r.durationMs)))) + "</td>" +
           "<td class='num c-usage muted'>" + esc(r.usage || "—") + "</td></tr>";
         // The expanded card rides directly beneath its row, full width.
-        return open ? row + "<tr class='detail-row'><td colspan='8'>" + histDetailCardHtml(histDetails.get(key)) + "</td></tr>" : row;
+        return open ? row + "<tr class='detail-row'><td colspan='9'>" + histDetailCardHtml(histDetails.get(key)) + "</td></tr>" : row;
       }).join("") + "</tbody></table></div>";
   }
   // history-table:end

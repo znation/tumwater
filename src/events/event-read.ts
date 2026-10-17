@@ -76,24 +76,59 @@ export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number;
   return { tokens, costUsd, notionalCostUsd };
 }
 
-/** Pair the run_start events of `events` by tick, keyed `${loop}#${tick}` → start epoch ms —
- * the one home of that pairing and its key format, shared by `tumwater history`'s rows
+/** Pair the run_start events of `events` by tick, keyed `${loop}#${tick}` → the start event
+ * itself — the one home of that pairing and its key format, shared by the timestamps
+ * (tickStartMap), the models (tickStartModelMap), and the tick drill-down's duration
+ * (tick-detail-data.ts uses tickSpanMs' key). A run_start whose `ts` is not a finite number is
+ * as unusable as an absent one and adds no entry either (the same "a torn or hand-edited line
+ * carries no usable timestamp" policy eventTick/eventUsage apply to their fields), so every
+ * entry is a real start the projections below can trust. Private: external consumers read one
+ * of the projections, not this raw pairing. */
+function runStartMap(events: HarnessEvent[]): Map<string, HarnessEvent> {
+  const starts = new Map<string, HarnessEvent>();
+  for (const e of events) {
+    const ts = finiteNumber(e.ts, null);
+    if (e.type === "run_start" && ts !== null) starts.set(`${e.source}#${e.run}`, e);
+  }
+  return starts;
+}
+
+/** The run_start pairing's start epoch ms: `${loop}#${tick}` → start epoch ms, the projection
+ * of runStartMap onto each event's `ts` — shared by `tumwater history`'s row spans
  * (history-data.ts), the failure digest's time-and-spend fold (time-spend.ts), and the tick
  * drill-down's duration (tick-detail-data.ts), so those consumers cannot drift into different
  * notions of a tick's span. A run_end whose start is not in `events` (log rotation cut it, or
  * the tick was skipped before any start logged) has no entry; callers decide what an unpaired
- * end costs. A run_start whose `ts` is not a finite number is as unusable as an absent one and
- * adds no entry either (the same "a torn or hand-edited line carries no usable timestamp"
- * policy eventTick/eventUsage apply to their fields), so every value in the map is real epoch
- * ms and the span below cannot subtract from `undefined`. Lives in the read module, not in a
- * ui module, so core collectors can share it without a core→ui import. */
+ * end costs. Lives in the read module, not in a ui module, so core collectors can share it
+ * without a core→ui import. */
 export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
   const starts = new Map<string, number>();
-  for (const e of events) {
-    const ts = finiteNumber(e.ts, null);
-    if (e.type === "run_start" && ts !== null) starts.set(`${e.source}#${e.run}`, ts);
-  }
+  for (const [key, e] of runStartMap(events)) starts.set(key, finiteNumber(e.ts, 0));
   return starts;
+}
+
+/** The run_start pairing's model selectors: `${loop}#${tick}` → the run's model when its
+ * run_start carries a non-empty string `model` (the agent-qualified selector string — a
+ * per-role override, a fallback, or the primary — that the status rows carry; see
+ * config-views.ts's agentQualifiedSelector). A run_start with no `model`, or an empty or
+ * non-string one, adds no entry, so `tumwater history`'s model cell renders empty for a start
+ * that named none — exactly the empty-usage convention applied to cells. The finite-`ts`
+ * guard rides runStartMap, the one home of the pairing. */
+export function tickStartModelMap(events: HarnessEvent[]): Map<string, string> {
+  const models = new Map<string, string>();
+  for (const [key, e] of runStartMap(events)) {
+    if (typeof e.model === "string" && e.model !== "") models.set(key, e.model);
+  }
+  return models;
+}
+
+/** The model of the run_end event `ev` against `models` (tickStartModelMap's pairing): the
+ * `${loop}#${tick}` lookup, in one place beside the map it indexes, so the key format and the
+ * "no model is null" rule are spelled once — the model twin of tickSpanMs. null when the
+ * start is missing (rotation cut it) or carried no model; callers decide what an empty model
+ * costs — history renders it as an empty cell. */
+export function tickStartModel(ev: HarnessEvent, models: Map<string, string>): string | null {
+  return models.get(`${ev.source}#${ev.run}`) ?? null;
 }
 
 /** The start→end span of the `run_end` event `ev` against `starts` (tickStartMap's pairing):

@@ -338,7 +338,7 @@ test("onceFailures reports every ONCE_FAILURE_RESULTS member and ignores the res
 });
 
 const tickRow = (loop: string, result: string, tick: number): TickRow =>
-  ({ ts: 1_700_000_000_000 + tick, time: "", role: loop, run: tick, result, durationMs: 1, tokens: 0, costUsd: 0, usage: "", detail: "" });
+  ({ ts: 1_700_000_000_000 + tick, time: "", role: loop, run: tick, result, model: null, durationMs: 1, tokens: 0, costUsd: 0, usage: "", detail: "" });
 
 test("windowSummary counts every tick once by outcome class, with the history table", () => {
   const out = windowSummary("2h", summarizeTickRows([tickRow("clean", "changed", 1), tickRow("clean", "no_change", 2), tickRow("qa", "error", 1)]), true);

@@ -26,6 +26,7 @@ function widthsOf(cells: TickRowCells): RowWidths {
     loop: displayWidth(cells.loop),
     tick: cells.tick.length,
     result: displayWidth(cells.result),
+    model: displayWidth(cells.model),
     duration: cells.duration.length,
     usage: displayWidth(cells.usage),
   };
@@ -34,12 +35,13 @@ function widthsOf(cells: TickRowCells): RowWidths {
 /** The per-column maxima over every row the table shows — the widths derive from the rows
  * actually shown, so a single-row table has no padding gap. */
 export function widestWidths(rows: TickRow[]): RowWidths {
-  const widths = { loop: 0, tick: 0, result: 0, duration: 0, usage: 0 };
+  const widths = { loop: 0, tick: 0, result: 0, model: 0, duration: 0, usage: 0 };
   for (const row of rows) {
     const w = widthsOf(tickRowCells(row));
     widths.loop = Math.max(widths.loop, w.loop);
     widths.tick = Math.max(widths.tick, w.tick);
     widths.result = Math.max(widths.result, w.result);
+    widths.model = Math.max(widths.model, w.model);
     widths.duration = Math.max(widths.duration, w.duration);
     widths.usage = Math.max(widths.usage, w.usage);
   }
