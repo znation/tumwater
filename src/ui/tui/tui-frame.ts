@@ -71,7 +71,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
 }
 
 /** The footer's key hints for what the keys do right now: keys bright, words dim. */
-export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; images?: number }, width: number): StatusLine {
+export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; images?: number }, width: number): StatusLine {
   let keys: Array<[string, string]>;
   if (mode.entryEditFor?.position === null) keys = [["Enter", `file ${mode.entryEditFor.kind}`], ["Ctrl+N", `switch to ${mode.entryEditFor.kind === "plan" ? "bug" : "plan"}`], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.entryEditFor) keys = [["Enter", "save title"], ["Ctrl+E", "body file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -80,11 +80,12 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (mode.pauseEditMode && mode.pauseEditStop) keys = [["Enter", "schedule stop"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.pauseEditMode) keys = [["Enter", mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.attachMode) keys = [["Enter", "attach image path"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.notesEditFor) keys = [["Enter", "replace notes from file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.deferMode) keys = [["Enter", "save the delay"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (view.kind === "transcript") {
-    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notes"], ...(view.note ? [["Ctrl+X", "clear notes"] as [string, string]] : []), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "stop run"], ["Ctrl+V", "reset counters"],
+    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notes"], ...(view.note ? [["Ctrl+X", "clear notes"] as [string, string], ["Ctrl+E", "edit notes"] as [string, string]] : []), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "stop run"], ["Ctrl+V", "reset counters"],
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["Ctrl+X", "cancel entry"], ["Ctrl+R", "release entry"], ["Ctrl+V", "top entry"], ["Ctrl+E", "edit entry"], ["Ctrl+N", "new plan/bug"], ["Ctrl+A", "answer question"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: team"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
@@ -98,7 +99,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   // search), so every view whose hint is about sending names its state: the pending delay
   // when one is set, otherwise the way to open it. The mode branches above already name
   // their own keys and keep the line, so this only rides the view hints.
-  if (!mode.deferMode && !mode.attachMode && !mode.pauseEditMode && !mode.budget && !mode.rolePromptFor && !mode.queuedEditFor && !mode.answerFor && !mode.entryEditFor)
+  if (!mode.deferMode && !mode.attachMode && !mode.notesEditFor && !mode.pauseEditMode && !mode.budget && !mode.rolePromptFor && !mode.queuedEditFor && !mode.answerFor && !mode.entryEditFor)
     keys.push(["Ctrl+L", mode.defer ? `send later: ${mode.defer}` : "send later"]);
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {
@@ -109,8 +110,9 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
 }
 
 /** The prompt line's target, like the dashboard composer's: who Enter sends to. */
-export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; images?: number }): StatusSpan[] {
+export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; images?: number }): StatusSpan[] {
   if (mode.budget) return [{ text: "daily cap $", tone: "brand" }, { text: " " }];
+  if (mode.notesEditFor) return [{ text: `notes for ${mode.notesEditFor}`, tone: "brand" }, { text: " › " }];
   if (mode.entryEditFor) return [{ text: mode.entryEditFor.position === null ? `new ${mode.entryEditFor.kind}` : `edit ${mode.entryEditFor.kind} #${mode.entryEditFor.position}`, tone: "brand" }, { text: " › " }];
   if (mode.answerFor) return [{ text: `answer #${mode.answerFor.position}`, tone: "brand" }, { text: " › " }];
   if (mode.queuedEditFor) return [{ text: `edit ${mode.queuedEditFor.role}`, tone: "brand" }, { text: " › " }];

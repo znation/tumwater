@@ -56,6 +56,9 @@ interface TuiKeysState {
   attachMode: boolean;
   /** The number of pending image attachments the next director prompt will carry. */
   images: number;
+  /** The notes view's Ctrl+E replace-notes mode holds the prompt line: the role whose notes
+   * the prompt line is replacing from a typed file path, or null when closed. */
+  notesEditFor: string | null;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
   /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */
@@ -260,6 +263,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     now,
     flat,
     refreshQueued: panes.refreshQueued,
+    refreshNotes: panes.refreshNotes,
     clearBacklogSelection: panes.clearBacklogSelection,
     applyHistorySearch: panes.applyHistorySearch,
     applyActivitySearch: panes.applyActivitySearch,

@@ -44,7 +44,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
       // editor consumes the key first, so the pane arm is never reached while it is open.)
       if (
         ctx.es.budgetMode || ctx.es.rolePromptFor || ctx.es.deferMode || ctx.es.pauseEditMode ||
-        ctx.es.queuedEditFor || ctx.es.answerFor || ctx.es.entryEditFor ||
+        ctx.es.queuedEditFor || ctx.es.answerFor || ctx.es.entryEditFor || ctx.es.notesEditFor ||
         session.roleIds.length === 0 || session.view < 1 || session.view > session.roleIds.length
       ) {
         session.requestRender();
@@ -132,6 +132,16 @@ export function createTranscriptPane(session: TuiPaneSession) {
 
   return {
     handleKey,
+    // Repaint the notes view after the Ctrl+E editor wrote a replacement note: recompute the
+    // cached inspection Markdown and repaint, but only when the notes view is actually up for
+    // that role — a write whose view cycled away or whose roster shifted must not overwrite
+    // the pane now shown or repaint a stale frame.
+    refreshNotes(role: string) {
+      if (!noteMode || session.roleIds[session.view - 1] !== role) return;
+      noteCache = roleInspectMarkdown(session.root, role);
+      session.paneScroll = 0;
+      session.requestRender();
+    },
     reset() {
       // A cycle away leaves notebook and change modes and drops their snapshots.
       noteMode = false;

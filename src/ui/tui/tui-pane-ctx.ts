@@ -12,6 +12,9 @@ export interface TuiPaneEditorState {
   queuedEditFor: { role: string; file: string } | null;
   answerFor: { position: number; title: string } | null;
   entryEditFor: { kind: "plan" | "bug"; position: number | null; title: string } | null;
+  /** The notes view's Ctrl+E replace-notes mode holds the prompt line: the role whose notes
+   * the prompt line is replacing from a typed file path, or null when closed. */
+  notesEditFor: string | null;
 }
 
 /** The per-keypress read `createTuiKeys` passes to every pane arm — the editor flags the
@@ -30,7 +33,8 @@ export interface TuiPaneCtx {
 export function promptLineFree(es: TuiPaneEditorState): boolean {
   return (
     !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode &&
-    !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor
+    !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
+    !es.notesEditFor
   );
 }
 
@@ -54,6 +58,9 @@ export interface TuiPaneModule {
   reset?(): void;
   /** Drop the pane's session role scope when the incoming roster no longer names it. */
   dropScopes?(roles: string[]): void;
+  /** Repaint a view's cached body after an editor wrote to the disk it renders (the notes
+   * view repaints its notebook after a replace/clear). */
+  refreshNotes?(role: string): void;
   /** The pane's slice of the render state the frame merges. */
   state?(): Record<string, unknown>;
 }

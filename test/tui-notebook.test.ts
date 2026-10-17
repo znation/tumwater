@@ -139,3 +139,80 @@ test("Ctrl+X on the live transcript leaves the notebook alone", async () => {
     assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "keep me\n");
   });
 });
+
+// Ctrl+E on the notes view replaces a role's notes from a typed file path — the terminal twin
+// of `tumwater role <id> --notes-file <path>` and the dashboard drawer's textarea. The write
+// goes through the same saveRoleNote the CLI and the drawer share, so the 4 KB cap and its
+// wording cannot drift.
+
+test("Ctrl+E replaces a role's notes from a typed file path", async () => {
+  const repo = await makeTuiRepo();
+  seedNote(repo, "clean", "stale note\n");
+  const replacement = path.join(repo, "replacement-note.md");
+  fs.writeFileSync(replacement, "the new scheduler note\nmultiline\n");
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true }); // events → transcript
+    tui.key(undefined, "n", { ctrl: true }); // → notes
+    assert.match(tui.lastFrame(), /Ctrl\+E edit/); // the hint offers the replace
+    tui.key(undefined, "e", { ctrl: true }); // open the notes editor
+    assert.match(tui.lastFrame(), /replace clean's notes from a file/);
+    for (const ch of replacement) tui.key(ch, ch); // type the path character by character
+    tui.key(undefined, "return");
+    // The note file holds the replacement verbatim and the notes view repaints it.
+    assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "the new scheduler note\nmultiline\n");
+    assert.match(tui.lastFrame(), /notes saved/);
+    assert.match(tui.lastFrame(), /the new scheduler note/);
+    assert.match(tui.lastFrame(), /multiline/);
+  });
+});
+
+test("an empty or nonexistent notes-file path flashes and stays in the editor", async () => {
+  const repo = await makeTuiRepo();
+  seedNote(repo, "clean", "keep me\n");
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "n", { ctrl: true });
+    tui.key(undefined, "e", { ctrl: true });
+    tui.key(undefined, "return"); // an empty path
+    assert.match(tui.lastFrame(), /a file path is required/);
+    assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "keep me\n");
+    const missing = path.join(repo, "no-such-note.md");
+    for (const ch of missing) tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /no such file/);
+    assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "keep me\n");
+    assert.match(tui.lastFrame(), /keep me/); // the seeded note still renders
+  });
+});
+
+test("Esc cancels the notes editor, restores the prompt draft, and writes nothing", async () => {
+  const repo = await makeTuiRepo();
+  seedNote(repo, "clean", "keep me\n");
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "n", { ctrl: true });
+    for (const ch of "a director draft") tui.key(ch, ch); // a prompt draft to restore
+    tui.key(undefined, "e", { ctrl: true });
+    for (const ch of "other/path.md") tui.key(ch, ch);
+    tui.key(undefined, "escape");
+    assert.match(tui.lastFrame(), /notes edit cancelled/);
+    assert.match(tui.lastFrame(), /a director draft/); // the prompt draft came back
+    assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "keep me\n");
+  });
+});
+
+test("a file over the notes byte cap flashes saveRoleNote's message and writes nothing", async () => {
+  const repo = await makeTuiRepo();
+  seedNote(repo, "clean", "keep me\n");
+  const big = path.join(repo, "big-note.md");
+  fs.writeFileSync(big, "x".repeat(5000));
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "n", { ctrl: true });
+    tui.key(undefined, "e", { ctrl: true });
+    for (const ch of big) tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /shorten it to at most 4096 bytes/);
+    assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "keep me\n");
+  });
+});

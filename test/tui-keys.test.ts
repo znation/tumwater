@@ -19,7 +19,7 @@ import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMarker, notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
-import { abortRequestPath, reclaimRequestPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
@@ -200,6 +200,97 @@ test("defer mode is exclusive with the other prompt-line editors and survives vi
   assert.equal(keys.state().budgetMode, true);
   assert.equal(keys.state().deferMode, false);
   assert.match(keys.state().flash!, /finish or cancel the budget edit first/);
+});
+
+test("notes edit mode reads a role's notes replacement from a typed file path", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+  // Seed a note so the notes view renders it, and a replacement file to type into the editor.
+  const notePath = roleNotesPath(root, "clean");
+  fs.mkdirSync(path.dirname(notePath), { recursive: true });
+  fs.writeFileSync(notePath, "stale note\n");
+  const replacement = path.join(root, "replacement.md");
+  fs.writeFileSync(replacement, "the fresh note\n");
+
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → notes
+  keys.handleKey(undefined, { ctrl: true, name: "e" }); // open the notes editor
+  assert.equal(keys.state().notesEditFor, "clean");
+  assert.equal(keys.state().input, "");
+  for (const ch of replacement) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().notesEditFor, null, "a successful save leaves the notes editor");
+  assert.equal(fs.readFileSync(notePath, "utf8"), "the fresh note\n");
+  assert.match(keys.state().flash!, /notes saved/);
+
+  // Esc cancels, restores the prompt draft, and writes nothing.
+  for (const ch of "a director draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().input, "");
+  for (const ch of "other/path.md") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().notesEditFor, null);
+  assert.equal(keys.state().input, "a director draft", "Esc restores the saved prompt draft");
+  assert.equal(keys.state().flash, "notes edit cancelled");
+  assert.equal(fs.readFileSync(notePath, "utf8"), "the fresh note\n");
+
+  // An empty path and a missing file flash and keep the editor open.
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().notesEditFor, "clean", "an empty path keeps the editor open");
+  assert.match(keys.state().flash!, /a file path is required/);
+  for (const ch of path.join(root, "nope.md")) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().notesEditFor, "clean", "a missing file keeps the editor open");
+  assert.match(keys.state().flash!, /no such file/);
+
+  // An over-cap note flashes and keeps the editor open, writing nothing.
+  const big = path.join(root, "big.md");
+  fs.writeFileSync(big, "x".repeat(5000));
+  keys.handleKey(undefined, { ctrl: true, name: "u" }); // clear the typed path
+  for (const ch of big) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().notesEditFor, "clean", "an over-cap note keeps the editor open");
+  assert.match(keys.state().flash!, /shorten it to at most 4096 bytes/);
+  assert.equal(fs.readFileSync(notePath, "utf8"), "the fresh note\n");
+
+  // Ctrl+X during the edit must not clear the note mid-edit, and Ctrl+N must not cycle the
+  // notes view away from the open editor (either would desync noteMode from the held line).
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().notesEditFor, "clean", "Ctrl+N does not close the notes editor");
+  assert.equal(keys.state().noteMode, true, "Ctrl+N does not cycle the notes view away while editing");
+  assert.equal(keys.state().changeMode, false, "Ctrl+N does not switch to the change view while editing");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().notesEditFor, "clean", "Ctrl+X does not close the notes editor");
+  assert.equal(keys.state().noteMode, true, "Ctrl+X does not exit the notes view while editing");
+  assert.equal(fs.readFileSync(notePath, "utf8"), "the fresh note\n", "Ctrl+X does not clear the note mid-edit");
+
+  // Ctrl+B while the notes editor holds the line refuses.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().notesEditFor, "clean", "notes keeps the line; budget does not open");
+  assert.equal(keys.state().budgetMode, false);
+  assert.match(keys.state().flash!, /finish or cancel the notes edit first/);
+});
+
+test("notes edit mode keeps Up/Down from recalling history into the typed path field", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+  // Seed the recall history with a submitted prompt, so Up would paste it if it reached the field.
+  for (const ch of "run the tests") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().input, "", "submitting clears the line");
+
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → notes
+  keys.handleKey(undefined, { ctrl: true, name: "e" }); // open the notes editor
+  for (const ch of "notes/path.md") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "up" });
+  assert.equal(keys.state().notesEditFor, "clean", "Up does not close the notes editor");
+  assert.equal(keys.state().input, "notes/path.md", "Up does not recall the submitted prompt into the path field");
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().input, "notes/path.md", "Down does not recall into the path field either");
 });
 
 test("history recall: a submitted prompt comes back on Up", () => {

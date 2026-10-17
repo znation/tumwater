@@ -7,6 +7,7 @@ import { createTuiEditorSession } from "./tui-editor-session.js";
 import { createBudgetEditor } from "./tui-editor-budget.js";
 import { createDeferEditor } from "./tui-editor-defer.js";
 import { createAttachEditor } from "./tui-editor-attach.js";
+import { createNotesEditor } from "./tui-editor-notes.js";
 import { createPromptEditor } from "./tui-editor-prompt.js";
 import { createPauseEditor } from "./tui-editor-pause.js";
 import { createQueuedEditor } from "./tui-editor-queued.js";
@@ -33,6 +34,8 @@ export interface TuiEditorsDeps {
   flat(): ReturnType<typeof labeledBacklogEntries>;
   /** Re-read the Queued pane's rows and cached list after a commit/exit that touched the queue. */
   refreshQueued(): void;
+  /** Repaint the notes view's cached notebook after a replace/clear write. */
+  refreshNotes(role: string): void;
   /** Clear the project-status pane's entry selection and its body scroll after a recorded
    * answer/edited entry leaves the list. */
   clearBacklogSelection(): void;
@@ -84,6 +87,9 @@ interface TuiEditorState {
   attachMode: boolean;
   /** The number of pending image attachments the next director prompt will carry. */
   images: number;
+  /** The notes view's Ctrl+E replace-notes mode holds the prompt line: the role whose notes
+   * the prompt line is replacing from a typed file path, or null when closed. */
+  notesEditFor: string | null;
 }
 
 /** The prompt-line editor subsystem `createTuiKeys` constructs: the aggregator that owns the
@@ -124,6 +130,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     createBudgetEditor(session),
     createDeferEditor(session),
     createAttachEditor(session),
+    createNotesEditor(session),
     createPauseEditor(session),
     createPromptEditor(session),
     createQueuedEditor(session),
@@ -188,7 +195,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, defer, pause and search modes keep them out —
     // recalling a prompt into the cap/delay/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.defer && !session.held.attach && !session.held.pause && !session.held.search) {
+    if (!session.held.budget && !session.held.defer && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -246,6 +253,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         entryEditFor: session.held.entry,
         attachMode: session.held.attach,
         images: session.images.length,
+        notesEditFor: session.held.notes,
       };
     },
   };

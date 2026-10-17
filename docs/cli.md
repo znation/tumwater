@@ -72,9 +72,9 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+O` | Activity, History, Health | cycle the event type on Activity; cycle the outcome filter on History; on Health, toggle the problems-only (warn and fail) view |
 | `Ctrl+Y` | History | toggle the per-role Summary table |
 | `Ctrl+N` | History | the newest completed run's event trail, and back |
-| `Ctrl+E` | Usage, Failures, Health | cycle the trailing window on Usage and Failures; on Health, run one manual reclaim pass now (the terminal twin of the dashboard disk row's reclaim button) |
+| `Ctrl+E` | Usage, Failures, Health, Transcript | cycle the trailing window on Usage/Failures; on Health, run one manual reclaim pass now (the terminal twin of the dashboard disk row's reclaim button); on a role's notes view, replace the notes from a file (the terminal twin of `tumwater role <id> --notes-file <path>`) |
 | `Ctrl+R` | Transcript, Backlog, Pending, Health | send a prompt to that role; release the selected refused or waiting entry; refresh the merge queue and change roster on Pending / re-run the doctor checks on Health |
 | `Ctrl+P` / `Ctrl+W` / `Ctrl+A` / `Ctrl+V` | Transcript | pause or resume the role / wake it (a duration schedules it, `cancel` drops scheduled wakes) / stop its in-flight run / zero the role's counters |
-| `Ctrl+N` | Transcript | cycle transcript, notes, and pending change; `Ctrl+X` pressed twice on notes clears them |
+| `Ctrl+N` | Transcript | cycle transcript, notes, and pending change; on notes, `Ctrl+X` pressed twice clears them and `Ctrl+E` replaces them from a file |
 | `Ctrl+X` (twice) / `Ctrl+V` / `Ctrl+E` / `Ctrl+N` / `Ctrl+A` | Backlog | cancel the selected entry / move it to the head of its section / edit its title (Ctrl+E again replaces title and body from a file) / file a new plan or bug / answer the selected question |
 | `Ctrl+V` / `Ctrl+E` / `Ctrl+X` | Inbox | move the selected queued prompt to the head of its role's queue / edit / cancel it |
