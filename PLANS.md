@@ -1680,6 +1680,26 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The repeated-failure pause page names the role's last error, so `tumwater logs` and the notify message say why the role stopped (planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts)
+
+**Goal.** When the error-streak breaker pauses a role, `pollStreakGate` (`src/gates/streak-gate.ts`) logs `role_streak_paused` with `role`, `streak`, and `lastError` when one is recorded. `docs/how-it-works.md` already says this event "names the streak and the cause", but `formatEvent` (`src/events/event-format.ts`, `case "role_streak_paused"`) renders only `role <id> paused — <N> runs failed in a row; fix the cause and resume it (tumwater resume --role <id>)`. `role_streak_paused` is in `NOTIFY_EVENT_TYPES` (`src/events/notify.ts`), so that line is the whole page: it tells the operator to fix the cause without saying what the cause is. Render the recorded `lastError` in the line.
+
+**Approach.**
+- `src/events/event-format.ts`, `case "role_streak_paused"`: when `typeof e.lastError === "string"` and `e.lastError.trim()` is non-empty, insert `` ` — last error: ${squash(e.lastError, 120)}` `` between `runs failed in a row` and `; fix the cause…`. The result reads `role docs paused — 10 runs failed in a row — last error: pi exited 1; fix the cause and resume it (tumwater resume --role <id>)`. Import `squash` from `../text/text.js` beside the existing `textOr, truncate` import. `squash` collapses whitespace first, so a multi-line error stays on one line. With no usable `lastError` (a missing key, a non-string, or blank text), keep today's line exactly, so events logged before this change and summary-less trips render as they do now. Update the case's comment to say the line names the last error when one is recorded.
+- Leave `describeStateChange` (`src/failure/failure-state-change.ts`) unchanged. Its digest sits beside the failure clusters that already show the errors, and `test/failure-state-change.test.ts` pins its exact text.
+- `docs/config.md`, notify table: change the `role_streak_paused` row to "The repeated-failure breaker paused a role; the message names the streak and its last error."
+- Change no event payload key and no event type. The payload already carries `lastError`.
+
+**Files touched.** `src/events/event-format.ts`, `docs/config.md`, `test/event-format-fleet.test.ts`.
+
+**Acceptance criteria.**
+- `test/event-format-fleet.test.ts`: the existing `streakPaused` assertion (no `lastError`) passes unchanged. New assertions in the same test:
+  - `{ type: "role_streak_paused", role: "docs", streak: 10, lastError: "pi exited 1\n  at runTick" }` renders a line ending `role docs paused — 10 runs failed in a row — last error: pi exited 1 at runTick; fix the cause and resume it (tumwater resume --role <id>)`, still without `warning`.
+  - A 300-character `lastError` is clipped to 120 characters, ending in `…`.
+  - `lastError: "   "` renders the same line as the summary-less event.
+- `test/event-format.test.ts`'s malformed-payload case for `role_streak_paused` (object `role` and `streak`, no `lastError`) still passes.
+- `npm run test` passes.
+
 ## Done
 
 ### The `merge_failed` event carries the change's summary, so `tumwater logs` and the notify page say which change failed to land (planned 2026-10-16 by plan; independent of every other entry — touches src/landing/landing-slot.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md and their tests) — done 2026-10-16
