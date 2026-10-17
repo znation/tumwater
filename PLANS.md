@@ -1233,6 +1233,34 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The event feed gives `backend_binary`, `quiet_hours_started`, `quiet_hours_ended`, and `restart_forced` their own lines, and a test makes every event type render one (planned 2026-10-16 by plan)
+
+**Goal.** `eventMessage` (`src/events/event-format.ts`) turns each `HarnessEvent` into the one line that `tumwater logs`, `formatEvent`, and the dashboards' activity feed (`eventFeedItem`) show. Four types in the `HarnessEvent["type"]` union (`src/events/events.ts`) have no `case` and fall through to `default`, which prints the bare code. So an operator sees `quiet_hours_started` with no window and no hint that roles have stopped starting runs. They see `restart_forced` with no build, and `backend_binary` without the backend's name. Each event already carries the fields a sentence needs (`window`; `build`; `agent` and `found`). This plan writes those sentences and adds a test so the next new event type cannot ship without a line. `EVENT_TYPE_LABELS` already does the same job for the short chip labels in `src/events/event-labels.ts`.
+
+**Approach.**
+- In `eventMessage`, add four cases next to their siblings. Use the existing helpers `textOr` and `shortSha`, and follow the sibling cases' wording style: a routine hold reads `waiting: …` with no warning prefix, as in `disk_low` and `maintenance_quota_hold`.
+  - `quiet_hours_started` (next to `disk_low`): `waiting: quiet hours (<window>) — roles start no new runs until the window ends; the director still runs`. Drop the ` (<window>)` part when `e.window` is not a non-empty string. `pollQuietHoursGate` (`src/scheduling/quiet-hours.ts`) sets `window: undefined` when `quietHours` is not a string.
+  - `quiet_hours_ended`: `quiet hours ended (<window>) — roles start runs again`. Handle a missing window the same way.
+  - `restart_forced` (next to `restart_blocked`): `restart forced by you — the update skips its cooldown (running version <shortSha(e.build)>)`. `Redeployer.forceRestart` (`src/redeploy/redeployer.ts`) emits it with `build: this.build.sha`, which is the running build.
+  - `backend_binary` (next to `model_changed`): when `e.found === false`, write `warning: newly routed <agent> backend — its binary was not found`. Otherwise write `newly routed <agent> backend checked — binary found`. The `<agent>` comes from `textOr(e.agent)`. Today the live-config path in `src/config/config-live.ts` emits only `found: true` and sends a missing binary through `warn(...)`. The `found === false` branch keeps the line honest if a later emitter logs that verdict too.
+- Add a short comment over each new case, matching the density of the cases around it.
+- Change no emitters, no event fields, and no `EVENT_TYPE_LABELS` entries. All four types already have labels.
+
+**Files touched.** `src/events/event-format.ts`, `test/event-format.test.ts`.
+
+**Tests** (in `test/event-format.test.ts`, importing `eventMessage` from `../src/events/event-format.js` and `EVENT_TYPE_LABELS` from `../src/events/event-labels.js`):
+- "eventMessage gives every event type its own line, never the bare code". For each key `type` of `EVENT_TYPE_LABELS`, call `eventMessage({ ts: 0, source: "tumwater", type } as never)` and assert the result is not `type`. `EVENT_TYPE_LABELS` is typed `Record<HarnessEvent["type"], string>`, so the compiler already makes its keys match the union. If an existing case also returns the bare code for a minimal event, fix that case in this change. Before this change, the test fails on the four types above.
+- "formatEvent renders quiet hours, a forced restart, and a backend check in words". Assert the following lines:
+  - `quiet_hours_started` with `window: "23:00-07:00"` contains `quiet hours (23:00-07:00)` and `no new runs`. Without `window`, it contains neither `undefined` nor `()`.
+  - `quiet_hours_ended` contains `roles start runs again`.
+  - `restart_forced` with `build: "abcdef1234567890"` contains `abcdef12`.
+  - `backend_binary` with `agent: "claude", found: true` contains `claude` and `binary found`. With `found: false`, it starts its message with `warning:`.
+
+**Acceptance criteria.**
+- `tumwater logs` and the dashboard feed show the four sentences above in place of the bare type codes.
+- Both new tests pass, and the first one would fail if a case were removed.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor` gains a `root install` row that warns when the root checkout's `node_modules` no longer matches `package-lock.json`'s direct pins, so an operator learns a failed post-merge re-sync is making every check install into its own tree (planned 2026-10-16 by plan; independent of every other Planned entry — adds one new module under `src/doctor/` and one row to `src/doctor/doctor.ts`'s list, and leaves `src/doctor/doctor-checks.ts` alone, which the in-flight "check row … 24 h passing merge-check durations" plan edits) (done 2026-10-16)
