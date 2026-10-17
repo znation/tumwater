@@ -152,7 +152,7 @@ export function assembleTickPrompt(
     userPromptFile = entry?.file ?? null;
     // The compact prompt leaves the brief block out: the director reads the brief file in full,
     // and that file carries the same text.
-    prompt = buildDirectorPrompt(userPrompt, compact ? "" : initialPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent, compact);
+    prompt = buildDirectorPrompt(userPrompt, compact ? "" : initialPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent, compact, config.roles[DIRECTOR_ROLE]?.instructions);
   } else {
     // The loop id keys its inbox and notebook; every lookup ABOUT the role — catalog charter,
     // instructions, the qa/selfcheck/clean blocks — resolves through the base role, so

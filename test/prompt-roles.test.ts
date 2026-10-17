@@ -23,6 +23,12 @@ test("director routing records standing guidance in PRINCIPLES.md first", () => 
   const prompt = buildDirectorPrompt("prefer no third-party deps", "a project");
   assert.match(prompt, /PRINCIPLES\.md first for standing design guidance and taste/);
 });
+test("a director's instructions override is appended identically to a role's; unset stays byte-identical", () => {
+  const withInstructions = buildDirectorPrompt("add dark mode", "a project", undefined, undefined, undefined, undefined, undefined, undefined, undefined, "Prefer small plans.");
+  assert.match(withInstructions, /Additional standing instructions from the user:\nPrefer small plans\./);
+  const without = buildDirectorPrompt("add dark mode", "a project");
+  assert.ok(!without.includes("Additional standing instructions"));
+});
 test("the readme role leaves PRINCIPLES.md to the director and steward", () => {
   const role = roleById("readme");
   assert.ok(role);

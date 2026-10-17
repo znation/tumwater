@@ -99,7 +99,7 @@ The fields of a `roles.<id>` entry:
 | Key | Default | What it does |
 | --- | --- | --- |
 | `enabled` | `true` (`false` for selfcheck) | Whether the role runs. |
-| `instructions` | none | Extra instructions appended to this role's prompt. |
+| `instructions` | none | Extra instructions appended to this role's prompt. The director's entry is honored like any role's (its notes stay unset, the `role` command's `--clear-notes` refusal). |
 | `provider` | none | A provider override for this role; unset uses the top-level value. |
 | `model` | none | A model override for this role: a selector, or a tier name from the top-level `model` map; unset uses the role's catalog tier. |
 | `thinking` | none | A thinking-level override for this role; unset uses the top-level value. |

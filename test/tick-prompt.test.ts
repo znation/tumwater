@@ -134,6 +134,28 @@ test("a director's prompt is built from the dequeued request, returned as userPr
   assert.match(result.prompt, /prefer no third-party deps/);
 });
 
+test("a director run receives its roles.director.instructions override", () => {
+  const dir = root();
+  enqueuePrompt(dir, "add dark mode");
+  const config = defaultConfig();
+  config.roles[DIRECTOR_ROLE] = { ...config.roles[DIRECTOR_ROLE], enabled: true, instructions: "Prefer vitest." };
+  const result = promptFor(dir, DIRECTOR_ROLE, { config });
+  assert.ok(result);
+  assert.match(result.prompt, /Additional standing instructions from the user:\nPrefer vitest\./);
+});
+
+test("a director's instructions override rides the preview peek without consuming the inbox", () => {
+  const dir = root();
+  enqueuePrompt(dir, "add dark mode");
+  const config = defaultConfig();
+  config.roles[DIRECTOR_ROLE] = { ...config.roles[DIRECTOR_ROLE], enabled: true, instructions: "Prefer vitest." };
+  const input = { root: dir, config, role: DIRECTOR_ROLE, state: state({ role: DIRECTOR_ROLE }) };
+  const preview = assembleTickPrompt({ ...input, preview: true });
+  assert.ok(preview);
+  assert.match(preview.prompt, /Additional standing instructions from the user:\nPrefer vitest\./);
+  assert.equal(inboxSize(dir, DIRECTOR_ROLE), 1); // peeked, not dequeued
+});
+
 test("a role run prompt injects the rendered <backlog-index> block from the primary checkout", () => {
   const dir = root();
   fs.writeFileSync(

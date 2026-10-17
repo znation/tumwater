@@ -536,6 +536,9 @@ export function buildDirectorPrompt(
   /** The compact variant for a small-window model; a director run is never assigned an entry.
    * Omitted: the full prompt. */
   compact?: boolean,
+  /** The director's `roles.director.instructions` override — its run prompt is otherwise the
+   * user's request. Omitted: no `Additional standing instructions` block, exactly as today. */
+  extraInstructions?: string,
 ): string {
   const variant: CompactPrompt | undefined = compact ? { assigned: false } : undefined;
   const parts = [
@@ -589,6 +592,7 @@ work yourself:
   implementation itself.
 - ${DECOMPOSITION_GUIDANCE}`,
   );
+  if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   // Before the shared rules, not after them: the closing reply contract stays the last thing
   // in the prompt, where a model attends to it most (the tick prompt's invariant too).
   parts.push(
