@@ -110,12 +110,12 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       ? " · no change ×" + l.noChangeStreak : "";
     if (info.key === "sleeping") return (backoff || (next === "-" ? "" : next === "now" ? "wakes now" : "wakes in " + next)) + note + noChange;
     if (info.key === "queued") return (backoff || info.detail) + note + noChange;
-    if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedRoles || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(Math.max(0, Math.round((d.pausedRolesUntil - Date.now()) / 1000)));
+    if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedLoops || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(Math.max(0, Math.round((d.pausedRolesUntil - Date.now()) / 1000)));
     return info.detail + noChange;
   }
   function loopCells(l, d) {
     const info = phaseInfo(l.phase);
-    const paused = (d.pausedRoles || []).includes(l.role);
+    const paused = (d.pausedLoops || []).includes(l.role);
     const queued = (d.roleInbox || {})[l.role] || 0;
     const detail = phaseDetail(l, info, d);
     const stalled = info.live && STALL.test(l.phase);

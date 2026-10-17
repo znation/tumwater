@@ -565,6 +565,10 @@ test("POST /api/abort writes the marker for a live team, answers 409 when not, 4
 test("POST /api/pause-role writes the per-role marker, is idempotent, and rejects bad bodies", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui pause-role test");
+  const configFile = path.join(repo, "tumwater.json");
+  const cfg = readJson<{ roles: Record<string, { instances?: number }> }>(configFile);
+  cfg.roles.feature!.instances = 2; // makes `feature-2` a valid row id
+  fs.writeFileSync(configFile, JSON.stringify(cfg));
   await withGui(repo, async ({ base }) => {
   // Pause one named role: the marker records it, and a repeat is idempotent (changed false).
   const post = (payload: unknown) => postJson(base, "/api/pause-role", payload);
@@ -592,6 +596,17 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
   res = await post({ role: "feature", paused: false });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, changed: false, paused: false }, "resuming an unpaused role is idempotent");
+
+  // Instance 1's row (bare `feature`) paused under the `feature-1` key shows Resume; the click
+  // names the row's id and must lift that key.
+  fs.mkdirSync(path.dirname(pausedRolesPath(repo)), { recursive: true });
+  // Instance 2's row (`feature-2`) paused by the whole-role `feature` marker likewise lifts it.
+  for (const [row, key] of [["feature", "feature-1"], ["feature-2", "feature"]] as const) {
+    fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: [key] }));
+    res = await post({ role: row, paused: false });
+    assert.deepEqual(await res.json(), { ok: true, changed: true, paused: false }, `${row} resumes ${key}`);
+    assert.equal(fs.existsSync(pausedRolesPath(repo)), false, `${key} left the marker`);
+  }
 
   // A timed pause writes the CLI's shared `until`; a later one overwrites it; bad forSeconds 400s.
   const t0 = Date.now();

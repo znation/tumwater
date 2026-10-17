@@ -246,6 +246,8 @@ export function statusPayload(root: string, now = Date.now()): object {
     // `paused` ahead of budget/main-red — one flag covers both dashboards through loopPhase.
     paused: snap.paused,
     pausedRoles: snap.pausedRoles,
+    // The loop ids the scheduler treats as paused by the marker; the dashboards read this.
+    pausedLoops: snap.pausedLoops,
     // The per-role cap's held roles (part 2/2): an idle
     // loop in this set reads `cap paused` — the loopPhase ladder names it, and `status
     // --json` carries the raw set beside pausedRoles so scripts read the same verdict.

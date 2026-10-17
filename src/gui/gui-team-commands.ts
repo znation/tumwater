@@ -5,6 +5,7 @@
  * `wakeInSecondsMs` body rules they share. Each handler adapts HTTP onto the domain work one
  * layer down (team/team-state, operator-intent) and touches no socket beyond its own `res`.
  */
+import { baseRoleOf, INSTANCE_ROLES } from "../roles/loop-ids.js";
 import { normalizePauseReason, pauseTeam, pauseRole, resumeTeam, resumeRole } from "../team/team-state.js";
 import { cancelWakes, PAUSE_FOR_MAX_MS, requestWake } from "../operator/operator-intent.js";
 import { requirePausedFlag, validRoleIds } from "./gui-args.js";
@@ -130,6 +131,16 @@ export async function handleWakeCancel(req: http.IncomingMessage, res: http.Serv
   sendJson(res, 200, { ok: true, message: cancelWakes(root, body.role as string | undefined) });
 }
 
+/** Resume a row: lift every marker key that pauses this loop id (its own, its base role's, and
+ * instance 1's `<role>-1`), since the row shows Resume whenever `loopPaused` holds and the key
+ * actually in the marker may differ from the row's id. Reports whether any key was lifted. */
+function resumeLoopKeys(root: string, loopId: string): boolean {
+  const keys = new Set([loopId, baseRoleOf(loopId), ...(INSTANCE_ROLES.has(loopId) ? [`${loopId}-1`] : [])]);
+  let changed = false;
+  for (const key of keys) changed = resumeRole(root, key) || changed;
+  return changed;
+}
+
 /** Handle POST /api/pause-role: the dashboard's per-row pause/resume control — the same
  * marker-writing core `tumwater pause --role` / `resume --role` call (pauseRole/resumeRole),
  * so the CLI and the GUI cannot drift on the marker's format or idempotence. The target state
@@ -147,6 +158,6 @@ export async function handlePauseRole(req: http.IncomingMessage, res: http.Serve
   if (untilMs === null) return;
   const changed = value
     ? pauseRole(root, body.role as string, untilMs)
-    : resumeRole(root, body.role as string);
+    : resumeLoopKeys(root, body.role as string);
   sendJson(res, 200, { ok: true, changed, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }) });
 }

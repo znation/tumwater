@@ -3,7 +3,7 @@ import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import type { OrchestratorInfo, PermitSnapshot } from "../team/orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
-import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
+import { baseRoleOf, loopIds, loopPaused } from "../roles/loop-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
 import type { ModelFallbackView } from "../config/config-fallbacks.js";
 import type { ClaudeWindowEntry } from "../agent/claude/claude-account.js";
@@ -177,6 +177,10 @@ export interface StatusSnapshot {
    * set): an idle loop in this set also reads `paused`, the same cell as under the team
    * pause. Fresh per poll like `paused` — no cache, for the same mid-resume reason. */
   pausedRoles: string[];
+  /** The loop ids the scheduler treats as paused by the per-role marker (`loopPaused`): a loop
+   * whose own id, base role, or — for instance 1 — `<role>-1` key is in `pausedRoles`. The display
+   * surfaces read this, while `pausedRoles` stays the raw marker `resume --role` takes. */
+  pausedLoops: string[];
   /** The loop ids the per-role daily cost cap holds (`maxDailyCostUsdPerRole`): an idle loop
    * in this set reads `cap paused`, its own spend state — more specific than the team's
    * `budget paused`. Computed with the gate's own grouped verdict (roleCapVerdicts): instance
@@ -366,6 +370,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const bootstrapNow = bootstrapStatus(root, cfg);
   // One row per loop id (part 5b/7): an instance role shows `feature` and `feature-2`.
   const roles = loopIds(cfg);
+  const markerRoles = pausedRoles(root);
+  const markerSet = new Set(markerRoles);
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
@@ -447,7 +453,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     ...(claudeWindow ? { claudeWindow } : {}),
     ...(running && info?.chain && Object.keys(info.chain).length > 0 ? { chain: info.chain } : {}),
     paused: teamPause !== null,
-    pausedRoles: pausedRoles(root),
+    pausedRoles: markerRoles,
+    pausedLoops: roles.filter((id) => loopPaused(markerSet, id)),
     capPaused,
     // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
     // gate folds, over the same event log, so the dashboards show the hold the scheduler

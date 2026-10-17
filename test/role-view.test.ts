@@ -846,3 +846,10 @@ test("daily cap sums instances, and is absent for cap 0, the director, or no cap
   assert.equal("dailyCap" in np, false);
   assert.doesNotMatch(renderRoleMarkdown(np), /Daily cap/);
 });
+
+test("feature reads as paused when the marker holds its instance-1 key", () => {
+  const dir = root();
+  writeConfig(dir, { roles: { feature: { enabled: true, instances: 2 } } });
+  pauseRoles(dir, ["feature-1"]);
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).paused, true);
+});

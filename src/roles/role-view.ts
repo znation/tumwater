@@ -16,7 +16,7 @@ import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } fro
 import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../team/team-state.js";
 import { loadLoopState } from "../loop/loop-state.js";
-import { baseRoleOf, loopIds } from "./loop-ids.js";
+import { baseRoleOf, loopIds, loopPaused } from "./loop-ids.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
@@ -310,7 +310,7 @@ export function rolePayload(
     title: resolved.title,
     custom: isCustomRole(cfg, role),
     enabled: enabledRoleIds(cfg).includes(role),
-    paused: pausedRoles(root).includes(role),
+    paused: loopPaused(new Set(pausedRoles(root)), role),
     tier: roleTier(role),
     modelTier: roleSeamTier(cfg, role),
     ...resolvedModelFields(effective.provider, effective.model, effective.thinking),

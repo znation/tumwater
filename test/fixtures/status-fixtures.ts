@@ -113,6 +113,7 @@ export function snapshotWith(
     budget,
     paused,
     pausedRoles,
+    pausedLoops: pausedRoles,
     capPaused,
     bootstrapHeld,
     maintenanceQuota,

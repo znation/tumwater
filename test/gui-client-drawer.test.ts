@@ -136,6 +136,7 @@ function workingStatus() {
   return {
     running: true,
     pausedRoles: [] as string[],
+    pausedLoops: [] as string[],
     roles: [{
       role: "clean", phase: "working · writing tests", inFlight: true,
       currentWork: "Adding drawer tests", lastResult: "changed", lastSummary: "did the thing",
@@ -474,7 +475,7 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
     todayUsd: 0, costUsd: 0, nextRunAt: Date.now() + 30_000, yieldMultiplier: 1, backoffSeconds: 0,
   });
   const t = openDrawer(["toggleLoop", "renderLoopDrawer"], {
-    status: { running: true, pausedRoles: [], roles: [loop("clean"), loop("bugfix")] },
+    status: { running: true, pausedRoles: [], pausedLoops: [], roles: [loop("clean"), loop("bugfix")] },
     responses: {
       "/api/role?role=clean": { notes: "clean keeps the tree tidy", nextPrompt: "the clean next prompt" },
       "/api/role?role=bugfix": { notes: "bugfix watches the open bugs", nextPrompt: "the bugfix next prompt" },
@@ -492,7 +493,7 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
   const metaPaints = t.painted.filter(([id]) => id === "drawermeta").length;
   const older = loop("clean");
   older.lastRunEndedAt -= 5_000;
-  const polled = { running: true, pausedRoles: [], roles: [older, loop("bugfix")] };
+  const polled = { running: true, pausedRoles: [], pausedLoops: [], roles: [older, loop("bugfix")] };
   t.scope.renderLoopDrawer(polled);
   assert.ok(t.painted.filter(([id]) => id === "drawermeta").length > metaPaints, "drawermeta repaints on the poll");
   assert.equal(t.painted.filter(([id]) => id === "drawerrole").length, rolePaints, "drawerrole is not repainted");

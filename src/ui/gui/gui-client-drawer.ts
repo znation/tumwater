@@ -103,7 +103,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       return;
     }
     const info = phaseInfo(l.phase);
-    const paused = (d.pausedRoles || []).includes(l.role);
+    const paused = (d.pausedLoops || []).includes(l.role);
     const detail = phaseDetail(l, info, d);
     paintPanel("drawerhead", "<div class='kicker'>Role" + (l.custom ? " · user-defined" : "") + "</div>" +
       "<h2 id='drawertitle' class='mono'>" + esc(roleLabel(l.role)) + "</h2><div class='muted role-title'>" + esc(roleTitle(l.role)) + "</div><div class='chips'>" + pill(info) +

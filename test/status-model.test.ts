@@ -891,3 +891,18 @@ test("loopPhase names the scheduling poll's skip for a due, idle loop", () => {
   assert.match(loopPhase(due("clean", { skipReason: "claim-hold", nextRunAt: Date.now() + 600_000 }), true), /^sleeping \(/);
   assert.match(loopPhase(due("clean", { skipReason: "claim-hold", running: true, lastRunStartedAt: Date.now() - 90_000 }), true), /^working/);
 });
+
+// The row's paused cell reads the scheduler's verdict (pausedLoops), not the raw marker:
+// a breaker-paused instance 1 (marker `feature-1`) pauses `feature` only, never `feature-2`.
+test("loopRowCells pauses only the loop pausedLoops names, not its sibling instance", () => {
+  const snap = snapshotWith([{ role: "feature" }, { role: "feature-2" }], undefined, false, ["feature-1"]);
+  snap.pausedLoops = ["feature"];
+  snap.running = true;
+  const cellsFor = (role: string) => loopRowCells(snap, tmpdir(), freshLoopState(role)).phase;
+  const single = snapshotWith([{ role: "feature" }], undefined, false, ["feature"]);
+  single.running = true;
+  const expected = loopRowCells(single, tmpdir(), freshLoopState("feature")).phase;
+  assert.equal(cellsFor("feature"), expected);
+  assert.match(expected, /paused/);
+  assert.doesNotMatch(cellsFor("feature-2"), /paused/);
+});

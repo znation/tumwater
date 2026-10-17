@@ -1459,25 +1459,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The repeated-failure pause, part 2/2: Status, the dashboard and the role view show instance 1 paused under its own key (planned 2026-10-16 by plan; requires part 1/2 landed; touches src/status/status-data.ts, src/ui/status-model.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts, src/roles/role-view.ts, src/cli/cli-run.ts and their tests)
-
-**Goal.** Part 1/2 makes the scheduler treat a runner as paused through `loopPaused` (`src/roles/loop-ids.ts`): its own id, its base role's id, or for instance 1 the `feature-1` key. The display surfaces still test `pausedRoles.includes(role)`. A breaker-paused instance 1 (marker `feature-1`) therefore shows as idle on `tumwater status`, the dashboard and `tumwater role feature`. A `feature-2` row under a whole-role `pause --role feature` already shows that way today. Have every surface read the scheduler's own answer.
-
-**Approach.**
-- `src/status/status-data.ts`: add `pausedLoops: string[]` to the status snapshot type, beside `pausedRoles`. Its doc comment: "the loop ids the scheduler treats as paused by the per-role marker". Build it where `pausedRoles: pausedRoles(root)` is built: `loopIds(config).filter((id) => loopPaused(set, id))` over one read of the marker, using the snapshot's config. Keep `pausedRoles` as the raw marker; it is what `resume --role` takes.
-- `src/ui/status-model.ts`: the row's paused test `snap.pausedRoles.includes(s.role)` becomes `snap.pausedLoops.includes(s.role)`.
-- `src/ui/gui/gui-client-loops.ts` (both `(d.pausedRoles || []).includes(l.role)` reads) and `src/ui/gui/gui-client-drawer.ts` (its one read): read `(d.pausedLoops || [])`.
-- `src/roles/role-view.ts`: `paused: pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
-- `src/cli/cli-run.ts`, the once-mode skip reason: `pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
-- Grep `src/` for other `pausedRoles(root).includes(` and `pausedRoles.includes(` reads of a loop's paused state. Switch each to `loopPaused`, except the TUI `p` toggle in `src/ui/tui/tui-editors.ts`: it decides what to write, so it keeps reading the raw marker.
-
-**Acceptance criteria.**
-- `test/status-model.test.ts`, new test: a snapshot with `pausedRoles: ["feature-1"]`, `pausedLoops: ["feature"]` and runners `feature` and `feature-2` gives the `feature` row the paused cell and leaves `feature-2` not paused. The paused cell is the same text a `pausedRoles: ["feature"]` single-instance snapshot renders.
-- A status-data test (grep `test/` for the one that asserts `pausedRoles` on the snapshot), new case: with feature at 2 instances and the marker holding `feature`, `pausedLoops` holds both `feature` and `feature-2`. With the marker holding `feature-1`, it holds only `feature`.
-- A role-view test (grep `test/` for `paused:` on the role view): `feature` with the marker holding `feature-1` reports `paused: true`.
-- Existing status, dashboard and role-view tests pass with `pausedLoops` added to their fixtures where the type requires it.
-- `npm run test` passes.
-
 ### An assigned series part names the later parts waiting on it (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/prompt/gate-prompts.ts, src/tick/tick-prompt.ts and their tests; it adds code next to "An assigned series part names the Done entries of the parts it requires", so whichever lands second rebases onto the other)
 
 **Goal.** A feature instance assigned a series part such as "Plain terms code merge, part 1/11" gets an `<assigned-entry>` note (`buildAssignmentNote`, `src/prompt/gate-prompts.ts`) that tells it to "Implement or fix only that entry". It is not told which later parts are waiting on this one, and each of those later parts already plans its own share of the work. If the implementer cannot see where its part ends, it may do a later part's work early, which leaves that part with nothing to do and makes the diff bigger than its plan. Or it may change a name that a later part's plan relies on. Those parts are in PLANS.md's `## Planned`, which the charter says never to read wholesale. This plan adds a short `<waiting-parts>` note that lists, by title and line range, the planned parts that require this one. The implementer then knows where its part ends and what the later parts expect it to leave in place.
@@ -1541,6 +1522,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - With one entry, the note starts with `<landed-prerequisites>`, holds `"S, part 1/3: a" (PLANS.md lines 10-20)`, and ends with `</landed-prerequisites>`.
   - With 7 entries, it lists 5 and names the 2 left out.
 - `test/tick-prompt.test.ts`, next to "a bugfix instance's claim names the bug's line range from BUGS.md", new test "a feature instance's claimed series part names its landed prerequisites". It writes the PLANS.md above and calls `promptFor(dir, "feature-2", { state: { claim: { file: "PLANS.md", key: …, title: <part 3/3 heading>, at: 1, source: "assigned" } } })`. The prompt holds `<assigned-entry>` and `<landed-prerequisites>`, naming both Done titles with their ranges. A claim on an entry with no requires clause gives a prompt with no `<landed-prerequisites>`.
+- `npm run test` passes.
+
+### The repeated-failure pause, part 2/2: Status, the dashboard and the role view show instance 1 paused under its own key (done 2026-10-16; planned 2026-10-16 by plan; requires part 1/2 landed; touches src/status/status-data.ts, src/ui/status-model.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts, src/roles/role-view.ts, src/cli/cli-run.ts and their tests)
+
+**Goal.** Part 1/2 makes the scheduler treat a runner as paused through `loopPaused` (`src/roles/loop-ids.ts`): its own id, its base role's id, or for instance 1 the `feature-1` key. The display surfaces still test `pausedRoles.includes(role)`. A breaker-paused instance 1 (marker `feature-1`) therefore shows as idle on `tumwater status`, the dashboard and `tumwater role feature`. A `feature-2` row under a whole-role `pause --role feature` already shows that way today. Have every surface read the scheduler's own answer.
+
+**Approach.**
+- `src/status/status-data.ts`: add `pausedLoops: string[]` to the status snapshot type, beside `pausedRoles`. Its doc comment: "the loop ids the scheduler treats as paused by the per-role marker". Build it where `pausedRoles: pausedRoles(root)` is built: `loopIds(config).filter((id) => loopPaused(set, id))` over one read of the marker, using the snapshot's config. Keep `pausedRoles` as the raw marker; it is what `resume --role` takes.
+- `src/ui/status-model.ts`: the row's paused test `snap.pausedRoles.includes(s.role)` becomes `snap.pausedLoops.includes(s.role)`.
+- `src/ui/gui/gui-client-loops.ts` (both `(d.pausedRoles || []).includes(l.role)` reads) and `src/ui/gui/gui-client-drawer.ts` (its one read): read `(d.pausedLoops || [])`.
+- `src/roles/role-view.ts`: `paused: pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
+- `src/cli/cli-run.ts`, the once-mode skip reason: `pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
+- Grep `src/` for other `pausedRoles(root).includes(` and `pausedRoles.includes(` reads of a loop's paused state. Switch each to `loopPaused`, except the TUI `p` toggle in `src/ui/tui/tui-editors.ts`: it decides what to write, so it keeps reading the raw marker.
+
+**Acceptance criteria.**
+- `test/status-model.test.ts`, new test: a snapshot with `pausedRoles: ["feature-1"]`, `pausedLoops: ["feature"]` and runners `feature` and `feature-2` gives the `feature` row the paused cell and leaves `feature-2` not paused. The paused cell is the same text a `pausedRoles: ["feature"]` single-instance snapshot renders.
+- A status-data test (grep `test/` for the one that asserts `pausedRoles` on the snapshot), new case: with feature at 2 instances and the marker holding `feature`, `pausedLoops` holds both `feature` and `feature-2`. With the marker holding `feature-1`, it holds only `feature`.
+- A role-view test (grep `test/` for `paused:` on the role view): `feature` with the marker holding `feature-1` reports `paused: true`.
+- Existing status, dashboard and role-view tests pass with `pausedLoops` added to their fixtures where the type requires it.
 - `npm run test` passes.
 
 ### The repeated-failure pause, part 1/2: Pause only the failing feature instance, including instance 1 (closed 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/roles/loop-ids.ts, src/gates/streak-gate.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-commands.ts and their tests)

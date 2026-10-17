@@ -6,7 +6,7 @@
  * the only implementations living in the dispatcher itself. */
 import type { StdioOptions } from "node:child_process";
 import { compareCodeUnits, increment } from "../collections.js";
-import { loopIds } from "../roles/loop-ids.js";
+import { loopIds, loopPaused } from "../roles/loop-ids.js";
 import { fail, say } from "./cli-output.js";
 import {
   durationLabel,
@@ -408,7 +408,7 @@ export function onceSummary(
     } else {
       const reason =
         settled?.get(role) ??
-        (isTeamPaused(root) || pausedRoles(root).includes(role)
+        (isTeamPaused(root) || loopPaused(new Set(pausedRoles(root)), role)
           ? "paused"
           : stateSkipReason(s));
       skipped.push(reason);
