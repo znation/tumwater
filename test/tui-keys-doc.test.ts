@@ -10,7 +10,14 @@ const read = (rel: string): string => fs.readFileSync(fileURLToPath(new URL(rel,
 
 function handledCtrlKeys(): Set<string> {
   const keys = new Set<string>();
-  for (const file of ["../../src/ui/tui/tui-keys.ts", "../../src/ui/tui/tui-panes.ts", "../../src/ui/tui/tui-editors.ts"]) {
+  // The prompt-line editor arms were split out of tui-editors.ts into per-editor modules, so
+  // scan the tui/ directory for all of them (tui-editors.ts itself now only routes to them).
+  const tuiDir = new URL("../../src/ui/tui/", import.meta.url);
+  const editorFiles = fs
+    .readdirSync(fileURLToPath(tuiDir))
+    .filter((f) => f.startsWith("tui-editor-") && f.endsWith(".ts"))
+    .map((f) => `../../src/ui/tui/${f}`);
+  for (const file of [...editorFiles, "../../src/ui/tui/tui-keys.ts", "../../src/ui/tui/tui-panes.ts"]) {
     for (const line of read(file).split("\n")) {
       if (!line.includes("key.ctrl &&")) continue;
       for (const m of line.matchAll(/key\.name === "([a-z])"/g)) keys.add(m[1]!.toUpperCase());
