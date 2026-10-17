@@ -769,8 +769,8 @@ test("outcomeText renders eventResult or ? for a missing or non-string outcome",
 test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
   const tickEnd = formatEvent({ ts: 0, source: "clean", type: "run_end", run: 5 } as never);
   assert.match(tickEnd, /run #5 \?$/);
-  const landFailed = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abc1234", result: 7 } as never);
-  assert.match(landFailed, /failed \(\?\)/);
+  const mergeFailed = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abc1234", result: 7 } as never);
+  assert.match(mergeFailed, /failed \(\?\)/);
   const build = formatEvent({ ts: 0, source: "clean", type: "build_check", scope: "merge", script: "test" } as never);
   assert.match(build, /check \(merge\): test \?$/);
 });

@@ -7,6 +7,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code merge, part 11/11: Finish the merge rename and add the merge family to the retired-names guard (planned 2026-10-16 by user; requires part 10/11 landed; design in plans/terminology.md "Code names" and "Guards"; touches the remaining src/ and test/ files and test/retired-names.test.ts)
 
+**Needs review 2026-10-17 by feature: too large for one run**
+
+**Progress 2026-10-17 (identifier half done, comment half not).** Done: the merge family is appended to `RETIRED` in test/retired-names.test.ts with its self-test cases, and every identifier and file-name hit it flags is renamed or marked (`landedDecision` → `writtenDecision`, `migrateLandQueueDir` → `legacyMigrateLandQueueDir`, `pinnedUnlanded` → `pinnedUnmerged`, `buildLandedPrerequisitesNote` → `buildMergedPrerequisitesNote`, test locals; `retired-name-ok` regions on the legacy event-name and state-key tables and the GUI blob's `landing` kind keys). `git grep -n '@deprecated' -- src test` lists nothing. Not done: the guard scans identifiers only, and roughly 600 comment lines in src/ and test/ still use landed/landing/land/vet in prose (find them with the `git grep -nE` in Approach, minus `vocabulary-ok` and `retired-name-ok` lines). Each needs a judgement (the `requires … landed` grammar, quoted titles and plain-English "lands in the working tree" stay; merge-meaning prose is renamed), which is too many for one run. Remaining work: rewrite those comments directory by directory; the acceptance criterion on comments stays open until `git grep` over comments is clean or each leftover is listed here.
+
 **Goal.** No identifier, file name, comment or test name in src/ or test/ uses landing, land, lander or vet. No deprecated alias of the family remains, and test/retired-names.test.ts fails if one comes back.
 
 **Approach.**

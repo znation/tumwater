@@ -89,7 +89,7 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
   const mergeRef = await mergeRefSha(root, role);
   // A merge ref pins a committed-but-unmerged sha (plans/merge-queue.md invariant 4): count it as
   // unmerged work too — the branch can sit at main while the pin holds the crash survivor.
-  const pinnedUnlanded =
+  const pinnedUnmerged =
     mergeRef !== null && !(await isMergedInto(root, mergeRef, mainBranch)) ? 1 : 0;
   return {
     role,
@@ -97,7 +97,7 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
     worktreeUsable: usable,
     branchPresent: branchThere,
     mergeRefPresent: mergeRef !== null,
-    aheadOfMain: ahead + pinnedUnlanded,
+    aheadOfMain: ahead + pinnedUnmerged,
     dirty,
     enabledInConfig: loopEnabled(config.config, role),
     midRun: loadLoopState(root, role).running === true,

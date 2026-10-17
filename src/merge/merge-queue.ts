@@ -95,7 +95,7 @@ function queueFiles(root: string): string[] {
  * current one, keeping the basename (the order lives in it) and the contents. A basename already
  * present in the new directory stays put and is noted; the old directory is removed once empty.
  * A file that vanished mid-move (a concurrent run) is skipped. */
-export function migrateLandQueueDir(root: string): string[] {
+export function legacyMigrateLandQueueDir(root: string): string[] {
   const from = legacyLandQueueDir(root);
   const to = mergeQueueDir(root);
   const notes: string[] = [];

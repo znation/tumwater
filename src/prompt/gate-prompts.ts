@@ -437,7 +437,7 @@ ${titles.map((t) => `- "${t}"`).join("\n")}
  * one's Done heading and PLANS.md line range, so the implementer reads exactly what that part
  * changed instead of searching a Done section that runs to thousands of lines. Lists at most
  * five, then a count of the rest. A pure function so its shape is pinned in tests. */
-export function buildLandedPrerequisitesNote(
+export function buildMergedPrerequisitesNote(
   entries: readonly { title: string; start: number; end: number }[],
 ): string {
   const lines = entries.slice(0, 5).map((e) => `- "${e.title}" (PLANS.md lines ${e.start}-${e.end})`);

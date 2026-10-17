@@ -196,7 +196,7 @@ test("mergeBatchMax is validated like maxConcurrent: a positive integer", () => 
   assert.match(validationError({ mergeBatchMax: "3" }), /mergeBatchMax must be an integer of at least 1 \(got "3"\)/);
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), mergeBatchMax: 1 }));
   // A typo'd cap must not silently disable coalescing: unknown top-level keys fail validation.
-  assert.match(validationError({ landBatchmax: 1 }), /landBatchmax/);
+  assert.match(validationError({ mergeBatchmax: 1 }), /mergeBatchmax/);
 });
 
 test("maxConcurrentChecks is validated like maxConcurrent: a positive integer", () => {

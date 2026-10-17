@@ -401,9 +401,11 @@ const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
   ticks: "runs", // vocabulary-ok: legacy state key read from old files
   lastTickStartedAt: "lastRunStartedAt", // vocabulary-ok: legacy state key read from old files
   lastTickEndedAt: "lastRunEndedAt", // vocabulary-ok: legacy state key read from old files
+  // retired-name-ok:start old state keys
   landingReviewError: "mergeReviewError", // vocabulary-ok: legacy state key read from old files
   landingCheckFailures: "mergeCheckFailures", // vocabulary-ok: legacy state key read from old files
   lastLandedAt: "lastMergedAt", // vocabulary-ok: legacy state key read from old files
+  // retired-name-ok:end
 };
 
 /** Apply LEGACY_STATE_KEYS to a parsed state object in place. */

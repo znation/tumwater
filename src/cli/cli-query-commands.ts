@@ -307,10 +307,10 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   if (decision === "")
     fail('questions answer needs a decision: questions answer <n> "<decision>"');
   // answerQuestion collapses the free-form decision to one line before writing it; report
-  // that landed text in the --json payload so it matches the file, not the caller's spacing.
-  const { title, decision: landedDecision } = answerQuestion(root, n, decision);
+  // that written text in the --json payload so it matches the file, not the caller's spacing.
+  const { title, decision: writtenDecision } = answerQuestion(root, n, decision);
   warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
-  sayAnswered(n, title, jsonFlag, landedDecision);
+  sayAnswered(n, title, jsonFlag, writtenDecision);
   if (!jsonFlag) sayAskerWake(root, title);
 }
 

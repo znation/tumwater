@@ -474,9 +474,11 @@ test("loadLoopState maps the five legacy tick and merge keys, healing each as be
       role: "qa",
       lastTickStartedAt: 100, // vocabulary-ok: legacy state key read from old files
       lastTickEndedAt: 200, // vocabulary-ok: legacy state key read from old files
+      // retired-name-ok:start old state keys
       lastLandedAt: -5, // vocabulary-ok: legacy state key read from old files
       landingReviewError: { sha: "abc", selector: "bad/model", message: "boom" }, // vocabulary-ok: legacy state key read from old files
       landingCheckFailures: 3, // vocabulary-ok: legacy state key read from old files
+      // retired-name-ok:end
     }),
   );
   const s = loadLoopState(dir, "qa");

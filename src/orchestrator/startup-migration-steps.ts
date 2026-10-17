@@ -1,4 +1,4 @@
-import { migrateLandQueueDir } from "../merge/merge-queue.js";
+import { legacyMigrateLandQueueDir } from "../merge/merge-queue.js";
 import fs from "node:fs";
 import { deleteRefIfAt, refSha, refsUnder, setRef } from "../git/git.js";
 import { mergeRefName, legacyLandingStatePath } from "../paths.js";
@@ -8,7 +8,7 @@ import { registerStartupMigration } from "./startup-migrations.js";
 /** The one place that fixes startup-migration step order. Callers import the runners from here,
  * so the steps are registered before anything can run. Add a step by appending one
  * `registerStartupMigration(...)` call at the end. */
-registerStartupMigration({ name: "mergeQueueDir", run: async (root) => migrateLandQueueDir(root) });
+registerStartupMigration({ name: "mergeQueueDir", run: async (root) => legacyMigrateLandQueueDir(root) });
 registerStartupMigration({
   name: "mergingMarker",
   run: async (root) => {

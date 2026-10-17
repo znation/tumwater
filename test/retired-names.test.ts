@@ -24,6 +24,13 @@ interface RetiredFamily {
 // Each later Code-names series appends its family here.
 const RETIRED: readonly RetiredFamily[] = [
   { family: "fleet → team", words: ["fleet", "fleets"], fileWords: ["fleet"], allow: [] },
+  {
+    family: "landing/land/lander/vet → merge",
+    words: ["land", "lands", "landed", "landing", "landings", "lander", "landers", "unlanded", "vet", "vets", "vetted", "vetting"],
+    fileWords: ["landing", "lander", "landed", "vetting"],
+    // removeLegacyLandWorktrees removes the legacy `_land-<role>` worktrees "State and git" keeps.
+    allow: ["removeLegacyLandWorktrees"],
+  },
 ];
 
 /** Repo-relative files whose identifiers are skipped (their file names are still checked). */
@@ -169,6 +176,9 @@ test("self-test: identifiers", () => {
   assert.equal(f("const pauseFleet = 1; // retired-name-ok: legacy reader\n").length, 0);
   const region = "// retired-name-ok:start legacy table\nconst fleetA = 1;\n// retired-name-ok:end\nconst fleetB = 2;\n";
   assert.deepEqual(f(region), ["src/x.ts:4 fleetB (fleet → team)"]);
+  assert.equal(f("const landingRefName = 1;\nconst vetted = 2;\n").length, 2);
+  assert.equal(f("const userland = 1;\nconst landmarks = 2;\nconst Helvetica = 3;\n").length, 0);
+  assert.equal(f("function removeLegacyLandWorktrees() {}\n").length, 0);
   assert.deepEqual(identWords("GUI_CLIENT_FLEET_JS"), ["gui", "client", "fleet", "js"]);
 });
 
@@ -181,5 +191,9 @@ test("self-test: LEGACY_FILES skip identifiers", () => {
 test("self-test: file names", () => {
   assert.equal(fileFindings("src/fleet/x.ts").length, 1);
   assert.equal(fileFindings("test/gui-client-fleet.test.ts").length, 1);
+  assert.equal(fileFindings("src/landing/x.ts").length, 1);
+  assert.equal(fileFindings("test/lander.test.ts").length, 1);
+  assert.equal(fileFindings("src/scheduling/work-landed-cache.ts").length, 1);
+  assert.equal(fileFindings("src/merge/merge-to-main.ts").length, 0);
   assert.equal(fileFindings("src/team/team-hold.ts").length, 0);
 });

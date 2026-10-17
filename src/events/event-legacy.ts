@@ -21,9 +21,11 @@ const LEGACY_EVENT_TYPES: Readonly<Record<string, HarnessEvent["type"]>> = {
   fleet_paused: "team_paused", // vocabulary-ok: legacy event name read from old logs
   fleet_resumed: "team_resumed", // vocabulary-ok: legacy event name read from old logs
   // retired-name-ok:end
+  // retired-name-ok:start old event names
   land_queued: "merge_queued", // vocabulary-ok: legacy event name read from old logs
   landed: "merge_done", // vocabulary-ok: legacy event name read from old logs
   land_failed: "merge_failed", // vocabulary-ok: legacy event name read from old logs
+  // retired-name-ok:end
 };
 
 /** A field rewrite applied after the type rename. Each guards on the JS type it expects. */

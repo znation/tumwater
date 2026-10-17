@@ -228,7 +228,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     const live = loops.filter((l) => phaseInfo(l.phase).live);
     const kinds = {};
     for (const l of live) { const k = phaseInfo(l.phase).key; kinds[k] = (kinds[k] || 0) + 1; }
-    const KIND_WORDS = { working: "working", reviewing: "reviewing", landing: "merging" }; // vocabulary-ok: phase key, renamed with the status model
+    const KIND_WORDS = { working: "working", reviewing: "reviewing", landing: "merging" }; // vocabulary-ok: phase key, renamed with the status model // retired-name-ok: phase key, renamed with the status model
     const liveSub = live.length
       ? Object.keys(KIND_WORDS).filter((k) => kinds[k]).map((k) => kinds[k] + " " + KIND_WORDS[k]).join(" · ")
       : d.running ? "every role is between runs" : "the team is stopped";
@@ -477,7 +477,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   let feedFilter = recall("feed") === "all" ? "all" : "notable";
   let feedRole = recall("feed-role") || "";
   let feedText = recall("feed-grep") || "";
-  const KINDS = { landing: ["merge", "green"], problem: ["fail", "red"], attention: ["question", "indigo"], info: ["info", "blue"], routine: ["dot", "gray"] };
+  const KINDS = { landing: ["merge", "green"], problem: ["fail", "red"], attention: ["question", "indigo"], info: ["info", "blue"], routine: ["dot", "gray"] }; // retired-name-ok: event kind key, renamed with the status model
   // Server-backed search state. feedResults is the /api/logs slice once it answers (newest
   // first, the shape renderFeed consumes), null while the card paints its carried window; the
   // debounce feedTimer keeps each keystroke from firing a request; feedSeq numbers requests
