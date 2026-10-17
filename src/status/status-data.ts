@@ -1,7 +1,7 @@
 import type { LoopState } from "../loop/loop-state.js";
 import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
-import type { OrchestratorInfo, PermitSnapshot } from "../fleet/orchestrator-info.js";
+import type { OrchestratorInfo, PermitSnapshot } from "../team/orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
@@ -11,12 +11,12 @@ import { piModelsPath } from "../pi/pi-models.js";
 import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { pausedRoles, pausedRolesUntil, scheduledStopAt, scheduledWakes, standingFleetPause } from "../fleet/fleet-state.js";
+import { pausedRoles, pausedRolesUntil, scheduledStopAt, scheduledWakes, standingFleetPause } from "../team/team-state.js";
 import {
   orchestratorAlive,
   readOrchestratorInfo,
   type DiskStatus,
-} from "../fleet/orchestrator-info.js";
+} from "../team/orchestrator-info.js";
 import type { LandingInFlight } from "../landing/landing-slot.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
@@ -232,7 +232,7 @@ export interface StatusSnapshot {
   roleQuietPaused: Record<string, string>;
   /** The fleet marker's standing deadline (ms epoch) while a timed pause
    * (`tumwater pause --for <duration>`) holds — undefined for an indefinite fleet pause, a
-   * role-only pause, or an expired `until` (fleet-state's read side already treats expiry as
+   * role-only pause, or an expired `until` (team-state's read side already treats expiry as
    * unpaused, so the field cannot outlive the pause it describes). Fleet-scoped: only the
    * fleet marker's deadline may be claimed by a header badge, since only it covers the whole
    * fleet. JSON.stringify drops the undefined field, so `status --json` carries it only while

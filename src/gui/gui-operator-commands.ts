@@ -17,7 +17,7 @@ import { validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody, sendRequestResult } from "./gui-endpoint-common.js";
-import { wakeInSecondsMs } from "./gui-fleet-commands.js";
+import { wakeInSecondsMs } from "./gui-team-commands.js";
 import type http from "node:http";
 
 /** Handle POST /api/reset-counters: the dashboard's counter reset — the same marker-writing

@@ -7,12 +7,12 @@
  * per-domain command modules, each a thin HTTP adapter touching no socket beyond its own `res`:
  * prompt queueing/cancel/edit (gui/gui-prompt-commands), backlog entry file/cancel/edit +
  * question-answer (gui/gui-backlog-commands), config set/unset + budget + notify-test
- * (gui/gui-config-commands), fleet pause/role-pause/wake (gui/gui-fleet-commands),
+ * (gui/gui-config-commands), fleet pause/role-pause/wake (gui/gui-team-commands),
  * and operator lifecycle restart/reclaim/abort/reset-counters/stop-schedule/role-notes/
  * retire/brief-edit (gui/gui-operator-commands).
  */
 export { handlePrompt, handlePromptRole, handlePromptCancel, handlePromptEdit } from "./gui-prompt-commands.js";
 export { handleQuestionAnswer, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit } from "./gui-backlog-commands.js";
 export { handleConfigSet, handleConfigUnset, handleBudget, handleNotifyTest } from "./gui-config-commands.js";
-export { handlePause, handlePauseRole, handleWake, handleWakeCancel } from "./gui-fleet-commands.js";
+export { handlePause, handlePauseRole, handleWake, handleWakeCancel } from "./gui-team-commands.js";
 export { handleResetCounters, handleRestart, handleReclaim, handleAbort, handleStopSchedule, handleRoleNotes, handleRetire, handleBriefEdit } from "./gui-operator-commands.js";

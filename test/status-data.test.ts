@@ -2,7 +2,7 @@
 // resolves against (quiet hours, custom loops), the loop rows it builds, and the stat-keyed
 // reads that serve them. Split by facet from one status-data test file; the
 // budget/cap fields live in status-data-budget.test.ts, the fleet/pause/health fields in
-// status-data-fleet.test.ts, the queue fields in status-data-inbox.test.ts, and the model
+// status-data-team.test.ts, the queue fields in status-data-inbox.test.ts, and the model
 // selector/fallback/seam rows in status-data-models.test.ts.
 
 import fs from "node:fs";

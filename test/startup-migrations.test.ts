@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readLandingQueue } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/events/event-read.js";
-import { writeOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
+import { writeOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { headOf, refSha, setRef } from "../src/git/git.js";
 import { landingRefName, legacyLandingRefName, landQueueDir, legacyLandingStatePath, legacyLandQueueDir, orchestratorStatePath } from "../src/paths.js";
 import { registerStartupMigration } from "../src/orchestrator/startup-migrations.js";

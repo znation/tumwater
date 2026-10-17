@@ -12,7 +12,7 @@ import { snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, permitsBadge, quietBadge, runWindowBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { fleetAlerts } from "./fleet-alerts.js";
+import { fleetAlerts } from "./team-alerts.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (landings, failures, questions) after it filters
@@ -322,7 +322,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // fresh each poll. Badges and alerts keep counting open entries only.
     donePlans: recentFinished(donePlanEntries(root), DONE_DATE_RE),
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
-    // What needs the operator (fleet-alerts.ts's fleetAlerts): the dashboard's alert banners and
+    // What needs the operator (team-alerts.ts's fleetAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
     alerts: fleetAlerts(snap, questions, roles, now),
   };

@@ -205,7 +205,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/gates/`: the scheduler's admission gates — daily budget, disk floor, quiet hours,
   pause, startup/readiness, per-role caps, the maintenance quota, error streaks, and the team
   failure hold (`gate-polls.ts` polls them).
-- `src/fleet/`: team-wide state (`fleet-state.ts` — the pause markers and their writers), the
+- `src/team/`: team-wide state (`team-state.ts` — the pause markers and their writers), the
   provider/kind hold, the team polls, the failure spread and error-storm alarms, and the
   worktree reclaim pass (`reclaim.ts`).
 - `src/scheduling/`: scheduling primitives — per-role waits between runs, the quiet-hours parser,

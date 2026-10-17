@@ -1,5 +1,5 @@
 import { logEvent, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
-import { orchestratorAlive } from "../fleet/orchestrator-info.js";
+import { orchestratorAlive } from "../team/orchestrator-info.js";
 import { errorMessage } from "../text/text.js";
 
 /** The registry of idempotent startup-migration steps (plans/terminology.md "State and git").

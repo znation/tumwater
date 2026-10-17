@@ -3,7 +3,7 @@
 // server in the loop — the routes and page behavior live in test/gui.test.ts.
 
 import test from "node:test";
-import { scheduleStop } from "../src/fleet/fleet-state.js";
+import { scheduleStop } from "../src/team/team-state.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";

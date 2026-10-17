@@ -7,7 +7,7 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { initProject } from "../src/init/init.js";
-import { PAUSE_REASON_MAX } from "../src/fleet/fleet-state.js";
+import { PAUSE_REASON_MAX } from "../src/team/team-state.js";
 import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath, scheduledWakeDir } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget/budget.js";
@@ -279,7 +279,7 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
 });
 
 // POST /api/pause — the dashboard header's pause/resume toggle: the same shared
-// fleet/fleet-state.ts
+// team/team-state.ts
 // writers the CLI uses, so the GUI and `tumwater pause`/`resume` cannot drift.
 
 test("POST /api/pause writes and removes the fleet pause marker and rejects bad bodies", async () => {

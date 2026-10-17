@@ -44,13 +44,13 @@ export class LoopRunner {
   config: TumwaterConfig;
   /** The 429 observation from this loop's usage accounting (TickUsage.lastRateLimit,
    * src/tick/tick-usage.ts): the orchestrator's fleet-wide hold wiring reads it through the
-   * runner (src/fleet/fleet-polls.ts), so the field keeps its place on the runner's surface. */
+   * runner (src/team/team-polls.ts), so the field keeps its place on the runner's surface. */
   get lastRateLimit(): { at: number; retryAfterSeconds?: number; provider?: string } | undefined {
     return this.usage.lastRateLimit;
   }
   /** The backend-failure observation (TickUsage.lastBackendFailure, src/tick/tick-usage.ts): the
    * non-429 sibling of lastRateLimit above — the connection, timeout, server, and model-load
-   * kinds the fleet-wide hold groups storms by (src/fleet/fleet-hold.ts). Same runner surface,
+   * kinds the fleet-wide hold groups storms by (src/team/team-hold.ts). Same runner surface,
    * same consumer. */
   get lastBackendFailure(): { at: number; kind: BackendFailureKind; provider?: string } | undefined {
     return this.usage.lastBackendFailure;

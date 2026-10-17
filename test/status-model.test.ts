@@ -13,7 +13,7 @@ import { parseProgress, stalledToolLabel } from "../src/ui/progress-data.js";
 import { idleClaimText, isActivePhase, loopPhase, loopRank, loopRowCells, sortLoopsByState } from "../src/ui/status-model.js";
 import { phaseTone } from "../src/ui/tone.js";
 import { workingDetail } from "../src/ui/tick-progress-model.js";
-import { fleetAlerts } from "../src/ui/fleet-alerts.js";
+import { fleetAlerts } from "../src/ui/team-alerts.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";

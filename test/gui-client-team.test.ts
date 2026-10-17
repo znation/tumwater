@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
-import { GUI_CLIENT_FLEET_JS } from "../src/ui/gui/gui-client-fleet.js";
+import { GUI_CLIENT_FLEET_JS } from "../src/ui/gui/gui-client-team.js";
 import { GUI_PAGE } from "../src/ui/gui/gui-page.js";
 
-// The dashboard's fleet-view backlog panel (src/ui/gui/gui-client-fleet.ts's marked backlog
+// The dashboard's fleet-view backlog panel (src/ui/gui/gui-client-team.ts's marked backlog
 // region), exercised the way the page runs it: the shared view-model region supplies
 // queuedPrompts/splitTitle, the format region supplies fmtAgo, and a recording paintPanel
 // stands in for the DOM.
@@ -255,7 +255,7 @@ test("the Landed today tile shows the work/maintenance commit split", () => {
   assert.match(html, /4 features done · 2 bugs fixed · 2 work \/ 3 maintenance/, "the sub-line names the work vs upkeep split");
 });
 
-// The Activity card's narrowing (src/ui/gui/gui-client-fleet.ts's marked activity region): the
+// The Activity card's narrowing (src/ui/gui/gui-client-team.ts's marked activity region): the
 // Loop picker and Search box narrow the event window the card already carries, exactly as the
 // History view's do. The scope runs the shared format/view-model/panel/role regions renderFeed
 // reaches, with the DOM, persistence, and panel paint stubbed.

@@ -57,7 +57,7 @@ export function mainCountsFragment(counts: TestCounts | undefined): string {
  * its raw status word with `fallbackTone` for color — callers pick the tone their palette
  * uses (the TUI's status header renders yellow, the GUI sidebar amber). The verdict word
  * never reads green for an unverified tree. Readers: mainCheckBadge (below) and the header
- * badge tone in status-render.ts. The GUI sidebar's status row (gui-client-fleet.ts) ships
+ * badge tone in status-render.ts. The GUI sidebar's status row (gui-client-team.ts) ships
  * its own copy of the mapping — it is browser-side JS spliced into gui-client.ts and cannot
  * import this module; its three-line ternary block is deliberately left as is. */
 export function mainCheckVerdict(
@@ -312,7 +312,7 @@ export function pauseBadge(pausedUntil: number | undefined, now: number, reason?
 /** The countdown a timed fleet pause has left, as humanSeconds — `null` when there is none
  * (no deadline, or an already-expired one: the read side treats an expired marker as
  * unpaused). The one home of the guard + ms→seconds rounding behind the fleet's pause
- * countdowns, shared by pauseBadge's header fragment and fleet-alerts.ts's paused alert
+ * countdowns, shared by pauseBadge's header fragment and team-alerts.ts's paused alert
  * title, so the two surfaces cannot disagree about how much time remains. The guard is this
  * function's own; the ms→seconds rounding rides datetime.ts's secondsUntil. The GUI's pause
  * control recomputes the ticking number client-side from the payload's raw `pausedUntil`
@@ -332,7 +332,7 @@ export function pauseCountdown(pausedUntil: number | undefined, now: number): st
  * spelling.
  * renderStatus renders it in the TUI/status header after the pause badge; the GUI page
  * renders its sidebar chip from the payload's raw fields and its active indicator from
- * fleet-alerts' quiet alert, so both dashboards say the same thing. */
+ * team-alerts' quiet alert, so both dashboards say the same thing. */
 export function quietBadge(quietHours: string | undefined, inQuietHours: boolean): string {
   if (!quietHours) return "";
   const end = quietWindowEnd(quietHours);

@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, windowHeldProviders, type FleetHold } from "../src/fleet/fleet-hold.js";
-import { pollFleetHold, claudeWindowObservation, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../src/fleet/fleet-polls.js";
+import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, windowHeldProviders, type FleetHold } from "../src/team/team-hold.js";
+import { pollFleetHold, claudeWindowObservation, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../src/team/team-polls.js";
 import type { ClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-// The orchestrator's fleet-hold poll (src/fleet/fleet-polls.ts): the wiring half of the fleet-wide
-// backend-failure hold. Its pure policy is pinned in fleet-hold.test.ts; what is only pinned
+// The orchestrator's fleet-hold poll (src/team/team-polls.ts): the wiring half of the fleet-wide
+// backend-failure hold. Its pure policy is pinned in team-hold.test.ts; what is only pinned
 // here is the wiring itself — the HoldInputs→observations mapping (lastRateLimit and
 // lastBackendFailure, retry-after carried only on the former), the exactly-one-event-per-
 // crossing rule: `rate_limit_hold` on the way in, `rate_limit_resumed` at the deadline

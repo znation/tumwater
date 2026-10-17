@@ -39,7 +39,7 @@ export function firstReason(reasons: readonly unknown[] | undefined): string {
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
  * the singular/plural selection the CLI's once summary (cli/cli-run.ts), the day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the
- * fleet alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces), and the
+ * fleet alerts' banner titles (ui/team-alerts.ts, whose local copy this replaces), and the
  * build_stale lines' "N commit(s) ahead" (event-format.ts, src/failure/failure-state-change.ts —
  * the singular/plural wording their tests pin, once "N commit(s)" with the old literal, now "N
  * commits"/"1 commit"), and the stage self-check and dropped-attachment notes
@@ -55,7 +55,7 @@ export function plural(n: number, one: string, many = `${one}s`): string {
  * → `is`, `agree(2, "cause", "causes")` → `causes` — the companion to plural for the slots
  * plural's count-plus-noun shape cannot fill: a subject or noun whose count is printed elsewhere in
  * the sentence (a subject phrase such as listRoles's role list, a count named earlier) still needs
- * the right number form. The fleet alerts' banner titles (ui/fleet-alerts.ts), the resume
+ * the right number form. The fleet alerts' banner titles (ui/team-alerts.ts), the resume
  * confirmation's still-paused note (operator/operator-commands.ts), the dropped-attachment note
  * (inbox-attachments.ts), the failure digest's loss-cause and cluster remainders
  * (failure/failure-render.ts), the doctor's oh-my-pi and model notes
@@ -88,7 +88,7 @@ export function mainRedNotMine(sha: unknown): string {
 
 /** The ` — "<reason>"` suffix the operator's pause reason (`pause --reason <text>`) rides on —
  * one home so the CLI's confirmation line (operator/operator-commands.ts), the status header's
- * pause badge (ui/badges.ts), and the paused alert's title (ui/fleet-alerts.ts) cannot drift on the
+ * pause badge (ui/badges.ts), and the paused alert's title (ui/team-alerts.ts) cannot drift on the
  * quoting. No reason, no suffix: every caller's reasonless phrasing keeps today's byte-exact form.
  * (The GUI keeps its own JS copies in gui-client.ts: a separate runtime that cannot import
  * TypeScript.) */

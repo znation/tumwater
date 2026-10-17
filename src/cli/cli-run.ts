@@ -19,8 +19,8 @@ import {
 } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
-import { cancelScheduledStop, isFleetPaused, pausedRoles, scheduledStopAt } from "../fleet/fleet-state.js";
-import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
+import { cancelScheduledStop, isFleetPaused, pausedRoles, scheduledStopAt } from "../team/team-state.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
 import { initProject } from "../init/init.js";
 import { templateCatalog } from "../init/init-templates.js";

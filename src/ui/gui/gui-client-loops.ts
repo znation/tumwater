@@ -3,7 +3,7 @@
  * doing (working, landing, needs-attention, paused, idle), each with its status pill, current
  * work, spend, and per-row operator controls (prompt, wake, pause/resume, and the two-click
  * abort), patched cell by cell so a ticking row keeps focus and hover. renderLoops repaints it
- * from each /api/status poll; renderFleet (gui-client-fleet.ts) calls it. Spliced into
+ * from each /api/status poll; renderFleet (gui-client-team.ts) calls it. Spliced into
  * gui-client.ts's script, reaching its helpers (esc, icon, phaseInfo, sortLoops, postAction,
  * setTarget, focusComposer, rerender, …) through that concatenation. */
 export const GUI_CLIENT_LOOPS_JS = String.raw`

@@ -22,7 +22,7 @@ import {
   resumeFleet,
   resumeRole,
   scheduledStopAt,
-} from "../../fleet/fleet-state.js";
+} from "../../team/team-state.js";
 import { durationLabel } from "../../cli/cli-args.js";
 import { questionAsker, tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE } from "../../backlog/question-answer.js";
 import { editQueuedFile, readQueuedPromptBody } from "../../inbox/inbox-edit.js";

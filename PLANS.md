@@ -21,30 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code team, part 1/6: Move src/fleet/ to src/team/ and give the fleet-named files team names (planned 2026-10-16 by user; requires Plain terms role ids 5/5 and Plain terms scripting 5/5 landed; design in plans/terminology.md "Code names"; touches src/fleet/ and the fleet-named files and their importers)
-
-**Goal.** A mechanical file move with no identifier changes. The fleet-named directory and files take team names, and every import path and path mention follows them. Behavior is unchanged.
-
-**Approach.**
-- `git mv`, so history follows the files:
-  - `src/fleet/` → `src/team/`. Inside it, `fleet-hold.ts` → `team-hold.ts`, `fleet-polls.ts` → `team-polls.ts` and `fleet-state.ts` → `team-state.ts`. `error-storm.ts`, `failure-spread.ts`, `orchestrator-info.ts` and `reclaim.ts` keep their names.
-  - `src/ui/fleet-alerts.ts` → `src/ui/team-alerts.ts`, `src/gui/gui-fleet-commands.ts` → `src/gui/gui-team-commands.ts`, and `src/ui/gui/gui-client-fleet.ts` → `src/ui/gui/gui-client-team.ts`.
-  - Tests: `test/fleet-alerts.test.ts`, `test/fleet-hold.test.ts`, `test/fleet-polls.test.ts` and `test/fleet-state.test.ts` → `test/team-*.test.ts`. `test/gui-client-fleet.test.ts` → `test/gui-client-team.test.ts`, `test/status-data-fleet.test.ts` → `test/status-data-team.test.ts`, `test/event-format-fleet.test.ts` → `test/event-format-team.test.ts`, and `test/cli-operators-fleet.test.ts` → `test/cli-operators-team.test.ts`.
-- Update every import specifier that names a moved file: `from "…"`, `import("…")` and the tests' `../src/fleet/…` (about 100 lines). Also update every path mention of a moved file in comments and strings, such as `src/fleet/fleet-state.ts`, `gui-client-fleet.ts's …` or `fleet-hold.test.ts`. Find them with `git grep -nE 'src/fleet|/fleet/|\./fleet-|fleet-(hold|polls|state|alerts)\.|gui-client-fleet|gui-fleet-commands|(status-data|event-format|cli-operators)-fleet'`. Change only the path on those lines. Identifiers such as `pauseFleet` stay for parts 2–6.
-- Update the docs and scripts that name a moved path, in this same part:
-  - docs/invariants.md: test/invariants-doc.test.ts fails on any cited `src/…` or `test/…` path that no longer exists. At planning time, the Binds path `src/fleet/fleet-state.ts` was the only one. Re-grep the file for every moved source and test path, because earlier series may have added citations.
-  - DEVELOPMENT.md's `src/fleet/` layout bullet (the path and file names only), and any other docs/*.md that cites a moved path as a current file;
-  - the comment in scripts/live-checkout-guard.mjs.
-- Leave history as written: PLANS.md, BUGS.md, QUESTIONS.md, plans/*.md, docs/commit-history-analysis.md and the docs/code-metrics.md snapshot.
-
-**Files touched.** The 7 moved source files and 8 moved tests (`git mv`); the roughly 60 src/ and test/ files whose imports or path mentions name them; DEVELOPMENT.md; docs/invariants.md; scripts/live-checkout-guard.mjs.
-
-**Acceptance criteria.**
-- `git ls-files src test | grep -i fleet` prints nothing.
-- `git grep -nE 'src/fleet|/fleet/|fleet-(hold|polls|state|alerts)\.(ts|js)|gui-client-fleet|gui-fleet-commands|(status-data|event-format|cli-operators)-fleet' -- src test scripts DEVELOPMENT.md docs/invariants.md docs/how-it-works.md` prints nothing, and test/invariants-doc.test.ts passes.
-- No identifier changes: every edited line differs only in a path or file name, and `git diff -M --stat` shows the moves as renames.
-- `npm run test` passes.
-
 ### Plain terms code team, part 2/6: Rename the fleet identifiers in src/team/ and its tests (planned 2026-10-16 by user; requires part 1/6 landed; design in plans/terminology.md "Code names"; touches src/team/ and its seven test files)
 
 **Goal.** Every identifier, comment and test name in `src/team/` and its tests says team. The module's exports take their new names. The old names stay as deprecated aliases until the parts that own their callers move them over. A mechanical rename with no behavior change.
@@ -1695,6 +1671,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/event-format-fleet.test.ts` "formatEvent renders the budget transition events plainly with spend and cap": the existing `paused`, `bare`, `refused` and `demoted` assertions pass unchanged. Add an assertion that each of the four lines matches `/; roles start no new runs until maxDailyCostUsd is raised or removed in tumwater\.json or the local day rolls over$/`. `refused` and `demoted` must still contain their parentheticals before that tail.
 - `test/failure-render.test.ts` passes unchanged, because the digest lines are not touched.
 - `test/notify.test.ts` passes unchanged, because the page message is `formatEvent(event)`.
+- `npm run test` passes.
+
+### Plain terms code team, part 1/6: Move src/fleet/ to src/team/ and give the fleet-named files team names (planned 2026-10-16 by user; requires Plain terms role ids 5/5 and Plain terms scripting 5/5 landed; design in plans/terminology.md "Code names"; touches src/fleet/ and the fleet-named files and their importers) — done 2026-10-16
+
+**Goal.** A mechanical file move with no identifier changes. The fleet-named directory and files take team names, and every import path and path mention follows them. Behavior is unchanged.
+
+**Approach.**
+- `git mv`, so history follows the files:
+  - `src/fleet/` → `src/team/`. Inside it, `fleet-hold.ts` → `team-hold.ts`, `fleet-polls.ts` → `team-polls.ts` and `fleet-state.ts` → `team-state.ts`. `error-storm.ts`, `failure-spread.ts`, `orchestrator-info.ts` and `reclaim.ts` keep their names.
+  - `src/ui/fleet-alerts.ts` → `src/ui/team-alerts.ts`, `src/gui/gui-fleet-commands.ts` → `src/gui/gui-team-commands.ts`, and `src/ui/gui/gui-client-fleet.ts` → `src/ui/gui/gui-client-team.ts`.
+  - Tests: `test/fleet-alerts.test.ts`, `test/fleet-hold.test.ts`, `test/fleet-polls.test.ts` and `test/fleet-state.test.ts` → `test/team-*.test.ts`. `test/gui-client-fleet.test.ts` → `test/gui-client-team.test.ts`, `test/status-data-fleet.test.ts` → `test/status-data-team.test.ts`, `test/event-format-fleet.test.ts` → `test/event-format-team.test.ts`, and `test/cli-operators-fleet.test.ts` → `test/cli-operators-team.test.ts`.
+- Update every import specifier that names a moved file: `from "…"`, `import("…")` and the tests' `../src/fleet/…` (about 100 lines). Also update every path mention of a moved file in comments and strings, such as `src/fleet/fleet-state.ts`, `gui-client-fleet.ts's …` or `fleet-hold.test.ts`. Find them with `git grep -nE 'src/fleet|/fleet/|\./fleet-|fleet-(hold|polls|state|alerts)\.|gui-client-fleet|gui-fleet-commands|(status-data|event-format|cli-operators)-fleet'`. Change only the path on those lines. Identifiers such as `pauseFleet` stay for parts 2–6.
+- Update the docs and scripts that name a moved path, in this same part:
+  - docs/invariants.md: test/invariants-doc.test.ts fails on any cited `src/…` or `test/…` path that no longer exists. At planning time, the Binds path `src/fleet/fleet-state.ts` was the only one. Re-grep the file for every moved source and test path, because earlier series may have added citations.
+  - DEVELOPMENT.md's `src/fleet/` layout bullet (the path and file names only), and any other docs/*.md that cites a moved path as a current file;
+  - the comment in scripts/live-checkout-guard.mjs.
+- Leave history as written: PLANS.md, BUGS.md, QUESTIONS.md, plans/*.md, docs/commit-history-analysis.md and the docs/code-metrics.md snapshot.
+
+**Files touched.** The 7 moved source files and 8 moved tests (`git mv`); the roughly 60 src/ and test/ files whose imports or path mentions name them; DEVELOPMENT.md; docs/invariants.md; scripts/live-checkout-guard.mjs.
+
+**Acceptance criteria.**
+- `git ls-files src test | grep -i fleet` prints nothing.
+- `git grep -nE 'src/fleet|/fleet/|fleet-(hold|polls|state|alerts)\.(ts|js)|gui-client-fleet|gui-fleet-commands|(status-data|event-format|cli-operators)-fleet' -- src test scripts DEVELOPMENT.md docs/invariants.md docs/how-it-works.md` prints nothing, and test/invariants-doc.test.ts passes.
+- No identifier changes: every edited line differs only in a path or file name, and `git diff -M --stat` shows the moves as renames.
 - `npm run test` passes.
 
 ### The question-posted page names the question's number and the command that answers it, so the notify message is something the operator can act on (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/landing/landing-questions.ts, src/events/event-format.ts, docs/config.md and their tests)

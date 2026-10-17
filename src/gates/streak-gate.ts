@@ -1,10 +1,10 @@
 /** The error-streak circuit breaker (PLANS.md 2026-09-30): a role whose ticks keep failing
  * consecutively is warned at ERROR_STREAK_WARN (src/tick/tick-apply.ts) and named by the fleet-wide
- * storm alarms (src/fleet/error-storm.ts, src/fleet/failure-spread.ts), but both only talk — the
+ * storm alarms (src/team/error-storm.ts, src/team/failure-spread.ts), but both only talk — the
  * role keeps ticking on the error ladder's 600 s max backoff forever, burning a model slot and
  * spend on a loop that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed ticks this gate
  * pauses the role through the same per-role pause marker the operator's `tumwater pause --role
- * <id>` writes (src/fleet/fleet-state.ts's pauseRole — the marker, lock, and idempotence come
+ * <id>` writes (src/team/team-state.ts's pauseRole — the marker, lock, and idempotence come
  * free), so the scheduler's existing pausedRolesSet skip blocks new ticks with zero scheduler
  * changes. The director is NOT exempt: a failing director cannot process prompts anyway, and one
  * uniform rule needs no carve-out. `tumwater resume --role <id>` (or the dashboard's per-row
@@ -26,17 +26,17 @@
  * the ack: the next episode trips on its own fresh ERROR_STREAK_BREAKER failures.
  *
  * Accepted behavior, stated here and not fixed in this change: the dashboards' "failing tick after
- * tick" alert (src/ui/fleet-alerts.ts) reads consecutiveErrors regardless of pause, so it keeps
+ * tick" alert (src/ui/team-alerts.ts) reads consecutiveErrors regardless of pause, so it keeps
  * listing a breaker-paused role until the streak clears; the loop cell's paused badge explains why
  * it is not ticking, and the role_streak_paused event tells the operator why. */
 
 import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
 import type { LoopState } from "../loop/loop-state.js";
-import { pauseRole } from "../fleet/fleet-state.js";
+import { pauseRole } from "../team/team-state.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 
 /** One runner's streak as the gate reads it — the same Pick pollErrorStorm uses
- * (src/fleet/fleet-polls.ts): LoopState.consecutiveErrors and lastError. */
+ * (src/team/team-polls.ts): LoopState.consecutiveErrors and lastError. */
 interface StreakObservation {
   role: string;
   state: Pick<LoopState, "consecutiveErrors" | "lastError">;

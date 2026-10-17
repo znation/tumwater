@@ -2,20 +2,20 @@
  * 2026-09-29 connection-storm entry): when many roles each fail a few times on one provider
  * failure kind, no existing bar trips — the per-role streak alarm needs one role DEEP
  * (ERROR_STREAK_WARN consecutive, src/tick/tick-apply.ts), the error-storm warning needs several
- * roles deep at once (src/fleet/error-storm.ts), and the fleet hold needs failures COALESCED within
- * a two-minute window (src/fleet/fleet-hold.ts). A degraded backend that fails the fleet widely and
+ * roles deep at once (src/team/error-storm.ts), and the fleet hold needs failures COALESCED within
+ * a two-minute window (src/team/team-hold.ts). A degraded backend that fails the fleet widely and
  * shallowly — six ticks across as many roles, each failure minutes apart — rides all three
  * gaps in silence. This alarm counts raw failures of one kind across roles in a rolling
  * window, independent of any role's streak depth: the fourth bar, shaped for the spread the
- * other three cannot see. POLICY, on the shape of its siblings (src/fleet/error-storm.ts,
- * src/fleet/fleet-hold.ts): a pure reducer over the observations the orchestrator collects each
+ * other three cannot see. POLICY, on the shape of its siblings (src/team/error-storm.ts,
+ * src/team/team-hold.ts): a pure reducer over the observations the orchestrator collects each
  * poll and the previous state, so the rule is unit-testable without a fleet and the
  * orchestrator owns only the wiring (the warning event). Like both siblings it has memory —
  * which failures still sit inside the window is a fact about the past no single poll's inputs
  * carry — so it is a reducer rather than a stateless predicate. */
 
 import { increment, rankCountEntries } from "../collections.js";
-import type { HoldKind, HoldObservation } from "./fleet-hold.js";
+import type { HoldKind, HoldObservation } from "./team-hold.js";
 
 /** Failures of one kind within the window that trip the alarm. Six in thirty minutes: the
  * same magnitude as the 2026-09-29 storm's recorded cluster (10× across 7 roles) at the

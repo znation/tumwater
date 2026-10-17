@@ -15,7 +15,7 @@ const realSetTimeout = globalThis.setTimeout;
  * It always uses the captured
  * real setTimeout, so it keeps sleeping in real time under a test that mocks the timer APIs
  * instead. Deliberately not sleeps, and left as-is: the value-resolving timeout promises in
- * semaphore.test.ts and cli-operators-fleet.test.ts (they race and resolve a value, not a gap),
+ * semaphore.test.ts and cli-operators-team.test.ts (they race and resolve a value, not a gap),
  * the runner-script string in build-check-process.test.ts (executed by a child process that
  * cannot import this module), and the two src-side sites (lock.ts, loop-pi.ts), which cannot
  * import a test helper. */

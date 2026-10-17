@@ -17,7 +17,7 @@ export function isJsonObject(value: unknown): value is Record<string, unknown> {
  * when it is an array and [] otherwise — the one home of the "an event/record field is the
  * list or it is nothing" read every formatter applies (event-format.ts's review_rejected
  * reasons, dep_install packages, config_changed keys; src/failure/failure-state-change.ts's
- * config_changed keys; time-spend.ts's review-rejection reasons; fleet-state.ts's paused-roles
+ * config_changed keys; time-spend.ts's review-rejection reasons; team-state.ts's paused-roles
  * list). A torn or hand-edited line
  * never throws and never renders a placeholder: the field reads as absent, and the caller's
  * empty-list branch fires. Foreign entries inside an array are dropped for the same reason —
@@ -40,7 +40,7 @@ export function stringList(value: unknown): string[] {
  * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
  * failure/failure-state-change.ts's model_fallback_ended (durationMs → 0) and build_stale
  * renderer (aheadCommits → 0); gates/maintenance-quota.ts's foldLine and seed (ev.ts → null);
- * fleet/orchestrator-info.ts's isFiniteNumber (v → undefined); fleet/fleet-state.ts's
+ * team/orchestrator-info.ts's isFiniteNumber (v → undefined); team/team-state.ts's
  * standingMarker, pausedRoles, and standingRolesUntil (until → undefined);
  * operator/operator-requests.ts's consumeWakeRequest (notBeforeMs → undefined);
  * git/slots-state.ts's readSlotRecord (pinnedAt, lastReleasedAt → null); git/worktree-use.ts's

@@ -1,9 +1,9 @@
 // vocabulary: plain
 import { roleLabel } from "../roles/role-labels.js";
-import { pausedRoles, pausedRolesUntil, standingFleetPause } from "../fleet/fleet-state.js";
+import { pausedRoles, pausedRolesUntil, standingFleetPause } from "../team/team-state.js";
 import { MODEL_TIERS, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";
 import { withModelOverrides } from "../config/config-views.js";
-import type { ChainTierInfo } from "../fleet/orchestrator-info.js";
+import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, fleetDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
@@ -19,7 +19,7 @@ import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from
 import { humanSeconds, secondsUntil } from "../text/datetime.js";
 import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { claudeUtilizationPct, claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
-import { claudeWindowObservation } from "../fleet/fleet-polls.js";
+import { claudeWindowObservation } from "../team/team-polls.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
@@ -194,13 +194,13 @@ export function checkClaudeWindow(
 }
 
 /** How far back the `provider hold` check reads for hold/resume crossings. The longest a
- * hold can stay is HOLD_CAP_MS (fleet-hold's 15-minute cap that escalation doubles against),
+ * hold can stay is HOLD_CAP_MS (team-hold's 15-minute cap that escalation doubles against),
  * so a window a comfortable multiple of that covers any standing hold's crossing event plus
  * its resume — an older resumed event must not be missed or a re-opened provider reads held. */
 const HOLD_CHECK_WINDOW_MS = 2 * 3600_000;
 
 /** The `provider hold` check: names each provider whose fleet-wide failure hold
- * (src/fleet/fleet-hold.ts, polled by pollFleetHold) stands now — a 429/backend-failure storm
+ * (src/team/team-hold.ts, polled by pollFleetHold) stands now — a 429/backend-failure storm
  * that stops the roles on that provider from starting new ticks until it re-opens. Read-only:
  * it infers the standing set from the event log's own `rate_limit_hold`/`rate_limit_resumed`
  * crossings, the events pollFleetHold writes, so it cannot disagree with the hold. A standing

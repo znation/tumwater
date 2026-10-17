@@ -23,15 +23,15 @@ import { pollPauseGates, newPauseGateState } from "../src/gates/pause-gates.js";
 import { pollStreakGate, newStreakGateState } from "../src/gates/streak-gate.js";
 import { pollRoleCapGate, newRoleCapGateState } from "../src/gates/role-cap-gates.js";
 import { newQuietHoursGateState, pollQuietHoursGate } from "../src/scheduling/quiet-hours.js";
-import type { FleetHold } from "../src/fleet/fleet-hold.js";
-import { ERROR_STORM_QUIET } from "../src/fleet/error-storm.js";
-import { FAILURE_SPREAD_QUIET } from "../src/fleet/failure-spread.js";
+import type { FleetHold } from "../src/team/team-hold.js";
+import { ERROR_STORM_QUIET } from "../src/team/error-storm.js";
+import { FAILURE_SPREAD_QUIET } from "../src/team/failure-spread.js";
 import {
   pollErrorStorm,
   pollFailureSpread,
   pollFleetHold,
   type HoldInputs,
-} from "../src/fleet/fleet-polls.js";
+} from "../src/team/team-polls.js";
 import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
 
 const T0 = 1_000_000_000;

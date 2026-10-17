@@ -25,7 +25,7 @@ import { renderDoctor } from "../../doctor/doctor-render.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
-import { orchestratorAlive } from "../../fleet/orchestrator-info.js";
+import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
 import { commitOperatorBacklogEdit } from "../../backlog/backlog-commit.js";

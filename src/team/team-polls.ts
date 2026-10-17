@@ -1,6 +1,6 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./fleet-hold.js";
+import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./team-hold.js";
 import { claudeWindowUsedUp, windowReserved, type ClaudeAccount } from "../agent/claude/claude-account.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
@@ -10,8 +10,8 @@ import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
 
 /** The orchestrator's three fleet-health polls — the wiring half of the fleet-wide failure
- * alarms (src/fleet/fleet-hold.ts, src/fleet/error-storm.ts,
- * src/fleet/failure-spread.ts): each poll gathers
+ * alarms (src/team/team-hold.ts, src/team/error-storm.ts,
+ * src/team/failure-spread.ts): each poll gathers
  * the observations its alarm's pure reducer steps with, steps it, and logs exactly one event
  * per episode crossing, so the alarm modules stay unit-testable without a fleet and these
  * own the only event emission. Split out of tick-timing.ts — which had grown from the
@@ -57,7 +57,7 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * 429 storm at the reviewer's provider holds the roles on that provider while roles on a
  * healthy one keep ticking (PLANS.md 2026-10-05). A provider whose hold re-opened STAYS in
  * the map — its kind, provider, relapse count, and re-open time are the memory the next
- * storm's relapse test needs — so "held" is always read through fleet/fleet-hold.ts's
+ * storm's relapse test needs — so "held" is always read through team/team-hold.ts's
  * heldProviders() (until non-null), never bare key presence: a lifted hold must never
  * keep blocking. Events carry the provider when one is configured (an undefined provider
  * — pi's default — omits it, so an unconfigured fleet's events render exactly as before).
@@ -224,7 +224,7 @@ export function pollClaudeWindowWarning(
   return prevWarnedKey;
 }
 
-/** One poll of the fleet-wide error-storm warning (src/fleet/error-storm.ts): gather each runner's
+/** One poll of the fleet-wide error-storm warning (src/team/error-storm.ts): gather each runner's
  * current error streak (LoopState.consecutiveErrors/lastError — the same fields the per-role
  * "consecutive tick failures" warning reads, the director's included, since its failures are
  * the fleet's evidence too), step the pure reducer, and log exactly one warning per episode,
@@ -262,7 +262,7 @@ export function pollErrorStorm(
   return next;
 }
 
-/** One poll of the fleet-wide wide-shallow storm alarm (src/fleet/failure-spread.ts): gather each
+/** One poll of the fleet-wide wide-shallow storm alarm (src/team/failure-spread.ts): gather each
  * runner's latest provider-failure observations — the same two the fleet hold reads, the
  * director's included, since its failures are the fleet's evidence too — step the pure
  * reducer, and log exactly one warning per episode: on the quiet→active crossing (and again

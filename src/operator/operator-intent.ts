@@ -2,8 +2,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { cancelScheduledStop, isFleetPaused, scheduleStop } from "../fleet/fleet-state.js";
-import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
+import { cancelScheduledStop, isFleetPaused, scheduleStop } from "../team/team-state.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { formatDate, formatTime, humanSeconds, secondsUntil } from "../text/datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
@@ -14,7 +14,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
-import { reclaimPass } from "../fleet/reclaim.js";
+import { reclaimPass } from "../team/reclaim.js";
 import { formatGB } from "../text/format.js";
 import { cancelScheduledWakes, pendingScheduledWakes } from "./operator-requests.js";
 import {

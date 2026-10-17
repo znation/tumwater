@@ -14,8 +14,8 @@ import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel, roleTitle } from "../roles/role-labels.js";
 import { yieldMultiplierFor, yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
-import { fleetAlerts } from "./fleet-alerts.js";
-import type { FleetAlert } from "./fleet-alerts.js";
+import { fleetAlerts } from "./team-alerts.js";
+import type { FleetAlert } from "./team-alerts.js";
 import { openQuestions } from "../backlog/backlog.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
@@ -171,7 +171,7 @@ export function toneLine(text: string, width: number, tone?: StatusSpan["tone"])
 /** The attention lines under a header: one per alert — its mark and title in its tone, then
  * the detail — at most `max` of them, the rest counted on a last line. This is the banner
  * block the TUI draws under its header and `tumwater status` pushes under its own, so the two
- * surfaces render the same wording from the one shared alert source (fleet-alerts.ts). */
+ * surfaces render the same wording from the one shared alert source (team-alerts.ts). */
 export function alertLines(alerts: readonly FleetAlert[], width: number, max = 3): StatusLine[] {
   const shown = alerts.length > max ? alerts.slice(0, max - 1) : alerts;
   const lines = shown.map((a) => {
@@ -460,7 +460,7 @@ export function renderStatusSpans(
  * (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
   const { lines, loops } = renderStatusSpans(root, snap, maxWidth);
-  // The fleet-attention banners (fleet-alerts.ts) drop under the header's blank line here, on
+  // The fleet-attention banners (team-alerts.ts) drop under the header's blank line here, on
   // the CLI-only plain-text surface — the same spelled-out banners the dashboard and TUI draw,
   // from the one shared source, so the CLI/GUI/TUI cannot drift on wording. One QUESTIONS.md
   // read (openQuestions) for the pending-questions alert — the dashboard's cadence. The CLI

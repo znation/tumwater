@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alertNeedsYou, fleetAlerts, type AlertLoop } from "../src/ui/fleet-alerts.js";
+import { alertNeedsYou, fleetAlerts, type AlertLoop } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 
-// fleet-alerts.ts's fleetAlerts: what needs the operator, phrased once for the dashboard's alert
+// team-alerts.ts's fleetAlerts: what needs the operator, phrased once for the dashboard's alert
 // banners and the TUI's attention lines.
 
 type Snap = Parameters<typeof fleetAlerts>[0];

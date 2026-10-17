@@ -2,7 +2,7 @@
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import type { LoopState } from "../loop/loop-state.js";
-import type { PermitSnapshot } from "../fleet/orchestrator-info.js";
+import type { PermitSnapshot } from "../team/orchestrator-info.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { heldByMainRed } from "../status/status-polls.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.js";
@@ -99,7 +99,7 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
 export function onErrorStreak(s: Pick<LoopState, "consecutiveErrors" | "lastResult" | "quietKillStreak">): boolean {
   // An error streak at or past the warning threshold (tick-apply.ts's ERROR_STREAK_WARN), or
   // a quiet-kill streak at the give-up threshold (BUGS.md 2026-09-18): the exact condition
-  // that makes loopPhase read "failing", split out so the fleet alert (fleet-alerts.ts) can
+  // that makes loopPhase read "failing", split out so the fleet alert (team-alerts.ts) can
   // key its red "failing tick after tick" banner on the streak rather than on the rendered
   // phase — an in-flight tick hides the streak behind a `working`/`landing` label (loopPhase
   // ranks running work above failing), but the alert must stay up while the loop's next tick

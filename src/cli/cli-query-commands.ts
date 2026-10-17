@@ -21,7 +21,7 @@ import { collectFleetChanges, collectRoleChange } from "../change/change-data.js
 import { renderFleetChange, renderRoleChange } from "../change/change-render.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
 import { renderLandingQueue } from "../landing/landing-queue-render.js";
-import { orchestratorAlive } from "../fleet/orchestrator-info.js";
+import { orchestratorAlive } from "../team/orchestrator-info.js";
 import { queueInFlight } from "../status/status-polls.js";
 import { rolePayload } from "../roles/role-view.js";
 import { renderRoleMarkdown } from "../roles/role-render.js";

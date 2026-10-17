@@ -13,7 +13,7 @@ import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, hand
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
-import { scheduledStopAt } from "../src/fleet/fleet-state.js";
+import { scheduledStopAt } from "../src/team/team-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { orchestratorStatePath, reclaimRequestPath, restartRequestPath } from "../src/paths.js";

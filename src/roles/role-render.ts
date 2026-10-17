@@ -3,7 +3,7 @@ import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
 import { clockHm, formatTimestamp, humanSeconds, nextRunPhrase, secondsSince, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
-import type { ChainTierInfo } from "../fleet/orchestrator-info.js";
+import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { isAgentId } from "../config/model-selector.js";

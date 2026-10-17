@@ -4,7 +4,7 @@ import { TuiApp, type TuiAppView } from "./tui-app.js";
 import { openQuestions } from "../../backlog/backlog.js";
 import { snapshot } from "../../status/status-data.js";
 import { renderStatusSpans, type StatusLine } from "../status-render.js";
-import { fleetAlerts } from "../fleet-alerts.js";
+import { fleetAlerts } from "../team-alerts.js";
 import {
   captureStartupBuild,
   createReloadWatch,
@@ -166,7 +166,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const s = keys.state(); // the handler's state this frame renders
     const roleIds = s.roleIds;
     const view = s.view;
-    // What needs the operator — the dashboard's alert banners (fleet-alerts.ts's fleetAlerts), as
+    // What needs the operator — the dashboard's alert banners (team-alerts.ts's fleetAlerts), as
     // attention lines under the header. Each consumes one line of the height budget.
     const attention = alertLines(fleetAlerts(snap, openQuestions(root), status.loops, Date.now()), width);
     const statusLines = [status.lines[0] ?? [], ...attention, ...status.lines.slice(1)];

@@ -61,7 +61,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   }
   // A stalled tool call or a long silence, as the phase label names them (tick-progress-model.ts's
   // inFlightDetail) — the cue that a working loop may be stuck. The pattern is that module's
-  // STALL_SOURCE (interpolated at module build), shared with fleet-alerts.ts's server-side
+  // STALL_SOURCE (interpolated at module build), shared with team-alerts.ts's server-side
   // matcher so the two cannot drift from the wording the cell renders.
   const STALL = new RegExp(${JSON.stringify(STALL_SOURCE)});
   // A tick result (tick-outcome.ts TickResult) in words, with the tone of its outcome.
@@ -127,7 +127,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // holders (rank 0) and the pipeline waiters (rank 1, labeled "Waiting to start") keep
   // sharing In progress (BUGS.md 2026-10-06).
   const LOOP_GROUPS = [["Director", -1], ["In progress", 0, 1], ["Needs attention", 2], ["Paused", 3], ["Idle", 4]];
-  // The payload's alerts (fleet-alerts.ts fleetAlerts — the TUI's attention lines use the same
+  // The payload's alerts (team-alerts.ts fleetAlerts — the TUI's attention lines use the same
   // list), plus the one only the page can know: that its server stopped answering.
   const OFFLINE_ALERT = { key: "offline", tone: "red", title: "Lost contact with the dashboard server",
     detail: "Retrying every second. Everything below is the last state it reported.", actions: [] };
@@ -166,7 +166,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   }
   // A backlog title's trailing "(planned 2026-09-29)"-style note, split off as metadata —
   // the pattern is backlog-structure.ts's ENTRY_STAMP_META_SOURCE (interpolated at module
-  // load, compiled once here), the same regex fleet-alerts.ts strips through via
+  // load, compiled once here), the same regex team-alerts.ts strips through via
   // stripEntryStamp, so a new stamp verb reaches both dashboards from one edit.
   const ENTRY_STAMP_RE = new RegExp(${JSON.stringify(ENTRY_STAMP_META_SOURCE)}, "i");
   function splitTitle(t) {

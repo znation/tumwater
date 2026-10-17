@@ -17,7 +17,7 @@ import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
+import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { awaitSettledTick, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";

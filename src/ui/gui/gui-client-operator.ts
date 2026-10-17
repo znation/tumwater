@@ -1,5 +1,5 @@
 // vocabulary: plain
-import { PAUSE_REASON_MAX } from "../../fleet/fleet-state.js";
+import { PAUSE_REASON_MAX } from "../../team/team-state.js";
 
 /** The dashboard's fleet-wide operator controls, browser-side, all living in the sidebar so
  * they are in reach from every view: the daily spend badge — today's spend against the cap

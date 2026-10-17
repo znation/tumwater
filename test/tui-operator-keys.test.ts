@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isFleetPaused, scheduledStopAt, pauseFleet, pausedRoles, standingFleetPause } from "../src/fleet/fleet-state.js";
+import { isFleetPaused, scheduledStopAt, pauseFleet, pausedRoles, standingFleetPause } from "../src/team/team-state.js";
 import { listWakes, requestWake } from "../src/operator/operator-intent.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";

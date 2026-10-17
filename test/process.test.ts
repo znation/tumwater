@@ -26,7 +26,7 @@ import { pathReplace } from "./fakes/fake-commands.js";
 import { errnoError } from "./helpers/fs-faults.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead
-// holder's merge lock must be breakable) and fleet/orchestrator-info.ts's orchestrator-alive
+// holder's merge lock must be breakable) and team/orchestrator-info.ts's orchestrator-alive
 // status. Its
 // contract is "any error reads as not alive" — the EPERM case matters most, because a live
 // foreign pid mistaken for one of ours would make tryBreakStale never break that lock, and

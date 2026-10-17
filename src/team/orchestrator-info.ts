@@ -30,7 +30,7 @@ export interface ChainTierInfo {
  * orchestrator writes it (writeOrchestratorInfo); the separate-process observers — status, TUI,
  * GUI, doctor, and the second-fleet refusal — read it here so they never depend on the scheduler
  * module itself. The operator pause markers are the other fleet-state domain and live beside
- * this one in fleet-state.ts; this module owns the info file alone. */
+ * this one in team-state.ts; this module owns the info file alone. */
 
 /** The disk floor's published state (plans/disk-floor.md, part 4/4): what the orchestrator
  * measured on its most recent poll, so observers (status, TUI, GUI) show the same facts

@@ -64,7 +64,7 @@ function liveEntry(dir: string): LiveEntry {
  * produces one). An Infinity `lastUsedAt` would sort a worktree as used forever —
  * `now - Infinity` is below any idle window — so the worktree could never be idle-reclaimed;
  * an Infinity `reclaimedAt` would read as reclaimed after every use, blocking the same
- * reclaim. Either reads as absent, the same finiteNumber rule fleet-state.ts's and
+ * reclaim. Either reads as absent, the same finiteNumber rule team-state.ts's and
  * operator-requests.ts's persisted deadlines read by. */
 function readWorktreeRecord(value: unknown): WorktreeUseRecord | null {
   if (!isJsonObject(value)) return null;

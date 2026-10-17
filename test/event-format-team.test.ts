@@ -267,7 +267,7 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   assert.equal(withError("   "), streakPaused, "a blank lastError renders the summary-less line");
 });
 
-// Fleet-wide 429 hold (src/fleet/fleet-hold.ts; BUGS.md 2026-09-21 "A 429 storm still has no
+// Fleet-wide 429 hold (src/team/team-hold.ts; BUGS.md 2026-09-21 "A 429 storm still has no
 // fleet-wide hold"): the hold is the harness handling a storm, so both lines are routine. The
 // hold line names who saw the 429s, how long nothing new starts, a relapse when the storm came
 // straight back, and the director exemption.

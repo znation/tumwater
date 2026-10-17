@@ -16,7 +16,7 @@ import { ensureParentDir } from "../src/files/files.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { orchestratorStatePath, pausedPath, pausedRolesPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
-import { pauseFleet, pauseRole, resumeFleet } from "../src/fleet/fleet-state.js";
+import { pauseFleet, pauseRole, resumeFleet } from "../src/team/team-state.js";
 
 test("pausedRolesUntil carries a timed role pause's shared deadline only while the set is non-empty", async () => {
   const repo = tmpdir();

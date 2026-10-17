@@ -14,7 +14,7 @@ import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js"
 import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "../inbox/inbox.js";
-import { pausedRoles } from "../fleet/fleet-state.js";
+import { pausedRoles } from "../team/team-state.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { baseRoleOf, loopIds } from "./loop-ids.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
@@ -34,7 +34,7 @@ import { readTextOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber } from "../files/json-object.js";
 import { canonicalRoleId } from "./legacy-role-ids.js";
-import { orchestratorAlive, readOrchestratorInfo, type ChainTierInfo } from "../fleet/orchestrator-info.js";
+import { orchestratorAlive, readOrchestratorInfo, type ChainTierInfo } from "../team/orchestrator-info.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */

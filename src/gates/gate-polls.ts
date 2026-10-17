@@ -39,19 +39,19 @@ import {
   sampleFreeBytes,
   type DiskGateState,
 } from "./disk-gate.js";
-import { pollErrorStorm, pollFailureSpread, pollFleetHold, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../fleet/fleet-polls.js";
+import { pollErrorStorm, pollFailureSpread, pollFleetHold, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../team/team-polls.js";
 import { readClaudeAccount } from "../agent/claude/claude-account.js";
-import type { ReclaimController } from "../fleet/reclaim.js";
-import type { FleetHold } from "../fleet/fleet-hold.js";
-import { ERROR_STORM_QUIET, type ErrorStorm } from "../fleet/error-storm.js";
-import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../fleet/failure-spread.js";
+import type { ReclaimController } from "../team/reclaim.js";
+import type { FleetHold } from "../team/team-hold.js";
+import { ERROR_STORM_QUIET, type ErrorStorm } from "../team/error-storm.js";
+import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/failure-spread.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
 import { queuedLandingRoles } from "../landing/landing-queue.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { publishInfoFields, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
+import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
 import { roleSeamTier } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
@@ -61,10 +61,10 @@ import type { TierFallbackMap } from "../config/config-fallbacks.js";
  * and cross-poll bookkeeping live in its own module (src/gates/budget-gates.ts,
  * src/gates/pause-gates.ts, src/gates/streak-gate.ts, src/gates/role-cap-gates.ts,
  * src/scheduling/quiet-hours.ts, src/gates/disk-gate.ts, and the fleet-health trio in
- * src/fleet/fleet-polls.ts); this owns the wiring half — one poll advances every gate's state in
+ * src/team/team-polls.ts); this owns the wiring half — one poll advances every gate's state in
  * place. Split out of orchestrator.ts so the poll loop reads as phases (reload → requests →
  * gates → redeploy → landings → schedule → start) and the gate family's wiring sits in one
- * place, the same split fleet/fleet-polls.ts made for the fleet-health trio. Dependency direction:
+ * place, the same split team/team-polls.ts made for the fleet-health trio. Dependency direction:
  * orchestrator → gate-polls → the gate modules. */
 
 /** The gate family's cross-poll memory, constructed once per orchestrator run and mutated in place
@@ -75,7 +75,7 @@ import type { TierFallbackMap } from "../config/config-fallbacks.js";
  * LATEST verdicts, read at permit time by the start pass's closures — read it from
  * `states.fleetHold` at call time, never from a per-poll snapshot (the poll loop's docs below). Key
  * presence is not "held": providers whose hold re-opened stay in the map for their relapse memory,
- * so every consumer goes through fleet/fleet-hold.ts's heldProviders(). */
+ * so every consumer goes through team/team-hold.ts's heldProviders(). */
 export interface FleetGateStates {
   budget: BudgetGateState;
   pause: PauseGateState;
@@ -90,7 +90,7 @@ export interface FleetGateStates {
   /** The disk floor's cross-poll hold (plans/disk-floor.md, part 1/4). */
   disk: DiskGateState;
   fleetHold: ReadonlyMap<string | undefined, FleetHold>;
-  /** The subscription usage window's once-per-window warning memory (fleet/fleet-polls.ts
+  /** The subscription usage window's once-per-window warning memory (team/team-polls.ts
    * pollClaudeWindowWarning): the `type:resetsAt` key whose `claude_window_warning` was
    * logged, null before any. The hold itself rides `fleetHold`. */
   claudeWindowWarned: string | null;
@@ -469,7 +469,7 @@ export function pollFleetGates(
       ...(r.lastBackendFailure ? { lastBackendFailure: r.lastBackendFailure } : {}),
     }));
 
-  // Fleet-wide failure hold, per provider (src/fleet/fleet-hold.ts, PLANS.md 2026-10-05): once two
+  // Fleet-wide failure hold, per provider (src/team/team-hold.ts, PLANS.md 2026-10-05): once two
   // roles' runs have ended on the SAME provider AND failure kind within a short window —
   // 429s, or a connection, timeout, 5xx, or model-load backend failure — role loops on THAT
   // provider start no new ticks, and the land queue starts no new vet, whose reviewer run
@@ -515,7 +515,7 @@ export function pollFleetGates(
     now,
   );
 
-  // Fleet-wide error-storm warning (src/fleet/error-storm.ts): when several roles' tick streaks
+  // Fleet-wide error-storm warning (src/team/error-storm.ts): when several roles' tick streaks
   // fail consecutively on one shared cause, each role's own "consecutive tick failures"
   // warning still fires alone — this adds the one fleet-level warning that names the
   // cause (and the config knob, when the cause has one) instead of leaving the operator
@@ -523,7 +523,7 @@ export function pollFleetGates(
   // hold above there is no re-open event — the members' own recoveries tell that story.
   states.errorStorm = pollErrorStorm(root, states.errorStorm, runners);
 
-  // Fleet-wide wide-shallow storm alarm (src/fleet/failure-spread.ts): when many roles each
+  // Fleet-wide wide-shallow storm alarm (src/team/failure-spread.ts): when many roles each
   // fail a few times on one provider failure kind, the streak bar needs one role deep,
   // the error storm needs several roles deep, and the hold needs the failures close
   // together — this counts raw failures of one kind across roles in a rolling window,

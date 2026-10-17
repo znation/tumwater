@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { pauseFleet, pauseRole } from "../src/fleet/fleet-state.js";
+import { pauseFleet, pauseRole } from "../src/team/team-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";

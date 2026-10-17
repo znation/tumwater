@@ -68,11 +68,11 @@ interface SchedulingPassCtx {
    * cause, split from the per-tier set so the dashboards can name the tiers' own holds
    * separately from this fleet-wide one. */
   reviewStrongPaused: boolean;
-  /** The providers whose fleet-wide failure hold stands (fleet/fleet-hold.ts heldProviders —
+  /** The providers whose fleet-wide failure hold stands (team/team-hold.ts heldProviders —
    * `until` non-null; key presence is relapse memory, not a hold). A role starts no new
    * tick while ITS provider is held (the director exempt). */
   heldProviders: ReadonlySet<string | undefined>;
-  /** The subset of `heldProviders` held by a subscription window (fleet-hold.ts
+  /** The subset of `heldProviders` held by a subscription window (team-hold.ts
    * windowHeldProviders): the one hold the director is NOT exempt from. */
   windowHeldProviders: ReadonlySet<string | undefined>;
   /** The reviewer's provider is held while the review gate is on: nothing could land, so

@@ -328,7 +328,7 @@ export function applyLandingOutcome(
     // scheduled. This landing outcome is the accumulation point (the authoring tick ends
     // `queued`, which no longer resets the streak, see applyTickOutcome) — the same field the
     // warn, the breaker (src/gates/streak-gate.ts), and the error-storm observation
-    // (src/fleet/fleet-polls.ts) already read. No new machinery, no new constants: the warn
+    // (src/team/team-polls.ts) already read. No new machinery, no new constants: the warn
     // bar and the breaker bar are ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
     if (s.revision === undefined) {
       s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;

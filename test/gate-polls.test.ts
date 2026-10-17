@@ -15,7 +15,7 @@ import { LoopRunner } from "../src/loop/loop.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
 import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
-import { heldProviders } from "../src/fleet/fleet-hold.js";
+import { heldProviders } from "../src/team/team-hold.js";
 import type { ModelFallbackState } from "../src/loop/model-fallback.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -28,7 +28,7 @@ import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
-import type { OrchestratorInfo } from "../src/fleet/orchestrator-info.js";
+import type { OrchestratorInfo } from "../src/team/orchestrator-info.js";
 
 test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplicate role_paused on the next poll", () => {
   const root = tmpdir("gate-polls-");

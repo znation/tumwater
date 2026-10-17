@@ -19,7 +19,7 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-s
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { slotWorktreePath } from "../src/paths.js";
-import { pauseRole } from "../src/fleet/fleet-state.js";
+import { pauseRole } from "../src/team/team-state.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";

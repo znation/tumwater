@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { publishInfoFields, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
+import { publishInfoFields, writeOrchestratorInfo, type OrchestratorInfo } from "../team/orchestrator-info.js";
 import { loopEnabled, loopIds } from "../roles/loop-ids.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
@@ -48,8 +48,8 @@ import {
   sleepInterruptible,
 } from "../tick/tick-timing.js";
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gates/gate-polls.js";
-import { ReclaimController } from "../fleet/reclaim.js";
-import { heldProviders, windowHeldProviders } from "../fleet/fleet-hold.js";
+import { ReclaimController } from "../team/reclaim.js";
+import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
 import { planBacklogFull, workReserveCount } from "../scheduling/claims.js";
 import { runStartupMigrations } from "./startup-migration-steps.js";
 

@@ -308,7 +308,7 @@ test("snapshot carries the fallback model only when pi prices it at zero", async
   });
   assert.equal(snapshot(repo, modelsFile).budget.fallback, null, "a demoted fallback is not advertised");
   // A dead orchestrator's leftover file says nothing about what runs now: the price decides.
-  // (A child that has exited and been reaped is a pid that is not alive — fleet-state.test.ts.)
+  // (A child that has exited and been reaped is a pid that is not alive — team-state.test.ts.)
   writeJsonFile(orchestratorStatePath(repo), {
     pid: spawnSync("true").pid,
     startedAt: Date.now(),

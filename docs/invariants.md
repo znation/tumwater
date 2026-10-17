@@ -182,7 +182,7 @@ stay staged). Your cancel, edit, and question answer (`--cancel`, `--edit`, `que
 marker first. A fresh unsupervised `tumwater start` clears a stale marker. `scheduledStopAt` never
 throws: a missing, torn, or non-finite marker reads as no stop.
 
-**Binds.** `src/fleet/fleet-state.ts` (`scheduleStop`, `scheduledStopAt`, `cancelScheduledStop`), `src/cli/cli-run.ts` (`armScheduledStopWatch`).
+**Binds.** `src/team/team-state.ts` (`scheduleStop`, `scheduledStopAt`, `cancelScheduledStop`), `src/cli/cli-run.ts` (`armScheduledStopWatch`).
 
 **Pinned by.** `test/scheduled-stop.test.ts`.
 

@@ -3,7 +3,7 @@
  * single loop: the target selector with its per-target unsent drafts, the character counter,
  * the image attachments (dropped or pasted onto the box, rendered as removable chips), and
  * the submit that reads the bytes and queues the prompt through the same endpoints the CLI's
- * "prompt" and "prompt --role" use. Split out of gui-client-fleet.ts, which keeps the
+ * "prompt" and "prompt --role" use. Split out of gui-client-team.ts, which keeps the
  * read-only status rendering the composer sits on top of. renderFleet calls renderComposer
  * each poll; gui-client-boot.ts's question and backlog actions and gui-client-loops.ts's row
  * actions call draftForDirector and focusComposer. Spliced into gui-client.ts's script right

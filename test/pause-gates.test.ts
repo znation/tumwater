@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { newPauseGateState, pollPauseGates } from "../src/gates/pause-gates.js";
-import { pauseFleet, resumeFleet, pauseRole, resumeRole } from "../src/fleet/fleet-state.js";
+import { pauseFleet, resumeFleet, pauseRole, resumeRole } from "../src/team/team-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 

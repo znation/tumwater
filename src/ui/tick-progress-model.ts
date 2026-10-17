@@ -60,12 +60,12 @@ function progressOfTick(s: LoopState, p: LiveProgress | null | undefined): LiveP
  * <tool>" and "no agent output for <duration>" to the head — as a regex SOURCE string plus the
  * compiled matcher, single-homed beside the code that renders those phrases. Every consumer
  * that must recognize a stall inside a rendered phase label goes through these two, so the
- * server-side alert (fleet-alerts.ts) and the dashboard's browser twin (gui-client-model.ts,
+ * server-side alert (team-alerts.ts) and the dashboard's browser twin (gui-client-model.ts,
  * interpolating the source into its String.raw script) cannot drift from the wording the cell
  * actually renders. */
 export const STALL_SOURCE = String.raw`tool call stalled[^·]*|no agent output for [^·]*`;
 
-/** STALL_SOURCE compiled — the server-side matcher (fleet-alerts.ts's stuck alert). */
+/** STALL_SOURCE compiled — the server-side matcher (team-alerts.ts's stuck alert). */
 export const STALL_RE = new RegExp(STALL_SOURCE);
 
 /** The shared parts assembly for an in-flight state cell: `head` (the phase label with its

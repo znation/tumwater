@@ -29,7 +29,7 @@ import { spawnSync } from "node:child_process";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
-import { pauseFleet } from "../src/fleet/fleet-state.js";
+import { pauseFleet } from "../src/team/team-state.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import {
   FAST_POLL_MS,

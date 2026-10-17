@@ -102,6 +102,6 @@ test("unknownRoleMessage appends a did-you-mean suggestion for a close typo, non
     /^unknown role: feautre \(valid ids: feature, bugfix, director\) — did you mean `feature`\?$/,
   );
   // "bogus" is beyond edit distance 2 of every id — the wording stays as before, so the
-  // existing pins (cli-operators-fleet, role-view, gui) still match.
+  // existing pins (cli-operators-team, role-view, gui) still match.
   assert.equal(unknownRoleMessage("bogus", ids), "unknown role: bogus (valid ids: feature, bugfix, director)");
 });

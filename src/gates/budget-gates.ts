@@ -2,7 +2,7 @@
  * fallback config view it derives, as the orchestrator polls it each cycle. Extracted from
  * orchestrator.ts's poll loop: the spend check, the fallback breaker's re-key, the
  * edge-triggered budget_* events, and the fallback view derivation are one concern beside the
- * other fleet gates (src/gates/pause-gates.ts, src/fleet/fleet-hold.ts's fleet hold) — the
+ * other fleet gates (src/gates/pause-gates.ts, src/team/team-hold.ts's fleet hold) — the
  * orchestrator owns only the wiring (the demotion publish and the per-runner config assignment). */
 
 import { MODEL_TIERS, type ModelTier, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
@@ -37,7 +37,7 @@ import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrid
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
 import { claudeWindowUsedUp, readClaudeAccount, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
 import type { LoopState } from "../loop/loop-state.js";
-import type { ChainTierInfo } from "../fleet/orchestrator-info.js";
+import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { dayAt } from "../text/datetime.js";
 
 /** The budget gate's cross-poll memory: the previous gate value for edge-triggered events,

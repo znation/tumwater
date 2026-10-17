@@ -16,7 +16,7 @@ import {
 } from "../src/operator/operator-commands.js";
 import { pidAlive } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
-import { PAUSE_REASON_MAX } from "../src/fleet/fleet-state.js";
+import { PAUSE_REASON_MAX } from "../src/team/team-state.js";
 import { writeJsonAtomic, writeJsonFile } from "../src/files/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { configPath } from "../src/paths.js";

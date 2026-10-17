@@ -3,7 +3,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { runPi, type PiRunKind, type PiRunOptions } from "../pi/pi.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
-import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
+import { HOLD_BASE_MS } from "../team/team-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, seamHoldKey, seamPairName, type ResolvedModelConfig } from "../config/config-views.js";
 import { ensureProviderLease } from "../concurrency/provider-lease.js";
@@ -27,7 +27,7 @@ import { cappedRequestTimeouts } from "../request-timeouts.js";
 const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
 
 /** What a hint-less 429 waits before its one retry. With no Retry-After from the provider, the
- * fleet's own constants state the refill physics: fleet/fleet-hold.ts's base hold is one minute,
+ * fleet's own constants state the refill physics: team/team-hold.ts's base hold is one minute,
  * "the shortest pause that lets the bucket refill". Retrying sooner re-enters the same exhausted
  * per-minute bucket the first request just emptied and burns the tick's only retry on a
  * near-certain second 429. A present hint always wins instead; the cap above still bounds
@@ -96,7 +96,7 @@ interface LoopPiHost {
   runSignal(): AbortSignal;
   warn(message: string): void;
   /** Fold an authoring run's usage. `provider` is that run's seam hold key
-   * (seamHoldKey of the run's config), which the fold stamps onto the fleet-hold's rate-limit
+   * (seamHoldKey of the run's config), which the fold stamps onto the team-hold's rate-limit
    * and backend-failure observations so a storm is blamed on the backend that actually failed
    * (PLANS.md "Mixed claude + pi fleets, part 2/4"). */
   foldUsage(run: PiRunResult, provider?: string, pair?: string): void;
@@ -341,7 +341,7 @@ export class LoopPi {
    * provider-backend failure (connection down, 5xx, model load) still warns — parity with
    * the 429 branch above, so any episode is visible from the feed alone instead of living
    * only in per-tick error events an operator must aggregate by hand. The fleet-wide hold
-   * (src/fleet/fleet-hold.ts) and the storm alarms judge the spread; this line is the per-run
+   * (src/team/team-hold.ts) and the storm alarms judge the spread; this line is the per-run
    * floor under them, not a retry: a dead backend is not something an immediate re-run beats.
    * Applied to whichever run is returned (BUGS.md 2026-10-09): the retry's returned run is a
    * second, independent run the retry predicate was never applied to, so a retry that dies

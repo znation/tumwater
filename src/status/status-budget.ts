@@ -18,7 +18,7 @@ import { enabledRoleIds } from "../config/config.js";
 import { fallbackModelFree, fleetModelsFree, piPairFree, readPiProviders } from "../pi/pi-models.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { OrchestratorInfo } from "../fleet/orchestrator-info.js";
+import type { OrchestratorInfo } from "../team/orchestrator-info.js";
 import type { StatusLoopRow } from "./status-roles.js";
 
 type PiProviders = ReturnType<typeof readPiProviders>;

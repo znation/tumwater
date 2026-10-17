@@ -146,11 +146,11 @@ export function roleQuietHold(
 }
 
 /** The window's end time exactly as the operator wrote it — the text after the dash, trimmed —
- * for the surfaces that say "quiet until <end>" (badges.ts's quietBadge, fleet-alerts' quiet
+ * for the surfaces that say "quiet until <end>" (badges.ts's quietBadge, team-alerts' quiet
  * alert). parseQuietHours enforces exactly one dash, so reading the end back out of the string
  * is well-defined and preserves the operator's spelling instead of reformatting parsed
  * minutes. The GUI page's client-side script re-derives the same text from the payload's raw
- * quietHours field (gui-client-fleet.ts), since browser code cannot import this module. */
+ * quietHours field (gui-client-team.ts), since browser code cannot import this module. */
 export function quietWindowEnd(quietHours: string): string {
   return quietHours.split("-")[1]?.trim() ?? "";
 }

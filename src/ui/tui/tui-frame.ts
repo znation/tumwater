@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The pieces of a TUI frame, pure so they test without a terminal: the attention lines under the
- * header (fleet-alerts.ts's fleetAlerts — the dashboard's alert banners, one line each); the view
+ * header (team-alerts.ts's fleetAlerts — the dashboard's alert banners, one line each); the view
  * tab strip; the per-view key hints; the prompt line's target; and the tones of activity and
  * transcript lines. The TUI shares the dashboard's vocabulary — the same view names (Activity,
  * Transcript, Backlog, Usage, Failures, History, Pending), the same alert wording, the same

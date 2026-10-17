@@ -3,9 +3,9 @@
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): pause,
  * pause-role, wake, and wake-cancel — with the `pauseForSecondsMs` / `pauseReasonField` /
  * `wakeInSecondsMs` body rules they share. Each handler adapts HTTP onto the domain work one
- * layer down (fleet/fleet-state, operator-intent) and touches no socket beyond its own `res`.
+ * layer down (team/team-state, operator-intent) and touches no socket beyond its own `res`.
  */
-import { normalizePauseReason, pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
+import { normalizePauseReason, pauseFleet, pauseRole, resumeFleet, resumeRole } from "../team/team-state.js";
 import { cancelWakes, PAUSE_FOR_MAX_MS, requestWake } from "../operator/operator-intent.js";
 import { requirePausedFlag, validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
@@ -73,7 +73,7 @@ function pauseReasonField(res: http.ServerResponse, body: Record<string, unknown
 }
 
 /** Handle POST /api/pause: the dashboard's pause control — the same operator gate
- * `tumwater pause [--for <duration>]` and `resume` write, via fleet/fleet-state.ts's shared writers
+ * `tumwater pause [--for <duration>]` and `resume` write, via team/team-state.ts's shared writers
  * (pauseFleet/resumeFleet) so the CLI and the GUI cannot drift on the marker's format or
  * idempotence. Same body discipline as /api/prompt and /api/budget (readJsonObject → 400
  * malformed/non-object, 413 oversized); the target state is explicit (`paused: true|false`)

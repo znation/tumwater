@@ -7,15 +7,15 @@ import {
   readOrchestratorInfo,
   writeOrchestratorInfo,
   type OrchestratorInfo,
-} from "../src/fleet/orchestrator-info.js";
+} from "../src/team/orchestrator-info.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
 import { ensureParentDir } from "../src/files/files.js";
 
-/** The orchestrator info file's own tests (src/fleet/orchestrator-info.ts): the tolerant read,
+/** The orchestrator info file's own tests (src/team/orchestrator-info.ts): the tolerant read,
  * the atomic write, and the pid-liveness check. The operator pause markers read and written
- * through fleet-state.ts have their tests in fleet-state.test.ts. */
+ * through team-state.ts have their tests in team-state.test.ts. */
 
 test("readOrchestratorInfo returns null for missing, torn, and non-object files", () => {
   const root = tmpdir();

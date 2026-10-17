@@ -1,4 +1,4 @@
-/** The dashboard sidebar's main-check row (gui-client-fleet.ts's renderSidebar, marked
+/** The dashboard sidebar's main-check row (gui-client-team.ts's renderSidebar, marked
  * `sidebar` region): it must render the payload's preformatted mainCounts fragment, not
  * re-derive `pass/tests` from the raw counts — that re-derivation dropped the skipped count
  * and made a fully green suite with one skip read like one failure (BUGS.md 2026-09-30),
