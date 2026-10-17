@@ -535,7 +535,7 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
       contended = total >= SLOT_WAIT_WARN_TOTAL_MS;
       const purpose = longest.purpose === "verify" ? "check" : "run";
       parts.push(
-        `${waits.length} ${waits.length === 1 ? "wait" : "waits"} to start in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(
+        `${plural(waits.length, "wait")} to start in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(
           finiteNumber(longest.waitedMs, 0),
         )} (${textOr(longest.role)} ${purpose})${contended ? ` — raise worktreeSlots above ${slots.length}` : ""}`,
       );
@@ -586,8 +586,8 @@ function claimCounts(claims: Array<{ file: string }>): string {
   const bugs = claims.filter((c) => c.file === "BUGS.md").length;
   const plans = claims.length - bugs;
   const parts = [
-    plans > 0 ? `${plans} claimed plan${plans === 1 ? "" : "s"}` : "",
-    bugs > 0 ? `${bugs} claimed bug${bugs === 1 ? "" : "s"}` : "",
+    plans > 0 ? plural(plans, "claimed plan") : "",
+    bugs > 0 ? plural(bugs, "claimed bug") : "",
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(", ") : "no claimed plans or bugs";
 }
@@ -680,7 +680,7 @@ export function checkProviderConcurrency(config: TumwaterConfig | undefined, roo
   if (capSet.size > 0 && keyless.length > 0) {
     warnings.push(`${keyless.length} model job(s) resolve to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.map((s) => s.label).join(", ")}`);
   }
-  if (warnings.length === 0) return okOutcome(`${capEntries.length} provider cap${capEntries.length === 1 ? "" : "s"} — all model jobs resolve`);
+  if (warnings.length === 0) return okOutcome(`${plural(capEntries.length, "provider cap")} — all model jobs resolve`);
   return warnOutcome(warnings.join("; "));
 }
 
@@ -746,7 +746,7 @@ export function checkFlakyChecks(root: string): CheckOutcome {
   const more =
     rest.length > 0 ? ` (and ${rest.length} more: ${rest.map(render).join(", ")})` : "";
   return warnOutcome(
-    `check${flapped.length === 1 ? "" : "s"} flapped more than once in the last 24h: ${render(first!)}${more}`,
+    `${agree(flapped.length, "check", "checks")} flapped more than once in the last 24h: ${render(first!)}${more}`,
   );
 }
 

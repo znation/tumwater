@@ -16,6 +16,7 @@ import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { reclaimPass } from "../team/reclaim.js";
 import { formatGB } from "../text/format.js";
+import { plural } from "../text/phrases.js";
 import { cancelScheduledWakes, pendingScheduledWakes } from "./operator-requests.js";
 import {
   abortRequestPath,
@@ -102,7 +103,7 @@ function noWakePending(role?: string): string {
 export function cancelWakes(root: string, role?: string): string {
   const n = cancelScheduledWakes(root, role);
   const forRole = role ? ` for ${role}` : "";
-  return n > 0 ? `cancelled ${n} scheduled wake${n === 1 ? "" : "s"}${forRole}` : noWakePending(role);
+  return n > 0 ? `cancelled ${plural(n, "scheduled wake")}${forRole}` : noWakePending(role);
 }
 
 /** The pending scheduled wakes (`tumwater wake --list`), earliest first; with `role`, only the

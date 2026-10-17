@@ -5,7 +5,7 @@ import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from
 import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
-import { agree, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
+import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
 import { INSTANCE_ROLES } from "../roles/loop-ids.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
@@ -160,7 +160,7 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
     for (const c of candidates) {
       const notes = [
         `idle ${c.idleHours.toFixed(1)}h`,
-        `${c.paths} ignored path${c.paths === 1 ? "" : "s"}`,
+        plural(c.paths, "ignored path"),
         ...(c.resumePending ? ["resume pending"] : []),
         ...(c.reclaimable ? [] : ["not idle-reclaimable"]),
       ];
