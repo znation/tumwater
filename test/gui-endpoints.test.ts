@@ -1119,6 +1119,15 @@ test("handleBacklogRelease lifts the Refused note, wakes the kind's role, and an
   assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsNow);
 });
 
+test("handleBacklogRelease lifts a Waiting for the next failure note from a bug", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: "### w1\n\n**Waiting for the next failure 2026-10-16 by bugfix: x**\n\nbody" }, { heading: "## Fixed" }]);
+  const out = await captureJson((res) => handleBacklogRelease(fakeReq(JSON.stringify({ kind: "bug", position: 1, title: "w1" })), res, root));
+  assert.deepEqual(out.data, { ok: true, status: "released", file: "BUGS.md", title: "w1", committed: false });
+  assert.ok(!fs.readFileSync(path.join(root, "BUGS.md"), "utf8").includes("Waiting for the next failure"));
+  assert.match(fs.readFileSync(wakeRequestPath(root), "utf8"), /bugfix/);
+});
+
 test("handleBacklogTop moves a plan or bug to the head, wakes no role, and answers already_first, gone, and 400s without writing", async () => {
   const root = tmpdir();
   writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### p1\n\nbody\n\n### p2\n\nbody" }, { heading: "## Done" }]);

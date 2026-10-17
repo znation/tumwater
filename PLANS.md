@@ -1298,7 +1298,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The dashboard's entry drawer offers "Release this entry" on a bug held by a Waiting for the next failure note, as `tumwater bug --release <n>` already does (planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/gui/gui-endpoints.ts, src/gui/gui-backlog-commands.ts (doc comment), src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, docs/cli.md and their tests; no src/backlog, src/merge, src/tick or src/ui/tui edit)
+## Done
+
+### The dashboard's entry drawer offers "Release this entry" on a bug held by a Waiting for the next failure note, as `tumwater bug --release <n>` already does (planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/gui/gui-endpoints.ts, src/gui/gui-backlog-commands.ts (doc comment), src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, docs/cli.md and their tests; no src/backlog, src/merge, src/tick or src/ui/tui edit) (done 2026-10-16)
 
 **Goal.** A bug carrying a **Waiting for the next failure** note is held from bugfix until someone lifts it. `tumwater bug --release <n>` lifts it, and so does the dashboard's `POST /api/backlog-release`: `tryReleaseEntry` in `src/backlog/backlog-write.ts` goes through `liftRefusal`, which drops a Refused note or, failing that, the waiting note. But the entry drawer never shows the button for a waiting bug. `refreshEntry` in `src/ui/gui/gui-client-drawer.ts` renders "Release this entry" only when `d.refused` is true, and `handleBacklog` in `src/gui/gui-endpoints.ts` sends `{ title, body, refused }` with no waiting flag. An operator who sees a waiting bug in the dashboard has to switch to a terminal. Show the button for waiting entries too.
 
@@ -1316,8 +1318,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/gui-client-boot.test.ts`: if any test asserts the `not_refused` toast text, it now matches the new wording.
 - `npm run test` passes. `test/comment-width.test.ts` stays green on the edited doc comment.
 - Out of scope: the TUI (`src/ui/tui/tui-keys.ts`), any change to how the note is written or lifted, auto-expiry, and a distinct button label for waiting entries.
-
-## Done
 
 ### A red merge check whose failure matches a recorded flake keeps its pin once instead of being rejected on main's cached green (planned 2026-10-16 by plan; independent of every other entry — touches src/merge/merge-check-failures.ts, src/loop/loop-state.ts, src/tick/tick-apply.ts and their tests) (done 2026-10-16)
 

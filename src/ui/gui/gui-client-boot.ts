@@ -152,7 +152,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
           return "Released “" + splitTitle(title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " — " + (file === "bugs" ? "bugfix" : "feature") + " will pick it up" + uncommittedTail(d);
         }
         return d && d.status === "not_refused"
-          ? "That entry carries no Refused note — refreshed"
+          ? "That entry carries no Refused or Waiting note — refreshed"
           : "That entry was removed or moved — refreshed";
       });
     } else if (act === "entry-top") {

@@ -10,7 +10,7 @@
  * report-data.ts, src/failure/failure-data.ts, history-data.ts, tick-detail-data.ts, config.ts)
  * — this module only adapts HTTP onto it.
  */
-import { refusalNote } from "../backlog/backlog-eligibility.js";
+import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { runDoctor } from "../doctor/doctor.js";
@@ -94,7 +94,7 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
     badRequest(res, `index ${index} out of range (${file} has ${entries.length} open entries)`);
     return;
   }
-  sendJson(res, 200, { title: entry.title, body: entry.body, refused: refusalNote(entry.body) !== null });
+  sendJson(res, 200, { title: entry.title, body: entry.body, refused: refusalNote(entry.body) !== null, waiting: waitingNote(entry.body) !== null });
 }
 
 /** Handle GET /api/diff[?role=<id>]: the unlanded-change view the CLI prints from the same

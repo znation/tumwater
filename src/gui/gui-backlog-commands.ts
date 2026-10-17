@@ -166,8 +166,8 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
 /** Handle POST /api/backlog-release: the entry drawer's release — the same lock and splice as
  * `tumwater plan|bug --release <n>` through the non-exiting tryReleaseEntry. Body as
  * backlog-cancel's. A released entry is newly eligible, so the kind's role is woken; `gone`
- * and `moved` answer okGone, and an entry without a Refused note answers status "not_refused"
- * with no write and no wake. */
+ * and `moved` answer okGone, and an entry with neither a Refused nor a Waiting-for-the-next-
+ * failure note answers status "not_refused" with no write and no wake. */
 export async function handleBacklogRelease(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');
   if (!body) return;
