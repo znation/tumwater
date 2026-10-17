@@ -1395,6 +1395,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - No heading under PLANS.md `## Planned` on main at implementation time trips the new kind. Verify with `node dist/cli.js doctor` in the worktree or a one-off check, and report what was run.
 - `npm run test` passes, including `test/vocabulary.test.ts`.
 
+### A merge check that fails and then passes on its kept-pin retry is recorded as a flake, so the gate's known-flake memory, doctor's `flaky checks` and the tick prompt's flake note count it (planned 2026-10-16 by plan; independent of every other entry — touches src/review/known-flakes.ts, src/merge/merge-check-failures.ts, src/merge/merge-core.ts, src/loop/loop-state.ts and their tests)
+
+**Goal.** Two retries exist for load flakes. One is the gate pre-check's immediate re-run (`src/review/review-precheck.ts`). It logs `gate check failed then passed on retry — flaky: <headline>` (`FLAKY_WARNING_PREFIX`), and every flake consumer reads that line through `flakeWarningKeys` in `src/review/known-flakes.ts`:
+- the gate's own `isKnownFlake` excuse;
+- doctor's `checkFlakyChecks`;
+- the tick prompt's `flakeCounts` note.
+
+The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/merge-check-failures.ts`). On the first red it logs `merge check failed (kept for one retry): <reason>` and keeps the pin, and recovery merges it again. When that retry passes, nothing is logged, so the failure is never recorded as a flake. BUGS.md's open supervisor entry is an example: improve's 07:29 merge check failed `startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it`, and the retry merged green at 07:40. None of the three consumers counts that red. So when the same test next fails a gate pre-check, `isKnownFlake` does not excuse it, and the gate asks main's verdict and may reject an unrelated change (the BUGS.md 2026-10-06 class). This plan records a merge-check flake in the same form the gate uses.
+
+**Approach.**
+- `src/loop/loop-state.ts`: widen `LoopState.mergeCheckFailures` to `{ patchId: string; count: number; headline?: string }`. Extend the doc comment: `headline` is the failing test's headline, set only by a red merge check (never by a cross-check block). In the existing `healRecord` call for `mergeCheckFailures`, delete `headline` when it is not a string.
+- `src/merge/merge-check-failures.ts`, `mergeCheckRed`: when `keepPinOrAttribute` returns `"merge_blocked"` and `ctx.state.mergeCheckFailures` is set, store `headline = failureHeadline(red.outcome.outputTail) ?? describeCheck(red.check)`. That is the expression review-precheck.ts uses for its flake warning; import both helpers from `src/build/build-check-report.ts`. The unverified-tree branch (host sleep) returns before the tally and stores nothing. `mergeBlocked` stores no headline. Its `tallyCheckFailure` writes a fresh `{ patchId, count }` record, which drops any earlier headline, so a cross-check block is never counted as a flake.
+- Add an exported `noteMergeRetryPassed(ctx: LanderContext, role: string): void` to the same module. If `ctx.state.mergeCheckFailures?.headline` is set, it calls `warnEventBestEffort` for `role` with the message `MERGE_FLAKY_WARNING_PREFIX + headline`. Give it a doc comment naming this plan's reason.
+- `src/merge/merge-core.ts`: in the `if (result === "changed")` branch that deletes the pin ref, call `noteMergeRetryPassed(ctx, req.role)` before returning. `applyLandingOutcome` in `src/tick/tick-apply.ts` clears `mergeCheckFailures` on `changed` afterwards, so the record is read once, while it still belongs to this pin.
+- `src/review/known-flakes.ts`: export `MERGE_FLAKY_WARNING_PREFIX = "merge check failed then passed on retry — flaky: "` beside `FLAKY_WARNING_PREFIX`. Change `flakeWarningKeys` to match either prefix: take the first prefix found in the message and slice past it. Update the module and `checkFlakyChecks` doc comments (`src/doctor/doctor-checks.ts`) to name both sources. Keep `isKnownFlake`, `flakeKeys` and `flakeCounts` signatures unchanged.
+
+**Files touched.** `src/review/known-flakes.ts`, `src/merge/merge-check-failures.ts`, `src/merge/merge-core.ts`, `src/loop/loop-state.ts`, `src/doctor/doctor-checks.ts` (comment only), `test/known-flakes.test.ts`, `test/merger.test.ts`.
+
+**Acceptance criteria.**
+- `test/known-flakes.test.ts`: a new test, "flakeKeys and flakeCounts read merge-check flake warnings too". It builds one warning with each prefix for the same normalized headline and asserts `flakeCounts` returns that key with count 2 and `flakeKeys` contains it. The existing tests still pass.
+- `test/merger.test.ts`: a new test, "a red merge check that passes on its kept-pin retry logs a merge-check flake warning". Start from the fixture of "a kept-for-re-land red landing check logs a warning naming the failing test" (pinnedFixture, advanceMain, noteGreenBaseline). The first check command prints `✖ the flaky test (1.2ms)` and exits 1, and `landApprovedChange` returns `"merge_blocked"`. Assert `state.mergeCheckFailures?.headline` contains `the flaky test`. Then set a passing check command and call `landApprovedChange` again with the same request. Assert:
+  - it returns `"changed"`;
+  - exactly one warning starts with `MERGE_FLAKY_WARNING_PREFIX` and contains `the flaky test`;
+  - `isKnownFlake(root, "✖ the flaky test (3.4ms)")` is true.
+- The same file: a fix-claim-blocked first attempt followed by a green merge logs no `MERGE_FLAKY_WARNING_PREFIX` warning. Extend "a fix-claim-blocked landing retries once, then rejects with the block reason", or add a short sibling test. A merge that was never red logs none either, which the existing green merge tests show when one asserts on warnings. If none does, add that assertion to one of them.
+- `npm run test` passes, including `test/vocabulary.test.ts`. The new source lines say "merge", not "landing", because `merge-check-failures.ts` is `// vocabulary: plain`.
+
 ## Done
 
 ### A staged PLANS.md edit that breaks a requires clause gets a staging finding (planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, test/stage-check.test.ts and docs/invariants.md) — done 2026-10-16
