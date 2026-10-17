@@ -125,25 +125,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms docs, part 5/5: Rename the script and event and state names the docs still quote (planned 2026-10-16 by user; requires parts 1/5–4/5, Plain terms scripting 5/5, Plain terms event log 9/9 and Plain terms state 5/5 landed; design in plans/terminology.md "Script interfaces" and "Event log" and "State and git"; touches README.md and DEVELOPMENT.md and docs/)
-
-**Goal.** The last old names in the current docs, the ones that name machine interfaces, now match the code: event types and fields, the notify environment, `--json` keys, `/api` routes, dashboard hashes, state paths and refs, and the `Run:` trailer. Role ids are not this part's: Plain terms role ids updates README.md and docs/invariants.md when it renames them.
-
-**Approach.**
-- Build the old-name list from three tables in plans/terminology.md: "Script interfaces", "Event log" and "State and git". Then `git grep -nw` each old name across README.md, DEVELOPMENT.md and docs/*.md, excluding the twelve historical files part 4/5 bannered and docs/glossary.md's older-names column.
-- Before replacing a hit, confirm the new name in src/ (for example `grep -rn "run_start" src/events/`), and write the name the code uses.
-- Known hits when this part was planned: `TUMWATER_EVENT_LOOP` in docs/config.md → `TUMWATER_EVENT_SOURCE`; `#loop/<name>` in docs/how-it-works.md → `#role/<name>`; `tick_start` and `landedTotal` in docs/invariants.md → `run_start` and `mergedTotal`. Parts 1/5–4/5 may have left more backticked names, such as `.tumwater/land-queue/`, `state/landing.json`, `refs/tumwater/landing/<id>`, `Tick:`, `slot_wait` purposes, `/api/tick` and `status --json`'s `loops`. Find them with the grep.
-- In docs/invariants.md, change a backticked event, key or path only when the new one exists in the code. Its source paths and test titles belong to the code series.
-- Re-check the identifiers parts 1/5–3/5 kept. If the code series has already renamed one (for example a moved `src/…` path), update it too.
-
-**Files touched.** README.md, DEVELOPMENT.md, docs/cli.md, docs/config.md, docs/how-it-works.md, docs/backends.md, docs/invariants.md (only those with hits). Reads (does not edit): plans/terminology.md, src/events/, src/paths.ts.
-
-**Acceptance criteria.**
-- None of the old names in the three tables appears in README.md, DEVELOPMENT.md or docs/*.md, except in the twelve bannered historical files and docs/glossary.md.
-- Every event type, `--json` key, route, hash and state path the current docs name exists under that name in src/.
-- README.md's `tumwater:prompt` block is unchanged.
-- `npm run test` passes.
-
 ### Plain terms role ids, part 1/5: Read legacy role ids as their new ids through one alias table (planned 2026-10-16 by user; requires Plain terms state 5/5 and Plain terms commands 6/6 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config-aliases.ts and src/cli/ and the event normalizer plus the persisted role readers)
 
 **Goal.** One table of retired role ids, and every place a role id enters tumwater reads an old id as its new one: typed ids, config keys, old events, and persisted state. This part ships the table empty, so nothing changes yet. Parts 3/5 and 4/5 each add one row and get every alias for free.
@@ -1938,6 +1919,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms docs, part 5/5: Rename the script and event and state names the docs still quote (done 2026-10-16; planned 2026-10-16 by user; requires parts 1/5–4/5, Plain terms scripting 5/5, Plain terms event log 9/9 and Plain terms state 5/5 landed; design in plans/terminology.md "Script interfaces" and "Event log" and "State and git"; touches README.md and DEVELOPMENT.md and docs/)
+
+**Goal.** The last old names in the current docs, the ones that name machine interfaces, now match the code: event types and fields, the notify environment, `--json` keys, `/api` routes, dashboard hashes, state paths and refs, and the `Run:` trailer. Role ids are not this part's: Plain terms role ids updates README.md and docs/invariants.md when it renames them.
+
+**Approach.**
+- Build the old-name list from three tables in plans/terminology.md: "Script interfaces", "Event log" and "State and git". Then `git grep -nw` each old name across README.md, DEVELOPMENT.md and docs/*.md, excluding the twelve historical files part 4/5 bannered and docs/glossary.md's older-names column.
+- Before replacing a hit, confirm the new name in src/ (for example `grep -rn "run_start" src/events/`), and write the name the code uses.
+- Known hits when this part was planned: `TUMWATER_EVENT_LOOP` in docs/config.md → `TUMWATER_EVENT_SOURCE`; `#loop/<name>` in docs/how-it-works.md → `#role/<name>`; `tick_start` and `landedTotal` in docs/invariants.md → `run_start` and `mergedTotal`. Parts 1/5–4/5 may have left more backticked names, such as `.tumwater/land-queue/`, `state/landing.json`, `refs/tumwater/landing/<id>`, `Tick:`, `slot_wait` purposes, `/api/tick` and `status --json`'s `loops`. Find them with the grep.
+- In docs/invariants.md, change a backticked event, key or path only when the new one exists in the code. Its source paths and test titles belong to the code series.
+- Re-check the identifiers parts 1/5–3/5 kept. If the code series has already renamed one (for example a moved `src/…` path), update it too.
+
+**Files touched.** README.md, DEVELOPMENT.md, docs/cli.md, docs/config.md, docs/how-it-works.md, docs/backends.md, docs/invariants.md (only those with hits). Reads (does not edit): plans/terminology.md, src/events/, src/paths.ts.
+
+**Acceptance criteria.**
+- None of the old names in the three tables appears in README.md, DEVELOPMENT.md or docs/*.md, except in the twelve bannered historical files and docs/glossary.md.
+- Every event type, `--json` key, route, hash and state path the current docs name exists under that name in src/.
+- README.md's `tumwater:prompt` block is unchanged.
+- `npm run test` passes.
 
 ### A role's run prompt says when its notes were last saved, so the run can weigh how stale they are (planned 2026-10-16 by plan; independent of every other entry. It touches only the notes block in `src/prompt/prompt.ts`, the note read in `src/tick/tick-prompt.ts`, their tests, and one docs sentence. No waiting entry edits `roleNotesBlock` or `TickPromptInput.notes`. Blocked Plain terms parts later rename `buildTickPrompt` and `initialPrompt` in the same file, and rebase over this change without touching it) — done 2026-10-16
 
