@@ -8,6 +8,8 @@ import { cacheReadUnpriced, fallbackModelPair, piModelsPath, piPairFree, piProvi
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
 import { isAgentId } from "../config/model-selector.js";
 import { imageReroute, seamImageInput } from "../agent/image-input.js";
+import { modelLabel, usesPiModels } from "../agent/backend-traits.js";
+import { agentBackend } from "../agent/agent-backend.js";
 import {
   imageProbeEntryFresh,
   imageProbeKey,
@@ -132,8 +134,10 @@ export async function checkFallbackChain(
   let down = false;
   const fragments: string[] = [];
   for (const { tier, step, pair } of steps) {
-    const isClaude = pair.provider === "claude";
-    const base = !isClaude && pair.provider ? piProviderBaseUrl(modelsPath, pair.provider) : null;
+    // A provider that names a backend other than pi (claude today; opencode from part 2) never
+    // asks pi for a base URL or runs pi's price probe — only a pi step may.
+    const nonPiBackend = isAgentId(pair.provider) && pair.provider !== "pi";
+    const base = !nonPiBackend && pair.provider ? piProviderBaseUrl(modelsPath, pair.provider) : null;
     const local = base !== null && isLocalUrl(base);
     const up = local ? await probe(`${base}/models`) : null;
     const cap = pair.maxDailyCostUsd;
@@ -144,7 +148,7 @@ export async function checkFallbackChain(
       verdict = `not running (GET ${base}/models failed)`;
     } else if (cap !== undefined && spent >= cap) {
       verdict = `cap reached (${usd(spent)}/${usdCap(cap)})`;
-    } else if (isClaude) {
+    } else if (nonPiBackend) {
       verdict = `claude ${pair.extraUsage ? "extra usage" : (account?.billing ?? "billing unknown")}`;
     } else if (piPairFree(providers, pair.provider, pair.model, account)) {
       verdict = up ? "free · server up" : "free";
@@ -538,11 +542,10 @@ export async function checkImageInput(
   // this check when a seam actually needs it — an all-claude team reads images without it.
   const accountNow = account === undefined ? readClaudeAccount(root) : account;
   const pairs = seamPairs(config);
-  const needsDefinitions = pairs.some((p) => (p.agent ?? "pi") !== "claude");
+  const needsDefinitions = pairs.some((p) => usesPiModels(p.agent ?? "pi"));
   if (providers === null && needsDefinitions)
     return warnOutcome(`cannot check — could not read pi's model definitions at ${modelsPath}`);
-  const label = (agent: string | undefined, provider: string | undefined, model: string | undefined) =>
-    agent === "claude" ? (model ?? "claude backend") : `${provider ?? "?"}/${model ?? "?"}`;
+  const label = modelLabel;
   // The catalog claims (raw `input`, ignoring the cache): what to probe and report, including a
   // model whose earlier probe failed (it must still be named and re-probed by --reprobe).
   const claimed = new Map<string, { agent?: string; provider?: string; model: string; thinking?: string }>();
@@ -588,7 +591,9 @@ export async function checkImageInput(
   // reported but never cached.
   for (const seam of claimed.values()) {
     const agent = seam.agent;
-    if (agent === "claude") {
+    // A backend that registers an imageInput hook trusts the hook (claude today, which reads
+    // every model); a backend without one is probed through its model catalog.
+    if (agent !== undefined && agentBackend(agent)?.imageInput !== undefined) {
       readsItems.push(label(agent, seam.provider, seam.model));
       continue;
     }

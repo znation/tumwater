@@ -25,7 +25,7 @@ import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { isAgentId, parseModelSelector } from "./model-selector.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
-import { HARNESS_CLAUDE_FLAGS } from "../agent/claude/claude-args.js";
+import { reservedPassthroughFlag } from "../agent/backend-traits.js";
 import {
   AT_LEAST_ONE,
   type NumberRule,
@@ -207,13 +207,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       checkStringArray(entry, `${prefix}.`, "args");
       if (!Array.isArray(entry.args)) continue; // Already reported by checkStringArray.
       checkReservedArgs(problems, entry.args as unknown[], `${prefix}.args`, (flag) =>
-        id === "claude"
-          ? HARNESS_CLAUDE_FLAGS.has(flag)
-            ? "it is managed by tumwater"
-            : undefined
-          : id === "pi"
-            ? HARNESS_PI_FLAGS.get(flag)
-            : undefined,
+        reservedPassthroughFlag(id, flag),
       );
     }
   });

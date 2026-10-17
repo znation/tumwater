@@ -5,64 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### OpenCode backend, part 1/7: The claude-only branches outside the backend seam become per-backend traits, with no behavior change (planned 2026-10-17 by user; design in plans/opencode-backend.md "Groundwork: the claude-only branches become backend traits"; touches src/agent/backend-traits.ts (new) src/config/config-validation.ts src/prompt/dialect.ts src/pi/pi-watchdogs.ts src/ui/progress-data.ts src/pi/pi-models.ts src/doctor/doctor-model-checks.ts src/agent/image-input.ts and their tests)
-
-**Goal.** The OpenCode backend (parts 2–7) should not need another sweep through config, prompts, watchdogs, pricing and doctor.
-
-- Today about a dozen places outside src/agent/agent-backend.ts test `agent === "claude"`.
-- What most of them really ask is a capability:
-  - whether the backend streams tool output;
-  - which prompt dialect it speaks;
-  - which passthrough flags it reserves;
-  - whether its model jobs need pi's models.json;
-  - how its model ids are labeled;
-  - how its free-ness is judged.
-
-This part names those capabilities per backend id and makes each of those places read them. pi and claude behave exactly as before.
-
-**Approach.**
-- Add src/agent/backend-traits.ts (`// vocabulary: plain`).
-  - It is pure and imports nothing from the runtime registry, so the config, prompt and UI layers can read it. That is the same reason `AGENT_DEFAULT_MODELS` lives in src/config/model-selector.ts.
-  - An id with no entry reads as pi, because src/agent/run-agent.ts runs an unregistered id on pi.
-  - It provides:
-    - `streamsToolOutput(agent)`: true for pi, false for claude.
-    - `usesPiModels(agent)`: whether the backend's model jobs resolve through pi's models.json. True for pi only.
-    - `reservedPassthroughFlag(agent, flag)`: the reason string config validation prints for a reserved `backends.<id>.args` flag, or undefined. It wraps claude's `HARNESS_CLAUDE_FLAGS` and pi's `HARNESS_PI_FLAGS` and keeps today's reason strings.
-    - `modelLabel(agent, provider, model)`: `provider/model` for pi, and claude's bare model (or "claude backend" when there is none). These are today's two inline label lambdas in src/doctor/doctor-model-checks.ts and src/agent/image-input.ts.
-- src/config/config-validation.ts: the `backends.<id>.args` check calls `reservedPassthroughFlag` instead of its `id === "claude" ? … : id === "pi" ? …` chain.
-- src/prompt/dialect.ts: `dialectFor` reads a table keyed by backend id (`pi`, `claude`). An unknown id gets pi's dialect.
-- src/pi/pi-watchdogs.ts (`deps.agent === "claude"`) and src/ui/progress-data.ts (the open-call stall check) test `!streamsToolOutput(agent)` instead.
-- src/pi/pi-models.ts `seamFree`: one `switch` arm per backend.
-  - The pi arm is `pairFree`; the claude arm is today's subscription rule; the default arm is false.
-  - Part 6/7 then adds an arm and changes nothing else. The signature is unchanged.
-- src/doctor/doctor-model-checks.ts:
-  - `needsDefinitions` becomes `pairs.some((p) => usesPiModels(p.agent ?? "pi"))`.
-  - The fallback-chain probe's `isClaude` (`pair.provider === "claude"`) becomes "the provider names a backend other than pi" (`isAgentId(pair.provider) && pair.provider !== "pi"`). A non-pi step then never asks pi for a base URL.
-  - The image rows ask the registered backend's `imageInput` hook when it has one (claude today), instead of testing the id.
-- src/agent/image-input.ts: the seam label uses `modelLabel`.
-- **Out of scope:** the claude subscription machinery stays as it is:
-  - claude-account
-  - src/gates/budget-gates.ts's `seamIsClaude` / `pairIsClaude`
-  - the window holds
-  - src/loop/loop-pi.ts's `authoringBudgetCap`
-  - src/status/status-budget.ts
-  - the billing row in src/roles/role-view.ts
-
-  These belong to claude's account; they are not shared capabilities.
-
-**Files touched.**
-- Source: src/agent/backend-traits.ts (new), src/config/config-validation.ts, src/prompt/dialect.ts, src/pi/pi-watchdogs.ts, src/ui/progress-data.ts, src/pi/pi-models.ts, src/doctor/doctor-model-checks.ts, src/agent/image-input.ts.
-- Tests: test/backend-traits.test.ts (new), test/prompt-dialect.test.ts, test/pi-watchdogs.test.ts, test/progress.test.ts, test/pi-models.test.ts, test/doctor-model-checks.test.ts, test/config-validation.test.ts.
-
-**Acceptance criteria.**
-- test/backend-traits.test.ts checks each trait:
-  - pi streams tool output, uses pi's models and labels `provider/model`.
-  - claude does neither and labels its bare model.
-  - An id with no entry reads as pi.
-  - `reservedPassthroughFlag` returns today's validation reason for a reserved pi flag and a reserved claude flag, and undefined for an unreserved one.
-- None of the places listed in the design's table tests a backend id by its literal any more. The claude subscription places listed under Out of scope still do.
-- Every existing test passes unchanged, and `npm test` passes.
-
 ### OpenCode backend, part 2/7: `opencode` becomes a backend id, `opencode/<model>` ids route to it, and `backends.opencode` is validated (planned 2026-10-17 by user; requires part 1/7 landed; design in plans/opencode-backend.md "Config and routing"; touches src/config/config-schema.ts src/config/model-selector.ts src/agent/backend-traits.ts src/agent/opencode/opencode-args.ts (new) src/gates/startup-gate.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts docs/config.md and their tests)
 
 **Goal.** Make `opencode` a valid backend everywhere config is read:
@@ -1528,6 +1470,65 @@ docs/backends.md explains the backend and the free model's catch. `npm run smoke
 - `npm run test` passes.
 
 ## Done
+
+### OpenCode backend, part 1/7: The claude-only branches outside the backend seam become per-backend traits, with no behavior change (planned 2026-10-17 by user; design in plans/opencode-backend.md "Groundwork: the claude-only branches become backend traits"; touches src/agent/backend-traits.ts (new) src/config/config-validation.ts src/prompt/dialect.ts src/pi/pi-watchdogs.ts src/ui/progress-data.ts src/pi/pi-models.ts src/doctor/doctor-model-checks.ts src/agent/image-input.ts and their tests — done 2026-10-17 by the feature role)
+
+**Goal.** The OpenCode backend (parts 2–7) should not need another sweep through config, prompts, watchdogs, pricing and doctor.
+
+- Today about a dozen places outside src/agent/agent-backend.ts test `agent === "claude"`.
+- What most of them really ask is a capability:
+  - whether the backend streams tool output;
+  - which prompt dialect it speaks;
+  - which passthrough flags it reserves;
+  - whether its model jobs need pi's models.json;
+  - how its model ids are labeled;
+  - how its free-ness is judged.
+
+This part names those capabilities per backend id and makes each of those places read them. pi and claude behave exactly as before.
+
+**Approach.**
+- Add src/agent/backend-traits.ts (`// vocabulary: plain`).
+  - It is pure and imports nothing from the runtime registry, so the config, prompt and UI layers can read it. That is the same reason `AGENT_DEFAULT_MODELS` lives in src/config/model-selector.ts.
+  - An id with no entry reads as pi, because src/agent/run-agent.ts runs an unregistered id on pi.
+  - It provides:
+    - `streamsToolOutput(agent)`: true for pi, false for claude.
+    - `usesPiModels(agent)`: whether the backend's model jobs resolve through pi's models.json. True for pi only.
+    - `reservedPassthroughFlag(agent, flag)`: the reason string config validation prints for a reserved `backends.<id>.args` flag, or undefined. It wraps claude's `HARNESS_CLAUDE_FLAGS` and pi's `HARNESS_PI_FLAGS` and keeps today's reason strings.
+    - `modelLabel(agent, provider, model)`: `provider/model` for pi, and claude's bare model (or "claude backend" when there is none). These are today's two inline label lambdas in src/doctor/doctor-model-checks.ts and src/agent/image-input.ts.
+- src/config/config-validation.ts: the `backends.<id>.args` check calls `reservedPassthroughFlag` instead of its `id === "claude" ? … : id === "pi" ? …` chain.
+- src/prompt/dialect.ts: `dialectFor` reads a table keyed by backend id (`pi`, `claude`). An unknown id gets pi's dialect.
+- src/pi/pi-watchdogs.ts (`deps.agent === "claude"`) and src/ui/progress-data.ts (the open-call stall check) test `!streamsToolOutput(agent)` instead.
+- src/pi/pi-models.ts `seamFree`: one `switch` arm per backend.
+  - The pi arm is `pairFree`; the claude arm is today's subscription rule; the default arm is false.
+  - Part 6/7 then adds an arm and changes nothing else. The signature is unchanged.
+- src/doctor/doctor-model-checks.ts:
+  - `needsDefinitions` becomes `pairs.some((p) => usesPiModels(p.agent ?? "pi"))`.
+  - The fallback-chain probe's `isClaude` (`pair.provider === "claude"`) becomes "the provider names a backend other than pi" (`isAgentId(pair.provider) && pair.provider !== "pi"`). A non-pi step then never asks pi for a base URL.
+  - The image rows ask the registered backend's `imageInput` hook when it has one (claude today), instead of testing the id.
+- src/agent/image-input.ts: the seam label uses `modelLabel`.
+- **Out of scope:** the claude subscription machinery stays as it is:
+  - claude-account
+  - src/gates/budget-gates.ts's `seamIsClaude` / `pairIsClaude`
+  - the window holds
+  - src/loop/loop-pi.ts's `authoringBudgetCap`
+  - src/status/status-budget.ts
+  - the billing row in src/roles/role-view.ts
+
+  These belong to claude's account; they are not shared capabilities.
+
+**Files touched.**
+- Source: src/agent/backend-traits.ts (new), src/config/config-validation.ts, src/prompt/dialect.ts, src/pi/pi-watchdogs.ts, src/ui/progress-data.ts, src/pi/pi-models.ts, src/doctor/doctor-model-checks.ts, src/agent/image-input.ts.
+- Tests: test/backend-traits.test.ts (new), test/prompt-dialect.test.ts, test/pi-watchdogs.test.ts, test/progress.test.ts, test/pi-models.test.ts, test/doctor-model-checks.test.ts, test/config-validation.test.ts.
+
+**Acceptance criteria.**
+- test/backend-traits.test.ts checks each trait:
+  - pi streams tool output, uses pi's models and labels `provider/model`.
+  - claude does neither and labels its bare model.
+  - An id with no entry reads as pi.
+  - `reservedPassthroughFlag` returns today's validation reason for a reserved pi flag and a reserved claude flag, and undefined for an unreserved one.
+- None of the places listed in the design's table tests a backend id by its literal any more. The claude subscription places listed under Out of scope still do.
+- Every existing test passes unchanged, and `npm test` passes.
+
 ### `tumwater restart` applies a pending self-redeploy from the terminal, waiving the cooldown — the CLI twin of the dashboard update alert's refresh button (planned 2026-10-17 by the plan role; the only caller of `requestRestart` today is `handleRestart` (POST `/api/restart`) in src/gui/gui-operator-commands.ts, whose own doc comment says it is "the same marker-writing core a CLI surface would call", and `tumwater help` lists no `restart`; independent of every Planned entry — the in-flight `prompt --top`/image-attach plans and the pane split touch no src/operator or src/cli marker file, and only docs/cli.md is shared, a one-clause edit, so either lands first; touches src/operator/operator-commands.ts, src/cli/cli-marker-commands.ts, src/cli.ts, src/cli/help.ts, docs/cli.md, docs/how-it-works.md, test/help.test.ts and test/cli-operators.test.ts — done 2026-10-17 by the feature role)
 
 **Goal.** When tumwater is building itself, a stale running build shows `Update available`; `autoRestart` applies it at most once every 12 hours, and the dashboard's update alert has a refresh button that waives that cooldown and starts the pending update now (`docs/how-it-works.md` "Updates"). That button is `handleRestart` (`src/gui/gui-operator-commands.ts`), which calls `requestRestart(root)` (`src/operator/operator-intent.ts`) to write the `.tumwater` restart marker the orchestrator consumes through `consumeRestartRequest` (`src/operator/operator-requests.ts`), which calls `redeployer.forceRestart()`. No CLI command reaches that core: `tumwater help` has no `restart` stanza, `src/cli.ts`'s switch has no case, and `markerCommandCores` (`src/cli/cli-marker-commands.ts`) lists neither — so a terminal-only operator must open the dashboard or wait out the cooldown. Add `tumwater restart`: a marker command that calls `requestRestart` and prints its message verbatim (or fails with its error, `no update is waiting — tumwater is current with main`, when the running build is not stale), matching the dashboard button. It takes no flags (the body is ignored there too; `--role` is meaningless), and with no team running the marker is written harmlessly for the next run's first poll, exactly as the GUI handler's twin test pins.

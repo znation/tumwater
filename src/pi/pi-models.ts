@@ -212,9 +212,17 @@ export function seamFree(
   account: ClaudeAccount | null = null,
 ): boolean {
   const agent = seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi");
-  if (agent === "claude") return account?.billing === "subscription" && !accountUsesOverage(account);
-  if (agent !== "pi") return false;
-  return pairFree(providers, seam.provider, seam.model);
+  // One free-ness rule per backend: pi's pair price, claude's subscription, and nothing for any
+  // other backend (its spend could still reach the cap, so the badge must not read n/a). Part 6/7
+  // adds opencode's arm here and changes nothing else.
+  switch (agent) {
+    case "pi":
+      return pairFree(providers, seam.provider, seam.model);
+    case "claude":
+      return account?.billing === "subscription" && !accountUsesOverage(account);
+    default:
+      return false;
+  }
 }
 
 /** Whether a fallback-config pair may be called free: a `claude/<id>` pair is free while the

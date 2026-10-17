@@ -41,8 +41,15 @@ export const CLAUDE_DIALECT: PromptDialect = {
   in ranges (the Read tool's offset/limit) instead of retrying the same read.`,
 };
 
-/** The dialect for an agent id; every backend but claude speaks pi's dialect (and an unknown
- * id falls back to pi because run-agent.ts routes an unregistered id to the pi backend). */
+/** The dialect table keyed by backend id: every backend but claude speaks pi's dialect (and
+ * an unknown id falls back to pi because run-agent.ts routes an unregistered id to the pi
+ * backend). Adding a backend means one row here, not another branch. */
+const DIALECTS: Record<string, PromptDialect> = {
+  pi: PI_DIALECT,
+  claude: CLAUDE_DIALECT,
+};
+
+/** The dialect for an agent id, read from the per-backend table. */
 export function dialectFor(agent: string | undefined): PromptDialect {
-  return agent === "claude" ? CLAUDE_DIALECT : PI_DIALECT;
+  return DIALECTS[agent ?? "pi"] ?? PI_DIALECT;
 }

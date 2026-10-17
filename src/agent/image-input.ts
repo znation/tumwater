@@ -11,6 +11,7 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
 import { configForRole, roleSeamTier, withModelOverrides } from "../config/config-views.js";
 import { BORROW_ORDER, resolveTierFallbacks } from "../config/config-fallbacks.js";
 import { isAgentId } from "../config/model-selector.js";
+import { modelLabel } from "./backend-traits.js";
 import { piModelImageInput, piPairFree, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import type { ClaudeAccount } from "./claude/claude-account.js";
 import { agentBackend, DEFAULT_AGENT } from "./agent-backend.js";
@@ -132,13 +133,13 @@ export function imageRerouteTarget(
 /** A seam's model as one readable token, the same label the doctor's `image input` check uses
  * (`claude/<id>` for a claude seam, `provider/model` for pi). The one home of the label, so
  * the surface strings (the images alert, the role page, the status rows) and the doctor report
- * cannot drift. `agent === "claude"` reads the backend-owned answer; a pi seam shows its pair. */
+ * cannot drift, and delegates to backend-traits' modelLabel. */
 export function seamImageLabel(
   agent: string | undefined,
   provider: string | undefined,
   model: string | undefined,
 ): string {
-  return agent === "claude" ? (model ?? "claude backend") : `${provider ?? "?"}/${model ?? "?"}`;
+  return modelLabel(agent, provider, model);
 }
 
 /** The per-loop image-input surface (plans/image-input.md "Surfaces"): one call gives a caller
