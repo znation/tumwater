@@ -253,6 +253,11 @@ export interface LoopState {
    * red merge check (never by a cross-check block), so a retry that passes can be recorded as
    * a flake. */
   mergeCheckFailures?: { patchId: string; count: number; headline?: string };
+  /** The normalized failure headline (normalizeClusterKey) that merge-check-failures.ts's
+   * attributeRedCheck last excused as a known flake for this role's pinned change: the pin is
+   * kept once per headline, and a repeat of the same headline is attributed. Cleared when the
+   * change merges or is rejected. */
+  mergeFlakeExcused?: string;
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick
    * window (loop-tick.ts resets it at tick start), not a lifetime total. */
   generatedTokens: number;
@@ -503,6 +508,8 @@ export function loadLoopState(root: string, role: string): LoopState {
       v.count = healNumber(v.count, 0);
       if (typeof v.headline !== "string") delete v.headline;
     });
+  if (s.mergeFlakeExcused !== undefined && typeof s.mergeFlakeExcused !== "string")
+    delete s.mergeFlakeExcused;
   if (s.modelFallback !== undefined)
     s.modelFallback = healRecord(s.modelFallback, (v) => {
       v.failures = healNumber(v.failures, 0);

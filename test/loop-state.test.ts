@@ -297,6 +297,7 @@ test("loadLoopState drops a nested record that is not a plain object, keeping re
       conflictDiscard: true,
       conflictHandback: 0,
       mergeCheckFailures: "none",
+      mergeFlakeExcused: 7,
       modelFallback: "primary",
       claim: { file: "BUGS.md", key: "k", title: "t", at: 42, source: "staged" }, // real record kept
     }),
@@ -308,6 +309,7 @@ test("loadLoopState drops a nested record that is not a plain object, keeping re
   assert.equal(s.conflictDiscard, undefined);
   assert.equal(s.conflictHandback, undefined);
   assert.equal(s.mergeCheckFailures, undefined);
+  assert.equal("mergeFlakeExcused" in s, false);
   assert.equal(s.modelFallback, undefined);
   assert.equal(s.claim?.at, 42, "a valid record keeps its real values");
   assert.equal(s.claim?.key, "k");

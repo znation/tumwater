@@ -6,6 +6,8 @@ import { attributeRedCheck } from "../src/merge/merge-check-failures.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { refSha, setRef } from "../src/git/git.js";
+import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
+import { warnEvent } from "../src/events/events.js";
 import { eventsLogPath, mergeRefName } from "../src/paths.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -98,6 +100,30 @@ test("attributeRedCheck rejects deterministically when main's own tip is green",
     const saved = loadLoopState(root, ROLE);
     assert.equal(saved.unreviewFailures, 0, "the reset was persisted");
     assert.equal(saved.lastReview?.verdict, "reject", "the review was persisted");
+  } finally {
+    restore();
+  }
+});
+
+test("attributeRedCheck keeps the ref once for a known-flake red, then attributes a repeat", async () => {
+  const { root } = baselineFixture(ROLE, "attr-flake-marker");
+  const restore = fakeNpm("echo ok; exit 0");
+  try {
+    warnEvent(root, ROLE, FLAKY_WARNING_PREFIX + "✖ the flaky test — expected 2 to be 3");
+    const flaky = {
+      check: red().check,
+      outcome: { status: "failed", script: "test", outputTail: ["✖ the flaky test (1.2ms)", "expected 2 to be 3"] },
+    } as { check: BuildCheck; outcome: BuildCheckOutcome };
+    const first = await attribute(root, "merge check", flaky);
+    assert.equal(first.result, "merge_blocked");
+    assert.equal(await refSha(root, mergeRefName(ROLE)), first.head, "the pin was kept");
+    assert.equal(first.state.lastReview, undefined, "no reject was recorded");
+    assert.match(first.state.lastError ?? "", /known-flaky failure, merge kept/);
+    assert.match(first.state.lastError ?? "", /the flaky test/);
+    assert.ok(loadLoopState(root, ROLE).mergeFlakeExcused, "the excuse was persisted");
+    const second = await attribute(root, "merge check", flaky, first.state);
+    assert.equal(second.result, "rejected", "a repeat of the excused headline is attributed");
+    assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin was deleted");
   } finally {
     restore();
   }

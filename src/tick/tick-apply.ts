@@ -364,7 +364,10 @@ export function applyLandingOutcome(
     s.mergeConflicts = undefined;
   }
   // Likewise the red-landing-check streak (keyed by patch-id): its change is gone either way.
-  if (changeGone) s.mergeCheckFailures = undefined;
+  if (changeGone) {
+    s.mergeCheckFailures = undefined;
+    s.mergeFlakeExcused = undefined;
+  }
   // A permanent-reviewer-config hold ends with its pin's life: landed, or rejected away.
   if (changeGone) s.mergeReviewError = undefined;
   // A hand-back ends with its change's life too: once the resolved change lands or is rejected,

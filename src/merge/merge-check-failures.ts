@@ -8,7 +8,8 @@ import { checkFailureReasons, describeCheck, failureHeadline } from "../build/bu
 import { mainTipVerdict } from "../baseline/main-red.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { mainRedNotMine } from "../text/phrases.js";
-import { MERGE_FLAKY_WARNING_PREFIX } from "../review/known-flakes.js";
+import { normalizeClusterKey } from "../failure/failure-cluster.js";
+import { MERGE_FLAKY_WARNING_PREFIX, isKnownFlake } from "../review/known-flakes.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -125,16 +126,18 @@ export async function mergeCheckRed(
     return "merge_blocked";
   }
   const reason = firstCheckReason(red);
-  const result = await keepPinOrAttribute(ctx, wt, reason, (head) =>
-    attributeRedCheck(ctx, role, head, "merge check", red, ctx.state),
-  );
+  let attributed = false;
+  const result = await keepPinOrAttribute(ctx, wt, reason, (head) => {
+    attributed = true;
+    return attributeRedCheck(ctx, role, head, "merge check", red, ctx.state);
+  });
   // The first red of a patch's in-lock check is exactly the retry that exists for load flakes,
   // so it is the ONE signal that could name a flaky test after the fact — and lastError, the
   // only place this reason is written, is overwritten by the leftover-recovery tick a second
   // later (BUGS.md 2026-10-14). Log it as a warning so the failure digest and a later audit can
   // name the flaky test; the second red at MERGE_CHECK_FAILURE_LIMIT is attributed through
   // review_rejected, whose reasons are already durable.
-  if (result === "merge_blocked") {
+  if (result === "merge_blocked" && !attributed) {
     warnEventBestEffort(ctx.root, role, `merge check failed (kept for one retry): ${reason}`);
     if (ctx.state.mergeCheckFailures) {
       ctx.state.mergeCheckFailures.headline = failureHeadline(red.outcome.outputTail) ?? describeCheck(red.check);
@@ -188,7 +191,11 @@ export async function mergeBlocked(
  * review_rejected logged, no pi run. Main red → not this change's failure: "main_red" with the
  * ref kept and unreviewFailures untouched, so recovery re-merges it once main-red.ts's repair
  * turns main green. No verdict → reject, the safe default, and the reasons say so. The verdict
- * is persisted before it returns. */
+ * is persisted before it returns. A red whose headline matches a flake the gate or a merge
+ * retry recorded (isKnownFlake) is excused once per headline per pin (LoopState.mergeFlakeExcused):
+ * "merge_blocked" with the ref kept, before main's verdict, because that verdict is usually a
+ * cached green that would reject a change over a flaky test (PLANS.md 2026-10-16, BUGS.md
+ * 2026-10-06). A repeat of the same headline is attributed as above. */
 export async function attributeRedCheck(
   ctx: { root: string; mainBranch: string; config: TumwaterConfig },
   role: string,
@@ -203,6 +210,15 @@ export async function attributeRedCheck(
   // only live when the check produced a verdict.
   if (unverifiedTreeOutcome(red.outcome)) {
     state.lastError = `${label}: ${firstCheckReason(red)}`;
+    saveLoopState(ctx.root, state);
+    return "merge_blocked";
+  }
+  const headline = failureHeadline(red.outcome.outputTail) ?? describeCheck(red.check);
+  const key = normalizeClusterKey(headline);
+  if (isKnownFlake(ctx.root, headline) && state.mergeFlakeExcused !== key) {
+    state.mergeFlakeExcused = key;
+    state.lastError = `${label} failed: known-flaky failure, merge kept: ${headline}`;
+    warnEventBestEffort(ctx.root, role, `${label}: known-flaky failure, merge kept: ${headline}`);
     saveLoopState(ctx.root, state);
     return "merge_blocked";
   }

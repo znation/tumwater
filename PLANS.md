@@ -1298,7 +1298,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### A red merge check whose failure matches a recorded flake keeps its pin once instead of being rejected on main's cached green (planned 2026-10-16 by plan; independent of every other entry — touches src/merge/merge-check-failures.ts, src/loop/loop-state.ts, src/tick/tick-apply.ts and their tests)
+## Done
+
+### A red merge check whose failure matches a recorded flake keeps its pin once instead of being rejected on main's cached green (planned 2026-10-16 by plan; independent of every other entry — touches src/merge/merge-check-failures.ts, src/loop/loop-state.ts, src/tick/tick-apply.ts and their tests) (done 2026-10-16)
 
 **Goal.** The review gate already skips a failure it has recorded as flaky. In `src/review/review-precheck.ts`, a red whose headline passes `isKnownFlake` (`src/review/known-flakes.ts`) keeps the commit and the pin and counts no strike (BUGS.md 2026-10-06). The merge side has no such check. When the in-lock merge check goes red twice on one patch (`MERGE_CHECK_FAILURE_LIMIT`), or a batch bisect narrows a red to one change (`src/merge/merge-batch.ts`), `attributeRedCheck` in `src/merge/merge-check-failures.ts` asks `mainTipVerdict` for main's verdict. That verdict usually comes from the per-SHA cache, which an earlier merge seeded green, so the change is rejected. This applies even when the failing test is one the gate or the merge retry recorded as a flake within the last 24 h. The merge-check flake record (done 2026-10-16) now feeds that memory from merge retries too, so the merge side can use it. One excuse per headline per pin bounds the retry: a change that really breaks a flaky test is still rejected, after at most one extra round of retries.
 
@@ -1328,7 +1330,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/loop-state.test.ts`: a saved state with a non-string `mergeFlakeExcused` loads with the field absent.
 - `npm run test` passes, including `test/vocabulary.test.ts` and `test/comment-width.test.ts`.
 
-## Done
+**Note.** The seeded flake warning in the new test is the full headline `✖ the flaky test — expected 2 to be 3` (what `failureHeadline` yields for that outputTail), not `✖ the flaky test` alone: the key is the normalized whole headline.
 
 ### `tumwater doctor` names open bugs held by a "Waiting for the next failure" note, and stops calling them stale (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, docs/cli.md and test/doctor-backlog.test.ts)
 
