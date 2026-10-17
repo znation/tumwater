@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { heldMovedFinding, pathTokens, stageCheckFindings } from "../src/tick/stage-check.js";
+import { heldMovedFinding, pathTokens, planDependencyFinding, stageCheckFindings } from "../src/tick/stage-check.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -401,4 +401,51 @@ test("pathTokens returns each distinct path-shaped token in order", () => {
   assert.deepEqual(pathTokens("see `src/a/b.ts`, src/a/b.ts and (test/c.test.ts)."), ["src/a/b.ts", "test/c.test.ts"]);
   assert.deepEqual(pathTokens("plain words"), []);
   assert.deepEqual(pathTokens("README.md"), []);
+});
+
+const DEP_BASE = `# Plans
+
+## Planned
+
+### S, part 1/2: a
+
+body
+
+### S, part 2/2: b (requires part 1/2 landed)
+
+body
+
+## Done
+
+_None yet._
+`;
+
+test("planDependencyFinding reports only the requires-clause problems an edit adds", () => {
+  assert.equal(planDependencyFinding(DEP_BASE, DEP_BASE), undefined);
+
+  const dangling = DEP_BASE.replace("requires part 1/2 landed", "requires part 3/2 landed");
+  const d = planDependencyFinding(dangling, DEP_BASE)!;
+  assert.match(d, /S, part 2\/2: b/);
+  assert.match(d, /S 3\/2/);
+
+  const cyclic = DEP_BASE.replace("### S, part 1/2: a", "### S, part 1/2: a (requires part 2/2 landed)");
+  const c = planDependencyFinding(cyclic, DEP_BASE)!;
+  assert.ok(c.startsWith("PLANS.md's requires clauses now form a cycle"));
+  assert.match(c, /S 1\/2/);
+  assert.match(c, /S 2\/2/);
+
+  const unparsed = DEP_BASE.replace("## Done", "### Other plan (requires nothing landed)\n\nbody\n\n## Done");
+  assert.match(planDependencyFinding(unparsed, DEP_BASE)!, /"Other plan[^"]*".*names no part/);
+
+  const edited = dangling.replace("body", "changed body");
+  assert.equal(planDependencyFinding(edited, dangling), undefined);
+});
+
+test("a staged PLANS.md edit adding a dangling requires clause yields the dependency finding", async () => {
+  const { wt } = await repoWith({ "PLANS.md": DEP_BASE });
+  fs.writeFileSync(path.join(wt, "PLANS.md"), DEP_BASE.replace("requires part 1/2 landed", "requires part 3/2 landed"));
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "plan");
+
+  assert.ok(findings.some((f) => f.includes("which no PLANS.md heading carries")), findings.join("\n"));
 });

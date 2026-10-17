@@ -1405,7 +1405,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### A staged PLANS.md edit that breaks a requires clause gets a staging finding (planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, test/stage-check.test.ts and docs/invariants.md)
+## Done
+
+### A staged PLANS.md edit that breaks a requires clause gets a staging finding (planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, test/stage-check.test.ts and docs/invariants.md) — done 2026-10-16
 
 **Goal.** The claim allocator decides when a series part is free from the heading's `requires <Series> i/n landed` clause. If a plan, director or steward run writes one of these clauses wrong, the allocator gets it wrong. A ref to a part no heading carries (dangling) leaves the dependent part claimable at once. A clause that parses to no refs (unparsed) holds nothing. A dependency cycle blocks every part on it forever. `checkPlanDependencies` (`src/doctor/doctor-backlog.ts`) reports these problems, but only after the edit has merged and only when someone runs `tumwater doctor`. By then a feature instance may already have claimed the part too early, which is the waste behind BUGS.md's 2026-10-14 "six wasted claims" entry. The pre-queue self-check (`stageCheckFindings`, `src/tick/stage-check.ts`) runs while the authoring session can still take one fix-up turn (`requestStageFix` in `src/tick/tick-stage.ts`). This plan makes it report any dependency problem that the run's own PLANS.md edit adds, so the author fixes the heading before the change commits. Problems already on main are not this run's fault and stay doctor's to report.
 
@@ -1436,7 +1438,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - New test, "a staged PLANS.md edit adding a dangling requires clause yields the dependency finding". It uses `repoWith` with the base above. It writes the dangling head into the worktree, and `stageCheckFindings(wt, "main", EXEMPT, "plan")` returns a finding containing `which no PLANS.md heading carries`. The existing "a clean change yields no findings" test still passes.
 - `npm run test` passes, including `test/vocabulary.test.ts`.
 
-## Done
 ### An assigned series part names the later parts waiting on it (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/prompt/gate-prompts.ts, src/tick/tick-prompt.ts and their tests; it adds code next to "An assigned series part names the Done entries of the parts it requires", so whichever lands second rebases onto the other) (done 2026-10-16)
 
 **Goal.** A feature instance assigned a series part such as "Plain terms code merge, part 1/11" gets an `<assigned-entry>` note (`buildAssignmentNote`, `src/prompt/gate-prompts.ts`) that tells it to "Implement or fix only that entry". It is not told which later parts are waiting on this one, and each of those later parts already plans its own share of the work. If the implementer cannot see where its part ends, it may do a later part's work early, which leaves that part with nothing to do and makes the diff bigger than its plan. Or it may change a name that a later part's plan relies on. Those parts are in PLANS.md's `## Planned`, which the charter says never to read wholesale. This plan adds a short `<waiting-parts>` note that lists, by title and line range, the planned parts that require this one. The implementer then knows where its part ends and what the later parts expect it to leave in place.

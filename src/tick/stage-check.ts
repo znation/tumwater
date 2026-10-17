@@ -18,8 +18,13 @@
  * files whose final newline the change removed. These stage the change (`git add -A`) to read
  * the index with git only, then restore the index to HEAD before returning: staging is a read
  * aid for the checks, not a change to the tick's state. A git hiccup yields no finding rather
- * than failing the tick. */
+ * than failing the tick.
+ *
+ * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
+ * landing re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
+ * anything that gets past the fix-up turn. */
 
+import path from "node:path";
 import { changedFiles } from "../git/git-diff.js";
 import { conflictMarkerReason } from "../merge/merge-git.js";
 import { isExemptDiff } from "../review/exemptions.js";
@@ -27,7 +32,10 @@ import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { protectedEditReason } from "../review/protected-edits.js";
 import { secretLeakReason } from "../review/secret-leaks.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
-import { changeBaseRev } from "../git/git.js";
+import { changeBaseRev, fileContentAt } from "../git/git.js";
+import { readTextOrNull } from "../files/files.js";
+import { parseEntryDetails } from "../backlog/backlog-md.js";
+import { planDependencyProblems } from "../backlog/backlog-eligibility.js";
 import { gitTry } from "../git/git-run.js";
 import { moreSuffix } from "../text/phrases.js";
 
@@ -56,6 +64,39 @@ function cappedList(items: readonly string[], max: number): string {
   return `${shown.join(", ")}${moreSuffix(items.length - shown.length)}`;
 }
 
+/** The finding for the heading `requires` clause problems that `head` (the edited PLANS.md)
+ * adds over `base` (its text at the merge-base), or undefined when it adds none. Only new
+ * problems count: one already on main is not this run's fault and stays doctor's to report, so
+ * the author is never asked to fix another run's heading. The most serious new problem is named
+ * — cycle, then dangling, then unparsed — with a count of the rest. */
+export function planDependencyFinding(head: string, base: string): string | undefined {
+  const problems = (text: string) =>
+    planDependencyProblems(
+      parseEntryDetails(text, "Planned"),
+      parseEntryDetails(text, "Done").map((e) => e.title),
+    );
+  const was = problems(base);
+  const now = problems(head);
+  const newCycle = now.cycle !== null && was.cycle === null ? now.cycle : null;
+  const newDangling = now.dangling.filter((d) => !was.dangling.some((b) => b.title === d.title && b.ref === d.ref));
+  const newUnparsed = now.unparsed.filter((t) => !was.unparsed.includes(t));
+  const total = (newCycle !== null ? 1 : 0) + newDangling.length + newUnparsed.length;
+  if (total === 0) return undefined;
+  let first: string;
+  if (newCycle !== null) {
+    first = `PLANS.md's requires clauses now form a cycle: ${newCycle.join(" → ")} — every part on it stays blocked forever; ` + // vocabulary-ok: PLANS.md heading syntax
+      "edit one heading's `requires … landed` clause to break it"; // vocabulary-ok: PLANS.md heading syntax
+  } else if (newDangling.length > 0) {
+    const d = newDangling[0]!;
+    first = `PLANS.md plan "${d.title}" requires ${d.ref}, which no PLANS.md heading carries — the claim allocator ` +
+      "ignores the clause and hands the plan out now; fix the series name or part number to match the prerequisite's heading";
+  } else {
+    first = `PLANS.md plan "${newUnparsed[0]!}" has a \`requires … landed\` clause that names no part the claim allocator can read — ` + // vocabulary-ok: PLANS.md heading syntax
+      "it holds nothing; write each ref as `<Series> i/n` or `part i/n` after a `<Series>, part i/n:` heading prefix";
+  }
+  return `${first}${moreSuffix(total - 1)}`;
+}
+
 /** The deterministic findings the landing gate would reject this uncommitted change for, or an
  * empty list when it is clean. Checks the worktree at `wt` against `mainBranch`'s merge-base;
  * `exemptPaths` are the config's review-exemption globs that scope the false-fix check.
@@ -73,6 +114,12 @@ export async function stageCheckFindings(
   const findings: string[] = [];
   const structure = await backlogStructureReason(wt, mainBranch, files).catch(() => undefined);
   if (structure) findings.push(structure);
+  if (files.includes("PLANS.md")) {
+    const head = readTextOrNull(path.join(wt, "PLANS.md")) ?? "";
+    const base = await fileContentAt(wt, await changeBaseRev(wt, mainBranch), "PLANS.md").catch(() => undefined);
+    const dependency = base === undefined ? undefined : planDependencyFinding(head, base);
+    if (dependency !== undefined) findings.push(dependency);
+  }
   const protectedReason = await protectedEditReason(wt, mainBranch, files, role).catch(() => undefined);
   if (protectedReason) findings.push(protectedReason);
   const secretReason = await secretLeakReason(wt, mainBranch, files).catch(() => undefined);
