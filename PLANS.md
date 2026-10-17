@@ -31,30 +31,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The existing `checkFlakyChecks` tests in test/doctor-checks.test.ts pass unchanged.
 - `npm run test` passes, including the plain-terms vocabulary guard on prompt text.
 
-### Fallback chain, part 7c/7: The status badge, the dashboard side card, the TUI header and the team alerts name each tier's fallback step (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7b/7 and 7d/7; requires part 7b/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/fleet-alerts.ts src/ui/gui/gui-client-operator.ts and their tests)
-
-**Goal.** The window badge reads "claude model jobs wait until 14:30", and the side card reads "held until 14:30", while the work runs on a fallback. With part 7b/7's `chain` block, these surfaces say where each tier went and when it returns.
-
-**Approach.**
-- src/status/status-data.ts: `StatusSnapshot` gains `chain?: OrchestratorInfo["chain"]`. `snapshot` copies `info.chain` only while `orchestratorAlive(root, info)`, the same rule the published `budget` follows.
-- src/ui/badges.ts: add exported `chainBadge(chain, now): string`. It returns `""` when the block is absent or empty. Otherwise it returns ` · ` plus one fragment per tier in `MODEL_TIERS` order, joined with ` · `:
-  - `<tier> → <model id> [$<spent>/$<cap>]`, with the money (`usd(spent)/usdCap(cap)`) shown only when `spentUsd` and `capUsd` are set;
-  - then ` until HH:MM` (`clockHm`) when `returnsAt` is set.
-  - For example: ` · default → DeepSeek-V4-Flash $3.10/$5 until 17:40`.
-- `budgetBadge` takes `chain` as a new optional fourth parameter and appends `chainBadge` after the window fragment.
-- In `claudeWindowBadge`, the rejected branch reads `on fallback until HH:MM` when any chain entry has reason `window` or `reserve`, and keeps `claude model jobs wait until HH:MM` otherwise. That needs a `moved: boolean` argument from `budgetBadge`.
-- src/ui/status-payload.ts and src/ui/status-render.ts pass `snap.chain` to `budgetBadge`, so the GUI payload's preformatted badge and the TUI header show the same string.
-- src/ui/gui/gui-client-operator.ts `windowLine`: in the rejected branch, write `"on fallback until "` when `snap.chain` has a `window`/`reserve` entry, else keep `"held until "`. The side card adds one line per chain tier, with the same fragment text as `chainBadge`. The client reads `chain` from the status payload, which carries the snapshot field.
-- src/ui/fleet-alerts.ts: add `"chain"` to `fleetAlerts`' snapshot `Pick`. While any tier is moved, raise one alert, `running on fallback: <chainBadge text without the leading " · ">`. It does not need the operator (`alertNeedsYou` false).
-
-**Files touched.** src/status/status-data.ts, src/ui/badges.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/fleet-alerts.ts, src/ui/gui/gui-client-operator.ts, test/badges.test.ts, test/fleet-alerts.test.ts, test/status-budget.test.ts.
-
-**Acceptance criteria.**
-- test/badges.test.ts: a rejected window plus a `chain.default` with reason `window` gives a `budgetBadge` that contains `default → ` and `on fallback until`, and contains neither `wait until` nor `held`. The same window with no chain still contains `claude model jobs wait until`.
-- test/fleet-alerts.test.ts: a snapshot with a chain entry raises the `running on fallback:` alert, and one without raises none.
-- `tumwater status --json` from a test whose orchestrator.json carries `chain` (alive pid) includes `chain`. With no chain, every badge string equals its value before this part (an existing badge test that does not set `chain` still passes unchanged).
-- `npm run test` passes.
-
 ### Fallback chain, part 7d/7: The role view and doctor's `claude window` row say which fallback step the work moved to (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7b/7 and 7c/7; requires part 7b/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/roles/role-view.ts src/roles/role-render.ts src/doctor/doctor-holds.ts src/doctor/doctor.ts src/text/datetime.ts src/ui/badges.ts and their tests)
 
 **Goal.** `tumwater role <id>` names only the declared budget fallback. Doctor's `claude window` check says "subscription claude model jobs wait until it resets" even when every tier moved. With part 7b/7's `chain` block, both say what is actually running.
@@ -1888,6 +1864,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Fallback chain, part 7c/7: The status badge, the dashboard side card, the TUI header and the team alerts name each tier's fallback step (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7b/7 and 7d/7; requires part 7b/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/fleet-alerts.ts src/ui/gui/gui-client-operator.ts and their tests) (done 2026-10-16)
+
+**Goal.** The window badge reads "claude model jobs wait until 14:30", and the side card reads "held until 14:30", while the work runs on a fallback. With part 7b/7's `chain` block, these surfaces say where each tier went and when it returns.
+
+**Approach.**
+- src/status/status-data.ts: `StatusSnapshot` gains `chain?: OrchestratorInfo["chain"]`. `snapshot` copies `info.chain` only while `orchestratorAlive(root, info)`, the same rule the published `budget` follows.
+- src/ui/badges.ts: add exported `chainBadge(chain, now): string`. It returns `""` when the block is absent or empty. Otherwise it returns ` · ` plus one fragment per tier in `MODEL_TIERS` order, joined with ` · `:
+  - `<tier> → <model id> [$<spent>/$<cap>]`, with the money (`usd(spent)/usdCap(cap)`) shown only when `spentUsd` and `capUsd` are set;
+  - then ` until HH:MM` (`clockHm`) when `returnsAt` is set.
+  - For example: ` · default → DeepSeek-V4-Flash $3.10/$5 until 17:40`.
+- `budgetBadge` takes `chain` as a new optional fourth parameter and appends `chainBadge` after the window fragment.
+- In `claudeWindowBadge`, the rejected branch reads `on fallback until HH:MM` when any chain entry has reason `window` or `reserve`, and keeps `claude model jobs wait until HH:MM` otherwise. That needs a `moved: boolean` argument from `budgetBadge`.
+- src/ui/status-payload.ts and src/ui/status-render.ts pass `snap.chain` to `budgetBadge`, so the GUI payload's preformatted badge and the TUI header show the same string.
+- src/ui/gui/gui-client-operator.ts `windowLine`: in the rejected branch, write `"on fallback until "` when `snap.chain` has a `window`/`reserve` entry, else keep `"held until "`. The side card adds one line per chain tier, with the same fragment text as `chainBadge`. The client reads `chain` from the status payload, which carries the snapshot field.
+- src/ui/fleet-alerts.ts: add `"chain"` to `fleetAlerts`' snapshot `Pick`. While any tier is moved, raise one alert, `running on fallback: <chainBadge text without the leading " · ">`. It does not need the operator (`alertNeedsYou` false).
+
+**Files touched.** src/status/status-data.ts, src/ui/badges.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/fleet-alerts.ts, src/ui/gui/gui-client-operator.ts, test/badges.test.ts, test/fleet-alerts.test.ts, test/status-budget.test.ts.
+
+**Acceptance criteria.**
+- test/badges.test.ts: a rejected window plus a `chain.default` with reason `window` gives a `budgetBadge` that contains `default → ` and `on fallback until`, and contains neither `wait until` nor `held`. The same window with no chain still contains `claude model jobs wait until`.
+- test/fleet-alerts.test.ts: a snapshot with a chain entry raises the `running on fallback:` alert, and one without raises none.
+- `tumwater status --json` from a test whose orchestrator.json carries `chain` (alive pid) includes `chain`. With no chain, every badge string equals its value before this part (an existing badge test that does not set `chain` still passes unchanged).
+- `npm run test` passes.
 
 ### Fallback chain, part 7a/7: A `tumwater doctor` "fallback chain" check lists each tier's steps and probes local servers (done 2026-10-16; planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7b/7, 7c/7 and 7d/7; design in plans/fallback-chain.md "Events and surfaces"; touches src/pi/pi-models.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts and their tests)
 

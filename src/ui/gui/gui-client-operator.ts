@@ -87,12 +87,24 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     if (hours < 24) return "resets in " + hours + "h " + (minutes % 60) + "m";
     return "resets in " + Math.floor(hours / 24) + "d " + (hours % 24) + "h";
   }
-  function windowLine(w, cw) {
+  function chainMoved(chain) {
+    return Object.values(chain || {}).some((t) => t.reason === "window" || t.reason === "reserve");
+  }
+  // One line per tier off its primary, the same text as badges.ts's chainFragments.
+  function chainLinesHtml(chain) {
+    return ["small", "default", "strong"].filter((tier) => chain && chain[tier]).map((tier) => {
+      const t = chain[tier];
+      const money = t.spentUsd !== undefined && t.capUsd !== undefined ? " " + fmtUsd(t.spentUsd) + "/" + fmtCap(t.capUsd) : "";
+      const until = t.returnsAt !== undefined ? " until " + windowClock(t.returnsAt) : "";
+      return "<span class='side-card-value window-line'>" + esc(tier + " → " + t.pair + money + until) + "</span>";
+    }).join("");
+  }
+  function windowLine(w, cw, chain) {
     const parts = ["Claude " + windowLabel(w.type)];
     const word = windowWord(w.status);
     parts.push(typeof w.utilization === "number" ? Math.round(w.utilization * 100) + "%" : word === "ok" ? "ok · usage not reported" : word);
     if (w.isUsingOverage) parts.push("overage");
-    if (w.status === "rejected" && cw.heldUntil != null) parts.push("held until " + windowClock(cw.heldUntil));
+    if (w.status === "rejected" && cw.heldUntil != null) parts.push((chainMoved(chain) ? "on fallback until " : "held until ") + windowClock(cw.heldUntil));
     else if (w.status !== "reset" && typeof w.resetsAt === "number") parts.push(windowResets(w.resetsAt));
     return parts.join(" · ");
   }
@@ -101,8 +113,8 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     if (w.status === "allowed_warning") return " t-amber";
     return "";
   }
-  function windowLinesHtml(cw) {
-    if (!cw) return "";
+  function windowLinesHtml(cw, chain) {
+    if (!cw) return chainLinesHtml(chain);
     // Shortest window first (5h above 7d), whatever order the server ranks severity in; an
     // unlabelled type sorts last, then by type name. A copy, so cw.windows keeps its order.
     const hours = (w) => {
@@ -111,25 +123,25 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     };
     const shortestFirst = cw.windows.slice().sort((a, b) => (hours(a) === hours(b) ? (a.type < b.type ? -1 : a.type > b.type ? 1 : 0) : hours(a) < hours(b) ? -1 : 1));
     return shortestFirst.map((w) => {
-      const line = "<span class='side-card-value window-line" + windowLineTone(w) + "'>" + esc(windowLine(w, cw)) + "</span>";
+      const line = "<span class='side-card-value window-line" + windowLineTone(w) + "'>" + esc(windowLine(w, cw, chain)) + "</span>";
       if (typeof w.utilization !== "number") return line;
       const pct = Math.min(100, Math.round(w.utilization * 100));
       return line + "<span class='meter" + windowLineTone(w) + "'><span style='width:" + pct + "%'></span></span>";
-    }).join("");
+    }).join("") + chainLinesHtml(chain);
   }
   // The sidebar's spend card for a payload's budget block: a plain card for an all-free fleet
   // (no spend a cap could bind, so no editor), otherwise the button that opens the cap editor,
   // with a meter while a cap is set.
-  function budgetCardHtml(b, cw) {
+  function budgetCardHtml(b, cw, chain) {
     // A subscription-only fleet has no priced spend for a cap to bind, so the window card
     // stands in place of the spend card and carries no editor.
     if (cw && cw.only) {
       return "<div class='side-card' title='Claude.ai subscription usage windows — a rejected window pauses claude model jobs until it resets'>" +
-        "<span class='side-card-label'>" + icon("clock") + "Claude window</span>" + windowLinesHtml(cw) + "</div>";
+        "<span class='side-card-label'>" + icon("clock") + "Claude window</span>" + windowLinesHtml(cw, chain) + "</div>";
     }
     if (b.free) {
       return "<div class='side-card' title='Every model the team can use is cost n/a, so there is nothing to cap'>" +
-        "<span class='side-card-label'>" + icon("dollar") + "Spend</span><span class='side-card-value'>Free models</span>" + windowLinesHtml(cw) + "</div>";
+        "<span class='side-card-label'>" + icon("dollar") + "Spend</span><span class='side-card-value'>Free models</span>" + windowLinesHtml(cw, chain) + "</div>";
     }
     const capped = b.capUsd > 0;
     const pct = capped ? Math.min(100, (b.spentUsd / b.capUsd) * 100) : 0;
@@ -138,12 +150,12 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       esc(capped ? "Today's spend against the daily cap — click to change the cap" : "No daily cap — click to set one") + "'>" +
       "<span class='side-card-label'>" + icon("dollar") + "Spent today<span class='edit'>" + (capped ? "Edit cap" : "Set a cap") + "</span></span>" +
       "<span class='side-card-value'>" + esc(fmtUsd(b.spentUsd)) + " <small>" + esc(capped ? "of " + fmtCap(b.capUsd) : "no daily cap") + "</small></span>" +
-      (capped ? "<span class='meter" + tone + "'><span style='width:" + pct.toFixed(1) + "%'></span></span>" : "") + windowLinesHtml(cw) + "</button>";
+      (capped ? "<span class='meter" + tone + "'><span style='width:" + pct.toFixed(1) + "%'></span></span>" : "") + windowLinesHtml(cw, chain) + "</button>";
   }
   function renderBudgetBadge(d) {
     if (budgetEditing) return; // the open editor owns the slot until save or cancel
     const b = d && d.budget;
-    paintPanel("budgetwrap", b ? budgetCardHtml(b, d && d.claudeWindow) : "");
+    paintPanel("budgetwrap", b ? budgetCardHtml(b, d && d.claudeWindow, d && d.chain) : "");
   }
   function openBudgetEditor() {
     const b = lastStatus && lastStatus.budget;

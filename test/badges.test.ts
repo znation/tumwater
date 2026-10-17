@@ -5,7 +5,7 @@
  * travels with the per-loop display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, runWindowBadge, wakeBadge, loopWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, chainBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, runWindowBadge, wakeBadge, loopWakeMarker } from "../src/ui/badges.js";
 import type { StatusSnapshot } from "../src/status/status-data.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -338,4 +338,25 @@ test("runWindowBadge counts down to the deadline, then reads stopping, and is em
   assert.equal(runWindowBadge(undefined, now), "");
   assert.equal(runWindowBadge(now + 2 * 3600_000, now), " · stops in 2h");
   assert.equal(runWindowBadge(now - 1, now), " · stopping");
+});
+
+test("budgetBadge names each tier's fallback step while the window is rejected", () => {
+  const at = (h: number, m: number) => new Date(2026, 9, 10, h, m).getTime();
+  const cw: NonNullable<StatusSnapshot["claudeWindow"]> = {
+    windows: [{ type: "five_hour", status: "rejected", resetsAt: at(15, 0), utilization: 1, observedAt: 0 }],
+    primary: { type: "five_hour", status: "rejected", resetsAt: at(15, 0), utilization: 1, observedAt: 0 },
+    only: false,
+    heldUntil: at(15, 0),
+  };
+  const budget = { spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null };
+  const chain = {
+    default: { pair: "DeepSeek-V4-Flash", step: 2, of: 2, reason: "window" as const, returnsAt: at(15, 0), spentUsd: 3.1, capUsd: 5 },
+  };
+  const moved = budgetBadge(budget, cw, at(10, 0), chain);
+  assert.match(moved, /default → DeepSeek-V4-Flash \$3\.10\/\$5 until 15:00/);
+  assert.match(moved, /on fallback until 15:00/);
+  assert.doesNotMatch(moved, /wait until|held/);
+  assert.match(budgetBadge(budget, cw, at(10, 0)), /claude model jobs wait until 15:00/);
+  assert.equal(chainBadge(undefined), "");
+  assert.equal(chainBadge({}), "");
 });

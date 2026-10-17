@@ -24,6 +24,15 @@ test("a healthy fleet raises nothing; a stopped one says how to start it", () =>
   assert.equal(stopped.filter(alertNeedsYou).length, 0, "information does not count as needing you");
 });
 
+test("a tier on a fallback step raises one informational alert", () => {
+  const chain = { default: { pair: "DeepSeek-V4-Flash", step: 2, of: 2, reason: "window" as const } };
+  const alerts = fleetAlerts({ ...base, chain }, [], [], Date.now());
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0]?.detail ?? "", /^running on fallback: default → DeepSeek-V4-Flash/);
+  assert.equal(alertNeedsYou(alerts[0]!), false);
+  assert.deepEqual(fleetAlerts({ ...base, chain: {} }, [], [], Date.now()), []);
+});
+
 test("a spent budget pauses the loops, or hands them to the free fallback", () => {
   const spent: Snap = {
     ...base,

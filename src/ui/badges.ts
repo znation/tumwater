@@ -2,6 +2,7 @@
 import type { TestCounts } from "../build/build-check-counts.js";
 import { claudeUtilizationPct, claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
+import { MODEL_TIERS } from "../config/config-schema.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
@@ -135,17 +136,48 @@ function untilReset(resetsAt: number, now: number): string {
  * `claude model jobs wait until 14:30` in place of `resets` while a future deadline holds the
  * seams; a reset reading names neither. The one home of the string, so the TUI header and the
  * payload's preformatted badge cannot drift. */
-function claudeWindowBadge(claudeWindow: NonNullable<StatusSnapshot["claudeWindow"]>, now: number): string {
+function claudeWindowBadge(
+  claudeWindow: NonNullable<StatusSnapshot["claudeWindow"]>,
+  now: number,
+  moved = false,
+): string {
   const w = claudeWindow.primary;
   const parts = [`Claude ${claudeWindowLabel(w.type)}`];
   parts.push(typeof w.utilization === "number" ? `${claudeUtilizationPct(w.utilization)}%` : claudeWindowStatusWord(w.status));
   if (w.isUsingOverage === true) parts.push("overage");
   if (w.status === "rejected" && claudeWindow.heldUntil !== null) {
-    parts.push(`claude model jobs wait until ${clockHm(claudeWindow.heldUntil)}`);
+    parts.push(`${moved ? "on fallback" : "claude model jobs wait"} until ${clockHm(claudeWindow.heldUntil)}`);
   } else if (w.status !== "reset" && typeof w.resetsAt === "number") {
     parts.push(w.resetsAt - now < 60_000 ? "resets now" : `resets in ${untilReset(w.resetsAt, now)}`);
   }
   return ` · ${parts.join(" · ")}`;
+}
+
+/** Whether any tier of a chain block runs on a fallback because the Claude window (or its
+ * reserve) is used up. */
+function chainMovedByWindow(chain: StatusSnapshot["chain"]): boolean {
+  return Object.values(chain ?? {}).some((t) => t.reason === "window" || t.reason === "reserve");
+}
+
+/** The tiers' fallback steps as badge text, ` · `-joined without a leading separator:
+ * `default → DeepSeek-V4-Flash $3.10/$5 until 17:40`, one fragment per tier in MODEL_TIERS
+ * order. Empty when the block is absent or empty. */
+export function chainFragments(chain: StatusSnapshot["chain"]): string {
+  const out: string[] = [];
+  for (const tier of MODEL_TIERS) {
+    const t = chain?.[tier];
+    if (!t) continue;
+    const money = t.spentUsd !== undefined && t.capUsd !== undefined ? ` ${usd(t.spentUsd)}/${usdCap(t.capUsd)}` : "";
+    const until = t.returnsAt !== undefined ? ` until ${clockHm(t.returnsAt)}` : "";
+    out.push(`${tier} → ${t.pair}${money}${until}`);
+  }
+  return out.join(" · ");
+}
+
+/** The chain block as a header fragment: ` · ` plus chainFragments, empty without a chain. */
+export function chainBadge(chain: StatusSnapshot["chain"]): string {
+  const text = chainFragments(chain);
+  return text ? ` · ${text}` : "";
 }
 
 /** The window fragment's tone rank, for the header badge and the GUI meter: a rejected window
@@ -181,8 +213,9 @@ export function budgetBadge(
   budget: StatusSnapshot["budget"],
   claudeWindow?: StatusSnapshot["claudeWindow"],
   now = Date.now(),
+  chain?: StatusSnapshot["chain"],
 ): string {
-  const window = claudeWindow ? claudeWindowBadge(claudeWindow, now) : "";
+  const window = (claudeWindow ? claudeWindowBadge(claudeWindow, now, chainMovedByWindow(chain)) : "") + chainBadge(chain);
   // Subscription-only: the window stands IN PLACE of the daily spend — there is no priced
   // spend for a dollar figure to report. Mixed and none fall through to the daily spend.
   if (claudeWindow?.only) return window;

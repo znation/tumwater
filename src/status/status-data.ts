@@ -1,7 +1,7 @@
 import type { LoopState } from "../loop/loop-state.js";
 import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
-import type { PermitSnapshot } from "../fleet/orchestrator-info.js";
+import type { OrchestratorInfo, PermitSnapshot } from "../fleet/orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
@@ -150,6 +150,10 @@ export interface StatusSnapshot {
      * runs on. */
     tiers?: Partial<Record<string, string>> | null;
   };
+  /** Each tier the budget gate has off its primary and the fallback step it runs on, from the
+   * live orchestrator's info file (fallback chain part 7c/7); absent when none moved or the
+   * orchestrator is not alive. */
+  chain?: OrchestratorInfo["chain"];
   /** The claude.ai subscription usage window (plans/agent-backends.md §8, PLANS.md part 6d/7),
    * present only when a seam routes to claude on subscription billing AND the account reported
    * at least one window reading: `windows` is the full list (most constrained first),
@@ -441,6 +445,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
     budget,
     ...(claudeWindow ? { claudeWindow } : {}),
+    ...(running && info?.chain && Object.keys(info.chain).length > 0 ? { chain: info.chain } : {}),
     paused: fleetPause !== null,
     pausedRoles: pausedRoles(root),
     capPaused,

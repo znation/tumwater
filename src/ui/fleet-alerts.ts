@@ -11,7 +11,7 @@
 import type { StatusSnapshot } from "../status/status-data.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import { pauseCountdown } from "./badges.js";
+import { chainFragments, pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
@@ -97,6 +97,7 @@ export function fleetAlerts(
     | "inQuietHours"
     | "disk"
     | "imageProbeFailures"
+    | "chain"
   >,
   questions: readonly string[],
   loops: readonly AlertLoop[],
@@ -104,6 +105,16 @@ export function fleetAlerts(
 ): FleetAlert[] {
   const out: FleetAlert[] = [];
   const b = snap.budget;
+  const onFallback = chainFragments(snap.chain);
+  if (onFallback) {
+    out.push({
+      key: "chain",
+      tone: "blue",
+      title: "Running on fallback",
+      detail: `running on fallback: ${onFallback}`,
+      actions: [],
+    });
+  }
   if (!b.free && b.capUsd > 0 && b.spentUsd >= b.capUsd) {
     out.push(
       b.fallback
