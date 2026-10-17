@@ -132,6 +132,18 @@ test("runImageProbe fails after two wrong answers, naming what the model said", 
   assert.match(result.detail, /two wrong answers/);
 });
 
+// Two wrong *numbers* — the model read a number, wrongly — are a flaky misread, not blindness:
+// the verdict must be the never-cached could-not-verify so a doctor run re-probes instead of
+// turning a capable seam text-only for a week (a refusal earns the cached fail via the test
+// above).
+test("runImageProbe treats two wrong numbers as a misread (could-not-verify), not blindness", async () => {
+  const env = fakePi(`printf '%s\\n' '${assistantLine("The number is 5825.")}'`);
+  const result = await runImageProbe(probeConfig(), { provider: "local", model: "vision" }, env, 5000, "1234");
+  assert.equal(result.verdict, "could-not-verify");
+  assert.match(result.detail, /two misreads/);
+  assert.match(result.detail, /5825/);
+});
+
 test("runImageProbe fails a 4xx request outright", async () => {
   const env = fakePi(`printf '%s\\n' '${errorLine("400: model_not_supported")}'`);
   const result = await runImageProbe(probeConfig(), { provider: "local", model: "vision" }, env, 5000, "1234");

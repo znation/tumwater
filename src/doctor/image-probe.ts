@@ -215,6 +215,13 @@ function parseProbeOutput(stdout: string): {
   };
 }
 
+/** Whether an answer looks like a (wrong) read of the 4-digit code rather than a refusal: the
+ * text contains a 4-digit run of digits (e.g. "The number is 5825."). A model that cannot see
+ * at all does not emit a number. */
+function isFourDigitNumber(text: string): boolean {
+  return /\b\d{4}\b/.test(text);
+}
+
 /** Probe one claimed pi seam with a real image (plans/image-input.md "Doctor"). Runs the
  * resolved pi binary in a run's environment (the caller passes `env`, typically
  * `childEnv({ PATH: pathEnv })` which inherits `PI_CODING_AGENT_DIR`, so the probe reads the
@@ -224,10 +231,14 @@ function parseProbeOutput(stdout: string): {
  *        --thinking <level> @<png> "Reply with only the 4-digit number shown in the image."`
  *
  * Pass: the final assistant text contains the code. A wrong answer retries once with a fresh
- * code (a misread is not blindness); two wrong answers fail, and so does a 4xx. A timeout,
- * spawn failure, 429, 5xx, or connection error is `could-not-verify` — it says nothing about
- * capability and is never cached. `code` is a test seam (a real probe always draws a fresh
- * random code); `env` and `timeoutMs` are injectable so tests need no real pi. */
+ * code (a misread is not blindness). Two wrong answers that are not both numbers fail (a
+ * refusal or empty answer is blindness), and so does a 4xx. Two wrong *numbers* — the model
+ * read a number, wrongly — cannot be told from a flaky misread, so it is `could-not-verify`
+ * rather than `fail` and is never cached: the next doctor run probes again instead of turning
+ * a capable seam text-only for a week. A timeout, spawn failure, 429, 5xx, or connection error
+ * is also `could-not-verify` — it says nothing about capability and is never cached. `code` is
+ * a test seam (a real probe always draws a fresh random code); `env` and `timeoutMs` are
+ * injectable so tests need no real pi. */
 export async function runImageProbe(
   config: TumwaterConfig,
   seam: { provider?: string; model: string; thinking?: string },
@@ -244,7 +255,8 @@ export async function runImageProbe(
       : envBin
     : resolveAgentBin(config).bin;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-image-probe-"));
-  let lastDetail = "";
+  const wrong: string[] = []; // the per-attempt "answered …" detail for a wrong answer
+  const misread: boolean[] = []; // whether each wrong answer was a (wrong) 4-digit number
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       const thisCode = code ?? randomCode();
@@ -266,11 +278,25 @@ export async function runImageProbe(
         return { verdict: "could-not-verify", detail: "the provider rate-limited the request (429)" };
       if (parsed.transientBackend)
         return { verdict: "could-not-verify", detail: "the provider backend failed (5xx or connection)" };
-      const text = parsed.finalText;
-      if (text.includes(thisCode)) return { verdict: "pass", detail: `answered "${text.trim()}"` };
-      lastDetail = text.trim() ? `answered "${text.trim()}"` : "answered nothing";
+      const text = parsed.finalText.trim();
+      if (text.includes(thisCode)) return { verdict: "pass", detail: `answered "${text}"` };
+      // A wrong 4-digit number says "I looked and got the digits wrong"; a refusal or empty
+      // answer says "I cannot see". The drawn code is exactly 4 digits, so a 4-digit answer is
+      // a plausible (wrong) read.
+      misread.push(isFourDigitNumber(text));
+      wrong.push(text ? `answered "${text}"` : "answered nothing");
     }
-    return { verdict: "fail", detail: `two wrong answers (${lastDetail})` };
+    // A refusal or empty answer on either attempt is blindness — the two-strikes rule: fail,
+    // cached. Two wrong *numbers* cannot be told from a flaky misread, so it is could-not-verify
+    // and never cached: the next doctor run probes again instead of turning a capable seam
+    // text-only for a week. Either way the detail names what the model said, so the doctor
+    // line, the alert, and a bug report can tell blindness from a misread.
+    return misread[0] && misread[1]
+      ? {
+          verdict: "could-not-verify" as const,
+          detail: `two misreads (${wrong.join(", ")}) — the model read a number, wrongly; not blindness, re-probe on the next doctor run`,
+        }
+      : { verdict: "fail", detail: `two wrong answers (${wrong[1]})` };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
