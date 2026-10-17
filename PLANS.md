@@ -5,6 +5,55 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### The GUI Usage view charts each day's `Commits by role` as a stacked per-role element, the per-role split of the `Merged commits` total (planned 2026-10-17 by the plan role; independent of the in-flight `Merged by role` chart and of the plain-terms comment parts 11b/11 and 11e/11 — a different builder, seed line and render-chain slot in the same file, so all three land in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts)
+
+**Goal.** `tumwater report` prints `Commits by role` in both the day render (`renderReportMarkdown`, `src/report/report-render.ts`, over `d.commitsByRole`) and the `--since` render (over `rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {})`), and each series day carries `ReportDay.commitsByRole` (merged commits keyed by base role, folded in `src/report/report-data.ts`'s `ev.type === "merged"` branch and set on both the team and role-scoped series). The dashboard's Usage view draws only the daily total, `Merged commits` (`chartCommits`), so an operator who sees the total cannot tell which role's changes made it up. Add one stacked `Commits by role` chart beside `Merged commits`, the dashboard twin of the CLI line.
+
+This is not the same series as the in-flight `Merged by role` chart: `commitsByRole` counts `merged` events (`merge-stack.ts` emits one per change in a stacked fast-forward, `src/merge/merge-stack.ts`) while `mergedByRole` counts `merge_done` events (one per merge run, `src/merge/merge-slot.ts`), so the two charts answer different questions — which commits, versus which merge outcomes — and both are worth a tile.
+
+**Approach.** All changes are in the `report-chart` region of `src/ui/gui/gui-client-report.ts` and the `usage` view's render chain in the same file; no server or `report-data.ts` change — `commitsByRole` already rides the `/api/report` JSON the view renders.
+
+1. In `reportRoleOrder`, beside its `mergeFailedByRole` seeding line, add
+   `for (const role of Object.keys(d.commitsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;`.
+   Added even though the keys are usually present via `runsByRole`, because `runsByRole` is
+   keyed by loop id (`feature-2`) while `commitsByRole` is base-role keyed (`feature`), so a
+   role that merged only through an instance would otherwise get no colour or legend entry.
+2. In the `report-chart` region, right after `chartCommits`, add
+   `chartCommitsByRole(data)` built through `roleStackChart`:
+   `return roleStackChart(data, "commitsByRole", (n) => plural(n, "commit"), countAxis, true);`
+   with a comment naming it the day's merged commits per base role, the per-role split of the
+   `Merged commits` total it sits beside (same `roleStackChart` shape, palette, legend order
+   and integer count axis as the other role charts).
+3. In the `usage` view's render chain, insert
+   `block("Commits by role", chartCommitsByRole(d)) +`
+   immediately after the existing `block("Merged commits", chartCommits(d)) +` term. No
+   `seriesHasAny` gate: the collector pre-fills the map on every day (a commit-free day
+   carries an empty map), and the sibling total charts render unconditionally, so the block
+   matches them.
+
+**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-client-report.test.ts`: a new test, "the Commits by role chart stacks per role in
+  the ticks order", modelled on "the Rejections by loop chart stacks per role in the ticks
+  order and stays empty without a map". Through `clientScope` with the `["format",
+  "report-chart"]` regions and the builder list `["reportRoleOrder", "chartTicksByRole",
+  "chartCommitsByRole"]`, build day 1 with `commitsByRole { feature: 2, qa: 1 }` under
+  `runsByRole { feature: 3 }` and day 2 with `runsByRole { feature: 1 }` and an empty
+  `commitsByRole`: the rect titles of `chartCommitsByRole(data)` are exactly
+  `["2026-09-01 · feature: 2 commits", "2026-09-01 · qa: 1 commit"]` (zero-value segments
+  draw no rect, the `roleStackChart` convention); `legendOf(chartCommitsByRole(data))` equals
+  `legendOf(chartTicksByRole(data))`, proving the shared order and colours; and
+  `reportRoleOrder(data)` deep-equals `[["feature", 4], ["qa", 0]]`, proving step 1's seed
+  line gives the merge-and-go role its row.
+- A day whose `commitsByRole` map is missing renders no segments when passed to the builder
+  (the `roleStackChart` `d[field] || {}` guard).
+- The `usage` render chain carries the new block: reading the edited `usage` render closure
+  shows the `block("Commits by role", chartCommitsByRole(d))` term immediately after the
+  `Merged commits` term (the chain has no view-render test, as the sibling per-role chart
+  blocks also have none).
+- `npm run test` passes.
+
 ### Plain terms code merge, part 11b/11: Rewrite the merge family in the operator surfaces' comments (planned 2026-10-17 by the plan role; re-scoped 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11e/11 and 11f/11; design in plans/terminology.md "Code names"; touches comments in src/ui/ src/gui/ src/cli/ src/orchestrator/ and src/roles/)
 
 **Goal.** Same as part 11a for the operator surfaces: the merge family's identifiers and file names are already renamed and guarded (`RETIRED` in test/retired-names.test.ts carries the family; parts 10/11 and 11/11's identifier halves landed). What remains is comment prose. This part rewrites the merge family in the comments of the operator-surface modules so a reader sees `merge`, `merged` and `approved` where the code merges.
