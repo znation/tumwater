@@ -6,7 +6,7 @@
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender, warnIfUncommitted } from "./cli-output.js";
-import { flagValue, parseCountFlag, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
+import { flagValue, parseCountFlag, parsePositionFlag, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
 import { JSON_FLAG, READY_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
@@ -34,7 +34,7 @@ import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { wakeQuestionAsker } from "../operator/operator-intent.js";
 import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFromEditorBuffer, sayAnswered, sayQuestionList } from "./question-commands.js";
-import { answeredQuestionList, answeredQuestionPayload, questionListPayload } from "../backlog/question-answer.js";
+import { answeredQuestionList, answeredQuestionPayload, openQuestionAt, questionListPayload, renderShownQuestion } from "../backlog/question-answer.js";
 import { editInEditor } from "./cli-editor.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
@@ -188,8 +188,14 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   let file: string | undefined;
   let answeredFlag = false;
   let limit: number | undefined;
+  let show: number | undefined;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
+    if (!numbered && arg === "--show") {
+      rejectRepeatFlag(show !== undefined, "--show");
+      show = parsePositionFlag("--show", args[++i], "--show 2");
+      continue;
+    }
     if (!numbered && arg === "--answered") {
       rejectRepeatFlag(answeredFlag, "--answered");
       answeredFlag = true;
@@ -211,8 +217,8 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
       continue;
     }
     if (arg.startsWith("--") && arg !== "--json") {
-      rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC]);
-      fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json, --file, --answered)`);
+      rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC, { names: ["--show"], value: true, valueName: "<n>" }]);
+      fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json, --file, --answered, --show)`);
     }
     if (!numbered) {
       // The position is a plain-decimal positive integer (parsePositiveInt's rule, the same
@@ -224,6 +230,16 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     words.push(arg);
   }
   if (limit !== undefined && !answeredFlag) fail("-n needs --answered (it limits the answered questions listed)");
+  if (show !== undefined) {
+    if (words.length > 0) fail("--show prints one open question; it takes no subcommand");
+    if (answeredFlag) fail("--show and --answered cannot be combined");
+    if (file !== undefined) fail("--file only applies to questions answer <n>");
+    const q = openQuestionAt(root, show);
+    if (q === null) fail(`no open question at position ${show} (${questionListPayload(root).questions.length} in QUESTIONS.md)`);
+    if (jsonFlag) sayJson(q);
+    else say(renderShownQuestion(q));
+    return;
+  }
   if (answeredFlag) {
     if (words.length > 0) fail("--answered lists answered questions; it takes no subcommand");
     if (file !== undefined) fail("--file only applies to questions answer <n>");

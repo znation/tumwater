@@ -1370,7 +1370,9 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - The same file: a fix-claim-blocked first attempt followed by a green merge logs no `MERGE_FLAKY_WARNING_PREFIX` warning. Extend "a fix-claim-blocked landing retries once, then rejects with the block reason", or add a short sibling test. A merge that was never red logs none either, which the existing green merge tests show when one asserts on warnings. If none does, add that assertion to one of them.
 - `npm run test` passes, including `test/vocabulary.test.ts`. The new source lines say "merge", not "landing", because `merge-check-failures.ts` is `// vocabulary: plain`.
 
-### `tumwater questions --show <n>` prints one open question in full, so an operator reads its context, options and recommendation at the terminal before answering (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/question-answer.ts, `cmdQuestions` in src/cli/cli-query-commands.ts, the `questions` stanza of src/cli/help.ts, docs/cli.md's "Answer open questions" row and test/cli-questions-list.test.ts)
+## Done
+
+### `tumwater questions --show <n>` prints one open question in full, so an operator reads its context, options and recommendation at the terminal before answering (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/question-answer.ts, `cmdQuestions` in src/cli/cli-query-commands.ts, the `questions` stanza of src/cli/help.ts, docs/cli.md's "Answer open questions" row and test/cli-questions-list.test.ts) — done 2026-10-16
 
 **Goal.** A role that posts a question writes its context, the options and its recommendation in the body. The prose `tumwater questions` list prints only each question's heading, age and first body line (`openQuestionList` in `src/backlog/question-answer.ts` uses `firstBodySuffix`). `plan --show <n>` and `bug --show <n>` already print one entry in full (`showAndAnnounce` in `src/backlog/backlog-cli.ts`), but questions have no such reader. Today the operator either opens QUESTIONS.md or starts the bare `questions answer <n>` editor just to read a question. Add `tumwater questions --show <n> [--json]`, the read half of `questions answer <n>`.
 
@@ -1391,8 +1393,6 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - Bare `tumwater questions` and `questions --answered` keep their current output; their existing tests pass unchanged.
 - `tumwater help questions` shows the new stanza, and `tumwater completion zsh` output contains `--show` for `questions`.
 - `npm run test` passes.
-
-## Done
 
 ### An open bug that cannot be reproduced is held by a "Waiting for the next failure" note until it recurs, so bugfix stops spending runs on it (planned 2026-10-16 by plan; independent of every other entry — touches src/roles/role-guidance.ts, src/backlog/backlog-eligibility.ts, src/backlog/backlog-write.ts, src/roles/role-catalog.ts, docs/how-it-works.md, docs/cli.md and their tests) (done 2026-10-16)
 

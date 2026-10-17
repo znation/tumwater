@@ -266,6 +266,11 @@ Usage:
                                    List the newest answered questions, newest first (default
                                    10), each with its answer line; --json prints {questions,
                                    older}, each with title, body, answeredOn
+  tumwater questions --show <n> [--json]
+                                   Print the Nth open question in full (heading, blank line,
+                                   body), the numbering "questions" lists and "questions
+                                   answer <n>" takes; --json prints {position, title, body,
+                                   since, ageDays}
   tumwater questions answer [--json] <n> "<decision>"
                                    Answer the Nth open question: stamps today's date on the
                                    entry and moves it to ## Answered with your decision.

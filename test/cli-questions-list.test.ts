@@ -97,3 +97,46 @@ test("questions --answered lists the newest answers and refuses misuse", async (
   const bogus = await cli(repo, "questions", "--bogus");
   assert.match(bogus.stderr, /--answered/);
 });
+
+const SHOW_QUESTIONS =
+  "# q\n\n## Open\n\n### First one (asked by feature, 2026-10-10)\n\nshort\n\n### Second one (asked by plan, 2026-10-12)\n\nline a\nline b\n\n- option\n\n## Answered\n\n_None._\n";
+
+test("questions --show prints one open question in full, in prose and as JSON", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions show");
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), SHOW_QUESTIONS);
+  const r = await cli(repo, "questions", "--show", "2");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trimEnd(), "Second one (asked by plan, 2026-10-12)\n\nline a\nline b\n\n- option");
+  const list = JSON.parse((await cli(repo, "questions", "--json")).stdout) as { questions: unknown[] };
+  for (const order of [["--show", "2", "--json"], ["--json", "--show", "2"]]) {
+    const j = await cli(repo, "questions", ...order);
+    assert.equal(j.code, 0);
+    const q = JSON.parse(j.stdout) as { position: number; title: string; body: string; since?: string; ageDays?: number };
+    assert.equal(q.position, 2);
+    assert.equal(q.since, "2026-10-12");
+    assert.equal(typeof q.ageDays, "number");
+    assert.deepEqual(q, list.questions[1]);
+  }
+});
+
+test("questions --show refuses misuse", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions show refusals");
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), SHOW_QUESTIONS);
+  const cases: [string[], RegExp][] = [
+    [["--show", "3"], /no open question at position 3 \(2 in QUESTIONS\.md\)/],
+    [["--show", "0"], /--show needs a positive integer/],
+    [["--show"], /--show needs a position number/],
+    [["--show", "1", "--show", "2"], /--show may only be given once/],
+    [["--show=1"], /--show/],
+    [["--show", "1", "--answered"], /--show and --answered cannot be combined/],
+    [["--show", "1", "--file", "x"], /--file only applies to questions answer <n>/],
+    [["answer", "--show", "1"], /--show prints one open question; it takes no subcommand/],
+  ];
+  for (const [args, re] of cases) {
+    const r = await cli(repo, "questions", ...args);
+    assert.equal(r.code, 1, args.join(" "));
+    assert.match(r.stderr, re, args.join(" "));
+  }
+});

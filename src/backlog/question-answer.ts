@@ -80,6 +80,18 @@ export function openQuestionList(root: string): string {
   return numberedList(questions.map((q) => `${q.title}${questionAgeSuffix(q.title)}${firstBodySuffix(q.body)}`));
 }
 
+/** The Nth (1-based) open question in the shape of one `questionListPayload` entry, or null
+ * past the end: the reader behind `tumwater questions --show <n>`. */
+export function openQuestionAt(root: string, n: number): ReturnType<typeof questionListPayload>["questions"][number] | null {
+  return questionListPayload(root).questions[n - 1] ?? null;
+}
+
+/** One question as `questions --show` prints it: the heading, a blank line, then the body
+ * (the heading alone when the body is empty). */
+export function renderShownQuestion(q: { title: string; body: string }): string {
+  return q.body === "" ? q.title : `${q.title}\n\n${q.body}`;
+}
+
 /** The same list as data for `--json` (the backlog --json pattern: a JSON document in every
  * exit-0 case, never prose): each entry's 1-based position (the number `answer` consumes),
  * its verbatim heading text, and its full body. */
