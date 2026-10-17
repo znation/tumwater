@@ -1363,6 +1363,38 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - The same file: a fix-claim-blocked first attempt followed by a green merge logs no `MERGE_FLAKY_WARNING_PREFIX` warning. Extend "a fix-claim-blocked landing retries once, then rejects with the block reason", or add a short sibling test. A merge that was never red logs none either, which the existing green merge tests show when one asserts on warnings. If none does, add that assertion to one of them.
 - `npm run test` passes, including `test/vocabulary.test.ts`. The new source lines say "merge", not "landing", because `merge-check-failures.ts` is `// vocabulary: plain`.
 
+### An open bug that cannot be reproduced is held by a "Waiting for the next failure" note until it recurs, so bugfix stops spending runs on it (planned 2026-10-16 by plan; independent of every other entry — touches src/roles/role-guidance.ts, src/backlog/backlog-eligibility.ts, src/backlog/backlog-write.ts, src/roles/role-catalog.ts, docs/how-it-works.md, docs/cli.md and their tests)
+
+**Goal.** Bugfix can't reproduce the supervisor SIGKILL-grandchild flake in BUGS.md `## Open`. It spent four runs on 2026-10-16 adding Progress notes, and each ended with "the entry stays open until the next flake reads out". Nothing tells bugfix to stop. The entry stays eligible, so every wake brings another strong-model run that has no new evidence. This plan adds one more hold note, like Refused, Needs review and Needs replan. When bugfix has made a failure explain itself but can't reproduce it, it writes the note. The bug is then held until whoever records a new occurrence deletes the note.
+
+**Approach.**
+- `src/roles/role-guidance.ts`: next to `NEEDS_REPLAN_PREFIX` / `NEEDS_REPLAN_NOTE`, add `WAITING_FOR_FAILURE_PREFIX = "**Waiting for the next failure "` and `WAITING_FOR_FAILURE_NOTE = "${WAITING_FOR_FAILURE_PREFIX}<YYYY-MM-DD> by bugfix: <what the next failure's message will show>**"`, with a doc comment in the style of the Needs-replan pair.
+- `src/backlog/backlog-eligibility.ts`:
+  - Widen `EntryHold` with `"waiting-for-failure"`.
+  - In `entryHoldAgainst`, return it after the Needs-replan check when `hasNoteLine(entry.body, WAITING_FOR_FAILURE_PREFIX)` (the same line-prefix rule as the other notes, so a mention in prose never holds).
+  - `holdMark` renders it as ` [blocked: waiting for the next failure]`.
+  - Generalize `withoutRefusalNotes` into a private `withoutNoteLines(lines, prefix)` with the same blank-line collapsing. Keep `withoutRefusalNotes` as the Refused-prefix wrapper, because `src/verdict/refusal.ts` must keep lifting only Refused notes. Export `withoutWaitingNotes` as the Waiting-prefix wrapper.
+  - Update the module header comment's list of holds.
+  - `eligibleEntries`, `backlogHolds` and the backlog index pick the new hold up through `entryHoldAgainst` with no change of their own. Because of that, a bug whose only open entry is held makes `eligibleEntries(root, "bugfix")` empty, and bugfix sleeps as it does for a Refused bug.
+- `src/backlog/backlog-write.ts`:
+  - `liftRefusal` lifts a Refused note. When the entry has none, it lifts a Waiting-for-the-next-failure note instead (via `withoutWaitingNotes`). So `tumwater bug --release <n>` and the dashboard's `tryReleaseEntry` also release a waiting bug.
+  - `releaseEntry`'s failure reads `carries no Refused or Waiting for the next failure note`.
+  - `ReleaseEntryOutcome`'s `not_refused` status keeps its name (it is a payload value).
+- `src/roles/role-catalog.ts`:
+  - Bugfix `find`, step 2: append one sentence. When the bug cannot be reproduced and this run made its failure message name the cause next time (or found it already does), record a Progress note, write `${WAITING_FOR_FAILURE_NOTE}` as its own line under the heading, and end the run. Do not keep investigating without new evidence. Step 1's "Skip entries the index marks `[blocked: …]`" already covers skipping a waiting bug, so it needs no new words.
+  - Selfcheck `find`, step 4: when the matching Open entry carries a Waiting-for-the-next-failure note and the cluster failed again after the note's date, add the new occurrence under the entry (time, merged commit, failure message) and delete the note line, instead of filing a duplicate.
+- `docs/how-it-works.md`: next to the existing hold-note description (grep `Needs replan` / `needs-replan`), state what writes the new note, what it holds, and the two ways it lifts: deleting the line when recording an occurrence, or `bug --release`. `docs/cli.md`: in the `--release <n>` clause, write "lifts a Refused or Waiting for the next failure note".
+- Out of scope: the dashboard drawer's Release button, which today renders only for `d.refused`. Doctor's blocked-entry listing. Any automatic expiry. Each can be its own plan later.
+
+**Files touched.** src/roles/role-guidance.ts, src/backlog/backlog-eligibility.ts, src/backlog/backlog-write.ts, src/roles/role-catalog.ts, docs/how-it-works.md, docs/cli.md, test/backlog-eligibility.test.ts, test/backlog-write-cancel.test.ts (it holds the `releaseEntry`/`tryReleaseEntry` cases), test/role-guidance.test.ts.
+
+**Acceptance criteria.**
+- `entryHold` returns `"waiting-for-failure"` for an Open bug whose body has a line starting `**Waiting for the next failure 2026-10-16 by bugfix: …**` (indented or not). It returns null when the same words appear mid-line in prose. A Refused note on the same entry still reads `"refused"`.
+- `holdMark("waiting-for-failure")` is ` [blocked: waiting for the next failure]`. A fixture BUGS.md whose only Open entry carries the note yields `eligibleEntries(root, "bugfix")` empty.
+- `releaseEntry(root, "bug", 1)` on that fixture removes the note line, collapsing the blank line around it the way the Refused case does, and the entry becomes eligible. On an entry with neither note it fails with the new wording. `withoutBlockedPlanRefusals` still lifts only Refused notes: an existing refusal.ts test stays green unchanged.
+- The bugfix find text contains `WAITING_FOR_FAILURE_NOTE`'s text, and the selfcheck find text names the note and says to delete it when recording a recurrence (role-guidance or role-catalog test).
+- `npm run test` passes.
+
 ## Done
 
 ### A series part whose heading words its prerequisite as "blocked by part i/n" (or "after", "follows", "depends on") instead of a requires clause gets a doctor warning (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, test/backlog-eligibility.test.ts, test/doctor-backlog.test.ts, and src/tick/stage-check.ts only when its `planDependencyFinding` already exists) — done 2026-10-16
