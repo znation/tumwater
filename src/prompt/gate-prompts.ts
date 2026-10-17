@@ -402,16 +402,23 @@ tumwater drops the change.`;
 export function buildAssignmentNote(
   claim: { file: string; title: string; source: "assigned" | "staged" },
   range?: { start: number; end: number },
+  missingPaths: readonly string[] = [],
 ): string {
   const where = range ? ` (${claim.file} lines ${range.start}-${range.end})` : ` (${claim.file})`;
   const intro =
     claim.source === "staged"
       ? `Your change moved ONE backlog entry, so it is now your task, replacing your charter's "pick one" step:`
       : `Tumwater has assigned you ONE backlog entry, replacing your charter's "pick one" step:`;
+  const shown = missingPaths.slice(0, 10).map((p) => `\`${p}\``).join(", ");
+  const rest = missingPaths.length - 10;
+  const missingLine =
+    missingPaths.length === 0
+      ? ""
+      : `\nThe entry names paths that do not exist in your checkout: ${shown}${rest > 0 ? `, and ${rest} more` : ""}. Each was renamed or removed after the entry was written (find its successor with \`git log --follow --name-status -- <path>\` or by grepping for the symbols the entry names), or is a file the entry asks you to create.`;
   return `<assigned-entry>
 ${intro}
 "${claim.title}"${where}.
-Implement or fix only that entry. If it is too large for one run, append ${NEEDS_REVIEW_NOTE} under its heading and end your reply with that note alone. If it should not be done, append a Refused note under its heading with your objection and change nothing else. Do not edit any other backlog entry.
+Implement or fix only that entry. If it is too large for one run, append ${NEEDS_REVIEW_NOTE} under its heading and end your reply with that note alone. If it should not be done, append a Refused note under its heading with your objection and change nothing else. Do not edit any other backlog entry.${missingLine}
 </assigned-entry>`;
 }
 

@@ -1557,7 +1557,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Existing status, dashboard and role-view tests pass with `pausedLoops` added to their fixtures where the type requires it.
 - `npm run test` passes.
 
-### The assigned entry names its paths missing from the checkout (planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, src/tick/tick-prompt.ts, src/prompt/gate-prompts.ts and their tests)
+## Done
+
+### The assigned entry names its paths missing from the checkout (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, src/tick/tick-prompt.ts, src/prompt/gate-prompts.ts and their tests)
 
 **Goal.** A plan waits in `## Planned` while other runs merge, and the Plain terms series alone renames dozens of files. A feature or bugfix instance handed an entry through its claim gets the `<assigned-entry>` note (`buildAssignmentNote`, `src/prompt/gate-prompts.ts`) naming the entry's title and line range. Nothing tells it that a path the entry names (`src/fleet/…`, a moved test file) is gone, so a mid-sized model spends its first calls reading a path that is not there, or rebuilds a deleted module. The pre-queue self-check already flags such paths in a change's own added lines (`missingPathFindings` in `src/tick/stage-check.ts`), but it deliberately spares PLANS.md and BUGS.md. Have the assignment note list the repo paths the assigned entry names that are absent from the run's checkout, so the run looks for each one's successor or knows it is meant to create it.
 
@@ -1575,8 +1577,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - With no third argument, the note equals its current text: that test's existing assertions pass unchanged, and a new assertion checks it does not match `do not exist in your checkout`.
 - `test/tick-prompt.test.ts`, next to "a bugfix instance's claim names the bug's line range from BUGS.md": the repo holds `src/kept.ts`. The claimed PLANS.md entry names `src/kept.ts`, `src/gone.ts` and `nodir/x.ts`. The prompt's `<assigned-entry>` names `src/gone.ts` and names neither `src/kept.ts` nor `nodir/x.ts`. A claim whose entry names only `src/kept.ts` gives no missing-paths line.
 - `npm run test` passes.
-
-## Done
 
 ### Doctor's `parallel instances` check names a feature instance's claim as a plan, not a bug (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts and docs/how-it-works.md)
 

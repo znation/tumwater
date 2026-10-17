@@ -261,6 +261,29 @@ test("a bugfix instance's claim names the bug's line range from BUGS.md", () => 
   assert.match(result.prompt, /BUGS\.md lines 3-4/);
 });
 
+test("the assignment names the claimed entry's paths missing from the checkout", () => {
+  const dir = root();
+  fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "src", "kept.ts"), "");
+  const claim = { file: "PLANS.md" as const, key: "plan a", title: "Plan A", at: 1, source: "assigned" as const };
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Plan A\nTouches `src/kept.ts`, `src/gone.ts` and `nodir/x.ts`.\n## Done\n_None._\n",
+  );
+  const result = promptFor(dir, "feature", { state: { claim } });
+  assert.ok(result);
+  const note = /<assigned-entry>[\s\S]*<\/assigned-entry>/.exec(result.prompt)?.[0] ?? "";
+  assert.match(note, /`src\/gone\.ts`/);
+  assert.doesNotMatch(note, /src\/kept\.ts|nodir\/x\.ts/);
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Plan A\nTouches `src/kept.ts`.\n## Done\n_None._\n",
+  );
+  const clean = promptFor(dir, "feature", { state: { claim } });
+  assert.ok(clean);
+  assert.doesNotMatch(clean.prompt, /do not exist in your checkout/);
+});
+
 test("an unknown role throws — the team cannot run a prompt with no task", () => {
   assert.throws(
     () =>

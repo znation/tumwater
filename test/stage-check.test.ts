@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { heldMovedFinding, stageCheckFindings } from "../src/tick/stage-check.js";
+import { heldMovedFinding, pathTokens, stageCheckFindings } from "../src/tick/stage-check.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -395,4 +395,10 @@ test("an uncommitted file holding a secret env value is a finding", async () => 
   } finally {
     delete process.env.TUMWATER_TEST_FAKE_TOKEN;
   }
+});
+
+test("pathTokens returns each distinct path-shaped token in order", () => {
+  assert.deepEqual(pathTokens("see `src/a/b.ts`, src/a/b.ts and (test/c.test.ts)."), ["src/a/b.ts", "test/c.test.ts"]);
+  assert.deepEqual(pathTokens("plain words"), []);
+  assert.deepEqual(pathTokens("README.md"), []);
 });

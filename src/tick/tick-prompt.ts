@@ -20,6 +20,8 @@ import { readEventsSince } from "../events/event-window.js";
 import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
+import * as path from "node:path";
+import { pathTokens } from "./stage-check.js";
 import { readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote } from "../text/format.js";
@@ -44,6 +46,19 @@ export interface TickPromptInput {
    * authoring run gets, so a fallback seam's prompt cannot speak the primary's dialect.
    * Omitted: the role's primary `configForRole(config, role).agent`. */
   agent?: string;
+}
+
+/** The repo paths the entry at `file` lines `range` names that are absent from the checkout at
+ * `root`: tokens whose first segment is a directory there but which do not exist themselves —
+ * the self-check's top-level-directory rule, read from the working tree. */
+function missingEntryPaths(root: string, file: string, range: { start: number; end: number }): string[] {
+  const text = readTextOrNull(path.join(root, file));
+  if (text === null) return [];
+  const entry = text.split("\n").slice(range.start - 1, range.end).join("\n");
+  return pathTokens(entry).filter((p) => {
+    const top = p.slice(0, p.indexOf("/"));
+    return statOrNull(path.join(root, top))?.isDirectory() === true && statOrNull(path.join(root, p)) === null;
+  });
 }
 
 /** Read a role's notebook through files.ts's readTextOrNull — the one read-and-swallow
@@ -239,7 +254,7 @@ export function assembleTickPrompt(
   const claim = role === DIRECTOR_ROLE ? undefined : state.claim;
   if (claim && userPrompt === null) {
     const range = eligibleEntries(root, role).find((e) => e.key === claim.key);
-    prompt = appendPromptNote(prompt, buildAssignmentNote(claim, range));
+    prompt = appendPromptNote(prompt, buildAssignmentNote(claim, range, range ? missingEntryPaths(root, claim.file, range) : []));
   }
   if (!claim && userPrompt === null && role !== DIRECTOR_ROLE && state.heldElsewhere?.length) {
     prompt = appendPromptNote(prompt, buildHeldEntriesNote(state.heldElsewhere));

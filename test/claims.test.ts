@@ -193,6 +193,19 @@ test("buildAssignmentNote names the entry, its range and the alternatives", () =
   const staged = buildAssignmentNote({ file: "BUGS.md", title: "Bug X", source: "staged" });
   assert.match(staged, /Your change moved ONE backlog entry/);
   assert.match(staged, /"Bug X" \(BUGS\.md\)/);
+  assert.doesNotMatch(note, /do not exist in your checkout/);
+});
+
+test("buildAssignmentNote lists the entry's missing paths, capped at 10", () => {
+  const claim = { file: "PLANS.md", title: "Plan A", source: "assigned" as const };
+  const range = { start: 9, end: 20 };
+  const one = buildAssignmentNote(claim, range, ["src/gone.ts"]);
+  assert.match(one, /do not exist in your checkout: `src\/gone\.ts`/);
+  assert.match(one, /"Plan A" \(PLANS\.md lines 9-20\)/);
+  assert.match(one, /Refused note/);
+  const many = buildAssignmentNote(claim, range, Array.from({ length: 12 }, (_, i) => `src/p${i}.ts`));
+  assert.match(many, /`src\/p9\.ts`, and 2 more\./);
+  assert.doesNotMatch(many, /p10\.ts/);
 });
 
 test("workReserveCount withholds permits only while a claim role is idle with work", () => {

@@ -221,6 +221,14 @@ function hasStandalonePathOccurrence(line: string, needle: string): boolean {
   return false;
 }
 
+/** Each distinct path-shaped token in `text`, in first-appearance order: at least one slash and
+ * a final `.<ext>` segment. Scanned inside the text (not whitespace-split) so surrounding
+ * backticks, brackets, and sentence punctuation fall away with the match. */
+export function pathTokens(text: string): string[] {
+  const tokenRe = /[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.[A-Za-z0-9]+/g;
+  return [...new Set([...text.matchAll(tokenRe)].map((m) => m[0]))];
+}
+
 /** (b) Nonexistent paths: every path-shaped token on an added diff line whose first segment is
  * a tracked top-level directory but which is absent from the staged tree. Rename origins and
  * deleted paths are excluded — "moved from X" prose names them legitimately. */
@@ -252,10 +260,6 @@ async function missingPathFindings(
   }
   const seen = new Set<string>();
   const missing: string[] = [];
-  // A path-shaped token: at least one slash and a final `.<ext>` segment. Scanned inside the
-  // line (not whitespace-split) so surrounding backticks, brackets, and sentence punctuation
-  // fall away with the match.
-  const tokenRe = /[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.[A-Za-z0-9]+/g;
   let file: string | null = null;
   for (const line of diff.split("\n")) {
     if (line.startsWith("+++ ")) {
@@ -268,8 +272,7 @@ async function missingPathFindings(
     // added-nonexistent-path heuristic targets real references, so it spares added lines in
     // test/ and the backlog prose files (the rename/delete scan above still covers them).
     if (file !== null && (file.startsWith("test/") || isBacklogProse(file))) continue;
-    for (const m of line.slice(1).matchAll(tokenRe)) {
-      const p = m[0];
+    for (const p of pathTokens(line.slice(1))) {
       const top = p.slice(0, p.indexOf("/"));
       if (!topDirs.has(top) || oldPaths.has(p) || staged.has(p) || seen.has(p)) continue;
       seen.add(p);
