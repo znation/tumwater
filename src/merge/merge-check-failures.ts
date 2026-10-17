@@ -4,10 +4,11 @@ import { mergeRefName } from "../paths.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
-import { checkFailureReasons } from "../build/build-check-report.js";
+import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { mainRedNotMine } from "../text/phrases.js";
+import { MERGE_FLAKY_WARNING_PREFIX } from "../review/known-flakes.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -135,8 +136,27 @@ export async function mergeCheckRed(
   // review_rejected, whose reasons are already durable.
   if (result === "merge_blocked") {
     warnEventBestEffort(ctx.root, role, `merge check failed (kept for one retry): ${reason}`);
+    if (ctx.state.mergeCheckFailures) {
+      ctx.state.mergeCheckFailures.headline = failureHeadline(red.outcome.outputTail) ?? describeCheck(red.check);
+    }
   }
   return result;
+}
+
+/** Record a merge check that failed and then passed on its kept-pin retry as a flake, in the
+ * form the gate's pre-check uses (MERGE_FLAKY_WARNING_PREFIX), so the gate's known-flake memory,
+ * doctor's `flaky checks` and the tick prompt's flake note count it (PLANS.md 2026-10-16). Reads
+ * the headline mergeCheckRed stored on the strike record only when its patch-id is the merged
+ * pin's (a stale strike of a discarded pin must not be logged); a pin that was never red (or
+ * only cross-check blocked) has none and logs nothing. Call before the strike is cleared. */
+export function noteMergeRetryPassed(
+  ctx: LanderContext,
+  role: string,
+  pinPatch: string | null,
+): void {
+  const strike = ctx.state.mergeCheckFailures;
+  const headline = strike?.patchId === pinPatch ? strike?.headline : undefined;
+  if (headline) warnEventBestEffort(ctx.root, role, MERGE_FLAKY_WARNING_PREFIX + headline);
 }
 
 /** A merge blocked by a deterministic cross-check (onMergeBlocked's fix-claim or

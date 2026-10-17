@@ -3,7 +3,7 @@
  * The prefix extraction, the shared failure-cluster normalization, and the 24 h window. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FLAKY_WARNING_PREFIX, flakeCounts, flakeKeys } from "../src/review/known-flakes.js";
+import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX, flakeCounts, flakeKeys } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
 const NOW = 1_700_000_000_000;
@@ -77,4 +77,14 @@ test("flakeCounts ignores non-warnings and warnings without the prefix", () => {
     warning("some other warning"),
   ];
   assert.deepEqual(flakeCounts(events), []);
+});
+
+test("flakeKeys and flakeCounts read merge-check flake warnings too", () => {
+  const events = [
+    warning(`${FLAKY_WARNING_PREFIX}✖ the flaky test (1.2ms)`),
+    warning(`${MERGE_FLAKY_WARNING_PREFIX}✖ the flaky test (3.4ms)`),
+  ];
+  const key = "✖ the flaky test (<dur>)";
+  assert.deepEqual(flakeCounts(events), [[key, 2]]);
+  assert.ok(flakeKeys(events, NOW).has(key));
 });

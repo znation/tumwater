@@ -1,11 +1,11 @@
 // vocabulary: plain
-import { deleteRef, headOf, setRef } from "../git/git.js";
+import { deleteRef, headOf, patchId, setRef } from "../git/git.js";
 import { mergeRefName, mergeWorktreePath, rejectedRefName, reviewRunSessionDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { mergeToMain } from "./merge-to-main.js";
 import { rebaseOntoMain } from "./merge-git.js";
-import { mergeCheckRed, mergeBlocked } from "./merge-check-failures.js";
+import { mergeCheckRed, mergeBlocked, noteMergeRetryPassed } from "./merge-check-failures.js";
 import { reviewAheadOfMain, type GateResult, type ReviewContext } from "../review/review.js";
 import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
@@ -381,6 +381,7 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
 
 async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
   const wt = await ensureDetachedWorktree(ctx.root, mergeWorktreePath(ctx.root), req.sha);
+  const pinPatch = await patchId(wt, ctx.mainBranch, req.sha).catch(() => null);
   let red: { check: BuildCheck; outcome: BuildCheckOutcome } | undefined;
   let blocked: string | undefined;
   const result = await mergeToMain(
@@ -456,6 +457,7 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
   );
   if (result === "changed") {
     await deleteRef(ctx.root, mergeRefName(req.role)); // landed: the pin has done its job
+    noteMergeRetryPassed(ctx, req.role, pinPatch);
     return result;
   }
   if (result === "merge_blocked" && red) return mergeCheckRed(ctx, req.role, wt, red);

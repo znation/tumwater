@@ -3,6 +3,7 @@ import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { isKnownFlake, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { MERGE_CHECK_FAILURE_LIMIT } from "../src/merge/merge-check-failures.js";
 import { landApprovedChange, reviewPinnedChange } from "../src/merge/merge-core.js";
 import type { BatchRoleWiring } from "../src/merge/merge-batch.js";
@@ -61,6 +62,7 @@ test("an approved landing lands on main and deletes the ref", async () => {
       assert.equal(await vetAndLand(ctx, request(sha)), "changed");
 
       assert.equal(mainSha(root), sha, "the pinned commit is main's head");
+      assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0, "never red, no flake");
       assert.equal(await refSha(root, REF), null, "the pin was deleted on landing");
       assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree stayed clean at main");
       assert.equal(folded.length, 1, "the reviewer run's usage folds into the tick counters");
@@ -487,14 +489,43 @@ test("a kept-for-re-land red landing check logs a warning naming the failing tes
   assert.equal(mainSha(root), tip, "nothing landed");
 });
 
+test("a red merge check that passes on its kept-pin retry logs a merge-check flake warning", async () => {
+  const { root, sha } = await pinnedFixture();
+  const tip = advanceMain(root, `main-flake-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  noteGreenBaseline(tip);
+  const state = freshLoopState(ROLE);
+  const { ctx } = makeCtx(root, state);
+  ctx.config = { ...ctx.config, check: { command: "echo '✖ the flaky test (1.2ms)'; exit 1" } };
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked");
+  assert.match(state.mergeCheckFailures?.headline ?? "", /the flaky test/);
+
+  ctx.config = { ...ctx.config, check: { command: "true" } };
+  assert.equal(await landApprovedChange(ctx, request(sha)), "changed");
+  const flaky = warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX));
+  assert.equal(flaky.length, 1);
+  assert.match(flaky[0]!, /the flaky test/);
+  // failureHeadline strips the duration, so the gate looks up the bare headline.
+  assert.ok(isKnownFlake(root, "✖ the flaky test"));
+});
+
+test("a stale red strike of another pin is not recorded as a flake when a different pin lands", async () => {
+  const { root, sha } = await pinnedFixture();
+  const state = freshLoopState(ROLE);
+  state.mergeCheckFailures = { patchId: "not-this-pin", count: 1, headline: "✖ stale test" };
+  const { ctx } = makeCtx(root, state);
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "changed");
+  assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0);
+});
+
 // A fix-claim-blocked landing used to be kept like a lost fast-forward race and re-landed on
 // every recovery, each retry paying a fresh conflict-resolver run against the same block —
 // five resolver sessions for one pin on 2026-10-01. The block is a deterministic property of
 // the tree ahead of main, so it is counted like a red landing check: the first block keeps
 // the pin for one differently-rebased retry, and the second rejects the change with the
 // block's reason (no model run, no main-tip verdict needed).
-test("a fix-claim-blocked landing retries once, then rejects with the block reason", async () => {
-  assert.equal(MERGE_CHECK_FAILURE_LIMIT, 2);
+async function fixClaimFixture(): Promise<{ root: string; sha: string }> {
   const { root } = await pinnedFixture();
   // Seed BUGS.md on main with the bug Open; the pin's md-only commit moves it to Fixed
   // naming a symbol that exists nowhere on the tree — falseFixReason's block.
@@ -521,6 +552,12 @@ test("a fix-claim-blocked landing retries once, then rejects with the block reas
   // Main moves after the pin, so the in-lock rebase rewrites the head and verifyMerge's
   // exempt arm runs its cross-checks (a no-op rebase would skip them).
   advanceMain(root, `main-unrelated-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  return { root, sha };
+}
+
+test("a fix-claim-blocked landing retries once, then rejects with the block reason", async () => {
+  assert.equal(MERGE_CHECK_FAILURE_LIMIT, 2);
+  const { root, sha } = await fixClaimFixture();
   const state = freshLoopState(ROLE);
   const { ctx, calls } = makeCtx(root, state);
 
@@ -528,6 +565,8 @@ test("a fix-claim-blocked landing retries once, then rejects with the block reas
   assert.equal(await refSha(root, REF), sha);
   assert.equal(state.mergeCheckFailures?.count, 1);
   assert.match(state.lastError ?? "", /merge failed: merge_blocked — .*phantomSymbolName/);
+  assert.equal(state.mergeCheckFailures?.headline, undefined, "a cross-check block stores no flake headline");
+  assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0);
 
   assert.equal(await landApprovedChange(ctx, request(sha)), "rejected", "the second identical block is attributed to the change");
   assert.equal(await refSha(root, REF), null, "the pin is gone");
@@ -536,6 +575,18 @@ test("a fix-claim-blocked landing retries once, then rejects with the block reas
   assert.match(state.lastReview!.reasons[0]!, /phantomSymbolName/);
   assert.equal(eventsOfType(root, "review_rejected").length, 1);
   assert.equal(calls.length, 0, "no model run — no resolver, no reviewer");
+});
+
+test("a fix-claim-blocked first attempt followed by a green merge logs no merge-check flake", async () => {
+  const { root, sha } = await fixClaimFixture();
+  const state = freshLoopState(ROLE);
+  const { ctx } = makeCtx(root, state);
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked");
+  // The claimed symbol now exists on main, so the retry's cross-checks pass.
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  advanceMain(root, "src/nowhere.ts", "export const phantomSymbolName = 1;\n");
+  assert.equal(await landApprovedChange(ctx, request(sha)), "changed");
+  assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0);
 });
 
 test("an unverified red in-lock check — the run timed out — keeps the pin without a strike", async () => {

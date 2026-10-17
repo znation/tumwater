@@ -1343,7 +1343,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### A merge check that fails and then passes on its kept-pin retry is recorded as a flake, so the gate's known-flake memory, doctor's `flaky checks` and the tick prompt's flake note count it (planned 2026-10-16 by plan; independent of every other entry — touches src/review/known-flakes.ts, src/merge/merge-check-failures.ts, src/merge/merge-core.ts, src/loop/loop-state.ts and their tests)
+## Done
+
+### A merge check that fails and then passes on its kept-pin retry is recorded as a flake, so the gate's known-flake memory, doctor's `flaky checks` and the tick prompt's flake note count it (planned 2026-10-16 by plan; independent of every other entry — touches src/review/known-flakes.ts, src/merge/merge-check-failures.ts, src/merge/merge-core.ts, src/loop/loop-state.ts and their tests) (done 2026-10-16)
 
 **Goal.** Two retries exist for load flakes. One is the gate pre-check's immediate re-run (`src/review/review-precheck.ts`). It logs `gate check failed then passed on retry — flaky: <headline>` (`FLAKY_WARNING_PREFIX`), and every flake consumer reads that line through `flakeWarningKeys` in `src/review/known-flakes.ts`:
 - the gate's own `isKnownFlake` excuse;
@@ -1369,8 +1371,6 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
   - `isKnownFlake(root, "✖ the flaky test (3.4ms)")` is true.
 - The same file: a fix-claim-blocked first attempt followed by a green merge logs no `MERGE_FLAKY_WARNING_PREFIX` warning. Extend "a fix-claim-blocked landing retries once, then rejects with the block reason", or add a short sibling test. A merge that was never red logs none either, which the existing green merge tests show when one asserts on warnings. If none does, add that assertion to one of them.
 - `npm run test` passes, including `test/vocabulary.test.ts`. The new source lines say "merge", not "landing", because `merge-check-failures.ts` is `// vocabulary: plain`.
-
-## Done
 
 ### `tumwater questions --show <n>` prints one open question in full, so an operator reads its context, options and recommendation at the terminal before answering (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/question-answer.ts, `cmdQuestions` in src/cli/cli-query-commands.ts, the `questions` stanza of src/cli/help.ts, docs/cli.md's "Answer open questions" row and test/cli-questions-list.test.ts) — done 2026-10-16
 

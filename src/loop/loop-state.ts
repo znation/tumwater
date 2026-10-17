@@ -249,8 +249,10 @@ export interface LoopState {
   /** Consecutive landings of one patch (git/git.ts patchId, stable across a clean rebase) whose
    * in-lock check went red on the rebased tree. At merge-check-failures.ts's
    * MERGE_CHECK_FAILURE_LIMIT the red is attributed through main's own verdict instead of
-   * re-queued as merge_blocked again. */
-  mergeCheckFailures?: { patchId: string; count: number };
+   * re-queued as merge_blocked again. `headline` is the failing test's headline, set only by a
+   * red merge check (never by a cross-check block), so a retry that passes can be recorded as
+   * a flake. */
+  mergeCheckFailures?: { patchId: string; count: number; headline?: string };
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick
    * window (loop-tick.ts resets it at tick start), not a lifetime total. */
   generatedTokens: number;
@@ -499,6 +501,7 @@ export function loadLoopState(root: string, role: string): LoopState {
   if (s.mergeCheckFailures !== undefined)
     s.mergeCheckFailures = healRecord(s.mergeCheckFailures, (v) => {
       v.count = healNumber(v.count, 0);
+      if (typeof v.headline !== "string") delete v.headline;
     });
   if (s.modelFallback !== undefined)
     s.modelFallback = healRecord(s.modelFallback, (v) => {
