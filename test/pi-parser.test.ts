@@ -370,12 +370,12 @@ test("parser ignores user message_end events", () => {
 });
 
 // Progress counting feeds the quiet watchdog (runPi kills a run that stops making progress):
-// structural/boundary events count; streaming deltas never do. pi's JSON protocol strips the
-// cumulative message snapshot from message_update lines, so they carry nothing this parser
-// acts on — and skipping them before parsing is what keeps a zombie stream's content-free
-// keepalives (in any shape) from resetting the watchdog clock.
+// structural/boundary events count, and so does a content-bearing streaming delta — a long
+// thinking block on a slow model emits nothing else for its whole duration, so ignoring
+// deltas quiet-killed live runs (BUGS.md 2026-10-17). A content-free keepalive (in any shape)
+// still counts for nothing, so a zombie stream cannot hold the watchdog off.
 
-test("message updates never count as progress; boundary events do", () => {
+test("content-bearing message updates count as progress; content-free ones do not", () => {
   const parser = new PiStreamParser();
   // Current wire format: constant-size usage plus a small delta event, no cumulative message.
   const update = (delta: string) =>
@@ -386,15 +386,19 @@ test("message updates never count as progress; boundary events do", () => {
     }) + "\n";
   parser.feed(update("a"));
   parser.feed(update("ab"));
-  assert.equal(parser.progressCount, 0, "deltas are not progress");
+  assert.equal(parser.progressCount, 2, "a delta carrying text is real generation");
+  parser.feed(update(""));
+  parser.feed(update("   "));
+  assert.equal(parser.progressCount, 2, "an empty or whitespace-only delta is a keepalive");
   parser.feed(JSON.stringify({ type: "turn_end" }) + "\n");
-  assert.equal(parser.progressCount, 1, "structural events are progress");
+  assert.equal(parser.progressCount, 3, "structural events are progress");
 });
 
-test("message updates are skipped before parsing even in the old cumulative shape", () => {
+test("message updates with no delta event never count as progress", () => {
   const parser = new PiStreamParser();
-  // The pre-strip wire format carried a growing message snapshot; whatever arrives under the
-  // message_update type is verifiably a delta and must not count as progress.
+  // The pre-strip wire format carried a growing message snapshot and no delta event; whatever
+  // arrives under the message_update type without a content-bearing delta is a keepalive and
+  // must not count as progress.
   parser.feed(
     JSON.stringify({
       type: "message_update",
@@ -500,8 +504,8 @@ test("feed skips blank and whitespace-only lines without delivering them to onLi
 test("content-free tool_execution_updates do not count as progress (no keepalive reset of the hang watchdog)", () => {
   // progressCount drives runPi's quiet watchdog (src/pi/pi-watchdogs.ts's allowedSilenceMs): a
   // zombie stream that emits periodic content-free tool_execution_update keepalives must not
-  // reset it, the same rule message_update deltas already obey. Only a content-bearing update
-  // counts.
+  // reset it, the same rule a content-free message_update delta obeys. Only a content-bearing
+  // update counts.
   const parser = new PiStreamParser();
   const line = (event: Record<string, unknown>) => JSON.stringify(event) + "\n";
   parser.feed(

@@ -21,7 +21,8 @@ import { assistantLine } from "./fixtures/pi-events.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
 // Quiet watchdog: the run is killed when pi stops making *progress* (message/turn/tool
-// boundary events — streaming deltas never count), not merely when it stops running fast.
+// boundary events, and content-bearing streaming deltas — a content-free keepalive never
+// counts), not merely when it stops running fast.
 // These tests run it on logical time (watchdogClock, test/helpers/wait.ts): each waits for the fake
 // pi's output to reach the raw log, then advances the watchdog's clock past the window it
 // pins — exact where real-time windows were widened after every loaded-machine flake
@@ -132,6 +133,44 @@ test("a slow but talkative pi run is not killed by the quiet watchdog", async (t
   });
 });
 
+test("a run whose only output is content-bearing deltas is not killed by the quiet watchdog", async (t) => {
+  const repo = await initializedRepo();
+  // A long thinking block on a slow model emits nothing but message_update deltas for its whole
+  // duration, and those deltas carry real content — so the run is alive and generating, not
+  // hung, and the watchdog must not kill it (BUGS.md 2026-10-17). Same logical-time shape as
+  // the talkative-run test above: one delta per 3 s gap against a 10 s window. 27 s, not 18 s:
+  // a run with no progress at all gets the doubled window (bytes without progress), so a
+  // regression that ignores deltas is first visible at the 25 s check.
+  const dir = tmpdir();
+  const gaps = 9;
+  const go = (k: number) => path.join(dir, `go-${k}`);
+  const delta = (text: string) =>
+    `printf '%s\\n' '${JSON.stringify({
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: text },
+    })}'`;
+  const chatter = Array.from(
+    { length: gaps },
+    (_, k) => `while [ ! -f '${go(k)}' ] && ${ownerAliveSh()}; do sleep 0.02; done\n${delta(`thinking ${k}`)}`,
+  );
+  await withPi([delta("thinking"), ...chatter, `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"), async () => {
+    const config = defaultConfig();
+    config.quietTimeoutSeconds = 10;
+    const clock = watchdogClock(t);
+    const runner = makeLoopRunner(repo, "improve", config);
+    let settled = false;
+    const tick = runner.tick().finally(() => (settled = true));
+    const log = piLogPath(repo, "improve");
+    // A killed run prints nothing more: stop feeding it and let the assertion name the result.
+    for (let k = 0; k < gaps && (await waitForLogLines(log, "message_update", k + 1, () => settled)); k++) {
+      clock.advance(3_000);
+      fs.writeFileSync(go(k), "");
+    }
+    const outcome = await tick;
+    assert.equal(outcome.result, "no_change", "a run streaming content-bearing deltas is alive, not hung");
+  });
+});
+
 test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
   const repo = await initializedRepo();
   // Speaks first — a byte-silent run is never quiet-killed anyway, so silence only tests the
@@ -186,8 +225,9 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
       let settled = false;
       const tick = runner.tick().finally(() => (settled = true));
       // Half a second of watchdog time per fresh keepalive, so bytes keep landing as the clock
-      // runs — a watchdog that let raw bytes (or deltas) count as progress would never fire.
-      // Ten windows' worth bounds it: the abort then ends a run the watchdog failed to kill.
+      // runs — a watchdog that let raw bytes, or a content-free delta, count as progress would
+      // never fire. Ten windows' worth bounds it: the abort then ends a run the watchdog
+      // failed to kill.
       const log = piLogPath(repo, "improve");
       for (let k = 1; k <= 40 && (await waitForLogLines(log, "message_update", k, () => settled)); k++) {
         clock.advance(500);

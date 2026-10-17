@@ -60,7 +60,7 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
  * empty-content update right after start, and only updates with real text prove the command is
  * alive — so stalled-tool-call tracking (src/pi/pi-watchdogs.ts's warning,
  * src/ui/progress-data.ts's flag) moves its clock on these alone: a content-free keepalive must
- * not mask a hang, exactly as message_update deltas cannot reset the quiet watchdog. */
+ * not mask a hang — the same rule messageUpdateHasContent applies to streaming deltas. */
 export function toolUpdateHasContent(partialResult: unknown): boolean {
   if (!isJsonObject(partialResult)) return false;
   const content = partialResult.content;
@@ -69,6 +69,21 @@ export function toolUpdateHasContent(partialResult: unknown): boolean {
     (block) =>
       isJsonObject(block) && isNonBlankString(block.text),
   );
+}
+
+/** True when a `message_update` carries new assistant content — a non-blank
+ * `assistantMessageEvent.delta`. pi's protocol strips the cumulative message snapshot from
+ * these lines, so the delta is all they carry: a content-free one (a zombie stream's
+ * keepalive, or the pre-strip shape with no delta event at all) proves nothing and must not
+ * reset the hang watchdog, exactly as a content-free tool_execution_update must not
+ * (toolUpdateHasContent). A content-bearing delta IS real generation, and the quiet watchdog
+ * counts it: a long thinking block on a slow model emits nothing else for its whole duration,
+ * so ignoring deltas killed live runs as hung (BUGS.md 2026-10-17). */
+export function messageUpdateHasContent(event: unknown): boolean {
+  if (!isJsonObject(event)) return false;
+  const update = event.assistantMessageEvent;
+  if (!isJsonObject(update)) return false;
+  return isNonBlankString(update.delta);
 }
 
 /** One tool call started but not yet ended — keyed by pi's toolCallId, with a short human

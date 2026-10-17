@@ -1,6 +1,7 @@
 import { extractRefusal, hasVerdictLine, isNegatedRefusal, isNothingToDo } from "../verdict/reply-contract.js";
 import {
   applyToolExecutionEvent,
+  messageUpdateHasContent,
   piEventType,
   toolCallCommand,
   toolUpdateHasContent,
@@ -405,10 +406,9 @@ export class PiStreamParser {
   /** True when pi auto-compacted the session during (or at the end of) the run. */
   compacted = false;
   /** Incremented for every parsed event that represents real forward progress — message,
-   * turn, and tool boundaries, retries, session events. Streaming deltas (message_update)
-   * never count: pi's JSON protocol strips the cumulative snapshot from them, so they carry
-   * nothing this parser acts on, and a zombie stream's content-free keepalives (message
-   * deltas and content-free tool_execution_updates alike) must not reset the harness's hang
+   * turn, and tool boundaries, retries, session events, and content-bearing updates
+   * (message_update deltas and tool_execution_updates alike). A content-free keepalive never
+   * counts: a zombie stream's periodic empty updates must not reset the harness's hang
    * watchdog. */
   progressCount = 0;
   /** Tool calls started but not yet ended — pi runs one message's tool calls concurrently by
@@ -551,11 +551,17 @@ export class PiStreamParser {
   }
 
   private feedLine(line: string): void {
-    // Streaming deltas are ~72% of log bytes in observed runs, and pi's JSON protocol strips
-    // the cumulative message snapshot from them — they carry only constant-size usage plus a
-    // small delta event, none of which this parser acts on (progress comes from the boundary
-    // events around them). Skip even parsing them.
-    if (piEventType(line) === "message_update") return;
+    // Streaming deltas are ~72% of log bytes in observed runs. pi's JSON protocol strips the
+    // cumulative message snapshot from them, so the delta event is all they carry — and a
+    // content-free one (a zombie stream's keepalive, or the pre-strip shape) proves nothing:
+    // it must not reset the hang watchdog. A content-bearing delta is real generation, and
+    // counting it is what keeps a long thinking block on a slow model from being quiet-killed
+    // as hung (BUGS.md 2026-10-17) — the same content rule tool_execution_update gets below.
+    // Nothing else in this parser acts on the type, so the line is done either way.
+    if (piEventType(line) === "message_update") {
+      if (messageUpdateHasContent(parseJsonObject(line))) this.progressCount += 1;
+      return;
+    }
 
     // pi's stream is one JSON object per line: a torn, non-JSON, or valid-JSON-scalar line is
     // noise, not an event — parseJsonObject reads it as no data (the same policy parseEventLine
@@ -605,11 +611,10 @@ export class PiStreamParser {
     if (event.type === "billing" && (event.billing === "subscription" || event.billing === "api"))
       this.billing = event.billing;
     // Every structured event (turn/tool/message boundaries, retries, session) is real
-    // progress — streaming deltas never are (message_update is skipped above, before
-    // parsing), and neither is a content-free tool_execution_update: bash emits one right
-    // after start, and a zombie stream's keepalive updates must not reset the hang
-    // watchdog any more than a content-free message delta would (the same rule
-    // toolUpdateHasContent applies to the stall clock).
+    // progress, and so is a content-bearing update — but a content-free one never is: bash
+    // emits an empty tool_execution_update right after start, and a zombie stream's keepalive
+    // updates must not reset the hang watchdog any more than a content-free message delta
+    // would (message_update deltas are counted above, before this point, by the same rule).
     if (!(event.type === "tool_execution_update" && !toolUpdateHasContent(event.partialResult)))
       this.progressCount += 1;
     if (event.type === "compaction_start") this.compacted = true;
