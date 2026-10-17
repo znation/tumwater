@@ -309,6 +309,15 @@ export function eventMessage(e: HarnessEvent): string {
       if (e.reason === "window") return `claude subscription window reset: handed ${roles} back to claude`;
       return `budget reopened: handed ${roles} back to the primary`;
     }
+    case "fallback_switched": {
+      // One line for the poll's changes: `<tier> → <pair> (<reason>)`, the primary as "primary".
+      const tiers = isJsonObject(e.tiers) ? e.tiers : {};
+      const parts = Object.entries(tiers).map(([tier, v]) => {
+        const t = isJsonObject(v) ? v : {};
+        return `${tier} → ${typeof t.to === "string" ? t.to : "primary"} (${textOr(t.reason)})`;
+      });
+      return `fallback: ${parts.join("; ")}`;
+    }
     case "team_paused":
       // Routine state change, like counters_reset — no warning prefix.
       return `${fleetPausePhrase()} (director keeps running)`;

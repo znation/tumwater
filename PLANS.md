@@ -31,35 +31,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The existing `checkFlakyChecks` tests in test/doctor-checks.test.ts pass unchanged.
 - `npm run test` passes, including the plain-terms vocabulary guard on prompt text.
 
-### Fallback chain, part 7b/7: The budget gate publishes each tier's step as a `chain` block and logs `fallback_switched` (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7c/7 and 7d/7; design in plans/fallback-chain.md "Events and surfaces"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/fleet/orchestrator-info.ts src/events/ and their tests)
-
-**Goal.** After parts 1/7–6/7, a tier can run on a later step of its chain because the window is used up, the reserve is reached, the team cap is reached, a step's own cap is spent, or a step was demoted. Nothing records which step each tier is on. This part publishes it for the surfaces in 7c/7 and 7d/7, and logs each change.
-
-**Approach.**
-- src/fleet/orchestrator-info.ts: export `interface ChainTierInfo { pair: string; step: number; of: number; reason: ChainReason; returnsAt?: number; spentUsd?: number; capUsd?: number }`, with `type ChainReason = "window" | "reserve" | "cap" | "step-cap" | "overage" | "demoted"`. Add `chain?: Partial<Record<ModelTier, ChainTierInfo>>` to `OrchestratorInfo`. The read-side sanitizer drops a `chain` that is not a JSON object, the same way it drops a malformed `budget`.
-  - `step` is the 1-based position in the supplying tier's chain: `TierFallback.step ?? 0`, plus 1.
-  - `of` is that chain's length, from `tierChainSteps`.
-- src/gates/budget-gates.ts: `BudgetGatePoll` gains `chain: Partial<Record<ModelTier, ChainTierInfo>>`, built by a new exported pure helper `chainInfo(...)` from `servingResolved`. A tier gets an entry only when this poll moved it off its primary: every tier while `reached`, and while the window move is active, the tiers whose primary is a subscription claude seam. A tier the gate pauses (`pair: null`) gets no entry.
-  - `reason` names why the position just before the active step cannot run, checked in this order:
-    1. That position is a chain step whose breaker is demoted (`fallbackServingPair` false): `demoted`.
-    2. It is a chain step at its own `maxDailyCostUsd`: `step-cap`.
-    3. It is a claude step, or the tier's primary is claude, and `windowOut` is set: `reserve` when `windowOut.reserve`, else `window`.
-    4. It is a claude `extraUsage` step and `claudeOverageRefused(account)`: `overage`.
-    5. Otherwise: `cap`.
-  - `returnsAt` is `windowOut.resetsAt` for `window` and `reserve`, and the next local midnight (`dayAt(-1, new Date(now)).getTime()`) for `cap` and `step-cap`. It is absent for `demoted` and `overage`.
-  - `spentUsd` and `capUsd` are set for a priced active step that has `maxDailyCostUsd`, from `pairDailyCost`.
-  - `BudgetGateState` gains `prevChain` (initially `{}`).
-- src/gates/gate-polls.ts: add `["chain", chain]` to the existing `publishInfoFields` batch. When there are no entries, publish `undefined` so the field disappears. When any tier's `pair` or `step` differs from `state.budget.prevChain`, log one `fallback_switched` event carrying `tiers: { <tier>: { from: <pair|null>, to: <pair|null>, reason } }` for each changed tier. A tier returning to its primary has `to: null` and reason `available`. Then advance `prevChain`.
-- src/events/events.ts: add `"fallback_switched"` to the event type union with its one-line comment. src/events/event-format.ts renders it as `fallback: default → deepseek/DeepSeek-V4-Flash (window); strong → primary (available)`.
-
-**Files touched.** src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/fleet/orchestrator-info.ts, src/events/events.ts, src/events/event-format.ts, test/budget-gates.test.ts, test/gate-polls.test.ts, test/event-format-fleet.test.ts.
-
-**Acceptance criteria.**
-- test/budget-gates.test.ts: with a rejected subscription window, a claude primary and a free pi chain step, `pollBudgetGate(...).chain.default` is `{ pair, step: 1, of: 1, reason: "window", returnsAt: <resetsAt> }`. Under the cap with no used-up window, `chain` is `{}`.
-- test/gate-polls.test.ts: two polls with the window rejected log exactly one `fallback_switched` with `tiers.default.reason === "window"`. A third poll after the reset logs one more, with `to: null` and reason `available`. orchestrator.json carries `chain` while moved and has none after the reset.
-- test/event-format-fleet.test.ts pins the rendered line.
-- With no fallback configured, orchestrator.json has no `chain` key, and `npm run test` passes.
-
 ### Fallback chain, part 7c/7: The status badge, the dashboard side card, the TUI header and the team alerts name each tier's fallback step (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7b/7 and 7d/7; requires part 7b/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/fleet-alerts.ts src/ui/gui/gui-client-operator.ts and their tests)
 
 **Goal.** The window badge reads "claude model jobs wait until 14:30", and the side card reads "held until 14:30", while the work runs on a fallback. With part 7b/7's `chain` block, these surfaces say where each tier went and when it returns.
@@ -1965,6 +1936,37 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Every event type, `--json` key, route, hash and state path the current docs name exists under that name in src/.
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
+
+### Fallback chain, part 7b/7: The budget gate publishes each tier's step as a `chain` block and logs `fallback_switched` (done 2026-10-16; planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7c/7 and 7d/7; design in plans/fallback-chain.md "Events and surfaces"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/fleet/orchestrator-info.ts src/events/ and their tests)
+
+**Goal.** After parts 1/7–6/7, a tier can run on a later step of its chain because the window is used up, the reserve is reached, the team cap is reached, a step's own cap is spent, or a step was demoted. Nothing records which step each tier is on. This part publishes it for the surfaces in 7c/7 and 7d/7, and logs each change.
+
+**Approach.**
+- src/fleet/orchestrator-info.ts: export `interface ChainTierInfo { pair: string; step: number; of: number; reason: ChainReason; returnsAt?: number; spentUsd?: number; capUsd?: number }`, with `type ChainReason = "window" | "reserve" | "cap" | "step-cap" | "overage" | "demoted"`. Add `chain?: Partial<Record<ModelTier, ChainTierInfo>>` to `OrchestratorInfo`. The read-side sanitizer drops a `chain` that is not a JSON object, the same way it drops a malformed `budget`.
+  - `step` is the 1-based position in the supplying tier's chain: `TierFallback.step ?? 0`, plus 1.
+  - `of` is that chain's length, from `tierChainSteps`.
+- src/gates/budget-gates.ts: `BudgetGatePoll` gains `chain: Partial<Record<ModelTier, ChainTierInfo>>`, built by a new exported pure helper `chainInfo(...)` from `servingResolved`. A tier gets an entry only when this poll moved it off its primary: every tier while `reached`, and while the window move is active, the tiers whose primary is a subscription claude seam. A tier the gate pauses (`pair: null`) gets no entry.
+  - `reason` names why the position just before the active step cannot run, checked in this order:
+    1. That position is a chain step whose breaker is demoted (`fallbackServingPair` false): `demoted`.
+    2. It is a chain step at its own `maxDailyCostUsd`: `step-cap`.
+    3. It is a claude step, or the tier's primary is claude, and `windowOut` is set: `reserve` when `windowOut.reserve`, else `window`.
+    4. It is a claude `extraUsage` step and `claudeOverageRefused(account)`: `overage`.
+    5. Otherwise: `cap`.
+  - `returnsAt` is `windowOut.resetsAt` for `window` and `reserve`, and the next local midnight (`dayAt(-1, new Date(now)).getTime()`) for `cap` and `step-cap`. It is absent for `demoted` and `overage`.
+  - `spentUsd` and `capUsd` are set for a priced active step that has `maxDailyCostUsd`, from `pairDailyCost`.
+  - `BudgetGateState` gains `prevChain` (initially `{}`).
+- src/gates/gate-polls.ts: add `["chain", chain]` to the existing `publishInfoFields` batch. When there are no entries, publish `undefined` so the field disappears. When any tier's `pair` or `step` differs from `state.budget.prevChain`, log one `fallback_switched` event carrying `tiers: { <tier>: { from: <pair|null>, to: <pair|null>, reason } }` for each changed tier. A tier returning to its primary has `to: null` and reason `available`. Then advance `prevChain`.
+- src/events/events.ts: add `"fallback_switched"` to the event type union with its one-line comment. src/events/event-format.ts renders it as `fallback: default → deepseek/DeepSeek-V4-Flash (window); strong → primary (available)`.
+
+**Files touched.** src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/fleet/orchestrator-info.ts, src/events/events.ts, src/events/event-format.ts, test/budget-gates.test.ts, test/gate-polls.test.ts, test/event-format-fleet.test.ts.
+
+**Acceptance criteria.**
+- test/budget-gates.test.ts: with a rejected subscription window, a claude primary and a free pi chain step, `pollBudgetGate(...).chain.default` is `{ pair, step: 1, of: 1, reason: "window", returnsAt: <resetsAt> }`. Under the cap with no used-up window, `chain` is `{}`.
+- test/gate-polls.test.ts: two polls with the window rejected log exactly one `fallback_switched` with `tiers.default.reason === "window"`. A third poll after the reset logs one more, with `to: null` and reason `available`. orchestrator.json carries `chain` while moved and has none after the reset.
+- test/event-format-fleet.test.ts pins the rendered line.
+- With no fallback configured, orchestrator.json has no `chain` key, and `npm run test` passes.
+
+**Landed note.** `ChainReason` is not exported (the exports test forbids unused exports); `chainInfo` takes the moved-tier set, breakers, account and an `isPriced` callback.
 
 ### A role's run prompt says when its notes were last saved, so the run can weigh how stale they are (planned 2026-10-16 by plan; independent of every other entry. It touches only the notes block in `src/prompt/prompt.ts`, the note read in `src/tick/tick-prompt.ts`, their tests, and one docs sentence. No waiting entry edits `roleNotesBlock` or `TickPromptInput.notes`. Blocked Plain terms parts later rename `buildTickPrompt` and `initialPrompt` in the same file, and rebase over this change without touching it) — done 2026-10-16
 

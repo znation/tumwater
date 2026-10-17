@@ -37,6 +37,8 @@ import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrid
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
 import { claudeWindowUsedUp, readClaudeAccount, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
 import type { LoopState } from "../loop/loop-state.js";
+import type { ChainTierInfo } from "../fleet/orchestrator-info.js";
+import { dayAt } from "../text/datetime.js";
 
 /** The budget gate's cross-poll memory: the previous gate value for edge-triggered events,
  * the fallback breaker, and the fallback view last derived from a live config. In memory
@@ -80,6 +82,8 @@ export interface BudgetGateState {
    * the transitions — set when the warning logs, reset whenever spend falls back below the
    * threshold (midnight rollover, a cap raise), so the next crossing warns again. */
   warned: boolean;
+  /** The previous poll's `chain` block, for the one `fallback_switched` event per change. */
+  prevChain: Partial<Record<ModelTier, ChainTierInfo>>;
 }
 
 /** A fresh budget-gate poll state: gate open, no fallback breakers yet, no fallback view cached
@@ -97,6 +101,7 @@ export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
     directorKey: "",
     fallbackConfig: config,
     warned: false,
+    prevChain: {},
   };
 }
 
@@ -148,6 +153,8 @@ interface BudgetGatePoll {
    * and its own model job is subscription claude — then its tier's fallback pair
    * (gateRoleConfig's `directorConfig`). The cap never moves it. */
   directorConfig: TumwaterConfig;
+  /** Where each tier this poll moved off its primary runs (chainInfo); empty when none moved. */
+  chain: Partial<Record<ModelTier, ChainTierInfo>>;
 }
 
 /** Is this fallback pair a claude one (the agent namespace in the pair's provider)? */
@@ -466,8 +473,27 @@ export function pollBudgetGate(
   }
   const windowResumed = state.prevWindowMoved && !windowMove;
   state.prevWindowMoved = windowMove;
+  const movedTiers = new Set<ModelTier>();
+  // The tiers `applyFallbackModel` moved: those whose own seam fails the `available` test above.
+  for (const tier of MODEL_TIERS) {
+    const seam = withModelOverrides(liveConfig, tier, {});
+    const out = (windowMove && seamIsClaude(seam)) || (reached && !seamFree(providers, seam, account));
+    if (out) movedTiers.add(tier);
+  }
+  const chain = chainInfo({
+    config: liveConfig,
+    resolved: servingResolved,
+    moved: movedTiers,
+    breakers: state.breakers,
+    states,
+    now,
+    windowOut,
+    account,
+    isPriced: (p) => !piPairFree(providers, p.provider, p.model, account),
+  });
   return {
     gate,
+    chain,
     onFallback,
     roleConfig: onFallback || windowMove ? state.fallbackConfig : liveConfig,
     spentUsd,
@@ -482,6 +508,60 @@ export function pollBudgetGate(
     windowResumed,
     directorConfig: directorMoved ? state.directorView : liveConfig,
   };
+}
+
+/** The `chain` block: for each tier this poll moved off its primary, the step it runs on and
+ * why the position before it cannot run (plans/fallback-chain.md "Events and surfaces").
+ * `moved` names the tiers the poll moved; a tier the gate pauses (`pair: null`) gets no entry.
+ * The reason is read from the position just before the active step — the previous chain step,
+ * or the tier's primary at step 0 — in the order demoted, step-cap, window/reserve, overage,
+ * cap. */
+export function chainInfo(a: {
+  config: TumwaterConfig;
+  resolved: TierFallbackMap;
+  moved: ReadonlySet<ModelTier>;
+  breakers: FallbackBreakerMap;
+  states: Pick<LoopState, "dayStamp" | "dayCostByPair">[];
+  now: number;
+  windowOut: { resetsAt: number; reserve?: true } | null;
+  account: ClaudeAccount | null;
+  isPriced: (p: FallbackModelConfig) => boolean;
+}): Partial<Record<ModelTier, ChainTierInfo>> {
+  const out: Partial<Record<ModelTier, ChainTierInfo>> = {};
+  const steps = tierChainSteps(a.config);
+  const midnight = dayAt(-1, new Date(a.now)).getTime();
+  for (const tier of MODEL_TIERS) {
+    const r = a.resolved[tier];
+    if (!a.moved.has(tier) || r.pair === null) continue;
+    const own = steps.filter((s) => s.tier === (r.from ?? tier)).map((s) => s.pair);
+    const idx = r.step ?? 0;
+    const prior = idx > 0 ? own[idx - 1]! : null;
+    const primaryClaude = seamIsClaude(withModelOverrides(a.config, tier, {}));
+    const info: ChainTierInfo = { pair: modelPairName(r.pair), step: idx + 1, of: own.length, reason: "cap" };
+    const priorName = prior ? modelPairName(prior) : "";
+    if (prior && a.breakers[priorName] !== undefined && !fallbackServingPair(a.breakers, priorName)) {
+      info.reason = "demoted";
+    } else if (
+      prior?.maxDailyCostUsd !== undefined &&
+      pairDailyCost(a.states, priorName, a.now) >= prior.maxDailyCostUsd
+    ) {
+      info.reason = "step-cap";
+      info.returnsAt = midnight;
+    } else if ((prior !== null && pairIsClaude(prior) || primaryClaude) && a.windowOut !== null) {
+      info.reason = a.windowOut.reserve ? "reserve" : "window";
+      info.returnsAt = a.windowOut.resetsAt;
+    } else if (prior && pairIsClaude(prior) && prior.extraUsage && a.account && claudeOverageRefused(a.account)) {
+      info.reason = "overage";
+    } else {
+      info.returnsAt = midnight;
+    }
+    if (r.pair.maxDailyCostUsd !== undefined && a.isPriced(r.pair)) {
+      info.spentUsd = pairDailyCost(a.states, modelPairName(r.pair), a.now);
+      info.capUsd = r.pair.maxDailyCostUsd;
+    }
+    out[tier] = info;
+  }
+  return out;
 }
 
 /** The distinct non-null fallback pairs a resolution hands out (tier order, first occurrence

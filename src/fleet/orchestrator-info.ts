@@ -1,3 +1,4 @@
+import type { ModelTier } from "../config/config-schema.js";
 import type { BuildStatus } from "../build/build-info.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -6,6 +7,22 @@ import { pidAlive } from "../process/process.js";
 import { orchestratorStatePath } from "../paths.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
+
+/** Why the position before a tier's active chain step cannot run. */
+type ChainReason = "window" | "reserve" | "cap" | "step-cap" | "overage" | "demoted";
+
+/** Where one tier runs while the budget gate has it off its primary (budget-gates.ts's
+ * chainInfo): `step` of `of` in the supplying tier's chain, 1-based. */
+export interface ChainTierInfo {
+  pair: string;
+  step: number;
+  of: number;
+  reason: ChainReason;
+  /** When the blocked position returns (epoch ms); absent for `demoted` and `overage`. */
+  returnsAt?: number;
+  spentUsd?: number;
+  capUsd?: number;
+}
 
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving the
  * fleet, since when, with which roles, and what its most recent poll published about the world
@@ -83,6 +100,9 @@ export interface OrchestratorInfo {
    * running orchestrator means no published figure exists and the persisted sum is final.
    * Written by the orchestrator whenever the pair changes; absent otherwise. */
   budget?: { spentUsd: number; capUsd: number };
+  /** The tiers the budget gate has off their primary and the chain step each runs on; absent
+   * when none moved. Written whenever it changes. */
+  chain?: Partial<Record<ModelTier, ChainTierInfo>>;
   /** The disk floor's most recent measurement (plans/disk-floor.md, part 4/4): free space,
    * the configured floor and reclaim threshold, whether the hold is on, and the last reclaim
    * pass. Written by the orchestrator's poll whenever it changes; absent when statfs cannot
@@ -231,6 +251,8 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
 
   const budget = rec.budget;
   if (!isJsonObject(budget) || !isFiniteNumber(budget.spentUsd)) delete rec.budget;
+
+  if (rec.chain !== undefined && !isJsonObject(rec.chain)) delete rec.chain;
 
   if (rec.stopsAt !== undefined && !isFiniteNumber(rec.stopsAt)) delete rec.stopsAt;
 

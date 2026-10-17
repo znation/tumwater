@@ -208,6 +208,39 @@ test("pollFleetGates: a used-up claude window moves claude roles to the fallback
   assert.equal(cfgOf(1), config, "the director's too");
 });
 
+test("pollFleetGates: fallback_switched is logged once per chain change and orchestrator info carries chain", () => {
+  const root = tmpdir("gate-polls-chain-");
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
+  const now = Date.now();
+  writeClaudeAccount(root, {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
+  });
+  const runners = [fakeRunner("feature", spentLoopState("feature", 1), null, [], "claude")];
+  const config = paidFallbackConfig(10);
+  config.provider = undefined;
+  config.model = "claude/claude-sonnet-5-5";
+  const states = newFleetGateStates(config);
+  const info: Record<string, unknown> = { pid: process.pid, startedAt: 0, roles: ["feature"] };
+  const ctx = { root, runners, liveConfig: config, modelsPath, now, info: info as never };
+  const switched = () => readEvents(root, 100).filter((e) => e.type === "fallback_switched");
+
+  pollFleetGates(states, ctx);
+  pollFleetGates(states, ctx);
+  assert.equal(switched().length, 1);
+  assert.equal((switched()[0]!.tiers as Record<string, { reason: string }>).default!.reason, "window");
+  assert.ok(info.chain, "chain is published while moved");
+
+  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
+  pollFleetGates(states, ctx);
+  assert.equal(switched().length, 2);
+  const back = (switched()[1]!.tiers as Record<string, { to: unknown; reason: string }>).default!;
+  assert.equal(back.to, null);
+  assert.equal(back.reason, "available");
+  assert.equal(info.chain, undefined, "chain is gone after the reset");
+});
+
 test("pollFleetGates: a cap reopen while the claude window is still used up hands nothing back", () => {
   const root = tmpdir("gate-polls-window-cap-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);

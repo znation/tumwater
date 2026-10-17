@@ -49,6 +49,7 @@ import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
 import { queuedLandingRoles } from "../landing/landing-queue.js";
+import { MODEL_TIERS } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { publishInfoFields, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { roleSeamTier } from "../config/config-views.js";
@@ -221,6 +222,7 @@ export function pollFleetGates(
     windowTiers,
     windowResumed,
     directorConfig,
+    chain,
   } = pollBudgetGate(states.budget, {
     root,
     states: runners.map((r) => r.state),
@@ -248,7 +250,21 @@ export function pollFleetGates(
     ["fallbackDemotions", demotions],
     ["fallbackDemoted", engagedDemotion],
     ["budget", budget],
+    ["chain", Object.keys(chain).length > 0 ? chain : undefined],
   ]);
+  // One fallback_switched per poll in which a tier's pair or step changed (a return to the
+  // primary reads `to: null`, reason "available").
+  const switched: Record<string, { from: string | null; to: string | null; reason: string }> = {};
+  const prevChain = states.budget.prevChain;
+  for (const tier of MODEL_TIERS) {
+    const was = prevChain[tier];
+    const cur = chain[tier];
+    if (was?.pair === cur?.pair && was?.step === cur?.step) continue;
+    switched[tier] = { from: was?.pair ?? null, to: cur?.pair ?? null, reason: cur?.reason ?? "available" };
+  }
+  if (Object.keys(switched).length > 0)
+    logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "fallback_switched", tiers: switched });
+  states.budget.prevChain = chain;
   // The director keeps the live config — an explicit human prompt outranks the
   // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
   // so a runner created mid-gate, or one left behind by a broken-file poll that skipped

@@ -42,6 +42,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   budget_fallback: "over-cap model",
   budget_resumed: "budget resumed",
   budget_handback: "returned to main model",
+  fallback_switched: "fallback switched",
   team_paused: "team paused",
   team_resumed: "team resumed",
   state_migrated: "state migrated",

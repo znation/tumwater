@@ -597,6 +597,39 @@ test("a used-up claude window moves subscription claude roles to the fallback be
   assert.equal(p.windowResumed, false);
 });
 
+test("chain: a rejected window puts the claude tier on its fallback step; under the cap with no window it is empty", () => {
+  const root = tmpdir("budget-gates-chain-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const resetsAt = Date.now() + 3_600_000;
+  rejectedWindow(root, resetsAt);
+  const cfg = configWith(10);
+  cfg.provider = undefined;
+  cfg.model = "claude/claude-sonnet-5-5";
+  const p = poll(root, newBudgetGateState(cfg), cfg, models, [spentLoopState("feature", 1)]);
+  assert.deepEqual(p.chain.default, { pair: "free/qwen-free", step: 1, of: 1, reason: "window", returnsAt: resetsAt });
+
+  const root2 = tmpdir("budget-gates-chain-open-");
+  const models2 = writeModelsFile(root2, MODELS_JSON);
+  const cfg2 = configWith(10);
+  assert.deepEqual(poll(root2, newBudgetGateState(cfg2), cfg2, models2, [spentLoopState("feature", 1)]).chain, {});
+});
+
+test("chain: at the cap a priced tier lists its fallback step, a free primary stays unlisted", () => {
+  const root = tmpdir("budget-gates-chain-cap-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const over = [spentLoopState("feature", 10)];
+  const paid = configWith(10);
+  const onPaid = poll(root, newBudgetGateState(paid), paid, models, over);
+  assert.equal(onPaid.chain.default?.pair, "free/qwen-free");
+  assert.equal(onPaid.chain.default?.reason, "cap");
+
+  const free = configWith(10);
+  free.provider = "free";
+  free.model = "qwen-free";
+  const onFree = poll(root, newBudgetGateState(free), free, models, over);
+  assert.equal(onFree.chain.default, undefined, "a free primary never moved, so it has no chain entry");
+});
+
 test("a used-up claude window resolves a claude reviewer to the fallback, and returns on reset", () => {
   const root = tmpdir("budget-gates-");
   const models = writeModelsFile(root, MODELS_JSON);

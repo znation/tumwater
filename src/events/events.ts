@@ -66,6 +66,7 @@ export interface HarnessEvent {
     | "budget_fallback" // fleet daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
     | "budget_handback" // at budget_resumed: the in-flight ticks still on the fallback were handed back to the primary (roles, provider, model); reason "window" when a used-up claude window reset rather than the budget
+    | "fallback_switched" // a tier moved to a different step of its fallback chain, or back to its primary; carries `tiers` (tier → from, to, reason: window|reserve|cap|step-cap|overage|demoted|available; a null from/to is the primary)
     | "team_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
     | "team_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)

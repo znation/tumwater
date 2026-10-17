@@ -411,6 +411,17 @@ test("claude_window_limited with tiers says the work moves; budget_handback reas
   assert.match(back, /claude subscription window reset/);
 });
 
+test("fallback_switched renders each changed tier's destination and reason", () => {
+  const line = formatEvent({
+    ts: 0, source: "tumwater", type: "fallback_switched",
+    tiers: {
+      default: { from: null, to: "deepseek/DeepSeek-V4-Flash", reason: "window" },
+      strong: { from: "x/y", to: null, reason: "available" },
+    },
+  } as never);
+  assert.ok(line.endsWith("fallback: default → deepseek/DeepSeek-V4-Flash (window); strong → primary (available)"), line);
+});
+
 test("formatEvent renders the reserve crossing with utilization, reserve and reset", () => {
   const resetsAt = Date.UTC(2026, 9, 10, 14, 30, 0);
   const line = formatEvent({
