@@ -7,7 +7,7 @@ import { providerWaitStage } from "./merge-slot.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
 import { LoopRunner } from "../loop/loop.js";
 import { branchHead, isMergedInto } from "../git/git.js";
-import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./merge-slot.js";
+import { addMergeChange, mergeUsage, removeMergeChange, setMergeChangeStatus } from "./merge-slot.js";
 import { dropMerge, queuedMergeFiles, staleHeadFile, type MergeEntry } from "./merge-queue.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
@@ -116,7 +116,7 @@ export async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeli
     if (liveRoles(p).has(entry.role)) continue;
     if (await mergedIntoMain(ctx.root, entry.sha, ctx.mainBranch, mainHead)) {
       dropMerge(file);
-      removeLandingChange(ctx.root, entry.role);
+      removeMergeChange(ctx.root, entry.role);
       continue;
     }
     // The dedupe awaited git: a task that settled meanwhile may have dropped this very entry
@@ -169,11 +169,11 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
         lease.release(); // stopping, or a restart / team hold closed the gate while it waited
         return;
       }
-      const { usage, foldUsage } = landingUsage(author, root);
+      const { usage, foldUsage } = mergeUsage(author, root);
       let verdict: VetVerdict;
       const startedAt = Date.now();
       try {
-        addLandingChange(root, entry, liveRoles(p));
+        addMergeChange(root, entry, liveRoles(p));
         // The vet's lease rides in the provider-lease store for the vet's body, so a review run
         // that lands on a different provider than the vet's review seam re-keys it there, and a
         // re-key park is shown by providerWaitStage; its slot wait drops the key (pool-slot rule).
@@ -217,7 +217,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
           controller: new AbortController(),
           userAborted: false,
         });
-        setLandingChangeStatus(root, role, "approved");
+        setMergeChangeStatus(root, role, "approved");
       } else {
         const result = verdict.kind === "stack" ? "aborted" : verdict.result;
         await settleLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);

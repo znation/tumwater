@@ -24,7 +24,7 @@ import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { noteGreenBaseline } from "../baseline/main-baseline.js";
 import { isExemptDiff } from "../review/exemptions.js";
-import { checkWaitStage, setLandingStage } from "./merge-slot.js";
+import { checkWaitStage, setMergeStage } from "./merge-slot.js";
 import type { LandingScopeContext } from "./merge-core.js";
 
 /** How many times a batch whose fast-forward lost the race to a moved main re-stacks onto the
@@ -181,7 +181,7 @@ async function landStackIn(ctx: LandingScopeContext, wtPath: string, entries: re
         // The landing cell names the check while it runs, then the merge steps after it — the ff
         // or what the caller does next — on every stacked change's own record.
         const roles = entries.map((e) => e.role);
-        for (const role of roles) setLandingStage(ctx.root, role, "build-check");
+        for (const role of roles) setMergeStage(ctx.root, role, "build-check");
         const check = await runScopedBuildCheck(
           ctx.root,
           roles[0]!,
@@ -193,7 +193,7 @@ async function landStackIn(ctx: LandingScopeContext, wtPath: string, entries: re
           undefined,
           checkWaitStage(ctx.root, roles),
         );
-        for (const e of entries) setLandingStage(ctx.root, e.role, "merging");
+        for (const e of entries) setMergeStage(ctx.root, e.role, "merging");
         if (check !== null && check.outcome.status === "failed") return { kind: "red", ...check };
         checkedTip = tip;
         if (check !== null && check.outcome.status === "passed") seed = tip;

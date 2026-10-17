@@ -41,7 +41,7 @@ export const FAST_POLL_MS = 100;
  * the ref is gone, so its absence is the postcondition the rejection, abort, and
  * successful-landing tests assert. Waiting on the outcome alone races the discard: a
  * deliberate stop's `discardPinnedRefs` runs in the landing slot's `finally`, AFTER
- * `writeLandingOutcome` has already recorded `lastResult` (the load-sensitive-test class in
+ * `writeMergeOutcome` has already recorded `lastResult` (the load-sensitive-test class in
  * BUGS.md, 2026-09-18). Single home of that try/rev-parse/catch probe: the loop-tier suites
  * (loop-3.test.ts, loop-leftover-recovery.test.ts) each held an inline copy before this was
  * extracted, and orchestrator-3.e2e.test.ts a file-local one. */

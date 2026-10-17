@@ -6,7 +6,7 @@ import { drainLandings } from "../src/merge/merge-drain.js";
 import { landingTasks } from "../src/merge/merge-pipeline.js";
 import { enqueueMerge, queueDepth, staleHeadFile } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
-import { readLandingMarker, writeLandingMarker } from "../src/merge/merge-slot.js";
+import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
 import { mergeQueueDir } from "../src/paths.js";
 import { drained, entry, makePipeline, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
@@ -58,13 +58,13 @@ test("a queued entry whose sha main already holds is dropped without a vet", asy
   enqueueMerge(root, entry("improve", sha));
   // A crash between the fast-forward and the entry drop leaves a marker naming a change main
   // already holds; the dedupe clears its record alongside the entry.
-  writeLandingMarker(root, { role: "improve", sha, summary: "the work", startedAt: Date.now(), stage: "merging" });
+  writeMergeMarker(root, { role: "improve", sha, summary: "the work", startedAt: Date.now(), stage: "merging" });
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
 
   await drainLandings(ctx, pipeline);
   assert.equal(pipeline.vetting.size, 0, "nothing to vet — main already holds the sha");
   assert.equal(queueDepth(root), 0, "the stale entry was dropped");
-  assert.equal(readLandingMarker(root), null, "the stale marker was cleared");
+  assert.equal(readMergeMarker(root), null, "the stale marker was cleared");
   assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "no outcome was written");
 });
 

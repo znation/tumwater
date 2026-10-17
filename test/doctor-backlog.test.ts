@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
-import { writeLandingMarker } from "../src/merge/merge-slot.js";
+import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { mergeQueueDir } from "../src/paths.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
@@ -424,7 +424,7 @@ test("checkStaleQueuedLandings warns once, resting via andMore, and never flags 
   enqueueMerge(root, { ...advice("organize", "move helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
   // The freshest is the in-flight one: the marker shows `improve` being merged, so it must
   // not be flagged even though it too is older than the threshold.
-  writeLandingMarker(root, {
+  writeMergeMarker(root, {
     role: "improve", sha: "abc1234", summary: "tidy parser", startedAt: now - 1000, stage: "merging",
     changes: [{ role: "improve", sha: "abc1234", summary: "tidy parser", status: "merging", startedAt: now - 1000 }],
   });

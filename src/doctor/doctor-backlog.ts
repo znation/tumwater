@@ -14,7 +14,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { queuedMerges } from "../merge/merge-queue.js";
-import { landingChanges, readLandingMarker } from "../merge/merge-slot.js";
+import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
 import { humanSeconds, secondsSince } from "../text/datetime.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
@@ -257,15 +257,15 @@ const LAND_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
  * the header's `land queue: N` badge counts it and `tumwater queue` ages it, yet nothing calls it
  * out on its own. This names the single oldest queued landing that is NOT currently in-flight and
  * has waited past LAND_QUEUE_STALE_MS, so an operator sees a stalled drain instead of only a
- * growing depth. The in-flight marker (readLandingMarker via landingChanges) contributes the set
+ * growing depth. The in-flight marker (readMergeMarker via mergeChanges) contributes the set
  * of roles holding a change being vetted or merged right now — a slow review is not a stalled
  * drain, and an absent or never-throwing unreadable marker contributes the empty set. Reads the
  * tree at `root` with the already-exported readers, changing nothing in src/merge/. A warn,
  * never a fail — the checkStaleQuestions/checkStalledPlans precedent: a queued wait is legitimate
  * while the team is genuinely held, and those holds already warn separately. */
 export function checkStaleQueuedLandings(root: string, now: number): CheckOutcome {
-  const marker = readLandingMarker(root);
-  const inFlight = new Set(marker ? landingChanges(marker).map((c) => c.role) : []);
+  const marker = readMergeMarker(root);
+  const inFlight = new Set(marker ? mergeChanges(marker).map((c) => c.role) : []);
   const stale = queuedMerges(root)
     .filter((e) => !inFlight.has(e.role) && now - e.enqueuedAt > LAND_QUEUE_STALE_MS)
     .map((e) => ({ role: e.role, summary: e.summary, age: humanSeconds(secondsSince(e.enqueuedAt, now)) }));

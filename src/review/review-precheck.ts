@@ -17,7 +17,7 @@ import { sampleSleepClock } from "../build/host-sleep.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { mainRedNotMine } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
-import { checkWaitStage, setLandingStage } from "../merge/merge-slot.js";
+import { checkWaitStage, setMergeStage } from "../merge/merge-slot.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
 import { FLAKY_WARNING_PREFIX, isKnownFlake } from "./known-flakes.js";
 
@@ -49,10 +49,10 @@ export async function gateBuildPrecheck(
   reject: (reasons: string[], durationMs?: number) => Promise<GateResult>,
 ): Promise<GatePrecheckResult> {
   const { root, role, wt, mainBranch, config } = ctx;
-  // The landing cell's stage (a no-op outside a queued landing — see setLandingStage): the
+  // The landing cell's stage (a no-op outside a queued landing — see setMergeStage): the
   // pre-check, its one re-run, and any attribution check behind them are the gate's first
   // long phase.
-  setLandingStage(root, role, "build-check");
+  setMergeStage(root, role, "build-check");
   // The gate's one check invocation — the pre-check and its one flake re-run below are the
   // same run in the same scope, worktree, and config with the same resolved timeout, so the
   // scope and timeout resolution live here once and cannot drift between the two calls.

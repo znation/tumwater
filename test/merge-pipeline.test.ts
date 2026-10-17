@@ -15,7 +15,7 @@ import { enqueueMerge, queueDepth, queuedMergeFiles } from "../src/merge/merge-q
 import { abortRequestPath, mergeQueueDir, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
-import { landingChanges, readLandingMarker } from "../src/merge/merge-slot.js";
+import { mergeChanges, readMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
@@ -109,7 +109,7 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "1", "the change landed on main");
     assert.ok(await isMergedInto(root, sha, "main"), "the pinned commit is contained in main");
     assert.equal(await refSha(root, mergeRefName("improve")), null, "the ff deleted the landing ref");
-    assert.equal(readLandingMarker(root), null, "the in-flight marker was cleared");
+    assert.equal(readMergeMarker(root), null, "the in-flight marker was cleared");
     const landed = eventsOfType(root, "merge_done");
     assert.equal(landed.length, 1, "one landed event for the queue's bookkeeping");
     assert.equal(landed[0]!.source, "improve");
@@ -157,7 +157,7 @@ test("changes vetted while the merge slot is busy merge as one stack: one shared
       assert.ok(sh(root, "git", "show", `main:${role}.txt`).includes(`work by ${role}`), `${role}'s work is on main`);
       assert.equal(await refSha(root, mergeRefName(role)), null, `${role}'s ref was deleted`);
     }
-    assert.equal(readLandingMarker(root), null, "the marker was cleared");
+    assert.equal(readMergeMarker(root), null, "the marker was cleared");
     const checks = eventsOfType(root, "build_check");
     assert.equal(checks.filter((e) => e.scope === "batch").length, 1, "ONE shared check over the stacked tree");
     assert.equal(checks.filter((e) => e.scope === "merge").length, 0, "and no per-change in-lock re-check");
@@ -185,7 +185,7 @@ test("a vetted change whose queue entry is gone is forgotten while its neighbor 
     assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "only alpha is picked for the merge");
     assert.deepEqual([...pipeline.vetted.keys()], [], "beta left the vetted map");
     assert.deepEqual(
-      landingChanges(readLandingMarker(root)!).map((c) => c.role),
+      mergeChanges(readMergeMarker(root)!).map((c) => c.role),
       ["alpha"],
       "beta's marker record dropped with its entry",
     );
@@ -256,7 +256,7 @@ test("the merge's conflict resolver takes a shared permit, ahead of a vet parked
     // The landing cell names the parked resolver's wait — not "merging" (2026-10-12: a resolver
     // parked 2.5 min with the merge queue behind it read as a slow fast-forward).
     assert.equal(
-      landingChanges(readLandingMarker(root)!).find((c) => c.role === "alpha")?.stage,
+      mergeChanges(readMergeMarker(root)!).find((c) => c.role === "alpha")?.stage,
       "resolve-wait",
       "the parked resolver's stage",
     );
@@ -315,7 +315,7 @@ test("a change settled early in a batch writes back before a slower batch-mate's
     // The running resolver names itself in beta's landing cell: its minutes are the resolver's,
     // not the merge's git steps (2026-10-12).
     assert.equal(
-      landingChanges(readLandingMarker(root)!).find((c) => c.role === "beta")?.stage,
+      mergeChanges(readMergeMarker(root)!).find((c) => c.role === "beta")?.stage,
       "resolving",
       "the running resolver's stage",
     );
@@ -394,7 +394,7 @@ test("a red stack lands its passing prefix, rejects the change red alone, and me
       ["alpha:changed", "beta:rejected", "gamma:changed"],
       "each outcome written once, gamma's only after its own merge",
     );
-    assert.equal(readLandingMarker(root), null);
+    assert.equal(readMergeMarker(root), null);
   } finally {
     await Promise.allSettled(allTasks(pipeline));
     restore();
@@ -455,7 +455,7 @@ test("a vetting rejection drops its entry at once — its role may tick next pol
     assert.equal(readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha").length, 1);
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes the pin");
     assert.deepEqual([...pipeline.vetting.keys()], ["beta"], "beta's vet is still running");
-    const marker = readLandingMarker(root);
+    const marker = readMergeMarker(root);
     assert.deepEqual(
       marker?.changes?.map((c) => [c.role, c.status, c.stage]),
       [["beta", "merging", "reviewing"]],
@@ -775,7 +775,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
         assert.equal(loadLoopState(root, "alpha").lastResult, "changed");
       }
       assert.equal(loadLoopState(root, "beta").lastResult, "changed");
-      assert.equal(readLandingMarker(root), null, "the marker is gone once the merge is done");
+      assert.equal(readMergeMarker(root), null, "the marker is gone once the merge is done");
     } finally {
       await Promise.allSettled(allTasks(pipeline));
       restore();
@@ -811,7 +811,7 @@ test("a plumbing throw in the merge keeps every entry queued and un-vetted, reco
     assert.equal(queueDepth(root), 2, "every entry stays queued");
     assert.equal(pipeline.vetted.size, 0, "nothing stays vetted: each change is vetted afresh from its pin");
     assert.ok(loadLoopState(root, "alpha").lastError, "the head author's persisted state names the failure");
-    assert.equal(readLandingMarker(root), null, "the merge's marker records were removed with its task");
+    assert.equal(readMergeMarker(root), null, "the merge's marker records were removed with its task");
     assert.equal(eventsOfType(root, "merged").length, 0, "nothing was reported landed");
     assert.equal(mainSha(root), mainBefore, "nothing landed");
 

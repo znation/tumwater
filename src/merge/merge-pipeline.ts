@@ -8,7 +8,7 @@ import { errorMessage } from "../text/text.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { ModelSelector } from "../config/model-selector.js";
 import { deleteRef } from "../git/git.js";
-import { removeLandingChange, writeLandingOutcome, type LandingUsage } from "./merge-slot.js";
+import { removeMergeChange, writeMergeOutcome, type MergeUsage } from "./merge-slot.js";
 import { mergeRefName, rejectedRefName } from "../paths.js";
 import type { AbortableLanding } from "../operator/operator-requests.js";
 import type { MergeEntry } from "./merge-queue.js";
@@ -51,7 +51,7 @@ export interface VettedLanding extends AbortableLanding, FoldsUsage {
   /** The authoring runner its vet ran with — reused by its merge, so both fold into one state. */
   author: LoopRunner;
   /** The landing's own spend so far (its reviewer). */
-  usage: LandingUsage;
+  usage: MergeUsage;
 }
 
 /** The per-poll state the pipeline reads from the scheduler, resolved once by the poll loop.
@@ -195,8 +195,8 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
 
 /** Settle a landing queue entry that reached a terminal outcome — the one home of the
  * write-plus-drop pairing every settled landing goes through: the result lands in the role's
- * state and the merge_done/merge_failed event (writeLandingOutcome), then the change's marker
- * record is dropped (removeLandingChange — landing-slot leaves the marker to the caller). Shared by
+ * state and the merge_done/merge_failed event (writeMergeOutcome), then the change's marker
+ * record is dropped (removeMergeChange — landing-slot leaves the marker to the caller). Shared by
  * settleAbortedVetted, the vet's final-verdict branch, and the merge's per-change write-back, so
  * no settled entry can keep a stale marker or lose its outcome write. The pinned-ref discard
  * stays with the callers: only a user abort throws work away, and the merge discards its whole
@@ -207,10 +207,10 @@ export async function settleLandingOutcome(
   state: LoopState,
   result: TickResult,
   durationMs: number,
-  usage: LandingUsage,
+  usage: MergeUsage,
   file: string,
 ): Promise<void> {
-  writeLandingOutcome(root, entry, state, result, durationMs, usage, file);
+  writeMergeOutcome(root, entry, state, result, durationMs, usage, file);
   // A revision that lands ends the rejected change's life: drop the rejected ref (plans/revise-
   // rejected.md). A rejection repoints or deletes it in merge-core.ts, so this is the only
   // ref cleanup a landed revision needs here. Guarded on the entry's revisionRound, not just a
@@ -219,5 +219,5 @@ export async function settleLandingOutcome(
   if (result === "changed" && entry.revisionRound !== undefined) {
     await deleteRef(root, rejectedRefName(entry.role));
   }
-  removeLandingChange(root, entry.role);
+  removeMergeChange(root, entry.role);
 }

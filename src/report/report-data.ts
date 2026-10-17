@@ -147,7 +147,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   } else if (ev.type === "merge_done" || ev.type === "merge_failed") { 
     target.mergeRuns = (target.mergeRuns ?? 0) + 1;
     if (ev.type === "merge_failed") target.mergeFailed = (target.mergeFailed ?? 0) + 1;
-    // Attribute the outcome to the authoring role (writeLandingOutcome logs loop: entry.role)
+    // Attribute the outcome to the authoring role (writeMergeOutcome logs loop: entry.role)
     // folded to base role, the same normalization the merged branch uses, so `feature-2`
     // aggregates into `feature`. A parallel tally beside the team run counts, never
     // subtracted from mergeRuns/mergeFailed.

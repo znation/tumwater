@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { drainInFlightWork, type AfterDelay } from "../src/tick/tick-timing.js";
-import { writeLandingMarker, readLandingMarker } from "../src/merge/merge-slot.js";
+import { writeMergeMarker, readMergeMarker } from "../src/merge/merge-slot.js";
 import type { InFlightLanding } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
@@ -97,7 +97,7 @@ test("drainInFlightWork on a restart with a landing inside its window waits out 
 
 test("drainInFlightWork hands off without a wedged landing and without waiting on reserved ticks", { timeout: 5_000 }, async () => {
   const root = tmpdir();
-  writeLandingMarker(root, { role: "clean", sha: "a".repeat(40), summary: "wedged", startedAt: Date.now(), stage: "build-check" });
+  writeMergeMarker(root, { role: "clean", sha: "a".repeat(40), summary: "wedged", startedAt: Date.now(), stage: "build-check" });
   const timers = scriptedTimers();
   let aborts = 0;
   let returned = false;
@@ -114,7 +114,7 @@ test("drainInFlightWork hands off without a wedged landing and without waiting o
   timers.fire(); // the second window lapses: hand off without it
   await drain;
   assert.equal(returned, true, "the hand-off is bounded by two windows on the injected clock");
-  assert.equal(readLandingMarker(root), null, "the exiting process's marker is cleared for the next generation");
+  assert.equal(readMergeMarker(root), null, "the exiting process's marker is cleared for the next generation");
   const w = warningMessages(root);
   assert.equal(w.length, 3, "wait, lapse, and abandon are each announced");
   assert.match(w[2]!, /the aborted merge for clean was still running 0\.05s later — restarting without it/);

@@ -26,7 +26,7 @@ import { withLock } from "../concurrency/lock.js";
 import { buildConflictPrompt } from "../prompt/gate-prompts.js";
 import { mergeLockDir } from "../paths.js";
 import { logNewQuestions } from "./merge-questions.js";
-import { checkWaitStage, setLandingStage } from "./merge-slot.js";
+import { checkWaitStage, setMergeStage } from "./merge-slot.js";
 import { syncRootInstall } from "../build/dep-install.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { resolverConfig } from "../config/config-views.js";
@@ -295,7 +295,7 @@ async function verifyMerge(
   // The run itself (build_check event, environmental-skip warning) lives in
   // runScopedBuildCheck, shared with the review gate's pre-check. The merge cell names the
   // check (or its wait for a permit) while it runs, then the merge again for the ff.
-  setLandingStage(ctx.root, ctx.role, "build-check");
+  setMergeStage(ctx.root, ctx.role, "build-check");
   const check = await runScopedBuildCheck(
     ctx.root,
     ctx.role,
@@ -307,7 +307,7 @@ async function verifyMerge(
     undefined,
     checkWaitStage(ctx.root, [ctx.role]),
   );
-  setLandingStage(ctx.root, ctx.role, "merging");
+  setMergeStage(ctx.root, ctx.role, "merging");
   if (!check) return true; // No declared check: nothing to run, exactly like the gate skipping its pre-check.
   if (check.outcome.status === "failed") {
     ctx.onMergeCheckRed?.(check.check, check.outcome);
@@ -391,7 +391,7 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
   // The merge cell names the resolver run, not "merging" (a no-op outside a queued merge):
   // the run holds the merge slot, and every queued merge waits on it. Back to `merging` once it
   // ends, whatever happened — the merge's git steps come next, or the merge ends.
-  setLandingStage(ctx.root, ctx.role, "resolving");
+  setMergeStage(ctx.root, ctx.role, "resolving");
   let pi: PiRunResult;
   try {
     pi = await ctx.runPi(
@@ -404,7 +404,7 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
       resolverConfig(ctx.config),
     );
   } finally {
-    setLandingStage(ctx.root, ctx.role, "merging");
+    setMergeStage(ctx.root, ctx.role, "merging");
   }
   if (!pi.ok || hasConflictMarkers(wt, remaining)) {
     await abortSync(wt);

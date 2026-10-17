@@ -17,7 +17,7 @@ import {
   readOrchestratorInfo,
   type DiskStatus,
 } from "../team/orchestrator-info.js";
-import type { LandingInFlight } from "../merge/merge-slot.js";
+import type { MergeInFlight } from "../merge/merge-slot.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { collectImageProbeFailures, collectRoleRows } from "./status-roles.js";
@@ -317,7 +317,7 @@ export interface StatusSnapshot {
      * common empty case carries no field. (`depth` can be positive with `entries` absent: it
      * also counts the unreadable files the reader skips.) */
     entries?: Array<{ role: string; sha: string; run: number; summary: string; enqueuedAt: number }>;
-    inFlight?: LandingInFlight;
+    inFlight?: MergeInFlight;
   };
   /** Main's newest merge-scope build check:
    * the latest `build_check` event at the `landing`/`batch`/`baseline` scope, read from the

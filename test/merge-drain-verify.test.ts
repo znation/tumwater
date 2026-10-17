@@ -9,7 +9,7 @@ import { mergeRefName, slotsStatePath } from "../src/paths.js";
 import { readSlotsState } from "../src/git/slots-state.js";
 import { refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
-import { readLandingMarker } from "../src/merge/merge-slot.js";
+import { readMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig } from "../src/config/config.js";
 import {
   APPROVE,
@@ -113,7 +113,7 @@ test("every vet holds a shared permit: with one free, one reviews while the othe
         await waitFor(() => pipeline.vetting.get("beta")?.parked === true, "beta's vet to park for the permit", 30_000);
         assert.match(rowOf("alpha"), REVIEWING, "one free: the vet holding the permit shows its stage");
         assert.equal(rowOf("beta"), "due", "one free: the parked vet's role reads plainly due");
-        assert.deepEqual(readLandingMarker(root)?.changes?.map((c) => c.role), ["alpha"], "one free: no record for the parked vet");
+        assert.deepEqual(readMergeMarker(root)?.changes?.map((c) => c.role), ["alpha"], "one free: no record for the parked vet");
         assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: the parked vet is not in flight");
         assert.deepEqual(abortableLandings(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: nor abortable");
       } else {
@@ -178,7 +178,7 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
       assert.ok(queuedMergeFiles(root).some((q) => q.entry.role === "beta"), `${stop}: beta's entry is still queued`);
       assert.equal(await refSha(root, mergeRefName("beta")), shas.beta, `${stop}: with its pin`);
       assert.equal(readEvents(root).some((e) => e.source === "beta" && (e.type === "merge_failed" || e.type === "review_start")), false, `${stop}: nothing ran for beta`);
-      assert.ok(!readLandingMarker(root)?.changes?.some((c) => c.role === "beta"), `${stop}: beta never had a record`);
+      assert.ok(!readMergeMarker(root)?.changes?.some((c) => c.role === "beta"), `${stop}: beta never had a record`);
       if (stop === "shutdown") {
         const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha");
         assert.deepEqual(failed.map((e) => e.result), ["aborted"], "the vet under review ended aborted");
@@ -240,7 +240,7 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
         `review to last merge took ${lastMerged - firstStart} ms, no less than the reviews' ${serialFloorMs} ms sum — they ran one after another`,
       );
       assert.equal(events.filter((e) => e.type === "merge_done").length, 3, "each change's outcome written once");
-      assert.equal(readLandingMarker(root), null, "the marker is gone once nothing is in flight");
+      assert.equal(readMergeMarker(root), null, "the marker is gone once nothing is in flight");
     },
   );
 });

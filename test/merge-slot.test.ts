@@ -1,9 +1,9 @@
 /** Unit coverage for src/merge/merge-slot.ts's bookkeeping — the usage accounting that
- * charges a landing's own pi runs (reviewer + conflict resolution) to the AUTHORING role's live
+ * charges a merge's own pi runs (reviewer + conflict resolution) to the AUTHORING role's live
  * state and records them on the merge_done/merge_failed event, the write-back, and the 4/5 marker's
- * per-change records. The full landing flow is pinned end-to-end through the pipeline
+ * per-change records. The full merge flow is pinned end-to-end through the pipeline
  * (orchestrator-fixtures.ts's mergeHead) in the loop and orchestrator tests, but those drive a fake
- * pi that reports no usage, so the nonzero-usage branches were never exercised: a landing whose
+ * pi that reports no usage, so the nonzero-usage branches were never exercised: a merge whose
  * reviewer burns tokens and cost is exactly what feeds `tumwater report` and the daily budget cap,
  * and a broken fold there would silently lose that spend. These pin the accounting branches
  * directly. */
@@ -12,17 +12,17 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  addLandingChange,
+  addMergeChange,
   checkWaitStage,
-  landingChanges,
-  landingUsage,
-  readLandingMarker,
-  removeLandingChange,
+  mergeChanges,
+  mergeUsage,
+  readMergeMarker,
+  removeMergeChange,
   resolveWaitStage,
-  setLandingChangeStatus,
-  setLandingStage,
-  writeLandingMarker,
-  writeLandingOutcome,
+  setMergeChangeStatus,
+  setMergeStage,
+  writeMergeMarker,
+  writeMergeOutcome,
 } from "../src/merge/merge-slot.js";
 import { eventsLogPath, mergeRefName, mergeStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
@@ -48,22 +48,22 @@ function piRun(outputTokens: number, costUsd: number): PiRunResult {
   return piRunResult({ outputTokens, costUsd });
 }
 
-/** Queue one landing in a fresh repo and return its entry plus the file a drop removes. */
+/** Queue one merge in a fresh repo and return its entry plus the file a drop removes. */
 function queued(root: string, role = "improve"): { entry: MergeEntry; file: string } {
   const entry: MergeEntry = { role, sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: Date.now() };
   enqueueMerge(root, entry);
   const head = headMerge(root);
-  assert.ok(head, "fixture sanity: the landing is queued");
+  assert.ok(head, "fixture sanity: the merge is queued");
   return head;
 }
 
-test("landingUsage charges each run to both the authoring role and the landing's own accumulator", () => {
+test("mergeUsage charges each run to both the authoring role and the merge's own accumulator", () => {
   const folded: PiRunResult[] = [];
-  // landingUsage keys the reviewer's fold by the review seam (PLANS.md "Mixed claude + pi
+  // mergeUsage keys the reviewer's fold by the review seam (PLANS.md "Mixed claude + pi
   // fleets, part 2/4"), so the stub author must carry a config; these tests don't assert on
   // the stamp, only on the cost/token accounting, so a default config is enough.
   const author = { foldLandingUsage: (run: PiRunResult) => folded.push(run), config: defaultConfig() } as unknown as LoopRunner;
-  const { usage, foldUsage } = landingUsage(author, tmpdir());
+  const { usage, foldUsage } = mergeUsage(author, tmpdir());
 
   foldUsage(piRun(120, 0.5));
   foldUsage(piRun(80, 0.5));
@@ -71,19 +71,19 @@ test("landingUsage charges each run to both the authoring role and the landing's
   assert.deepEqual(
     folded.map((r) => r.outputTokens),
     [120, 80],
-    "every landing pi run reaches the authoring role's fold",
+    "every merge pi run reaches the authoring role's fold",
   );
-  assert.equal(usage.tokens, 200, "and the landing's own accumulator sums its tokens");
+  assert.equal(usage.tokens, 200, "and the merge's own accumulator sums its tokens");
   assert.equal(usage.cost, 1, "…and its cost");
 });
 
-// A subscription-paid landing is API-equivalent notional spend, never real money the daily cap
-// charges (plans/agent-backends.md part 6a): its cost rides the landed event's notional field
+// A subscription-paid merge is API-equivalent notional spend, never real money the daily cap
+// charges (plans/agent-backends.md part 6a): its cost rides the merge_done event's notional field
 // and its real field stays empty.
-test("a subscription landing run folds as notional, and rides the event's notional field", () => {
+test("a subscription merge run folds as notional, and rides the event's notional field", () => {
   const root = makeRepo();
   const author = { foldLandingUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
-  const { usage, foldUsage } = landingUsage(author, tmpdir());
+  const { usage, foldUsage } = mergeUsage(author, tmpdir());
   foldUsage(piRunResult({ outputTokens: 100, costUsd: 0.3, billing: "subscription" }));
   foldUsage(piRunResult({ outputTokens: 20, costUsd: 0.1, billing: "api" }));
 
@@ -92,23 +92,23 @@ test("a subscription landing run folds as notional, and rides the event's notion
 
   const { entry, file } = queued(root);
   const state = freshLoopState("improve");
-  writeLandingOutcome(root, entry, state, "changed", 7, usage, file);
+  writeMergeOutcome(root, entry, state, "changed", 7, usage, file);
 
-  const landed = readEvents(root, 10).find((e) => e.type === "merge_done");
-  assert.ok(landed, "the landing logged a landed event");
-  assert.equal(landed.costUsd, 0.1, "the event's cost is the real share only");
-  assert.equal(landed.notionalCostUsd, 0.3, "the subscription share is notional");
+  const mergeDone = readEvents(root, 10).find((e) => e.type === "merge_done");
+  assert.ok(mergeDone, "the merge logged a merge_done event");
+  assert.equal(mergeDone.costUsd, 0.1, "the event's cost is the real share only");
+  assert.equal(mergeDone.notionalCostUsd, 0.3, "the subscription share is notional");
 });
 
 // A claude reviewer's (or resolver's) five-hour window must reach claude-account.json when the
-// landing fold sees it, not wait for the pi author's next tick end — otherwise a mixed team's
+// merge fold sees it, not wait for the pi author's next tick end — otherwise a mixed team's
 // reviewer readings are lost every time (PLANS.md "Mixed claude + pi fleets, part 3/4"). The
 // fold is best-effort like tick-finalize.ts's: a run with no billing/window reading leaves the
 // file untouched.
-test("a landing run's five_hour reading reaches claude-account.json at fold time", () => {
+test("a merge run's five_hour reading reaches claude-account.json at fold time", () => {
   const root = makeRepo();
   const author = { foldLandingUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
-  const { foldUsage } = landingUsage(author, root);
+  const { foldUsage } = mergeUsage(author, root);
 
   assert.equal(readClaudeAccount(root), null, "no account file before any reading");
   foldUsage(
@@ -127,69 +127,69 @@ test("a landing run's five_hour reading reaches claude-account.json at fold time
   assert.equal(account.windows.five_hour?.utilization, 0.4);
 });
 
-test("a landing's nonzero usage rides its landed event and the entry is dropped", () => {
+test("a merge's nonzero usage rides its merge_done event and the entry is dropped", () => {
   const root = makeRepo();
   const { entry, file } = queued(root);
   const state = freshLoopState("improve");
-  state.phase = "review"; // an in-flight landing marker from the tick lifecycle
+  state.phase = "review"; // an in-flight merge marker from the tick lifecycle
   state.runs = entry.run;
 
-  writeLandingOutcome(root, entry, state, "changed", 1234, { tokens: 320, cost: 0.42, providerCost: {} }, file);
+  writeMergeOutcome(root, entry, state, "changed", 1234, { tokens: 320, cost: 0.42, providerCost: {} }, file);
 
-  const landed = readEvents(root, 10).find((e) => e.type === "merge_done");
-  assert.ok(landed, "the landing logged a landed event");
-  assert.equal(landed.source, "improve");
-  assert.equal(landed.commit, entry.sha);
-  assert.equal(landed.result, "changed");
-  assert.equal(landed.summary, entry.summary);
-  assert.equal(landed.durationMs, 1234);
-  assert.equal(landed.tokens, 320, "the landing's own tokens are on the event");
-  assert.equal(landed.costUsd, 0.42, "…and its own cost");
+  const mergeDone = readEvents(root, 10).find((e) => e.type === "merge_done");
+  assert.ok(mergeDone, "the merge logged a merge_done event");
+  assert.equal(mergeDone.source, "improve");
+  assert.equal(mergeDone.commit, entry.sha);
+  assert.equal(mergeDone.result, "changed");
+  assert.equal(mergeDone.summary, entry.summary);
+  assert.equal(mergeDone.durationMs, 1234);
+  assert.equal(mergeDone.tokens, 320, "the merge's own tokens are on the event");
+  assert.equal(mergeDone.costUsd, 0.42, "…and its own cost");
   assert.equal(state.lastResult, "changed");
-  assert.equal(state.commits, 1, "a landed change counts a commit");
+  assert.equal(state.commits, 1, "a merged change counts a commit");
   assert.equal(state.phase, undefined, "a non-aborted outcome ends the in-flight phase");
   assert.equal(loadLoopState(root, "improve").commits, 1, "the folded state is persisted");
   assert.equal(queueDepth(root), 0, "the entry drops after its outcome");
 });
 
-test("a review-exempt landing (zero usage) omits the usage fields instead of logging zeros", () => {
+test("a review-exempt merge (zero usage) omits the usage fields instead of logging zeros", () => {
   const root = makeRepo();
   const { entry, file } = queued(root, "organize");
   const state = freshLoopState("organize");
 
-  writeLandingOutcome(root, entry, state, "changed", 5, { tokens: 0, cost: 0, providerCost: {} }, file);
+  writeMergeOutcome(root, entry, state, "changed", 5, { tokens: 0, cost: 0, providerCost: {} }, file);
 
-  const landed = readEvents(root, 10).find((e) => e.type === "merge_done");
-  assert.ok(landed, "the landing logged a landed event");
-  assert.ok(!("tokens" in landed), `no tokens key on a zero-usage event: ${JSON.stringify(landed)}`);
-  assert.ok(!("costUsd" in landed), `no costUsd key on a zero-usage event: ${JSON.stringify(landed)}`);
+  const mergeDone = readEvents(root, 10).find((e) => e.type === "merge_done");
+  assert.ok(mergeDone, "the merge logged a merge_done event");
+  assert.ok(!("tokens" in mergeDone), `no tokens key on a zero-usage event: ${JSON.stringify(mergeDone)}`);
+  assert.ok(!("costUsd" in mergeDone), `no costUsd key on a zero-usage event: ${JSON.stringify(mergeDone)}`);
 });
 
 test("an unwritable events feed still drops the settled entry — the queue never retries", () => {
   const root = makeRepo();
   const { entry, file } = queued(root);
   const state = freshLoopState("improve");
-  // A directory at the feed path makes every append throw EISDIR: the landed event cannot be
+  // A directory at the feed path makes every append throw EISDIR: the merge_done event cannot be
   // written, but the drop (and the marker removal its caller does next) must still happen —
-  // otherwise the settled entry stays queued and the next drain re-vets and re-merges it.
+  // otherwise the settled entry stays queued and the next drain re-verifies and re-merges it.
   fs.mkdirSync(eventsLogPath(root), { recursive: true });
 
-  writeLandingOutcome(root, entry, state, "changed", 1000, { tokens: 10, cost: 0.1, providerCost: {} }, file);
+  writeMergeOutcome(root, entry, state, "changed", 1000, { tokens: 10, cost: 0.1, providerCost: {} }, file);
 
   assert.equal(queueDepth(root), 0, "the outcome drops the entry even when its event cannot be logged");
   assert.equal(loadLoopState(root, "improve").commits, 1, "the state write still persisted before the event");
 });
 
-test("an unexpected throw inside the landing degrades to an error outcome — the queue drains", async () => {
+test("an unexpected throw inside the merge degrades to an error outcome — the queue drains", async () => {
   const root = makeRepo();
   queued(root);
   // A poisoned entry: the sha names no commit anywhere in the repo (a lost pin, a corrupt
-  // queue file), so the vet's ensureDetachedWorktree throws before any ref work — exactly the
-  // "unexpected throw" the vet degrades (the pipeline's contract: a landing never rejects;
-  // every outcome drops the entry; the change's marker record always goes).
+  // queue file), so the verification's ensureDetachedWorktree throws before any ref work —
+  // exactly the "unexpected throw" the verification degrades (the pipeline's contract: a merge
+  // never rejects; every outcome drops the entry; the change's marker record always goes).
   const author = makeLoopRunner(root, "improve");
   const { state } = author;
-  state.phase = "review"; // the tick lifecycle's in-flight landing marker on the author's state
+  state.phase = "review"; // the tick lifecycle's in-flight merge marker on the author's state
   assert.ok(await refSha(root, mergeRefName("improve")) === null, "fixture sanity: no pin exists");
 
   const result = await mergeHead(root, author, defaultConfig(), "improve");
@@ -202,13 +202,13 @@ test("an unexpected throw inside the landing degrades to an error outcome — th
   assert.equal(failed.result, "error");
   assert.equal(queueDepth(root), 0, "every outcome drops the entry — a poison entry must not wedge the drain");
   assert.equal(await refSha(root, mergeRefName("improve")), null, "no pin existed and the error path fabricates none");
-  assert.equal(readLandingMarker(root), null, "the in-flight marker is removed even on the error path");
+  assert.equal(readMergeMarker(root), null, "the in-flight marker is removed even on the error path");
   assert.equal(loadLoopState(root, "improve").lastResult, "error", "the outcome is persisted, not just folded in memory");
 });
 
-test("the write-back pairs the landing's result with the queued tick's summary, across a reload", () => {
+test("the write-back pairs the merge's result with the queued tick's summary, across a reload", () => {
   // BUGS.md 2026-09-23: the queued tick left the prior last-result pair in place and stashed
-  // its own summary; the landing — here resolving in a later process on a disk-loaded state,
+  // its own summary; the merge — here resolving in a later process on a disk-loaded state,
   // as a durable queue entry can — records its result beside THAT summary and consumes it.
   const root = makeRepo();
   const { entry, file } = queued(root);
@@ -223,7 +223,7 @@ test("the write-back pairs the landing's result with the queued tick's summary, 
   const pending = loadLoopState(root, "improve");
   assert.equal(pending.lastResult, "no_change", "fixture sanity: the prior pair is what persisted");
 
-  writeLandingOutcome(root, entry, pending, "rejected", 10, { tokens: 0, cost: 0, providerCost: {} }, file);
+  writeMergeOutcome(root, entry, pending, "rejected", 10, { tokens: 0, cost: 0, providerCost: {} }, file);
 
   const saved = loadLoopState(root, "improve");
   assert.equal(saved.lastResult, "rejected");
@@ -231,13 +231,13 @@ test("the write-back pairs the landing's result with the queued tick's summary, 
   assert.equal(saved.queuedSummary, undefined, "the persisted stash is consumed");
 });
 
-test("a rejection crossing the error-streak bar warns from the landing side, once per episode", () => {
+test("a rejection crossing the error-streak bar warns from the merge side, once per episode", () => {
   // BUGS.md 2026-09-30: a review rejection resolves AFTER the tick's end-save, so the
-  // streak-crossing warn belongs to writeLandingOutcome — same bar, same once-per-episode
+  // streak-crossing warn belongs to writeMergeOutcome — same bar, same once-per-episode
   // shape the tick side (finalizeTick) upholds. The two sites share one episode: a queued
   // tick preserves the streak it was given, so a streak the tick side already warned at
   // must not warn again here, and a crossing the tick side never saw (2 → 3 at the
-  // landing) warns from here instead.
+  // merge) warns from here instead.
   const cfg = defaultConfig();
   const root = makeRepo();
   const warnings = () => warningEvents(readEvents(root, 50));
@@ -245,101 +245,101 @@ test("a rejection crossing the error-streak bar warns from the landing side, onc
   // Below the bar: the fast first retries stay silent.
   const low = freshLoopState("improve");
   const first = queued(root);
-  writeLandingOutcome(root, first.entry, low, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, first.file);
+  writeMergeOutcome(root, first.entry, low, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, first.file);
   assert.equal(low.consecutiveErrors, 1, "the rejection counts even below the bar");
   assert.equal(warnings().length, 0, "a below-bar rejection warns nothing");
 
   // The crossing the tick side never saw: two failed ticks, a queued tick preserving the
-  // streak, then the landing's rejection does 2 → 3.
+  // streak, then the merge's rejection does 2 → 3.
   const crossing = freshLoopState("improve");
   applyTickOutcome(crossing, cfg, "improve", { result: "error" });
   applyTickOutcome(crossing, cfg, "improve", { result: "error" });
   applyTickOutcome(crossing, cfg, "improve", { result: "queued", commit: "c" });
   const second = queued(root);
-  writeLandingOutcome(root, second.entry, crossing, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, second.file);
-  assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN, "the landing did the crossing");
+  writeMergeOutcome(root, second.entry, crossing, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, second.file);
+  assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN, "the merge did the crossing");
   const crossed = warnings();
-  assert.equal(crossed.length, 1, "the landing-side crossing warns exactly once");
+  assert.equal(crossed.length, 1, "the merge-side crossing warns exactly once");
   assert.equal(crossed[0]!.source, "improve");
   assert.match(crossed[0]!.message as string, /^3 runs failed in a row: /);
 
-  // The other half of the invariant: a rejection landing onto a streak the episode already
+  // The other half of the invariant: a rejection merge onto a streak the episode already
   // warned at (preserved across the queued tick at the bar) must not warn again.
   const third = queued(root);
   applyTickOutcome(crossing, cfg, "improve", { result: "queued", commit: third.entry.sha });
-  writeLandingOutcome(root, third.entry, crossing, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, third.file);
+  writeMergeOutcome(root, third.entry, crossing, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, third.file);
   assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN + 1);
   assert.equal(warnings().length, 1, "one warning per episode across both warn sites");
 });
 
-test("a failed landing logs merge_failed with its usage and counts no commit", () => {
+test("a failed merge logs merge_failed with its usage and counts no commit", () => {
   const root = makeRepo();
   const { entry, file } = queued(root);
   const state = freshLoopState("improve");
 
-  writeLandingOutcome(root, entry, state, "merge_conflict", 900, { tokens: 12, cost: 0.01, providerCost: {} }, file);
+  writeMergeOutcome(root, entry, state, "merge_conflict", 900, { tokens: 12, cost: 0.01, providerCost: {} }, file);
 
   const failed = readEvents(root, 10).find((e) => e.type === "merge_failed");
-  assert.ok(failed, "a non-changed outcome logs merge_failed, not landed");
+  assert.ok(failed, "a non-changed outcome logs merge_failed, not merged");
   assert.equal(failed.result, "merge_conflict");
   assert.equal(failed.summary, entry.summary);
-  assert.equal(failed.tokens, 12, "spend on a failed landing is still recorded");
+  assert.equal(failed.tokens, 12, "spend on a failed merge is still recorded");
   assert.equal(state.lastResult, "merge_conflict");
   assert.equal(state.commits, 0, "a non-changed outcome is not a commit");
   assert.equal(queueDepth(root), 0, "every outcome drops the entry — retry rides the pin, not the queue");
 });
 
-// The landing cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23): the landing path
+// The merge cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23): the merge path
 // advances the marker's stage and the dashboards render it.
-test("setLandingStage advances only its own role's record, and only its stage", () => {
+test("setMergeStage advances only its own role's record, and only its stage", () => {
   const root = makeRepo();
   // No marker — the shared gate running inside a tick (leftover recovery): a no-op that
-  // creates nothing; the gate must never invent landing state.
-  setLandingStage(root, "clean", "reviewing");
-  assert.equal(readLandingMarker(root), null);
-  addLandingChange(root, { role: "bugfix", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
-  const before = readLandingMarker(root)!;
+  // creates nothing; the gate must never invent merge state.
+  setMergeStage(root, "clean", "reviewing");
+  assert.equal(readMergeMarker(root), null);
+  addMergeChange(root, { role: "bugfix", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  const before = readMergeMarker(root)!;
   // Another role's gate (one with no record of its own) must not restage it.
-  setLandingStage(root, "clean", "reviewing");
-  assert.deepEqual(readLandingMarker(root), before, "a gate with no record changes nothing");
+  setMergeStage(root, "clean", "reviewing");
+  assert.deepEqual(readMergeMarker(root), before, "a gate with no record changes nothing");
   // The matching role's stage advances; identity (the snapshot cross-check's sha) and the
-  // landing's startedAt (the cell's elapsed) are preserved.
-  setLandingStage(root, "bugfix", "build-check");
-  const after = readLandingMarker(root)!;
+  // merge's startedAt (the cell's elapsed) are preserved.
+  setMergeStage(root, "bugfix", "build-check");
+  const after = readMergeMarker(root)!;
   assert.equal(after.changes![0]!.stage, "build-check");
   assert.ok(after.changes![0]!.stageSince! >= before.changes![0]!.stageSince!, "the transition re-stamped stageSince");
   assert.deepEqual([after.role, after.sha, after.startedAt, after.stage], [before.role, before.sha, before.startedAt, "build-check"]);
   // An older generation's one-change marker carries no records: no pipeline change is staged on it.
   const single = { role: "bugfix", sha: "b", summary: "s", startedAt: 2, stage: "merging" } as const;
-  writeLandingMarker(root, single);
-  setLandingStage(root, "bugfix", "reviewing");
-  assert.deepEqual(readLandingMarker(root), single);
+  writeMergeMarker(root, single);
+  setMergeStage(root, "bugfix", "reviewing");
+  assert.deepEqual(readMergeMarker(root), single);
 });
 
 // The per-stage elapsed (PLANS.md 2026-10-15): each change's record stamps `stageSince` ONCE
-// when it enters its current stage — at addLandingChange with its initial `rebasing`, and on
-// each setLandingStage transition, leaving an unchanged stage alone.
-test("addLandingChange and setLandingStage stamp stageSince on each stage entry", () => {
+// when it enters its current stage — at addMergeChange with its initial `rebasing`, and on
+// each setMergeStage transition, leaving an unchanged stage alone.
+test("addMergeChange and setMergeStage stamp stageSince on each stage entry", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
-  const added = readLandingMarker(root)!.changes![0]!;
+  addMergeChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  const added = readMergeMarker(root)!.changes![0]!;
   assert.equal(added.stageSince, added.startedAt, "the initial rebasing stamps its own start");
   // A transition to another stage moves stageSince with it.
-  const before = readLandingMarker(root)!.changes![0]!.stageSince!;
-  setLandingStage(root, "alpha", "reviewing");
-  const atReview = readLandingMarker(root)!.changes![0]!;
+  const before = readMergeMarker(root)!.changes![0]!.stageSince!;
+  setMergeStage(root, "alpha", "reviewing");
+  const atReview = readMergeMarker(root)!.changes![0]!;
   assert.equal(atReview.stage, "reviewing");
   assert.ok(atReview.stageSince! >= before, "the transition re-stamps the new stage's entry");
   // Re-staging the same stage leaves stageSince alone (the existing unchanged-stage no-op).
-  const stamp = readLandingMarker(root)!.changes![0]!.stageSince!;
-  setLandingStage(root, "alpha", "reviewing");
-  assert.equal(readLandingMarker(root)!.changes![0]!.stageSince, stamp, "an unchanged stage keeps its stamp");
+  const stamp = readMergeMarker(root)!.changes![0]!.stageSince!;
+  setMergeStage(root, "alpha", "reviewing");
+  assert.equal(readMergeMarker(root)!.changes![0]!.stageSince, stamp, "an unchanged stage keeps its stamp");
   // A marker that never transitions keeps one stageSince equal to its start.
   const root2 = makeRepo();
-  addLandingChange(root2, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
-  const b = readLandingMarker(root2)!.changes![0]!;
+  addMergeChange(root2, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  const b = readMergeMarker(root2)!.changes![0]!;
   assert.equal(b.stageSince, b.startedAt, "a never-transitioned change's stageSince is its start");
-  // A foreign stageSince is dropped by isLandingChange rather than read field-by-field.
+  // A foreign stageSince is dropped by isMergeChange rather than read field-by-field.
   fs.writeFileSync(
     mergeStatePath(root2),
     JSON.stringify({
@@ -347,16 +347,16 @@ test("addLandingChange and setLandingStage stamp stageSince on each stage entry"
       changes: [{ role: "beta", sha: "b".repeat(40), summary: "s", status: "merging", stageSince: "oops" }],
     }),
   );
-  assert.deepEqual(landingChanges(readLandingMarker(root2)!).map((c) => c.role), [], "a bad stageSince record reads as absent");
+  assert.deepEqual(mergeChanges(readMergeMarker(root2)!).map((c) => c.role), [], "a bad stageSince record reads as absent");
 });
 
 // A check parked for its process-wide permit names the wait, not a running check — so a row
 // whose check has not started never reads as one that has.
 test("checkWaitStage shows check-wait while parked, then build-check once the permit arrives", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
-  addLandingChange(root, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
-  const stages = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.stage}`);
+  addMergeChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addMergeChange(root, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
+  const stages = () => readMergeMarker(root)!.changes!.map((c) => `${c.role}=${c.stage}`);
   const hooks = checkWaitStage(root, ["alpha", "beta", "delta"]); // delta has no record: a no-op
   hooks.waiting();
   assert.deepEqual(stages(), ["alpha=check-wait", "beta=check-wait"]);
@@ -368,9 +368,9 @@ test("checkWaitStage shows check-wait while parked, then build-check once the pe
 // granted — checkWaitStage's shape, for one role — so neither reads as the merge's git steps.
 test("resolveWaitStage shows resolve-wait while parked, then resolving once the permit arrives", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
-  addLandingChange(root, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
-  const stages = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.stage}`);
+  addMergeChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addMergeChange(root, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
+  const stages = () => readMergeMarker(root)!.changes!.map((c) => `${c.role}=${c.stage}`);
   const hooks = resolveWaitStage(root, "alpha");
   hooks.waiting();
   assert.deepEqual(stages(), ["alpha=resolve-wait", "beta=rebasing"], "only the resolving change's record moves");
@@ -380,74 +380,75 @@ test("resolveWaitStage shows resolve-wait while parked, then resolving once the 
   assert.deepEqual(stages(), ["alpha=resolving", "beta=rebasing"]);
 });
 
-// The marker (BUGS.md 2026-09-23) carries one record per change the pipeline holds: each vet
-// adds its own, the gates and the merge advance only their change's record, each outcome
-// removes it, and the top level follows the first change in flight for observers that read
+// The marker (BUGS.md 2026-09-23) carries one record per change the pipeline holds: each
+// verification adds its own, the gates and the merge advance only their change's record, each
+// outcome removes it, and the top level follows the first change in flight for observers that read
 // only it.
 test("the marker's records come and go per change, and its top level follows the first change in flight", () => {
   const root = makeRepo();
   const entries = Object.fromEntries(
     ["alpha", "beta", "gamma"].map((role) => [role, { role, sha: `${role}-sha`, run: 1, summary: `${role} work`, enqueuedAt: 1 }]),
   ) as Record<string, MergeEntry>;
-  const records = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.status}/${c.stage ?? "-"}`);
+  const records = () => readMergeMarker(root)!.changes!.map((c) => `${c.role}=${c.status}/${c.stage ?? "-"}`);
 
-  // Two vets at once: each opens its own record, with its own start, at its rebase onto main.
+  // Two verifications at once: each opens its own record, with its own start, at its rebase onto
+  // main.
   const before = Date.now();
-  addLandingChange(root, entries.alpha!, new Set(["alpha"]));
-  addLandingChange(root, entries.beta!, new Set(["alpha", "beta"]));
-  setLandingStage(root, "beta", "reviewing");
-  setLandingStage(root, "delta", "reviewing"); // no record: a no-op
+  addMergeChange(root, entries.alpha!, new Set(["alpha"]));
+  addMergeChange(root, entries.beta!, new Set(["alpha", "beta"]));
+  setMergeStage(root, "beta", "reviewing");
+  setMergeStage(root, "delta", "reviewing"); // no record: a no-op
   assert.deepEqual(records(), ["alpha=merging/rebasing", "beta=merging/reviewing"]);
-  assert.ok(readLandingMarker(root)!.changes![0]!.startedAt! >= before, "the change's own start");
-  assert.equal(readLandingMarker(root)!.role, "alpha", "the top level names the first change in flight");
-  assert.equal(readLandingMarker(root)!.stage, "rebasing", "at that change's own stage");
+  assert.ok(readMergeMarker(root)!.changes![0]!.startedAt! >= before, "the change's own start");
+  assert.equal(readMergeMarker(root)!.role, "alpha", "the top level names the first change in flight");
+  assert.equal(readMergeMarker(root)!.stage, "rebasing", "at that change's own stage");
 
-  // alpha's vet approves it: it waits for the merge, and beta, still under review, becomes the
-  // top level — with its own start and its own stage.
-  setLandingStage(root, "alpha", "merging");
-  setLandingChangeStatus(root, "alpha", "approved");
-  const marker = readLandingMarker(root)!;
+  // alpha's verification approves it: it waits for the merge, and beta, still under review, becomes
+  // the top level — with its own start and its own stage.
+  setMergeStage(root, "alpha", "merging");
+  setMergeChangeStatus(root, "alpha", "approved");
+  const marker = readMergeMarker(root)!;
   assert.deepEqual(
     [marker.role, marker.sha, marker.stage, marker.startedAt],
     ["beta", "beta-sha", "reviewing", marker.changes![1]!.startedAt],
   );
 
   // A record the pipeline no longer holds (a crashed generation's) never rides along.
-  addLandingChange(root, entries.gamma!, new Set(["beta", "gamma"]));
+  addMergeChange(root, entries.gamma!, new Set(["beta", "gamma"]));
   assert.deepEqual(records(), ["beta=merging/reviewing", "gamma=merging/rebasing"]);
-  addLandingChange(root, entries.alpha!, new Set(["alpha", "beta", "gamma"]));
+  addMergeChange(root, entries.alpha!, new Set(["alpha", "beta", "gamma"]));
 
-  // The merge reaches alpha: re-entering `landing` keeps its first start and restages it
+  // The merge reaches alpha: re-entering `merging` keeps its first start and restages it
   // `merging` — the merge slot's own stage.
-  const alphaStart = readLandingMarker(root)!.changes!.find((c) => c.role === "alpha")!.startedAt;
-  setLandingChangeStatus(root, "alpha", "approved");
-  setLandingChangeStatus(root, "alpha", "merging");
-  const alpha = readLandingMarker(root)!.changes!.find((c) => c.role === "alpha")!;
+  const alphaStart = readMergeMarker(root)!.changes!.find((c) => c.role === "alpha")!.startedAt;
+  setMergeChangeStatus(root, "alpha", "approved");
+  setMergeChangeStatus(root, "alpha", "merging");
+  const alpha = readMergeMarker(root)!.changes!.find((c) => c.role === "alpha")!;
   assert.equal(alpha.stage, "merging");
-  assert.equal(alpha.startedAt, alphaStart, "the elapsed keeps counting from the vet's start");
+  assert.equal(alpha.startedAt, alphaStart, "the elapsed keeps counting from the verification's start");
 
   // Each outcome removes its record; the last one takes the marker with it.
-  removeLandingChange(root, "beta");
-  removeLandingChange(root, "delta"); // no record: a no-op
-  assert.deepEqual(landingChanges(readLandingMarker(root)!).map((c) => c.role), ["gamma", "alpha"]);
-  removeLandingChange(root, "gamma");
-  removeLandingChange(root, "alpha");
-  assert.equal(readLandingMarker(root), null, "the marker goes with its last record");
+  removeMergeChange(root, "beta");
+  removeMergeChange(root, "delta"); // no record: a no-op
+  assert.deepEqual(mergeChanges(readMergeMarker(root)!).map((c) => c.role), ["gamma", "alpha"]);
+  removeMergeChange(root, "gamma");
+  removeMergeChange(root, "alpha");
+  assert.equal(readMergeMarker(root), null, "the marker goes with its last record");
 });
 
-// landingChanges reads the shapes every generation wrote: an older generation's one-change
-// marker is one `landing` record at the marker's stage.
-test("landingChanges reads a one-change marker as one landing record", () => {
+// mergeChanges reads the shapes every generation wrote: an older generation's one-change
+// marker is one `merging` record at the marker's stage.
+test("mergeChanges reads a one-change marker as one merge record", () => {
   const single = { role: "clean", sha: "c", summary: "s", startedAt: 5, stage: "reviewing" } as const;
-  assert.deepEqual(landingChanges(single), [{ ...single, status: "merging" }]);
+  assert.deepEqual(mergeChanges(single), [{ ...single, status: "merging" }]);
   // A top-level stageSince (a newer generation's one-change marker) rides the legacy record;
   // without one, the record carries none — backward compatible with the old generation.
   const withSince = { ...single, stageSince: 6 } as const;
-  assert.equal(landingChanges(withSince)[0]!.stageSince, 6, "a top-level stageSince rides the legacy record");
-  assert.equal(landingChanges(single)[0]!.stageSince, undefined);
+  assert.equal(mergeChanges(withSince)[0]!.stageSince, 6, "a top-level stageSince rides the legacy record");
+  assert.equal(mergeChanges(single)[0]!.stageSince, undefined);
 });
 
-test("a foreign changes shape or a null record degrades instead of crashing a landing", () => {
+test("a foreign changes shape or a null record degrades instead of crashing a merge", () => {
   const root = makeRepo();
   fs.mkdirSync(path.dirname(mergeStatePath(root)), { recursive: true });
   // `changes` present but not an array: as unusable as an absent field. The reads fall back to
@@ -456,8 +457,8 @@ test("a foreign changes shape or a null record degrades instead of crashing a la
     mergeStatePath(root),
     JSON.stringify({ role: "improve", sha: "a", summary: "s", startedAt: 1, changes: "oops" }),
   );
-  assert.doesNotThrow(() => setLandingChangeStatus(root, "improve", "approved"));
-  assert.deepEqual(landingChanges(readLandingMarker(root)!).map((c) => c.role), ["improve"]);
+  assert.doesNotThrow(() => setMergeChangeStatus(root, "improve", "approved"));
+  assert.deepEqual(mergeChanges(readMergeMarker(root)!).map((c) => c.role), ["improve"]);
 
   // A record array carrying a null entry: the bad entries read as absent and the good one still
   // advances, so the pipeline and the observers keep working.
@@ -471,13 +472,13 @@ test("a foreign changes shape or a null record degrades instead of crashing a la
       changes: [null, { role: "y", sha: "y".repeat(40), summary: "s", status: "merging" }],
     }),
   );
-  assert.doesNotThrow(() => setLandingChangeStatus(root, "y", "approved"));
-  const after = landingChanges(readLandingMarker(root)!);
+  assert.doesNotThrow(() => setMergeChangeStatus(root, "y", "approved"));
+  const after = mergeChanges(readMergeMarker(root)!);
   assert.deepEqual(after.map((c) => c.role), ["y"]);
   assert.equal(after[0]!.status, "approved");
 });
 
-test("a queued landing's record names each phase while it runs: the gate's check, the review, the merge's in-lock check", async () => {
+test("a queued merge's record names each phase while it runs: the gate's check, the review, the merge's in-lock check", async () => {
   const root = makeRepo();
   // A pinned change ahead of main, exactly what a tick leaves behind for the pipeline.
   const sha = pinOffMain(
@@ -490,11 +491,11 @@ test("a queued landing's record names each phase while it runs: the gate's check
   enqueueMerge(root, entry);
 
   // Every observation point appends the marker's stage as the observers would read it: the
-  // project's declared check (the vet's gate pre-check, then the merge's in-lock re-check), and
-  // the reviewer run. The reviewer also moves main by a code file, so the in-lock re-check has a
-  // rebased tree to verify — the merge step's own long phase, which names itself a build check
-  // too. (An empty or doc-only move would leave the verified tree's bytes, plus at most exempt
-  // paths, and the re-check would rightly be skipped.)
+  // project's declared check (the verification's gate pre-check, then the merge's in-lock
+  // re-check), and the reviewer run. The reviewer also moves main by a code file, so the in-lock
+  // re-check has a rebased tree to verify — the merge step's own long phase, which names itself a
+  // build check too. (An empty or doc-only move would leave the verified tree's bytes, plus at most
+  // exempt paths, and the re-check would rightly be skipped.)
   const rec = path.join(tmpdir(), "stages");
   const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${mergeStatePath(root)}' | head -n 1`;
   const config = { ...defaultConfig(), check: { command: `echo "check:$(${stageOf})" >> '${rec}'` } };
@@ -503,7 +504,7 @@ test("a queued landing's record names each phase while it runs: the gate's check
       `echo "review:$(${stageOf})" >> '${rec}'`,
       `echo moved > '${root}/main-moved.txt'`,
       `git -C '${root}' add main-moved.txt`,
-      `git -C '${root}' commit -q -m 'main moves under the landing'`,
+      `git -C '${root}' commit -q -m 'main moves under the merge'`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
     ].join("\n"),
     async () => {
@@ -511,13 +512,13 @@ test("a queued landing's record names each phase while it runs: the gate's check
 
       const result = await mergeHead(root, author, config, "improve");
 
-      assert.equal(result, "changed", `the landing lands: ${author.state.lastError ?? ""}`);
+      assert.equal(result, "changed", `the merge succeeds: ${author.state.lastError ?? ""}`);
       assert.deepEqual(
         fs.readFileSync(rec, "utf8").trim().split("\n"),
         ["check:build-check", "review:reviewing", "check:build-check"],
         "each phase ran under its own stage",
       );
-      assert.equal(readLandingMarker(root), null, "the marker is removed after the outcome");
+      assert.equal(readMergeMarker(root), null, "the marker is removed after the outcome");
     },
   );
 });
@@ -526,24 +527,24 @@ test("a queued landing's record names each phase while it runs: the gate's check
 // that can crash, redeploy, or fail its writes advances it. Reads see it missing, torn, or in
 // an older generation's shape, and its writes can fail under them — these pin the no-op and
 // degrade paths the module promises ("never throws").
-test("setLandingChangeStatus and removeLandingChange no-op when the marker is absent or shapeless", () => {
+test("setMergeChangeStatus and removeMergeChange no-op when the marker is absent or shapeless", () => {
   const root = makeRepo();
   // No marker file: neither call may invent one.
-  setLandingChangeStatus(root, "improve", "approved");
-  removeLandingChange(root, "improve");
-  assert.equal(readLandingMarker(root), null, "no marker was invented");
+  setMergeChangeStatus(root, "improve", "approved");
+  removeMergeChange(root, "improve");
+  assert.equal(readMergeMarker(root), null, "no marker was invented");
   // A marker an older generation wrote carries no per-change records: there is no record to
   // advance, and the file is left exactly as it was.
   const legacy = { role: "improve", sha: "b", summary: "s", startedAt: 2, stage: "merging" } as const;
-  writeLandingMarker(root, legacy);
-  setLandingChangeStatus(root, "improve", "approved");
-  assert.deepEqual(readLandingMarker(root), legacy, "a shapeless marker is untouched");
+  writeMergeMarker(root, legacy);
+  setMergeChangeStatus(root, "improve", "approved");
+  assert.deepEqual(readMergeMarker(root), legacy, "a shapeless marker is untouched");
 });
 
 test("a kept legacy record without startedAt or stage never leaves the top level undefined", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
-  // Overwrite with a marker an older generation wrote: a landing record with no startedAt and
+  addMergeChange(root, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  // Overwrite with a marker an older generation wrote: a merge record with no startedAt and
   // no stage of its own (the documented old shape).
   fs.writeFileSync(
     mergeStatePath(root),
@@ -555,11 +556,11 @@ test("a kept legacy record without startedAt or stage never leaves the top level
       changes: [{ role: "beta", sha: "b".repeat(40), summary: "s", status: "merging" }],
     }),
   );
-  // The next change's vet starts while beta still holds a record: the legacy record is kept
-  // (its role is live) and becomes the headline — its missing fields must not write `undefined`
-  // over the top level the observers read.
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 2, summary: "s2", enqueuedAt: 1 }, new Set(["beta"]));
-  const marker = readLandingMarker(root)!;
+  // The next change's verification starts while beta still holds a record: the legacy record is
+  // kept (its role is live) and becomes the headline — its missing fields must not write
+  // `undefined` over the top level the observers read.
+  addMergeChange(root, { role: "alpha", sha: "a".repeat(40), run: 2, summary: "s2", enqueuedAt: 1 }, new Set(["beta"]));
+  const marker = readMergeMarker(root)!;
   assert.equal(marker.stage, "merging", "a stageless headline reads at the default stage");
   assert.equal(typeof marker.startedAt, "number", "a startless headline did not erase the marker's start");
   assert.deepEqual(marker.changes!.map((c) => c.role), ["beta", "alpha"], "the legacy record is kept");
@@ -567,7 +568,7 @@ test("a kept legacy record without startedAt or stage never leaves the top level
 
 test("a marker whose top level lost its stage falls back to merging on the next rewrite", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addMergeChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
   // A marker an older generation wrote: per-change records, but no top-level stage (the bare
   // elapsed label). The next status move rewrites it — the write must name a stage, not
   // propagate the missing one.
@@ -581,24 +582,24 @@ test("a marker whose top level lost its stage falls back to merging on the next 
       changes: [{ role: "alpha", sha: "a".repeat(40), summary: "s", status: "approved" }],
     }),
   );
-  setLandingChangeStatus(root, "alpha", "done");
-  const marker = readLandingMarker(root)!;
+  setMergeChangeStatus(root, "alpha", "done");
+  const marker = readMergeMarker(root)!;
   assert.equal(marker.stage, "merging", "the rewritten marker names a stage again");
   assert.equal(marker.changes![0]!.status, "done");
 });
 
-test("a failing marker write never throws — the landing proceeds and the old frame stays", () => {
+test("a failing marker write never throws — the merge proceeds and the old frame stays", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "improve", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
-  const before = readLandingMarker(root)!;
+  addMergeChange(root, { role: "improve", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  const before = readMergeMarker(root)!;
   // The state directory gone read-only: the atomic write cannot create its tmp file. The
-  // marker is display-only, so the call must swallow the failure rather than fail a landing.
+  // marker is display-only, so the call must swallow the failure rather than fail a merge.
   const dir = path.dirname(mergeStatePath(root));
   fs.chmodSync(dir, 0o555);
   try {
-    assert.doesNotThrow(() => setLandingStage(root, "improve", "reviewing"));
+    assert.doesNotThrow(() => setMergeStage(root, "improve", "reviewing"));
   } finally {
     fs.chmodSync(dir, 0o755);
   }
-  assert.deepEqual(readLandingMarker(root), before, "the observers keep the previous frame");
+  assert.deepEqual(readMergeMarker(root), before, "the observers keep the previous frame");
 });

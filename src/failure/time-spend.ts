@@ -276,7 +276,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       (resolvedOutcome?.result === "merge_conflict" || resolvedOutcome?.result === "merge_blocked")
     ) {
       // The landing failed to merge (a conflict, or a blocked fast-forward/rebase): this
-      // authoring span burned. The `merge_failed` event carries no message — writeLandingOutcome
+      // authoring span burned. The `merge_failed` event carries no message — writeMergeOutcome
       // logs only result/commit/durationMs/usage — so the cause is named by its own result and
       // takes the shared no-text placeholder, the same fallback a message-less aborted run_end
       // uses, rather than dropping a span the error-class cell already priced (BUGS.md

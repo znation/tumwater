@@ -27,7 +27,7 @@ import { protectedEditReason } from "./protected-edits.js";
 import { secretLeakReason } from "./secret-leaks.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
-import { setLandingStage } from "../merge/merge-slot.js";
+import { setMergeStage } from "../merge/merge-slot.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
 
 /** Attach the review gate's pi runs onto a partial GateResult — `run` plus the optional
@@ -354,7 +354,7 @@ export async function reviewAheadOfMain(
   // The landing cell switches to the reviewer run's live detail (no-op outside a queued
   // landing). runPi writes the run's `tumwater_run` label line before spawning pi, and that
   // line resets the gate progress accumulator, so the cell never shows a previous run's counts.
-  setLandingStage(root, role, "reviewing");
+  setMergeStage(root, role, "reviewing");
   // The author's claimed WHY/RISK/VERIFIED ride along when present — checking those claims
   // against the actual diff is exactly the adversarial angle (recovery landings reconstruct
   // them from the pinned commit's message).

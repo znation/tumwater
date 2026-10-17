@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { asTestCounts, type TestCounts } from "../build/build-check-counts.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { isLandingChange, readLandingMarker, type LandingInFlight } from "../merge/merge-slot.js";
+import { isMergeChange, readMergeMarker, type MergeInFlight } from "../merge/merge-slot.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
 import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
@@ -203,20 +203,20 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
  * marker displays only while its sha is still queued; a marker with per-change records keeps
  * just its records whose sha is still queued — a change whose entry was dropped is finished,
  * whatever its record last said — and displays only while one of those is not `done`. */
-export function liveLandingMarker(marker: LandingInFlight, queued: ReadonlySet<string>): LandingInFlight | undefined {
+export function liveLandingMarker(marker: MergeInFlight, queued: ReadonlySet<string>): MergeInFlight | undefined {
   if (!Array.isArray(marker.changes)) return queued.has(marker.sha) ? marker : undefined;
   // Drop foreign entries before reading their sha/status: a `null`/scalar record in a
   // hand-edited marker would otherwise throw out of the every-second status poll.
-  const changes = marker.changes.filter(isLandingChange).filter((c) => queued.has(c.sha));
+  const changes = marker.changes.filter(isMergeChange).filter((c) => queued.has(c.sha));
   return changes.some((c) => c.status !== "done") ? { ...marker, changes } : undefined;
 }
 
 /** The marker observers display for a queue read: undefined unless the orchestrator is running
  * (`running`) and the marker has a live record for a queued entry (liveLandingMarker). The one
  * home of this cross-check for the status snapshot, `tumwater queue`, and the TUI Pending pane. */
-export function queueInFlight(root: string, entries: readonly MergeEntry[], running: boolean): LandingInFlight | undefined {
+export function queueInFlight(root: string, entries: readonly MergeEntry[], running: boolean): MergeInFlight | undefined {
   if (!running) return undefined;
-  const marker = readLandingMarker(root);
+  const marker = readMergeMarker(root);
   return marker ? liveLandingMarker(marker, new Set(entries.map((e) => e.sha))) : undefined;
 }
 

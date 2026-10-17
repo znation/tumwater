@@ -10,21 +10,21 @@ import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { plural } from "../text/phrases.js";
 import type { MergeQueueView } from "./merge-queue.js";
-import { landingChanges, LANDING_STAGE_LABELS, type LandingInFlight } from "./merge-slot.js";
+import { mergeChanges, MERGE_STAGE_LABELS, type MergeInFlight } from "./merge-slot.js";
 
 /** The bracketed-label text for one queue entry, in the wording the loop rows use (status-model's
  * loopPhase): `merge <elapsed> · <stage>` while a verify or the merge holds the change,
  * `approved, awaiting merge` once approved, and "" when the marker is absent, names no record for
- * `sha`, or the record is `done`. Reads the marker through landingChanges, so an older-generation
+ * `sha`, or the record is `done`. Reads the marker through mergeChanges, so an older-generation
  * single-change marker counts as one `merge` record. */
-export function queueEntryMergeLabel(sha: string, inFlight: LandingInFlight | undefined, now: number): string {
+export function queueEntryMergeLabel(sha: string, inFlight: MergeInFlight | undefined, now: number): string {
   if (!inFlight) return "";
-  const change = landingChanges(inFlight).find((c) => c.sha === sha);
+  const change = mergeChanges(inFlight).find((c) => c.sha === sha);
   if (!change || change.status === "done") return "";
   if (change.status === "approved") return "approved, waiting to merge";
   let label = "merging";
   if (change.startedAt) label += ` ${humanSeconds(secondsSince(change.startedAt, now))}`;
-  if (change.stage) label += ` · ${LANDING_STAGE_LABELS[change.stage]}`;
+  if (change.stage) label += ` · ${MERGE_STAGE_LABELS[change.stage]}`;
   if (change.stageSince !== undefined) label += ` ${humanSeconds(secondsSince(change.stageSince, now))}`;
   return label;
 }
@@ -36,7 +36,7 @@ export function queueEntryMergeLabel(sha: string, inFlight: LandingInFlight | un
  * line so a torn or foreign file the reader dropped is visible rather than silent. An entry the
  * optional in-flight marker has a live record for carries ` · [<label>]` after its age
  * (queueEntryMergeLabel). */
-export function renderMergeQueue(view: MergeQueueView, now: number, inFlight?: LandingInFlight): string {
+export function renderMergeQueue(view: MergeQueueView, now: number, inFlight?: MergeInFlight): string {
   const depth = view.entries.length + view.unreadable;
   const lines: string[] = [];
   if (depth === 0) {

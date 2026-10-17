@@ -164,7 +164,7 @@ test("a queued tick preserving the streak at the bar does not re-warn — the la
   // `queued` while the streak stands at the bar — the old `=== ERROR_STREAK_WARN` gate would
   // re-warn on every such tick's end. The warn belongs to the outcome that did the
   // incrementing; the rejection's own crossing warns from the landing side
-  // (writeLandingOutcome, pinned in the landing-slot tests).
+  // (writeMergeOutcome, pinned in the landing-slot tests).
   const root = await initializedRepo();
   const s = freshLoopState("organize");
   const error = (n: number): TickOutcome => ({ result: "error", summary: `fail ${n}`, error: `boom ${n}` });

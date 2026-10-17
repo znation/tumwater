@@ -21,37 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code merge, part 3/11: Rename the merge slot identifiers to merge (planned 2026-10-16 by user; requires part 2/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-slot.ts and test/merge-slot.test.ts)
-
-**Goal.** The merge slot module, which holds the in-flight marker, the changes, the usage and the outcome writers, takes merge names in identifiers, comments and test names. A mechanical rename of about 355 lines with no behavior change.
-
-**Approach.**
-- **Rename rule**, as in this series:
-  - in identifiers, `landing`/`land` → `merge`, `lander` → `merger`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone` (as in test/merge-slot.test.ts);
-  - comments and test names follow the Glossary ("unlanded" → "not yet merged");
-  - comment lines wrap at 100 columns.
-- **Renames in merge-slot.ts:**
-  - functions: `readLandingMarker` → `readMergeMarker`, `writeLandingMarker` → `writeMergeMarker`, `writeLandingOutcome` → `writeMergeOutcome`, `setLandingStage` → `setMergeStage`, `landingChanges` → `mergeChanges`, `landingUsage` → `mergeUsage`, `setLandingChangeStatus` → `setMergeChangeStatus`, `addLandingChange` → `addMergeChange`, `removeLandingChange` → `removeMergeChange`, `isLandingChange` → `isMergeChange`, `updateLandingChange` → `updateMergeChange`;
-  - types and constants: `LandingInFlight` → `MergeInFlight`, `LANDING_STAGE_LABELS` → `MERGE_STAGE_LABELS`, `LandingChange` → `MergeChange`, `LandingChangeStatus` → `MergeChangeStatus`, `LandingUsage` → `MergeUsage`, `LandingStage` → `MergeStage`.
-- **Near-collision.** `MergeInFlight` (this marker) and part 4's `InFlightMerge` (a pipeline task) differ only in word order, as their old names did. Keep both, and start each doc comment by saying which one it is.
-- **Earlier callers move now.** `setLandingStage`, `landingChanges`, `LandingInFlight` and `LANDING_STAGE_LABELS` are called in part 2/11's files.
-- **Aliases.** Keep two-line `/** @deprecated Use …. */` aliases for every export that later parts still call: all of the names above except `LandingStage` and `updateLandingChange`. Move this part's files off part 2/11's aliases. Delete any alias that test/exports.test.ts reports unused.
-- **Leave for their parts:** `foldLandingUsage` (part 7/11) and `applyLandingOutcome` (part 6/11).
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - the state series' readers of the old `landing.json`;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-- Skip any listed name that an earlier series already renamed.
-
-**Files touched.** `src/merge/merge-slot.ts`; `test/merge-slot.test.ts`; the part 2/11 files that call the four early names (`src/merge/merge-to-main.ts` and its neighbours).
-
-**Acceptance criteria.**
-- Every new name above is exported. Each old name is either gone or a `@deprecated` alias of it.
-- In merge-slot.ts and its test, no identifier, comment or test name uses a retired merge word, except the aliases, `foldLandingUsage`, `applyLandingOutcome` and quoted backlog titles.
-- Part 2/11's files no longer use the four early names.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 4/11: Rename the merge pipeline and drain and verify identifiers (planned 2026-10-16 by user; requires part 3/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-pipeline.ts merge-drain.ts merge-verify.ts and their tests)
 
 **Goal.** The pipeline, the merge-queue drain and the verify stage take merge, verify and approved names in identifiers, comments and test names. Two names that would collide take explicit alternatives. A mechanical rename of about 480 lines with no behavior change.
@@ -1423,6 +1392,40 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - `npm run test` passes, including `test/vocabulary.test.ts`. The new source lines say "merge", not "landing", because `merge-check-failures.ts` is `// vocabulary: plain`.
 
 ## Done
+
+### Plain terms code merge, part 3/11: Rename the merge slot identifiers to merge (done 2026-10-16; planned 2026-10-16 by user; requires part 2/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-slot.ts and test/merge-slot.test.ts)
+
+**Goal.** The merge slot module, which holds the in-flight marker, the changes, the usage and the outcome writers, takes merge names in identifiers, comments and test names. A mechanical rename of about 355 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `lander` → `merger`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone` (as in test/merge-slot.test.ts);
+  - comments and test names follow the Glossary ("unlanded" → "not yet merged");
+  - comment lines wrap at 100 columns.
+- **Renames in merge-slot.ts:**
+  - functions: `readLandingMarker` → `readMergeMarker`, `writeLandingMarker` → `writeMergeMarker`, `writeLandingOutcome` → `writeMergeOutcome`, `setLandingStage` → `setMergeStage`, `landingChanges` → `mergeChanges`, `landingUsage` → `mergeUsage`, `setLandingChangeStatus` → `setMergeChangeStatus`, `addLandingChange` → `addMergeChange`, `removeLandingChange` → `removeMergeChange`, `isLandingChange` → `isMergeChange`, `updateLandingChange` → `updateMergeChange`;
+  - types and constants: `LandingInFlight` → `MergeInFlight`, `LANDING_STAGE_LABELS` → `MERGE_STAGE_LABELS`, `LandingChange` → `MergeChange`, `LandingChangeStatus` → `MergeChangeStatus`, `LandingUsage` → `MergeUsage`, `LandingStage` → `MergeStage`.
+- **Near-collision.** `MergeInFlight` (this marker) and part 4's `InFlightMerge` (a pipeline task) differ only in word order, as their old names did. Keep both, and start each doc comment by saying which one it is.
+- **Earlier callers move now.** `setLandingStage`, `landingChanges`, `LandingInFlight` and `LANDING_STAGE_LABELS` are called in part 2/11's files.
+- **Aliases.** Keep two-line `/** @deprecated Use …. */` aliases for every export that later parts still call: all of the names above except `LandingStage` and `updateLandingChange`. Move this part's files off part 2/11's aliases. Delete any alias that test/exports.test.ts reports unused.
+- **Leave for their parts:** `foldLandingUsage` (part 7/11) and `applyLandingOutcome` (part 6/11).
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - the state series' readers of the old `landing.json`;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any listed name that an earlier series already renamed.
+
+**Files touched.** `src/merge/merge-slot.ts`; `test/merge-slot.test.ts`; the part 2/11 files that call the four early names (`src/merge/merge-to-main.ts` and its neighbours).
+
+**Acceptance criteria.**
+- Every new name above is exported. Each old name is either gone or a `@deprecated` alias of it.
+- In merge-slot.ts and its test, no identifier, comment or test name uses a retired merge word, except the aliases, `foldLandingUsage`, `applyLandingOutcome` and quoted backlog titles.
+- Part 2/11's files no longer use the four early names.
+- `npm run test` passes.
+**Landed as.** Every caller of every renamed name moved in this change, so no `@deprecated` aliases were added; only the comments and test names in the two merge-slot files were reworded.
+
+
 
 ### A staged PLANS.md edit that breaks a requires clause gets a staging finding (planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, test/stage-check.test.ts and docs/invariants.md) — done 2026-10-16
 

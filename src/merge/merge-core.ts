@@ -15,7 +15,7 @@ import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP } from "../loop/revision.js
 import { priorObjectionNumber } from "../review/review-verdict.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { shortSha } from "../text/format.js";
-import { setLandingStage } from "./merge-slot.js";
+import { setMergeStage } from "./merge-slot.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -202,7 +202,7 @@ export async function reviewPinnedChange(
   // `vetted` next, and the merge slot re-stages it `merging` when it takes it — and a finished
   // reviewer's last turns left in the cell would accrue a false `no pi output` flag for as long
   // as the change waits.
-  setLandingStage(root, role, "merging");
+  setMergeStage(root, role, "merging");
   // A rejection keeps the rejected commit alive while a revision is due (plans/revise-rejected.md):
   // point the rejected ref at the head the gate judged and record the round, so the author's next
   // tick re-applies it. A rejection is final — clear the state, delete the ref, and log
@@ -415,7 +415,7 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
         if (gate.run) ctx.foldUsage(gate.run);
         if (gate.followUpRun) ctx.foldUsage(gate.followUpRun);
         if (gate.nudgeRun) ctx.foldUsage(gate.nudgeRun);
-        setLandingStage(ctx.root, req.role, "merging");
+        setMergeStage(ctx.root, req.role, "merging");
         saveLoopState(ctx.root, ctx.state);
         if (gate.aborted) return { verdict: "retry" };
         if (gate.decision === "approved" || gate.decision === "exempt") {

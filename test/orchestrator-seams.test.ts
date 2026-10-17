@@ -23,7 +23,7 @@ function stepHolds(
   const prevMap = prev instanceof Map ? prev : new Map([[(prev as TeamHold).provider ?? undefined, prev]]);
   return pollTeamHold(root, prevMap, runners, now).get(undefined)!;
 }
-import { readLandingMarker, writeLandingMarker } from "../src/merge/merge-slot.js";
+import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
@@ -425,7 +425,7 @@ test("awaitLandingForHandoff aborts a landing past its window and waits for it t
 
 test("awaitLandingForHandoff hands off without a landing still running after the abort, clearing its marker", async () => {
   const root = tmpdir();
-  writeLandingMarker(root, { role: "clean", sha: "a".repeat(40), summary: "wedged", startedAt: Date.now(), stage: "build-check" });
+  writeMergeMarker(root, { role: "clean", sha: "a".repeat(40), summary: "wedged", startedAt: Date.now(), stage: "build-check" });
   let aborts = 0;
   const startedAt = Date.now();
   // Never settles: a step wedged past its own bound, which no abort reaches.
@@ -434,7 +434,7 @@ test("awaitLandingForHandoff hands off without a landing still running after the
   assert.equal(outcome, "abandoned");
   assert.equal(aborts, 1);
   assert.ok(elapsed >= 200 && elapsed < 5_000, `the hand-off is bounded by two windows (${elapsed}ms)`);
-  assert.equal(readLandingMarker(root), null, "the exiting process's marker is cleared for the next generation");
+  assert.equal(readMergeMarker(root), null, "the exiting process's marker is cleared for the next generation");
   const w = warningMessages(root);
   assert.equal(w.length, 3);
   assert.match(w[2]!, /the aborted merge for clean was still running 0\.1s later — restarting without it/);

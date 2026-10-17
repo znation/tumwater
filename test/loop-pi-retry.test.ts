@@ -9,7 +9,7 @@ import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { makeHost, recordingFakePi, runArgs } from "./fixtures/loop-pi-fixtures.js";
 import { LoopRunner } from "../src/loop/loop.js";
-import { landingUsage } from "../src/merge/merge-slot.js";
+import { mergeUsage } from "../src/merge/merge-slot.js";
 
 // The shared transient-failure retry (src/loop/loop-pi.ts's runWithTransientRetry): the one
 // bounded retry every pi run takes — the 429 branch with its Retry-After wait and cap, the
@@ -111,11 +111,11 @@ test("a 429 on a non-default reviewer seam folds that seam's hold key through fo
 
 test("a 429 on a claude reviewer's final run folds the review seam through foldLandingUsage", () => {
   // The reviewer's FINAL (retried) run is folded by merge-core.ts's reviewPinnedChange
-  // through the landingUsage fold (src/merge/merge-slot.ts); loop-pi.ts folds only the
+  // through the mergeUsage fold (src/merge/merge-slot.ts); loop-pi.ts folds only the
   // RETRIED first attempt. That final fold must stamp the REVIEW seam's hold key too — a
   // storm on a claude reviewer holds `claude`, never the pi author's default provider
   // (PLANS.md "Mixed claude + pi fleets, part 2/4", gap 3). The author's own provider is
-  // omlx; the review seam is a claude model, so a correct landingUsage folds `claude`.
+  // omlx; the review seam is a claude model, so a correct mergeUsage folds `claude`.
   const root = tmpdir();
   const cfg = defaultConfig();
   cfg.agent = "pi";
@@ -123,7 +123,7 @@ test("a 429 on a claude reviewer's final run folds the review seam through foldL
   cfg.model = "qwen";
   cfg.review = { ...cfg.review, provider: "claude", model: "claude-sonnet-5-5" };
   const author = new LoopRunner(root, "feature", cfg, "main");
-  const { foldUsage } = landingUsage(author, root);
+  const { foldUsage } = mergeUsage(author, root);
   foldUsage(piRunResult({ ok: false, transientRateLimit: true }));
   assert.equal(
     author.lastRateLimit?.provider,

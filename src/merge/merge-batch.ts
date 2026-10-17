@@ -20,7 +20,7 @@ import {
 } from "./merge-core.js";
 import { attributeRedCheck } from "./merge-check-failures.js";
 import { errorMessage } from "../text/text.js";
-import type { LandingChangeStatus } from "./merge-slot.js";
+import type { MergeChangeStatus } from "./merge-slot.js";
 import { landStack, type StackEntry, type StackOutcome } from "./merge-stack.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
@@ -35,9 +35,9 @@ export interface BatchContext extends GateRunsPi, LandingScopeContext {
    * starts working on it (`landing` — the stack, or the change's own one-at-a-time landing),
    * hands it back to wait its turn in an abandoned stack's fallback (`vetted`), or is finished
    * with it (`done`). The drain mirrors it into the 4/5 marker's per-change records
-   * (setLandingChangeStatus) so each row reads its own change's state; absent for callers with
+   * (setMergeChangeStatus) so each row reads its own change's state; absent for callers with
    * no marker to keep. */
-  onChangeStatus?(role: string, status: LandingChangeStatus): void;
+  onChangeStatus?(role: string, status: MergeChangeStatus): void;
   /** Called once per change the moment its result is final, before the merge moves on to a
    * slower batch-mate. The drain settles each result here (write-back, drop the entry) so a
    * change already on main stops reading its stale pre-landing streak while a later change's
@@ -178,7 +178,7 @@ export async function landVetted(
   wiringFor: (role: string) => BatchRoleWiring,
 ): Promise<Array<TickResult | undefined>> {
   const results: Array<TickResult | undefined> = vetted.map(() => undefined);
-  const report = (s: number, status: LandingChangeStatus): void => ctx.onChangeStatus?.(vetted[s]!.role, status);
+  const report = (s: number, status: MergeChangeStatus): void => ctx.onChangeStatus?.(vetted[s]!.role, status);
   const landerCtx = (w: BatchRoleWiring): LanderContext => ({
     root: ctx.root,
     mainBranch: ctx.mainBranch,

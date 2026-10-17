@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { readLandingMarker, writeLandingMarker } from "../src/merge/merge-slot.js";
+import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -258,7 +258,7 @@ test("a stale marker beside an already-merged queue head is cleared so an idle t
   const restore = fakePi(["printf '%s\\n' '" + assistantLine("TUMWATER_NOTHING_TO_DO") + "'"].join("\n"));
   const sha = headSha(repo);
   enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "already merged", enqueuedAt: Date.now() });
-  writeLandingMarker(repo, { role: "clean", sha, summary: "already merged", startedAt: Date.now(), stage: "merging" });
+  writeMergeMarker(repo, { role: "clean", sha, summary: "already merged", startedAt: Date.now(), stage: "merging" });
   assert.ok(fs.existsSync(mergeStatePath(repo)), "fixture sanity: the stale marker exists");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
@@ -747,7 +747,7 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
     assert.deepEqual(failed.sort(), ["clean:aborted", "dedupe:aborted"]);
     assert.ok(mergeRefExists(repo, "clean") && mergeRefExists(repo, "dedupe"), "both pins survive for the next generation");
     assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed");
-    assert.equal(readLandingMarker(repo), null, "no stale in-flight marker is left for the next generation");
+    assert.equal(readMergeMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {
     await stop();
     restore();
@@ -821,7 +821,7 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     // The landing's abort is the hand-off's, recorded like any shutdown abort: pin kept for the
     // next generation, nothing landed, no stale marker.
     assert.ok(mergeRefExists(repo, "dedupe"), "dedupe's pin survives for the next generation");
-    assert.equal(readLandingMarker(repo), null, "no stale in-flight marker is left for the next generation");
+    assert.equal(readMergeMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {
     await stop();
     restore();

@@ -1,6 +1,6 @@
 // vocabulary: plain
 import { landVetted, type BatchRoleWiring } from "./merge-batch.js";
-import { removeLandingChange, resolveWaitStage, setLandingChangeStatus } from "./merge-slot.js";
+import { removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
 import { dropMerge, queuedMergeFiles } from "./merge-queue.js";
@@ -60,7 +60,7 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
     } catch (err) {
       warnEventBestEffort(root, TUMWATER_SOURCE, `the stopped merge for ${role} could not be settled: ${errorMessage(err)}`);
       dropMerge(v.file);
-      removeLandingChange(root, role);
+      removeMergeChange(root, role);
     }
     await discardPinnedRefs(root, [role]);
   }
@@ -77,7 +77,7 @@ export function drainMerge(ctx: LandingPipelineContext, p: LandingPipeline): voi
   for (const [role, v] of [...p.vetted]) {
     if (files.has(v.file)) continue;
     p.vetted.delete(role);
-    removeLandingChange(ctx.root, role);
+    removeMergeChange(ctx.root, role);
   }
   const picks = queued.flatMap((q) => {
     const v = p.vetted.get(q.entry.role);
@@ -165,7 +165,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
           mainBranch,
           config: roleConfig,
           signal: () => merge.controller.signal,
-          onChangeStatus: (role, status) => setLandingChangeStatus(root, role, status),
+          onChangeStatus: (role, status) => setMergeChangeStatus(root, role, status),
           onResult: settleOne,
           runGatePi: (opts) => picks[0]!.author.runGatePi(opts),
         },
@@ -209,13 +209,13 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
         const result = results[s] ?? (merge.userAborted ? "aborted" : undefined);
         if (result === undefined && !threw) {
           p.vetted.set(role, v);
-          setLandingChangeStatus(root, role, "approved");
+          setMergeChangeStatus(root, role, "approved");
           continue;
         }
         if (result !== undefined) {
           await settleOne(s, result);
         } else {
-          removeLandingChange(root, role);
+          removeMergeChange(root, role);
         }
       }
     } finally {
