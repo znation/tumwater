@@ -1650,6 +1650,24 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The budget-paused page names how the pause lifts, so the notify message is something the operator can act on (planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts)
+
+**Goal.** `budget_paused` is in `NOTIFY_EVENT_TYPES` (`src/events/notify.ts`). It is the page for "the whole team stopped". `formatEvent` (`src/events/event-format.ts`, `case "budget_paused"`) renders `budget paused — $X of $Y daily cost reached`, plus a parenthetical when a fallback was refused or demoted. Unlike its per-role sibling `case "role_cap_paused"`, which ends with "it starts no new runs until the cap is raised or removed in tumwater.json or the local day rolls over", the fleet page does not say what keeps the team stopped or what lifts it. `pollBudgetGate` (`src/gates/budget-gates.ts`) re-evaluates `maxDailyCostUsd` from the live config each poll, so a cap raise resumes the gate (`test/budget-gates.test.ts` "raising the cap resumes the gate: …"). The day's spend resets at local midnight, so the next local day resumes it too (`test/budget.test.ts`, the comment on its `budget_resumed` cases). Name those lift paths on the page.
+
+**Approach.**
+- `src/events/event-format.ts`, `case "budget_paused"`: after today's text, including the `refused` parenthetical when there is one, append one shared tail in every branch: `; roles start no new runs until maxDailyCostUsd is raised or removed in tumwater.json or the local day rolls over`. Keep every existing word and the parenthetical as they are, so all the existing regexes still match, because they are not anchored at the end. Extend the case comment: like `role_cap_paused`, the line names the lift paths. The demoted branch's "one trial run retries it after a cool-down" stays in place as the third, automatic path.
+- Leave `describeStateChange` (`src/failure/failure-state-change.ts`) as it is. Its digest line is capped at `STATE_CHANGE_MAX` and records the decision, not the next action.
+- `docs/config.md`, notify table `budget_paused` row: append "; the message names the lift paths (raise or remove `maxDailyCostUsd`, or wait for the local day to roll over)."
+- Change no event type and no payload key. `budget-gates.ts` stays untouched.
+
+**Files touched.** `src/events/event-format.ts`, `docs/config.md`, `test/event-format-fleet.test.ts`.
+
+**Acceptance criteria.**
+- `test/event-format-fleet.test.ts` "formatEvent renders the budget transition events plainly with spend and cap": the existing `paused`, `bare`, `refused` and `demoted` assertions pass unchanged. Add an assertion that each of the four lines matches `/; roles start no new runs until maxDailyCostUsd is raised or removed in tumwater\.json or the local day rolls over$/`. `refused` and `demoted` must still contain their parentheticals before that tail.
+- `test/failure-render.test.ts` passes unchanged, because the digest lines are not touched.
+- `test/notify.test.ts` passes unchanged, because the page message is `formatEvent(event)`.
+- `npm run test` passes.
+
 ## Done
 
 ### The question-posted page names the question's number and the command that answers it, so the notify message is something the operator can act on (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/landing/landing-questions.ts, src/events/event-format.ts, docs/config.md and their tests)
