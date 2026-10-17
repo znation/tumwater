@@ -312,6 +312,38 @@ test("the Failed runs and Merge failures charts stack per role and seriesHasAny 
   assert.equal(seriesHasAny(data, "mergeFailedByRole"), true);
 });
 
+test("the Merged by role chart stacks per role and seriesHasAny gates it", () => {
+  interface Builders {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+    chartMergedByRole(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportRoleOrder, chartTicksByRole, chartMergedByRole, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole", "chartMergedByRole", "seriesHasAny"],
+  );
+  const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { feature: 3 }, { mergedByRole: { feature: 2, qa: 1 } }),
+    mkDay("2026-09-02", { feature: 1 }),
+  ]);
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["qa", 0]]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles(chartMergedByRole(data)), ["2026-09-01 · feature: 2 merges", "2026-09-01 · qa: 1 merge"]);
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartMergedByRole(data)), legendOf(chartTicksByRole(data)));
+  const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 })]);
+  const missing = mk([mkDay("2026-09-01", { feature: 1 }, { runsByRole: { feature: 1 } }), mkDay("2026-09-02", { feature: 1 })]);
+  assert.equal(seriesHasAny(plain, "mergedByRole"), false);
+  assert.equal(titles(chartMergedByRole(missing)).length, 0, "a day whose mergedByRole map is missing renders no merged segments");
+  assert.equal(seriesHasAny(data, "mergedByRole"), true);
+});
+
 test("the Revisions chart stacks per role and seriesHasAny gates it", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;

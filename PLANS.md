@@ -5,63 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The GUI Usage view charts each day's `Merged by role` as a stacked per-role element, the success sibling of `Merge failures by role` (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment parts 11b/11 and 11e/11, which rewrite comments in src/ui but not this file; it shares the `report-chart` region and Usage render chain with those comment-only parts, and adds only its own builder, seed line and block, so it lands in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts)
-
-**Goal.** `tumwater report` prints both `Merged by role` and `Merge failures by role`
-(`renderReportMarkdown`, `src/report/report-render.ts`), and each series day already carries
-`ReportDay.mergedByRole` (the merged outcomes keyed by base authoring role, folded in
-`src/report/report-data.ts`'s merge branch and set on both the team and role-scoped series).
-The dashboard's Usage view draws only the failure half, `Merge failures by role`
-(`chartMergeFailuresByRole`) — an operator who sees failures on the dashboard cannot see
-alongside them which roles' changes did reach main, which is the success the failure count is
-read against. Add one stacked `Merged by role` chart beside `Merge failures by role`, the
-dashboard twin of the CLI line.
-
-**Approach.** All changes are in the `report-chart` region of
-`src/ui/gui/gui-client-report.ts` and the `usage` view's render chain in the same file; no
-server or `report-data.ts` change — `mergedByRole` already rides the `/api/report` JSON the
-view renders.
-
-1. In `reportRoleOrder`, beside its `mergeFailedByRole` seeding line, add
-   `for (const role of Object.keys(d.mergedByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;`.
-   Added even though the keys are usually present via `runsByRole`, because `runsByRole`
-   is keyed by loop id (`feature-2`) while `mergedByRole` is base-role keyed (`feature`), so a
-   role that merged only through an instance would otherwise get no colour or legend entry.
-2. In the `report-chart` region, right after `chartMergeFailuresByRole`, add
-   `chartMergedByRole(data)` built through `roleStackChart`:
-   `return roleStackChart(data, "mergedByRole", (n) => plural(n, "merge"), countAxis, true);`
-   with a comment naming it the day's merged outcomes per loop, the success sibling of
-   `chartMergeFailuresByRole`, drawn exactly like it (same `roleStackChart` shape, palette,
-   legend order and integer count axis), so the two read as one pair.
-3. In the `usage` view's render chain, insert
-   `(seriesHasAny(d, "mergedByRole") ? block("Merged by role", chartMergedByRole(d)) : "") +`
-   immediately before the existing `Merge failures by role` block, so success and failure sit
-   together in the grid. `mergedByRole` is absent when the day has no merge (zero means absent,
-   the report's convention), so the `seriesHasAny` gate matches its failure sibling.
-
-**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`.
-
-**Acceptance criteria.**
-- `test/gui-client-report.test.ts`: a new test, "the Merged by role chart stacks per role and
-  seriesHasAny gates it", modelled on "the Failed runs and Merge failures charts stack per role
-  and seriesHasAny gates them". Through `clientScope` with the `["format", "report-chart"]`
-  regions and the builder list `["reportRoleOrder", "chartTicksByRole", "chartMergedByRole",
-  "seriesHasAny"]`, build day 1 with `mergedByRole { feature: 2, qa: 1 }` under
-  `runsByRole { feature: 3 }` and day 2 with neither: the rect titles of `chartMergedByRole(data)`
-  are exactly `["2026-09-01 · feature: 2 merges", "2026-09-01 · qa: 1 merge"]`;
-  `legendOf(chartMergedByRole(data))` equals `legendOf(chartTicksByRole(data))`, proving the
-  shared order and colours; and `reportRoleOrder(data)` includes `["qa", 0]` from the
-  `mergedByRole` seed, proving step 1's seed line.
-- `seriesHasAny` is false for a series whose days carry no `mergedByRole` and true for the data
-  above.
-- A day whose `mergedByRole` map is missing renders no merged segments when passed to the
-  builder (the `roleStackChart` `d[field] || {}` guard).
-- The Usage render chain carries the new block: reading the edited `usage` render closure shows
-  the `block("Merged by role", chartMergedByRole(d))` term immediately before the
-  `Merge failures by role` term (the chain has no view-render test, as the sibling per-role
-  chart blocks also have none).
-- `npm run test` passes.
-
 ### Plain terms code merge, part 11b/11: Rewrite the merge family in the operator surfaces' comments (planned 2026-10-17 by the plan role; re-scoped 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11e/11 and 11f/11; design in plans/terminology.md "Code names"; touches comments in src/ui/ src/gui/ src/cli/ src/orchestrator/ and src/roles/)
 
 **Goal.** Same as part 11a for the operator surfaces: the merge family's identifiers and file names are already renamed and guarded (`RETIRED` in test/retired-names.test.ts carries the family; parts 10/11 and 11/11's identifier halves landed). What remains is comment prose. This part rewrites the merge family in the comments of the operator-surface modules so a reader sees `merge`, `merged` and `approved` where the code merges.
@@ -1160,6 +1103,63 @@ view renders.
 - `npm run test` passes.
 
 ## Done
+### The GUI Usage view charts each day's `Merged by role` as a stacked per-role element, the success sibling of `Merge failures by role` (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment parts 11b/11 and 11e/11, which rewrite comments in src/ui but not this file; it shares the `report-chart` region and Usage render chain with those comment-only parts, and adds only its own builder, seed line and block, so it lands in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
+
+**Goal.** `tumwater report` prints both `Merged by role` and `Merge failures by role`
+(`renderReportMarkdown`, `src/report/report-render.ts`), and each series day already carries
+`ReportDay.mergedByRole` (the merged outcomes keyed by base authoring role, folded in
+`src/report/report-data.ts`'s merge branch and set on both the team and role-scoped series).
+The dashboard's Usage view draws only the failure half, `Merge failures by role`
+(`chartMergeFailuresByRole`) — an operator who sees failures on the dashboard cannot see
+alongside them which roles' changes did reach main, which is the success the failure count is
+read against. Add one stacked `Merged by role` chart beside `Merge failures by role`, the
+dashboard twin of the CLI line.
+
+**Approach.** All changes are in the `report-chart` region of
+`src/ui/gui/gui-client-report.ts` and the `usage` view's render chain in the same file; no
+server or `report-data.ts` change — `mergedByRole` already rides the `/api/report` JSON the
+view renders.
+
+1. In `reportRoleOrder`, beside its `mergeFailedByRole` seeding line, add
+   `for (const role of Object.keys(d.mergedByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;`.
+   Added even though the keys are usually present via `runsByRole`, because `runsByRole`
+   is keyed by loop id (`feature-2`) while `mergedByRole` is base-role keyed (`feature`), so a
+   role that merged only through an instance would otherwise get no colour or legend entry.
+2. In the `report-chart` region, right after `chartMergeFailuresByRole`, add
+   `chartMergedByRole(data)` built through `roleStackChart`:
+   `return roleStackChart(data, "mergedByRole", (n) => plural(n, "merge"), countAxis, true);`
+   with a comment naming it the day's merged outcomes per loop, the success sibling of
+   `chartMergeFailuresByRole`, drawn exactly like it (same `roleStackChart` shape, palette,
+   legend order and integer count axis), so the two read as one pair.
+3. In the `usage` view's render chain, insert
+   `(seriesHasAny(d, "mergedByRole") ? block("Merged by role", chartMergedByRole(d)) : "") +`
+   immediately before the existing `Merge failures by role` block, so success and failure sit
+   together in the grid. `mergedByRole` is absent when the day has no merge (zero means absent,
+   the report's convention), so the `seriesHasAny` gate matches its failure sibling.
+
+**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-client-report.test.ts`: a new test, "the Merged by role chart stacks per role and
+  seriesHasAny gates it", modelled on "the Failed runs and Merge failures charts stack per role
+  and seriesHasAny gates them". Through `clientScope` with the `["format", "report-chart"]`
+  regions and the builder list `["reportRoleOrder", "chartTicksByRole", "chartMergedByRole",
+  "seriesHasAny"]`, build day 1 with `mergedByRole { feature: 2, qa: 1 }` under
+  `runsByRole { feature: 3 }` and day 2 with neither: the rect titles of `chartMergedByRole(data)`
+  are exactly `["2026-09-01 · feature: 2 merges", "2026-09-01 · qa: 1 merge"]`;
+  `legendOf(chartMergedByRole(data))` equals `legendOf(chartTicksByRole(data))`, proving the
+  shared order and colours; and `reportRoleOrder(data)` includes `["qa", 0]` from the
+  `mergedByRole` seed, proving step 1's seed line.
+- `seriesHasAny` is false for a series whose days carry no `mergedByRole` and true for the data
+  above.
+- A day whose `mergedByRole` map is missing renders no merged segments when passed to the
+  builder (the `roleStackChart` `d[field] || {}` guard).
+- The Usage render chain carries the new block: reading the edited `usage` render closure shows
+  the `block("Merged by role", chartMergedByRole(d))` term immediately before the
+  `Merge failures by role` term (the chain has no view-render test, as the sibling per-role
+  chart blocks also have none).
+- `npm run test` passes.
+
 
 ### Plain terms code merge, part 11e/11: Rewrite the merge family in the config and backend modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11b/11 and 11f/11; design in plans/terminology.md "Code names"; touches comments in src/config/ src/pi/ src/redeploy/ src/pi-extension/ and src/agent/) — done 2026-10-17 by the feature role
 

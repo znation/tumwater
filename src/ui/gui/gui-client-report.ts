@@ -41,6 +41,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       for (const role of Object.keys(d.imageReroutesByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.failedRunsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.mergeFailedByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
+      for (const role of Object.keys(d.mergedByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
     }
     return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
@@ -250,6 +251,12 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // Merges that were blocked or conflicted, per loop, drawn the same way.
   function chartMergeFailuresByRole(data) {
     return roleStackChart(data, "mergeFailedByRole", (n) => plural(n, "merge failure"), countAxis, true);
+  }
+  // The day's merged outcomes per loop, the success sibling of chartMergeFailuresByRole,
+  // drawn exactly like it (same roleStackChart shape, palette, legend order and integer count
+  // axis) so the two read as one pair.
+  function chartMergedByRole(data) {
+    return roleStackChart(data, "mergedByRole", (n) => plural(n, "merge"), countAxis, true);
   }
   // The day's backlog items: features done stacked at the bottom and bugs fixed above them,
   // from featuresDone/bugsFixed (day-granular backlog-file done dates, so a role scope zeroes
@@ -540,6 +547,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (seriesHasAny(d, "fallbacksByRole") ? block("Fallbacks by role", chartFallbacksByRole(d)) : "") +
         (seriesHasAny(d, "imageReroutesByRole") ? block("Image reroutes by role", chartImageReroutesByRole(d)) : "") +
         (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +
+        (seriesHasAny(d, "mergedByRole") ? block("Merged by role", chartMergedByRole(d)) : "") +
         (seriesHasAny(d, "mergeFailedByRole") ? block("Merge failures by role", chartMergeFailuresByRole(d)) : "") +
         (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +
         (seriesHasCheckFailures(d) ? block("Red merge checks", chartCheckFailures(d), "per day · failed full-suite checks") : "") +
