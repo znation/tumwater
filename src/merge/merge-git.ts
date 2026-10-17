@@ -6,6 +6,7 @@ import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { unquotePorcelainPath } from "../git/git-diff.js";
 import { CONFIG_BASENAME, configPath, primaryWorktreeLockPath } from "../paths.js";
 import { withStateLockAsync } from "../concurrency/lock.js";
+import { errorMessage } from "../text/text.js";
 
 /** Git plumbing for the merge flow: rebasing a worktree branch onto main, inspecting and
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no merge policy
@@ -243,8 +244,7 @@ async function ffFailureReason(
     const now = await gitTry(root, "log", "-1", "--format=%h %s", mainBranch);
     return `main moved outside the merge lock (now ${now?.trim() ?? mainBranch})`;
   }
-  const text = err instanceof Error ? err.message : String(err);
-  return `fast-forward failed: ${text.trim().split("\n")[0]}`;
+  return `fast-forward failed: ${errorMessage(err).trim().split("\n")[0]}`;
 }
 
 /** Boolean form of ffMainToOrWhy for callers that need no reason. */
