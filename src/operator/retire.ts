@@ -1,6 +1,8 @@
 // vocabulary: plain
 import fs from "node:fs";
 import { loadConfigSafe } from "../config/config.js";
+import { CUSTOM_NAME_RE } from "../config/config-schema.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { loopEnabled } from "../roles/loop-ids.js";
 import {
   branchExists,
@@ -23,6 +25,14 @@ import { git } from "../git/git-run.js";
 /** `tumwater retire --role <id>`: remove a disabled loop's persistent worktree and branch, plus the
  * per-role landing ref and paused-state marker that outlive it. The safety rails and the `--force`
  * override live here, so the CLI layer (operator/operator-commands.ts) stays a thin renderer. */
+
+/** The id gate for ids no config names (a lowered `instances`, a removed custom role): the id is
+ * well-formed (CUSTOM_NAME_RE keeps `..` and `/` out of the paths retire builds), is not the
+ * director, and still has its branch or merge ref. Read-only. */
+export async function hasRetirableLeftovers(root: string, role: string): Promise<boolean> {
+  if (!CUSTOM_NAME_RE.test(role) || role === DIRECTOR_ROLE) return false;
+  return (await branchExists(root, branchName(role))) || (await refSha(root, landingRefName(role))) !== null;
+}
 
 /** What retire sees today for one role — the collect half, exported so a read-only surface can
  * report the same state the removal would act on. */

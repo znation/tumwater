@@ -13,7 +13,7 @@ import {
 } from "../config/config.js";
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
-import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.js";
+import { CUSTOM_NAME_RE, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
 import { envPath, findOnPath, subdirectoryNames } from "../files/files.js";
@@ -524,7 +524,8 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
 
 /** The "leftover role branches" row: `tumwater/<id>` branches whose role is no longer enabled
  * (disabled in tumwater.json, or an instance above the configured count). Retirable ids are
- * the ones `tumwater retire --role <id>` accepts (knownRoleIds); any other id is listed by
+ * the ones `tumwater retire --role <id>` accepts (knownRoleIds, or any well-formed custom-role name
+ * with a leftover branch); any other id is listed by
  * full branch name with a manual-delete hint. The director and enabled roles are skipped.
  * Read-only, like every check: it only lists refs; an unreadable tumwater.json skips it. */
 export async function checkLeftoverRoleBranches(root: string, config?: TumwaterConfig | null): Promise<CheckOutcome> {
@@ -537,7 +538,7 @@ export async function checkLeftoverRoleBranches(root: string, config?: TumwaterC
     if (!branch.startsWith(prefix)) continue;
     const id = branch.slice(prefix.length);
     if (!id || id.includes("/") || id === DIRECTOR_ROLE || loopEnabled(config, id)) continue;
-    if (known.has(id)) retirable.push(id);
+    if (known.has(id) || CUSTOM_NAME_RE.test(id)) retirable.push(id);
     else unknown.push(branch);
   }
   const parts: string[] = [];

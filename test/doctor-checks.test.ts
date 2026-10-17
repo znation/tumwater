@@ -945,11 +945,13 @@ test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones,
   assert.doesNotMatch(warn.detail, /feature|director/);
   sh(root, "git", "branch", "tumwater/ghost");
   const ghost = await checkLeftoverRoleBranches(root, loadConfig(root));
-  assert.match(ghost.detail, /telemetry is disabled.*; tumwater\/ghost names no role retire accepts/);
+  assert.match(ghost.detail, /(telemetry, ghost|ghost, telemetry) are disabled but still have a branch/);
+  sh(root, "git", "branch", "tumwater/old.role");
+  assert.match((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /; tumwater\/old\.role names no role retire accepts/);
   sh(root, "git", "branch", "tumwater/feature-2");
   writeConfig(root, { roles: { feature: { instances: 2 } } });
   assert.doesNotMatch((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /feature-2/);
   writeConfig(root, {});
-  assert.match((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /tumwater\/feature-2/);
+  assert.match((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /feature-2/);
   assert.deepEqual(await checkLeftoverRoleBranches(root, null), { level: "ok", detail: "no readable tumwater.json — nothing to verify" });
 });

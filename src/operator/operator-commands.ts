@@ -3,11 +3,11 @@ import { knownRoleIds, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
 import { errorMessage } from "../text/text.js";
-import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
-import { artifactPhrase, previewRetire, retireRole } from "./retire.js";
+import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
+import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
 import { agree, fleetResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
-import { allRoleIds } from "../roles/roles.js";
+import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import {
   normalizePauseReason,
   pauseFleet,
@@ -338,14 +338,31 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
   say(`${fleetResumePhrase()}${when}${roleNote}${tail}`);
 }
 
+/** The role id retire targets: a built-in or configured id as for the other marker commands, or
+ * else any well-formed id that still has a branch or merge ref (a loop no config names). */
+async function retireTargetRole(root: string, args: string[]): Promise<string> {
+  const role = flagValue(args, "--role");
+  if (role === null) return requiredNamedRole(root, args, "retire");
+  if (!role) fail(ROLE_VALUE_ERROR);
+  if (allRoleIds().includes(role)) return role;
+  let ids: string[];
+  try {
+    ids = knownRoleIds(loadConfig(root));
+  } catch (err) {
+    fail(errorMessage(err));
+  }
+  if (ids.includes(role) || (await hasRetirableLeftovers(root, role))) return role;
+  fail(unknownRoleMessage(role, ids));
+}
+
 /** `tumwater retire --role <id> [--force] [--json]`: remove a disabled loop's leftover worktree,
  * branch, landing ref, and paused-state marker. The collection, safety rails, and removal live
  * in src/operator/retire.ts; this is the render layer — one line per removed artifact, the skip
  * lines that make a second run idempotent, or the `--json` payload. */
 export async function cmdRetire(root: string, args: string[]): Promise<void> {
-  // As in cmdAbort: the config exists only to validate the id against built-ins plus
-  // user-defined loops; a missing --role fails before it is ever needed.
-  const role = requiredNamedRole(root, args, "retire");
+  // The config exists only to validate the id against built-ins plus user-defined loops, with
+  // the leftover-branch gate for ids no config names; a missing --role fails before it is needed.
+  const role = await retireTargetRole(root, args);
   const force = args.includes("--force");
   if (args.includes("--dry-run")) {
     const preview = await previewRetire(root, role);

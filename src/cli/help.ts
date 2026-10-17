@@ -356,7 +356,9 @@ Usage:
                                    state (merge ref, pause marker); --force overrides the
                                    safety rails; --json prints what was removed;
                                    --dry-run lists what would be removed and any objections,
-                                   changing nothing
+                                   changing nothing; an id no longer configured (feature-4
+                                   after lowering instances, a removed custom role) is
+                                   accepted while its branch or merge ref remains
   tumwater stop [--in <duration> | --cancel]
                                    Stop a running team (finishes current work, like Ctrl+C);
                                    --in schedules the stop, --cancel drops it

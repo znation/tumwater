@@ -10,14 +10,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { branchName, landingRefName, pausedRolesPath, slotWorktreePath, worktreePath } from "../src/paths.js";
-import { collectRetire, previewRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/retire.js";
+import { collectRetire, hasRetirableLeftovers, previewRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/retire.js";
 import { landingRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
 import { cli } from "./helpers/cli-harness.js";
 import { readJson } from "./helpers/json-read.js";
-import { setRef } from "../src/git/git.js";
+import { branchHead, setRef } from "../src/git/git.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
 import { helpTopic } from "../src/cli/help.js";
@@ -246,6 +246,52 @@ test("retire validates its arguments like the other operator commands", async ()
   r = await cli(root, "retire", "--role", "bogus");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus/);
+  sh(root, "git", "update-ref", "refs/heads/tumwater/x", "HEAD");
+  r = await cli(root, "retire", "--role", "../x");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role/);
+});
+
+function leftoverInstanceRepo() {
+  return initializedRepo().then((root) => {
+    const file = path.join(root, "tumwater.json");
+    const cfg = readJson(file) as { roles: Record<string, { instances?: number }> };
+    cfg.roles.feature = { ...cfg.roles.feature, instances: 2 };
+    fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
+    sh(root, "git", "branch", branchName("feature-4"));
+    return root;
+  });
+}
+
+test("retire accepts a leftover instance id above the configured instances and removes its branch", async () => {
+  const root = await leftoverInstanceRepo();
+  const dry = await cli(root, "retire", "--role", "feature-4", "--dry-run");
+  assert.equal(dry.code, 0, dry.stderr);
+  assert.match(dry.stdout, /would remove the branch \(tumwater\/feature-4\)/);
+  const r = await cli(root, "retire", "--role", "feature-4", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok((JSON.parse(r.stdout) as { removed: string[] }).removed.includes("branch"));
+  assert.equal(await branchHead(root, branchName("feature-4")), null);
+});
+
+test("retire still refuses a leftover id whose branch holds unmerged commits", async () => {
+  const root = await leftoverInstanceRepo();
+  const tree = sh(root, "git", "rev-parse", "HEAD^{tree}").trim();
+  const commit = sh(root, "git", "commit-tree", tree, "-p", "HEAD", "-m", "unlanded").trim();
+  sh(root, "git", "update-ref", `refs/heads/${branchName("feature-4")}`, commit);
+  const r = await cli(root, "retire", "--role", "feature-4");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unmerged commit/);
+  assert.equal(await branchHead(root, branchName("feature-4")), commit);
+});
+
+test("hasRetirableLeftovers gates on a well-formed non-director id with a branch or merge ref", async () => {
+  const root = await initializedRepo();
+  sh(root, "git", "branch", branchName("director"));
+  assert.equal(await hasRetirableLeftovers(root, "director"), false);
+  assert.equal(await hasRetirableLeftovers(root, "nothing-here"), false);
+  await setRef(root, landingRefName("gone"), mainSha(root));
+  assert.equal(await hasRetirableLeftovers(root, "gone"), true);
 });
 
 test("tumwater help retire shows the command's usage stanza", () => {
@@ -253,6 +299,7 @@ test("tumwater help retire shows the command's usage stanza", () => {
   assert.ok(topic !== null, "retire is a help topic");
   assert.match(topic ?? "", /tumwater retire --role <id>/);
   assert.match(topic ?? "", /--force/);
+  assert.match(topic ?? "", /accepted while its branch or merge ref remains/);
 });
 
 test("retire refuses an enabled work instance id, not just its bare base role (part 5b/7)", async () => {

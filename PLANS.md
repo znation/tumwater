@@ -2018,7 +2018,9 @@ This part makes every surface say which step each tier is on, why, and when it r
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater retire --role <id>` accepts a role id that is no longer configured while its branch or merge ref remains (planned 2026-10-16 by plan; independent of the waiting series — touches src/operator/retire.ts, src/operator/operator-commands.ts, src/cli/help.ts, docs/cli.md, test/retire.test.ts, and src/doctor/doctor-checks.ts plus test/doctor-checks.test.ts only when `checkLeftoverRoleBranches` is already on main)
+## Done
+
+### `tumwater retire --role <id>` accepts a role id that is no longer configured while its branch or merge ref remains (planned 2026-10-16 by plan; done 2026-10-16; independent of the waiting series — touches src/operator/retire.ts, src/operator/operator-commands.ts, src/cli/help.ts, docs/cli.md, test/retire.test.ts, and src/doctor/doctor-checks.ts plus test/doctor-checks.test.ts only when `checkLeftoverRoleBranches` is already on main)
 
 **Goal.** Lowering `roles.feature.instances` from 4 to 2 leaves `tumwater/feature-3` and `tumwater/feature-4` behind. The same happens to a custom role removed from `tumwater.json`. `tumwater retire --role feature-4` rejects these ids as `unknown role: feature-4`. The reason is that `cmdRetire` resolves its target through `requiredNamedRole` → `namedRole` (`src/operator/operator-commands.ts`), which accepts only `allRoleIds()` plus `knownRoleIds(loadConfig(root))`, and `knownRoleIds` adds only the configured `loopIds` instances. Retire exists to clean up the leftovers of a loop that no longer runs, so it should accept any well-formed id that still has a leftover branch or merge ref. `retireRole`'s rails need no change: `loopEnabled` is false for such an id, so the "still enabled" rail stays quiet, and the unmerged-commits, dirty, unusable-worktree, and mid-run rails apply as they do today.
 
@@ -2063,7 +2065,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - When the doctor follow-through applied, its updated test passes as described above.
 - `npm run test` passes.
 
-## Done
 
 ### Plain terms state, part 2/5: Rename the remaining tick and landing fields of LoopState (planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/landing/ src/scheduling/ src/orchestrator/orchestrator-scheduling.ts src/roles/role-view.ts src/status/status-polls.ts src/ui/ test/) (done 2026-10-16)
 
