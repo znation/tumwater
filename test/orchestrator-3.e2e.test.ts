@@ -598,7 +598,7 @@ test("a role rejected in its vet ticks again while another queued change is stil
 
 test("maxConcurrent 4 vets three queued changes at once on the live orchestrator, then merges them all", async () => {
   // Land-queue speed 2c through the scheduler's own wiring: every vet takes one of the shared
-  // maxConcurrent permits (the authors are interlocked, so no role tick holds one), vetLimit
+  // maxConcurrent permits (the authors are interlocked, so no role tick holds one), verifyLimit
   // keeps the fourth for authoring, all three reviews run together (each records how many were
   // in flight as it started), and the merge slot lands every change.
   const repo = makeRepo();

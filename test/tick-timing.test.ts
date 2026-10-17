@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { drainInFlightWork, type AfterDelay } from "../src/tick/tick-timing.js";
 import { writeMergeMarker, readMergeMarker } from "../src/merge/merge-slot.js";
-import type { InFlightLanding } from "../src/merge/merge-pipeline.js";
+import type { InFlightMerge } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { flushImmediate } from "./helpers/wait.js";
@@ -19,7 +19,7 @@ import { flushImmediate } from "./helpers/wait.js";
 // and no assertion reads elapsed wall time.
 
 /** A minimal in-flight landing whose promise the test controls. */
-function landing(promise: Promise<void>, roles: string[]): InFlightLanding {
+function landing(promise: Promise<void>, roles: string[]): InFlightMerge {
   return { promise, controller: new AbortController(), roles, userAborted: false };
 }
 

@@ -20,8 +20,8 @@ import { branchHead, currentBranch } from "../git/git.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
 import { queuedMergeFiles, queuedMergeRoles } from "../merge/merge-queue.js";
-import { drainLandings, settleAbortedVetted } from "../merge/merge-drain.js";
-import { abortableLandings, landingTasks, newLandingPipeline } from "../merge/merge-pipeline.js";
+import { drainMergeQueue, settleAbortedApproved } from "../merge/merge-drain.js";
+import { abortableMerges, mergeTasks, newMergePipeline } from "../merge/merge-pipeline.js";
 import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { OnceRound } from "../scheduling/once-round.js";
@@ -170,7 +170,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   let restart = false;
 
   // The shared concurrency cap: role ticks and the landings (each vet, and the merge's conflict
-  // resolver — merge-drain.ts) all hold a permit; see its LandingPipelineContext for why a
+  // resolver — merge-drain.ts) all hold a permit; see its MergePipelineContext for why a
   // landing is not exempt.
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
   // Seed the pool's per-provider caps from the startup config (plans/provider-concurrency.md
@@ -242,9 +242,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // long-running team's memory stays flat; aborted ticks are
   // excluded — their short cut-off durations would drag the window down and cause more aborts.
   const roleTickDurationsMs: number[] = [];
-  // Every landing task (merge-drain.ts's LandingPipeline): the vetting stage's tasks, the
+  // Every landing task (merge-drain.ts's MergePipeline): the vetting stage's tasks, the
   // changes they vetted, and the merge slot.
-  const landings = newLandingPipeline();
+  const landings = newMergePipeline();
 
   // Once-mode bookkeeping (`tumwater run --once`) — the tick-count snapshot, the per-role
   // settle reasons, and the quiet-poll exit rule — lives in src/scheduling/once-round.ts.
@@ -340,8 +340,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       consumeWakeRequest(root, runners);
       consumeRestartRequest(root, redeploy);
       consumeReclaimRequest(root, reclaim);
-      consumeAbortRequests(root, runners, abortableLandings(landings));
-      await settleAbortedVetted(root, landings);
+      consumeAbortRequests(root, runners, abortableMerges(landings));
+      await settleAbortedApproved(root, landings);
 
       // branchHead reads the ref files first (microsecond-scale; this runs every poll) and
       // spawns `git rev-parse` only when they cannot resolve it. "" means main does not exist
@@ -472,7 +472,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // merge, exactly as it starts no tick; what is already in flight runs on, and a vet
       // parked for its permit meets the same start gate as a parked tick when the permit comes.
       if (!holdForRestart && !reviewHeld && !diskHeld) {
-        await drainLandings(
+        await drainMergeQueue(
           {
             root,
             mainBranch,
@@ -621,7 +621,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         once.exitReady({
           roleTicks: roleInFlight.size,
           directorTicks: directorInFlight.size,
-          landings: landingTasks(landings).length,
+          landings: mergeTasks(landings).length,
           queuedMerges: queuedMergeFiles(root).length,
         })
       ) {
@@ -636,7 +636,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       root,
       roleInFlight,
       directorInFlight,
-      landingTasks(landings),
+      mergeTasks(landings),
       restart,
       opts.handoffLandingWindowMs ?? HANDOFF_LANDING_WINDOW_MS,
       () => internalStop.abort(),

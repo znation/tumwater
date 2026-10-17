@@ -21,51 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code merge, part 4/11: Rename the merge pipeline and drain and verify identifiers (planned 2026-10-16 by user; requires part 3/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-pipeline.ts merge-drain.ts merge-verify.ts, their tests and test/comment-width.test.ts)
-
-*Replanned 2026-10-16 by plan after two rejected rounds: the earlier attempts rewrapped comments so that overflow words started a new line with a stray `/**` (e.g. `/** no` in test/fixtures/merge-fixtures.ts's `reviewers` doc), and test/comment-width.test.ts checks only width, so it could not catch that. This plan now adds that check first and states how to rewrap.*
-
-**Goal.** The pipeline, the merge-queue drain and the verify stage take merge, verify and approved names in identifiers, comments and test names. Two names that would collide take explicit alternatives. A mechanical rename of about 480 lines with no behavior change, plus a guard that keeps rewrapped doc comments well formed.
-
-**Approach.**
-- **Comment guard first.** In `test/comment-width.test.ts`, extend `commentOffenders` so a line whose trimmed text starts with `/*` while `inBlock` is already true is also an offender. Mark it in `offendersInFile`'s output as `(nested)`, next to `(cols)`; return a `kind: "cols" | "nested"` field from `commentOffenders` to do that. Update the comment above `commentOffenders` and the first test's name ("every comment line in src/ and test/ fits in 100 columns and opens no block inside a block"). Add a case to `commentOffenders flags over-wide comment lines only`, or a sibling test, with a `/** a` line followed by `/** b` that asserts the second is flagged `nested`, and a closed `/** a */` followed by `/** b */` that is not flagged.
-- **Fix the one existing nested opener.** On main, `src/config/config-fallbacks.ts` has an orphaned two-line fragment, "/** The `model` selector a run actually starts on, …", left before the doc comment of the team-level fallback pair when the organize split in e591b82ce copied it. The full comment and its function stay in `src/config/config-views.ts`. Delete the fragment, so the new guard passes on the tree as it is.
-- **How to rewrap.** Rewrap each changed comment by editing it, not with a script that splits lines. A line pushed past 100 columns moves its last words to the start of the next line in the same comment. That line keeps the comment's continuation prefix (` * ` in a `/** … */` block, `// ` in a line comment), and `/**` appears only on a comment's first line. When the comment's last line overflows, add a new ` * ` line before the closing `*/`.
-- **Rename rule**, as in this series:
-  - in identifiers, `landing`/`land` → `merge`, `vet`/`vetting` → `verify` and `vetted` → `approved`; a bare `landed` → `mergeDone`;
-  - in comments, "vet" → "verify" (as a noun, "verification"), "vetted" → "approved", "landing" → "merge";
-  - test names and assertion messages follow the same rule. `vet` → `verify` adds three characters, so rewrap as above.
-- **merge-pipeline.ts:**
-  - `LandingPipeline` → `MergePipeline`, `LandingPipelineContext` → `MergePipelineContext`, `InFlightLanding` → `InFlightMerge`, `VettedLanding` → `ApprovedMerge`;
-  - `landingTasks` → `mergeTasks`, `abortableLandings` → `abortableMerges`, `settleLandingOutcome` → `settleMergeOutcome`, `newLandingPipeline` → `newMergePipeline`, `guardLandingTask` → `guardMergeTask`;
-  - the pipeline's members `vetting` → `verifying` (it holds the in-flight verifications) and `vetted` → `approved`. They are members, so rename them at every use, in the orchestrator and the tests too.
-- **merge-drain.ts:**
-  - `drainLandings` → `drainMergeQueue`, not `drainMerges`: the same file already has `drainMerge`, which starts the fast-forward.
-  - `settleAbortedVetted` → `settleAbortedApproved`.
-  - `drainMerge`, `startMerge` and `MERGE_TIER` keep their names.
-- **merge-verify.ts:**
-  - `LANDING_TIER` → `VERIFY_TIER`, not `MERGE_TIER`: merge-drain.ts already defines `const MERGE_TIER = LANDING_TIER - 1` for the fast-forward's conflict runs, which becomes `VERIFY_TIER - 1`.
-  - `vetLimit` → `verifyLimit`, `drainVetting` → `drainVerify`, `startVet` → `startVerify`.
-  - Locals: `vet` → `verify`, `vets` → `verifies`, `vetted` → `approved`, and the test's `alphaVet` → `alphaVerify`.
-- **Earlier callers move now.** `VettedLanding` and `settleLandingOutcome` are called in part 3/11's files.
-- **Aliases.** Keep two-line `@deprecated` aliases for the exports later parts call: `drainLandings`, `settleAbortedVetted`, `InFlightLanding`, `VettedLanding`, `LandingPipeline`, `LandingPipelineContext`, `newLandingPipeline`, `landingTasks`, `abortableLandings`, `settleLandingOutcome`, `LANDING_TIER`, `vetLimit` and `startVet`. Move these files off earlier parts' aliases. Delete any alias that test/exports.test.ts reports unused.
-- **Leave for their parts:** `runLandingPi` (part 7/11), `AbortableLanding` (part 9/11), and `VetVerdict`, `landVetted` and `vetRequest` (part 5/11).
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names, including `slot_wait.purpose: "verify"`, which the events series set;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-- Skip any name that an earlier series already renamed.
-
-**Files touched.** `src/merge/merge-pipeline.ts`, `merge-drain.ts`, `merge-verify.ts`; `test/fixtures/merge-fixtures.ts`; `test/merge-pipeline.test.ts`, `test/merge-drain.test.ts`, `test/merge-drain-verify.test.ts`, `test/merge-pipeline-seams.test.ts`; member and earlier-caller lines in `src/merge/merge-slot.ts`, `src/orchestrator/orchestrator.ts` and tests; `test/comment-width.test.ts`; `src/config/config-fallbacks.ts` (the orphaned fragment only).
-
-**Acceptance criteria.**
-- `drainMergeQueue`, `VERIFY_TIER`, `MergePipeline`, `ApprovedMerge` and the other new names are exported. Each old name is either gone or a `@deprecated` alias of it.
-- `git grep -nE '\.vetting\b|\.vetted\b|\bvetting:|\bvetted:' -- src test` prints nothing.
-- `MERGE_TIER` in merge-drain.ts is defined as `VERIFY_TIER - 1`. Neither `drainMerges` nor a second `MERGE_TIER` exists.
-- test/comment-width.test.ts fails on a `/**` line inside an open block comment, and its new case shows it. The orphaned fragment is gone from `src/config/config-fallbacks.ts`.
-- Every comment this change touches keeps a single `/**` opener on its first line. The comment-width test passing shows this, and the VERIFIED line cites it.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 5/11: Rename the merger core and batch and stack identifiers (planned 2026-10-16 by user; requires part 4/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-core.ts merge-batch.ts merge-stack.ts and the merger tests)
 
 **Goal.** The merger (the old lander), the batch verify-and-merge and the stack take merge, merger, verify and approved names in identifiers, comments, test names and fixtures. A mechanical rename of about 450 lines with no behavior change.
@@ -1369,6 +1324,51 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - Returns exactly `{ level: "ok", detail: "no open bug is waiting for its next failure" }` when no Open entry carries the note, including when the note appears only under `## Fixed` or only on an entry that is also Refused.
   - Returns `{ level: "ok", detail: "no BUGS.md — nothing to verify" }` when BUGS.md is absent.
 - `tumwater doctor`'s report has a `waiting bugs` row: grep `"waiting bugs"` in src/doctor/doctor.ts. Any test that pins doctor's row names or count, found by grepping test/ for `"stale bugs"`, is updated to include it.
+- `npm run test` passes.
+
+### Plain terms code merge, part 4/11: Rename the merge pipeline and drain and verify identifiers (planned 2026-10-16 by user; requires part 3/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-pipeline.ts merge-drain.ts merge-verify.ts, their tests and test/comment-width.test.ts) (done 2026-10-16)
+
+*Replanned 2026-10-16 by plan after two rejected rounds: the earlier attempts rewrapped comments so that overflow words started a new line with a stray `/**` (e.g. `/** no` in test/fixtures/merge-fixtures.ts's `reviewers` doc), and test/comment-width.test.ts checks only width, so it could not catch that. This plan now adds that check first and states how to rewrap.*
+
+**Goal.** The pipeline, the merge-queue drain and the verify stage take merge, verify and approved names in identifiers, comments and test names. Two names that would collide take explicit alternatives. A mechanical rename of about 480 lines with no behavior change, plus a guard that keeps rewrapped doc comments well formed.
+
+**Approach.**
+- **Comment guard first.** In `test/comment-width.test.ts`, extend `commentOffenders` so a line whose trimmed text starts with `/*` while `inBlock` is already true is also an offender. Mark it in `offendersInFile`'s output as `(nested)`, next to `(cols)`; return a `kind: "cols" | "nested"` field from `commentOffenders` to do that. Update the comment above `commentOffenders` and the first test's name ("every comment line in src/ and test/ fits in 100 columns and opens no block inside a block"). Add a case to `commentOffenders flags over-wide comment lines only`, or a sibling test, with a `/** a` line followed by `/** b` that asserts the second is flagged `nested`, and a closed `/** a */` followed by `/** b */` that is not flagged.
+- **Fix the one existing nested opener.** On main, `src/config/config-fallbacks.ts` has an orphaned two-line fragment, "/** The `model` selector a run actually starts on, …", left before the doc comment of the team-level fallback pair when the organize split in e591b82ce copied it. The full comment and its function stay in `src/config/config-views.ts`. Delete the fragment, so the new guard passes on the tree as it is.
+- **How to rewrap.** Rewrap each changed comment by editing it, not with a script that splits lines. A line pushed past 100 columns moves its last words to the start of the next line in the same comment. That line keeps the comment's continuation prefix (` * ` in a `/** … */` block, `// ` in a line comment), and `/**` appears only on a comment's first line. When the comment's last line overflows, add a new ` * ` line before the closing `*/`.
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet`/`vetting` → `verify` and `vetted` → `approved`; a bare `landed` → `mergeDone`;
+  - in comments, "vet" → "verify" (as a noun, "verification"), "vetted" → "approved", "landing" → "merge";
+  - test names and assertion messages follow the same rule. `vet` → `verify` adds three characters, so rewrap as above.
+- **merge-pipeline.ts:**
+  - `LandingPipeline` → `MergePipeline`, `LandingPipelineContext` → `MergePipelineContext`, `InFlightLanding` → `InFlightMerge`, `VettedLanding` → `ApprovedMerge`;
+  - `landingTasks` → `mergeTasks`, `abortableLandings` → `abortableMerges`, `settleLandingOutcome` → `settleMergeOutcome`, `newLandingPipeline` → `newMergePipeline`, `guardLandingTask` → `guardMergeTask`;
+  - the pipeline's members `vetting` → `verifying` (it holds the in-flight verifications) and `vetted` → `approved`. They are members, so rename them at every use, in the orchestrator and the tests too.
+- **merge-drain.ts:**
+  - `drainLandings` → `drainMergeQueue`, not `drainMerges`: the same file already has `drainMerge`, which starts the fast-forward.
+  - `settleAbortedVetted` → `settleAbortedApproved`.
+  - `drainMerge`, `startMerge` and `MERGE_TIER` keep their names.
+- **merge-verify.ts:**
+  - `LANDING_TIER` → `VERIFY_TIER`, not `MERGE_TIER`: merge-drain.ts already defines `const MERGE_TIER = LANDING_TIER - 1` for the fast-forward's conflict runs, which becomes `VERIFY_TIER - 1`.
+  - `vetLimit` → `verifyLimit`, `drainVetting` → `drainVerify`, `startVet` → `startVerify`.
+  - Locals: `vet` → `verify`, `vets` → `verifies`, `vetted` → `approved`, and the test's `alphaVet` → `alphaVerify`.
+- **Earlier callers move now.** `VettedLanding` and `settleLandingOutcome` are called in part 3/11's files.
+- **Aliases.** Keep two-line `@deprecated` aliases for the exports later parts call: `drainLandings`, `settleAbortedVetted`, `InFlightLanding`, `VettedLanding`, `LandingPipeline`, `LandingPipelineContext`, `newLandingPipeline`, `landingTasks`, `abortableLandings`, `settleLandingOutcome`, `LANDING_TIER`, `vetLimit` and `startVet`. Move these files off earlier parts' aliases. Delete any alias that test/exports.test.ts reports unused.
+- **Leave for their parts:** `runLandingPi` (part 7/11), `AbortableLanding` (part 9/11), and `VetVerdict`, `landVetted` and `vetRequest` (part 5/11).
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names, including `slot_wait.purpose: "verify"`, which the events series set;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/merge/merge-pipeline.ts`, `merge-drain.ts`, `merge-verify.ts`; `test/fixtures/merge-fixtures.ts`; `test/merge-pipeline.test.ts`, `test/merge-drain.test.ts`, `test/merge-drain-verify.test.ts`, `test/merge-pipeline-seams.test.ts`; member and earlier-caller lines in `src/merge/merge-slot.ts`, `src/orchestrator/orchestrator.ts` and tests; `test/comment-width.test.ts`; `src/config/config-fallbacks.ts` (the orphaned fragment only).
+
+**Acceptance criteria.**
+- `drainMergeQueue`, `VERIFY_TIER`, `MergePipeline`, `ApprovedMerge` and the other new names are exported. Each old name is either gone or a `@deprecated` alias of it.
+- `git grep -nE '\.vetting\b|\.vetted\b|\bvetting:|\bvetted:' -- src test` prints nothing.
+- `MERGE_TIER` in merge-drain.ts is defined as `VERIFY_TIER - 1`. Neither `drainMerges` nor a second `MERGE_TIER` exists.
+- test/comment-width.test.ts fails on a `/**` line inside an open block comment, and its new case shows it. The orphaned fragment is gone from `src/config/config-fallbacks.ts`.
+- Every comment this change touches keeps a single `/**` opener on its first line. The comment-width test passing shows this, and the VERIFIED line cites it.
 - `npm run test` passes.
 
 ### A merge check that fails and then passes on its kept-pin retry is recorded as a flake, so the gate's known-flake memory, doctor's `flaky checks` and the tick prompt's flake note count it (planned 2026-10-16 by plan; independent of every other entry — touches src/review/known-flakes.ts, src/merge/merge-check-failures.ts, src/merge/merge-core.ts, src/loop/loop-state.ts and their tests) (done 2026-10-16)

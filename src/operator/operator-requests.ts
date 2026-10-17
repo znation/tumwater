@@ -22,8 +22,8 @@ import {
 } from "../paths.js";
 
 /** The in-flight landing fields `consumeAbortRequests` needs to cancel one. The
- * orchestrator's `InFlightLanding` carries exactly these plus its `promise`, and the vetting
- * stage's waiting `VettedLanding` extends it, so both are assignable here without this module
+ * orchestrator's `InFlightMerge` carries exactly these plus its `promise`, and the vetting
+ * stage's waiting `ApprovedMerge` extends it, so both are assignable here without this module
  * knowing about the drain. */
 export interface AbortableLanding {
   roles: string[];

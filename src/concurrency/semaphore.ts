@@ -45,7 +45,7 @@ export class Semaphore {
   private keyCaps = new Map<string, number>();
   /** Permits withheld from tier ≥ 1 acquirers so a work loop that has work to take can claim
    * one without waiting for a maintenance tick to release (plans/parallel-work-instances.md
-   * "Priority headroom", part 7/7). Tiers ≤ 0 (work, LANDING_TIER, MERGE_TIER) ignore it. */
+   * "Priority headroom", part 7/7). Tiers ≤ 0 (work, VERIFY_TIER, MERGE_TIER) ignore it. */
   private reserve = 0;
 
   constructor(private capacity: number) {}
@@ -251,7 +251,7 @@ export class Semaphore {
   }
 
   /** The permits withheld from `tier`: `reserve` for tier ≥ 1 (maintenance), 0 for every tier
-   * that ships work or lands a change (work, LANDING_TIER, MERGE_TIER). */
+   * that ships work or lands a change (work, VERIFY_TIER, MERGE_TIER). */
   private reserveFor(tier: number): number {
     return tier >= 1 ? this.reserve : 0;
   }

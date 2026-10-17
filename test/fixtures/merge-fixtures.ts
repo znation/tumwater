@@ -1,13 +1,13 @@
 import { sleep } from "../helpers/wait.js";
 import fs from "node:fs";
 import path from "node:path";
-import { drainLandings } from "../../src/merge/merge-drain.js";
+import { drainMergeQueue } from "../../src/merge/merge-drain.js";
 import {
-  landingTasks,
-  newLandingPipeline,
-  type InFlightLanding,
-  type LandingPipeline,
-  type LandingPipelineContext,
+  mergeTasks,
+  newMergePipeline,
+  type InFlightMerge,
+  type MergePipeline,
+  type MergePipelineContext,
 } from "../../src/merge/merge-pipeline.js";
 import type { LoopRunner } from "../../src/loop/loop.js";
 import { enqueueMerge, queueDepth } from "../../src/merge/merge-queue.js";
@@ -25,7 +25,7 @@ import { makeLoopRunner } from "./loop-fixtures.js";
 import { pinOffMain, tmpdir } from "./repo-fixtures.js";
 import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 
-/** Shared fixtures for the landing-drain tests — merge-drain.test.ts and
+/** Shared fixtures for the merge-drain tests — merge-drain.test.ts and
  * merge-pipeline.test.ts, which node --test runs as parallel processes (top-level tests
  * within one file run one after another). The pipeline context and poll loop the drain is
  * driven through, queue-shaped pinned commits, the per-role reviewer shim, and the row the
@@ -63,7 +63,7 @@ export function makePipeline(
   root: string,
   runners: LoopRunner[],
   opts: { cap?: number; signal?: AbortSignal; config?: TumwaterConfig; held?: () => boolean } = {},
-): { ctx: LandingPipelineContext; pipeline: LandingPipeline } {
+): { ctx: MergePipelineContext; pipeline: MergePipeline } {
   const config = opts.config ?? defaultConfig();
   return {
     ctx: {
@@ -77,22 +77,22 @@ export function makePipeline(
       directorConfig: config,
       startHeld: opts.held ?? (() => false),
     },
-    pipeline: newLandingPipeline(),
+    pipeline: newMergePipeline(),
   };
 }
 
 /** Poll the pipeline every 50 ms, as the scheduler does every poll, until `done` holds right
  * after a drain. */
 export async function pumpUntil(
-  ctx: LandingPipelineContext,
-  p: LandingPipeline,
+  ctx: MergePipelineContext,
+  p: MergePipeline,
   done: () => boolean,
   what: string,
   ms = 60_000,
 ): Promise<void> {
   const deadline = Date.now() + ms;
   for (;;) {
-    await drainLandings(ctx, p);
+    await drainMergeQueue(ctx, p);
     if (done()) return;
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await sleep(50);
@@ -100,11 +100,11 @@ export async function pumpUntil(
 }
 
 /** Keep polling in the background (for mid-flight assertions); `stop` ends the loop. */
-export function pump(ctx: LandingPipelineContext, p: LandingPipeline): { stop: () => Promise<void> } {
+export function pump(ctx: MergePipelineContext, p: MergePipeline): { stop: () => Promise<void> } {
   let running = true;
   const loop = (async () => {
     while (running) {
-      await drainLandings(ctx, p);
+      await drainMergeQueue(ctx, p);
       await sleep(50);
     }
   })();
@@ -116,14 +116,14 @@ export function pump(ctx: LandingPipelineContext, p: LandingPipeline): { stop: (
   };
 }
 
-/** The queue is empty and no vet or merge is running. */
-export const drained = (root: string, p: LandingPipeline) => () => queueDepth(root) === 0 && landingTasks(p).length === 0;
+/** The queue is empty and no verification or merge is running. */
+export const drained = (root: string, p: MergePipeline) => () => queueDepth(root) === 0 && mergeTasks(p).length === 0;
 
-/** Every task still settling — parked vets included — for a test's cleanup. A busySlot
+/** Every task still settling — parked verifications included — for a test's cleanup. A busySlot
  * stand-in never settles, so it is skipped: a test that fails before freeing its slot then
  * reports the failure instead of hanging in its finally. */
-export const allTasks = (p: LandingPipeline) =>
-  [...p.vetting.values(), ...(p.merge && !standIns.has(p.merge) ? [p.merge] : [])].map((t) => t.promise);
+export const allTasks = (p: MergePipeline) =>
+  [...p.verifying.values(), ...(p.merge && !standIns.has(p.merge) ? [p.merge] : [])].map((t) => t.promise);
 
 /** Pin and enqueue one change per role, every pin before any enqueue (a pin's `git add -A`
  * would sweep an already-written queue file into the next pin). */
@@ -136,8 +136,8 @@ export async function queueChanges(root: string, roles: string[]): Promise<Recor
   return shas;
 }
 
-/** A fake reviewer that tells the roles apart by the lease on its pooled checkout (a vet no
- * longer runs in `_land-<role>`): each role touches `<role>-reviewing`, a `held` role then
+/** A fake reviewer that tells the roles apart by the lease on its pooled checkout (a verification
+ * no longer runs in `_land-<role>`): each role touches `<role>-reviewing`, a `held` role then
  * waits (bounded, ~60 s) for `<role>-release`, and each replies with its own verdict (approve
  * by default). */
 export function reviewers(flags: string, roles: string[], verdicts: Record<string, string> = {}, held: string[] = []): string {
@@ -157,17 +157,17 @@ export function reviewers(flags: string, roles: string[], verdicts: Record<strin
 }
 
 /** The busySlot stand-ins handed out so far (allTasks skips them). */
-const standIns = new WeakSet<InFlightLanding>();
+const standIns = new WeakSet<InFlightMerge>();
 
 /** A stand-in for a merge already holding the slot, so an approved change has to wait for it. */
-export function busySlot(): InFlightLanding {
+export function busySlot(): InFlightMerge {
   const slot = { promise: new Promise<void>(() => {}), controller: new AbortController(), roles: [], userAborted: false };
   standIns.add(slot);
   return slot;
 }
 
 /** A role's row as the observers render it (snapshot → landingForRole → loopPhase). The
- * observers show a landing only for a live orchestrator, so this stands the test process in
+ * observers show a merge only for a live orchestrator, so this stands the test process in
  * for one. */
 export function rowReader(root: string, roles: string[]): (role: string) => string {
   writeOrchestratorMarker(root, roles);

@@ -184,7 +184,7 @@ test("a parked waiter holds no permit until acquire grants it, which the landing
   const landing = runTimedRoleTick(
     new AbortController().signal,
     async () => {
-      await semaphore.acquire(-1); // LANDING_TIER: below every role tier
+      await semaphore.acquire(-1); // VERIFY_TIER: below every role tier
       parked.landing = undefined;
     },
     () => semaphore.release(),

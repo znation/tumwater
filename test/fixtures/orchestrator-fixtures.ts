@@ -6,8 +6,8 @@ import { initProject } from "../../src/init/init.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { runOrchestrator } from "../../src/orchestrator/orchestrator.js";
 import { drainMerge } from "../../src/merge/merge-drain.js";
-import { newLandingPipeline, type LandingPipelineContext } from "../../src/merge/merge-pipeline.js";
-import { startVet } from "../../src/merge/merge-verify.js";
+import { newMergePipeline, type MergePipelineContext } from "../../src/merge/merge-pipeline.js";
+import { startVerify } from "../../src/merge/merge-verify.js";
 import { headMerge } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
@@ -255,7 +255,7 @@ export async function awaitSettledTick(
 
 /** Land the head of the durable land queue through the orchestrator's own landing pipeline
  * (merge-drain.ts). Loop-level tests call `runner.tick()` directly — no poll loop — so the
- * entry a changed tick enqueues needs a driver: this vets the head alone (startVet, on a
+ * entry a changed tick enqueues needs a driver: this vets the head alone (startVerify, on a
  * one-permit semaphore) and, once vetted, merges it (drainMerge), leaving every other queued
  * entry untouched — a test that ticks a second role meanwhile lands that one with its own call.
  * `signal` stands in for harness shutdown (the orchestrator's stop signal). Returns the
@@ -273,7 +273,7 @@ export async function mergeHead(
   if (!head) throw new Error("expected a queued landing");
   assert.equal(head.entry.role, role, "the queue head belongs to the expected role");
   assert.equal(runner.role, role, "the landing folds into its own role's runner");
-  const ctx: LandingPipelineContext = {
+  const ctx: MergePipelineContext = {
     root: repo,
     mainBranch: branch,
     signal,
@@ -284,9 +284,9 @@ export async function mergeHead(
     directorConfig: config,
     startHeld: () => false,
   };
-  const pipeline = newLandingPipeline();
-  startVet(ctx, pipeline, head.entry, head.file);
-  await Promise.all([...pipeline.vetting.values()].map((v) => v.promise));
+  const pipeline = newMergePipeline();
+  startVerify(ctx, pipeline, head.entry, head.file);
+  await Promise.all([...pipeline.verifying.values()].map((v) => v.promise));
   drainMerge(ctx, pipeline);
   await pipeline.merge?.promise;
   if (fs.existsSync(head.file)) throw new Error(`the landing of ${role} ended without an outcome`);

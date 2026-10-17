@@ -45,16 +45,27 @@ function tsFiles(root: string): string[] {
 // starts with `/*` opens the block (outside an open block), and the first `*/` on that line or
 // a later one closes it. That keeps a `* …` markdown bullet inside a template literal (as prompt
 // text could hold) out of scope. Width is in code points ([...line].length), so an em dash
-// counts as one column, as a terminal shows it.
-function commentOffenders(text: string): Array<{ number: number; text: string }> {
-  const offenders: Array<{ number: number; text: string }> = [];
+// counts as one column, as a terminal shows it. A line that starts with `/*` while a block is
+// already open is a `nested` offender: a rewrap that left a stray `/**` at the start of an
+// overflow line, which the width check alone cannot see.
+interface Offender {
+  number: number;
+  text: string;
+  kind: "cols" | "nested";
+}
+
+function commentOffenders(text: string): Offender[] {
+  const offenders: Offender[] = [];
   let inBlock = false;
   text.split("\n").forEach((line, i) => {
     const trimmed = line.trimStart();
     if (inBlock || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
       if ([...line].length > MAX_COMMENT_COLUMNS) {
-        offenders.push({ number: i + 1, text: line });
+        offenders.push({ number: i + 1, text: line, kind: "cols" });
       }
+    }
+    if (inBlock && trimmed.startsWith("/*")) {
+      offenders.push({ number: i + 1, text: line, kind: "nested" });
     }
     if (trimmed.startsWith("/*")) inBlock = true;
     if (inBlock && line.includes("*/")) inBlock = false;
@@ -64,10 +75,10 @@ function commentOffenders(text: string): Array<{ number: number; text: string }>
 
 function offendersInFile(file: string): string[] {
   const text = fs.readFileSync(file, "utf8");
-  return commentOffenders(text).map(({ number }) => `${file}:${number} (cols)`);
+  return commentOffenders(text).map(({ number, kind }) => `${file}:${number} (${kind})`);
 }
 
-test("every comment line in src/ and test/ fits in 100 columns", () => {
+test("every comment line in src/ and test/ fits in 100 columns and opens no block inside a block", () => {
   const root = repoRoot(TEST_DIR);
   const offenders: string[] = [];
   for (const rootName of ["src", "test"]) {
@@ -100,4 +111,13 @@ test("commentOffenders flags over-wide comment lines only", () => {
   assert.ok(offenders.some((o) => o.text.startsWith(" * ")));
   assert.ok(!offenders.some((o) => o.text.startsWith("const code")));
   assert.ok(!offenders.some((o) => o.text.includes("bullet")));
+});
+
+test("commentOffenders flags a block opened inside a block as nested", () => {
+  const nested = commentOffenders(["/** a", "/** b", " */"].join("\n"));
+  assert.deepEqual(
+    nested.map((o) => [o.number, o.kind]),
+    [[2, "nested"]],
+  );
+  assert.deepEqual(commentOffenders(["/** a */", "/** b */"].join("\n")), []);
 });

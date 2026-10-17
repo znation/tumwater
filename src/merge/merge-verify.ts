@@ -16,29 +16,29 @@ import {
   abortOnShutdown,
   acquireUnlessAborted,
   discardPinnedRefs,
-  guardLandingTask,
+  guardMergeTask,
   liveRoles,
-  settleLandingOutcome,
-  type InFlightLanding,
-  type LandingPipeline,
-  type LandingPipelineContext,
+  settleMergeOutcome,
+  type InFlightMerge,
+  type MergePipeline,
+  type MergePipelineContext,
 } from "./merge-pipeline.js";
 
-/** The semaphore tier a vet waits at, below every roleTier (0/1): committed work whose author
- * the interlock has already blocked jumps ahead of parked role waiters rather than starving
+/** The semaphore tier a verification waits at, below every roleTier (0/1): committed work whose
+ * author the interlock has already blocked jumps ahead of parked role waiters rather than starving
  * behind them (BUGS.md 2026-09-18). Exported for merge-drain.ts, whose merge tier sits one
  * below it. */
-export const LANDING_TIER = -1;
+export const VERIFY_TIER = -1;
 
-/** How many vets may be in flight (parked or running) at once: every `maxConcurrent` permit but
- * one, so a deep land queue never takes the last slot from the roles that could author — at
- * least one, so `maxConcurrent` 1 still lands. The merge's short conflict-resolution run is not
+/** How many verifications may be in flight (parked or running) at once: every `maxConcurrent`
+ * permit but one, so a deep land queue never takes the last slot from the roles that could author —
+ * at least one, so `maxConcurrent` 1 still lands. The merge's short conflict-resolution run is not
  * counted: it is the one serial step every queued change waits on. */
-export function vetLimit(maxConcurrent: number): number {
+export function verifyLimit(maxConcurrent: number): number {
   return Math.max(1, maxConcurrent - 1);
 }
 
-/** Resolve a landing entry's authoring runner: the live runner when the role is enabled
+/** Resolve a merge entry's authoring runner: the live runner when the role is enabled
  * (runners are never removed from the array on disable — only a warning event fires); a role
  * disabled before this process started has no runner, so a throwaway one supplies the same
  * wiring (loop-pi.ts, runLandingPi, foldLandingUsage) and a disk-loaded state to fold and save
@@ -46,7 +46,7 @@ export function vetLimit(maxConcurrent: number): number {
  * config, its budget-gate exemption, unless a used-up window moved it), every other role takes
  * roleConfig (gateRoleConfig's single home for the rule; the scheduler assigns the live runners
  * by it every poll). */
-function resolveAuthor(ctx: LandingPipelineContext, role: string): LoopRunner {
+function resolveAuthor(ctx: MergePipelineContext, role: string): LoopRunner {
   const { root, mainBranch, signal, runners, liveConfig, roleConfig, directorConfig } = ctx;
   return (
     runners.find((r) => r.role === role) ??
@@ -57,8 +57,8 @@ function resolveAuthor(ctx: LandingPipelineContext, role: string): LoopRunner {
 /** Drop a torn queue head. A torn head (torn or foreign — a partial write an older build left,
  * a hand-placed file) makes headMerge read null forever — nothing else drops it, stranding
  * every live entry behind it and pinning their authors' ticks via the interlock. Drop it with
- * one warning; the healthy entries behind it are vetted in the same poll. The crashed
- * entry's commit, if any, still rides its landing ref into next-tick leftover recovery
+ * one warning; the healthy entries behind it are verified in the same poll. The crashed
+ * entry's commit, if any, still rides its merge ref into next-tick leftover recovery
  * (BUGS.md 2026-09-17). */
 function dropTornHead(root: string): void {
   const stale = staleHeadFile(root);
@@ -72,9 +72,9 @@ function dropTornHead(root: string): void {
 }
 
 /** Already-merged verdicts cached per (root, sha) against the main head they were computed
- * against. drainVetting re-runs its dedupe against main every poll, but a queued entry's sha is
+ * against. drainVerify re-runs its dedupe against main every poll, but a queued entry's sha is
  * fixed and merge-base --is-ancestor against the same head always returns the same answer — the
- * verdict can only change when main itself moves (a landing's fast-forward). Serving the verdict
+ * verdict can only change when main itself moves (a merge's fast-forward). Serving the verdict
  * from this cache makes a poll whose queue is waiting on busy authors or the merge slot cost one
  * branchHead ref-file read instead of one git spawn per entry, and a moved main recomputes each
  * entry's verdict once (the new head misses the cache). Bounded: verdicts computed against an
@@ -99,20 +99,20 @@ async function mergedIntoMain(root: string, sha: string, mainBranch: string, hea
   return merged;
 }
 
-/** Start a vet, in queue order, for every queued entry whose role the pipeline does not already
- * hold, up to vetLimit — the shared semaphore bounds how many of them run. The torn-head drop
- * comes first, and each entry is deduped against main before its vet starts: an entry whose sha
- * main already holds (a crash between the fast-forward and the drop) is dropped without a run, with
- * its marker record; a crash mid-vet leaves both entry and ref, so the entry is vetted again —
- * the established crash semantics. */
-export async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeline): Promise<void> {
+/** Start a verification, in queue order, for every queued entry whose role the pipeline does not
+ * already hold, up to verifyLimit — the shared semaphore bounds how many of them run. The torn-head
+ * drop comes first, and each entry is deduped against main before its verification starts: an entry
+ * whose sha main already holds (a crash between the fast-forward and the drop) is dropped without a
+ * run, with its marker record; a crash mid-verification leaves both entry and ref, so the entry is
+ * verified again — the established crash semantics. */
+export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   dropTornHead(ctx.root);
   const queue = queuedMergeFiles(ctx.root);
   // One main-head read per poll with a non-empty queue (branchHead's ref-file fast path — no
   // spawn), serving every entry's cached dedupe verdict below.
   const mainHead = queue.length === 0 ? "" : ((await branchHead(ctx.root, ctx.mainBranch)) ?? "");
   for (const { entry, file } of queue) {
-    if (p.vetting.size >= vetLimit(ctx.semaphore.limit)) return;
+    if (p.verifying.size >= verifyLimit(ctx.semaphore.limit)) return;
     if (liveRoles(p).has(entry.role)) continue;
     if (await mergedIntoMain(ctx.root, entry.sha, ctx.mainBranch, mainHead)) {
       dropMerge(file);
@@ -122,50 +122,51 @@ export async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeli
     // The dedupe awaited git: a task that settled meanwhile may have dropped this very entry
     // (its role was busy when the queue was listed) or claimed its role. Start nothing for it.
     if (!fs.existsSync(file) || liveRoles(p).has(entry.role)) continue;
-    startVet(ctx, p, entry, file);
+    startVerify(ctx, p, entry, file);
   }
 }
 
-/** Start one vet task and record it in `p.vetting`: parked until a shared permit comes, at
- * LANDING_TIER (a shutdown settles a parked vet at once, and one granted while the start gate
- * is closed hands its permit back — either way nothing ran, and its entry and pin stay queued
+/** Start one verification task and record it in `p.verifying`: parked until a shared permit comes,
+ * at VERIFY_TIER (a shutdown settles a parked verification at once, and one granted while the start
+ * gate is closed hands its permit back — either way nothing ran, and its entry and pin stay queued
  * with no outcome written), then, holding the permit for its whole length: open the change's
- * marker record and vet it — checkout at the pin, rebase onto main, gate check, review
- * (vetRequest), the verdict persisted by the gate. An approval moves it to `vetted` (record
+ * marker record and verify it — checkout at the pin, rebase onto main, gate check, review
+ * (vetRequest), the verdict persisted by the gate. An approval moves it to `approved` (record
  * `vetted, awaiting merge`). Any other verdict — rejected, a review_error of either kind,
  * main_red, a lost pin's "error", aborted — is final for this queue entry, so its outcome is
  * written at once and its entry dropped, which frees its author on the next poll while the
- * other vets run on (BUGS.md 2026-09-23's early-rejection rule). A user-aborted vet discards its
- * pin; a shutdown keeps it. Never rejects for a failed landing: an unexpected throw becomes an
- * "error" outcome. Exported for test/fixtures/orchestrator-fixtures.ts's mergeHead, which lands
- * one queue entry through the pipeline without draining the rest of the queue. */
-export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry: MergeEntry, file: string): void {
+ * other verifications run on (BUGS.md 2026-09-23's early-rejection rule). A user-aborted
+ * verification discards its pin; a shutdown keeps it. Never rejects for a failed merge: an
+ * unexpected throw becomes an "error" outcome. Exported for
+ * test/fixtures/orchestrator-fixtures.ts's mergeHead, which lands one queue entry through the
+ * pipeline without draining the rest of the queue. */
+export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEntry, file: string): void {
   const { root, mainBranch, signal, semaphore } = ctx;
   const { role } = entry;
   const author = resolveAuthor(ctx, role);
-  // The vet's provider key: the review seam's key for the author's role, so its reviewer run
-  // counts toward the same provider cap as the roles that share it (plans/provider-concurrency.md
-  // §4). The gate off runs no model, so then there is no key — the vet is bounded by the team
-  // total alone.
+  // The verification's provider key: the review seam's key for the author's role, so its reviewer
+  // run counts toward the same provider cap as the roles that share it
+  // (plans/provider-concurrency.md §4). The gate off runs no model, so then there is no key — the
+  // verification is bounded by the team total alone.
   const reviewKey =
     ctx.liveConfig.review.enabled
       ? seamConcurrencyKey(reviewRunConfig(author.config), ctx.piDefault)
       : undefined;
-  const vet: InFlightLanding = {
+  const verify: InFlightMerge = {
     promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
     controller: new AbortController(),
     roles: [role],
     userAborted: false,
     parked: true,
   };
-  const detachShutdown = abortOnShutdown(signal, vet.controller);
-  p.vetting.set(role, vet);
+  const detachShutdown = abortOnShutdown(signal, verify.controller);
+  p.verifying.set(role, verify);
   const task = (async () => {
     try {
-      const lease = await acquireUnlessAborted(semaphore, LANDING_TIER, vet.controller.signal, reviewKey);
-      vet.parked = false;
+      const lease = await acquireUnlessAborted(semaphore, VERIFY_TIER, verify.controller.signal, reviewKey);
+      verify.parked = false;
       if (lease === null) return; // a shutdown while parked
-      if (vet.controller.signal.aborted || ctx.startHeld()) {
+      if (verify.controller.signal.aborted || ctx.startHeld()) {
         lease.release(); // stopping, or a restart / team hold closed the gate while it waited
         return;
       }
@@ -174,15 +175,16 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
       const startedAt = Date.now();
       try {
         addMergeChange(root, entry, liveRoles(p));
-        // The vet's lease rides in the provider-lease store for the vet's body, so a review run
-        // that lands on a different provider than the vet's review seam re-keys it there, and a
-        // re-key park is shown by providerWaitStage; its slot wait drops the key (pool-slot rule).
+        // The verification's lease rides in the provider-lease store for the verification's body,
+        // so a review run that lands on a different provider than the verification's review seam
+        // re-keys it there, and a re-key park is shown by providerWaitStage; its slot wait drops
+        // the key (pool-slot rule).
         verdict = await withProviderLease(
           lease,
           semaphore,
           () =>
             vetRequest(
-              { root, mainBranch, config: author.config, signal: () => vet.controller.signal, runGatePi: (opts) => author.runGatePi(opts) },
+              { root, mainBranch, config: author.config, signal: () => verify.controller.signal, runGatePi: (opts) => author.runGatePi(opts) },
               {
                 role,
                 sha: entry.sha,
@@ -203,8 +205,8 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
       } finally {
         lease.release();
       }
-      if (verdict.kind === "stack" && !vet.userAborted) {
-        p.vetted.set(role, {
+      if (verdict.kind === "stack" && !verify.userAborted) {
+        p.approved.set(role, {
           entry,
           file,
           sha: verdict.sha,
@@ -220,13 +222,13 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
         setMergeChangeStatus(root, role, "approved");
       } else {
         const result = verdict.kind === "stack" ? "aborted" : verdict.result;
-        await settleLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);
-        if (vet.userAborted) await discardPinnedRefs(root, [role]);
+        await settleMergeOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);
+        if (verify.userAborted) await discardPinnedRefs(root, [role]);
       }
     } finally {
       detachShutdown();
-      p.vetting.delete(role);
+      p.verifying.delete(role);
     }
   })();
-  vet.promise = guardLandingTask(root, role, task);
+  verify.promise = guardMergeTask(root, role, task);
 }

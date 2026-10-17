@@ -2,7 +2,7 @@
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { warnEvent, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
-import type { InFlightLanding } from "../merge/merge-pipeline.js";
+import type { InFlightMerge } from "../merge/merge-pipeline.js";
 import { mergeStatePath } from "../paths.js";
 import { runOnAbort } from "../process/process.js";
 import type { TickOutcome } from "./tick-outcome.js";
@@ -161,7 +161,7 @@ type HandoffLandingOutcome = "finished" | "aborted" | "abandoned";
  * drain re-lands them. Exported as a unit-test seam, like runTimedRoleTick. */
 export async function awaitLandingForHandoff(
   root: string,
-  landing: Pick<InFlightLanding, "promise" | "roles">,
+  landing: Pick<InFlightMerge, "promise" | "roles">,
   windowMs: number,
   abort: () => void,
   after: AfterDelay = realAfterDelay,
@@ -211,7 +211,7 @@ export async function drainInFlightWork(
   root: string,
   roleInFlight: ReadonlySet<Promise<void>>,
   directorInFlight: ReadonlySet<Promise<void>>,
-  inFlight: readonly InFlightLanding[],
+  inFlight: readonly InFlightMerge[],
   restart: boolean,
   handoffWindowMs: number,
   abort: () => void,

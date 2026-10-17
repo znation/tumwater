@@ -540,7 +540,7 @@ export class LoopPi {
  * and conflict-resolution runs charge to the authoring role). Declared once here so the contract
  * — and its wording — cannot drift apart across the four contexts that restate it:
  * LanderContext and BatchRoleWiring carry all three halves (PiRunWiring), MergeContext only
- * the resolver's runner (its runPi folds usage internally), and VettedLanding only the fold.
+ * the resolver's runner (its runPi folds usage internally), and ApprovedMerge only the fold.
  *
  * `runPi`'s optional fourth argument is the config that ONE run executes on (plans/
  * model-tiers.md part 4/8): the conflict resolver passes the strong tier's config there while
@@ -566,5 +566,5 @@ export interface FoldsUsage {
 
 /** A landing context that runs pi through the loop's shared wiring and folds each run's
  * usage: both halves (RunsPi + FoldsUsage). LanderContext and BatchRoleWiring extend this;
- * contexts needing only one half extend that half instead (MergeContext, VettedLanding). */
+ * contexts needing only one half extend that half instead (MergeContext, ApprovedMerge). */
 export interface PiRunWiring extends RunsPi, GateRunsPi, FoldsUsage {}

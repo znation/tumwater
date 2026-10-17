@@ -392,7 +392,7 @@ export function writeMergeOutcome(
  * subscription merge's API-equivalent spend, which never charges the cap and rides the
  * merge_done event's own notional field (plans/agent-backends.md part 6a). The single home of the
  * shape: writeMergeOutcome and mergeUsage build it here, and merge-pipeline.ts's
- * VettedLanding and settleLandingOutcome carry the same object. */
+ * ApprovedMerge and settleMergeOutcome carry the same object. */
 export interface MergeUsage {
   tokens: number;
   cost: number;

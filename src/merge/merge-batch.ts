@@ -70,7 +70,7 @@ export type VetVerdict =
  * immediately by reviewPinnedChange (the drain's write-back of an approved change happens only
  * once it lands, so a crash must not lose what the vet earned). The lease is released in every
  * outcome (plans/worktree-pool.md, "Vets and merges"): the vet passes its result on through the
- * landing ref and VettedLanding, never through the slot, and every merge-side step re-ensures at
+ * landing ref and ApprovedMerge, never through the slot, and every merge-side step re-ensures at
  * a commit. leaseSlot holds the slot through the disk-floor registry and resets it to the pin, so
  * two vets rebasing at once — or one rebasing while a merge moves main — cannot interfere. */
 export async function vetRequest(ctx: BatchContext, req: LandRequest, w: BatchRoleWiring): Promise<VetVerdict> {

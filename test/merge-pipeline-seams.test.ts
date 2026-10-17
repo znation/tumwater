@@ -5,10 +5,10 @@ import assert from "node:assert/strict";
 import { abortOnShutdown, acquireUnlessAborted } from "../src/merge/merge-pipeline.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 
-// Unit-tier coverage for the landing pipeline's two shutdown seams
-// (src/merge/merge-pipeline.ts): the wiring that turns the harness stop into a landing task's
-// own abort, and the permit-taking race that lets a parked vet lose its grant to a shutdown without
-// leaking the permit. Both run in every shutdown of every team (merge-drain.ts and
+// Unit-tier coverage for the merge pipeline's two shutdown seams
+// (src/merge/merge-pipeline.ts): the wiring that turns the harness stop into a merge task's
+// own abort, and the permit-taking race that lets a parked verification lose its grant to a
+// shutdown without leaking the permit. Both run in every shutdown of every team (merge-drain.ts and
 // merge-verify.ts call them for every task), and both carry a documented edge a naive version
 // gets wrong — an already-aborted signal that addEventListener alone would never fire; a grant
 // that arrives after the abort and must be handed straight back ("a hop, never a leak") or
@@ -57,14 +57,14 @@ test("acquireUnlessAborted grants a free permit and its release hands it back", 
   let second = false;
   void semaphore.acquire(1).then(() => (second = true));
   await settle();
-  assert.equal(second, false, "the cap holds while the vet holds its permit");
+  assert.equal(second, false, "the cap holds while the verification holds its permit");
   release.release();
   await settle();
   assert.equal(second, true, "the release hands the permit to the parked waiter");
 });
 
 test("an abort while parked resolves null, and a grant that arrives later is handed straight back", async () => {
-  // The race the seam exists for: a vet parks on a saturated maxConcurrent, the shutdown
+  // The race the seam exists for: a verification parks on a saturated maxConcurrent, the shutdown
   // fires while it waits, and the permit it was queued for is granted anyway the moment the
   // holder finishes. Without the hand-back, that grant is lost — every aborted vet would
   // shrink the team's real concurrency by one.
@@ -92,27 +92,28 @@ test("a permit granted before the abort keeps its normal release — the abort d
   const controller = new AbortController();
   const release = await acquireUnlessAborted(semaphore, 0, controller.signal);
   assert.ok(release);
-  controller.abort(); // the stop lands after the grant: the vet is already running
+  controller.abort(); // the stop lands after the grant: the verification is already running
   release.release(); // the task's own finally still releases exactly once
   await settle();
   assert.ok(await within(semaphore.acquire(0)), "exactly one release: the permit is free again");
 });
 
 test("acquireUnlessAborted with a key parks on a full provider and is granted on its drain", async () => {
-  // plans/provider-concurrency.md §4: a vet's keyed lease waits on its provider cap as well as
-  // the team total, while a free team slot on another provider is not held back by the full key.
+  // plans/provider-concurrency.md §4: a verification's keyed lease waits on its provider cap as
+  // well as the team total, while a free team slot on another provider is not held back by the full
+  // key.
   const semaphore = new Semaphore(4);
   semaphore.setKeyCaps({ omlx: 1 });
   const holder = await semaphore.acquireLease(0, "omlx"); // the omlx slot an in-flight review holds
   let granted = false;
   void acquireUnlessAborted(semaphore, 0, new AbortController().signal, "omlx").then(() => (granted = true));
   await settle();
-  assert.equal(granted, false, "a full omlx key withholds the keyed vet's lease");
+  assert.equal(granted, false, "a full omlx key withholds the keyed verification's lease");
   let other = false;
   void semaphore.acquireLease(0, "huggingface").then(() => (other = true));
   await settle();
   assert.equal(other, true, "another provider runs beside the full omlx");
   holder.release();
   await settle();
-  assert.equal(granted, true, "the omlx drain hands the keyed vet its lease");
+  assert.equal(granted, true, "the omlx drain hands the keyed verification its lease");
 });

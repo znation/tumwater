@@ -68,9 +68,6 @@ function seamKeyedFallbackProvider(
   return agent !== "pi" ? agent : provider;
 }
 
-/** The `model` selector a run actually starts on, as an event/payload field: the resolved
- * provider/model/thinking triple formatted as one selector string, or an empty object when
-
 /** The team-level fallback pair: the `default` tier's resolved pair under
  * resolveTierFallbacks' borrow order, or null when the tier resolves to pause. The
  * selector-string `fallback` (plans/model-tiers.md), the legacy `fallbackModel` object, and

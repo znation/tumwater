@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { drainLandings } from "../src/merge/merge-drain.js";
-import { abortableLandings, landingTasks } from "../src/merge/merge-pipeline.js";
+import { drainMergeQueue } from "../src/merge/merge-drain.js";
+import { abortableMerges, mergeTasks } from "../src/merge/merge-pipeline.js";
 import { queuedMergeFiles } from "../src/merge/merge-queue.js";
 import { mergeRefName, slotsStatePath } from "../src/paths.js";
 import { readSlotsState } from "../src/git/slots-state.js";
@@ -32,7 +32,7 @@ import { leasedRoleShell } from "./fixtures/pi-events.js";
 import { waitFor, waitForFile, within } from "./helpers/wait.js";
 import { readJson } from "./helpers/json-read.js";
 
-/** Second slice of the landing-drain suite — the vet-permit and merge-slot tests beside
+/** Second slice of the merge-drain suite — the verification-permit and merge-slot tests beside
  * merge-drain.test.ts (which carries the dedupe tests, including the one ~10.5s stress
  * test) and merge-pipeline.test.ts — split so node --test runs the slices in parallel
  * processes: top-level tests within one file run sequentially, while each test FILE gets its
@@ -48,12 +48,12 @@ test("mergeBatchMax caps each merge's stack, read from the live config at each d
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { config });
   pipeline.merge = busySlot();
   try {
-    await pumpUntil(ctx, pipeline, () => pipeline.vetted.size === 3, "all three to be vetted");
+    await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 3, "all three to be approved");
     ctx.liveConfig = { ...config, mergeBatchMax: 2 }; // a live edit, as the scheduler hands it over
     pipeline.merge = null;
-    await drainLandings(ctx, pipeline);
-    assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha", "beta"], "the first merge stacks two, in queue order");
-    assert.deepEqual([...pipeline.vetted.keys()], ["gamma"], "the third waits for the next merge");
+    await drainMergeQueue(ctx, pipeline);
+    assert.deepEqual(mergeTasks(pipeline).flatMap((t) => t.roles), ["alpha", "beta"], "the first merge stacks two, in queue order");
+    assert.deepEqual([...pipeline.approved.keys()], ["gamma"], "the third waits for the next merge");
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain");
 
     const checks = readEvents(root).filter((e) => e.type === "build_check" && e.scope !== "gate");
@@ -72,16 +72,16 @@ test("mergeBatchMax caps each merge's stack, read from the live config at each d
   }
 });
 
-test("every vet holds a shared permit: with one free, one reviews while the other parks, showing nothing, and no permit leaks", async () => {
-  // A landing's pi runs take the same permit role ticks do (BUGS.md 2026-09-18), and landings
-  // count as active work. At cap 3 (vetLimit 2) with no role tick running, both reviews run at
+test("every verification holds a shared permit: with one free, one reviews while the other parks, showing nothing, and no permit leaks", async () => {
+  // A merge's pi runs take the same permit role ticks do (BUGS.md 2026-09-18), and merges
+  // count as active work. At cap 3 (verifyLimit 2) with no role tick running, both reviews run at
   // once; with two role ticks holding permits, one is free, so the second vet parks for it — no
   // marker record, its row plainly queued, out of reach of abort --role and of the shutdown
-  // wait — until the first vet frees it. Each review records how many reviews were in flight as
-  // it started. With both free, beta's review also holds (bounded) until alpha's has begun: two
-  // vets that may overlap can still happen not to — beta's review can finish before alpha's
-  // starts — so the overlap a working pipeline allows is made certain rather than left to
-  // timing; a pipeline that serializes them leaves beta waiting out its bound alone.
+  // wait — until the first verification frees it. Each review records how many reviews were in
+  // flight as it started. With both free, beta's review also holds (bounded) until alpha's has
+  // begun: two verifications that may overlap can still happen not to — beta's review can finish
+  // before alpha's starts — so the overlap a working pipeline allows is made certain rather than
+  // left to timing; a pipeline that serializes them leaves beta waiting out its bound alone.
   const cap = 3;
   for (const ticks of [0, 2]) {
     const free = cap - ticks;
@@ -110,23 +110,23 @@ test("every vet holds a shared permit: with one free, one reviews while the othe
     try {
       await waitForFile(path.join(flags, "alpha-reviewing"));
       if (ticks > 0) {
-        await waitFor(() => pipeline.vetting.get("beta")?.parked === true, "beta's vet to park for the permit", 30_000);
-        assert.match(rowOf("alpha"), REVIEWING, "one free: the vet holding the permit shows its stage");
-        assert.equal(rowOf("beta"), "due", "one free: the parked vet's role reads plainly due");
-        assert.deepEqual(readMergeMarker(root)?.changes?.map((c) => c.role), ["alpha"], "one free: no record for the parked vet");
-        assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: the parked vet is not in flight");
-        assert.deepEqual(abortableLandings(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: nor abortable");
+        await waitFor(() => pipeline.verifying.get("beta")?.parked === true, "beta's vet to park for the permit", 30_000);
+        assert.match(rowOf("alpha"), REVIEWING, "one free: the verification holding the permit shows its stage");
+        assert.equal(rowOf("beta"), "due", "one free: the parked verification's role reads plainly due");
+        assert.deepEqual(readMergeMarker(root)?.changes?.map((c) => c.role), ["alpha"], "one free: no record for the parked verification");
+        assert.deepEqual(mergeTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: the parked verification is not in flight");
+        assert.deepEqual(abortableMerges(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: nor abortable");
       } else {
         await waitFor(() => readEvents(root).some((e) => e.type === "review_verdict" && e.source === "beta"), "beta's review beside alpha's", 30_000);
       }
       fs.writeFileSync(path.join(flags, "alpha-release"), "");
-      await waitFor(drained(root, pipeline), `${free} free: both changes to land`, 60_000);
+      await waitFor(drained(root, pipeline), `${free} free: both changes to merge`, 60_000);
 
       const samples = fs.readFileSync(path.join(flags, "samples.log"), "utf8").trim().split("\n").map(Number);
       assert.equal(samples.length, 2, `${free} free: one review per change`);
       assert.equal(Math.max(...samples), Math.min(free, 2), `${free} free: reviews in flight at each start never exceed the free permits (${samples})`);
       await bg.stop();
-      // Every vet's permit came back: all the ticks left free are acquirable again.
+      // Every verification's permit came back: all the ticks left free are acquirable again.
       for (let k = 0; k < free; k++) {
         assert.ok(await within(ctx.semaphore.acquire(0), 5_000), `${free} free: permit ${k + 1} was never released`);
       }
@@ -139,7 +139,7 @@ test("every vet holds a shared permit: with one free, one reviews while the othe
   }
 });
 
-test("a parked vet starts nothing when a shutdown or a closed start gate meets it: entry and pin stay queued", async () => {
+test("a parked verification starts nothing when a shutdown or a closed start gate meets it: entry and pin stay queued", async () => {
   // A vet parked for its permit has started nothing, so it must end like a parked role tick —
   // no outcome, no review, no marker record — whether the harness stops (its controller) or a
   // restart / 429 hold closes the start gate before its permit comes (the gate at its grant).
@@ -161,32 +161,32 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
     await ctx.semaphore.acquire(0);
     await ctx.semaphore.acquire(0);
     try {
-      await drainLandings(ctx, pipeline);
+      await drainMergeQueue(ctx, pipeline);
       await waitForFile(path.join(flags, "alpha-reviewing"));
-      const beta = pipeline.vetting.get("beta");
+      const beta = pipeline.verifying.get("beta");
       assert.equal(beta?.parked, true, `${stop}: beta's vet is parked behind alpha's`);
       if (stop === "gate") {
-        held = true; // a restart hold, say: the scheduler stops draining, and parked vets meet it
+        held = true; // a restart hold, say: the scheduler stops draining, and parked verifications meet it
         fs.writeFileSync(path.join(flags, "alpha-release"), "");
       } else {
         shutdown.abort();
       }
-      assert.ok(await within(beta!.promise, 30_000), `${stop}: the parked vet settled`);
+      assert.ok(await within(beta!.promise, 30_000), `${stop}: the parked verification settled`);
       await Promise.allSettled(allTasks(pipeline));
 
-      assert.equal(pipeline.vetting.has("beta"), false, `${stop}: beta holds no vet any more`);
+      assert.equal(pipeline.verifying.has("beta"), false, `${stop}: beta holds no verification any more`);
       assert.ok(queuedMergeFiles(root).some((q) => q.entry.role === "beta"), `${stop}: beta's entry is still queued`);
       assert.equal(await refSha(root, mergeRefName("beta")), shas.beta, `${stop}: with its pin`);
       assert.equal(readEvents(root).some((e) => e.source === "beta" && (e.type === "merge_failed" || e.type === "review_start")), false, `${stop}: nothing ran for beta`);
       assert.ok(!readMergeMarker(root)?.changes?.some((c) => c.role === "beta"), `${stop}: beta never had a record`);
       if (stop === "shutdown") {
         const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha");
-        assert.deepEqual(failed.map((e) => e.result), ["aborted"], "the vet under review ended aborted");
+        assert.deepEqual(failed.map((e) => e.result), ["aborted"], "the verification under review ended aborted");
         assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha, "its pin survives the shutdown");
       } else {
-        held = false; // the hold lifts: the next drain vets beta afresh
-        await pumpUntil(ctx, pipeline, drained(root, pipeline), "both to land once the gate reopens");
-        assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"), "beta landed once the gate reopened");
+        held = false; // the hold lifts: the next drain verifies beta afresh
+        await pumpUntil(ctx, pipeline, drained(root, pipeline), "both to merge once the gate reopens");
+        assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"), "beta merged once the gate reopened");
       }
       assert.ok(await within(ctx.semaphore.acquire(0), 5_000), `${stop}: the handed-back permit is free again`);
     } finally {
@@ -200,10 +200,10 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
 
 test("three T-long reviews run at once at cap 4, so all three merge in about T, not 3T", async () => {
   // Acceptance for land-queue speed 2c. Each review records how many reviews were in flight as it
-  // started, holds (bounded) until all three are in flight — three vets that may overlap can
-  // still happen not to, and the overlap a working pipeline allows is made certain rather than left
-  // to a long hold — and then holds T. As in merger.test.ts's timing tests, the span is read off
-  // the harness's own timeline — first review_start to last `merged` — and held against the
+  // started, holds (bounded) until all three are in flight — three verifications that may overlap
+  // can still happen not to, and the overlap a working pipeline allows is made certain rather than
+  // left to a long hold — and then holds T. As in merger.test.ts's timing tests, the span is read
+  // off the harness's own timeline — first review_start to last `merged` — and held against the
   // reviews' own summed durations (the floor of any one-after-another schedule), so a loaded host's
   // git plumbing cannot swamp the bound.
   const T = 2;
@@ -221,11 +221,11 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
       APPROVE(),
     ].join("\n"),
     async () => {
-      // Cap 4: vetLimit keeps one permit for authoring, so three vets may run.
+      // Cap 4: verifyLimit keeps one permit for authoring, so three verifications may run.
       const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 4 });
-      await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to land");
+      await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to merge");
 
-      assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3", "all three landed");
+      assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3", "all three merged");
       const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
       assert.equal(samples.length, 3, "one review per change");
       assert.equal(Math.max(...samples), 3, `all three reviews overlapped (in flight at each start: ${samples})`);
@@ -245,7 +245,7 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
   );
 });
 
-test("a vet runs in a pooled slot (purpose vet while it works, no lease after) and creates no _land-<role>", async () => {
+test("a verification runs in a pooled slot (purpose vet while it works, no lease after) and creates no _land-<role>", async () => {
   const root = makeRepo();
   const role = "alpha";
   await queueChanges(root, [role]);
@@ -258,17 +258,17 @@ test("a vet runs in a pooled slot (purpose vet while it works, no lease after) a
     ].join("\n"),
     async () => {
       const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]));
-      await pumpUntil(ctx, pipeline, drained(root, pipeline), "the change to land");
+      await pumpUntil(ctx, pipeline, drained(root, pipeline), "the change to merge");
       const cwd = fs.readFileSync(path.join(flags, "cwd"), "utf8").trim();
       assert.match(path.basename(cwd), /^_slot-\d+$/, "the reviewer ran in a pooled slot");
-      assert.equal(fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${role}`)), false, "no _land-<role> was created for the vet");
+      assert.equal(fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${role}`)), false, "no _land-<role> was created for the verification");
       const during = readJson(path.join(flags, "during.json")) as {
         slots: Array<{ dir: string; lease: { role: string; purpose: string } | null }>;
       };
       const leased = during.slots.find((s) => fs.realpathSync(s.dir) === fs.realpathSync(cwd));
-      assert.equal(leased?.lease?.role, role, "the slot was leased for the change's role while the vet ran");
+      assert.equal(leased?.lease?.role, role, "the slot was leased for the change's role while the verification ran");
       assert.equal(leased?.lease?.purpose, "verify", "the lease's purpose was verify");
-      assert.equal(readSlotsState(root).slots.every((s) => s.lease === null), true, "no lease survives the landing");
+      assert.equal(readSlotsState(root).slots.every((s) => s.lease === null), true, "no lease survives the merge");
     },
   );
 });
