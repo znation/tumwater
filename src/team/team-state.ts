@@ -8,40 +8,46 @@ import { pausedPath, pausedRolesLockPath, pausedRolesPath, scheduledStopPath } f
 import { pendingScheduledWakes } from "../operator/operator-requests.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
-/** The operator pause markers: the fleet-wide pause (`tumwater pause`/`resume`) and the
+/** The operator pause markers: the team-wide pause (`tumwater pause`/`resume`) and the
  * per-role pause set (`pause --role <id>`/`resume --role <id>`), their writers and read-side
  * wrappers together so producer (CLI, GUI) and every consumer read one module. The running
- * orchestrator's info file is the other fleet-state domain and lives in orchestrator-info.ts. */
+ * orchestrator's info file is the other team-state domain and lives in orchestrator-info.ts. */
 
-/** The fleet pause marker read once as the standing pause it represents: non-null while the
+/** The team pause marker read once as the standing pause it represents: non-null while the
  * operator's pause stands, null when absent/unreadable/expired. Snapshot-style callers that
- * need both "is the fleet paused" and its deadline read this once instead of paying two
- * full marker reads (isFleetPaused + pausedUntil each re-read the same file) per poll —
+ * need both "is the team paused" and its deadline read this once instead of paying two
+ * full marker reads (isTeamPaused + pausedUntil each re-read the same file) per poll —
  * the TUI and GUI poll snapshot every second. Never throws (a missing .tumwater/ reads
  * null). Lives here beside the read-half wrappers below: one module, one marker, one read
  * per poll per observer. */
-export function standingFleetPause(root: string): PauseMarker | null {
+export function standingTeamPause(root: string): PauseMarker | null {
   return standingMarker(pausedPath(root));
 }
 
-/** True while the operator has paused the fleet (`tumwater pause` wrote its marker). The
+/** @deprecated Use standingTeamPause. */
+export const standingFleetPause = standingTeamPause;
+
+/** True while the operator has paused the team (`tumwater pause` wrote its marker). The
  * marker is persistent state, not a one-shot request: presence means paused until `resume`
- * removes it — pausing before startup starts an already-paused fleet. Never throws (a missing
+ * removes it — pausing before startup starts an already-paused team. Never throws (a missing
  * .tumwater/ reads false). Lives here because both the scheduler and every observer must
  * evaluate it from disk without importing each other's modules — the same "single
  * definition" rule that put the daily-cost budget in src/budget/budget.ts. */
-export function isFleetPaused(root: string): boolean {
-  return standingFleetPause(root) !== null;
+export function isTeamPaused(root: string): boolean {
+  return standingTeamPause(root) !== null;
 }
+
+/** @deprecated Use isTeamPaused. */
+export const isFleetPaused = isTeamPaused;
 
 /** The body shape of both pause markers: the write instant plus, for a timed pause
  * (`tumwater pause [--role <id>] --for <duration>`), the ms-epoch deadline. One shared
  * deadline per marker — a set is paused or it is not, and each new pause write carries its
  * own `until` (the last write winning), so per-role deadlines would buy a map plus per-role
- * transition logic for no observed need. The FLEET marker alone may also carry the
+ * transition logic for no observed need. The TEAM marker alone may also carry the
  * operator's one-line `reason` (`tumwater pause --reason <text>`): same last-write-wins
  * rule as `until`, and a pause written without one clears a stale reason — the reason is
- * the note on THIS pause, not a standing fleet property. The per-role marker body
+ * the note on THIS pause, not a standing team property. The per-role marker body
  * (`pauseRole`'s {roles, at, until}) stays anonymous: a per-role reason would need a
  * per-role map for no observed need. */
 interface PauseMarker {
@@ -60,18 +66,18 @@ export const PAUSE_REASON_MAX = 200;
  * timed pause: every consumer (scheduler, dashboards, a follow-up `pause`) treats an expired
  * marker as absent, so the deadline releases the pause with no new scheduler code — the
  * orchestrator's poll-diff sees an ordinary unpaused transition. Never throws. The reason is
- * folded and capped here too — the same shape pauseFleet writes — so the marker's reason
+ * folded and capped here too — the same shape pauseTeam writes — so the marker's reason
  * reads as the operator's one-line why whoever wrote it: a pause standing across the
  * write-side fold (or a hand edit) must not hand the status header's badge a raw newline
  * (BUGS.md 2026-09-30). A non-string reason reads as no reason — src/files/json-files.ts's
  * wrong-shape-reads-as-absent policy — and the type guard is what keeps this function's
  * never-throws contract intact: normalizePauseReason would throw on a number or object,
- * and this read sits on the scheduler's per-cycle isFleetPaused poll and every dashboard
+ * and this read sits on the scheduler's per-cycle isTeamPaused poll and every dashboard
  * snapshot.
  *
  * A non-finite `until` (a hand edit's `1e999` parses to Infinity) is the same wrong-shape
  * read: it is dropped, so the marker stands as an indefinite pause rather than a pause that
- * never lapses with its countdown rendered `Infinityd`. The fleet stays stopped — a corrupt
+ * never lapses with its countdown rendered `Infinityd`. The team stays stopped — a corrupt
  * deadline must not resume it — but it no longer claims a deadline no clock can reach. */
 function standingMarker(path: string): PauseMarker | null {
   const m = readJsonFile<PauseMarker>(path);
@@ -87,22 +93,22 @@ function standingMarker(path: string): PauseMarker | null {
   return m;
 }
 
-/** The fleet marker's standing deadline (ms epoch) while a timed pause holds; undefined when
- * the fleet is not timed-paused — no marker, an indefinite `pause` (no `until`), or an expired
+/** The team marker's standing deadline (ms epoch) while a timed pause holds; undefined when
+ * the team is not timed-paused — no marker, an indefinite `pause` (no `until`), or an expired
  * `until` (standingMarker already reads that as unpaused, so the field cannot outlive the
- * pause it describes). Fleet-scoped on purpose: the FLEET marker's deadline is what a header
- * badge may claim, since only it covers the whole fleet. Lives here beside isFleetPaused —
+ * pause it describes). Team-scoped on purpose: the TEAM marker's deadline is what a header
+ * badge may claim, since only it covers the whole team. Lives here beside isTeamPaused —
  * one module for every marker consumer. */
 export function pausedUntil(root: string): number | undefined {
-  return standingFleetPause(root)?.until;
+  return standingTeamPause(root)?.until;
 }
 
-/** The standing fleet pause's operator reason (`tumwater pause --reason <text>`), undefined
- * when the fleet is not paused or the standing pause carries none — same read (and the same
+/** The standing team pause's operator reason (`tumwater pause --reason <text>`), undefined
+ * when the team is not paused or the standing pause carries none — same read (and the same
  * never-throws, expiry-honoring contract) as pausedUntil beside which it lives, so a caller
- * wanting both pays one standingFleetPause read, not two. */
+ * wanting both pays one standingTeamPause read, not two. */
 export function pausedReason(root: string): string | undefined {
-  return standingFleetPause(root)?.reason;
+  return standingTeamPause(root)?.reason;
 }
 
 /** Fold an operator pause reason to the one line every pause surface renders (the marker
@@ -113,14 +119,14 @@ export function pausedReason(root: string): string | undefined {
  * that would split an astral character and marks the cut with an ellipsis), so the CLI
  * confirmation, the marker, and every read side quote the same bounded line — a cap applied
  * only at the writer let `pause --reason <over-cap text>` print a note longer than the one
- * persisted. One home beside pauseFleet so the CLI path and any later GUI writer cannot
+ * persisted. One home beside pauseTeam so the CLI path and any later GUI writer cannot
  * drift on the shape the marker stores. */
 export function normalizePauseReason(reason: string | undefined): string | undefined {
   const oneLine = reason === undefined ? undefined : collapseWhitespace(reason);
   return oneLine ? truncate(oneLine, PAUSE_REASON_MAX) : undefined;
 }
 
-/** Pause the fleet by writing its marker, the writer half of isFleetPaused's contract; the
+/** Pause the team by writing its marker, the writer half of isTeamPaused's contract; the
  * marker format ({ at: number }, pretty-printed JSON) is the one `tumwater pause` has always
  * written. `reason` is the operator's one-line why (`tumwater pause --reason <text>`):
  * folded to one line and capped at PAUSE_REASON_MAX (both normalizePauseReason) — the
@@ -130,8 +136,8 @@ export function normalizePauseReason(reason: string | undefined): string | undef
  * indefinite pause lands on an already-standing one, so the CLI can report "already paused"
  * and the dashboard's toggle stays idempotent — a no-op never touches the standing reason
  * (a timed `--for` on a standing pause overwrites the deadline instead). Lives here beside
- * isFleetPaused so the producer (CLI, GUI) and every consumer read the same path. */
-export function pauseFleet(root: string, untilMs?: number, reason?: string): boolean {
+ * isTeamPaused so the producer (CLI, GUI) and every consumer read the same path. */
+export function pauseTeam(root: string, untilMs?: number, reason?: string): boolean {
   const marker = pausedPath(root);
   // An already-standing pause is the idempotent no-op it has always been — except under a
   // fresh `--for`, which overwrites the deadline (extend or shorten): the operator asked for
@@ -147,18 +153,24 @@ export function pauseFleet(root: string, untilMs?: number, reason?: string): boo
   return true;
 }
 
-/** Resume the fleet by removing its marker (a no-op if absent); returns whether a marker was
- * there to lift, mirroring pauseFleet's changed-state contract. Uses removeQuiet's
+/** @deprecated Use pauseTeam. */
+export const pauseFleet = pauseTeam;
+
+/** Resume the team by removing its marker (a no-op if absent); returns whether a marker was
+ * there to lift, mirroring pauseTeam's changed-state contract. Uses removeQuiet's
  * never-throws delete: a marker vanishing between the check and the unlink is success, not a
  * failure worth surfacing from a toggle. */
-export function resumeFleet(root: string): boolean {
+export function resumeTeam(root: string): boolean {
   const marker = pausedPath(root);
   if (!fs.existsSync(marker)) return false;
   removeQuiet(marker);
   return true;
 }
 
-/** Schedule a graceful fleet stop at `untilMs` (epoch ms): `tumwater stop --in`. Overwrites the
+/** @deprecated Use resumeTeam. */
+export const resumeFleet = resumeTeam;
+
+/** Schedule a graceful team stop at `untilMs` (epoch ms): `tumwater stop --in`. Overwrites the
  * marker, so the last write wins. */
 export function scheduleStop(root: string, untilMs: number): void {
   writeJsonAtomic(scheduledStopPath(root), { at: Date.now(), until: untilMs });
@@ -175,7 +187,7 @@ export function scheduledStopAt(root: string): number | undefined {
   }
 }
 
-/** Drop the scheduled stop; returns whether a marker was there (resumeFleet's contract). */
+/** Drop the scheduled stop; returns whether a marker was there (resumeTeam's contract). */
 export function cancelScheduledStop(root: string): boolean {
   const marker = scheduledStopPath(root);
   if (!fs.existsSync(marker)) return false;
@@ -185,9 +197,9 @@ export function cancelScheduledStop(root: string): boolean {
 
 /** The roles the operator has individually paused (`tumwater pause --role <id>`): a role in
  * this set starts no new ticks — in-flight ones finish, every other role keeps ticking, the
- * director included (the operator named it deliberately). Never throws, like isFleetPaused:
+ * director included (the operator named it deliberately). Never throws, like isTeamPaused:
  * a missing or unreadable file reads as no paused roles, so observers (scheduler, dashboards)
- * can poll it every cycle without a guard. Lives here beside pauseFleet for the same
+ * can poll it every cycle without a guard. Lives here beside pauseTeam for the same
  * single-definition reason: producer (CLI, GUI) and every consumer read one module. */
 export function pausedRoles(root: string): string[] {
   return readPausedRoles(pausedRolesPath(root)).roles;
@@ -255,7 +267,7 @@ function withPausedRolesLock<T>(root: string, fn: () => T): T {
  * command that named a different role (BUGS.md 2026-09-30). undefined when the file is
  * missing, unreadable, or carries no `until` — or a non-numeric, non-finite, or already-
  * expired one, the same wrong-shape-reads-as-absent discipline standingMarker applies to the
- * fleet marker. Dropping a non-finite value here matters beyond the read: a rewrite carries
+ * team marker. Dropping a non-finite value here matters beyond the read: a rewrite carries
  * this value into the next marker body, where JSON.stringify turns Infinity into null — which
  * the expiry rule then reads as a past deadline and resumes every role. */
 function standingRolesUntil(path: string): number | undefined {
@@ -279,7 +291,7 @@ function writePausedRoles(path: string, roles: string[], until: number | undefin
 }
 
 /** Pause one role by adding it to the paused-roles marker; returns whether this call changed
- * state (false when the role was already paused — idempotent like pauseFleet, so the CLI and
+ * state (false when the role was already paused — idempotent like pauseTeam, so the CLI and
  * a dashboard toggle can report "already paused"). Custom-loop ids are stored verbatim: the
  * marker must survive config edits, which is why callers resolve built-in ids without
  * touching tumwater.json (namedRole in src/operator/operator-commands.ts). */
@@ -308,8 +320,8 @@ export function pauseRole(root: string, role: string, untilMs?: number): boolean
 }
 
 /** Resume one role by removing it from the paused-roles marker; returns whether it was there
- * to lift (resume's changed-state contract, mirroring resumeFleet). The last removal deletes
- * the file outright, so a fully-resumed fleet leaves no marker behind for observers to read. */
+ * to lift (resume's changed-state contract, mirroring resumeTeam). The last removal deletes
+ * the file outright, so a fully-resumed team leaves no marker behind for observers to read. */
 export function resumeRole(root: string, role: string): boolean {
   return withPausedRolesLock(root, () => {
     const current = pausedRoles(root);

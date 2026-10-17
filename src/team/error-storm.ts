@@ -1,11 +1,11 @@
-/** The fleet-wide error-storm warning (BUGS.md 2026-09-29): when three or more roles' ticks
+/** The team-wide error-storm warning (BUGS.md 2026-09-29): when three or more roles' ticks
  * are failing consecutively on one shared cause, only each role's own "consecutive tick
- * failures" warning fires — nothing fleet-wide names the shared cause. The 2026-09-22
+ * failures" warning fires — nothing team-wide names the shared cause. The 2026-09-22
  * meltdown (all 14 roles timing out at the 1800 s default for 8 hours) surfaced as 14
- * independent streak warnings; an operator scanning the feed saw a quiet fleet. POLICY, on
- * the shape of the fleet-wide hold (src/team/team-hold.ts): a pure reducer over the
+ * independent streak warnings; an operator scanning the feed saw a quiet team. POLICY, on
+ * the shape of the team-wide hold (src/team/team-hold.ts): a pure reducer over the
  * observations the orchestrator collects each poll and the previous storm, so the rule is
- * unit-testable without a fleet and the orchestrator owns only the wiring (the warning
+ * unit-testable without a team and the orchestrator owns only the wiring (the warning
  * event). Like the hold it has memory — which storm is active is a fact about the past
  * no single poll's inputs carry — so it is a reducer rather than a stateless predicate. */
 
@@ -42,14 +42,14 @@ export interface ErrorStorm {
   roles: string[];
 }
 
-/** The fleet's starting state: no storm. */
+/** The team's starting state: no storm. */
 export const ERROR_STORM_QUIET: ErrorStorm = { key: null, roles: [] };
 
 /** The config knob a shared cause points at, when one is known. Only the timeout cause is
  * mapped: `timed out after <dur>` is the reducer's pooled rendering of the tick-timeout errors
  * (src/agent/run-agent.ts's two `timed out after ${runTimeoutSeconds}s` shapes, pooled into one
  * key by poolTimeoutKey — src/failure/failure-cluster.ts owns the two shapes and their
- * pooling), and a fleet-wide
+ * pooling), and a team-wide
  * run of it means the tick budget does not fit the serving model — the one cause with a knob
  * to name. Every other cause is left unmapped: the storm warning still names it, but inventing
  * a knob for a cause no setting controls would send an operator turning the wrong dial.
@@ -67,7 +67,7 @@ export function errorStormKnob(key: string): string | undefined {
  * (the wiring logs exactly one event), a poll that still sees the same storm returns `prev`
  * itself so the caller can tell nothing changed, and a storm whose members drop below the
  * bar goes quiet and re-arms — a recurrence warns again. A storm on a different cause is a
- * new episode: the old cause no longer explains the fleet, so the new one names itself. */
+ * new episode: the old cause no longer explains the team, so the new one names itself. */
 export function errorStorm(prev: ErrorStorm, observations: readonly ErrorStormObservation[]): ErrorStorm {
   const rolesByKey = new Map<string, Set<string>>();
   for (const { role, consecutiveErrors, lastError } of observations) {

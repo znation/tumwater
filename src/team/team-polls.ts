@@ -1,6 +1,6 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./team-hold.js";
+import { teamHold, TEAM_OPEN, type TeamHold, type HoldObservation } from "./team-hold.js";
 import { claudeWindowUsedUp, windowReserved, type ClaudeAccount } from "../agent/claude/claude-account.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
@@ -9,14 +9,14 @@ import type { ModelTier } from "../config/config-schema.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
 
-/** The orchestrator's three fleet-health polls — the wiring half of the fleet-wide failure
+/** The orchestrator's three team-health polls — the wiring half of the team-wide failure
  * alarms (src/team/team-hold.ts, src/team/error-storm.ts,
  * src/team/failure-spread.ts): each poll gathers
  * the observations its alarm's pure reducer steps with, steps it, and logs exactly one event
- * per episode crossing, so the alarm modules stay unit-testable without a fleet and these
+ * per episode crossing, so the alarm modules stay unit-testable without a team and these
  * own the only event emission. Split out of tick-timing.ts — which had grown from the
  * orchestrator's timing/scheduling seams into also carrying this polling family — so the
- * timing seams read as timing again and the fleet-health polls read as one family. */
+ * timing seams read as timing again and the team-health polls read as one family. */
 
 /** A runner as the hold poll reads it: the role, its two episodic observations, both
  * optional (a runner with neither simply contributes nothing), and the provider its runs
@@ -30,7 +30,7 @@ export interface HoldInputs {
   lastBackendFailure?: { at: number; kind: BackendFailureKind; provider?: string };
 }
 
-/** The HoldObservation list both fleet-wide failure polls step their reducer with, gathered
+/** The HoldObservation list both team-wide failure polls step their reducer with, gathered
  * from each runner's two episodic fields: lastRateLimit (stamped "rate-limit", carrying the
  * server's retry-after when present) and lastBackendFailure. One copy of that flatMap so the
  * two polls' observation sets cannot drift on shape or fields — the spread reads the same two
@@ -51,7 +51,7 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
   ]);
 }
 
-/** The holds map's per-provider fleet-wide failure hold poll. One hold per provider: each
+/** The holds map's per-provider team-wide failure hold poll. One hold per provider: each
  * provider's own hold steps with ONLY its own providers' observations — the reducer's
  * provider+kind grouping made per-provider stepping equivalent to grouping there — so a
  * 429 storm at the reviewer's provider holds the roles on that provider while roles on a
@@ -60,31 +60,31 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * storm's relapse test needs — so "held" is always read through team/team-hold.ts's
  * heldProviders() (until non-null), never bare key presence: a lifted hold must never
  * keep blocking. Events carry the provider when one is configured (an undefined provider
- * — pi's default — omits it, so an unconfigured fleet's events render exactly as before).
+ * — pi's default — omits it, so an unconfigured team's events render exactly as before).
  * `windowTiers` is the budget poll's window move (tier → the pair its work went to), stamped on
  * the subscription window's limited event; `reserve` is the config's `claudeWindowReserve`, whose
  * crossings hold like a rejected window (but never the director) and log
  * pollClaudeWindowReserve's event instead of the limited one. Returns the new map for the
  * caller to keep. Exported as a unit-test seam, like its sibling polls below. */
-export function pollFleetHold(
+export function pollTeamHold(
   root: string,
-  prev: ReadonlyMap<string | undefined, FleetHold>,
+  prev: ReadonlyMap<string | undefined, TeamHold>,
   runners: readonly HoldInputs[],
   now: number,
   account: ClaudeAccount | null = null,
   windowTiers: Partial<Record<ModelTier, string>> = {},
   reserve?: Record<string, number>,
-): Map<string | undefined, FleetHold> {
+): Map<string | undefined, TeamHold> {
   const window = claudeWindowObservation(account, now, reserve);
   const observations = window === null ? holdObservations(runners) : [...holdObservations(runners), window];
   const byProvider = groupBy(observations, (o) => o.provider);
-  const next = new Map<string | undefined, FleetHold>();
+  const next = new Map<string | undefined, TeamHold>();
   // Every provider the map already knows, plus every provider this poll observed: a hold
   // standing with no fresh observations still re-opens at its own deadline (its event),
   // and an open provider with no observations just passes through unchanged.
   for (const provider of new Set([...prev.keys(), ...byProvider.keys()])) {
-    const pPrev = prev.get(provider) ?? { ...FLEET_OPEN, provider };
-    const pNext = fleetHold(pPrev, byProvider.get(provider) ?? [], now);
+    const pPrev = prev.get(provider) ?? { ...TEAM_OPEN, provider };
+    const pNext = teamHold(pPrev, byProvider.get(provider) ?? [], now);
     next.set(provider, pNext);
     const providerFields = provider === undefined ? {} : { provider };
     const limitedEvent = (): void => {
@@ -97,7 +97,7 @@ export function pollFleetHold(
         windowType: window?.windowType,
         resetsAt: pNext.until,
         // Where each moved tier's work went (the budget poll's window move); absent when
-        // nothing moved, so a no-fallback fleet's event is today's.
+        // nothing moved, so a no-fallback team's event is today's.
         ...(Object.keys(windowTiers).length > 0 ? { tiers: windowTiers } : {}),
       });
     };
@@ -142,6 +142,9 @@ export function pollFleetHold(
   }
   return next;
 }
+
+/** @deprecated Use pollTeamHold. */
+export const pollFleetHold = pollTeamHold;
 
 /** The hold observation one subscription account's usage windows imply, or null: a window
  * reading `rejected` with no overage and a future `resetsAt` holds every seam on provider
@@ -224,16 +227,16 @@ export function pollClaudeWindowWarning(
   return prevWarnedKey;
 }
 
-/** One poll of the fleet-wide error-storm warning (src/team/error-storm.ts): gather each runner's
+/** One poll of the team-wide error-storm warning (src/team/error-storm.ts): gather each runner's
  * current error streak (LoopState.consecutiveErrors/lastError — the same fields the per-role
  * "consecutive tick failures" warning reads, the director's included, since its failures are
- * the fleet's evidence too), step the pure reducer, and log exactly one warning per episode,
+ * the team's evidence too), step the pure reducer, and log exactly one warning per episode,
  * like the per-role warning's once-per-streak-crossing shape: on the quiet→storm crossing,
  * naming the roles, the shared normalized cause, and the config knob when the cause has one
- * (a fleet timing out together means runTimeoutSeconds does not fit the serving model).
+ * (a team timing out together means runTimeoutSeconds does not fit the serving model).
  * Storms clear silently — the members' own recoveries already tell that story — and the
  * reducer's `prev` pass-through keeps a held storm event-free. Returns the new storm for the
- * caller to keep. Exported as a unit-test seam, like pollFleetHold above. */
+ * caller to keep. Exported as a unit-test seam, like pollTeamHold above. */
 export function pollErrorStorm(
   root: string,
   prev: ErrorStorm,
@@ -262,15 +265,15 @@ export function pollErrorStorm(
   return next;
 }
 
-/** One poll of the fleet-wide wide-shallow storm alarm (src/team/failure-spread.ts): gather each
- * runner's latest provider-failure observations — the same two the fleet hold reads, the
- * director's included, since its failures are the fleet's evidence too — step the pure
+/** One poll of the team-wide wide-shallow storm alarm (src/team/failure-spread.ts): gather each
+ * runner's latest provider-failure observations — the same two the team hold reads, the
+ * director's included, since its failures are the team's evidence too — step the pure
  * reducer, and log exactly one warning per episode: on the quiet→active crossing (and again
  * when a DIFFERENT kind becomes the episode while one is sounding, the reducer's new-episode
  * rule), naming the failure count, the kind, the window, and the roles behind it. The wiring
  * keys its log off active/kind, not object identity — `recent` moves almost every poll, so
  * unlike the hold's poll there is no prev pass-through to compare. Exported as a unit-test
- * seam, like pollFleetHold above. */
+ * seam, like pollTeamHold above. */
 export function pollFailureSpread(
   root: string,
   prev: FailureSpread,

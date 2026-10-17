@@ -6,7 +6,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  isFleetPaused,
+  isTeamPaused,
   PAUSE_REASON_MAX,
   pauseRole,
   pausedReason,
@@ -14,9 +14,10 @@ import {
   pausedUntil,
   scheduledWake,
   scheduledWakes,
+  standingTeamPause,
   resumeRole,
-  pauseFleet,
-  resumeFleet,
+  pauseTeam,
+  resumeTeam,
 } from "../src/team/team-state.js";
 import { pausedPath, pausedRolesLockPath, pausedRolesPath, scheduledWakeDir } from "../src/paths.js";
 import { requestWake } from "../src/operator/operator-intent.js";
@@ -25,33 +26,42 @@ import { spawnReadyChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
-test("isFleetPaused reads false with no .tumwater dir and no marker", () => {
+test("isTeamPaused reads false with no .tumwater dir and no marker", () => {
   const root = tmpdir();
-  assert.equal(isFleetPaused(root), false, "a missing .tumwater/ reads false, not throw");
+  assert.equal(isTeamPaused(root), false, "a missing .tumwater/ reads false, not throw");
   ensureParentDir(pausedPath(root));
-  assert.equal(isFleetPaused(root), false, "no marker file reads false");
+  assert.equal(isTeamPaused(root), false, "no marker file reads false");
 });
 
-test("pauseFleet writes the marker once and is idempotent", () => {
+test("pauseTeam writes the marker once and is idempotent", () => {
   const root = tmpdir();
-  assert.equal(pauseFleet(root), true, "first pause changes state");
-  assert.equal(isFleetPaused(root), true);
+  assert.equal(pauseTeam(root), true, "first pause changes state");
+  assert.equal(isTeamPaused(root), true);
   const raw = fs.readFileSync(pausedPath(root), "utf8");
   const marker = JSON.parse(raw) as { at: number };
   assert.equal(typeof marker.at, "number", "the marker carries { at: timestamp }");
   assert.ok(Number.isFinite(marker.at) && marker.at > 0);
-  assert.equal(pauseFleet(root), false, "second pause is a no-op (already paused)");
-  assert.equal(isFleetPaused(root), true);
+  assert.equal(pauseTeam(root), false, "second pause is a no-op (already paused)");
+  assert.equal(isTeamPaused(root), true);
 });
 
-test("resumeFleet lifts an existing marker and reports no change when absent", () => {
+test("standingTeamPause reads the marker once: null when absent, the marker while paused", () => {
   const root = tmpdir();
-  assert.equal(resumeFleet(root), false, "resume without a pause is a no-op");
-  assert.equal(pauseFleet(root), true);
-  assert.equal(resumeFleet(root), true, "resume over a marker changes state");
-  assert.equal(isFleetPaused(root), false);
+  assert.equal(standingTeamPause(root), null, "no marker is no standing pause");
+  pauseTeam(root, undefined, "deploying");
+  assert.equal(standingTeamPause(root)?.reason, "deploying");
+  resumeTeam(root);
+  assert.equal(standingTeamPause(root), null, "a lifted pause stands no more");
+});
+
+test("resumeTeam lifts an existing marker and reports no change when absent", () => {
+  const root = tmpdir();
+  assert.equal(resumeTeam(root), false, "resume without a pause is a no-op");
+  assert.equal(pauseTeam(root), true);
+  assert.equal(resumeTeam(root), true, "resume over a marker changes state");
+  assert.equal(isTeamPaused(root), false);
   assert.equal(fs.existsSync(pausedPath(root)), false);
-  assert.equal(resumeFleet(root), false, "a vanished marker still resumes as no-change, not throw");
+  assert.equal(resumeTeam(root), false, "a vanished marker still resumes as no-change, not throw");
 });
 
 // --- Per-role pause (`tumwater pause --role <id>` / `resume --role <id>`) ---
@@ -233,53 +243,53 @@ test("a crashed pause writer's lock is stolen, not waited on forever", () => {
 
 // --- timed pause (`tumwater pause [--role <id>] --for <duration>`, PLANS.md 2026-09-25) ---
 
-test("pauseFleet with a deadline writes { at, until } and pausedUntil reads it back", () => {
+test("pauseTeam with a deadline writes { at, until } and pausedUntil reads it back", () => {
   const root = tmpdir();
   const until = Date.now() + 30 * 60_000;
-  assert.equal(pauseFleet(root, until), true, "a timed pause changes state like a plain one");
+  assert.equal(pauseTeam(root, until), true, "a timed pause changes state like a plain one");
   const marker = readJson(pausedPath(root)) as {
     at: number;
     until: number;
   };
   assert.equal(marker.until, until, "the marker carries the ms-epoch deadline");
-  assert.equal(isFleetPaused(root), true);
+  assert.equal(isTeamPaused(root), true);
   assert.equal(pausedUntil(root), until, "the standing deadline is what the snapshot's pausedUntil exposes");
 });
 
-test("an expired fleet deadline reads as unpaused everywhere and a re-pause starts fresh", () => {
+test("an expired team deadline reads as unpaused everywhere and a re-pause starts fresh", () => {
   const root = tmpdir();
   ensureParentDir(pausedPath(root));
   fs.writeFileSync(
     pausedPath(root),
     JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000 }),
   );
-  assert.equal(isFleetPaused(root), false, "a past deadline is not a pause");
+  assert.equal(isTeamPaused(root), false, "a past deadline is not a pause");
   assert.equal(pausedUntil(root), undefined, "an expired deadline is absent, never exposed");
-  assert.equal(pauseFleet(root), true, "a pause after expiry reports a fresh pause, not 'already paused'");
+  assert.equal(pauseTeam(root), true, "a pause after expiry reports a fresh pause, not 'already paused'");
   const marker = readJson(pausedPath(root)) as {
     at: number;
     until?: number;
   };
   assert.equal(marker.until, undefined, "an indefinite re-pause writes the plain { at } marker");
-  assert.equal(isFleetPaused(root), true);
+  assert.equal(isTeamPaused(root), true);
 });
 
-test("a non-finite fleet deadline reads as an indefinite pause, never a bogus countdown", () => {
+test("a non-finite team deadline reads as an indefinite pause, never a bogus countdown", () => {
   const root = tmpdir();
   ensureParentDir(pausedPath(root));
   // A hand edit's overflow literal (`1e999`) parses to Infinity; JSON.stringify can never
   // write one, so only an edited marker carries it.
   fs.writeFileSync(pausedPath(root), `{"at":${Date.now()},"until":1e999}`);
-  assert.equal(isFleetPaused(root), true, "a corrupt deadline must not resume the fleet");
+  assert.equal(isTeamPaused(root), true, "a corrupt deadline must not resume the team");
   assert.equal(pausedUntil(root), undefined, "a non-finite deadline is no deadline for the badge");
 });
 
 // The operator pause's why (`tumwater pause --reason <text>`): the marker carries the
 // trimmed, capped note, a fresh write replaces it (last write wins, like `until`), a
 // reasonless write clears a stale one, and the idempotent no-op never touches it.
-test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, cleared by a reasonless write", () => {
+test("pauseTeam carries the operator reason: trimmed, capped, last-write-wins, cleared by a reasonless write", () => {
   const root = tmpdir();
-  assert.equal(pauseFleet(root, undefined, "  deploying to prod  "), true);
+  assert.equal(pauseTeam(root, undefined, "  deploying to prod  "), true);
   const marker = readJson(pausedPath(root)) as { at: number; reason?: string };
   assert.equal(marker.reason, "deploying to prod", "the reason is trimmed, quoted verbatim otherwise");
   assert.equal(pausedReason(root), "deploying to prod", "the standing reason is what pausedReason exposes");
@@ -289,30 +299,30 @@ test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, 
   // and never touches the standing note (the same rule as the deadline).
   const long = "x".repeat(PAUSE_REASON_MAX + 50);
   const later = Date.now() + 30 * 60_000;
-  assert.equal(pauseFleet(root, later, long), true, "a --for overwrite applies its own reason");
+  assert.equal(pauseTeam(root, later, long), true, "a --for overwrite applies its own reason");
   assert.equal(pausedReason(root)?.length, PAUSE_REASON_MAX);
-  assert.equal(pauseFleet(root), false, "a plain pause over a standing one stays the no-op");
+  assert.equal(pauseTeam(root), false, "a plain pause over a standing one stays the no-op");
   assert.equal(pausedReason(root)?.length, PAUSE_REASON_MAX, "a no-op keeps the standing reason");
 
   // The one-line fold every writer shares: a multi-line operator note collapses its
   // whitespace runs to single spaces, so the marker never carries the raw newline that
   // would break the status header's one-line badge (BUGS.md 2026-09-30).
-  resumeFleet(root);
-  assert.equal(pauseFleet(root, undefined, "deploying\nthe new build\ttonight"), true);
+  resumeTeam(root);
+  assert.equal(pauseTeam(root, undefined, "deploying\nthe new build\ttonight"), true);
   assert.equal(pausedReason(root), "deploying the new build tonight", "the reason is one line");
-  resumeFleet(root);
-  assert.equal(pauseFleet(root, undefined, "   \n\t  "), true, "a whitespace-only note still pauses");
+  resumeTeam(root);
+  assert.equal(pauseTeam(root, undefined, "   \n\t  "), true, "a whitespace-only note still pauses");
   assert.equal(pausedReason(root), undefined, "a whitespace-only note stores no reason key");
 
   // A write without a reason clears the stale one — the note belongs to THIS pause.
-  assert.equal(pauseFleet(root, later + 1), true, "a reasonless --for overwrite clears the stale reason");
+  assert.equal(pauseTeam(root, later + 1), true, "a reasonless --for overwrite clears the stale reason");
   const plain = readJson(pausedPath(root)) as { reason?: string };
   assert.equal(plain.reason, undefined, "no reason key survives a reasonless write");
-  assert.equal(resumeFleet(root), true);
-  assert.equal(pauseFleet(root, undefined, "first why"), true, "a fresh pause applies its own reason");
+  assert.equal(resumeTeam(root), true);
+  assert.equal(pauseTeam(root, undefined, "first why"), true, "a fresh pause applies its own reason");
   assert.equal(pausedReason(root), "first why");
-  resumeFleet(root);
-  assert.equal(pauseFleet(root), true, "a fresh pause after a resume reports fresh");
+  resumeTeam(root);
+  assert.equal(pauseTeam(root), true, "a fresh pause after a resume reports fresh");
   assert.equal(pausedReason(root), undefined, "a fresh reasonless pause clears the stale reason");
 });
 
@@ -325,7 +335,7 @@ test("an over-cap pause reason never stores a lone surrogate", () => {
   // The high surrogate sits exactly at index PAUSE_REASON_MAX - 1, so a slice(0, MAX)
   // keeps it and drops its low half.
   const reason = "x".repeat(PAUSE_REASON_MAX - 1) + "😀" + "tail";
-  assert.equal(pauseFleet(root, undefined, reason), true);
+  assert.equal(pauseTeam(root, undefined, reason), true);
   const stored = pausedReason(root) ?? "";
   assert.ok(stored.length <= PAUSE_REASON_MAX, "the cap holds");
   assert.ok(stored.endsWith("…"), "the cut is marked with an ellipsis");
@@ -340,7 +350,7 @@ test("an over-cap pause reason never stores a lone surrogate", () => {
 // consumer — the status header's badge, the alerts title — reads it through standingMarker,
 // so the fold and cap apply there rather than trusting whoever wrote the file. The marker
 // is a hand-editable file, so the never-throws contract must hold for a wrong-shaped
-// reason too: standingMarker sits on the scheduler's per-cycle isFleetPaused poll and
+// reason too: standingMarker sits on the scheduler's per-cycle isTeamPaused poll and
 // status-data's once-per-poll snapshot, and a non-string reason (src/files/json-files.ts reads what
 // is on disk as T unchecked) must read as no reason, not throw (BUGS.md 2026-09-30).
 test("a standing marker's reason is folded, capped, and type-guarded on read, whoever wrote it", () => {
@@ -357,21 +367,21 @@ test("a standing marker's reason is folded, capped, and type-guarded on read, wh
   fs.writeFileSync(markerPath, JSON.stringify({ at: Date.now(), reason: "  \n\t " }));
   assert.equal(pausedReason(root), undefined, "a whitespace-only note reads as no reason");
   // A hand-edited non-string reason must read as no reason — never a TypeError out of
-  // isFleetPaused, pausedReason, or the pauseFleet no-op check that reuses this read.
+  // isTeamPaused, pausedReason, or the pauseTeam no-op check that reuses this read.
   fs.writeFileSync(markerPath, JSON.stringify({ at: Date.now(), reason: 42 }));
-  assert.equal(isFleetPaused(root), true, "a wrong-shaped reason leaves the pause standing");
+  assert.equal(isTeamPaused(root), true, "a wrong-shaped reason leaves the pause standing");
   assert.equal(pausedReason(root), undefined, "a numeric reason reads as no reason, not a throw");
   const later = Date.now() + 60_000;
-  assert.equal(pauseFleet(root, later, "next why"), true, "pauseFleet over a wrong-shaped reason still writes");
+  assert.equal(pauseTeam(root, later, "next why"), true, "pauseTeam over a wrong-shaped reason still writes");
   assert.equal(pausedReason(root), "next why", "the fresh write's reason replaces the malformed one");
 });
 
-test("a fresh --for over a standing fleet pause overwrites the deadline; a plain pause no-ops", () => {
+test("a fresh --for over a standing team pause overwrites the deadline; a plain pause no-ops", () => {
   const root = tmpdir();
-  pauseFleet(root, Date.now() + 30 * 60_000);
-  assert.equal(pauseFleet(root), false, "a plain pause over a timed pause stays the idempotent no-op");
+  pauseTeam(root, Date.now() + 30 * 60_000);
+  assert.equal(pauseTeam(root), false, "a plain pause over a timed pause stays the idempotent no-op");
   const later = Date.now() + 2 * 3_600_000;
-  assert.equal(pauseFleet(root, later), true, "a --for over a standing pause overwrites the deadline");
+  assert.equal(pauseTeam(root, later), true, "a --for over a standing pause overwrites the deadline");
   assert.equal(pausedUntil(root), later);
 });
 

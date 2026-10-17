@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, windowHeldProviders, type FleetHold } from "../src/team/team-hold.js";
-import { pollFleetHold, claudeWindowObservation, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../src/team/team-polls.js";
+import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, windowHeldProviders, type TeamHold } from "../src/team/team-hold.js";
+import { pollTeamHold, claudeWindowObservation, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../src/team/team-polls.js";
 import type { ClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-// The orchestrator's fleet-hold poll (src/team/team-polls.ts): the wiring half of the fleet-wide
+// The orchestrator's team-hold poll (src/team/team-polls.ts): the wiring half of the team-wide
 // backend-failure hold. Its pure policy is pinned in team-hold.test.ts; what is only pinned
 // here is the wiring itself — the HoldInputs→observations mapping (lastRateLimit and
 // lastBackendFailure, retry-after carried only on the former), the exactly-one-event-per-
@@ -25,21 +25,21 @@ function runner(role: string, inputs: Partial<HoldInputs> = {}): HoldInputs {
   return { role, ...inputs };
 }
 
-/** Step the poll from a single-provider prev (the default fleet's shape) and read that
+/** Step the poll from a single-provider prev (the default team's shape) and read that
  * provider's hold back out of the returned map. */
 function pollOne(
   root: string,
-  prev: FleetHold | ReadonlyMap<string | undefined, FleetHold>,
+  prev: TeamHold | ReadonlyMap<string | undefined, TeamHold>,
   runners: readonly HoldInputs[],
   now: number,
-): FleetHold {
+): TeamHold {
   const prevMap =
-    prev instanceof Map ? prev : new Map([[(prev as FleetHold).provider ?? undefined, prev]]);
-  return pollFleetHold(root, prevMap, runners, now).get(undefined)!;
+    prev instanceof Map ? prev : new Map([[(prev as TeamHold).provider ?? undefined, prev]]);
+  return pollTeamHold(root, prevMap, runners, now).get(undefined)!;
 }
 
-test("pollFleetHold maps HoldInputs to observations: rate-limit with retry-after, backend failures without", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+test("pollTeamHold maps HoldInputs to observations: rate-limit with retry-after, backend failures without", () => {
+  const root = tmpdir("tumwater-team-polls-");
   // Three distinct roles: one plain 429, one 429 with a Retry-After, one connection failure.
   const held = pollOne(
     root,
@@ -61,8 +61,8 @@ test("pollFleetHold maps HoldInputs to observations: rate-limit with retry-after
   assert.equal(held.until, T0 + 5_000 + 300_000, "the wired retry-after reaches the gate");
 });
 
-test("pollFleetHold logs exactly one rate_limit_hold on the crossing, naming kind, roles, holdMs, escalation", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+test("pollTeamHold logs exactly one rate_limit_hold on the crossing, naming kind, roles, holdMs, escalation", () => {
+  const root = tmpdir("tumwater-team-polls-");
   const held = pollOne(
     root,
     new Map(),
@@ -83,11 +83,11 @@ test("pollFleetHold logs exactly one rate_limit_hold on the crossing, naming kin
   assert.equal(first.holdMs, HOLD_BASE_MS);
   assert.equal(first.escalation, 0);
   // An unconfigured provider (pi's default) is omitted from the event, so a single-backend
-  // fleet's events render exactly as they always did.
+  // team's events render exactly as they always did.
   assert.equal(first.provider, undefined);
 
   // Held again before the deadline: prev passes through and stays event-free.
-  const still = pollFleetHold(root, new Map([[undefined, held]]), [
+  const still = pollTeamHold(root, new Map([[undefined, held]]), [
     runner("clean", { lastRateLimit: { at: T0 } }),
     runner("coverage", { lastRateLimit: { at: T0 } }),
   ], T0 + 1_000);
@@ -95,8 +95,8 @@ test("pollFleetHold logs exactly one rate_limit_hold on the crossing, naming kin
   assert.equal(holdEvents(root).length, 1, "no event while held");
 });
 
-test("pollFleetHold logs one rate_limit_resumed at the deadline, carrying the ended hold's kind", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+test("pollTeamHold logs one rate_limit_resumed at the deadline, carrying the ended hold's kind", () => {
+  const root = tmpdir("tumwater-team-polls-");
   // A connection-error hold, not a 429 one — the resumed event must name what actually ended.
   const held = pollOne(
     root,
@@ -123,8 +123,8 @@ test("pollFleetHold logs one rate_limit_resumed at the deadline, carrying the en
   assert.deepEqual([...heldProviders(new Map([[undefined, open]]))], []);
 });
 
-test("pollFleetHold logs a relapse crossing with its escalation depth", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+test("pollTeamHold logs a relapse crossing with its escalation depth", () => {
+  const root = tmpdir("tumwater-team-polls-");
   const failures = (at: number) => [
     runner("clean", { lastRateLimit: { at } }),
     runner("coverage", { lastRateLimit: { at } }),
@@ -141,8 +141,8 @@ test("pollFleetHold logs a relapse crossing with its escalation depth", () => {
   assert.equal(holds[1]!.escalation, 1);
 });
 
-test("pollFleetHold stays event-free while the fleet is open", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+test("pollTeamHold stays event-free while the team is open", () => {
+  const root = tmpdir("tumwater-team-polls-");
   // One role's 429s (its attempt and its retry) never trip the hold — and log nothing.
   const next = pollOne(
     root,
@@ -155,7 +155,7 @@ test("pollFleetHold stays event-free while the fleet is open", () => {
     T0 + 1_000,
   );
   assert.equal(next.until, null);
-  assert.equal(holdEvents(root).length, 0, "an open fleet logs no hold events");
+  assert.equal(holdEvents(root).length, 0, "an open team logs no hold events");
 
   // A huge Retry-After is still capped through the wiring.
   const capped = pollOne(
@@ -171,12 +171,12 @@ test("pollFleetHold stays event-free while the fleet is open", () => {
   assert.equal(holdEvents(root).length, 1);
 });
 
-test("pollFleetHold keys holds per provider: a storm at P holds only P's entry, and its event names the provider", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+test("pollTeamHold keys holds per provider: a storm at P holds only P's entry, and its event names the provider", () => {
+  const root = tmpdir("tumwater-team-polls-");
   // Two roles on provider P trip P's hold; two roles on provider Q in the SAME poll —
-  // which would trip a whole-fleet hold under the single-backend keying — hold nothing,
+  // which would trip a whole-team hold under the single-backend keying — hold nothing,
   // because each provider's hold steps with only its own observations.
-  const holds = pollFleetHold(
+  const holds = pollTeamHold(
     root,
     new Map(),
     [
@@ -202,11 +202,11 @@ test("pollFleetHold keys holds per provider: a storm at P holds only P's entry, 
   assert.deepEqual([...heldProviders(holds)].sort(), ["P", "Q"]);
 });
 
-test("pollFleetHold separates the same kind at different providers: no cross-provider storm", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+test("pollTeamHold separates the same kind at different providers: no cross-provider storm", () => {
+  const root = tmpdir("tumwater-team-polls-");
   // One role failing at P and one at Q — the same kind, two providers — is NOT a storm at
   // either: the grouping is provider AND kind (PLANS.md 2026-10-05).
-  const holds = pollFleetHold(
+  const holds = pollTeamHold(
     root,
     new Map(),
     [
@@ -227,8 +227,8 @@ test("a stamp's own provider dominates the runner's: a claude reviewer storm hol
   // provider the storm would hold the pi author's provider instead. The observation mapper
   // files each stamp under its own provider, and only falls back to the runner's when the
   // stamp carries none.
-  const root = tmpdir("tumwater-fleet-polls-");
-  const holds = pollFleetHold(
+  const root = tmpdir("tumwater-team-polls-");
+  const holds = pollTeamHold(
     root,
     new Map(),
     [
@@ -250,8 +250,8 @@ test("a stamp's own provider dominates the runner's: a claude reviewer storm hol
 test("a stamp without its own provider falls back to the runner's provider", () => {
   // A pre-part-2/4 stamp (or an unconfigured pi-default seam) carries no provider; the
   // observation is then filed under the runner's own provider, preserving the old behavior.
-  const root = tmpdir("tumwater-fleet-polls-");
-  const holds = pollFleetHold(
+  const root = tmpdir("tumwater-team-polls-");
+  const holds = pollTeamHold(
     root,
     new Map(),
     [
@@ -266,18 +266,18 @@ test("a stamp without its own provider falls back to the runner's provider", () 
 });
 
 test("a lifted provider's hold stays in the map with its relapse memory but stops reading as held", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+  const root = tmpdir("tumwater-team-polls-");
   const storm = (provider: string, at: number) => [
     runner("clean", { provider, lastRateLimit: { at } }),
     runner("coverage", { provider, lastRateLimit: { at: at + 1_000 } }),
   ];
-  let holds = pollFleetHold(root, new Map(), storm("P", T0), T0 + 1_000);
+  let holds = pollTeamHold(root, new Map(), storm("P", T0), T0 + 1_000);
   const pUntil = holds.get("P")!.until!;
   assert.deepEqual([...heldProviders(holds)], ["P"]);
 
   // The lift: P re-opens at its deadline (its resumed event), stays keyed in the map for
   // its relapse memory, and heldProviders() no longer names it — key presence is NOT held.
-  holds = pollFleetHold(root, holds, [], pUntil);
+  holds = pollTeamHold(root, holds, [], pUntil);
   const lifted = holds.get("P")!;
   assert.equal(lifted.until, null);
   assert.equal(lifted.kind, "rate-limit", "the lift keeps kind for the relapse test");
@@ -285,7 +285,7 @@ test("a lifted provider's hold stays in the map with its relapse memory but stop
 
   // The subsequent poll: a fresh storm at P within the relapse window escalates off the
   // memory the lifted entry kept — proof the map entry survives the lift usefully.
-  holds = pollFleetHold(root, holds, storm("P", lifted.reopenedAt! + 1_000), lifted.reopenedAt! + 2_000);
+  holds = pollTeamHold(root, holds, storm("P", lifted.reopenedAt! + 1_000), lifted.reopenedAt! + 2_000);
   assert.equal(holds.get("P")!.escalation, 1);
   assert.equal(holds.get("P")!.until, lifted.reopenedAt! + 2_000 + HOLD_BASE_MS * 2);
   assert.deepEqual([...heldProviders(holds)], ["P"]);
@@ -336,18 +336,18 @@ test("claudeWindowObservation: a rejected subscription window holds; API billing
     null,
   );
   assert.equal(claudeWindowObservation(account({}, { status: "rejected", resetsAt: T0 - 1 }), T0), null);
-  // The furthest reset among several rejected windows is the deadline the fleet waits out.
+  // The furthest reset among several rejected windows is the deadline the team waits out.
   const twoWindow = account();
   twoWindow.windows.seven_day = { status: "rejected", resetsAt: T0 + 7_200_000, observedAt: T0 };
   assert.equal(claudeWindowObservation(twoWindow, T0)!.resetsAt, T0 + 7_200_000);
 });
 
-test("pollFleetHold holds provider claude until resetsAt and logs claude_window_limited once, reset once", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+test("pollTeamHold holds provider claude until resetsAt and logs claude_window_limited once, reset once", () => {
+  const root = tmpdir("tumwater-team-polls-");
   const resetsAt = T0 + 3_600_000;
   const acct = account({}, { status: "rejected", resetsAt });
   // A pi seam and an API claude seam share this poll; the subscription hold gates only claude.
-  const holds = pollFleetHold(root, new Map(), [runner("feature", { provider: "openai" })], T0, acct);
+  const holds = pollTeamHold(root, new Map(), [runner("feature", { provider: "openai" })], T0, acct);
   assert.notEqual(holds.get("claude")!.until, null);
   assert.equal(holds.get("claude")!.until, resetsAt);
   assert.equal(holds.get("claude")!.kind, "subscription-window");
@@ -359,18 +359,18 @@ test("pollFleetHold holds provider claude until resetsAt and logs claude_window_
   assert.equal(events[0]!.resetsAt, resetsAt);
 
   // Many polls across the one window: held, silent, and still standing.
-  const mid = pollFleetHold(root, holds, [], resetsAt - 1_000, acct);
+  const mid = pollTeamHold(root, holds, [], resetsAt - 1_000, acct);
   assert.equal(mid.get("claude")!.until, resetsAt);
   assert.equal(windowEvents(root).length, 1, "no repeat while held");
 
   // Over the API no hold is placed at all.
-  const api = tmpdir("tumwater-fleet-polls-");
-  const apiHolds = pollFleetHold(api, new Map(), [], T0, account({ billing: "api" }));
+  const api = tmpdir("tumwater-team-polls-");
+  const apiHolds = pollTeamHold(api, new Map(), [], T0, account({ billing: "api" }));
   assert.equal(apiHolds.get("claude")?.until ?? null, null, "API-billed claude seams tick");
   assert.equal(windowEvents(api).length, 0);
 
   // At resetsAt the hold lifts by itself and the reset is logged once.
-  const open = pollFleetHold(root, mid, [], resetsAt, acct);
+  const open = pollTeamHold(root, mid, [], resetsAt, acct);
   assert.equal(open.get("claude")!.until, null);
   events = windowEvents(root);
   assert.equal(events.filter((e) => e.type === "claude_window_reset").length, 1);
@@ -378,7 +378,7 @@ test("pollFleetHold holds provider claude until resetsAt and logs claude_window_
 });
 
 test("pollClaudeWindowWarning logs the first allowed_warning once per window", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+  const root = tmpdir("tumwater-team-polls-");
   const resetsAt = T0 + 3_600_000;
   const acct = account({}, { status: "allowed_warning", resetsAt });
   const key = pollClaudeWindowWarning(root, null, acct, T0);
@@ -396,21 +396,21 @@ test("pollClaudeWindowWarning logs the first allowed_warning once per window", (
   assert.notEqual(nextKey, key);
   assert.equal(warnings().length, 2);
   // API billing and no account warn nothing.
-  const api = tmpdir("tumwater-fleet-polls-");
+  const api = tmpdir("tumwater-team-polls-");
   assert.equal(pollClaudeWindowWarning(api, null, account({ billing: "api" }), T0), null);
   assert.equal(windowEvents(api).length, 0);
 });
 
-test("pollFleetHold stamps the window move's tiers on claude_window_limited", () => {
-  const root = tmpdir("fleet-polls-");
-  pollFleetHold(root, new Map(), [], T0, account(), { default: "free/qwen-free" });
+test("pollTeamHold stamps the window move's tiers on claude_window_limited", () => {
+  const root = tmpdir("team-polls-");
+  pollTeamHold(root, new Map(), [], T0, account(), { default: "free/qwen-free" });
   const limited = windowEvents(root).filter((e) => e.type === "claude_window_limited");
   assert.equal(limited.length, 1);
   assert.deepEqual(limited[0]!.tiers, { default: "free/qwen-free" });
 });
 
 test("a reserve crossing holds claude but not the director, and logs claude_window_reserved once per window", () => {
-  const root = tmpdir("tumwater-fleet-polls-");
+  const root = tmpdir("tumwater-team-polls-");
   const resetsAt = T0 + 3_600_000;
   const reserve = { five_hour: 0.8 };
   const acct = account({}, { status: "allowed", resetsAt, utilization: 0.85 } as never);
@@ -418,7 +418,7 @@ test("a reserve crossing holds claude but not the director, and logs claude_wind
   assert.equal(obs.reserve, true);
   assert.equal(claudeWindowObservation(acct, T0), null, "without a reserve nothing holds");
   assert.equal(claudeWindowObservation(account({}, { status: "allowed", resetsAt, utilization: 0.75 } as never), T0, reserve), null);
-  const holds = pollFleetHold(root, new Map(), [], T0, acct, {}, reserve);
+  const holds = pollTeamHold(root, new Map(), [], T0, acct, {}, reserve);
   assert.deepEqual([...heldProviders(holds)], ["claude"], "subscription claude jobs wait");
   assert.equal(holds.get("claude")!.until, resetsAt);
   assert.equal(windowHeldProviders(holds).size, 0, "the director is not held on a reserve");
@@ -433,12 +433,12 @@ test("a reserve crossing holds claude but not the director, and logs claude_wind
     { w: "five_hour", u: 0.85, r: 0.8, at: resetsAt },
   );
   // A rejected window still holds the director.
-  const rejected = pollFleetHold(root, new Map(), [], T0, account(), {}, reserve);
+  const rejected = pollTeamHold(root, new Map(), [], T0, account(), {}, reserve);
   assert.deepEqual([...windowHeldProviders(rejected)], ["claude"]);
   // A standing reserve hold that hardens into a rejected window logs the limit.
-  const root2 = tmpdir("tumwater-fleet-polls-");
-  const reserved = pollFleetHold(root2, new Map(), [], T0, acct, {}, reserve);
-  const hardened = pollFleetHold(root2, reserved, [], T0 + 1_000, account(), {}, reserve);
+  const root2 = tmpdir("tumwater-team-polls-");
+  const reserved = pollTeamHold(root2, new Map(), [], T0, acct, {}, reserve);
+  const hardened = pollTeamHold(root2, reserved, [], T0 + 1_000, account(), {}, reserve);
   assert.deepEqual([...windowHeldProviders(hardened)], ["claude"]);
   assert.equal(windowEvents(root2).filter((e) => e.type === "claude_window_limited").length, 1);
 });

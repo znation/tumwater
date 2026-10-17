@@ -72,7 +72,7 @@ test("reclaimWorktree throws and deletes nothing outside worktreesDir", async ()
 
 test("reclaimWorktree throws for a plain repo inside worktreesDir (not a linked worktree)", async () => {
   // The guard's failure branch: a git-dir equal to its common-dir means this is a primary
-  // checkout, and `clean -X` there would delete the fleet's own state.
+  // checkout, and `clean -X` there would delete the team's own state.
   const root = makeRepo();
   const plain = path.join(worktreesDir(root), "plain");
   makeRepo(plain);

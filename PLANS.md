@@ -21,36 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code team, part 2/6: Rename the fleet identifiers in src/team/ and its tests (planned 2026-10-16 by user; requires part 1/6 landed; design in plans/terminology.md "Code names"; touches src/team/ and its seven test files)
-
-**Goal.** Every identifier, comment and test name in `src/team/` and its tests says team. The module's exports take their new names. The old names stay as deprecated aliases until the parts that own their callers move them over. A mechanical rename with no behavior change.
-
-**Approach.**
-- **Rename rule** (the fleet row of "Code names"):
-  - in identifiers, `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM`;
-  - in comments, "fleet" → "team" ("fleet-wide" → "team-wide");
-  - the same in test names (the first argument of `test(...)`), test temp-dir prefixes (`tmpdir("tumwater-fleet-polls-")`) and assertion messages.
-- **Exports, renamed at their declarations:**
-  - team-state.ts: `pauseFleet` → `pauseTeam`, `resumeFleet` → `resumeTeam`, `isFleetPaused` → `isTeamPaused`, `standingFleetPause` → `standingTeamPause`;
-  - team-hold.ts: `FLEET_OPEN` → `TEAM_OPEN`, `fleetHold` → `teamHold`, `FleetHold` → `TeamHold`;
-  - team-polls.ts: `pollFleetHold` → `pollTeamHold`.
-- **Aliases for later callers.** Parts 3–5 own these exports' callers in src/gates, src/orchestrator, src/doctor, src/status, src/ui, src/gui, src/operator, src/cli, src/events, src/cli.ts and src/collections.ts. Keep each old name as a two-line alias after its declaration: `/** @deprecated Use pauseTeam. */` on one line, then `export const pauseFleet = pauseTeam;` (for the type, `export type FleetHold = TeamHold;`). Use the two-line form so test/exports.test.ts keeps tracking the alias.
-- **test/exports.test.ts.** It requires every exported name to have a user outside its own file. The module's tests switch to the new names, which gives each new name that user. Do not edit the callers in other directories.
-- **Leave alone:**
-  - user-visible strings and expected-output literals (the text series already converted them);
-  - event type names;
-  - any line that names an old spelling on purpose (legacy normalizer maps and their tests);
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim. test/plan-citations.test.ts fails on a changed PLANS.md citation, such as `PLANS.md "Mixed claude + pi fleets, part 2/4"` in team-polls.ts.
-- Comment lines wrap at 100 columns (test/comment-width.test.ts).
-
-**Files touched.** `src/team/` (team-state.ts, team-hold.ts, team-polls.ts, error-storm.ts, failure-spread.ts, orchestrator-info.ts, reclaim.ts); `test/team-state.test.ts`, `test/team-hold.test.ts`, `test/team-polls.test.ts`, `test/error-storm.test.ts`, `test/failure-spread.test.ts`, `test/orchestrator-info.test.ts`, `test/reclaim.test.ts`.
-
-**Acceptance criteria.**
-- `src/team/` exports `pauseTeam`, `resumeTeam`, `isTeamPaused`, `standingTeamPause`, `TEAM_OPEN`, `teamHold`, `TeamHold` and `pollTeamHold`. Each old name is a `@deprecated` alias of its new name.
-- In the listed files, `git grep -niE 'fleet'` finds only the eight aliases, quoted PLANS.md/BUGS.md titles, user-visible strings and legacy names kept on purpose.
-- No file outside the listed ones changes.
-- `npm run test` passes, test/exports.test.ts included.
-
 ### Plain terms code team, part 3/6: Rename the fleet identifiers in the gates and orchestrator and doctor and status modules (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/orchestrator/ src/doctor/ src/status/ src/concurrency/ src/baseline/ and their tests)
 
 **Goal.** Identifiers, comments and test names in these directories say team, and they stop using the part 2/6 aliases. A mechanical rename of about 500 lines with no behavior change.
@@ -1675,6 +1645,36 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - New test: a held event whose flush runs after `update({ notify: "" })` spawns nothing.
 - The `notifyFleetDown` tests and "an allowlisted event spawns the notify command once with the three env vars set" pass unchanged. The un-held message is still exactly `formatEvent(event)`.
 - `npm run test` passes.
+
+### Plain terms code team, part 2/6: Rename the fleet identifiers in src/team/ and its tests (planned 2026-10-16 by user; requires part 1/6 landed; design in plans/terminology.md "Code names"; touches src/team/ and its seven test files) (done 2026-10-16)
+
+**Goal.** Every identifier, comment and test name in `src/team/` and its tests says team. The module's exports take their new names. The old names stay as deprecated aliases until the parts that own their callers move them over. A mechanical rename with no behavior change.
+
+**Approach.**
+- **Rename rule** (the fleet row of "Code names"):
+  - in identifiers, `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM`;
+  - in comments, "fleet" → "team" ("fleet-wide" → "team-wide");
+  - the same in test names (the first argument of `test(...)`), test temp-dir prefixes (`tmpdir("tumwater-fleet-polls-")`) and assertion messages.
+- **Exports, renamed at their declarations:**
+  - team-state.ts: `pauseFleet` → `pauseTeam`, `resumeFleet` → `resumeTeam`, `isFleetPaused` → `isTeamPaused`, `standingFleetPause` → `standingTeamPause`;
+  - team-hold.ts: `FLEET_OPEN` → `TEAM_OPEN`, `fleetHold` → `teamHold`, `FleetHold` → `TeamHold`;
+  - team-polls.ts: `pollFleetHold` → `pollTeamHold`.
+- **Aliases for later callers.** Parts 3–5 own these exports' callers in src/gates, src/orchestrator, src/doctor, src/status, src/ui, src/gui, src/operator, src/cli, src/events, src/cli.ts and src/collections.ts. Keep each old name as a two-line alias after its declaration: `/** @deprecated Use pauseTeam. */` on one line, then `export const pauseFleet = pauseTeam;` (for the type, `export type FleetHold = TeamHold;`). Use the two-line form so test/exports.test.ts keeps tracking the alias.
+- **test/exports.test.ts.** It requires every exported name to have a user outside its own file. The module's tests switch to the new names, which gives each new name that user. Do not edit the callers in other directories.
+- **Leave alone:**
+  - user-visible strings and expected-output literals (the text series already converted them);
+  - event type names;
+  - any line that names an old spelling on purpose (legacy normalizer maps and their tests);
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim. test/plan-citations.test.ts fails on a changed PLANS.md citation, such as `PLANS.md "Mixed claude + pi fleets, part 2/4"` in team-polls.ts.
+- Comment lines wrap at 100 columns (test/comment-width.test.ts).
+
+**Files touched.** `src/team/` (team-state.ts, team-hold.ts, team-polls.ts, error-storm.ts, failure-spread.ts, orchestrator-info.ts, reclaim.ts); `test/team-state.test.ts`, `test/team-hold.test.ts`, `test/team-polls.test.ts`, `test/error-storm.test.ts`, `test/failure-spread.test.ts`, `test/orchestrator-info.test.ts`, `test/reclaim.test.ts`.
+
+**Acceptance criteria.**
+- `src/team/` exports `pauseTeam`, `resumeTeam`, `isTeamPaused`, `standingTeamPause`, `TEAM_OPEN`, `teamHold`, `TeamHold` and `pollTeamHold`. Each old name is a `@deprecated` alias of its new name.
+- In the listed files, `git grep -niE 'fleet'` finds only the eight aliases, quoted PLANS.md/BUGS.md titles, user-visible strings and legacy names kept on purpose.
+- No file outside the listed ones changes.
+- `npm run test` passes, test/exports.test.ts included.
 
 ### The budget-paused page names how the pause lifts, so the notify message is something the operator can act on (planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts) — done 2026-10-16
 

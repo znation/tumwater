@@ -1,23 +1,23 @@
-/** The fleet-wide backend-failure hold — the generalization of the 429 storm hold (BUGS.md
+/** The team-wide backend-failure hold — the generalization of the 429 storm hold (BUGS.md
  * 2026-09-21, spun out of the fixed 429-retry entry 2026-09-22; generalized 2026-09-29,
  * PLANS.md): when several roles see the provider fail them the same way within a short window
  * — a 429 storm, or the connection down, a 5xx spell, or the model failing to load — role
  * loops start no new ticks until the hold re-opens. The per-run transient retry
  * (src/loop/loop-pi.ts) already gives each transient failure one wait-and-retry, but it has no
  * cross-role view — with maxConcurrent loops issuing requests against one backend, each burns
- * its retry straight into a storm the fleet is collectively sustaining. POLICY only, on the
+ * its retry straight into a storm the team is collectively sustaining. POLICY only, on the
  * shape of the budget gate (src/budget/budget.ts): pure functions of the observations the
  * orchestrator collects each poll and the previous hold, so the rule is unit-testable without
- * a fleet and the orchestrator owns only the wiring (the transition events and the scheduling
+ * a team and the orchestrator owns only the wiring (the transition events and the scheduling
  * skip). Unlike the budget gate this one has memory — when the hold ends and how often it has
  * relapsed are facts about the past no single poll's inputs carry — so it is a reducer over
- * FleetHold rather than a stateless function.
+ * TeamHold rather than a stateless function.
  *
  * One storm is one KIND of failure: observations count together only when their kinds match
  * (a "rate-limit" kind for 429s, a backend-failure kind — "connection", "timeout", "server",
  * "model-load" — from src/pi/pi-stream.ts backendKind otherwise). Two roles hitting the provider
  * with two different failures are two unrelated incidents, each still answered by the per-run
- * retry; a hold is for the fleet collectively sustaining one failure. */
+ * retry; a hold is for the team collectively sustaining one failure. */
 
 /** Distinct roles whose pi runs ended on the SAME failure kind within
  * HOLD_STORM_WINDOW_MS that trip the hold. Two, not one: a single role's failure is
@@ -41,20 +41,20 @@ export const HOLD_STORM_WINDOW_MS = 2 * 60_000;
 
 /** The first hold of a fresh storm. One minute: provider rate limits are metered in
  * per-minute buckets, so a minute is the shortest pause that lets the bucket refill — and
- * short enough that a false trip barely dents the fleet's throughput. Backend-failure kinds
+ * short enough that a false trip barely dents the team's throughput. Backend-failure kinds
  * carry no Retry-After hint, so this base is their whole first hold too. */
 export const HOLD_BASE_MS = 60_000;
 
 /** Upper bound on any single hold, whatever Retry-After or the relapse doubling asks for: one
  * generous hint, or a storm that outlasts every re-open (2026-09-21's ran from 16:00 to past
- * 23:30), must still re-probe the provider a few times an hour rather than park the fleet for
+ * 23:30), must still re-probe the provider a few times an hour rather than park the team for
  * it. Doubling from the base reaches it on the fourth consecutive relapse (1, 2, 4, 8, 15 min). */
 export const HOLD_CAP_MS = 15 * 60_000;
 
 /** A storm that trips again within this long of the previous hold re-opening is the same
  * storm — the hold was too short — so the next one doubles instead of restarting at the base.
- * Five minutes: longer than the storm window, because the re-opened fleet's first ticks take a
- * few turns to reach the provider again; a fleet that stays clear that long has recovered, and
+ * Five minutes: longer than the storm window, because the re-opened team's first ticks take a
+ * few turns to reach the provider again; a team that stays clear that long has recovered, and
  * its next storm starts fresh at the base. A RELAPSE IS PER KIND: the same kind re-tripping
  * inside the window escalates, while a different kind after a re-open is a new incident at the
  * base — one failure recovering into another says nothing about the first one's depth. */
@@ -99,15 +99,15 @@ export interface HoldObservation {
 }
 
 /** The hold's state across polls. Open while `until` is null. */
-export interface FleetHold {
+export interface TeamHold {
   /** Which backend this hold is about — the provider the storm's failures came from
    * (undefined when the runs ran on pi's default, no provider configured). Kept across a
    * re-open like `kind`, for the same reason: the relapse test compares the NEXT storm's
    * provider and kind against the hold that just ended. */
   provider: string | undefined;
-  /** Epoch ms the current hold re-opens at; null while the fleet is open. */
+  /** Epoch ms the current hold re-opens at; null while the team is open. */
   until: number | null;
-  /** Which failure kind the current (or last) hold is about — null before the fleet's first
+  /** Which failure kind the current (or last) hold is about — null before the team's first
    * hold. Kept across a re-open (unlike `roles`, which clears) because the same-kind relapse
    * test below compares the NEXT storm's kind against it: nulling it while open would erase
    * the one fact the relapse rule needs. A relapse of the same kind escalates; a different
@@ -130,10 +130,13 @@ export interface FleetHold {
   reserve?: true;
 }
 
-/** The fleet's starting state: open, with no history. Providers are map keys elsewhere
- * (pollFleetHold keeps one hold per provider), so undefined means "pi's default backend" —
- * the grouping an unconfigured fleet (every existing config before providers) lands in. */
-export const FLEET_OPEN: FleetHold = {
+/** @deprecated Use TeamHold. */
+export type FleetHold = TeamHold;
+
+/** The team's starting state: open, with no history. Providers are map keys elsewhere
+ * (pollTeamHold keeps one hold per provider), so undefined means "pi's default backend" —
+ * the grouping an unconfigured team (every existing config before providers) lands in. */
+export const TEAM_OPEN: TeamHold = {
   provider: undefined,
   until: null,
   kind: null,
@@ -142,13 +145,16 @@ export const FLEET_OPEN: FleetHold = {
   reopenedAt: null,
 };
 
-/** The providers (pi's default included as undefined) whose fleet hold STANDS — `until`
+/** @deprecated Use TEAM_OPEN. */
+export const FLEET_OPEN = TEAM_OPEN;
+
+/** The providers (pi's default included as undefined) whose team hold STANDS — `until`
  * non-null. A provider whose hold has re-opened stays in the holds map (its kind, relapse
  * count, and re-open time are the memory the next storm's relapse test needs), so key
  * presence alone must never read as "held": this is the one predicate every consumer —
  * the scheduling pass and both permit-time closures — goes through. */
 export function heldProviders(
-  holds: ReadonlyMap<string | undefined, FleetHold>,
+  holds: ReadonlyMap<string | undefined, TeamHold>,
 ): ReadonlySet<string | undefined> {
   const held = new Set<string | undefined>();
   for (const [provider, hold] of holds) if (hold.until !== null) held.add(provider);
@@ -156,20 +162,20 @@ export function heldProviders(
 }
 
 /** Step the hold by one orchestrator poll: from `prev` and every role's latest failure
- * observations, decide what holds at `now`. A held fleet stays held until `until` and then
+ * observations, decide what holds at `now`. A held team stays held until `until` and then
  * re-opens by itself — nothing can get stuck, the same guarantee the budget gate's stateless
- * re-evaluation gives. An open fleet trips when HOLD_STORM_ROLES distinct roles each
+ * re-evaluation gives. An open team trips when HOLD_STORM_ROLES distinct roles each
  * ended a run on the same failure kind within the storm window (and after the last re-open) —
  * the first qualifying kind in observation order wins, since one poll can hold about only one
  * kind — for the longest of the escalated base hold and, for a rate-limit storm, the furthest
  * Retry-After deadline among those observations (each measured from its own 429, since that is
  * when the provider said it), capped at HOLD_CAP_MS. Returns `prev` itself when
  * nothing changed, so a caller can compare `until` across the step to find transitions. */
-export function fleetHold(
-  prev: FleetHold,
+export function teamHold(
+  prev: TeamHold,
   observations: readonly HoldObservation[],
   now: number,
-): FleetHold {
+): TeamHold {
   if (prev.until !== null) {
     // A reserve hold is re-evaluated every poll: the window may since have been rejected (the
     // director keeps running) or the reserve removed from the config, and either must show now.
@@ -211,7 +217,7 @@ export function fleetHold(
   );
   // Group the recent failures by provider+kind (in first-seen order, so the pick is
   // deterministic) and hold about the first pair that has enough distinct roles behind it.
-  // undefined providers share one key: an unconfigured fleet is one backend by construction.
+  // undefined providers share one key: an unconfigured team is one backend by construction.
   const byProviderKind = new Map<string, { provider: string | undefined; kind: HoldKind; group: HoldObservation[] }>();
   for (const o of recent) {
     const key = `${o.provider ?? ""}\n${o.kind}`;
@@ -246,13 +252,16 @@ export function fleetHold(
   return { provider, until: now + holdMs, kind, roles, escalation, reopenedAt: prev.reopenedAt };
 }
 
+/** @deprecated Use teamHold. */
+export const fleetHold = teamHold;
+
 /** The providers whose standing hold is the account's rejected subscription window (kind
  * "subscription-window", not a reserve crossing — the director is exempt from the reserve): the
  * one hold the director honors, because the per-run 429 retry never answers a window rejection
  * (src/loop/loop-pi.ts subscriptionWindowRejected), so a director prompt
  * started under it would only fail and re-queue every poll. */
 export function windowHeldProviders(
-  holds: ReadonlyMap<string | undefined, FleetHold>,
+  holds: ReadonlyMap<string | undefined, TeamHold>,
 ): ReadonlySet<string | undefined> {
   const held = new Set<string | undefined>();
   for (const [provider, hold] of holds)

@@ -50,7 +50,7 @@ test("writeOrchestratorInfo leaves the previous file intact when a write is kill
 
   // Model a process killed between write and close (SIGKILL, ENOSPC, EIO): the writer leaves a
   // partial prefix of the JSON, then throws. The atomic seam must surface the failure without
-  // replacing the good file, so `tumwater run`'s liveness read still sees the running fleet
+  // replacing the good file, so `tumwater run`'s liveness read still sees the running team
   // instead of booting a second one.
   const restore = dieMidWrite();
   try {

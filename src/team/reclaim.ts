@@ -62,7 +62,7 @@ export function reclaimCandidates(
   opts: { seed?: boolean } = {},
 ): ReclaimCandidate[] {
   const dir = worktreesDir(root);
-  // A missing worktrees dir (a fleet that has not started) yields no candidates.
+  // A missing worktrees dir (a team that has not started) yields no candidates.
   const names = subdirectoryNames(dir, (name) => !RESERVED_WORKTREES.has(name));
   // Seed never-seen worktrees as used-now under the cross-process lock, and remember which of
   // this pass's names that covered so they stay out of it. A later pass (or a restart) then sees
@@ -119,7 +119,7 @@ function isIdleExpired(candidate: ReclaimCandidate, idleHours: number, now: numb
 /** True when `dir` is a linked worktree and not the primary checkout: `git rev-parse --git-dir`
  * and `--git-common-dir` differ for a linked worktree and are equal for the primary checkout.
  * Reading the primary checkout's `.gitignore` with `clean -X` would delete `.tumwater/`, the
- * fleet's entire state, so both this and the path check below are load-bearing. */
+ * team's entire state, so both this and the path check below are load-bearing. */
 export async function isLinkedWorktree(dir: string): Promise<boolean> {
   const gitDir = await gitTry(dir, "rev-parse", "--git-dir");
   const commonDir = await gitTry(dir, "rev-parse", "--git-common-dir");

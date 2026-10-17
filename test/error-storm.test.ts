@@ -11,10 +11,10 @@ import { pollErrorStorm } from "../src/team/team-polls.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-// The fleet-wide error-storm warning (src/team/error-storm.ts; BUGS.md 2026-09-29 "A fleet-wide
+// The team-wide error-storm warning (src/team/error-storm.ts; BUGS.md 2026-09-29 "A fleet-wide
 // timeout storm raises no alarm"): pure policy, so every clause — the role bar, the shared
 // normalized cause, the edge trigger, the clear/re-arm, the knob naming — is pinned here
-// without a fleet, plus one seam test for the orchestrator wiring (the single warning event).
+// without a team, plus one seam test for the orchestrator wiring (the single warning event).
 
 const TIMEOUT_KEY = "timed out after <dur>";
 
@@ -105,14 +105,14 @@ test("a storm that switches cause is a new episode", () => {
     obs("dedupe", 3, "pi exited 1"),
   ]);
   assert.equal(switched.key, "pi exited 1");
-  assert.notEqual(switched, tripped, "the old cause no longer explains the fleet; the new one names itself");
+  assert.notEqual(switched, tripped, "the old cause no longer explains the team; the new one names itself");
 });
 
 test("the progressing timeout shape pools with the plain one into one storm", () => {
   // src/agent/run-agent.ts emits two tick-timeout messages: the plain one and the
   // still-making-progress variant (session and worktree preserved for resume). Both point at the
-  // same knob, so the reducer pools them under one cause — a mixed fleet must not split 2/2 into
-  // two sub-threshold clusters and stay quiet while the fleet is melting down.
+  // same knob, so the reducer pools them under one cause — a mixed team must not split 2/2 into
+  // two sub-threshold clusters and stay quiet while the team is melting down.
   const progressing = "timed out after 1800s while still making progress — session and worktree edits preserved for resume";
   const mixed = errorStorm(ERROR_STORM_QUIET, [
     obs("clean", 3, progressing),
@@ -157,7 +157,7 @@ test("a streak at the bar with no error message counts toward no storm", () => {
 test("an observation with no streak at all reads as healthy", () => {
   // consecutiveErrors is optional in ErrorStormObservation (a torn or older state read may
   // omit it); the `?? 0` treats a missing streak as healthy, so such a role adds no weight
-  // to any cause — garbage state must never trip the fleet-wide warning by itself. All
+  // to any cause — garbage state must never trip the team-wide warning by itself. All
   // three members must share one real cause for the mutation to show: a lone streakless
   // role beside a real storm adds no weight either way, so only an all-streakless trio on
   // one cause distinguishes the guard from its absence.

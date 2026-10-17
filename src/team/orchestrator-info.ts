@@ -25,11 +25,11 @@ export interface ChainTierInfo {
 }
 
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving the
- * fleet, since when, with which roles, and what its most recent poll published about the world
+ * team, since when, with which roles, and what its most recent poll published about the world
  * (build staleness, the daily budget, engaged fallback demotions, the disk floor). The
  * orchestrator writes it (writeOrchestratorInfo); the separate-process observers — status, TUI,
- * GUI, doctor, and the second-fleet refusal — read it here so they never depend on the scheduler
- * module itself. The operator pause markers are the other fleet-state domain and live beside
+ * GUI, doctor, and the second-team refusal — read it here so they never depend on the scheduler
+ * module itself. The operator pause markers are the other team-state domain and live beside
  * this one in team-state.ts; this module owns the info file alone. */
 
 /** The disk floor's published state (plans/disk-floor.md, part 4/4): what the orchestrator
@@ -40,7 +40,7 @@ export interface ChainTierInfo {
  * or on an older orchestrator. */
 /** One keyed provider's live permits in the pool's snapshot (plans/provider-concurrency.md
  * §8): `inUse` is the slots that key currently holds, `limit` its configured cap
- * (absent when the key is uncapped — bounded only by the fleet total), `waiting` the
+ * (absent when the key is uncapped — bounded only by the team total), `waiting` the
  * acquirers parked on that key. */
 interface PermitKeyState {
   inUse: number;
@@ -48,7 +48,7 @@ interface PermitKeyState {
   waiting: number;
 }
 
-/** The permit pool's published state (plans/provider-concurrency.md §8): the fleet total's
+/** The permit pool's published state (plans/provider-concurrency.md §8): the team total's
  * in-use/cap, the maintenance reserve, and each referenced provider key's own state. The
  * orchestrator publishes it through the info file so observers (status, TUI, GUI) render the
  * same facts without coupling to the scheduler's Semaphore. */
@@ -68,7 +68,7 @@ export interface DiskStatus {
 }
 
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving
- * the fleet, since when, and with which roles. Written by runOrchestrator; read here so
+ * the team, since when, and with which roles. Written by runOrchestrator; read here so
  * observers (status, TUI, GUI) never depend on the scheduler module itself. */
 export interface OrchestratorInfo {
   pid: number;
@@ -96,7 +96,7 @@ export interface OrchestratorInfo {
    * cap it was
    * evaluated under. Published whenever it changes so observers (src/status/status-data.ts) can
    * show what the scheduler
-   * is actually enforcing; a stopped fleet removes this file at exit, so the absence of a
+   * is actually enforcing; a stopped team removes this file at exit, so the absence of a
    * running orchestrator means no published figure exists and the persisted sum is final.
    * Written by the orchestrator whenever the pair changes; absent otherwise. */
   budget?: { spentUsd: number; capUsd: number };
@@ -108,11 +108,11 @@ export interface OrchestratorInfo {
    * pass. Written by the orchestrator's poll whenever it changes; absent when statfs cannot
    * measure the volume or on an older orchestrator, which renders exactly as before. */
   disk?: DiskStatus;
-  /** The `tumwater run --for` window's deadline (epoch ms): when the fleet stops itself. Absent
+  /** The `tumwater run --for` window's deadline (epoch ms): when the team stops itself. Absent
    * for an unbounded run or a `--once` round. Written once at startup, so every self-redeploy
    * generation publishes the same inherited deadline. */
   stopsAt?: number;
-  /** The permit pool's live state (plans/provider-concurrency.md §8): the fleet in-use/cap,
+  /** The permit pool's live state (plans/provider-concurrency.md §8): the team in-use/cap,
    * the maintenance reserve, and each referenced provider key's in-use/cap/waiting. Written
    * by the orchestrator's poll whenever it changes, like `budget` and `disk`; absent when the
    * running orchestrator predates it or there is no pool. */
@@ -277,7 +277,7 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
 /** Publish the running orchestrator's info file atomically (writeJsonAtomic's tmp + rename).
  * The only writer of that path, so a process killed mid-write — the orchestrator's own poll
  * publishes budget/disk/build changes while `tumwater run` in another terminal reads it to
- * refuse a second fleet — leaves either the previous complete file or the new one, never a
+ * refuse a second team — leaves either the previous complete file or the new one, never a
  * torn body that readOrchestratorInfo reports as no running orchestrator. */
 export function writeOrchestratorInfo(root: string, info: OrchestratorInfo): void {
   writeJsonAtomic(orchestratorStatePath(root), info);
@@ -285,11 +285,11 @@ export function writeOrchestratorInfo(root: string, info: OrchestratorInfo): voi
 
 /** Publish the info file for a caller on a path that must not throw — the orchestrator's
  * catch-less poll loop, whose build/budget/disk updates run every couple of seconds. The info
- * file is an observation surface, not fleet state: an unwritable state dir (ENOSPC, EACCES, the
- * path replaced by a directory) must degrade the published snapshot, not end the fleet. The
+ * file is an observation surface, not team state: an unwritable state dir (ENOSPC, EACCES, the
+ * path replaced by a directory) must degrade the published snapshot, not end the team. The
  * failure is reported as a best-effort warning; the caller keeps polling and the field is
  * retried the next time its value changes. Startup's first write stays strict
- * (writeOrchestratorInfo): it is what refuses a second fleet, so a repo that cannot publish it
+ * (writeOrchestratorInfo): it is what refuses a second team, so a repo that cannot publish it
  * must fail fast rather than boot. */
 function writeOrchestratorInfoBestEffort(root: string, info: OrchestratorInfo): void {
   try {
