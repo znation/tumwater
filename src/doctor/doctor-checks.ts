@@ -555,13 +555,25 @@ export async function checkLeftoverRoleBranches(root: string, config?: TumwaterC
   return parts.length === 0 ? okOutcome("no branches left by disabled roles") : warnOutcome(parts.join("; "));
 }
 
-/** Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7): the
- * team's claims and the two states an operator should act on — a claim whose key is no longer
- * listed under its role's section (its instance is stuck on an entry that moved), and a claim
- * idle for more than CLAIM_IDLE_MAX_MS (the scheduler releases these, so seeing one means the
- * reader's view and the scheduler's disagree). An enabled multi-instance role configured with
- * fewer pooled slots than maxConcurrent also warns: instances then contend for the same
- * checkouts. A disabled role runs none of its configured instances, so it never contends and
+/** The ok detail of the instance check: non-zero counts, plans first, each pluralized. */
+function claimCounts(claims: Array<{ file: string }>): string {
+  const bugs = claims.filter((c) => c.file === "BUGS.md").length;
+  const plans = claims.length - bugs;
+  const parts = [
+    plans > 0 ? `${plans} claimed plan${plans === 1 ? "" : "s"}` : "",
+    bugs > 0 ? `${bugs} claimed bug${bugs === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : "no claimed plans or bugs";
+}
+
+/** Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7):
+ * each instance's claimed plan or bug and the two states an operator should act on — a claim
+ * whose key is no longer listed under its role's section (its instance is stuck on an entry
+ * that moved), and a claim idle for more than CLAIM_IDLE_MAX_MS (the scheduler releases
+ * these, so seeing one means the reader's view and the scheduler's disagree). An enabled
+ * multi-instance role configured with fewer pooled slots than maxConcurrent also warns:
+ * instances then contend for the same checkouts. A disabled role runs none of its
+ * configured instances, so it never contends and
  * stays out of that warning.
  * Read-only, like every check; `now` is the claim-age test seam, and an unreadable
  * tumwater.json (config undefined) skips the walk — checkInit reports the config itself. */
@@ -571,10 +583,10 @@ export function checkWorkInstances(
   now = Date.now(),
 ): CheckOutcome {
   if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
-  const claims: Array<{ id: string; title: string; key: string; at: number }> = [];
+  const claims: Array<{ id: string; title: string; key: string; at: number; file: string }> = [];
   for (const id of loopIds(config)) {
     const claim = loadLoopState(root, id).claim;
-    if (claim) claims.push({ id, title: claim.title, key: claim.key, at: claim.at });
+    if (claim) claims.push({ id, title: claim.title, key: claim.key, at: claim.at, file: claim.file });
   }
   const gone = claims.filter((c) => !listedKeys(root, c.id).has(c.key));
   const stale = claims.filter((c) => !gone.includes(c) && now - c.at > CLAIM_IDLE_MAX_MS);
@@ -586,12 +598,13 @@ export function checkWorkInstances(
   const slots = slotCount(config);
   const smallPool = multi.length > 0 && slots < config.maxConcurrent;
   if (gone.length === 0 && stale.length === 0 && !smallPool)
-    return okOutcome(claims.length > 0 ? `${claims.length} claimed bugs` : "no claimed bugs");
+    return okOutcome(claimCounts(claims));
+  const noun = (c: { file: string }) => (c.file === "BUGS.md" ? "bug" : "plan");
   const parts: string[] = [
-    ...gone.map((c) => `claimed bug "${c.title}" (${c.id}) names an entry no longer listed`),
+    ...gone.map((c) => `claimed ${noun(c)} "${c.title}" (${c.id}) names an entry no longer listed`),
     ...stale.map(
       (c) =>
-        `claimed bug "${c.title}" (${c.id}) has been idle ${Math.round((now - c.at) / 3_600_000)}h`,
+        `claimed ${noun(c)} "${c.title}" (${c.id}) has been idle ${Math.round((now - c.at) / 3_600_000)}h`,
     ),
   ];
   if (smallPool)

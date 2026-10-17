@@ -121,7 +121,7 @@ discards a role's in-flight merge.
   needs-replan). The plan run's prompt gives both the target and the current count, the same
   count the deferral uses. `tumwater status`, the TUI and the dashboard name each instance's assigned entry
   while it is idle or merging, `tumwater logs` renders the `claim` assigned/released events, and
-  `tumwater doctor`'s `work instances` check warns on an assignment whose entry is gone or stale.
+  `tumwater doctor`'s `parallel instances` check warns on an assignment whose entry is gone or stale.
   An idle instance that is paused on its own (by you, or by the repeated-failure pause) gives its
   entry back and a sibling takes it; pausing the whole role keeps every claim.
 - `maxConcurrent` caps parallel runs and approvals together. Merges go first, then

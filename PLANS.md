@@ -1533,29 +1533,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### Doctor's `parallel instances` check names a feature instance's claim as a plan, not a bug (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts and docs/how-it-works.md)
-
-**Goal.** `checkWorkInstances` (`src/doctor/doctor-checks.ts`, listed by `tumwater doctor` as `parallel instances`) walks the claims of every loop id, feature instances included. The plain-terms rename of doctor's text (commit e29818e05) changed "claim(s) held" to "claimed bugs" everywhere, so the check now reports a feature instance holding a PLANS.md plan as `claimed bug "Alpha" (feature-2) has been idle 25h`, and its ok detail reads `2 claimed bugs` when both claims are plans. The wording should match `checkFixClaims`'s separate `claimed bugs` check only when the claim really is a bug. Name each claim by its file (`claim.file`, `"PLANS.md" | "BUGS.md"` on `LoopState.claim` in `src/loop/loop-state.ts`), the same split `status-model.ts` already makes for `idle: no unclaimed plans` / `idle: no unclaimed bugs`. `docs/how-it-works.md` still calls the check `work instances`; fix that too.
-
-**Approach.**
-- `src/doctor/doctor-checks.ts`, `checkWorkInstances`:
-  - Carry `file` in the `claims` array: `{ id, title, key, at, file: claim.file }`.
-  - Add a local `noun = (c) => (c.file === "BUGS.md" ? "bug" : "plan")`.
-  - Warning lines: `claimed ${noun(c)} "${c.title}" (${c.id}) names an entry no longer listed` and `claimed ${noun(c)} "${c.title}" (${c.id}) has been idle ${h}h`. Keep the rest of each line as it is.
-  - Ok detail: with no claims, `no claimed plans or bugs`. Otherwise list the non-zero counts joined by `, `, each pluralized: `1 claimed plan`, `2 claimed plans`, `1 claimed bug`, e.g. `1 claimed plan, 2 claimed bugs`. Plans come first.
-  - Leave the `worktreeSlots … below maxConcurrent` part, the check's name in `src/doctor/doctor.ts`, and `checkFixClaims` (the `claimed bugs` check) unchanged.
-  - The doc comment above the function says "the fleet's claims"; reword that to "each instance's claimed plan or bug". Do not rename identifiers here: the in-flight "Plain terms code team, part 3/6" owns identifier renames under `src/doctor/`.
-- `docs/how-it-works.md`, the "Parallel work instances" bullet: change `` `tumwater doctor`'s `work instances` check `` to `` `tumwater doctor`'s `parallel instances` check ``. (The paused-instance change already added a sentence to the same bullet; keep it.)
-
-**Files touched.** `src/doctor/doctor-checks.ts`, `test/doctor-checks.test.ts`, `docs/how-it-works.md`.
-
-**Acceptance criteria.**
-- `test/doctor-checks.test.ts` "checkWorkInstances warns on a gone claim, a stale claim, and too few slots": the empty-repo assertion expects `{ level: "ok", detail: "no claimed plans or bugs" }`. The stale PLANS.md claim's detail matches `/claimed plan "Alpha" \(feature-2\) has been idle 25h/`. The gone claim's detail matches `/claimed plan "Gone" \(feature-2\) names an entry no longer listed/`.
-- "checkWorkInstances does not warn about a disabled instance role's pool" expects `no claimed plans or bugs`.
-- A new test, "checkWorkInstances names each claim by its file and counts plans and bugs apart". Set up `roles: { feature: { instances: 2 }, bugfix: { instances: 2 } }`, PLANS.md from `twoPlansDoc()`, and an open bug from `seedOpenBug(root)` (both in `test/fixtures/repo-fixtures.ts`; the bug's key is `"an open bug"`). If `readyRepo()`'s BUGS.md lacks the `_None yet._` placeholder `seedOpenBug` replaces, write the `## Open` section with `### An open bug` directly instead. Save a fresh `feature-2` claim on `alpha` (`file: "PLANS.md"`) and a fresh `bugfix-2` claim on `an open bug` (`file: "BUGS.md"`). The outcome is `{ level: "ok", detail: "1 claimed plan, 1 claimed bug" }`. Then backdate the bug claim 25 h; the warning detail matches `/claimed bug ".*" \(bugfix-2\) has been idle 25h/`.
-- `grep -n "work instances" docs/how-it-works.md` finds nothing.
-- `npm run test` passes.
-
 ### The repeated-failure pause, part 1/2: Pause only the failing feature instance, including instance 1 (planned 2026-10-16 by plan; independent of every other entry — touches src/roles/loop-ids.ts, src/gates/streak-gate.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-commands.ts and their tests)
 
 **Goal.** With `roles.feature.instances` above 1 (or `roles.bugfix.instances`), `pollStreakGate` (`src/gates/streak-gate.ts`) pauses a runner that failed `ERROR_STREAK_BREAKER` runs in a row by calling `pauseRole(root, role)` with its loop id. For `feature-2` that pauses one instance, and since the paused-instance claim release landed its plan goes to a sibling. Instance 1's loop id is the bare `feature`, which is also the whole role's id: `pollRunnerReasons` (`src/orchestrator/orchestrator-scheduling.ts`) skips any runner where `pausedRolesSet.has(runner.role) || pausedRolesSet.has(baseRoleOf(runner.role))`. So when instance 1 trips, every feature instance stops, and the claim release keeps its claim (`paused` is false when the base is paused). The same failure in instance 2 stops only instance 2. Give instance 1 its own pause key, `feature-1` (`bugfix-1`), used only while its role runs more than one instance. Then the breaker stops just the failing instance, wherever it is in the count. `pause --role feature` keeps pausing the whole role, as now.
@@ -1611,6 +1588,29 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Doctor's `parallel instances` check names a feature instance's claim as a plan, not a bug (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts and docs/how-it-works.md)
+
+**Goal.** `checkWorkInstances` (`src/doctor/doctor-checks.ts`, listed by `tumwater doctor` as `parallel instances`) walks the claims of every loop id, feature instances included. The plain-terms rename of doctor's text (commit e29818e05) changed "claim(s) held" to "claimed bugs" everywhere, so the check now reports a feature instance holding a PLANS.md plan as `claimed bug "Alpha" (feature-2) has been idle 25h`, and its ok detail reads `2 claimed bugs` when both claims are plans. The wording should match `checkFixClaims`'s separate `claimed bugs` check only when the claim really is a bug. Name each claim by its file (`claim.file`, `"PLANS.md" | "BUGS.md"` on `LoopState.claim` in `src/loop/loop-state.ts`), the same split `status-model.ts` already makes for `idle: no unclaimed plans` / `idle: no unclaimed bugs`. `docs/how-it-works.md` still calls the check `work instances`; fix that too.
+
+**Approach.**
+- `src/doctor/doctor-checks.ts`, `checkWorkInstances`:
+  - Carry `file` in the `claims` array: `{ id, title, key, at, file: claim.file }`.
+  - Add a local `noun = (c) => (c.file === "BUGS.md" ? "bug" : "plan")`.
+  - Warning lines: `claimed ${noun(c)} "${c.title}" (${c.id}) names an entry no longer listed` and `claimed ${noun(c)} "${c.title}" (${c.id}) has been idle ${h}h`. Keep the rest of each line as it is.
+  - Ok detail: with no claims, `no claimed plans or bugs`. Otherwise list the non-zero counts joined by `, `, each pluralized: `1 claimed plan`, `2 claimed plans`, `1 claimed bug`, e.g. `1 claimed plan, 2 claimed bugs`. Plans come first.
+  - Leave the `worktreeSlots … below maxConcurrent` part, the check's name in `src/doctor/doctor.ts`, and `checkFixClaims` (the `claimed bugs` check) unchanged.
+  - The doc comment above the function says "the fleet's claims"; reword that to "each instance's claimed plan or bug". Do not rename identifiers here: the in-flight "Plain terms code team, part 3/6" owns identifier renames under `src/doctor/`.
+- `docs/how-it-works.md`, the "Parallel work instances" bullet: change `` `tumwater doctor`'s `work instances` check `` to `` `tumwater doctor`'s `parallel instances` check ``. (The paused-instance change already added a sentence to the same bullet; keep it.)
+
+**Files touched.** `src/doctor/doctor-checks.ts`, `test/doctor-checks.test.ts`, `docs/how-it-works.md`.
+
+**Acceptance criteria.**
+- `test/doctor-checks.test.ts` "checkWorkInstances warns on a gone claim, a stale claim, and too few slots": the empty-repo assertion expects `{ level: "ok", detail: "no claimed plans or bugs" }`. The stale PLANS.md claim's detail matches `/claimed plan "Alpha" \(feature-2\) has been idle 25h/`. The gone claim's detail matches `/claimed plan "Gone" \(feature-2\) names an entry no longer listed/`.
+- "checkWorkInstances does not warn about a disabled instance role's pool" expects `no claimed plans or bugs`.
+- A new test, "checkWorkInstances names each claim by its file and counts plans and bugs apart". Set up `roles: { feature: { instances: 2 }, bugfix: { instances: 2 } }`, PLANS.md from `twoPlansDoc()`, and an open bug from `seedOpenBug(root)` (both in `test/fixtures/repo-fixtures.ts`; the bug's key is `"an open bug"`). If `readyRepo()`'s BUGS.md lacks the `_None yet._` placeholder `seedOpenBug` replaces, write the `## Open` section with `### An open bug` directly instead. Save a fresh `feature-2` claim on `alpha` (`file: "PLANS.md"`) and a fresh `bugfix-2` claim on `an open bug` (`file: "BUGS.md"`). The outcome is `{ level: "ok", detail: "1 claimed plan, 1 claimed bug" }`. Then backdate the bug claim 25 h; the warning detail matches `/claimed bug ".*" \(bugfix-2\) has been idle 25h/`.
+- `grep -n "work instances" docs/how-it-works.md` finds nothing.
+- `npm run test` passes.
 
 ### Plain terms code team, part 4/6: Rename the fleet identifiers in the dashboard and TUI and change and text modules (planned 2026-10-16 by user; done 2026-10-16; requires part 3/6 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/gui/ src/change/ src/text/ and their tests)
 

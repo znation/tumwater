@@ -674,7 +674,7 @@ test("checkWorktreePool reports the pool, warns on a 25 h pin and on leftover le
 // instances sharing a pool smaller than maxConcurrent.
 test("checkWorkInstances warns on a gone claim, a stale claim, and too few slots", () => {
   const root = readyRepo();
-  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claimed bugs" });
+  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claimed plans or bugs" });
 
   // A listed PLANS.md entry, held for 25 h: stale past CLAIM_IDLE_MAX_MS.
   writeConfig(root, { roles: { feature: { instances: 2 } } });
@@ -686,19 +686,40 @@ test("checkWorkInstances warns on a gone claim, a stale claim, and too few slots
   });
   const stale = checkWorkInstances(root, loadConfig(root), now);
   assert.equal(stale.level, "warn");
-  assert.match(stale.detail, /"Alpha" \(feature-2\) has been idle 25h/);
+  assert.match(stale.detail, /claimed plan "Alpha" \(feature-2\) has been idle 25h/);
 
   // A claim whose key is no longer listed under ## Planned.
   saveLoopState(root, {
     ...freshLoopState("feature-2"),
     claim: { file: "PLANS.md", key: "gone", title: "Gone", at: now, source: "assigned" },
   });
-  assert.match(checkWorkInstances(root, loadConfig(root), now).detail, /"Gone" \(feature-2\) names an entry no longer listed/);
+  assert.match(checkWorkInstances(root, loadConfig(root), now).detail, /claimed plan "Gone" \(feature-2\) names an entry no longer listed/);
 
   // A multi-instance feature with a pool below maxConcurrent.
   writeConfig(root, { roles: { feature: { instances: 2 } }, worktreeSlots: 1 });
   const tiny = checkWorkInstances(root, loadConfig(root), now);
   assert.match(tiny.detail, /worktreeSlots 1 is below maxConcurrent/);
+});
+
+test("checkWorkInstances names each claim by its file and counts plans and bugs apart", () => {
+  const root = readyRepo();
+  writeConfig(root, { roles: { feature: { instances: 2 }, bugfix: { instances: 2 } } });
+  fs.writeFileSync(path.join(root, "PLANS.md"), twoPlansDoc());
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n### An open bug\n\n## Fixed\n\n_None yet._\n");
+  const now = Date.now();
+  saveLoopState(root, {
+    ...freshLoopState("feature-2"),
+    claim: { file: "PLANS.md", key: "alpha", title: "Alpha", at: now, source: "assigned" },
+  });
+  const bugClaim = (at: number) =>
+    saveLoopState(root, {
+      ...freshLoopState("bugfix-2"),
+      claim: { file: "BUGS.md", key: "an open bug", title: "An open bug", at, source: "assigned" },
+    });
+  bugClaim(now);
+  assert.deepEqual(checkWorkInstances(root, loadConfig(root), now), { level: "ok", detail: "1 claimed plan, 1 claimed bug" });
+  bugClaim(now - 25 * 3_600_000);
+  assert.match(checkWorkInstances(root, loadConfig(root), now).detail, /claimed bug ".*" \(bugfix-2\) has been idle 25h/);
 });
 
 // A disabled role runs no instances, so its `instances` count cannot contend for the checkout
@@ -707,7 +728,7 @@ test("checkWorkInstances warns on a gone claim, a stale claim, and too few slots
 test("checkWorkInstances does not warn about a disabled instance role's pool", () => {
   const root = readyRepo();
   writeConfig(root, { roles: { feature: { enabled: false, instances: 2 } }, worktreeSlots: 1 });
-  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claimed bugs" });
+  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claimed plans or bugs" });
 });
 
 // Provider concurrency caps, part 5/5 (plans/provider-concurrency.md §8): the doctor check
