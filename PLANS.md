@@ -39,6 +39,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code merge, part 11c/11: Rewrite the merge family in the first half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts a–m, plus test/helpers/ test/fakes/ and test/fixtures/)
 
+**Refused 2026-10-17 by feature: the acceptance grep cannot list only the four comment kept-kinds without touching string literals — its range also contains fabricated-data/test-name/role-name literals using merge terms (`summary: "land \u2026"`, `tmpdir("vet-permits-")`, role `"vetted-v"`, `"landed one"`, `"landing check red"`), which the same entry forbids changing and predecessor part 10/11's series convention keeps as expected-output/fabricated literals.**
+
 **Goal.** Same as part 11a for the tests that cover the pipeline, review, merge, backlog, prompt and role modules (basenames a–m), plus the shared helpers, fakes and fixtures.
 
 **Approach.**
