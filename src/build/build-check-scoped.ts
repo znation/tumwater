@@ -16,7 +16,7 @@ import {
   SCOPE_WORDS,
   buildCheckEvent,
   buildCheckSkipWarning,
-  owesCleanRetry,
+  runWithCleanRetry,
   installFailedPhrase,
   killedPhrase,
   loadedHostPhrase,
@@ -95,24 +95,20 @@ export async function runScopedBuildCheck(
     config,
     MERGE_SCOPES.has(scope) ? CHECK_TIER.merge : CHECK_TIER.other,
     async () => {
-      const startedAt = Date.now();
-      const first = await runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install);
-      durationMs = Date.now() - startedAt;
-      // A check the harness did not stop itself says nothing about the tree — its death is
-      // another run's doing. A timeout whose deadline demonstrably fired late is the same
-      // weather: the harness's own evidence (run.deadlineLateMs, the measurement BUGS.md
-      // 2026-09-21 added) says the deadline passed while the host slept or the harness
-      // stalled, so the check ran seconds and was killed at a wake — it made no verdict about
-      // the tree and was not a slow suite. At every scope it owes one retry from a clean
-      // attempt; the second attempt's outcome stands. The verdict-less first attempt is priced
-      // as its own event (the feed must answer how long a check took), then the final event
-      // below records the retry's classified outcome.
-      if (!owesCleanRetry(first)) return first;
-      logEventBestEffort(root, buildCheckEvent(role, scope, first, durationMs));
-      const retryStart = Date.now();
-      const retry = await runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install);
-      durationMs = Date.now() - retryStart;
-      return retry;
+      // One permit covers both attempts (the killed-check retry re-runs under the permit it
+      // holds); durationMs prices the run itself, not the wait for a permit. A check the
+      // harness did not stop itself says nothing about the tree; a timeout whose deadline
+      // demonstrably fired late, and a failed run the host slept through, are the same weather
+      // — at every scope each owes one retry from a clean attempt, and the second attempt's
+      // outcome stands (runWithCleanRetry). The verdict-less first attempt is priced as its own
+      // event (the feed must answer how long a check took), then the final event below records
+      // the retry's classified outcome.
+      const { outcome, durationMs: d } = await runWithCleanRetry(
+        () => runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install),
+        (first, dur) => logEventBestEffort(root, buildCheckEvent(role, scope, first, dur)),
+      );
+      durationMs = d;
+      return outcome;
     },
     permitWait,
   );

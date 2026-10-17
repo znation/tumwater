@@ -53,13 +53,37 @@ export const SLEEP_SPAN_TOLERANCE_MS = 5_000;
  * says nothing about the tree: a skip from a signal the harness did not send, a timeout whose
  * deadline demonstrably fired late, and a failure the host slept through. The one rule for every
  * scope — runScopedBuildCheck and the red-main baseline (checkMainBaseline) both ask it. */
-export function owesCleanRetry(first: BuildCheckOutcome): boolean {
+function owesCleanRetry(first: BuildCheckOutcome): boolean {
   if (first.status === "failed") return (first.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
   if (first.status !== "skipped") return false;
   return (
     first.skipReason === "killed" ||
     (first.skipReason === "timeout" && (first.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS)
   );
+}
+
+/** Run one build-check attempt, priced, and give a verdict-less first attempt one clean retry
+ * — the timing-and-counting discipline shared by runScopedBuildCheck (build-check-scoped.ts)
+ * and the red-main baseline (checkMainBaseline, main-baseline.ts), so the two surfaces cannot
+ * drift on how long one check "took" or on how many attempts a weather-killed run owes
+ * (BUGS.md 2026-09-30). `run` starts one attempt; the returned `durationMs` prices the attempt
+ * whose verdict stands — the first, unless owesCleanRetry, in which case the retry's. `onFirst`
+ * prices the verdict-less first attempt the way the caller's surface reports runs
+ * (runScopedBuildCheck logs a build_check event; checkMainBaseline feeds its onRun hook), so a
+ * retried attempt's cost is still recorded even though its verdict is discarded.` */
+export async function runWithCleanRetry(
+  run: () => Promise<BuildCheckOutcome>,
+  onFirst?: (outcome: BuildCheckOutcome, durationMs: number) => void,
+): Promise<{ outcome: BuildCheckOutcome; durationMs: number }> {
+  const startedAt = Date.now();
+  const first = await run();
+  let durationMs = Date.now() - startedAt;
+  if (!owesCleanRetry(first)) return { outcome: first, durationMs };
+  onFirst?.(first, durationMs);
+  const retryStart = Date.now();
+  const retry = await run();
+  durationMs = Date.now() - retryStart;
+  return { outcome: retry, durationMs };
 }
 
 /** Per-scope wording for the environmental-skip warning. The call sites' current messages
