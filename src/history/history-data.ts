@@ -63,6 +63,12 @@ export interface HistorySummaryRow {
   problems: number;
   tokens: number;
   costUsd: number;
+  /** The sum of the summarized rows' `durationMs` (ms of agent wall-clock those runs consumed).
+   * Optional and zero-absent, like the report's summable fields: the key appears only when at
+   * least one contributing row carried a timed span, so an untimed window keeps today's exact
+   * JSON shape. Absent for a loop whose rows all carried a null span (their starts sat outside
+   * the scanned window). */
+  durationMs?: number;
   lastChangeTs: number | null;
 }
 
@@ -81,6 +87,7 @@ export function summarizeTickRows(rows: TickRow[]): { roles: HistorySummaryRow[]
       t[cls] += 1;
       t.tokens += row.tokens;
       t.costUsd += row.costUsd;
+      if (row.durationMs !== null) t.durationMs = (t.durationMs ?? 0) + row.durationMs;
       if (cls === "changes") t.lastChangeTs = Math.max(t.lastChangeTs ?? row.ts, row.ts);
     }
   }

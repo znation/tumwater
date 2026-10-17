@@ -254,12 +254,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // history-table:end
   // history-summary:start
   // The Summary table: one row per loop plus the total, in the same column set the CLI's
-  // history --summary prints (ticks, changes, none, problems, tokens, cost, last change), so
+  // history --summary prints (ticks, changes, none, problems, tokens, cost, time, last change), so
   // the dashboard and the CLI cannot drift column for column. Every number comes from the
   // server's summary (built on the shared summarizeTickRows) — nothing here re-derives a
-  // tally — and the cost/token cells reuse the page's report formatters. The last-change cell is
-  // the newest changes-class tick's age via fmtAgo, a dash when the loop had none. Pure — the
-  // view's render paints what this returns.
+  // tally — and the cost/token cells reuse the page's report formatters. The time cell is the
+  // sum of the loop's run spans via fmtSpan, a dash when none of its rows carried a span. The
+  // last-change cell is the newest changes-class tick's age via fmtAgo, a dash when the loop had
+  // none. Pure — the view's render paints what this returns.
   function histSummaryHtml(summary) {
     const all = summary.roles.concat(summary.total ? [summary.total] : []);
     const cell = (r, key, fmt) => "<td class='num'>" + esc(fmt ? fmt(r[key]) : r[key]) + "</td>";
@@ -268,8 +269,9 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       "<td class='mono'>" + esc(r.role === "total" ? r.role : roleLabel(r.role)) + "</td>" +
       cell(r, "runs") + cell(r, "changes") + cell(r, "none") + cell(r, "problems") +
       cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
+      "<td class='num'>" + (r.durationMs === undefined || r.durationMs === null ? "—" : esc(fmtSpan(Number(r.durationMs)))) + "</td>" +
       "<td>" + esc(r.lastChangeTs === null || r.lastChangeTs === undefined ? "—" : fmtAgo(Number(r.lastChangeTs))) + "</td></tr>").join("");
-    return "<div class='table-wrap'><table class='table history'><thead><tr><th>Role</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th>Last change</th></tr></thead><tbody>" +
+    return "<div class='table-wrap'><table class='table history'><thead><tr><th>Role</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th class='num'>Time</th><th>Last change</th></tr></thead><tbody>" +
       rowsHtml + "</tbody></table></div>";
   }
   // history-summary:end

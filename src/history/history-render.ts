@@ -6,7 +6,7 @@
  * "what happened / how it prints" that report and failure draw: the command owns argument
  * parsing and stdout, this module owns column widths and cell wording. The rows themselves
  * live in history-data.ts because the grep haystack shares the row line. */
-import { formatTimestamp } from "../text/datetime.js";
+import { formatTimestamp, humanSeconds } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
@@ -57,14 +57,23 @@ export function renderRow(row: TickRow, widths: RowWidths): string {
 }
 
 /** The `--summary` text: a header, one line per loop, then the total line. The loop column pads to
- * display width; each number column right-aligns under its header; the last column, `last change`,
- * is the newest change's timestamp (`—` when none) and is left-aligned, unpadded. */
+ * display width; each number column right-aligns under its header; the `time` column is the sum of
+ * each role's run spans, `—` when none of the role's rows carried a span; the last column,
+ * `last change`, is the newest change's timestamp (`—` when none) and is left-aligned, unpadded. */
 export function renderSummary(summary: { roles: HistorySummaryRow[]; total: HistorySummaryRow }): string {
   const all = [...summary.roles, summary.total];
   const loopWidth = Math.max(...["role", ...all.map((r) => roleLabel(r.role))].map(displayWidth));
-  const cols = ["runs", "changes", "none", "problems", "tokens", "cost"] as const;
+  const cols = ["runs", "changes", "none", "problems", "tokens", "cost", "time"] as const;
   const cell = (r: HistorySummaryRow, c: (typeof cols)[number]): string =>
-    c === "tokens" ? compactTokens(r.tokens) : c === "cost" ? usd(r.costUsd) : String(c === "runs" ? r.runs : r[c]);
+    c === "tokens"
+      ? compactTokens(r.tokens)
+      : c === "cost"
+        ? usd(r.costUsd)
+        : c === "time"
+          ? r.durationMs === undefined
+            ? "—"
+            : humanSeconds(r.durationMs / 1000)
+          : String(c === "runs" ? r.runs : r[c]);
   const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => cell(r, c).length)));
   const line = (loop: string, cells: string[], lastChange: string): string =>
     [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();

@@ -126,7 +126,7 @@ Usage:
                                    -n, and --grep; --json prints the rows as
                                    machine-readable history data — ts, tokens, and costUsd
                                    kept raw, the GUI's /api/history payload; --summary prints one line per role
-                                   counting its runs by outcome class, with the time of its newest change (and a total line)
+                                   counting its runs by outcome class and its run time, with the time of its newest change (and a total line)
                                    instead of the rows; with --json, ${SUMMARY_JSON_KEYS}
   tumwater history <role> [<n>] [--last] [--stat] [--json]
                                    One run's full event trail — a summary header (result, or

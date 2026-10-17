@@ -535,16 +535,44 @@ test("summarizeTickRows sums tokens and cost per loop and into the total", () =>
   assert.deepEqual(summary.total, { role: "total", runs: 4, changes: 4, none: 0, problems: 0, tokens: 15200, costUsd: 1.52, lastChangeTs: 0 });
 });
 
-test("renderSummary shows tokens and cost columns formatted via compactTokens and usd", () => {
-  const row = (role: string, tokens: number, costUsd: number): HistorySummaryRow => ({
-    role, runs: 1, changes: 1, none: 0, problems: 0, tokens, costUsd, lastChangeTs: null,
+test("summarizeTickRows sums each loop's run time into the total, skipping null spans", () => {
+  const row = (role: string, durationMs: number | null): TickRow => ({
+    ts: 0, time: "", role, run: 1, result: "changed", durationMs, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
-  const out = renderSummary({ roles: [row("feature", 14000, 0.5)], total: row("total", 14000, 0.5) });
+  const summary = summarizeTickRows([
+    row("feature", 60_000),
+    row("bugfix", 30_000),
+    row("feature", 120_000),
+    row("bugfix", null), // a lost start adds nothing
+  ]);
+  assert.deepEqual(summary.roles, [
+    { role: "bugfix", runs: 2, changes: 2, none: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 30000, lastChangeTs: 0 },
+    { role: "feature", runs: 2, changes: 2, none: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 180000, lastChangeTs: 0 },
+  ]);
+  assert.deepEqual(summary.total, { role: "total", runs: 4, changes: 4, none: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 210000, lastChangeTs: 0 });
+});
+
+test("summarizeTickRows leaves durationMs absent when every row's span is null", () => {
+  const row = (role: string): TickRow => ({
+    ts: 0, time: "", role, run: 1, result: "changed", durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
+  });
+  const summary = summarizeTickRows([row("feature"), row("bugfix")]);
+  for (const r of [...summary.roles, summary.total]) assert.equal("durationMs" in r, false);
+  // The empty-row shape also stays keyless.
+  assert.equal("durationMs" in summarizeTickRows([]).total, false);
+});
+
+test("renderSummary shows tokens, cost and time columns in order, with a dash for an untimed loop", () => {
+  const row = (role: string, durationMs?: number): HistorySummaryRow => ({
+    role, runs: 1, changes: 1, none: 0, problems: 0, tokens: 14000, costUsd: 0.5, durationMs, lastChangeTs: null,
+  });
+  const out = renderSummary({
+    roles: [row("feature", 3_600_000), row("bugfix")],
+    total: row("total", 3_600_000),
+  });
   const lines = out.split("\n");
-  assert.match(lines[0]!, /tokens\s+cost/);
-  // Each data row's tokens/cost cells are right-aligned under their headers and formatted.
-  for (const l of lines.slice(1)) {
-    assert.match(l, /\b14\.0k\b/);
-    assert.match(l, /\$0\.50/);
-  }
+  assert.match(lines[0]!, /tokens\s+cost\s+time/);
+  assert.match(lines[1]!, /\b1h\b/); // the timed loop's run time via humanSeconds
+  assert.match(lines[2]!, /—/); // the untimed loop shows a dash
+  assert.match(lines[3]!, /\b1h\b/); // the total, the one timed span summed
 });
