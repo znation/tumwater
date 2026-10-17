@@ -23,6 +23,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code merge, part 4/11: Rename the merge pipeline and drain and verify identifiers (planned 2026-10-16 by user; requires part 3/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-pipeline.ts merge-drain.ts merge-verify.ts and their tests)
 
+**Needs replan 2026-10-16 by feature: rejected after 2 review rounds**
+
+1. (prior 1) Four comments still have the broken rewrap the last review rejected: the leftover words start a new line with a stray `/**` (e.g. `test/fixtures/merge-fixtures.ts:140` `/** no`), so the comments are malformed. The plan promised comments that follow the rename and wrap at 100 columns, so this is unfinished work.
+2. (prior 2) The VERIFIED claim still does not cover the comment text. It cited `test/comment-width.test.ts`, which checks only line width and cannot catch a misplaced `/**`. A read of the changed comments, or a grep for a stray `/**` opener on a continuation line, finds the defects.
+
 **Goal.** The pipeline, the merge-queue drain and the verify stage take merge, verify and approved names in identifiers, comments and test names. Two names that would collide take explicit alternatives. A mechanical rename of about 480 lines with no behavior change.
 
 **Approach.**
