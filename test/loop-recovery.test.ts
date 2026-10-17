@@ -143,7 +143,7 @@ test("finishRecoveryTickPhase ends error on a held pin and keeps its message", a
 test("finishRecoveryTickPhase maps an already-queued pin to queued without a recovery failure", async () => {
   const root = await initializedRepo();
   const { ctx, failures } = makeCtx(root);
-  const entry: LandingEntry = { role: "improve", sha: "sha1", tick: 3, summary: "the summary", highFriction: true, enqueuedAt: 0 };
+  const entry: LandingEntry = { role: "improve", sha: "sha1", run: 3, summary: "the summary", highFriction: true, enqueuedAt: 0 };
 
   const outcome = await finishRecoveryTickPhase(ctx, { kind: "already_queued", entry }, null, path.join(root, "unused"), "prior failure");
   assert.deepEqual(outcome, { result: "queued", summary: "the summary", commit: "sha1", highFriction: true, recoveredLeftover: true });
@@ -153,7 +153,7 @@ test("finishRecoveryTickPhase maps an already-queued pin to queued without a rec
 test("finishRecoveryTickPhase queues a freshly enqueued pin, resets the worktree, and carries the prior failure", async () => {
   const { root, wt } = await initializedWorktree();
   const { ctx, failures } = makeCtx(root);
-  const entry: LandingEntry = { role: "improve", sha: "sha1", tick: 4, summary: "the summary", enqueuedAt: 0 };
+  const entry: LandingEntry = { role: "improve", sha: "sha1", run: 4, summary: "the summary", enqueuedAt: 0 };
   fs.writeFileSync(path.join(wt, "dirty.txt"), "uncommitted leftover\n");
 
   const outcome = await finishRecoveryTickPhase(ctx, { kind: "enqueued", entry }, null, wt, "the prior failure");

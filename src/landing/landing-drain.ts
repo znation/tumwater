@@ -172,7 +172,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
         picks.map((v) => ({
           role: v.entry.role,
           sha: v.sha,
-          tick: v.entry.tick,
+          tick: v.entry.run,
           summary: v.entry.summary,
           body: v.entry.body,
           highFriction: v.entry.highFriction,

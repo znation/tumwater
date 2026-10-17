@@ -108,6 +108,7 @@ export interface HarnessEvent {
     | "restart_blocked" // the restart for main was blocked and latched (reason: red main, a failed compile, a swap error); the running build stays until main moves
     | "restart_forced" // the operator pressed the dashboard's restart button: the pending restart's cooldown deferral is waived for the next poll (carries build)
     | "supervisor_exit" // the supervisor gave up without the operator asking: a generation exited with a failure (code/signal, reason when the startup gate names one) or the crash-loop guard tripped — the fleet is down
+    | "state_migrated" // a startup migration moved persisted state to its current name (src/orchestrator/startup-migrations.ts): step, moved (count), detail
     | "warning";
   [key: string]: unknown;
 }

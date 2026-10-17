@@ -104,8 +104,8 @@ test("the served /api/status carries the land queue's entries", async () => {
   // the entries the drawer renders must reach the client in queue order.
   const repo = makeRepo();
   await initProject(repo, "cli gui land queue");
-  enqueueLanding(repo, { role: "clean", sha: "abc1234", tick: 1, summary: "tidy something", enqueuedAt: Date.now() });
-  enqueueLanding(repo, { role: "feature", sha: "def5678", tick: 2, summary: "add a thing", enqueuedAt: Date.now() });
+  enqueueLanding(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
+  enqueueLanding(repo, { role: "feature", sha: "def5678", run: 2, summary: "add a thing", enqueuedAt: Date.now() });
 
   const port = await freeTcpPort();
   const gui = spawnCli(repo, ["gui", "--port", String(port)]);

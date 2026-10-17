@@ -323,7 +323,13 @@ export function roleInboxDir(root: string, role: string): string {
  * a crash between enqueue and drop loses nothing, and `tumwater status` can read it without the
  * scheduler. */
 export function landQueueDir(root: string): string {
-  return path.join(tumwaterDir(root), "land-queue");
+  return path.join(tumwaterDir(root), "merge-queue");
+}
+
+/** The merge queue's old directory, still read by observers until the startup migration
+ * (src/orchestrator/startup-migration-steps.ts) moves its files into `landQueueDir`. */
+export function legacyLandQueueDir(root: string): string {
+  return path.join(tumwaterDir(root), "land-queue"); // vocabulary-ok: legacy path read from old layouts
 }
 
 /** The lock dir serializing merges to main (landing-merge.ts; doctor checks it). */

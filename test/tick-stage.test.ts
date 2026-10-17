@@ -405,7 +405,7 @@ test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () =
   assert.equal(queued.length, 1);
   assert.equal(queued[0]!.role, "improve");
   assert.equal(queued[0]!.sha, outcome.commit);
-  assert.equal(queued[0]!.tick, 3);
+  assert.equal(queued[0]!.run, 3);
   assert.equal(queued[0]!.summary, "add the feature");
   assert.equal(queued[0]!.highFriction, undefined);
   assert.equal(queued[0]!.priorReview, undefined, "a fresh tick carries no prior review");

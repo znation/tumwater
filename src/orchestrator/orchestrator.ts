@@ -51,6 +51,7 @@ import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gat
 import { ReclaimController } from "../fleet/reclaim.js";
 import { heldProviders, windowHeldProviders } from "../fleet/fleet-hold.js";
 import { planBacklogFull, workReserveCount } from "../scheduling/claims.js";
+import { runStartupMigrations } from "./startup-migration-steps.js";
 
 const POLL_MS = 2000;
 
@@ -168,7 +169,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const reclaim = new ReclaimController(root);
   let restart = false;
 
-  const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, roleSignal));
   // The shared concurrency cap: role ticks and the landings (each vet, and the merge's conflict
   // resolver — landing-drain.ts) all hold a permit; see its LandingPipelineContext for why a
   // landing is not exempt.
@@ -198,6 +198,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     ...(redeploy ? { build: redeploy.build.sha } : {}),
   });
 
+  // The first per-runner state read is each LoopRunner constructor's loadLoopState, so the
+  // persisted-name migrations run before it. (After the info write and start event above, which
+  // an in-process test or a second `tumwater run` probe reads synchronously.)
+  await runStartupMigrations(root);
+  const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, roleSignal));
   // Legacy lander checkouts (`_land-<role>`) from a pre-pool build hold nothing now that vets
   // and merges lease pooled slots: remove them once, before any tick, so the retired layout
   // never lingers on disk. (After the info write and start event above, so startup's published

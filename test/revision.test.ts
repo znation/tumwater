@@ -600,7 +600,7 @@ test("a merged revision deletes the rejected ref", async () => {
   const revision = {
     role,
     sha: "b".repeat(40),
-    tick: 3,
+    run: 3,
     summary: "the revision",
     revisionRound: 2,
     enqueuedAt: Date.now(),
@@ -617,7 +617,7 @@ test("a fresh merge leaves a pending revision's rejected ref alone", async () =>
   const rejected = headSha(root);
   assert.equal(await setRef(root, rejectedRefName(role), rejected), true, "the rejected ref is set");
   const state = freshLoopState(role);
-  const fresh = { role, sha: "b".repeat(40), tick: 3, summary: "fresh work", enqueuedAt: Date.now() };
+  const fresh = { role, sha: "b".repeat(40), run: 3, summary: "fresh work", enqueuedAt: Date.now() };
 
   await settleLandingOutcome(root, fresh, state, "changed", 1, { tokens: 0, cost: 0, providerCost: {} }, path.join(root, "no-such-queue-file.json"));
 

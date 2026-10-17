@@ -1230,7 +1230,7 @@ test("the Pending pane caches the rendered fleet roster when collectPending reso
 
 test("the Pending pane renders the durable land queue on entry, above the resolved fleet roster", async () => {
   const root = makeRoot();
-  enqueueLanding(root, { role: "feature", sha: "a".repeat(40), tick: 3, summary: "add a thing", enqueuedAt: 0 });
+  enqueueLanding(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 0 });
   const fleet = {
     mainBranch: "main",
     roles: [

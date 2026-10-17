@@ -385,8 +385,8 @@ test("checkStaleBugs ignores refused, undated, fresh and fixed bugs, and a missi
 // landing that is NOT in-flight and has waited past the 6-hour threshold; a marker showing the
 // role in-flight suppresses it, and an absent/unreadable marker or empty queue reads ok.
 
-function advice(role: string, summary: string): { role: string; summary: string; enqueuedAt: number; sha: string; tick: number } {
-  return { role, summary, enqueuedAt: Date.now(), sha: "abc1234", tick: 1 };
+function advice(role: string, summary: string): { role: string; summary: string; enqueuedAt: number; sha: string; run: number } {
+  return { role, summary, enqueuedAt: Date.now(), sha: "abc1234", run: 1 };
 }
 
 function queueRoot(): string {

@@ -50,7 +50,7 @@ function piRun(outputTokens: number, costUsd: number): PiRunResult {
 
 /** Queue one landing in a fresh repo and return its entry plus the file a drop removes. */
 function queued(root: string, role = "improve"): { entry: LandingEntry; file: string } {
-  const entry: LandingEntry = { role, sha: "a".repeat(40), tick: 3, summary: "add a thing", enqueuedAt: Date.now() };
+  const entry: LandingEntry = { role, sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: Date.now() };
   enqueueLanding(root, entry);
   const head = headLanding(root);
   assert.ok(head, "fixture sanity: the landing is queued");
@@ -132,7 +132,7 @@ test("a landing's nonzero usage rides its landed event and the entry is dropped"
   const { entry, file } = queued(root);
   const state = freshLoopState("improve");
   state.phase = "review"; // an in-flight landing marker from the tick lifecycle
-  state.runs = entry.tick;
+  state.runs = entry.run;
 
   writeLandingOutcome(root, entry, state, "changed", 1234, { tokens: 320, cost: 0.42, providerCost: {} }, file);
 
@@ -295,7 +295,7 @@ test("setLandingStage advances only its own role's record, and only its stage", 
   // creates nothing; the gate must never invent landing state.
   setLandingStage(root, "clean", "reviewing");
   assert.equal(readLandingMarker(root), null);
-  addLandingChange(root, { role: "bugfix", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root, { role: "bugfix", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
   const before = readLandingMarker(root)!;
   // Another role's gate (one with no record of its own) must not restage it.
   setLandingStage(root, "clean", "reviewing");
@@ -319,7 +319,7 @@ test("setLandingStage advances only its own role's record, and only its stage", 
 // each setLandingStage transition, leaving an unchanged stage alone.
 test("addLandingChange and setLandingStage stamp stageSince on each stage entry", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
   const added = readLandingMarker(root)!.changes![0]!;
   assert.equal(added.stageSince, added.startedAt, "the initial rebasing stamps its own start");
   // A transition to another stage moves stageSince with it.
@@ -334,7 +334,7 @@ test("addLandingChange and setLandingStage stamp stageSince on each stage entry"
   assert.equal(readLandingMarker(root)!.changes![0]!.stageSince, stamp, "an unchanged stage keeps its stamp");
   // A marker that never transitions keeps one stageSince equal to its start.
   const root2 = makeRepo();
-  addLandingChange(root2, { role: "beta", sha: "b".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root2, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
   const b = readLandingMarker(root2)!.changes![0]!;
   assert.equal(b.stageSince, b.startedAt, "a never-transitioned change's stageSince is its start");
   // A foreign stageSince is dropped by isLandingChange rather than read field-by-field.
@@ -352,8 +352,8 @@ test("addLandingChange and setLandingStage stamp stageSince on each stage entry"
 // whose check has not started never reads as one that has.
 test("checkWaitStage shows check-wait while parked, then build-check once the permit arrives", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
-  addLandingChange(root, { role: "beta", sha: "b".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
   const stages = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.stage}`);
   const hooks = checkWaitStage(root, ["alpha", "beta", "delta"]); // delta has no record: a no-op
   hooks.waiting();
@@ -366,8 +366,8 @@ test("checkWaitStage shows check-wait while parked, then build-check once the pe
 // granted — checkWaitStage's shape, for one role — so neither reads as the merge's git steps.
 test("resolveWaitStage shows resolve-wait while parked, then resolving once the permit arrives", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
-  addLandingChange(root, { role: "beta", sha: "b".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
   const stages = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.stage}`);
   const hooks = resolveWaitStage(root, "alpha");
   hooks.waiting();
@@ -385,7 +385,7 @@ test("resolveWaitStage shows resolve-wait while parked, then resolving once the 
 test("the marker's records come and go per change, and its top level follows the first change in flight", () => {
   const root = makeRepo();
   const entries = Object.fromEntries(
-    ["alpha", "beta", "gamma"].map((role) => [role, { role, sha: `${role}-sha`, tick: 1, summary: `${role} work`, enqueuedAt: 1 }]),
+    ["alpha", "beta", "gamma"].map((role) => [role, { role, sha: `${role}-sha`, run: 1, summary: `${role} work`, enqueuedAt: 1 }]),
   ) as Record<string, LandingEntry>;
   const records = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.status}/${c.stage ?? "-"}`);
 
@@ -484,7 +484,7 @@ test("a queued landing's record names each phase while it runs: the gate's check
     "the work",
   );
   await setRef(root, landingRefName("improve"), sha);
-  const entry: LandingEntry = { role: "improve", sha, tick: 3, summary: "the work", enqueuedAt: Date.now() };
+  const entry: LandingEntry = { role: "improve", sha, run: 3, summary: "the work", enqueuedAt: Date.now() };
   enqueueLanding(root, entry);
 
   // Every observation point appends the marker's stage as the observers would read it: the
@@ -540,7 +540,7 @@ test("setLandingChangeStatus and removeLandingChange no-op when the marker is ab
 
 test("a kept legacy record without startedAt or stage never leaves the top level undefined", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "beta", sha: "b".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root, { role: "beta", sha: "b".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
   // Overwrite with a marker an older generation wrote: a landing record with no startedAt and
   // no stage of its own (the documented old shape).
   fs.writeFileSync(
@@ -556,7 +556,7 @@ test("a kept legacy record without startedAt or stage never leaves the top level
   // The next change's vet starts while beta still holds a record: the legacy record is kept
   // (its role is live) and becomes the headline — its missing fields must not write `undefined`
   // over the top level the observers read.
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 2, summary: "s2", enqueuedAt: 1 }, new Set(["beta"]));
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 2, summary: "s2", enqueuedAt: 1 }, new Set(["beta"]));
   const marker = readLandingMarker(root)!;
   assert.equal(marker.stage, "merging", "a stageless headline reads at the default stage");
   assert.equal(typeof marker.startedAt, "number", "a startless headline did not erase the marker's start");
@@ -565,7 +565,7 @@ test("a kept legacy record without startedAt or stage never leaves the top level
 
 test("a marker whose top level lost its stage falls back to merging on the next rewrite", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
   // A marker an older generation wrote: per-change records, but no top-level stage (the bare
   // elapsed label). The next status move rewrites it — the write must name a stage, not
   // propagate the missing one.
@@ -587,7 +587,7 @@ test("a marker whose top level lost its stage falls back to merging on the next 
 
 test("a failing marker write never throws — the landing proceeds and the old frame stays", () => {
   const root = makeRepo();
-  addLandingChange(root, { role: "improve", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root, { role: "improve", sha: "a".repeat(40), run: 1, summary: "s", enqueuedAt: 1 }, new Set());
   const before = readLandingMarker(root)!;
   // The state directory gone read-only: the atomic write cannot create its tmp file. The
   // marker is display-only, so the call must swallow the failure rather than fail a landing.

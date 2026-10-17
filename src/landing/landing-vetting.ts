@@ -186,7 +186,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
               {
                 role,
                 sha: entry.sha,
-                tick: entry.tick,
+                tick: entry.run,
                 summary: entry.summary,
                 body: entry.body,
                 highFriction: entry.highFriction,

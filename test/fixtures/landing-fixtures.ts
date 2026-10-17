@@ -47,7 +47,7 @@ export function pinnedCommit(root: string, role: string): string {
 }
 
 export function entry(role: string, sha: string, enqueuedAt = Date.now()): LandingEntry {
-  return { role, sha, tick: 7, summary: "the work", enqueuedAt };
+  return { role, sha, run: 7, summary: "the work", enqueuedAt };
 }
 
 /** A runner per role — a real LoopRunner (cheap constructor: state loaded from disk, no

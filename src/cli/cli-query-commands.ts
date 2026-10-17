@@ -130,10 +130,7 @@ export async function cmdQueue(root: string, args: string[]): Promise<void> {
   // queued entry (queueInFlight) — status --json's mergeQueue.inFlight, so the two agree.
   const view = readLandingQueue(root);
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  // The document's entries carry `run` where the persisted LandingEntry still says `tick`; the
-  // human render keeps reading the persisted shape.
-  const doc = { ...view, entries: view.entries.map(({ tick, ...rest }) => ({ ...rest, run: tick })) };
-  sayJsonOrRender(args, inFlight ? { ...doc, inFlight } : doc, () => renderLandingQueue(view, Date.now(), inFlight));
+  sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, () => renderLandingQueue(view, Date.now(), inFlight));
 }
 
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */

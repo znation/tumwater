@@ -163,7 +163,7 @@ test("merge queue interlock: a role with a queued landing starts no tick until t
   enqueueLanding(repo, {
     role: "clean",
     sha: shaOnSideBranch(repo),
-    tick: 1,
+    run: 1,
     summary: "interlock sentinel change",
     enqueuedAt: Date.now(),
   });
@@ -195,7 +195,7 @@ test("restart hand-off: an in-flight landing outliving its deadline is aborted, 
   enqueueLanding(repo, {
     role: "clean",
     sha: shaOnSideBranch(repo),
-    tick: 1,
+    run: 1,
     summary: "hand-off sentinel change",
     enqueuedAt: Date.now(),
   });

@@ -1,9 +1,10 @@
+import fs from "node:fs";
 import path from "node:path";
 import { listQueueFiles, queueFileName, removeQueueFile } from "../files/file-queue.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { landQueueDir } from "../paths.js";
+import { landQueueDir, legacyLandQueueDir } from "../paths.js";
 
 /** The durable land queue (plans/merge-queue.md 3/5): a changed tick commits, pins its sha by
  * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the tick ENDS, holding no
@@ -42,9 +43,9 @@ export interface LandingEntry {
   role: string;
   /** The pinned commit to land — checked out detached in the vet's leased pool slot. */
   sha: string;
-  /** The authoring tick number, for the unique per-run session names (review + conflict
+  /** The authoring run number, for the unique per-run session names (review + conflict
    * resolution). */
-  tick: number;
+  run: number;
   /** The change's one-line summary (the commit subject minus its prefix). */
   summary: string;
   /** The author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff. */
@@ -83,7 +84,42 @@ export function enqueueLanding(root: string, entry: LandingEntry): void {
  * headLanding, and the orchestrator's per-poll queued-roles set read. A missing queue dir
  * reads as an empty queue. */
 function queueFiles(root: string): string[] {
-  return listQueueFiles(landQueueDir(root), ".json");
+  // Files an old build enqueued into the legacy directory still count until the startup
+  // migration moves them; the sort is by basename because the queue order lives in the name.
+  const all = [...listQueueFiles(landQueueDir(root), ".json"), ...listQueueFiles(legacyLandQueueDir(root), ".json")];
+  return all.sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
+}
+
+/** The startup migration step: move every `*.json` from the legacy queue directory into the
+ * current one, keeping the basename (the order lives in it) and the contents. A basename already
+ * present in the new directory stays put and is noted; the old directory is removed once empty.
+ * A file that vanished mid-move (a concurrent run) is skipped. */
+export function migrateLandQueueDir(root: string): string[] {
+  const from = legacyLandQueueDir(root);
+  const to = landQueueDir(root);
+  const notes: string[] = [];
+  const files = listQueueFiles(from, ".json");
+  if (files.length > 0) fs.mkdirSync(to, { recursive: true });
+  for (const file of files) {
+    const name = path.basename(file);
+    const dest = path.join(to, name);
+    if (fs.existsSync(dest)) {
+      notes.push(`${name} already in merge-queue, left in place`);
+      continue;
+    }
+    try {
+      fs.renameSync(file, dest);
+      notes.push(`moved ${name}`);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+  }
+  try {
+    fs.rmdirSync(from);
+  } catch {
+    // Missing, or still holding a file left in place or placed since: nothing to remove.
+  }
+  return notes;
 }
 
 /** Number of landings currently queued — a directory listing only; no file content is read.
@@ -125,7 +161,7 @@ function isLandingEntry(v: unknown): v is LandingEntry {
   return (
     typeof e.role === "string" &&
     typeof e.sha === "string" &&
-    nonNegativeNumber(e.tick, null) !== null &&
+    nonNegativeNumber(e.run, null) !== null &&
     typeof e.summary === "string" &&
     nonNegativeNumber(e.enqueuedAt, null) !== null &&
     (e.body === undefined || typeof e.body === "string") &&
@@ -144,7 +180,12 @@ function readEntry(file: string): LandingEntry | null {
   return cachedByStat(entryCache, file, file, () => {
     // readJsonFile is the shared "missing or torn reads as no data" policy; a foreign shape
     // is still rejected by isLandingEntry.
-    const parsed = readJsonFile<LandingEntry>(file);
+    let parsed: unknown = readJsonFile<object>(file);
+    // An entry an old build wrote carries `tick` where the current shape has `run`.
+    if (isJsonObject(parsed) && parsed.run === undefined && parsed.tick !== undefined) {
+      const { tick, ...rest } = parsed;
+      parsed = { ...rest, run: tick };
+    }
     return isLandingEntry(parsed) ? parsed : null;
   }, (e) => ({ ...e }));
 }

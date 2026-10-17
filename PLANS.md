@@ -110,52 +110,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms state, part 3/5: Add the startup migration hook and move the land queue to merge-queue (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "State and git"; touches src/orchestrator/ src/paths.ts src/landing/ src/loop/leftover.ts src/tick/tick-stage.ts src/status/status-data.ts src/events/ test/)
-
-**Goal.** tumwater gets one reusable registry of idempotent startup-migration steps. The orchestrator runs it before its first per-runner state read, and a CLI reader can run it safely too. Its first step moves `.tumwater/land-queue/` to `.tumwater/merge-queue/`. Queue entries carry `run` instead of `tick`, and older entries still read.
-
-**Approach.**
-- New module src/orchestrator/startup-migrations.ts holds the registry:
-  - `interface StartupMigration { name: string; run(root: string): Promise<string[]> }`. A step returns one short note per thing it moved, and nothing when there was nothing to do. Each step must be idempotent and must tolerate a concurrent run: a source that vanished mid-step is skipped, not an error.
-  - `registerStartupMigration(step)` appends to the registry; a duplicate `name` throws.
-  - `runStartupMigrations(root)` runs the registered steps in registration order.
-    - A step that moved something logs one `state_migrated` event (`source: TUMWATER_SOURCE`, `step`, `moved`, `detail`).
-    - A step that throws logs one warning, the remaining steps still run, and the failed step retries at the next start.
-    - A second call moves and logs nothing.
-  - `runStartupMigrationsIfIdle(root)` is the CLI-reader form. It runs the same steps only when no orchestrator is alive for `root` (`orchestratorAlive`, src/fleet/orchestrator-info.ts), so a CLI process never moves files under a running fleet, which may still be the old build. A live fleet has already migrated at its own start.
-- New module src/orchestrator/startup-migration-steps.ts is the one place that fixes step order. It imports `registerStartupMigration`, calls it once per step at top level in order, and re-exports `runStartupMigrations`/`runStartupMigrationsIfIdle`. Callers import from this file, so the steps are registered before anything can run. This also avoids an import cycle: startup-migrations.ts never imports the steps. A step's implementation may live in the module that owns the data. Later parts, and the Plain terms role ids series, add a step by appending one `registerStartupMigration(...)` call at the end of this file.
-- Call `runStartupMigrations` once, from `runOrchestrator` (src/orchestrator/orchestrator.ts), awaited before the `LoopRunner`s are constructed. Each `LoopRunner` constructor's `loadLoopState` is the first per-runner state read, and the merge pipeline's first queue read comes later. In-process callers, tests and `--once` rounds included, get the same call.
-- No CLI command in this series calls the Idle form: the observers read both layouts (below). It exists so the role ids series can migrate from a CLI read path when no fleet is running.
-- Add `state_migrated` to the `HarnessEvent` union, an event-format.ts case (`state migrated — <detail>`) and the label map, in its server and browser forms, with a routine tone.
-- First step, `mergeQueueDir`:
-  - Move every `*.json` in `legacyLandQueueDir(root)` into `landQueueDir(root)` with `fs.renameSync`, keeping the basename, because the queue order lives in the filename.
-  - If the basename already exists in the new directory, leave the file in place and note it.
-  - Remove the old directory once it is empty.
-  - Leave the files' contents as they are.
-- src/paths.ts: `landQueueDir` returns `.tumwater/merge-queue`. Plain terms code merge renames the function. Add `legacyLandQueueDir`, which returns `.tumwater/land-queue`.
-- src/landing/landing-queue.ts:
-  - `LandingEntry.run` replaces `tick`.
-  - `isLandingEntry`/`readEntry` accept an entry that carries `tick` instead and map it to `run`.
-  - `queueFiles` lists the new directory plus any files still in the legacy one, sorted by basename. `tumwater queue`, `status`, doctor and the dashboard, running in another process before the new orchestrator's first start, therefore show the full queue.
-  - `dropLanding` removes by full path, so either directory works.
-  - If the vocabulary guard flags a legacy path literal, end its line with `// vocabulary-ok: legacy path read from old layouts`.
-- Callers (tsc): `stageTickLanding` (tick-stage.ts), `recoverLeftover` (leftover.ts), landing-vetting.ts, landing-drain.ts, landing-queue-render.ts and status-data.ts. In status-data.ts the `--json`/API key is already `run`. The in-memory `LandRequest.tick` stays; Plain terms code run renames it.
-- **Self-hosting:** safe in one part.
-  - The old orchestrator enqueues into `land-queue/` until it exits.
-  - The new one moves those entries before its first read.
-  - Observers on the new build read both directories.
-  - The old build never reads `merge-queue/`.
-  - A crash mid-migration leaves each file whole in one directory or the other, both are read, and the next start finishes the move.
-
-**Files touched.** src/orchestrator/startup-migrations.ts (new), src/orchestrator/startup-migration-steps.ts (new), src/orchestrator/orchestrator.ts, src/paths.ts, src/landing/landing-queue.ts, src/landing/landing-vetting.ts, src/landing/landing-drain.ts, src/landing/landing-queue-render.ts, src/loop/leftover.ts, src/tick/tick-stage.ts, src/status/status-data.ts, src/events/events.ts, src/events/event-format.ts, the label-map module(s); test/startup-migrations.test.ts (new), test/landing-queue.test.ts, test/landing-slot.test.ts, test/doctor-backlog.test.ts, test/cli-queue.test.ts and the others tsc lists (~48 typed sites).
-
-**Acceptance criteria.**
-- Fixture: a repo whose `.tumwater/land-queue/` holds two entries with `tick` and a torn file. `runStartupMigrations` moves all three into `merge-queue/`, removes `land-queue/` and logs one `state_migrated`. `readLandingQueue` then returns the two entries in their original order with `run` set, and counts the torn file as unreadable. A second call changes nothing and logs nothing.
-- `runStartupMigrationsIfIdle` moves nothing while a live orchestrator info file names a running pid, and migrates when none does. Registering a duplicate step name throws.
-- Before any migration, `readLandingQueue` on the old layout returns both entries with `run` set.
-- After `runOrchestrator` starts on the old-layout fixture, the queued entries are vetted and dropped as before.
-- `npm run test` passes.
-
 ### Plain terms state, part 4/5: Rename the merging marker and the workspace lease purposes (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/landing/ src/ui/status-model.ts src/git/ src/loop/loop-tick.ts src/orchestrator/startup-migration-steps.ts src/events/ src/doctor/doctor-checks.ts test/)
 
 **Goal.** Two renames of persisted values:
@@ -2143,6 +2097,52 @@ This part makes every surface say which step each tier is on, why, and when it r
 - When the doctor follow-through applied, its updated test passes as described above.
 - `npm run test` passes.
 
+
+### Plain terms state, part 3/5: Add the startup migration hook and move the land queue to merge-queue (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "State and git"; touches src/orchestrator/ src/paths.ts src/landing/ src/loop/leftover.ts src/tick/tick-stage.ts src/status/status-data.ts src/events/ test/) — done 2026-10-16
+
+**Goal.** tumwater gets one reusable registry of idempotent startup-migration steps. The orchestrator runs it before its first per-runner state read, and a CLI reader can run it safely too. Its first step moves `.tumwater/land-queue/` to `.tumwater/merge-queue/`. Queue entries carry `run` instead of `tick`, and older entries still read.
+
+**Approach.**
+- New module src/orchestrator/startup-migrations.ts holds the registry:
+  - `interface StartupMigration { name: string; run(root: string): Promise<string[]> }`. A step returns one short note per thing it moved, and nothing when there was nothing to do. Each step must be idempotent and must tolerate a concurrent run: a source that vanished mid-step is skipped, not an error.
+  - `registerStartupMigration(step)` appends to the registry; a duplicate `name` throws.
+  - `runStartupMigrations(root)` runs the registered steps in registration order.
+    - A step that moved something logs one `state_migrated` event (`source: TUMWATER_SOURCE`, `step`, `moved`, `detail`).
+    - A step that throws logs one warning, the remaining steps still run, and the failed step retries at the next start.
+    - A second call moves and logs nothing.
+  - `runStartupMigrationsIfIdle(root)` is the CLI-reader form. It runs the same steps only when no orchestrator is alive for `root` (`orchestratorAlive`, src/fleet/orchestrator-info.ts), so a CLI process never moves files under a running fleet, which may still be the old build. A live fleet has already migrated at its own start.
+- New module src/orchestrator/startup-migration-steps.ts is the one place that fixes step order. It imports `registerStartupMigration`, calls it once per step at top level in order, and re-exports `runStartupMigrations`/`runStartupMigrationsIfIdle`. Callers import from this file, so the steps are registered before anything can run. This also avoids an import cycle: startup-migrations.ts never imports the steps. A step's implementation may live in the module that owns the data. Later parts, and the Plain terms role ids series, add a step by appending one `registerStartupMigration(...)` call at the end of this file.
+- Call `runStartupMigrations` once, from `runOrchestrator` (src/orchestrator/orchestrator.ts), awaited before the `LoopRunner`s are constructed. Each `LoopRunner` constructor's `loadLoopState` is the first per-runner state read, and the merge pipeline's first queue read comes later. In-process callers, tests and `--once` rounds included, get the same call.
+- No CLI command in this series calls the Idle form: the observers read both layouts (below). It exists so the role ids series can migrate from a CLI read path when no fleet is running.
+- Add `state_migrated` to the `HarnessEvent` union, an event-format.ts case (`state migrated — <detail>`) and the label map, in its server and browser forms, with a routine tone.
+- First step, `mergeQueueDir`:
+  - Move every `*.json` in `legacyLandQueueDir(root)` into `landQueueDir(root)` with `fs.renameSync`, keeping the basename, because the queue order lives in the filename.
+  - If the basename already exists in the new directory, leave the file in place and note it.
+  - Remove the old directory once it is empty.
+  - Leave the files' contents as they are.
+- src/paths.ts: `landQueueDir` returns `.tumwater/merge-queue`. Plain terms code merge renames the function. Add `legacyLandQueueDir`, which returns `.tumwater/land-queue`.
+- src/landing/landing-queue.ts:
+  - `LandingEntry.run` replaces `tick`.
+  - `isLandingEntry`/`readEntry` accept an entry that carries `tick` instead and map it to `run`.
+  - `queueFiles` lists the new directory plus any files still in the legacy one, sorted by basename. `tumwater queue`, `status`, doctor and the dashboard, running in another process before the new orchestrator's first start, therefore show the full queue.
+  - `dropLanding` removes by full path, so either directory works.
+  - If the vocabulary guard flags a legacy path literal, end its line with `// vocabulary-ok: legacy path read from old layouts`.
+- Callers (tsc): `stageTickLanding` (tick-stage.ts), `recoverLeftover` (leftover.ts), landing-vetting.ts, landing-drain.ts, landing-queue-render.ts and status-data.ts. In status-data.ts the `--json`/API key is already `run`. The in-memory `LandRequest.tick` stays; Plain terms code run renames it.
+- **Self-hosting:** safe in one part.
+  - The old orchestrator enqueues into `land-queue/` until it exits.
+  - The new one moves those entries before its first read.
+  - Observers on the new build read both directories.
+  - The old build never reads `merge-queue/`.
+  - A crash mid-migration leaves each file whole in one directory or the other, both are read, and the next start finishes the move.
+
+**Files touched.** src/orchestrator/startup-migrations.ts (new), src/orchestrator/startup-migration-steps.ts (new), src/orchestrator/orchestrator.ts, src/paths.ts, src/landing/landing-queue.ts, src/landing/landing-vetting.ts, src/landing/landing-drain.ts, src/landing/landing-queue-render.ts, src/loop/leftover.ts, src/tick/tick-stage.ts, src/status/status-data.ts, src/events/events.ts, src/events/event-format.ts, the label-map module(s); test/startup-migrations.test.ts (new), test/landing-queue.test.ts, test/landing-slot.test.ts, test/doctor-backlog.test.ts, test/cli-queue.test.ts and the others tsc lists (~48 typed sites).
+
+**Acceptance criteria.**
+- Fixture: a repo whose `.tumwater/land-queue/` holds two entries with `tick` and a torn file. `runStartupMigrations` moves all three into `merge-queue/`, removes `land-queue/` and logs one `state_migrated`. `readLandingQueue` then returns the two entries in their original order with `run` set, and counts the torn file as unreadable. A second call changes nothing and logs nothing.
+- `runStartupMigrationsIfIdle` moves nothing while a live orchestrator info file names a running pid, and migrates when none does. Registering a duplicate step name throws.
+- Before any migration, `readLandingQueue` on the old layout returns both entries with `run` set.
+- After `runOrchestrator` starts on the old-layout fixture, the queued entries are vetted and dropped as before.
+- `npm run test` passes.
 
 ### Plain terms state, part 2/5: Rename the remaining tick and landing fields of LoopState (planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/landing/ src/scheduling/ src/orchestrator/orchestrator-scheduling.ts src/roles/role-view.ts src/status/status-polls.ts src/ui/ test/) (done 2026-10-16)
 

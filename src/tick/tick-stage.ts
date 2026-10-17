@@ -294,7 +294,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   enqueueLanding(ctx.root, {
     role: ctx.role,
     sha: commit,
-    tick: s.runs,
+    run: s.runs,
     summary,
     body: body ? formatCommitBody(body) : undefined,
     highFriction: highFriction || undefined,

@@ -47,7 +47,7 @@ export function renderLandingQueue(view: LandingQueueView, now: number, inFlight
       const age = humanSeconds(secondsSince(e.enqueuedAt, now));
       const label = queueEntryLandingLabel(e.sha, inFlight, now);
       const tag = label ? ` · [${label}]` : "";
-      lines.push(`  ${i + 1}. ${roleLabel(e.role)} run #${e.tick} · ${shortSha(e.sha)} · ${age} ago${tag} · ${e.summary}`);
+      lines.push(`  ${i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age} ago${tag} · ${e.summary}`);
     });
   }
   if (view.unreadable > 0) {

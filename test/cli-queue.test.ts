@@ -11,8 +11,8 @@ import { cli } from "./helpers/cli-harness.js";
 // The `queue` command: the durable merge queue in execution order, via the CLI the way the
 // cli-diff tests `diff` — an initialized repo, child-process runs, output assertions.
 
-function entry(role: string, sha: string, tick = 1, summary = `summary from ${role} #${tick}`): LandingEntry {
-  return { role, sha, tick, summary, enqueuedAt: Date.now() };
+function entry(role: string, sha: string, run = 1, summary = `summary from ${role} #${run}`): LandingEntry {
+  return { role, sha, run, summary, enqueuedAt: Date.now() };
 }
 
 test("an empty queue prints the empty line and exits 0", async () => {

@@ -63,7 +63,7 @@ export const PROBLEM_RESULTS = ["refused", "rejected", "review_error", "merge_co
 
 /** The named event types that are routine bookkeeping — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
-export const ROUTINE_EVENTS = ["run_start", "wake", "run_deferred", "review_start", "review_verdict", "merge_queued", "merge_done", "resume", "counters_reset"];
+export const ROUTINE_EVENTS = ["run_start", "wake", "run_deferred", "review_start", "review_verdict", "merge_queued", "merge_done", "resume", "counters_reset", "state_migrated"];
 
 /** The named event types that are problems — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */

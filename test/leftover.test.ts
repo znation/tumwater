@@ -66,7 +66,7 @@ test("a pinned commit not in main is put on the land queue, not landed", async (
   // carries no recovered body or flag.
   assert.deepEqual(
     { ...queued[0], enqueuedAt: 0 },
-    { role: ROLE, sha, tick: 7, summary: "recovered leftover work from improve: stranded work", enqueuedAt: 0 },
+    { role: ROLE, sha, run: 7, summary: "recovered leftover work from improve: stranded work", enqueuedAt: 0 },
   );
   assert.ok(!(await isMergedInto(root, sha, "main")), "nothing was written to main");
   assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin stays for the landing slot");
@@ -130,7 +130,7 @@ test("a pin at the cap whose lineage was already handed back is discarded, namin
 test("a role whose landing is already queued is not enqueued twice", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main");
-  enqueueLanding(root, { role: ROLE, sha, tick: 3, summary: "the original entry", enqueuedAt: Date.now() });
+  enqueueLanding(root, { role: ROLE, sha, run: 3, summary: "the original entry", enqueuedAt: Date.now() });
 
   const recovered = await recoverLeftover(makeCtx(root, wt));
 

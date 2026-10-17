@@ -312,6 +312,8 @@ export function eventMessage(e: HarnessEvent): string {
     case "team_paused":
       // Routine state change, like counters_reset — no warning prefix.
       return `${fleetPausePhrase()} (director keeps running)`;
+    case "state_migrated":
+      return `state migrated — ${textOr(e.detail)}`;
     case "team_resumed":
       return fleetResumePhrase();
     case "role_paused":

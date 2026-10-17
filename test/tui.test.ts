@@ -117,7 +117,7 @@ test("runTui shows the land queue badge in the header while a landing is queued"
   enqueueLanding(repo, {
     role: "clean",
     sha: "abc1234",
-    tick: 1,
+    run: 1,
     summary: "tidy something",
     enqueuedAt: Date.now(),
   });

@@ -398,7 +398,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     landQueue.entries = landings.map((e) => ({
       role: e.role,
       sha: e.sha,
-      run: e.tick,
+      run: e.run,
       summary: e.summary,
       enqueuedAt: e.enqueuedAt,
     }));

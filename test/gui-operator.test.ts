@@ -90,7 +90,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
   assert.equal(payload.mergeBadge, "");
 
   // One queued entry lifts the depth — but a merely queued landing is not in flight.
-  enqueueLanding(repo, { role: "clean", sha: "abc1234", tick: 1, summary: "tidy something", enqueuedAt: Date.now() });
+  enqueueLanding(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
   let p = statusPayload(repo) as typeof payload;
   assert.equal(p.mergeQueue.depth, 1);
   assert.equal(p.mergeBadge, " · merge queue: 1");

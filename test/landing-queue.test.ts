@@ -23,8 +23,8 @@ import type { LandingEntry } from "../src/landing/landing-queue.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
-function entry(role: string, sha: string, tick = 1): LandingEntry {
-  return { role, sha, tick, summary: `summary from ${role} #${tick}`, enqueuedAt: Date.now() };
+function entry(role: string, sha: string, run = 1): LandingEntry {
+  return { role, sha, run, summary: `summary from ${role} #${run}`, enqueuedAt: Date.now() };
 }
 
 test("a missing queue dir reads as an empty queue; enqueue creates it", () => {
@@ -174,7 +174,7 @@ test("the stat-keyed cache serves repeated reads and re-reads a changed file", (
   const changed = entry("improve", "e".repeat(40), 9);
   changed.summary = "rewritten";
   fs.writeFileSync(first.file, JSON.stringify(changed, null, 2));
-  assert.equal(headLanding(repo)!.entry.tick, 9, "the stat change forced a re-read");
+  assert.equal(headLanding(repo)!.entry.run, 9, "the stat change forced a re-read");
   // The result is a copy: mutating it must not poison the cached value.
   (headLanding(repo)!.entry as { summary: string }).summary = "mutated";
   assert.equal(headLanding(repo)!.entry.summary, "rewritten");
@@ -259,7 +259,7 @@ test("renderLandingQueue prints the unreadable skip count exactly once", () => {
   const now = 1_000_000;
   const lines = renderLandingQueue(
     {
-      entries: [{ role: "improve", sha: "a".repeat(40), tick: 3, summary: "tidy", enqueuedAt: now - 5_000 }],
+      entries: [{ role: "improve", sha: "a".repeat(40), run: 3, summary: "tidy", enqueuedAt: now - 5_000 }],
       unreadable: 2,
     },
     now,
@@ -284,7 +284,7 @@ test("readLandingQueue reads a missing queue dir as empty with no skips", () => 
 
 test("renderLandingQueue marks entries with a live in-flight record and leaves the rest alone", () => {
   const now = 1_000_000_000;
-  const mk = (role: string, sha: string): LandingEntry => ({ role, sha, tick: 1, summary: `s ${role}`, enqueuedAt: now - 300_000 });
+  const mk = (role: string, sha: string): LandingEntry => ({ role, sha, run: 1, summary: `s ${role}`, enqueuedAt: now - 300_000 });
   const view = { entries: [mk("a", "1".repeat(40)), mk("b", "2".repeat(40)), mk("c", "3".repeat(40))], unreadable: 0 };
   const base = { role: "a", sha: "1".repeat(40), summary: "s", startedAt: now - 120_000 };
   const inFlight = {

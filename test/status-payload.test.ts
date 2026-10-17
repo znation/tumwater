@@ -692,7 +692,7 @@ test("the status payload carries no retired script key anywhere in its tree", as
   const repo = makeRepo();
   await initProject(repo, "retired keys test");
   saveLoopState(repo, freshLoopState("qa"));
-  enqueueLanding(repo, { role: "qa", sha: "abc1234", tick: 3, summary: "queued", enqueuedAt: Date.now() });
+  enqueueLanding(repo, { role: "qa", sha: "abc1234", run: 3, summary: "queued", enqueuedAt: Date.now() });
   writeEvents(repo, [{ ts: 123, loop: "qa", type: "wake", reason: "main moved" }]);
   const payload = statusPayload(repo) as {
     roles: Array<Record<string, unknown>>;

@@ -67,7 +67,7 @@ function seedSurvivorCommit(repo: string, file: string, label: string): string {
   );
   sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
   sh(repo, "git", "update-ref", landingRefName("clean"), sha);
-  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: label, enqueuedAt: Date.now() });
+  enqueueLanding(repo, { role: "clean", sha, run: 1, summary: label, enqueuedAt: Date.now() });
   return sha;
 }
 
@@ -226,7 +226,7 @@ test("an entry whose sha main already holds is dropped at the drain without a la
     );
     // …and the crash-between-ff-and-drop residue is simulated: the same sha re-enqueued.
     const sha = headSha(repo);
-    enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "stale duplicate", enqueuedAt: Date.now() });
+    enqueueLanding(repo, { role: "clean", sha, run: 1, summary: "stale duplicate", enqueuedAt: Date.now() });
     await waitFor(() => queueDepth(repo) === 0, "the stale entry to be dropped");
     assert.equal(
       fs.readFileSync(rev, "utf8").trim(),
@@ -257,7 +257,7 @@ test("a stale marker beside an already-merged queue head is cleared so an idle f
   // Nothing-to-do runs: the drain must drop the entry without any author or reviewer run.
   const restore = fakePi(["printf '%s\\n' '" + assistantLine("TUMWATER_NOTHING_TO_DO") + "'"].join("\n"));
   const sha = headSha(repo);
-  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "already merged", enqueuedAt: Date.now() });
+  enqueueLanding(repo, { role: "clean", sha, run: 1, summary: "already merged", enqueuedAt: Date.now() });
   writeLandingMarker(repo, { role: "clean", sha, summary: "already merged", startedAt: Date.now(), stage: "merging" });
   assert.ok(fs.existsSync(landingStatePath(repo)), "fixture sanity: the stale marker exists");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
@@ -330,7 +330,7 @@ test("a landing whose pinned sha no longer exists degrades to an error outcome, 
   // down with it.
   const repo = makeRepo();
   const sha = "0".repeat(40); // a commit git cannot check out
-  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "lost pin", enqueuedAt: Date.now() });
+  enqueueLanding(repo, { role: "clean", sha, run: 1, summary: "lost pin", enqueuedAt: Date.now() });
   const config = fastConfig(["clean"]);
   const author = makeLoopRunner(repo, "clean", config);
 
@@ -463,7 +463,7 @@ async function seedLandQueue(repo: string, ...roles: string[]): Promise<void> {
       { reset: true },
     );
     await setRef(repo, landingRefName(role), sha);
-    enqueueLanding(repo, { role, sha, tick: 1, summary: `${role} work`, enqueuedAt: Date.now() });
+    enqueueLanding(repo, { role, sha, run: 1, summary: `${role} work`, enqueuedAt: Date.now() });
   }
 }
 

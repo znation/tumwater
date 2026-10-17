@@ -76,7 +76,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   enqueueLanding(repo, {
     role: "clean",
     sha: "abc1234",
-    tick: 1,
+    run: 1,
     summary: "tidy something",
     enqueuedAt: Date.now(),
   });
@@ -90,7 +90,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   ]);
 
   // Two queued entries list oldest first, in the queue's filename order.
-  enqueueLanding(repo, { role: "feature", sha: "def5678", tick: 2, summary: "add a thing", enqueuedAt: Date.now() });
+  enqueueLanding(repo, { role: "feature", sha: "def5678", run: 2, summary: "add a thing", enqueuedAt: Date.now() });
   snap = snapshot(repo);
   assert.equal(snap.landQueue.depth, 2);
   assert.deepEqual(snap.landQueue.entries!.map((e) => e.role), ["clean", "feature"]);
@@ -162,7 +162,7 @@ test("the marker is cross-checked per change and each row reads its own change's
   await initProject(repo, "batch marker snapshot");
   const t0 = Date.now() - 20 * 60_000;
   for (const [role, sha] of [["clean", "c1ea000"], ["bugfix", "b0f1000"], ["feature", "fea7000"], ["dry", "d1a0000"]]) {
-    enqueueLanding(repo, { role: role!, sha: sha!, tick: 1, summary: `${role} work`, enqueuedAt: Date.now() });
+    enqueueLanding(repo, { role: role!, sha: sha!, run: 1, summary: `${role} work`, enqueuedAt: Date.now() });
   }
   writeOrchestratorMarker(repo, []);
   const betaStart = Date.now() - 90_000;

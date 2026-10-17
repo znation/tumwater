@@ -156,7 +156,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   const entry: LandingEntry = {
     role: ctx.role,
     sha,
-    tick: ctx.tick,
+    run: ctx.tick,
     // Name what lands, not merely that a recovery happened: the recovered commit's own subject
     // rides the landing, so the failure digest's "Landed in the window" can correlate a
     // recovered merge with the work it names (BUGS.md 2026-09-21). Unreadable messages fall
