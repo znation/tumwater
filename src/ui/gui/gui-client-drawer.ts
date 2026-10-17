@@ -303,6 +303,12 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (modelLine !== "" || view.modelTier !== undefined) {
       rows.push(kvRow("Model", (modelLine !== "" ? modelLine + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
     }
+    // Context window: the resolved primary seam's declared window and whether a run on it gets
+    // the compact prompt - the same seam '- Next run:' previews. Guard optional to keep an older
+    // payload that lacks the fields rendering as before.
+    if (view.contextWindow !== undefined) {
+      rows.push(kvRow("Context window", view.contextWindow === null ? "unknown (full prompt)" : fmtTokens(view.contextWindow) + " tokens (" + (view.compactPrompt ? "compact prompt" : "full prompt") + ")"));
+    }
     if (view.providerKey !== undefined && view.providerCap !== undefined) {
       rows.push(kvRow("Provider", view.providerKey + " (cap " + view.providerCap + ")"));
     }

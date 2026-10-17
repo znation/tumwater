@@ -209,6 +209,15 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   lines.push(`- State: ${state}`);
   lines.push(`- Priority: ${p.tier === 0 ? "work" : "maintenance or observer"}`);
   lines.push(`- Model: ${modelLine(p)} (${p.modelTier} tier)`);
+  // Context window: the resolved primary seam's declared window (the one `- Next run:`
+  // previews, not the fallback — a run on the model fallback may use a different window, the
+  // fallback's own documented state), and whether a run on it gets the compact prompt. When
+  // the window cannot be known (a non-pi seam, an unresolvable pair, a model with no
+  // declared window) it renders `unknown (full prompt)` exactly as the compact-prompt
+  // decision already resolves it.
+  lines.push(
+    `- Context window: ${p.contextWindow === null ? "unknown" : `${compactTokens(p.contextWindow)} tokens`} (${p.compactPrompt ? "compact prompt" : "full prompt"})`,
+  );
   // Per-provider concurrency cap (plans/provider-concurrency.md §8): name the key whose cap
   // bounds the role's concurrent ticks, plus the cap itself. Present only while
   // `maxConcurrentPerProvider` maps this seam's key — a cap-less default team has no

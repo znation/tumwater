@@ -314,7 +314,8 @@ Usage:
   tumwater role <id> [--json]      Show one role's instructions and resolved
                                    settings — its built-in instructions, the roles.<id>.instructions override, the resolved
                                    provider/model (naming the budget fallback pair when one is
-                                   configured), the min-run interval, enabled/paused state, and
+                                   configured), that model's declared context window and whether a run gets the compact
+                                   prompt, the min-run interval, enabled/paused state, and
                                    the next run's assembled prompt (the oldest inbox message appears in it
                                    and is NOT consumed — one is dequeued per run); --json prints the collector's payload
                                    as machine-readable data

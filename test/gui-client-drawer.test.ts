@@ -659,6 +659,32 @@ test("the loop drawer renders the Configuration section from the role payload", 
   assert.match(role, /<dt>Find text<\/dt><dd title='look for redundant code'>look for redundant code<\/dd>/);
 });
 
+// Context-window visibility: the Configuration section names the resolved seam's declared
+// window and whether a run on it gets the compact prompt, guarded so an older payload that
+// lacks the fields renders no row.
+test("the Configuration section names the resolved seam's context window and compact prompt", async () => {
+  const mk = (extra: object) => openDrawer(["toggleLoop"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/local", modelTier: "default", ...extra } },
+  });
+
+  const known = mk({ contextWindow: 65536, compactPrompt: true });
+  known.scope.toggleLoop("clean");
+  await flush();
+  assert.match(known.paintedFor("drawerrole"), /<dt>Context window<\/dt><dd[^>]*>65\.5k tokens \(compact prompt\)<\/dd>/);
+
+  const unknown = mk({ contextWindow: null, compactPrompt: false });
+  unknown.scope.toggleLoop("clean");
+  await flush();
+  assert.match(unknown.paintedFor("drawerrole"), /<dt>Context window<\/dt><dd[^>]*>unknown \(full prompt\)<\/dd>/);
+
+  // An older payload without the fields renders no Context window row.
+  const legacy = mk({});
+  legacy.scope.toggleLoop("clean");
+  await flush();
+  assert.doesNotMatch(legacy.paintedFor("drawerrole"), /Context window/);
+});
+
 test("the Configuration section paints a Quiet hours row per window, worded like the CLI", async () => {
   const mk = (extra: object) => openDrawer(["toggleLoop"], {
     status: workingStatus(),
