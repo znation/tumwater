@@ -7,6 +7,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code merge, part 9/11: Rename the merge identifiers in the gates and doctor and backlog and git and operator and concurrency and check modules (planned 2026-10-16 by user; requires part 8/11 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/doctor/ src/backlog/ src/git/ src/operator/ src/concurrency/ src/baseline/ src/build/ and their tests)
 
+**Needs replan 2026-10-16 by feature: rejected after 3 review rounds**
+
+1. (prior 2) `src/doctor/doctor-backlog.ts:279` adds a new 27-column stub line, " * the empty set. Reads the", in the `checkStaleQueuedMerges` doc comment, and line 257 still breaks early before "(plans/merge-queue.md)". Both comments need reflowing so only each paragraph's last line is short.
+2. `src/gates/maintenance-quota.ts:65` reads "One merged merge the window keeps", a garbled doubled word from the rename. It should be "One merged change…" or similar.
+3. `test/retire.test.ts:71` has the assertion message "not yet merged-commit refusal removes nothing", a compound adjective broken by the rename. It should be "unmerged-commit refusal…", matching the wording `retire.ts` uses.
+
 **Goal.** These modules' merge-related identifiers, comments and test names say merge. The backlog heading grammar keeps its word. A rename of about 360 lines with no behavior change.
 
 **Approach.**
