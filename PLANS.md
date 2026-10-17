@@ -5,6 +5,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### The bugfix run's prompt lists the checks the merge gate excused as flaky in the last 24 h, with counts, so a flapping test gets fixed (planned 2026-10-16 by plan; independent of every other Planned entry; touches src/review/known-flakes.ts, src/doctor/doctor-checks.ts, src/tick/tick-prompt.ts and src/prompt/prompt.ts)
+
+**Goal.** When a check fails at the merge gate and then passes on its one re-run, the gate logs a warning starting `FLAKY_WARNING_PREFIX` (src/review/known-flakes.ts) and lets the change merge. Nothing rejects, so no role is told about it. `tumwater doctor`'s `flaky checks` check (`checkFlakyChecks` in src/doctor/doctor-checks.ts) warns the operator. The only role that reads the event log is `telemetry`, and it is opt-in. So by default a flapping test is fixed only after someone files a bug by hand. The open BUGS.md entry for `test/supervisor.test.ts` "startParentDeathWatch…", now flaking for the third time, is an example. The bugfix run should get the gate's own flake tally as a fact. Then it knows whether an open flaky-test bug is still firing, and with an empty `## Open` it has a confirmed latent bug to take instead of a ~10-call hunt. This follows the plan run's harness-computed eligible count (`planTargetNote` in src/tick/tick-prompt.ts).
+
+**Approach.**
+- `src/review/known-flakes.ts`: add `export function flakeCounts(events: readonly HarnessEvent[]): [string, number][]`. It tallies `flakeWarningKeys(events)` (no cutoff) into a `Map` with `increment` from src/collections.ts. It returns the entries sorted by count, highest first. Ties keep first-seen order (the sort is stable). The function is pure, with no I/O and no clock.
+- `src/doctor/doctor-checks.ts` `checkFlakyChecks`: replace its inline `counts` map and sort with `const flapped = flakeCounts(events).filter(([, n]) => n >= 2);`. Its output does not change: the same order and the same detail strings. In its import from known-flakes.js, replace `flakeWarningKeys` with `flakeCounts`. Remove the `increment` import from src/collections.js, because this is its only use in the file. Update the doc comment above `checkFlakyChecks` to name `flakeCounts` where it names `flakeWarningKeys`.
+- `src/tick/tick-prompt.ts`: add a private `flakyChecksNote(root: string): string | undefined`. It reads `readEventsSince(root, KNOWN_FLAKE_WINDOW_MS).events` (src/events/event-window.ts) and calls `flakeCounts` on them. The read sits inside `try { … } catch { return undefined; }`, as the qa coverage read does, so an unreadable log never fails a run. With no counts it returns `undefined`. Otherwise it returns exactly:
+  `Flaky checks: in the last 24h the merge gate excused these check failures as flaky (each failed, then passed on its one re-run), most frequent first: ${shown}${more}. An excused flake blocks no merge, so it stays unfixed until it has a BUGS.md entry. When an open bug names one of these, that bug is still firing. When \`## Open\` holds no entries, a check excused 2 or more times is a confirmed latent bug: take it as this run's latent-bug candidate.`
+  Here `shown` is the first 5 entries rendered `"${key}" ×${n}`, joined with `"; "`. `more` is `` ` (and ${counts.length - 5} more)` `` when there are more than 5, else `""`. In `assembleTickPrompt`'s role branch, add `const flakyChecks = base === "bugfix" ? flakyChecksNote(root) : undefined;` next to `planTargetNote`, and pass it to `buildTickPrompt`. This way bugfix instances (`bugfix-2`) get the note, and so does the `tumwater role bugfix` preview, which goes through the same branch.
+- `src/prompt/prompt.ts`: add `flakyChecks?: string` to the `buildTickPrompt` input type. Its doc comment says: the bugfix run's flake tally, rendered by tick-prompt.ts, omitted for every other role and when no flake was excused in the window. Destructure it in `buildTickPrompt` and push `flakyChecks.trim()` right after the `planTargetNote` push, so it follows the task text.
+- `docs/how-it-works.md`: in the merge pipeline's **Check** bullet, after "one that then passes is warned as a flake and proceeds", add one sentence: the bugfix run's prompt lists the checks excused as flakes in the last 24 h, with their counts.
+
+**Files touched.** src/review/known-flakes.ts, src/doctor/doctor-checks.ts, src/tick/tick-prompt.ts, src/prompt/prompt.ts, docs/how-it-works.md, test/known-flakes.test.ts, test/tick-prompt.test.ts.
+
+**Acceptance criteria.**
+- test/known-flakes.test.ts: `flakeCounts([])` is `[]`. Three warnings, two of them with the same headline apart from a duration ("test failed after 3s" and "test failed after 9s") and one other headline, give `[["test failed after <dur>", 2], ["<other normalized key>", 1]]`. Two headlines with equal counts come back in first-seen order. Non-warning events and warnings without the prefix are not counted.
+- test/tick-prompt.test.ts, using `logEvent(root, { source: "review", type: "warning", message: \`${FLAKY_WARNING_PREFIX}…\` })` as test/doctor-checks.test.ts does:
+  - after two warnings for one headline, the `bugfix` prompt contains `Flaky checks:` and `"<key>" ×2`, and the note comes after `Your task this run:`;
+  - with the same log, the `feature` prompt does not contain `Flaky checks:`;
+  - a `bugfix` prompt over an empty log does not contain `Flaky checks:`;
+  - six distinct headlines show five entries and `(and 1 more)`;
+  - a `bugfix-2` prompt carries the note.
+- The existing `checkFlakyChecks` tests in test/doctor-checks.test.ts pass unchanged.
+- `npm run test` passes, including the plain-terms vocabulary guard on prompt text.
+
 ### Fallback chain, part 7b/7: The budget gate publishes each tier's step as a `chain` block and logs `fallback_switched` (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7c/7 and 7d/7; design in plans/fallback-chain.md "Events and surfaces"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/fleet/orchestrator-info.ts src/events/ and their tests)
 
 **Goal.** After parts 1/7–6/7, a tier can run on a later step of its chain because the window is used up, the reserve is reached, the team cap is reached, a step's own cap is spent, or a step was demoted. Nothing records which step each tier is on. This part publishes it for the surfaces in 7c/7 and 7d/7, and logs each change.
