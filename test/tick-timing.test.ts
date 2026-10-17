@@ -59,7 +59,7 @@ test("drainInFlightWork on an operator stop waits out ticks and landings, announ
   const timers = scriptedTimers();
   let aborts = 0;
   let returned = false;
-  const drain = drainInFlightWork(root, new Set([tick]), new Set(), [landing(task, ["clean", "dry"])], false, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
+  const drain = drainInFlightWork(root, new Set([tick]), new Set(), [landing(task, ["clean", "dedupe"])], false, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
   await flushImmediate();
   assert.equal(returned, false, "the drain waits for the tick and the landing");
   assert.equal(timers.pending(), 0, "an operator stop arms no hand-off window");
@@ -69,7 +69,7 @@ test("drainInFlightWork on an operator stop waits out ticks and landings, announ
   assert.equal(aborts, 0, "an operator stop never aborts: the signal already did");
   const w = warningMessages(root);
   assert.equal(w.length, 1, "only the landing wait is announced");
-  assert.match(w[0]!, /^shutdown waiting on the merge in progress for clean, dry$/);
+  assert.match(w[0]!, /^shutdown waiting on the merge in progress for clean, dedupe$/);
 });
 
 test("drainInFlightWork on a restart with a landing inside its window waits out the ticks too", async () => {

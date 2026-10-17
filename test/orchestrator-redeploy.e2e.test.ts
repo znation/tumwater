@@ -110,11 +110,11 @@ test("a drain past its cap aborts the in-flight tick resumably and still restart
 async function parkedPairRepo(label: string) {
   const repo = makeRepo();
   await initProject(repo, label);
-  const cfg = fastConfig(["clean", "dry"]);
+  const cfg = fastConfig(["clean", "dedupe"]);
   cfg.maxConcurrent = 1;
   saveConfig(repo, cfg);
   const started = () =>
-    ["clean", "dry"].filter((r) => fs.existsSync(path.join(roleWt(repo, r), "started.txt")));
+    ["clean", "dedupe"].filter((r) => fs.existsSync(path.join(roleWt(repo, r), "started.txt")));
   return { repo, started };
 }
 
@@ -127,7 +127,7 @@ test("a drain past its cap aborts and counts only the permit holder — the tick
   try {
     await waitFor(() => started().length > 0, "the permit holder's tick to start");
     const [holder] = started();
-    const parked = holder === "clean" ? "dry" : "clean";
+    const parked = holder === "clean" ? "dedupe" : "clean";
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running tick");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
@@ -173,7 +173,7 @@ test("a tick parked through a restart hold does not start when the permit frees,
   try {
     await waitFor(() => started().length > 0, "the permit holder's tick to start");
     const [holder] = started();
-    const parked = holder === "clean" ? "dry" : "clean";
+    const parked = holder === "clean" ? "dedupe" : "clean";
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running tick");
     await waitFor(() => readOrchestratorInfo(repo)?.build?.restartPending === true, "the restart hold");
     fs.writeFileSync(go, "");

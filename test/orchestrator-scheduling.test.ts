@@ -84,11 +84,11 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
   // The reviewer sits on the healthy provider Q, so this test isolates the per-provider
   // block: P's storm must not reach through the review gate (that is the next test's case).
   const config = { ...defaultConfig(), review: { ...defaultConfig().review, model: "Q/reviewer" } };
-  const runners = [fakeRunner("feature", config), fakeRunner("perf", config), fakeRunner("dry", config)];
+  const runners = [fakeRunner("feature", config), fakeRunner("perf", config), fakeRunner("dedupe", config)];
   const roleProviders = new Map([
     ["feature", "P"],
     ["perf", "P"],
-    ["dry", "Q"],
+    ["dedupe", "Q"],
   ]);
 
   // The fleet's runs: two roles fail with 429s on provider P inside the window; dry runs on
@@ -96,7 +96,7 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
   const holdRunners = [
     { role: "feature", provider: "P", lastRateLimit: { at: T0 } },
     { role: "perf", provider: "P", lastRateLimit: { at: T0 + 1_000 } },
-    { role: "dry", provider: "Q" },
+    { role: "dedupe", provider: "Q" },
   ];
   const holds = pollFleetHold(root, new Map(), holdRunners, T0 + 1_000);
   const held = heldProviders(holds);
@@ -366,10 +366,10 @@ test("a deferred maintenance role records its deferral once per episode", async 
 
 test("the reviewer's provider being held blocks every role through scheduling, and only while it stands", async () => {
   const root = tmpdir("tumwater-scheduling-review-");
-  const runners = [fakeRunner("feature", defaultConfig()), fakeRunner("dry", defaultConfig())];
+  const runners = [fakeRunner("feature", defaultConfig()), fakeRunner("dedupe", defaultConfig())];
   const roleProviders = new Map([
     ["feature", "Q"],
-    ["dry", "Q"],
+    ["dedupe", "Q"],
   ]);
 
   // A storm on the strong tier's provider P while the review gate is on: nothing could land,
@@ -522,7 +522,7 @@ test("the maintenance quota holds a maintenance loop; a fresh wake admits one ti
 
 test("the allowance's in-flight headroom starts at most one of two due maintenance loops per poll", async () => {
   const root = tmpdir("tumwater-scheduling-quota-race-");
-  const runners = [fakeRunner("clean", defaultConfig()), fakeRunner("dry", defaultConfig())];
+  const runners = [fakeRunner("clean", defaultConfig()), fakeRunner("dedupe", defaultConfig())];
   const now = T0 + 10_000;
   // No work landings, so the floor allowance is 12; 11 maintenance landings leave exactly one
   // open slot in the rolling window.
@@ -552,7 +552,7 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
     runners,
     new Map([
       ["clean", undefined],
-      ["dry", undefined],
+      ["dedupe", undefined],
     ]),
   );
   first.maintenanceQuota = gate;
@@ -570,7 +570,7 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
     runners,
     new Map([
       ["clean", undefined],
-      ["dry", undefined],
+      ["dedupe", undefined],
     ]),
   );
   second.maintenanceQuota = gate;

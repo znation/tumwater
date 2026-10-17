@@ -262,8 +262,8 @@ test("cmdPause --role pauses one role, is idempotent, and leaves the fleet marke
   const second = await expectOk(() => cmdPause(root, ["--role", "clean"]));
   assert.match(second.stdout, /role clean is already paused/);
   // Both roles land in the one marker set.
-  await expectOk(() => cmdPause(root, ["--role", "dry"]));
-  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dry"]);
+  await expectOk(() => cmdPause(root, ["--role", "dedupe"]));
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dedupe"]);
   // A custom-loop id resolves through the config-backed check like abort's does.
   const config = defaultConfig();
   config.customRoles.push({ name: "myloop", task: "keep the examples current" });
@@ -277,11 +277,11 @@ test("cmdResume --role lifts one role and reports the was-not-paused wording whe
   const idle = await expectOk(() => cmdResume(root, ["--role", "clean"]));
   assert.match(idle.stdout, /role clean was not paused/);
   await expectOk(() => cmdPause(root, ["--role", "clean"]));
-  await expectOk(() => cmdPause(root, ["--role", "dry"]));
+  await expectOk(() => cmdPause(root, ["--role", "dedupe"]));
   const { stdout } = await expectOk(() => cmdResume(root, ["--role", "clean"]));
   assert.match(stdout, /role clean resumed/);
-  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["dry"], "only the named role resumes");
-  await expectOk(() => cmdResume(root, ["--role", "dry"]));
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["dedupe"], "only the named role resumes");
+  await expectOk(() => cmdResume(root, ["--role", "dedupe"]));
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "the last removal deletes the marker");
 });
 
@@ -289,27 +289,27 @@ test("cmdResume --role while the fleet pause holds names the stronger gate inste
   const root = tmpdir();
   await expectOk(() => cmdPause(root)); // fleet pause: the stronger gate
   await expectOk(() => cmdPause(root, ["--role", "clean"]));
-  await expectOk(() => cmdPause(root, ["--role", "dry"]));
+  await expectOk(() => cmdPause(root, ["--role", "dedupe"]));
   const { stdout } = await expectOk(() => cmdResume(root, ["--role", "clean"]));
   assert.match(stdout, /role clean resumed/);
   assert.match(stdout, /team pause is still active/);
   // The marker really was lifted; only the wording acknowledges the fleet gate.
-  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["dry"]);
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["dedupe"]);
 });
 
 test("cmdResume (fleet) while roles are individually paused names the still-paused roles", async () => {
   const root = tmpdir();
   await expectOk(() => cmdPause(root)); // the fleet pause the resume lifts
   await expectOk(() => cmdPause(root, ["--role", "clean"]));
-  await expectOk(() => cmdPause(root, ["--role", "dry"]));
+  await expectOk(() => cmdPause(root, ["--role", "dedupe"]));
   const { stdout } = await expectOk(() => cmdResume(root));
   assert.match(stdout, /team resumed/);
-  assert.match(stdout, /clean, dry are still individually paused/);
+  assert.match(stdout, /clean, dedupe are still individually paused/);
   // The per-role marker outlives the fleet resume.
-  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dry"]);
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dedupe"]);
   // A fleet resume with no per-role marker does not carry the note.
   await expectOk(() => cmdResume(root, ["--role", "clean"]));
-  await expectOk(() => cmdResume(root, ["--role", "dry"]));
+  await expectOk(() => cmdResume(root, ["--role", "dedupe"]));
   const bare = await expectOk(() => cmdPause(root));
   assert.doesNotMatch(bare.stdout, /individually paused/);
   const quiet = await expectOk(() => cmdResume(root));

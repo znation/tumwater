@@ -180,7 +180,7 @@ test("worktree reaping prunes an aged dist/ build dir and never the worktree roo
   assert.equal(headSha(dir), head, "the surviving worktree still holds the ref");
 
   // A young dist/ is live build output, not dead weight: it stays.
-  const wt = await ensureWorktree(repo, "dry", "main");
+  const wt = await ensureWorktree(repo, "dedupe", "main");
   touchDist(wt);
   await resetWorktreeToMain(wt, "main");
   assert.ok(fs.existsSync(path.join(wt, "dist", "old.js")), "a young dist/ survives the reset");
@@ -188,7 +188,7 @@ test("worktree reaping prunes an aged dist/ build dir and never the worktree roo
 
 test("resetWorktreeToMain discards commits and untracked files", async () => {
   const repo = makeRepo();
-  const wt = await ensureWorktree(repo, "dry", "main");
+  const wt = await ensureWorktree(repo, "dedupe", "main");
   fs.writeFileSync(path.join(wt, "junk.txt"), "junk\n");
   await commitAll(wt, "junk");
   fs.writeFileSync(path.join(wt, "untracked.txt"), "u\n");
@@ -205,7 +205,7 @@ test("resetWorktreeToMain discards commits and untracked files", async () => {
 // still running.
 test("resetWorktreeToMain clears a stale index.lock left by a killed git", async () => {
   const repo = makeRepo();
-  const wt = await ensureWorktree(repo, "dry", "main");
+  const wt = await ensureWorktree(repo, "dedupe", "main");
   const gitdir = resolveGitDir(wt);
   assert.ok(gitdir, "the worktree's gitdir resolves");
   const lock = path.join(gitdir!, "index.lock");
@@ -220,7 +220,7 @@ test("resetWorktreeToMain clears a stale index.lock left by a killed git", async
 
 test("resetWorktreeToMain leaves a fresh index.lock alone and fails loudly", async () => {
   const repo = makeRepo();
-  const wt = await ensureWorktree(repo, "dry", "main");
+  const wt = await ensureWorktree(repo, "dedupe", "main");
   const lock = path.join(resolveGitDir(wt)!, "index.lock");
   fs.writeFileSync(lock, ""); // a young lock may belong to a live git: never deleted
 
@@ -234,7 +234,7 @@ test("resetWorktreeToMain leaves a fresh index.lock alone and fails loudly", asy
 
 test("resetWorktreeToMain clears an interrupted rebase", async () => {
   const repo = makeRepo();
-  const wt = await ensureWorktree(repo, "dry", "main");
+  const wt = await ensureWorktree(repo, "dedupe", "main");
   seedConflict(repo, wt);
   // Start a conflicting rebase and leave it in progress (a killed tick mid-resolution).
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
@@ -248,7 +248,7 @@ test("resetWorktreeToMain clears an interrupted rebase", async () => {
 
 test("abortSync spawns no git when nothing is in progress", async () => {
   const repo = makeRepo();
-  const wt = await ensureWorktree(repo, "dry", "main");
+  const wt = await ensureWorktree(repo, "dedupe", "main");
   const logFile = path.join(tmpdir(), "git-calls.log");
   const restore = loggingGit(logFile);
   try {
@@ -261,7 +261,7 @@ test("abortSync spawns no git when nothing is in progress", async () => {
 
 test("abortSync still aborts an interrupted rebase when state exists", async () => {
   const repo = makeRepo();
-  const wt = await ensureWorktree(repo, "dry", "main");
+  const wt = await ensureWorktree(repo, "dedupe", "main");
   // Leave a conflicting rebase in progress (a killed tick mid-resolution), no shim yet.
   seedConflict(repo, wt);
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");

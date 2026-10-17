@@ -38,9 +38,9 @@ test("one role's 429s never trip the hold — the per-run retry already answers 
 });
 
 test("two distinct roles' 429s within the window trip a base hold naming them", () => {
-  const next = fleetHold(FLEET_OPEN, [obs("dry", T0), obs("clean", T0 + 6_000)], T0 + 6_000);
+  const next = fleetHold(FLEET_OPEN, [obs("dedupe", T0), obs("clean", T0 + 6_000)], T0 + 6_000);
   assert.equal(next.until, T0 + 6_000 + HOLD_BASE_MS);
-  assert.deepEqual(next.roles, ["clean", "dry"], "distinct roles, sorted");
+  assert.deepEqual(next.roles, ["clean", "dedupe"], "distinct roles, sorted");
   assert.equal(next.kind, "rate-limit", "the hold names the failure kind it is about");
   assert.equal(next.escalation, 0, "a fresh storm starts at the base");
 });
@@ -70,15 +70,15 @@ test("the hold honors the largest Retry-After seen, measured from its own 429, a
 test("backend failures of one kind trip the same hold, but carry no Retry-After", () => {
   // Two roles ending on connection errors trip a hold of that kind at the base — the
   // generalization of the 429 storm (PLANS.md 2026-09-29).
-  const held = fleetHold(FLEET_OPEN, [obs("dry", T0, "connection"), obs("perf", T0 + 5_000, "connection")], T0 + 5_000);
+  const held = fleetHold(FLEET_OPEN, [obs("dedupe", T0, "connection"), obs("perf", T0 + 5_000, "connection")], T0 + 5_000);
   assert.equal(held.until, T0 + 5_000 + HOLD_BASE_MS);
-  assert.deepEqual(held.roles, ["dry", "perf"]);
+  assert.deepEqual(held.roles, ["dedupe", "perf"]);
   assert.equal(held.kind, "connection");
   // The other backend kinds work identically — the kind only groups, it does not change the
   // math — and production never attaches a Retry-After hint to them (pi's backend texts
   // carry none), so the base is their whole first hold.
   for (const kind of ["timeout", "server", "model-load"] as const) {
-    const heldKind = fleetHold(FLEET_OPEN, [obs("dry", T0, kind), obs("perf", T0, kind)], T0);
+    const heldKind = fleetHold(FLEET_OPEN, [obs("dedupe", T0, kind), obs("perf", T0, kind)], T0);
     assert.equal(heldKind.until, T0 + HOLD_BASE_MS, `${kind} storms hold for the base`);
     assert.equal(heldKind.kind, kind);
   }
@@ -86,29 +86,29 @@ test("backend failures of one kind trip the same hold, but carry no Retry-After"
 
 test("failures of different kinds are different incidents: neither storms alone", () => {
   // Two roles, two kinds, same window: each kind has one role behind it, so nothing trips.
-  const next = fleetHold(FLEET_OPEN, [obs("dry", T0, "connection"), obs("perf", T0 + 5_000, "server")], T0 + 5_000);
+  const next = fleetHold(FLEET_OPEN, [obs("dedupe", T0, "connection"), obs("perf", T0 + 5_000, "server")], T0 + 5_000);
   assert.equal(next, FLEET_OPEN);
   // Even three roles across three kinds stay open — the storm test counts roles per kind.
   const three = fleetHold(
     FLEET_OPEN,
-    [obs("dry", T0, "connection"), obs("perf", T0, "server"), obs("qa", T0, "timeout")],
+    [obs("dedupe", T0, "connection"), obs("perf", T0, "server"), obs("qa", T0, "timeout")],
     T0,
   );
   assert.equal(three, FLEET_OPEN);
   // A 429 plus a backend failure is likewise not a storm of either.
-  const mixed = fleetHold(FLEET_OPEN, [obs("dry", T0, "rate-limit"), obs("perf", T0, "model-load")], T0);
+  const mixed = fleetHold(FLEET_OPEN, [obs("dedupe", T0, "rate-limit"), obs("perf", T0, "model-load")], T0);
   assert.equal(mixed, FLEET_OPEN);
 });
 
 test("two roles on the same backend kind storm even while others fail differently", () => {
   const next = fleetHold(
     FLEET_OPEN,
-    [obs("dry", T0, "connection"), obs("perf", T0, "server"), obs("qa", T0 + 1_000, "connection")],
+    [obs("dedupe", T0, "connection"), obs("perf", T0, "server"), obs("qa", T0 + 1_000, "connection")],
     T0 + 1_000,
   );
   assert.equal(next.until, T0 + 1_000 + HOLD_BASE_MS);
   assert.equal(next.kind, "connection", "the first kind to reach two roles wins");
-  assert.deepEqual(next.roles, ["dry", "qa"]);
+  assert.deepEqual(next.roles, ["dedupe", "qa"]);
 });
 
 test("a held fleet stays held until its deadline, then re-opens by itself", () => {

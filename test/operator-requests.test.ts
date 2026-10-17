@@ -324,9 +324,9 @@ test("consumeAbortRequests stops whichever of several in-flight landings holds t
   const unit = (roles: string[]): AbortableLanding => ({ roles, userAborted: false, controller: new AbortController() });
   const vetA = unit(["clean"]);
   const vetB = unit(["coverage"]);
-  const merge = unit(["feature", "dry"]);
+  const merge = unit(["feature", "dedupe"]);
   writeMarker(abortRequestPath(root, "coverage"), { at: 1 });
-  writeMarker(abortRequestPath(root, "dry"), { at: 1 });
+  writeMarker(abortRequestPath(root, "dedupe"), { at: 1 });
   consumeAbortRequests(root, asRunners(), [vetA, vetB, merge]);
   assert.equal(vetA.userAborted || vetA.controller.signal.aborted, false, "another vet runs on");
   assert.equal(vetB.userAborted && vetB.controller.signal.aborted, true);

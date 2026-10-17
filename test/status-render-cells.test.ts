@@ -150,7 +150,7 @@ test("the today cell shows the loop's daily window and zeros for stale or missin
   fresh.dayStamp = todayStamp();
   fresh.dayCostUsd = 12.34; // fresh stamp: the persisted window renders as-is
   // Stale: yesterday's stamp with positive spend reads zero — the window rolled over.
-  const stale = freshLoopState("dry");
+  const stale = freshLoopState("dedupe");
   stale.dayStamp = todayStamp(Date.now() - 86_400_000);
   stale.dayCostUsd = 5.67;
   // Missing: a loop that never ticked (freshLoopState defaults) also reads zero, no save needed.
@@ -159,7 +159,7 @@ test("the today cell shows the loop's daily window and zeros for stale or missin
   const cleanRow = lines.find((l) => l.startsWith("clean")) ?? "";
   assert.equal(cellAt(cleanRow, cols.indexOf("today")), "$12.34", "fresh stamp renders its window");
   assert.equal(cellAt(cleanRow, cols.indexOf("cost")), "$0.00", "lifetime cost stays a separate column");
-  for (const role of ["dry", "organize"]) {
+  for (const role of ["dedupe", "organize"]) {
     const row = lines.find((l) => l.startsWith(role)) ?? "";
     assert.equal(cellAt(row, cols.indexOf("today")), "$0.00", `${role}: stale/missing stamp reads zero`);
   }
@@ -169,7 +169,7 @@ test("the totals row's today cell sums the loops' daily windows like the header 
   const a = freshLoopState("clean");
   a.dayStamp = todayStamp();
   a.dayCostUsd = 12.34;
-  const b = freshLoopState("dry");
+  const b = freshLoopState("dedupe");
   b.dayStamp = todayStamp();
   b.dayCostUsd = 0.66;
   // A stale loop contributes nothing to the fleet total…
@@ -281,7 +281,7 @@ test("a pending change after a main-red tick does not keep the state cell readin
 test("nextRunCell reads now for a due idle loop and the remaining time for a future one", () => {
   const now = Date.now();
   const due = freshLoopState("clean");
-  const future = freshLoopState("dry");
+  const future = freshLoopState("dedupe");
   future.nextRunAt = now + 180_000;
   const backoff = freshLoopState("feature");
   backoff.nextRunAt = now + 180_000;
@@ -323,7 +323,7 @@ test("nextRunCell reads - for a loop in flight or a fleet that is not running", 
   working.running = true;
   assert.equal(nextRunCell(working, "working 3m", now, true), "-");
   // A landing is in flight though the loop itself is not running: the rendered phase says so.
-  const landing = freshLoopState("dry");
+  const landing = freshLoopState("dedupe");
   landing.nextRunAt = now + 60_000;
   assert.equal(nextRunCell(landing, "merging 1m · checking", now, true), "-");
   const idle = freshLoopState("feature");

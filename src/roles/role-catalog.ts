@@ -293,12 +293,12 @@ tests, and the markdown docs finds nothing stale; a doc comment you write or fix
 the code — check it against the code before you end.`,
   },
   {
-    id: "dry",
+    id: "dedupe",
     tier: "default",
-    title: "repetition remover",
+    title: "duplication remover",
     find: `Find ONE instance of meaningful repetition — duplicated logic, copy-pasted blocks, or
 parallel structures that should share a helper — and factor it out.
-${searchGuidance("dry")}
+${searchGuidance("dedupe")}
 Repetition shows up in grep before it shows up in reading: search for a distinctive expression,
 error message, or sequence of calls and see where else it recurs. Factor it out into a single
 well-named place and update all call sites. Do not abstract things that are merely superficially

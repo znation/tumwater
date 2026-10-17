@@ -41,7 +41,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   // state always has at least one tick queued on the semaphore (a two-role fleet settles into
   // a strict alternation where every poll schedules exactly one loop, so there would be no
   // queued tick for the grow to wake). The shim's ~1.5s hold makes overlapping runs visible.
-  const base = fastConfig(["clean", "dry", "bugfix"]);
+  const base = fastConfig(["clean", "dedupe", "bugfix"]);
   base.maxConcurrent = 1;
   saveConfig(repo, base);
   // bugfix is one of the three fast-ticking roles this test needs to keep ticking between
@@ -65,7 +65,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
     );
 
     // Phase 2 (cap 2): a live edit admits the queued work — runs overlap without a restart.
-    const grow = fastConfig(["clean", "dry", "bugfix"]);
+    const grow = fastConfig(["clean", "dedupe", "bugfix"]);
     grow.maxConcurrent = 2;
     saveConfig(repo, grow);
     await waitFor(
@@ -73,7 +73,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
       "the max_concurrent_changed event",
     );
     // Need-based deferral (landed after this test was written) leaves only bugfix ticking:
-    // clean and dry defer after their nothing-to-do startup ticks, so without a landing there
+    // clean and dedupe defer after their nothing-to-do startup ticks, so without a landing there
     // is no queued work for the grow to admit and no overlap can ever form — phase 2 would
     // then pass only by racing the startup burst's tail. Land work to wake the deferred roles:
     // with cap 2 at least two of them tick concurrently, making the overlap deterministic.
@@ -86,7 +86,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
     // Phase 3 (cap 1 again): shrinking admits no NEW concurrent run until in-flight work
     // finishes. Every sample recorded from the change onward must be <= 1 — a cap that was
     // not applied would let the fast roles overlap again within a few polls.
-    const shrink = fastConfig(["clean", "dry", "bugfix"]);
+    const shrink = fastConfig(["clean", "dedupe", "bugfix"]);
     shrink.maxConcurrent = 1;
     saveConfig(repo, shrink);
     await waitFor(

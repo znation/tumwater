@@ -272,7 +272,7 @@ test("formatEvent renders the 429 hold and its re-open plainly", () => {
     ts: 0,
     source: "tumwater",
     type: "rate_limit_hold",
-    roles: ["dry", "feature"],
+    roles: ["dedupe", "feature"],
     holdMs: 15 * 60_000,
     escalation: 4,
   } as never);
@@ -301,9 +301,9 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
     `backend hold line: ${backend}`,
   );
   const modelLoad = formatEvent({
-    ts: 0, source: "tumwater", type: "rate_limit_hold", kind: "model-load", roles: ["dry"], holdMs: 120_000, escalation: 1,
+    ts: 0, source: "tumwater", type: "rate_limit_hold", kind: "model-load", roles: ["dedupe"], holdMs: 120_000, escalation: 1,
   } as never);
-  assert.match(modelLoad, /waiting: backend failing \(model load failure\) — dry hit backend failures; roles on every provider start no new runs for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
+  assert.match(modelLoad, /waiting: backend failing \(model load failure\) — dedupe hit backend failures; roles on every provider start no new runs for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
 
   // A timeout storm names its own phrase too — the digest pools plain and progressing tick
   // timeouts under this kind, and a timeout hold must not borrow a connection's wording.

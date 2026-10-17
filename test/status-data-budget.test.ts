@@ -40,7 +40,7 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   saveLoopState(repo, clean);
   const organize = spentLoopState("organize", 0.75, now.getTime());
   saveLoopState(repo, organize);
-  const dry = freshLoopState("dry");
+  const dry = freshLoopState("dedupe");
   dry.dayStamp = "2000-01-01"; // not today's stamp → $0 today
   dry.dayCostUsd = 9;
   saveLoopState(repo, dry);
@@ -132,14 +132,14 @@ test("snapshot lists the roles held by their own per-role cap in capPaused", asy
   const repo = makeRepo();
   await initProject(repo, "waiting: daily cap spent snapshot test");
   const cfg = loadConfig(repo);
-  cfg.maxDailyCostUsdPerRole = { clean: 1, dry: 5, director: 1 };
+  cfg.maxDailyCostUsdPerRole = { clean: 1, dedupe: 5, director: 1 };
   saveConfig(repo, cfg);
 
   // clean is exactly at its cap (held); dry carries only yesterday's spend (a stale stamp
   // reads $0 today — the hold is a daily figure); the director is exempt like the gate.
   const clean = spentLoopState("clean", 1);
   saveLoopState(repo, clean);
-  const dry = freshLoopState("dry");
+  const dry = freshLoopState("dedupe");
   dry.dayStamp = "2000-01-01";
   dry.dayCostUsd = 99;
   saveLoopState(repo, dry);

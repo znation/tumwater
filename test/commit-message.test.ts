@@ -154,11 +154,11 @@ test("buildCommitMessage assembles subject, body, and trailer as separate paragr
 test("fallbackSummary names the changed paths, counts the rest, and keeps the bare form only when nothing is known", () => {
   // The last resort for a changed tick with no SUMMARY (even after the follow-up turn): the log
   // must still say what the commit touched — "feature tick 105" told a reader nothing.
-  assert.equal(fallbackSummary(["src/a.ts"], "dry", 7), "Update src/a.ts");
-  assert.equal(fallbackSummary(["src/a.ts", "test/a.test.ts", "README.md"], "dry", 7), "Update src/a.ts, test/a.test.ts, README.md");
-  assert.equal(fallbackSummary(["a", "b", "c", "d", "e"], "dry", 7), "Update a, b, c and 2 more");
-  assert.equal(fallbackSummary([], "dry", 7), "dry run 7");
-  const long = fallbackSummary(["x".repeat(80), "y".repeat(80), "z".repeat(80)], "dry", 7);
+  assert.equal(fallbackSummary(["src/a.ts"], "dedupe", 7), "Update src/a.ts");
+  assert.equal(fallbackSummary(["src/a.ts", "test/a.test.ts", "README.md"], "dedupe", 7), "Update src/a.ts, test/a.test.ts, README.md");
+  assert.equal(fallbackSummary(["a", "b", "c", "d", "e"], "dedupe", 7), "Update a, b, c and 2 more");
+  assert.equal(fallbackSummary([], "dedupe", 7), "dedupe run 7");
+  const long = fallbackSummary(["x".repeat(80), "y".repeat(80), "z".repeat(80)], "dedupe", 7);
   assert.ok(long.length <= 100, "capped like a real summary");
   assert.ok(long.endsWith("…"));
 });

@@ -105,7 +105,7 @@ test("fleetDailyCost sums every loop's daily window with stale ones reading $0",
   const a = freshLoopState("feature");
   recordDailyCost(a, 1.25, dayA); // spent on day A
   const b = freshLoopState("clean"); // never ticked: missing stamp → $0
-  const c = freshLoopState("dry");
+  const c = freshLoopState("dedupe");
   recordDailyCost(c, 0.75, dayB); // spent on day B only
 
   assert.equal(fleetDailyCost([a, b, c], dayA), 1.25);

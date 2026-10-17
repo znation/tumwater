@@ -21,35 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms role ids, part 3/5: Rename the dry role to dedupe (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "Role names"; touches src/roles/ and test/vocabulary.test.ts plus the tests that use dry as a role id)
-
-**Goal.** Mechanical. The duplication remover's id becomes `dedupe` and its title "duplication remover". Configs that say `roles.dry`, `--role dry`, old events, and the role's branch, refs, state, notes, inbox and sessions all carry over through parts 1/5 and 2/5.
-
-**Approach.**
-- `LEGACY_ROLE_IDS` (src/roles/legacy-role-ids.ts) gains `dry: "dedupe"`.
-- src/roles/role-catalog.ts: the entry's `id: "dedupe"`, `title: "duplication remover"`, and `searchGuidance("dedupe")`. Through `roleCommitGrep`, that greps both `tumwater(dedupe)` and `tumwater(dry)`.
-- src/roles/roles.ts: `CODE_MAINTENANCE_ROLES` lists `"dedupe"`. Fix the role list in the `searchGuidance` doc comment in src/roles/role-guidance.ts.
-- New commits say `tumwater(dedupe):`, because subjects use the runner id. Old subjects stay as history.
-- test/vocabulary.test.ts: append `dry(?![- ]run)` to `RETIRED_WORDS`. Fix any literal it now flags in an opted-in module; grep first, none is expected.
-- docs/code-metrics.md and docs/commit-history-analysis.md are dated reports. Leave their text as written: Plain terms docs part 4/5 gives them a pre-rename banner, and docs/glossary.md maps the id.
-- A custom role a user already named `dedupe` now collides with the catalog id, and validateConfig's existing collision rule refuses the load and names it. That is intended; no code.
-- **Tests, mechanical:** replace the role id `"dry"` with `"dedupe"` in every test that uses it as a role id. That is about 230 lines across about 47 files: the orchestrator e2e suites, status-render, fleet-state, fleet-hold, error-storm, operator-commands, worktree, failure-*, and the rest `grep -rn '"dry"' test` lists. Never touch `--dry-run`, `dryRun` or "dry run".
-- **New end-to-end cases** for the real alias, in test/legacy-role-ids.test.ts:
-  - `tumwater role dry` shows dedupe;
-  - `tumwater history --role dry` lists dedupe's runs;
-  - a tumwater.json with `roles.dry.enabled: false` disables dedupe, and doctor names `roles.dry → roles.dedupe`;
-  - an events.jsonl line whose source is `dry` reads as dedupe in `history` rows;
-  - `migrateLegacyRoleIds` with the real map moves `state/dry.json` and branch `tumwater/dry` on a fixture repo.
-
-**Files touched.** src/roles/legacy-role-ids.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/roles/role-guidance.ts (comment), test/vocabulary.test.ts, test/legacy-role-ids.test.ts, and the tests that use `"dry"` as a role id.
-
-**Acceptance criteria.**
-- `tumwater role dedupe` shows "duplication remover", and `tumwater role dry` shows the same role.
-- An existing project's `state/dry.json`, `tumwater/dry` branch and `roles.dry` settings carry over to dedupe on the first start of this build.
-- `grep -rn '"dry"' src` finds nothing. The `LEGACY_ROLE_IDS` row's key is unquoted.
-- The vocabulary guard flags "dry" in an opted-in fixture string, and does not flag "--dry-run".
-- `npm run test` passes.
-
 ### Plain terms role ids, part 4/5: Rename the telemetry role to selfcheck (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config.ts and src/tick/tick-prompt.ts and tumwater.example.json and README.md plus tests)
 
 **Goal.** The opt-in role that files tumwater bugs from its own failure log is `selfcheck`, titled "self-check: files tumwater bugs from its own failure log". It is still opt-in, through `roles.selfcheck.enabled`. A config that enables `roles.telemetry` keeps it running under the new id, and its state, branch and history carry over.
@@ -1824,6 +1795,35 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - test/records-overflow.test.ts, `renderRecordsOverflowBlock` over a temp root: both files past the line give one block with a `PLANS.md ## Done:` and a `BUGS.md ## Fixed:` paragraph in that order, between `<records-overflow>` tags; only one file past the line gives only that paragraph; neither, or a root with no files, gives `undefined`; rewriting PLANS.md with a changed size re-reads it (as the `renderBacklogStructureBlock re-reads PLANS.md whose stat changed` test does).
 - test/tick-prompt.test.ts, with a temp root whose PLANS.md `## Done` holds 12 full entries: `promptFor(dir, "steward").prompt` contains `<records-overflow>` before `Your task this run:`; `promptFor(dir, "steward-2")` carries it too; `promptFor(dir, "clean")` does not; a steward prompt over a `## Done` with 10 entries does not.
 - test/vocabulary.test.ts passes with the new module opted in.
+- `npm run test` passes.
+
+### Plain terms role ids, part 3/5: Rename the dry role to dedupe (planned 2026-10-16 by user; done 2026-10-16; requires part 2/5 landed; design in plans/terminology.md "Role names"; touches src/roles/ and test/vocabulary.test.ts plus the tests that use dry as a role id)
+
+**Goal.** Mechanical. The duplication remover's id becomes `dedupe` and its title "duplication remover". Configs that say `roles.dry`, `--role dry`, old events, and the role's branch, refs, state, notes, inbox and sessions all carry over through parts 1/5 and 2/5.
+
+**Approach.**
+- `LEGACY_ROLE_IDS` (src/roles/legacy-role-ids.ts) gains `dry: "dedupe"`.
+- src/roles/role-catalog.ts: the entry's `id: "dedupe"`, `title: "duplication remover"`, and `searchGuidance("dedupe")`. Through `roleCommitGrep`, that greps both `tumwater(dedupe)` and `tumwater(dry)`.
+- src/roles/roles.ts: `CODE_MAINTENANCE_ROLES` lists `"dedupe"`. Fix the role list in the `searchGuidance` doc comment in src/roles/role-guidance.ts.
+- New commits say `tumwater(dedupe):`, because subjects use the runner id. Old subjects stay as history.
+- test/vocabulary.test.ts: append `dry(?![- ]run)` to `RETIRED_WORDS`. Fix any literal it now flags in an opted-in module; grep first, none is expected.
+- docs/code-metrics.md and docs/commit-history-analysis.md are dated reports. Leave their text as written: Plain terms docs part 4/5 gives them a pre-rename banner, and docs/glossary.md maps the id.
+- A custom role a user already named `dedupe` now collides with the catalog id, and validateConfig's existing collision rule refuses the load and names it. That is intended; no code.
+- **Tests, mechanical:** replace the role id `"dry"` with `"dedupe"` in every test that uses it as a role id. That is about 230 lines across about 47 files: the orchestrator e2e suites, status-render, fleet-state, fleet-hold, error-storm, operator-commands, worktree, failure-*, and the rest `grep -rn '"dry"' test` lists. Never touch `--dry-run`, `dryRun` or "dry run".
+- **New end-to-end cases** for the real alias, in test/legacy-role-ids.test.ts:
+  - `tumwater role dry` shows dedupe;
+  - `tumwater history --role dry` lists dedupe's runs;
+  - a tumwater.json with `roles.dry.enabled: false` disables dedupe, and doctor names `roles.dry → roles.dedupe`;
+  - an events.jsonl line whose source is `dry` reads as dedupe in `history` rows;
+  - `migrateLegacyRoleIds` with the real map moves `state/dry.json` and branch `tumwater/dry` on a fixture repo.
+
+**Files touched.** src/roles/legacy-role-ids.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/roles/role-guidance.ts (comment), test/vocabulary.test.ts, test/legacy-role-ids.test.ts, and the tests that use `"dry"` as a role id.
+
+**Acceptance criteria.**
+- `tumwater role dedupe` shows "duplication remover", and `tumwater role dry` shows the same role.
+- An existing project's `state/dry.json`, `tumwater/dry` branch and `roles.dry` settings carry over to dedupe on the first start of this build.
+- `grep -rn '"dry"' src` finds nothing. The `LEGACY_ROLE_IDS` row's key is unquoted.
+- The vocabulary guard flags "dry" in an opted-in fixture string, and does not flag "--dry-run".
 - `npm run test` passes.
 
 ### Plain terms role ids, part 2/5: Rename a legacy role id's branch and refs and files once at startup (planned 2026-10-16 by user; requires part 1/5 and Plain terms state 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/legacy-role-migration.ts and the startup migration hook plus a test) (done 2026-10-16)

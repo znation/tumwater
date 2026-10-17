@@ -27,16 +27,16 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { withIdlePi } from "./fakes/fake-pi.js";
 
 test("once: an idle fleet exits on its own, ticks each role exactly once, and returns the once-mode shape", async () => {
-  const repo = await makeFastRepo("once exit contract test", ["clean", "dry"]);
+  const repo = await makeFastRepo("once exit contract test", ["clean", "dedupe"]);
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false, "a once round never reports a restart");
     assert.ok(exit.settled instanceof Map, "once mode returns the settle-reasons map, not the bare daemon shape");
     assert.ok(exit.ticksRun instanceof Map, "once mode returns the per-role ticks-run map");
     assert.equal(exit.ticksRun?.get("clean"), 1, "clean ticked once in the round");
-    assert.equal(exit.ticksRun?.get("dry"), 1, "dry ticked once in the round");
+    assert.equal(exit.ticksRun?.get("dedupe"), 1, "dedupe ticked once in the round");
     assert.equal(loadLoopState(repo, "clean").runs, 1, "clean's persisted state agrees with the round's count");
-    assert.equal(loadLoopState(repo, "dry").runs, 1, "dry's persisted state agrees with the round's count");
+    assert.equal(loadLoopState(repo, "dedupe").runs, 1, "dedupe's persisted state agrees with the round's count");
   });
 });
 
@@ -64,12 +64,12 @@ test("once: startup retires a legacy role worktree now that ticks lease pooled s
 
 test("once: a scoped --role run leaves another role's pending resume alone", async () => {
   // Regression: the migration must see every CONFIGURED loop id (`loopIds`), not the run's
-  // `--once --role` filter. Passing the filter retired `dry`'s resumable legacy checkout and
+  // `--once --role` filter. Passing the filter retired `dedupe`'s resumable legacy checkout and
   // unpinned `feature`'s canonical slot, losing both resumes on the next full-fleet start.
-  const repo = await makeFastRepo("once scoped migration test", ["clean", "dry", "feature"]);
-  const legacy = path.join(repo, ".tumwater", "worktrees", "dry");
+  const repo = await makeFastRepo("once scoped migration test", ["clean", "dedupe", "feature"]);
+  const legacy = path.join(repo, ".tumwater", "worktrees", "dedupe");
   await ensureDetachedWorktree(repo, legacy, "main");
-  saveLoopState(repo, { ...freshLoopState("dry"), resumePending: true });
+  saveLoopState(repo, { ...freshLoopState("dedupe"), resumePending: true });
   const featureSlot = slotWorktreePath(repo, 1);
   writeSlotsState(repo, {
     slots: [{ dir: featureSlot, lease: null, pinnedFor: "feature", lastRole: null, lastReleasedAt: 1 }],
@@ -77,7 +77,7 @@ test("once: a scoped --role run leaves another role's pending resume alone", asy
   await withIdlePi(async () => {
     await onceRound(repo, "clean");
     assert.ok(fs.existsSync(legacy), "a scoped run retired another role's legacy checkout");
-    assert.equal(slotForDir(repo, legacy)?.pinnedFor, "dry", "the legacy dir lost its pin");
+    assert.equal(slotForDir(repo, legacy)?.pinnedFor, "dedupe", "the legacy dir lost its pin");
     assert.equal(
       slotForDir(repo, featureSlot)?.pinnedFor,
       "feature",

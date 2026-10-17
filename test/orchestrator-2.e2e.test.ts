@@ -31,16 +31,16 @@ import { ensureParentDir } from "../src/files/files.js";
 const FAST_POLL_MS = 100;
 
 test("a multi-role reset request zeroes every listed runner and logs one harness-level event", async () => {
-  const repo = await makeFastRepo("multi role reset test", ["clean", "dry"]);
-  seedCounters(repo, "clean", "dry");
+  const repo = await makeFastRepo("multi role reset test", ["clean", "dedupe"]);
+  seedCounters(repo, "clean", "dedupe");
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // What `tumwater reset-counters` without --role writes: a marker naming every role.
     const markerFile = resetRequestPath(repo);
-    writeMarker(markerFile, { at: Date.now(), roles: ["clean", "dry"] });
+    writeMarker(markerFile, { at: Date.now(), roles: ["clean", "dedupe"] });
 
     await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
-    for (const role of ["clean", "dry"]) {
+    for (const role of ["clean", "dedupe"]) {
       // A post-reset tick may have started in the same poll; without in-memory zeroing this
       // would read >= 8.
       assert.ok(
@@ -52,15 +52,15 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
     const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.source, "tumwater");
-    assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
+    assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dedupe"]);
   } finally {
     await stopOrchestrator(orch, restore);
   }
 });
 
 test("a corrupt reset marker resets every runner and is still consumed", async () => {
-  const repo = await makeFastRepo("corrupt reset marker test", ["clean", "dry"]);
-  seedCounters(repo, "clean", "dry");
+  const repo = await makeFastRepo("corrupt reset marker test", ["clean", "dedupe"]);
+  seedCounters(repo, "clean", "dedupe");
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Garbage where the marker should be: JSON.parse throws → requested stays null → every
@@ -71,7 +71,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
     fs.writeFileSync(markerFile, "{not json");
 
     await waitFor(() => !fs.existsSync(markerFile), "the corrupt marker to be consumed");
-    for (const role of ["clean", "dry"]) {
+    for (const role of ["clean", "dedupe"]) {
       assert.ok(
         loadLoopState(repo, role).runs <= 1,
         `${role} counters start from zero after a corrupt marker (got ${loadLoopState(repo, role).runs})`,
@@ -80,7 +80,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
     const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.source, "tumwater", "a superset reset is filed harness-level with the roles list");
-    assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
+    assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dedupe"]);
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -242,8 +242,8 @@ test("a plain wake consumed mid-tick survives the tick's end-save", async () => 
 });
 
 test("a corrupt wake marker wakes every runner and is still consumed", async () => {
-  const repo = await makeFastRepo("corrupt wake marker test", ["clean", "dry"]);
-  for (const role of ["clean", "dry"]) {
+  const repo = await makeFastRepo("corrupt wake marker test", ["clean", "dedupe"]);
+  for (const role of ["clean", "dedupe"]) {
     const s = freshLoopState(role);
     s.runs = 3;
     s.backoffSeconds = 7680;
@@ -256,7 +256,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
     // What the CLI side of `tumwater wake` already did: both state files cleared. Then
     // garbage where the marker should be: the parse fails → every runner wakes (a
     // documented superset — skipping it would leave the pre-wake in-memory schedule in place).
-    for (const role of ["clean", "dry"]) {
+    for (const role of ["clean", "dedupe"]) {
       saveLoopState(repo, clearBackoff(loadLoopState(repo, role), Date.now()));
     }
     const markerFile = wakeRequestPath(repo);
@@ -264,14 +264,14 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
     fs.writeFileSync(markerFile, "{not json");
 
     await waitFor(() => !fs.existsSync(markerFile), "the corrupt marker to be consumed");
-    for (const role of ["clean", "dry"]) {
+    for (const role of ["clean", "dedupe"]) {
       await waitFor(() => loadLoopState(repo, role).runs >= 4, `${role} to tick after the wake`);
     }
     const wakes = eventsOfType(repo, "wake");
     assert.equal(wakes.length, 2, "one wake event per woken role");
     assert.deepEqual(
       wakes.map((e) => e.source).sort(),
-      ["clean", "dry"],
+      ["clean", "dedupe"],
     );
     for (const e of wakes) assert.equal(e.reason, "operator");
   } finally {
@@ -280,7 +280,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
 });
 
 test("roles can be enabled and disabled mid-run without a restart", async () => {
-  const repo = await makeFastRepo("role toggling test", ["clean", "dry"]);
+  const repo = await makeFastRepo("role toggling test", ["clean", "dedupe"]);
   const argsFile = path.join(tmpdir(), "argv.log");
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
@@ -290,42 +290,42 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
       return s.runs >= 1 && !s.running;
     };
     const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
-    await waitFor(() => finished("clean") && finished("dry"), "startup ticks to finish");
+    await waitFor(() => finished("clean") && finished("dedupe"), "startup ticks to finish");
     // Baseline while both roles are still enabled and idle: clean's next tick after the
     // disable is what proves the rest of the fleet keeps ticking.
     const cleanTicks = loadLoopState(repo, "clean").runs;
 
     // Disabling a role stops its next tick; the rest of the fleet keeps ticking.
     saveConfig(repo, fastConfig(["clean"]));
-    // Wait until the disable is processed AND no in-flight dry tick remains. From that point
-    // on dry can never start another tick (isEligible hard-gates disabled roles), so its
+    // Wait until the disable is processed AND no in-flight dedupe tick remains. From that point
+    // on dedupe can never start another tick (isEligible hard-gates disabled roles), so its
     // captured count is final for the whole disabled window — no fixed sleep needed.
     await waitFor(
       () =>
-        messages().some((m) => m.includes("role dry disabled — no new runs")) &&
-        !loadLoopState(repo, "dry").running,
+        messages().some((m) => m.includes("role dedupe disabled — no new runs")) &&
+        !loadLoopState(repo, "dedupe").running,
       "the disable to be processed with no in-flight tick",
     );
-    const dryTicks = loadLoopState(repo, "dry").runs;
+    const dryTicks = loadLoopState(repo, "dedupe").runs;
     // The enabled role's next tick proves the fleet is still alive and ticking — the disabled
     // role had that same window and must not have used it. clean is deferrable (need-based
-    // prioritization), so a work landing supplies its wake; the re-enabled dry below wakes on
+    // prioritization), so a work landing supplies its wake; the re-enabled dedupe below wakes on
     // the same commit.
     landWork(repo);
     await waitFor(() => loadLoopState(repo, "clean").runs > cleanTicks, "an enabled role to tick again");
-    assert.equal(loadLoopState(repo, "dry").runs, dryTicks, "disabled role stops ticking");
-    assert.ok(messages().some((m) => m.includes("role dry disabled — no new runs")), "disable transition logged");
+    assert.equal(loadLoopState(repo, "dedupe").runs, dryTicks, "disabled role stops ticking");
+    assert.ok(messages().some((m) => m.includes("role dedupe disabled — no new runs")), "disable transition logged");
 
     // Enabling a role that was not running at startup starts it (new runner).
     saveConfig(repo, fastConfig(["clean", "feature"]));
     await waitFor(() => finished("feature"), "newly enabled role to tick");
     assert.ok(messages().some((m) => m.includes("role feature enabled — starting runs")), "enable transition logged");
-    assert.equal(loadLoopState(repo, "dry").runs, dryTicks, "still-disabled role stays stopped");
+    assert.equal(loadLoopState(repo, "dedupe").runs, dryTicks, "still-disabled role stays stopped");
 
     // Re-enabling a previously running loop resumes it within one poll cycle.
-    saveConfig(repo, fastConfig(["clean", "dry", "feature"]));
-    await waitFor(() => loadLoopState(repo, "dry").runs > dryTicks, "re-enabled role to tick again");
-    assert.ok(messages().some((m) => m.includes("role dry enabled — starting runs")), "re-enable transition logged");
+    saveConfig(repo, fastConfig(["clean", "dedupe", "feature"]));
+    await waitFor(() => loadLoopState(repo, "dedupe").runs > dryTicks, "re-enabled role to tick again");
+    assert.ok(messages().some((m) => m.includes("role dedupe enabled — starting runs")), "re-enable transition logged");
   } finally {
     await stopOrchestrator(orch, restore);
   }

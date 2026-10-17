@@ -161,10 +161,10 @@ test("run errors cluster only on error-result ticks; landing review failures get
     // shared slot during leftover recovery. It must not be counted as a tick error (BUGS.md
     // 2026-09-21).
     { ts: at(0), loop: "clean", type: "run_end", result: "no_change", error: 'review failed: 429 "Rate limit exceeded"' },
-    { ts: at(0), loop: "dry", type: "run_end", result: "queued", error: 'review failed: 429 "Rate limit exceeded"' },
+    { ts: at(0), loop: "dedupe", type: "run_end", result: "queued", error: 'review failed: 429 "Rate limit exceeded"' },
     // The landing failure itself is surfaced from its own event.
     { ts: at(0), loop: "clean", type: "review_failed", head: "a".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
-    { ts: at(0), loop: "dry", type: "review_failed", head: "b".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
+    { ts: at(0), loop: "dedupe", type: "review_failed", head: "b".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
     // A real tick error still clusters.
     { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
   ]);
@@ -182,7 +182,7 @@ test("run errors cluster only on error-result ticks; landing review failures get
   );
   assert.equal(data.reviewFailures.clusters.length, 1);
   assert.equal(data.reviewFailures.clusters[0]?.count, 2);
-  assert.deepEqual(data.reviewFailures.clusters[0]?.roles, ["clean", "dry"]);
+  assert.deepEqual(data.reviewFailures.clusters[0]?.roles, ["clean", "dedupe"]);
   const md = renderFailureMarkdown(data);
   assert.match(md, /## Top review failure clusters/);
   assert.match(md, /no parseable VERDICT/);
@@ -423,7 +423,7 @@ test("the top-N cluster sections mark their cut: remainder line, no silent trunc
   // section read as a full itemization while half the window's rejections were invisible.
   const root = tmpdir();
   const events: object[] = [];
-  const roles = ["bugfix", "coverage", "dry", "feature", "perf", "qa", "telemetry"];
+  const roles = ["bugfix", "coverage", "dedupe", "feature", "perf", "qa", "telemetry"];
   roles.forEach((role, i) => {
     events.push({ ts: at(0), loop: role, type: "review_rejected", head: String(i).padStart(40, String(i)), reasons: [`reject ${role}`] });
     events.push({ ts: at(0), loop: role, type: "run_end", result: "queued" });
@@ -646,8 +646,8 @@ test("each harness state transition renders its own bounded line", () => {
       "429 hold for 60s — bugfix, coverage",
     ],
     [
-      { type: "rate_limit_hold", roles: ["dry", "feature"], holdMs: 240_000, escalation: 2 },
-      "429 hold for 4m (relapse 2) — dry, feature",
+      { type: "rate_limit_hold", roles: ["dedupe", "feature"], holdMs: 240_000, escalation: 2 },
+      "429 hold for 4m (relapse 2) — dedupe, feature",
     ],
     [{ type: "rate_limit_resumed" }, "429 hold lifted — roles run again"],
     [{ type: "max_concurrent_changed", from: 3, to: 5 }, "maxConcurrent 3 → 5"],
@@ -1066,8 +1066,8 @@ test("collectFailureReport keeps singleton merge-check and stall warnings past s
 test("the digest lists merge failures by result and role, with the role's preceding warning as the reason", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 1), loop: "dry", type: "warning", message: "merge check failed (kept for one retry)" },
-    { ts: at(0, 2), loop: "dry", type: "merge_failed", result: "merge_blocked" },
+    { ts: at(0, 1), loop: "dedupe", type: "warning", message: "merge check failed (kept for one retry)" },
+    { ts: at(0, 2), loop: "dedupe", type: "merge_failed", result: "merge_blocked" },
     { ts: at(0, 3), loop: "feature", type: "merge_failed", result: "merge_blocked" },
     { ts: at(0, 4), loop: "plan", type: "merge_failed", result: "merge_conflict" },
     // Rejections and review errors have their own sections and must not fill this one.
@@ -1079,7 +1079,7 @@ test("the digest lists merge failures by result and role, with the role's preced
   assert.equal(data.mergeFailures.total, 3);
   assert.equal(data.mergeFailures.clusters.length, 3);
   const md = renderFailureMarkdown(data);
-  assert.match(md, /## Merge failures\n- \*\*1×\*\* dry · .* — merge_blocked — merge check failed/);
+  assert.match(md, /## Merge failures\n- \*\*1×\*\* dedupe · .* — merge_blocked — merge check failed/);
   assert.match(md, /feature · .* — merge_blocked — no reason recorded/);
   assert.match(md, /plan · .* — merge_conflict — no reason recorded/);
 });

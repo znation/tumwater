@@ -31,7 +31,7 @@ function obs(role: string, at: number, kind: "connection" | "rate-limit" = "conn
 /** Six connection failures across six roles, spaced 4 minutes apart — wider than the hold's
  * two-minute window, shallower than any streak bar, yet six failures in half an hour. */
 function wideShallowStorm(): { role: string; at: number; kind: "connection" | "rate-limit" }[] {
-  const roles = ["bugfix", "clean", "coverage", "dry", "feature", "improve"];
+  const roles = ["bugfix", "clean", "coverage", "dedupe", "feature", "improve"];
   return roles.map((role, i) => obs(role, T0 + i * 4 * 60_000));
 }
 
@@ -76,7 +76,7 @@ test("failures further apart than the window do not add up", () => {
   // Exactly at the window's edge still counts.
   const edge = T0 + FAILURE_SPREAD_WINDOW_MS;
   const atEdge = wideShallowStorm().map((o, i) => (i === 0 ? { ...o, at: edge } : o)).slice(0, 5);
-  assert.equal(failureSpread(FAILURE_SPREAD_QUIET, [...atEdge, obs("dry", edge - 4 * 60_000)], edge).active, true);
+  assert.equal(failureSpread(FAILURE_SPREAD_QUIET, [...atEdge, obs("dedupe", edge - 4 * 60_000)], edge).active, true);
 });
 
 test("an observation re-read poll after poll counts once", () => {
@@ -101,7 +101,7 @@ test("different kinds never pool into one episode, and the strongest kind wins",
   ];
   assert.equal(failureSpread(FAILURE_SPREAD_QUIET, mixed, T0 + 20 * 60_000).active, false);
   // Six connection plus three rate-limit: the connection episode sounds, not the pool.
-  const next = failureSpread(FAILURE_SPREAD_QUIET, [...wideShallowStorm(), obs("dry", T0, "rate-limit"), obs("perf", T0, "rate-limit"), obs("readme", T0, "rate-limit")], T0 + 60_000);
+  const next = failureSpread(FAILURE_SPREAD_QUIET, [...wideShallowStorm(), obs("dedupe", T0, "rate-limit"), obs("perf", T0, "rate-limit"), obs("readme", T0, "rate-limit")], T0 + 60_000);
   assert.equal(next.active, true);
   assert.equal(next.kind, "connection");
 });
@@ -140,7 +140,7 @@ test("pollFailureSpread logs exactly one warning per episode and stays silent wh
   const spreadEvents = () => readEvents(root).filter((e) => e.type === "warning" && String(e.message).includes("failure spread"));
   const runners = (ats: number[]): HoldInputs[] =>
     ats.map((at, i) => ({
-      role: ["bugfix", "clean", "coverage", "dry", "feature", "improve"][i]!,
+      role: ["bugfix", "clean", "coverage", "dedupe", "feature", "improve"][i]!,
       lastBackendFailure: { at, kind: "connection" as const },
     }));
 
@@ -156,11 +156,11 @@ test("pollFailureSpread logs exactly one warning per episode and stays silent wh
   assert.equal(events.length, 1);
   const first = events[0] as { message?: string; kind?: string; roles?: string[]; count?: number; windowMs?: number };
   assert.equal(first.kind, "connection");
-  assert.deepEqual(first.roles, ["bugfix", "clean", "coverage", "dry", "feature", "improve"]);
+  assert.deepEqual(first.roles, ["bugfix", "clean", "coverage", "dedupe", "feature", "improve"]);
   assert.equal(first.count, 6);
   assert.equal(first.windowMs, FAILURE_SPREAD_WINDOW_MS);
   assert.match(String(first.message), /6 provider failures of one kind \(connection\)/);
-  assert.match(String(first.message), /bugfix, clean, coverage, dry, feature, improve/);
+  assert.match(String(first.message), /bugfix, clean, coverage, dedupe, feature, improve/);
 
   // Held, it is silent — the same observations re-read every poll log nothing more.
   spread = pollFailureSpread(root, spread, runners([T0, T0 + 1, T0 + 2, T0 + 3, T0 + 4, T0 + 5]), T0 + 8);

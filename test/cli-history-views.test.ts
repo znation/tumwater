@@ -17,15 +17,15 @@ import { displayWidth } from "../src/text/text-width.js";
 
 const NOW = Date.now();
 
-/** A repo whose event log holds two completed runs (role `dry`, then role `clean`,
+/** A repo whose event log holds two completed runs (role `dedupe`, then role `clean`,
  * newest last) plus a `docs` run_end with no matching run_start — the unpaired case a
  * rotation-cut log produces, which must render an em dash for its duration. */
 function repoWithTicks(): string {
   const repo = makeRepo();
-  logEvent(repo, { ts: NOW - 120_000, source: "dry", type: "run_start", run: 1 });
+  logEvent(repo, { ts: NOW - 120_000, source: "dedupe", type: "run_start", run: 1 });
   logEvent(repo, {
     ts: NOW - 60_000,
-    source: "dry",
+    source: "dedupe",
     type: "run_end",
     run: 1,
     result: "error",
@@ -59,11 +59,11 @@ test("history renders the last ticks newest-first with duration, usage, and deta
   const repo = repoWithTicks();
   const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, []));
   const cleanIdx = out.indexOf("clean");
-  const testsIdx = out.indexOf("dry");
+  const testsIdx = out.indexOf("dedupe");
   assert.ok(cleanIdx >= 0 && testsIdx >= 0, `both rows print: ${JSON.stringify(out)}`);
   assert.ok(cleanIdx < testsIdx, "newest first: clean's run_end is the newest");
   assert.match(out, /clean\s+#1\s+merged\s+30s\s+1200 tok · \$0\.03\s+Fix the flake/);
-  assert.match(out, /dry\s+#1\s+error\s+60s\s+400 tok · \$0\.01\s+the suite went red/);
+  assert.match(out, /dedupe\s+#1\s+error\s+60s\s+400 tok · \$0\.01\s+the suite went red/);
   // The unpaired run_end (its run_start never logged) renders the em dash for duration.
   assert.match(out, /docs\s+#2\s+merged\s+—\s+touch up the readme/);
 });
@@ -77,8 +77,8 @@ test("history -n bounds the printed rows", async () => {
 
 test("history --role filters the rows to one loop", async () => {
   const repo = repoWithTicks();
-  const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, ["--role", "dry"]));
-  assert.match(out, /dry\s+#1\s+error/);
+  const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, ["--role", "dedupe"]));
+  assert.match(out, /dedupe\s+#1\s+error/);
   assert.ok(!out.includes("clean"), `other roles are filtered out: ${JSON.stringify(out)}`);
 });
 
@@ -87,12 +87,12 @@ test("history --grep filters on the rendered row line (plus the run_end type), c
   // Matches through the detail column — the row as it renders.
   const { stdout: rendered } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "FLAKE"]));
   assert.match(rendered, /clean\s+#1\s+merged\s+30s/);
-  assert.ok(!rendered.includes("dry"), `unmatched rows are filtered out: ${JSON.stringify(rendered)}`);
+  assert.ok(!rendered.includes("dedupe"), `unmatched rows are filtered out: ${JSON.stringify(rendered)}`);
 
   // The raw event type id is greppable the way logs --grep's haystack carries it.
   const { stdout: raw } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "run_end"]));
   assert.match(raw, /clean\s+#1/);
-  assert.match(raw, /dry\s+#1/);
+  assert.match(raw, /dedupe\s+#1/);
   assert.match(raw, /docs\s+#2/);
 });
 
@@ -116,7 +116,7 @@ test("history --json serves the rows as raw data, newest first", async () => {
   const parsed = JSON.parse(stdout) as { rows: Array<{ role: string; ts: number; tokens: number; costUsd: number; result: string }> };
   assert.deepEqual(
     parsed.rows.map((r) => r.role),
-    ["docs", "clean", "dry"],
+    ["docs", "clean", "dedupe"],
   );
   const clean = parsed.rows[1]!;
   assert.equal(clean.ts, NOW - 30_000);

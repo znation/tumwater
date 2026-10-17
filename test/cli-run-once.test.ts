@@ -20,7 +20,7 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
   // summary, and the exit — could regress with `npm test` staying green.
   const repo = makeRepo();
   await initProject(repo, "cli run once scoped");
-  writeConfig(repo, fastConfig(["clean", "dry"]));
+  writeConfig(repo, fastConfig(["clean", "dedupe"]));
 
   // fakePiIdle ends every tick as nothing-to-do, so the round exits on its own without
   // landing anything — the round's own exit is the observable, not a merge.
@@ -31,9 +31,9 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
     assert.match(r.stdout, /roles: clean\n/, `the banner names only the scoped role: ${r.stdout}`);
     assert.match(r.stdout, /once: 1 run — 1 no_change/,
       `the summary counts only the scoped role's tick: ${r.stdout}`);
-    assert.doesNotMatch(r.stdout, /\bdry\b/, `the unscoped role must be invisible: ${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /\bdedupe\b/, `the unscoped role must be invisible: ${r.stdout}`);
     assert.equal(loadLoopState(repo, "clean").runs, 1, "the scoped role ticked exactly once");
-    assert.equal(loadLoopState(repo, "dry").runs, 0, "the unscoped role never ran");
+    assert.equal(loadLoopState(repo, "dedupe").runs, 0, "the unscoped role never ran");
   });
 });
 

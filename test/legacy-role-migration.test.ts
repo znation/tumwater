@@ -64,9 +64,14 @@ test("an artifact already under the new id is kept and reported", async () => {
   assert.equal(fs.readFileSync(roleNotesPath(root, "newy"), "utf8"), "notes");
 });
 
-test("the real, empty id table does nothing", async () => {
+test("the real id table moves dry's state file and branch to dedupe", async () => {
   const root = makeRepo();
-  oldRole(root);
-  assert.deepEqual(await migrateLegacyRoleIds(root), []);
-  assert.equal(fs.existsSync(statePath(root, "oldy")), true);
+  const sha = sh(root, "git", "rev-parse", "HEAD");
+  sh(root, "git", "branch", "tumwater/dry");
+  put(statePath(root, "dry"), "state");
+  await migrateLegacyRoleIds(root);
+  assert.equal(await refSha(root, "refs/heads/tumwater/dedupe"), sha);
+  assert.equal(await refSha(root, "refs/heads/tumwater/dry"), null);
+  assert.equal(fs.readFileSync(statePath(root, "dedupe"), "utf8"), "state");
+  assert.equal(fs.existsSync(statePath(root, "dry")), false);
 });

@@ -47,7 +47,7 @@ test("pollFleetHold maps HoldInputs to observations: rate-limit with retry-after
     [
       runner("clean", { lastRateLimit: { at: T0 } }),
       runner("coverage", { lastRateLimit: { at: T0 + 5_000, retryAfterSeconds: 300 } }),
-      runner("dry", { lastBackendFailure: { at: T0 + 5_000, kind: "connection" } }),
+      runner("dedupe", { lastBackendFailure: { at: T0 + 5_000, kind: "connection" } }),
     ],
     T0 + 5_000,
   );
@@ -182,7 +182,7 @@ test("pollFleetHold keys holds per provider: a storm at P holds only P's entry, 
     [
       runner("clean", { provider: "P", lastRateLimit: { at: T0 } }),
       runner("coverage", { provider: "P", lastRateLimit: { at: T0 + 1_000 } }),
-      runner("dry", { provider: "Q", lastRateLimit: { at: T0 + 1_000 } }),
+      runner("dedupe", { provider: "Q", lastRateLimit: { at: T0 + 1_000 } }),
       runner("perf", { provider: "Q", lastRateLimit: { at: T0 + 2_000 } }),
     ],
     T0 + 2_000,
@@ -195,7 +195,7 @@ test("pollFleetHold keys holds per provider: a storm at P holds only P's entry, 
   // Two DISTINCT roles on Q trip Q's hold too — each provider's storm is its own, on its own
   // clock: P's deadline never gates Q's.
   assert.notEqual(q.until, null, "Q's own storm trips Q's hold independently");
-  assert.deepEqual(q.roles, ["dry", "perf"]);
+  assert.deepEqual(q.roles, ["dedupe", "perf"]);
   const events = holdEvents(root).filter((e) => e.type === "rate_limit_hold");
   assert.equal(events.length, 2, "each provider's crossing logs its own event");
   assert.deepEqual(events.map((e) => e.provider).sort(), ["P", "Q"]);

@@ -104,7 +104,7 @@ test("the steward prompt embeds the validation-gap guidance verbatim", () => {
 });
 
 test("the backlog-free roles carry the shared search guidance with a role-specific git log filter", () => {
-  for (const id of ["organize", "clean", "dry", "perf", "improve"]) {
+  for (const id of ["organize", "clean", "dedupe", "perf", "improve"]) {
     const role = roleById(id);
     assert.ok(role, `role ${id} exists`);
     assert.ok(role.find.includes(searchGuidance(id)), `${id} embeds searchGuidance(${id})`);

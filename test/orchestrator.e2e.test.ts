@@ -157,7 +157,7 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
   await initProject(repo, "orchestrator lifecycle test");
   const config = loadConfig(repo);
   for (const id of Object.keys(config.roles)) {
-    if (!["clean", "dry"].includes(id)) config.roles[id]!.enabled = false;
+    if (!["clean", "dedupe"].includes(id)) config.roles[id]!.enabled = false;
   }
   const restore = fakePiIdle();
   const controller = new AbortController();
@@ -175,14 +175,14 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     const info = readOrchestratorInfo(repo);
     assert.ok(info, "orchestrator state file exists while running");
     assert.equal(info.pid, process.pid);
-    assert.deepEqual([...info.roles].sort(), ["clean", "dry"]);
+    assert.deepEqual([...info.roles].sort(), ["clean", "dedupe"]);
     assert.ok(orchestratorAlive(repo), "a live orchestrator reports alive");
 
     // Wait for both startup ticks to actually finish (not a fixed sleep): the post-shutdown
     // state and event assertions then observe completed runs, never an abort mid-tick.
     await waitFor(
       () =>
-        ["clean", "dry"].every((role) => {
+        ["clean", "dedupe"].every((role) => {
           const s = loadLoopState(repo, role);
           return s.runs >= 1 && !s.running;
         }),
@@ -209,7 +209,7 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     assert.ok(types.includes("orchestrator_start"));
     assert.ok(types.includes("orchestrator_stop"));
     // Both enabled roles got their startup tick.
-    for (const role of ["clean", "dry"])
+    for (const role of ["clean", "dedupe"])
       assert.ok(loadLoopState(repo, role).runs >= 1, `${role} should have ticked`);
   } finally {
     restore();

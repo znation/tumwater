@@ -161,7 +161,7 @@ test("the marker is cross-checked per change and each row reads its own change's
   const repo = makeRepo();
   await initProject(repo, "batch marker snapshot");
   const t0 = Date.now() - 20 * 60_000;
-  for (const [role, sha] of [["clean", "c1ea000"], ["bugfix", "b0f1000"], ["feature", "fea7000"], ["dry", "d1a0000"]]) {
+  for (const [role, sha] of [["clean", "c1ea000"], ["bugfix", "b0f1000"], ["feature", "fea7000"], ["dedupe", "d1a0000"]]) {
     enqueueLanding(repo, { role: role!, sha: sha!, run: 1, summary: `${role} work`, enqueuedAt: Date.now() });
   }
   writeOrchestratorMarker(repo, []);
@@ -175,7 +175,7 @@ test("the marker is cross-checked per change and each row reads its own change's
       { role: "clean", sha: "c1ea000", summary: "clean work", status: "done", startedAt: t0 },
       { role: "bugfix", sha: "b0f1000", summary: "bugfix work", status: "merging", startedAt: betaStart },
       { role: "feature", sha: "fea7000", summary: "feature work", status: "approved", startedAt: t0, stage: "merging" },
-      { role: "dry", sha: "d1a0000", summary: "dry work", status: "merging", startedAt: t0, stage: "build-check" },
+      { role: "dedupe", sha: "d1a0000", summary: "dedupe work", status: "merging", startedAt: t0, stage: "build-check" },
       // A record whose entry is gone (its outcome written, or a crash) is finished, whatever
       // its record last said: the cross-check drops it.
       { role: "plan", sha: "91a0000", summary: "plan work", status: "merging", startedAt: t0 },
@@ -184,13 +184,13 @@ test("the marker is cross-checked per change and each row reads its own change's
   let snap = snapshot(repo);
   assert.deepEqual(
     snap.landQueue.inFlight?.changes?.map((c) => c.role),
-    ["clean", "bugfix", "feature", "dry"],
+    ["clean", "bugfix", "feature", "dedupe"],
     "only the records whose entry is still queued survive the cross-check",
   );
   const text = renderStatus(repo, snap);
   assert.match(text, /^bugfix +merging 1m30s/m, "the change under review reads landing with its own elapsed");
   assert.match(text, /^feature +approved, waiting to merge/m);
-  assert.match(text, /^dry +merging 20m\S* · checking/m, "a second vet in flight reads its own elapsed and stage");
+  assert.match(text, /^dedupe +merging 20m\S* · checking/m, "a second vet in flight reads its own elapsed and stage");
   assert.doesNotMatch(text, /^clean +merging/m, "a finished change keeps no live landing label");
   assert.match(text, /^clean +due/m, "its row reads its own state again");
   assert.doesNotMatch(text, /^plan +merging/m, "a record with no queued entry never displays");
@@ -211,15 +211,15 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   const repo = makeRepo();
   await initProject(repo, "roleInbox snapshot test");
   const one = enqueueRolePrompt(repo, "clean", "one");
-  const two = enqueueRolePrompt(repo, "dry", "two");
-  const three = enqueueRolePrompt(repo, "dry", "three");
+  const two = enqueueRolePrompt(repo, "dedupe", "two");
+  const three = enqueueRolePrompt(repo, "dedupe", "three");
   const snap = snapshot(repo);
   assert.equal(snap.roleInbox.clean, 1);
-  assert.equal(snap.roleInbox.dry, 2);
+  assert.equal(snap.roleInbox.dedupe, 2);
   assert.ok(!("director" in snap.roleInbox), "the director's queue is the shared inbox, not roleInbox");
   assert.equal(snap.inbox, 0);
   // And it agrees with the queue files the CLI's --list reads.
-  assert.deepEqual(queuedRolePrompts(repo, "dry"), ["two", "three"]);
+  assert.deepEqual(queuedRolePrompts(repo, "dedupe"), ["two", "three"]);
   // Each queued prompt also carries its queue-file address (the /api/prompt-cancel target)
   // and the enqueue stamp parsed from that filename (null for a hand-placed name — see
   // file-queue.test.ts), execution order; roles with an empty queue are absent, like the
@@ -227,7 +227,7 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   assert.deepEqual(snap.roleInboxPrompts.clean, [
     { file: path.basename(one), preview: "one", queuedAtMs: queueFileStamp(path.basename(one)), notBeforeMs: null },
   ]);
-  assert.deepEqual(snap.roleInboxPrompts.dry, [
+  assert.deepEqual(snap.roleInboxPrompts.dedupe, [
     { file: path.basename(two), preview: "two", queuedAtMs: queueFileStamp(path.basename(two)), notBeforeMs: null },
     { file: path.basename(three), preview: "three", queuedAtMs: queueFileStamp(path.basename(three)), notBeforeMs: null },
   ]);

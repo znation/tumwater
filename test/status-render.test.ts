@@ -34,7 +34,7 @@ import {
 test("status table ends with a totals row summing tokens and cost", () => {
   const snap = snapshotWith([
     { role: "clean", generatedTokens: 900_000, peakContextTokens: 120_000, totalCostUsd: 1.25 },
-    { role: "dry", generatedTokens: 350_000, peakContextTokens: 80_000, totalCostUsd: 0.5 },
+    { role: "dedupe", generatedTokens: 350_000, peakContextTokens: 80_000, totalCostUsd: 0.5 },
   ]);
   const lines = renderStatus(tmpdir(), snap).split("\n");
   const totals = lines[lines.length - 1] ?? "";
@@ -49,7 +49,7 @@ test("status table ends with a totals row summing tokens and cost", () => {
 });
 
 test("totals row shows zeros without breaking alignment", () => {
-  const snap = snapshotWith([{ role: "clean" }, { role: "dry" }]);
+  const snap = snapshotWith([{ role: "clean" }, { role: "dedupe" }]);
   const lines = renderStatus(tmpdir(), snap).split("\n");
   const totals = lines[lines.length - 1] ?? "";
   assert.match(totals, /^total\b/);
@@ -72,7 +72,7 @@ test("status table marks custom roles with an asterisk and a footnote", () => {
   assert.equal(text.match(/custom role/g)?.length, 1);
 
   // No customs: no asterisk anywhere and the table still ends at its totals row.
-  const plain = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }, { role: "dry" }]));
+  const plain = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }, { role: "dedupe" }]));
   assert.doesNotMatch(plain, /\*/);
   assert.match((plain.split("\n") as string[]).at(-1) ?? "", /^total\b/);
 });
@@ -157,16 +157,16 @@ test("gen/peak ctx combine persisted totals with live in-tick progress for runni
     assistantLine("turn two", { tokens: 12_000, output: 500 }),
   ]);
   // Idle loop whose log tail is its last COMPLETED tick (already in the persisted totals).
-  writePiLog(root, "dry", [SESSION, assistantLine("done tick", { tokens: 5_000, output: 500 })]);
+  writePiLog(root, "dedupe", [SESSION, assistantLine("done tick", { tokens: 5_000, output: 500 })]);
   const snap = snapshotWith([
     { role: "clean", generatedTokens: 1_000, peakContextTokens: 6_000, running: true },
-    { role: "dry", generatedTokens: 2_000, peakContextTokens: 4_000 },
+    { role: "dedupe", generatedTokens: 2_000, peakContextTokens: 4_000 },
   ]);
   const out = renderStatus(root, snap);
   const cleanRow = out.split("\n").find((l) => l.startsWith("clean")) ?? "";
   assert.match(cleanRow, /\b1800\b/, "running loop gen = persisted + live output (1000+300+500)");
   assert.match(cleanRow, /12\.0k/, "running loop peak ctx = max(persisted, live) = 12000");
-  const dryRow = out.split("\n").find((l) => l.startsWith("dry")) ?? "";
+  const dryRow = out.split("\n").find((l) => l.startsWith("dedupe")) ?? "";
   assert.match(dryRow, /\b2000\b/, "idle loop gen stays persisted — its log tail is not double-counted");
   assert.match(dryRow, /\b4000\b/);
   const totals = out.split("\n").at(-1) ?? "";
@@ -443,7 +443,7 @@ test("status table keeps every column boundary aligned when a cell holds a wide 
   // later columns shifted left against the header and every ASCII row.
   const snap = snapshotWith([
     { role: "clean" },
-    { role: "dry", lastResult: "changed", lastSummary: "翻译了三个文件" },
+    { role: "dedupe", lastResult: "changed", lastSummary: "翻译了三个文件" },
   ]);
   const lines = renderStatus(tmpdir(), snap).split("\n");
   // The separator line (index 3) names each column's boundary in display columns: the
@@ -476,20 +476,20 @@ test("status table keeps every column boundary aligned when a cell holds a wide 
 });
 
 test("a loop with queued prompts carries a p:N marker on its state cell", () => {
-  const snap = snapshotWith([{ role: "clean" }, { role: "dry" }], DEFAULT_BUDGET, false, [], { clean: 2 });
+  const snap = snapshotWith([{ role: "clean" }, { role: "dedupe" }], DEFAULT_BUDGET, false, [], { clean: 2 });
   const lines = renderStatus(tmpdir(), snap).split("\n");
   const cleanRow = lines.find((l) => l.startsWith("clean")) ?? "";
   assert.match(cleanRow, /p:2/, "the queued count rides the state cell");
-  const dryRow = lines.find((l) => l.startsWith("dry")) ?? "";
+  const dryRow = lines.find((l) => l.startsWith("dedupe")) ?? "";
   assert.doesNotMatch(dryRow, /p:/, "an empty queue renders no marker");
   assert.doesNotMatch(lines[lines.length - 1] ?? "", /p:/, "the totals row stays marker-free");
 });
 
 test("a loop named by a pending scheduled wake carries a wake marker on its state cell", () => {
-  const snap = snapshotWith([{ role: "clean" }, { role: "dry" }]);
-  snap.scheduledWakes = [{ roles: ["dry"], atMs: Date.now() + 2 * 3_600_000 }];
+  const snap = snapshotWith([{ role: "clean" }, { role: "dedupe" }]);
+  snap.scheduledWakes = [{ roles: ["dedupe"], atMs: Date.now() + 2 * 3_600_000 }];
   const lines = renderStatus(tmpdir(), snap).split("\n");
-  assert.match(lines.find((l) => l.startsWith("dry")) ?? "", /wake in 2h/);
+  assert.match(lines.find((l) => l.startsWith("dedupe")) ?? "", /wake in 2h/);
   assert.doesNotMatch(lines.find((l) => l.startsWith("clean")) ?? "", /wake in/);
   assert.doesNotMatch(lines[lines.length - 1] ?? "", /wake in/, "the totals row stays marker-free");
 });
@@ -510,7 +510,7 @@ test("snapshot and renderStatus cover all enabled loops", async () => {
   const text = renderStatus(repo, snap);
   assert.match(text, /not running/);
   assert.match(text, /tidy something/);
-  for (const role of ["organize", "coverage", "clean", "dry", "feature", "bugfix", "plan", "readme", "improve", "director"]) {
+  for (const role of ["organize", "coverage", "clean", "dedupe", "feature", "bugfix", "plan", "readme", "improve", "director"]) {
     assert.match(text, new RegExp(role));
   }
 });

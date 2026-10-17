@@ -346,11 +346,11 @@ test("loadLoopState heals and validates the reviewResume marker", () => {
 
 test("loadLoopState recovers from torn or non-object JSON", () => {
   const dir = tmpdir();
-  const file = statePath(dir, "dry");
+  const file = statePath(dir, "dedupe");
   ensureParentDir(file);
   for (const junk of ['{"ticks": 2', '"just a string"', "[1, 2]", "null"]) {
     fs.writeFileSync(file, junk);
-    assertFreshFields(loadLoopState(dir, "dry"), "dry"); // must not throw or lose defaults
+    assertFreshFields(loadLoopState(dir, "dedupe"), "dedupe"); // must not throw or lose defaults
   }
 });
 

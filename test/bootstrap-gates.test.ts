@@ -70,12 +70,12 @@ test("pollBootstrapGate: holds maintenance, admits the work roles and bugfix-wit
   writePlans(root, []);
   fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n_None._\n");
   const state = newBootstrapGateState();
-  const runners = ["plan", "feature", "director", "bugfix", "clean", "dry", "coverage"].map((role) => ({ role }));
+  const runners = ["plan", "feature", "director", "bugfix", "clean", "dedupe", "coverage"].map((role) => ({ role }));
 
   const held = pollBootstrapGate(root, state, runners, configWith(2), Date.now());
   assert.deepEqual(
     [...held].sort(),
-    ["bugfix", "clean", "coverage", "dry"],
+    ["bugfix", "clean", "coverage", "dedupe"],
     "plan, feature and director tick; bugfix is held with no open bugs",
   );
 

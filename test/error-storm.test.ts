@@ -27,7 +27,7 @@ function timeoutStorm(): ErrorStormObservation[] {
   return [
     obs("clean", 3, "timed out after 1800s"),
     obs("coverage", 4, "timed out after 1800s"),
-    obs("dry", 3, "timed out after 1800s"),
+    obs("dedupe", 3, "timed out after 1800s"),
   ];
 }
 
@@ -43,12 +43,12 @@ test("three roles at the warn bar sharing one cause trip the storm, naming them 
   assert.equal(ERROR_STORM_ROLES, 3);
   const next = errorStorm(ERROR_STORM_QUIET, timeoutStorm());
   assert.equal(next.key, TIMEOUT_KEY);
-  assert.deepEqual(next.roles, ["clean", "coverage", "dry"]);
+  assert.deepEqual(next.roles, ["clean", "coverage", "dedupe"]);
 });
 
 test("roles below the warn bar do not count, and one role's repeats add no weight", () => {
   // Two roles at the bar plus one at 2: the pair is the per-role warnings' business.
-  assert.equal(errorStorm(ERROR_STORM_QUIET, [...timeoutStorm().slice(0, 2), obs("dry", 2, "timed out after 1800s")]).key, null);
+  assert.equal(errorStorm(ERROR_STORM_QUIET, [...timeoutStorm().slice(0, 2), obs("dedupe", 2, "timed out after 1800s")]).key, null);
   // The same role listed three times (a state re-read, a retry) is still one role.
   const oneRoleThrice = (n: number) => [obs("feature", n, "timed out after 1800s")];
   assert.equal(errorStorm(ERROR_STORM_QUIET, oneRoleThrice(5)).key, null);
@@ -58,7 +58,7 @@ test("three roles on three different causes never pool into a storm", () => {
   const next = errorStorm(ERROR_STORM_QUIET, [
     obs("clean", 3, "timed out after 1800s"),
     obs("coverage", 3, "pi exited 1"),
-    obs("dry", 3, "rebuild of abc1234def failed"),
+    obs("dedupe", 3, "rebuild of abc1234def failed"),
   ]);
   assert.equal(next.key, null);
 });
@@ -78,7 +78,7 @@ test("the strongest cause wins: most roles, ties broken by key", () => {
     obs("perf", 3, "pi exited 1"),
     obs("clean", 3, "pi exited 2"),
     obs("coverage", 3, "pi exited 2"),
-    obs("dry", 3, "pi exited 2"),
+    obs("dedupe", 3, "pi exited 2"),
   ]);
   assert.equal(tied.key, "pi exited 1");
 });
@@ -102,7 +102,7 @@ test("a storm that switches cause is a new episode", () => {
   const switched = errorStorm(tripped, [
     obs("clean", 3, "pi exited 1"),
     obs("coverage", 3, "pi exited 1"),
-    obs("dry", 3, "pi exited 1"),
+    obs("dedupe", 3, "pi exited 1"),
   ]);
   assert.equal(switched.key, "pi exited 1");
   assert.notEqual(switched, tripped, "the old cause no longer explains the fleet; the new one names itself");
@@ -117,14 +117,14 @@ test("the progressing timeout shape pools with the plain one into one storm", ()
   const mixed = errorStorm(ERROR_STORM_QUIET, [
     obs("clean", 3, progressing),
     obs("coverage", 3, progressing),
-    obs("dry", 3, "timed out after 1800s"),
+    obs("dedupe", 3, "timed out after 1800s"),
   ]);
   assert.equal(mixed.key, TIMEOUT_KEY, "two timeout shapes are one cause");
-  assert.deepEqual(mixed.roles, ["clean", "coverage", "dry"]);
+  assert.deepEqual(mixed.roles, ["clean", "coverage", "dedupe"]);
   const allProgressing = errorStorm(ERROR_STORM_QUIET, [
     obs("clean", 3, progressing),
     obs("coverage", 4, progressing),
-    obs("dry", 3, progressing),
+    obs("dedupe", 3, progressing),
   ]);
   assert.equal(allProgressing.key, TIMEOUT_KEY);
 });
@@ -139,7 +139,7 @@ test("a streak at the bar with no error message counts toward no storm", () => {
   // for the mutation to show: an empty string is already skipped by `!lastError`, and one
   // real error among them leaves the empty-key cluster below the bar either way.
   assert.equal(
-    errorStorm(ERROR_STORM_QUIET, [obs("clean", 3), obs("coverage", 3), obs("dry", 3)]).key,
+    errorStorm(ERROR_STORM_QUIET, [obs("clean", 3), obs("coverage", 3), obs("dedupe", 3)]).key,
     null,
     "no message at all: the role counts toward no cause",
   );
@@ -147,7 +147,7 @@ test("a streak at the bar with no error message counts toward no storm", () => {
     errorStorm(ERROR_STORM_QUIET, [
       obs("clean", 3, "   "),
       obs("coverage", 3, " "),
-      obs("dry", 3, "\t"),
+      obs("dedupe", 3, "\t"),
     ]).key,
     null,
     "whitespace-only messages never become a shared cause — the empty key must not storm",
@@ -165,7 +165,7 @@ test("an observation with no streak at all reads as healthy", () => {
   // widens the field back to required, tsc — not a runtime assertion — flags the drift.
   const noStreak = (role: string) => ({ role, lastError: "timed out after 1800s" });
   assert.equal(
-    errorStorm(ERROR_STORM_QUIET, [noStreak("clean"), noStreak("coverage"), noStreak("dry")]).key,
+    errorStorm(ERROR_STORM_QUIET, [noStreak("clean"), noStreak("coverage"), noStreak("dedupe")]).key,
     null,
     "a missing streak is not a failing one",
   );
@@ -182,7 +182,7 @@ test("pollErrorStorm logs exactly one warning on the crossing, naming the knob, 
   const stormEvents = () => readEvents(root).filter((e) => e.type === "warning" && (e as { cause?: string }).cause !== undefined);
   const runners = (n: number) =>
     Array.from({ length: n }, (_, i) => ({
-      role: ["clean", "coverage", "dry", "perf"][i]!,
+      role: ["clean", "coverage", "dedupe", "perf"][i]!,
       state: { consecutiveErrors: 3, lastError: "timed out after 1800s" },
     }));
 
@@ -199,7 +199,7 @@ test("pollErrorStorm logs exactly one warning on the crossing, naming the knob, 
   const first = events[0]!;
   assert.equal((first as { knob?: string }).knob, "runTimeoutSeconds");
   assert.match(String(first.message), /runTimeoutSeconds/);
-  assert.match(String(first.message), /clean, coverage, dry/);
+  assert.match(String(first.message), /clean, coverage, dedupe/);
 
   // Held, it is silent; a role recovering below the bar clears it silently too.
   assert.equal(pollErrorStorm(root, storm, runners(3)), storm, "prev passes through unchanged");
@@ -216,7 +216,7 @@ test("pollErrorStorm names the knob for a storm of progressing timeouts too", ()
   const root = tmpdir("tumwater-error-storm-");
   const stormEvents = () => readEvents(root).filter((e) => e.type === "warning" && (e as { cause?: string }).cause !== undefined);
   const progressing = "timed out after 1800s while still making progress — session and worktree edits preserved for resume";
-  const runners = ["clean", "coverage", "dry"].map((role) => ({
+  const runners = ["clean", "coverage", "dedupe"].map((role) => ({
     role,
     state: { consecutiveErrors: 3, lastError: progressing },
   }));

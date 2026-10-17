@@ -150,7 +150,7 @@ test("collectReport skips a future-dated or timestamp-less event instead of fold
     // ts present but not a number; eventDayKey returns null for it.
     JSON.stringify({ ts: "not-a-timestamp", loop: "bugfix", type: "run_end", run: 3, result: "changed", tokens: 8888 }),
     // ts omitted entirely.
-    JSON.stringify({ loop: "dry", type: "run_end", run: 4, result: "changed", tokens: 7777 }),
+    JSON.stringify({ loop: "dedupe", type: "run_end", run: 4, result: "changed", tokens: 7777 }),
   ]);
   const data = collectReport(root, 5);
   // Only the in-window, well-timestamped event counts; the others vanish without a trace.

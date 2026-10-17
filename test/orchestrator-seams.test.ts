@@ -394,7 +394,7 @@ test("awaitLandingForHandoff announces the wait and lets a landing that finishes
   let aborts = 0;
   const outcome = await awaitLandingForHandoff(
     root,
-    { promise: sleep(20), roles: ["clean", "dry"] },
+    { promise: sleep(20), roles: ["clean", "dedupe"] },
     5_000,
     () => void aborts++,
   );
@@ -402,7 +402,7 @@ test("awaitLandingForHandoff announces the wait and lets a landing that finishes
   assert.equal(aborts, 0, "a landing inside its window is never aborted");
   const w = warningMessages(root);
   assert.equal(w.length, 1, "only the wait itself is announced");
-  assert.match(w[0]!, /^restart waiting on the merge in progress for clean, dry \(deadline 5s\)$/);
+  assert.match(w[0]!, /^restart waiting on the merge in progress for clean, dedupe \(deadline 5s\)$/);
 });
 
 test("awaitLandingForHandoff aborts a landing past its window and waits for it to stop", async () => {

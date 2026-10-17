@@ -127,7 +127,7 @@ test("pollFleetHold: a rate-limit hold survives an unwritable events feed", () =
 test("pollErrorStorm: an error-storm warning survives an unwritable events feed", () => {
   const root = tmpdir("gate-best-effort-storm-");
   unwritableEvents(root);
-  const runners = ["clean", "coverage", "dry"].map((role) => ({
+  const runners = ["clean", "coverage", "dedupe"].map((role) => ({
     role,
     state: { consecutiveErrors: 3, lastError: "timed out after 1800s" },
   }));
@@ -137,7 +137,7 @@ test("pollErrorStorm: an error-storm warning survives an unwritable events feed"
 test("pollFailureSpread: a wide-shallow storm warning survives an unwritable events feed", () => {
   const root = tmpdir("gate-best-effort-spread-");
   unwritableEvents(root);
-  const roles = ["bugfix", "clean", "coverage", "dry", "feature", "improve"];
+  const roles = ["bugfix", "clean", "coverage", "dedupe", "feature", "improve"];
   const runners: HoldInputs[] = roles.map((role, i) => ({
     role,
     lastBackendFailure: { at: T0 + i * 4 * 60_000, kind: "connection" },

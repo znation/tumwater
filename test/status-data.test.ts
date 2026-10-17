@@ -102,27 +102,27 @@ test("snapshot survives a broken tumwater.json and recovers when it is fixed", a
 
   // A valid config that disables one role becomes the last known-good one.
   const cfg = loadConfig(repo);
-  cfg.roles.dry!.enabled = false;
+  cfg.roles.dedupe!.enabled = false;
   saveConfig(repo, cfg);
   let snap = snapshot(repo);
-  assert.ok(!snap.loops.some((l) => l.role === "dry"));
+  assert.ok(!snap.loops.some((l) => l.role === "dedupe"));
 
   // The file breaks mid-edit (invalid JSON): observers must not throw.
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{ still editing");
   snap = snapshot(repo);
-  // The last known-good role set is kept: dry stays hidden and nothing crashes.
-  assert.ok(!snap.loops.some((l) => l.role === "dry"));
+  // The last known-good role set is kept: dedupe stays hidden and nothing crashes.
+  assert.ok(!snap.loops.some((l) => l.role === "dedupe"));
 
   // A validation error (valid JSON, invalid value) is equally survivable.
   writeConfig(repo, { maxConcurrent: "six" });
   assert.ok(snapshot(repo).loops.length > 0);
 
   // Repair with a different valid config: the fresh load takes effect again.
-  cfg.roles.dry!.enabled = true;
+  cfg.roles.dedupe!.enabled = true;
   cfg.roles.clean!.enabled = false;
   saveConfig(repo, cfg);
   snap = snapshot(repo);
-  assert.ok(snap.loops.some((l) => l.role === "dry"));
+  assert.ok(snap.loops.some((l) => l.role === "dedupe"));
   assert.ok(!snap.loops.some((l) => l.role === "clean"));
 });
 

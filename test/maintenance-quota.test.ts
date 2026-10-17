@@ -189,7 +189,7 @@ test("pollMaintenanceQuotaGate computes the allowance verdict and logs one hold 
   const state = newMaintenanceQuotaGateState();
   const observers = [
     { role: "clean", enabled: true, running: false, hasQueuedLanding: false },
-    { role: "dry", enabled: true, running: false, hasQueuedLanding: false },
+    { role: "dedupe", enabled: true, running: false, hasQueuedLanding: false },
     { role: "readme", enabled: true, running: false, hasQueuedLanding: false },
     { role: "feature", enabled: true, running: false, hasQueuedLanding: false },
     { role: "plan", enabled: true, running: false, hasQueuedLanding: false },
@@ -233,7 +233,7 @@ test("a running tick and a queued landing both count as in flight toward the use
   const state = newMaintenanceQuotaGateState();
   const observers = [
     { role: "clean", enabled: true, running: true, hasQueuedLanding: false },
-    { role: "dry", enabled: true, running: false, hasQueuedLanding: true },
+    { role: "dedupe", enabled: true, running: false, hasQueuedLanding: true },
   ];
   assert.deepEqual(pollMaintenanceQuotaGate(root, state, observers, 0, now), {
     allowance: 12,

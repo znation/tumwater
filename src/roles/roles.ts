@@ -46,7 +46,7 @@ const CODE_MAINTENANCE_ROLES: readonly string[] = [
   "organize",
   "coverage",
   "clean",
-  "dry",
+  "dedupe",
   "perf",
   "security",
   "robustness",

@@ -69,8 +69,8 @@ test("pausedRoles reads [] with no .tumwater dir and tolerates garbage", () => {
   assert.equal(pausedRoles(root).join(), "", "a null body reads as no paused roles");
   fs.writeFileSync(file, JSON.stringify({ roles: "docs", at: 1 })); // roles is not an array
   assert.equal(pausedRoles(root).join(), "", "a non-array roles field reads as no paused roles");
-  fs.writeFileSync(file, JSON.stringify({ roles: ["docs", 3, null, "dry"], at: 1 }));
-  assert.deepEqual(pausedRoles(root), ["docs", "dry"], "non-string entries are dropped, not thrown on");
+  fs.writeFileSync(file, JSON.stringify({ roles: ["docs", 3, null, "dedupe"], at: 1 }));
+  assert.deepEqual(pausedRoles(root), ["docs", "dedupe"], "non-string entries are dropped, not thrown on");
 });
 
 test("pauseRole and resumeRole maintain the marker set idempotently", () => {
@@ -84,12 +84,12 @@ test("pauseRole and resumeRole maintain the marker set idempotently", () => {
   assert.deepEqual(marker.roles, ["docs"], "the marker carries the role set");
   assert.ok(Number.isFinite(marker.at) && marker.at > 0, "the marker carries the pause timestamp");
   assert.equal(pauseRole(root, "docs"), false, "a second pause of the same role is a no-op");
-  assert.equal(pauseRole(root, "dry"), true, "a second role joins the set");
-  assert.deepEqual(pausedRoles(root), ["docs", "dry"]);
+  assert.equal(pauseRole(root, "dedupe"), true, "a second role joins the set");
+  assert.deepEqual(pausedRoles(root), ["docs", "dedupe"]);
 
-  assert.equal(resumeRole(root, "dry"), true, "resume of a paused role changes state");
+  assert.equal(resumeRole(root, "dedupe"), true, "resume of a paused role changes state");
   assert.deepEqual(pausedRoles(root), ["docs"], "only the resumed role leaves the set");
-  assert.equal(resumeRole(root, "dry"), false, "a second resume is a no-op");
+  assert.equal(resumeRole(root, "dedupe"), false, "a second resume is a no-op");
   assert.equal(resumeRole(root, "docs"), true);
   assert.equal(
     fs.existsSync(pausedRolesPath(root)),
@@ -149,7 +149,7 @@ test("a sibling pause or resume keeps the paused-roles marker's standing shared 
   assert.deepEqual(pausedRoles(root), ["qa"]);
   // Last-write-wins stays: a `--for` on a later join overwrites the shared deadline.
   const sooner = Date.now() + 60_000;
-  assert.equal(pauseRole(root, "dry", sooner), true);
+  assert.equal(pauseRole(root, "dedupe", sooner), true);
   assert.equal((readJson(pausedRolesPath(root)) as { until: number }).until, sooner);
 });
 
@@ -227,8 +227,8 @@ test("a crashed pause writer's lock is stolen, not waited on forever", () => {
   const dead = pausedRolesLockPath(root);
   fs.mkdirSync(dead);
   fs.writeFileSync(path.join(dead, "pid"), "999999999");
-  assert.equal(pauseRole(root, "dry"), true, "a dead-pid lock is stolen at once");
-  assert.deepEqual(pausedRoles(root), ["docs", "dry"]);
+  assert.equal(pauseRole(root, "dedupe"), true, "a dead-pid lock is stolen at once");
+  assert.deepEqual(pausedRoles(root), ["docs", "dedupe"]);
 });
 
 // --- timed pause (`tumwater pause [--role <id>] --for <duration>`, PLANS.md 2026-09-25) ---
@@ -393,15 +393,15 @@ test("pauseRole with a deadline writes { roles, at, until } and expiry releases 
   );
   assert.deepEqual(pausedRoles(root), [], "a past deadline is not a pause");
   // …and a fresh pause starts a fresh set: the expired members already auto-resumed.
-  assert.equal(pauseRole(root, "dry"), true);
-  assert.deepEqual(pausedRoles(root), ["dry"]);
+  assert.equal(pauseRole(root, "dedupe"), true);
+  assert.deepEqual(pausedRoles(root), ["dedupe"]);
   // A plain pause of the standing role stays the no-op; a fresh --for overwrites the shared
   // deadline (extend or shorten); resume lifts a timed pause early like any other.
-  assert.equal(pauseRole(root, "dry"), false);
+  assert.equal(pauseRole(root, "dedupe"), false);
   const sooner = Date.now() + 60_000;
-  assert.equal(pauseRole(root, "dry", sooner), true);
+  assert.equal(pauseRole(root, "dedupe", sooner), true);
   assert.equal((readJson(pausedRolesPath(root)) as { until: number }).until, sooner);
-  assert.equal(resumeRole(root, "dry"), true);
+  assert.equal(resumeRole(root, "dedupe"), true);
   assert.equal(fs.existsSync(pausedRolesPath(root)), false);
 });
 
@@ -410,13 +410,13 @@ test("a non-finite per-role deadline is dropped on a rewrite instead of becoming
   ensureParentDir(pausedRolesPath(root));
   fs.writeFileSync(pausedRolesPath(root), '{"roles":["docs"],"at":1,"until":1e999}');
   assert.deepEqual(pausedRoles(root), ["docs"], "the corrupted deadline leaves the set paused");
-  assert.equal(pauseRole(root, "dry"), true, "a sibling join rewrites the marker");
+  assert.equal(pauseRole(root, "dedupe"), true, "a sibling join rewrites the marker");
   const marker = readJson(pausedRolesPath(root)) as { roles: string[]; until?: unknown };
-  assert.deepEqual(marker.roles, ["docs", "dry"]);
+  assert.deepEqual(marker.roles, ["docs", "dedupe"]);
   // Writing Infinity verbatim would JSON-stringify to null, which the expiry rule reads as a
   // past deadline and resumes every role the operator believed stopped.
   assert.equal(marker.until, undefined, "the unusable deadline is dropped, not persisted");
-  assert.deepEqual(pausedRoles(root), ["docs", "dry"], "the set stays paused after the rewrite");
+  assert.deepEqual(pausedRoles(root), ["docs", "dedupe"], "the set stays paused after the rewrite");
 });
 
 test("scheduledWakes lists every pending timed wake earliest first, headed by scheduledWake", () => {

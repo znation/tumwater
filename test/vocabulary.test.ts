@@ -11,9 +11,8 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 /** The retired words, as regex sources; later series append here. This is the only list.
- * The role ids `dry` and `telemetry` stay out until Plain terms role ids switches them: the
- * dedupe part appends `dry(?![- ]run)` (so `--dry-run` and "dry run" stay legal) and the
- * selfcheck part appends `telemetry`. */
+ * The role id `telemetry` stays out until the Plain terms role ids selfcheck part appends it.
+ * `dry(?![- ]run)` keeps `--dry-run` and "dry run" legal. */
 const RETIRED_WORDS: readonly string[] = [
   "fleet",
   "loop",
@@ -30,6 +29,7 @@ const RETIRED_WORDS: readonly string[] = [
   "backoff",
   "backed off",
   "drain",
+  "dry(?![- ]run)",
 ];
 
 /** Letters, digits and `_` are word characters, so snake_case machine names (`tick_end`) and
@@ -193,6 +193,11 @@ test("flags retired words in string and template text, with inflections, not mac
   assert.match(f[1]!, /^m\.ts:3: drained in /);
   assert.match(f[2]!, /^m\.ts:3: ticks in /);
   assert.equal(vocabularyFindings("m.ts", H + 'const d = "fleet-wide tumwater(operator): Loop";\n').length, 3);
+});
+
+test("flags the retired role id dry but not --dry-run or a dry run", () => {
+  assert.equal(vocabularyFindings("m.ts", H + 'const a = "the dry role";\n').length, 1);
+  assert.deepEqual(vocabularyFindings("m.ts", H + 'const a = "--dry-run and a dry run";\n'), []);
 });
 
 test("ignores retired words in identifiers, comments and template expressions", () => {

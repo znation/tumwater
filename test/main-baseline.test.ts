@@ -39,7 +39,7 @@ test("a red in one worktree is re-verified by the next, and a green there promot
     `echo run >> ${counter}; if [ -f ./RED_MARKER ]; then echo env-failure; exit 1; fi; echo ok`,
   );
   fs.writeFileSync(path.join(wt, "RED_MARKER"), "");
-  const other = worktreeAt(root, "dry");
+  const other = worktreeAt(root, "dedupe");
 
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "red", "the first worktree sees red");
   assert.equal(
@@ -57,7 +57,7 @@ test("a red in one worktree is re-verified by the next, and a green there promot
 test("a red confirmed by a second worktree is authoritative: a third trusts the cache", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo real-failure; exit 1`);
-  const second = worktreeAt(root, "dry");
+  const second = worktreeAt(root, "dedupe");
   const third = worktreeAt(root, "clean");
 
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "red");

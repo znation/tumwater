@@ -169,14 +169,14 @@ test("status payload carries todayUsd per loop from its daily window", async () 
   fresh.dayCostUsd = 12.34;
   saveLoopState(repo, fresh);
   // …a stale-stamp file with positive spend reads zero (dailyCost's rule)…
-  const stale = freshLoopState("dry");
+  const stale = freshLoopState("dedupe");
   stale.dayStamp = todayStamp(Date.now() - 86_400_000);
   stale.dayCostUsd = 5.67;
   saveLoopState(repo, stale);
 
   let payload = statusPayload(repo) as { roles: Array<{ role: string; todayUsd: number }> };
   assert.equal(payload.roles.find((l) => l.role === "clean")?.todayUsd, 12.34, "fresh window rides the payload");
-  assert.equal(payload.roles.find((l) => l.role === "dry")?.todayUsd, 0, "stale stamp reads zero");
+  assert.equal(payload.roles.find((l) => l.role === "dedupe")?.todayUsd, 0, "stale stamp reads zero");
 
   // A loop that never ticked (default state file) also carries an explicit zero field.
   saveLoopState(repo, freshLoopState("organize"));

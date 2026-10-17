@@ -439,7 +439,7 @@ test("the review prompt's no-re-run rule is one rules-list line, present only be
 });
 
 test("buildConflictPrompt bounds reading to the conflicted files", () => {
-  const p = oneLine(buildConflictPrompt("dry", ["src/a.ts"]));
+  const p = oneLine(buildConflictPrompt("dedupe", ["src/a.ts"]));
   assert.match(p, /Read only the conflicted files and what they directly reference/);
   assert.match(p, /`grep -n '<<<<<<<' FILE`/);
 });

@@ -242,12 +242,12 @@ test("sortedRoles orders a cause's member roles ascending regardless of Set inse
   // The one home for the roles payload the digest's clusters, the digest's loss causes, and
   // the error-storm warning all emit; pinning the rule here keeps those three payloads from
   // drifting back into per-site sort orders.
-  assert.deepEqual(sortedRoles(new Set(["tui", "dry", "bugfix"])), ["bugfix", "dry", "tui"]);
+  assert.deepEqual(sortedRoles(new Set(["tui", "dedupe", "bugfix"])), ["bugfix", "dedupe", "tui"]);
   assert.deepEqual(sortedRoles([]), []); // an empty cause renders no roles, not an error
-  const input = new Set(["dry", "bugfix"]);
+  const input = new Set(["dedupe", "bugfix"]);
   const out = sortedRoles(input);
-  assert.deepEqual(out, ["bugfix", "dry"]);
-  assert.deepEqual([...input], ["dry", "bugfix"]); // the accumulated Set is never mutated
+  assert.deepEqual(out, ["bugfix", "dedupe"]);
+  assert.deepEqual([...input], ["dedupe", "bugfix"]); // the accumulated Set is never mutated
   assert.notEqual(out, [...out]); // a fresh array, so re-sorting a payload cannot alias it
 });
 

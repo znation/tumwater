@@ -469,33 +469,33 @@ async function seedLandQueue(repo: string, ...roles: string[]): Promise<void> {
 
 test("an abort for one queued role stops only that role's vet and discards its pin; the other vet runs on", async () => {
   // The land-queue speed 2c rule through the live scheduler: every queued change is its own vet,
-  // so `tumwater abort --role dry` reaches dry's vet alone — its reviewer killed, its outcome
+  // so `tumwater abort --role dedupe` reaches dedupe's vet alone — its reviewer killed, its outcome
   // `aborted`, its pin discarded — while clean's vet, reviewing beside it, runs on and lands.
   const repo = makeRepo();
   await initProject(repo, "vet abort e2e test");
   // A long minimum interval: nothing re-ticks while the test asserts the aftermath.
-  const cfg = fastConfig(["clean", "dry"]);
+  const cfg = fastConfig(["clean", "dedupe"]);
   cfg.minRunIntervalSeconds = 300;
   saveConfig(repo, cfg);
-  await seedLandQueue(repo, "clean", "dry");
+  await seedLandQueue(repo, "clean", "dedupe");
   // The 300 s min-gap only throttles ticks AFTER the first: a never-run role has
   // lastRunEndedAt 0, so it is startup-eligible on poll one and — under load — can finish a
   // no-op tick before the asserts below read `ticks`. Seed both roles as freshly ticked so NO
   // tick can start for the next 300 s: "no tick ever started" then asserts a deterministic fact.
-  for (const role of ["clean", "dry"]) {
+  for (const role of ["clean", "dedupe"]) {
     const s = loadLoopState(repo, role);
     s.lastRunEndedAt = Date.now();
     saveLoopState(repo, s);
   }
   // Each reviewer marks itself and parks until released (bounded ~60 s, so a failed assert can
-  // never leave one spinning); the abort kills dry's.
+  // never leave one spinning); the abort kills dedupe's.
   const dir = tmpdir("vet-abort-");
   const release = path.join(dir, "release");
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
       leasedRoleShell(),
-      `case "$role" in clean) touch '${dir}/clean-reviewing';; dry) touch '${dir}/dry-reviewing';; esac`,
+      `case "$role" in clean) touch '${dir}/clean-reviewing';; dedupe) touch '${dir}/dry-reviewing';; esac`,
       `i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
       `esac; done`,
@@ -508,32 +508,32 @@ test("an abort for one queued role stops only that role's vet and discards its p
       "both vets' reviewer runs to be in flight",
       60_000,
     );
-    // What `tumwater abort --role dry` does from the CLI side.
-    const markerFile = abortRequestPath(repo, "dry");
+    // What `tumwater abort --role dedupe` does from the CLI side.
+    const markerFile = abortRequestPath(repo, "dedupe");
     writeMarker(markerFile, { at: Date.now() });
 
     await waitFor(
-      () => loadLoopState(repo, "dry").lastResult === "aborted" && !landingRefExists(repo, "dry"),
-      "dry's aborted vet to settle and discard its pin",
+      () => loadLoopState(repo, "dedupe").lastResult === "aborted" && !landingRefExists(repo, "dedupe"),
+      "dedupe's aborted vet to settle and discard its pin",
       60_000,
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
     assert.ok(landingRefExists(repo, "clean"), "clean's pin is untouched");
-    assert.equal(queueDepth(repo), 1, "only dry's entry was dropped");
+    assert.equal(queueDepth(repo), 1, "only dedupe's entry was dropped");
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")
         .map((e) => [e.source, e.result]),
-      [["dry", "aborted"]],
+      [["dedupe", "aborted"]],
     );
 
     fs.writeFileSync(release, "");
     await waitFor(() => loadLoopState(repo, "clean").lastResult === "changed", "clean's vet to land", 60_000);
     assert.ok(fs.existsSync(path.join(repo, "clean.txt")), "clean landed on main");
-    assert.ok(!fs.existsSync(path.join(repo, "dry.txt")), "the aborted change never did");
+    assert.ok(!fs.existsSync(path.join(repo, "dedupe.txt")), "the aborted change never did");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0, "no tick was running");
     assert.equal(loadLoopState(repo, "clean").runs, 0, "the interlock held: no tick ever started");
-    assert.equal(loadLoopState(repo, "dry").runs, 0);
+    assert.equal(loadLoopState(repo, "dedupe").runs, 0);
   } finally {
     fs.writeFileSync(release, ""); // never leave a review parked
     await stopOrchestrator(orch, restore);
@@ -544,14 +544,14 @@ test("an abort for one queued role stops only that role's vet and discards its p
 test("a role rejected in its vet ticks again while another queued change is still in review", async () => {
   // BUGS.md 2026-09-23: a final verdict once kept its entry queued until a whole batch wrote
   // back, so the interlock skipped the rejected author's due tick every poll through every
-  // later review, the stack check, and the ff. clean's reviewer rejects at once; dry's parks
+  // later review, the stack check, and the ff. clean's reviewer rejects at once; dedupe's parks
   // until released, keeping a landing in flight while the test watches clean.
-  const repo = await makeFastRepo("vet early drop e2e test", ["clean", "dry"]); // minTickInterval 0: due on every poll
-  await seedLandQueue(repo, "clean", "dry");
+  const repo = await makeFastRepo("vet early drop e2e test", ["clean", "dedupe"]); // minTickInterval 0: due on every poll
+  await seedLandQueue(repo, "clean", "dedupe");
   const dir = tmpdir("early-drop-");
   const held = path.join(dir, "dry-reviewing");
   const release = path.join(dir, "release");
-  // Reviews tell the changes apart by their diff; dry's park is bounded (~60 s) so a failed
+  // Reviews tell the changes apart by their diff; dedupe's park is bounded (~60 s) so a failed
   // assert can never leave it spinning. Author runs (clean's fix tick): nothing to do.
   const restore = fakePi(
     [
@@ -565,11 +565,11 @@ test("a role rejected in its vet ticks again while another queued change is stil
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => fs.existsSync(held), "dry's review to be in flight — clean's verdict is already in", 60_000);
-    // The interlock frees clean while dry's review is still parked: its due tick runs.
+    await waitFor(() => fs.existsSync(held), "dedupe's review to be in flight — clean's verdict is already in", 60_000);
+    // The interlock frees clean while dedupe's review is still parked: its due tick runs.
     await waitFor(() => loadLoopState(repo, "clean").runs >= 1, "the rejected role's fix tick to start mid-landing", 30_000);
-    assert.ok(!fs.existsSync(release), "dry's landing is still in flight: its review never returned");
-    assert.equal(loadLoopState(repo, "dry").runs, 0, "dry's entry is still queued, so the interlock still holds it");
+    assert.ok(!fs.existsSync(release), "dedupe's landing is still in flight: its review never returned");
+    assert.equal(loadLoopState(repo, "dedupe").runs, 0, "dedupe's entry is still queued, so the interlock still holds it");
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")
@@ -580,8 +580,8 @@ test("a role rejected in its vet ticks again while another queued change is stil
 
     fs.writeFileSync(release, "");
     await waitFor(
-      () => readEvents(repo).some((e) => e.type === "merge_done" && e.source === "dry"),
-      "dry to land",
+      () => readEvents(repo).some((e) => e.type === "merge_done" && e.source === "dedupe"),
+      "dedupe to land",
       60_000,
     );
     assert.equal(
@@ -590,7 +590,7 @@ test("a role rejected in its vet ticks again while another queued change is stil
       "clean's outcome was written once",
     );
   } finally {
-    fs.writeFileSync(release, ""); // never leave dry's review parked
+    fs.writeFileSync(release, ""); // never leave dedupe's review parked
     await stopOrchestrator(orch, restore);
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -640,11 +640,11 @@ test("a vet slot that can no longer be created is contained: the healthy change 
   // each is vetted afresh next poll) instead of escaping as an unhandled rejection; clean's
   // own re-vet degrades the same failure to an "error" outcome. Either way the queue must
   // drain: clean, whose just-freed slot cannot be re-created, drops as a terminal error, and
-  // dry lands. Trigger: clean's own review run deletes its just-freed slot and makes the
+  // dedupe lands. Trigger: clean's own review run deletes its just-freed slot and makes the
   // worktrees parent unwritable before it approves, after seeding the shared `_merge` checkout
-  // so dry's merge (part 2c) can still land.
-  const repo = await makeFastRepo("lander worktree throw recovery test", ["clean", "dry"]);
-  await seedLandQueue(repo, "clean", "dry");
+  // so dedupe's merge (part 2c) can still land.
+  const repo = await makeFastRepo("lander worktree throw recovery test", ["clean", "dedupe"]);
+  await seedLandQueue(repo, "clean", "dedupe");
   const worktrees = path.join(repo, ".tumwater", "worktrees");
   const mergeWt = path.join(worktrees, "_merge");
   const armed = path.join(tmpdir(), "worktree-throw-armed");
@@ -658,7 +658,7 @@ test("a vet slot that can no longer be created is contained: the healthy change 
       // The shared merge checkout must exist before the parent is locked (a vet on a pooled
       // slot does not create it): seed it, then remove clean's just-freed slot and lock the
       // parent, so clean can no longer re-vet (its slot cannot be re-created) while the seeded
-      // shared `_merge` checkout survives and dry's change lands.
+      // shared `_merge` checkout survives and dedupe's change lands.
       `  git -C '${repo}' worktree add --detach '${mergeWt}' main >/dev/null 2>&1;`,
       `  rm -rf "$slot"; chmod 555 '${worktrees}'`,
       `fi;; esac`,
@@ -670,15 +670,15 @@ test("a vet slot that can no longer be created is contained: the healthy change 
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => fs.existsSync(armed), "clean's review to arm the corruption", 60_000);
-    // The failure was contained and the pipeline self-terminated: dry's change lands, while
+    // The failure was contained and the pipeline self-terminated: dedupe's change lands, while
     // clean's — whose lander worktree can no longer be created — drops as a terminal error
     // instead of silently vanishing or wedging the queue forever.
     await waitFor(
-      () => fs.existsSync(path.join(repo, "dry.txt")) && queueDepth(repo) === 0,
-      "dry's landing to land and the queue to drain",
+      () => fs.existsSync(path.join(repo, "dedupe.txt")) && queueDepth(repo) === 0,
+      "dedupe's landing to land and the queue to drain",
       60_000,
     );
-    assert.ok(fs.existsSync(path.join(repo, "dry.txt")), "dry's change landed on main");
+    assert.ok(fs.existsSync(path.join(repo, "dedupe.txt")), "dedupe's change landed on main");
     assert.ok(
       !fs.existsSync(path.join(repo, "clean.txt")),
       "clean's change did not land — its lander worktree was gone",
@@ -689,9 +689,9 @@ test("a vet slot that can no longer be created is contained: the healthy change 
     assert.ok(cleanErrors.length >= 1, "clean ended in a terminal error outcome");
     const merged = eventsOfType(repo, "merged");
     assert.equal(
-      merged.filter((e) => e.source === "dry").length,
+      merged.filter((e) => e.source === "dedupe").length,
       1,
-      "exactly one merged event, and it is dry's",
+      "exactly one merged event, and it is dedupe's",
     );
   } finally {
     // Restore before stopping: shutdown and later ticks must be able to create worktrees.
@@ -706,10 +706,10 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
   // landings still running. Their reviewers each take a minute; the unbounded shutdown await sat
   // through every one of them in silence. Bounded, the hand-off announces the wait, aborts
   // every vet when the window lapses, and exits — the pins surviving for the new build.
-  const repo = await makeFastRepo("restart hand-off test", ["clean", "dry"]);
+  const repo = await makeFastRepo("restart hand-off test", ["clean", "dedupe"]);
   // Both roles are interlocked by their queued entries, so no role tick ever starts: the drain
   // has nothing to wait for and the restart lands mid-review — the incident's shape.
-  await seedLandQueue(repo, "clean", "dry");
+  await seedLandQueue(repo, "clean", "dedupe");
   const reviewing = path.join(tmpdir(), "handoff-reviewing");
   const restore = fakePi(
     `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${reviewing}'; exec sleep 60;; esac; done`,
@@ -733,8 +733,8 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
     const index = (pattern: RegExp) =>
       events.findIndex((e) => e.type === "warning" && pattern.test(String(e.message)));
     const restartAt = events.findIndex((e) => e.type === "restart");
-    const waitAt = index(/^restart waiting on the merge in progress for clean, dry/);
-    const lapseAt = index(/the merge for clean, dry outlived its 0\.5s deadline — aborted/);
+    const waitAt = index(/^restart waiting on the merge in progress for clean, dedupe/);
+    const lapseAt = index(/the merge for clean, dedupe outlived its 0\.5s deadline — aborted/);
     const stopAt = events.findIndex((e) => e.type === "orchestrator_stop");
     assert.ok(restartAt >= 0 && waitAt > restartAt, "the wait is announced once the swap is done");
     assert.ok(lapseAt > waitAt && stopAt > lapseAt, "the lapse names what was awaited, before the stop");
@@ -744,8 +744,8 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
     // The aborted vets are recorded like any shutdown abort: both changes `aborted`, their pins
     // kept for the new build's recovery, nothing landed, and no in-flight marker left behind.
     const failed = events.filter((e) => e.type === "merge_failed").map((e) => `${e.source}:${String(e.result)}`);
-    assert.deepEqual(failed.sort(), ["clean:aborted", "dry:aborted"]);
-    assert.ok(landingRefExists(repo, "clean") && landingRefExists(repo, "dry"), "both pins survive for the next generation");
+    assert.deepEqual(failed.sort(), ["clean:aborted", "dedupe:aborted"]);
+    assert.ok(landingRefExists(repo, "clean") && landingRefExists(repo, "dedupe"), "both pins survive for the next generation");
     assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed");
     assert.equal(readLandingMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {
@@ -756,13 +756,13 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
 
 test("a restart's drain aborts only its permit-holding role ticks — the in-flight landing keeps its hand-off window, and a role enabled mid-run is cut off with the startup ones", async () => {
   // BUGS.md 2026-09-30, the 13 ms landing: clean's tick holds a permit past the drain window
-  // while dry's landing is mid-review when the redeploy reaches the swap. The drain's abort used
+  // while dedupe's landing is mid-review when the redeploy reaches the swap. The drain's abort used
   // to fire the harness's one internal stop, killing the landing before the hand-off could wait
   // the window it announces — the "waiting" warning followed 13 ms later by `merge_failed …
   // aborted`, the review thrown away. And the role the drain DOES cut off here is one enabled
   // mid-run (config-live's runner creation), the second wiring the role-only stop must reach.
-  const repo = await makeFastRepo("drain role-stop test", ["dry"]);
-  await seedLandQueue(repo, "dry"); // dry is interlocked: its landing runs, its tick never starts
+  const repo = await makeFastRepo("drain role-stop test", ["dedupe"]);
+  await seedLandQueue(repo, "dedupe"); // dedupe is interlocked: its landing runs, its tick never starts
   const reviewing = path.join(tmpdir(), "rolestop-reviewing");
   const authoring = path.join(tmpdir(), "rolestop-authoring");
   const restore = fakePi(
@@ -778,10 +778,10 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     handoffLandingWindowMs: 500,
   });
   try {
-    await waitFor(() => fs.existsSync(reviewing), "dry's vet reviewer to be in flight");
+    await waitFor(() => fs.existsSync(reviewing), "dedupe's vet reviewer to be in flight");
     // Enable clean mid-run — the live-reload path, not startup — and let its tick take a permit
     // BEFORE main moves: a held poll starts no tick, so the permit holder must predate the hold.
-    saveConfig(repo, fastConfig(["clean", "dry"]));
+    saveConfig(repo, fastConfig(["clean", "dedupe"]));
     await waitFor(() => fs.existsSync(authoring), "the mid-run role's tick to hold a permit");
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the tick and the vet");
     const exit = await run;
@@ -798,13 +798,13 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     const indexOf = (predicate: (e: (typeof events)[number]) => boolean) => events.findIndex(predicate);
     const restartAt = indexOf((e) => e.type === "restart");
     const waitAt = indexOf(
-      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('restart waiting on the merge in progress for dry'),
+      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('restart waiting on the merge in progress for dedupe'),
     );
     const lapseAt = indexOf(
-      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('the merge for dry outlived its 0.5s deadline — aborted'),
+      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('the merge for dedupe outlived its 0.5s deadline — aborted'),
     );
     const cleanAbortedAt = indexOf((e) => e.type === "run_end" && e.source === "clean" && e.result === "aborted");
-    const dryFailedAt = indexOf((e) => e.type === "merge_failed" && e.source === "dry");
+    const dryFailedAt = indexOf((e) => e.type === "merge_failed" && e.source === "dedupe");
     const stopAt = indexOf((e) => e.type === "orchestrator_stop");
     // The drain cut its permit holder off AT the swap, and the landing was aborted only past its
     // deadline — never straight at the swap (the 13 ms shape). Clean's cut-off and the wait
@@ -820,7 +820,7 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
 
     // The landing's abort is the hand-off's, recorded like any shutdown abort: pin kept for the
     // next generation, nothing landed, no stale marker.
-    assert.ok(landingRefExists(repo, "dry"), "dry's pin survives for the next generation");
+    assert.ok(landingRefExists(repo, "dedupe"), "dedupe's pin survives for the next generation");
     assert.equal(readLandingMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {
     await stop();

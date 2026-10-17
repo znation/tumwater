@@ -1,7 +1,9 @@
 /** The one table of retired role ids, old id → new id. The switch parts of the plain-terms role
  * rename add a row each; a row is never removed, because old events, state files and typed
- * flags keep naming the old id. Empty until the first switch lands. */
-export const LEGACY_ROLE_IDS: Readonly<Record<string, string>> = {};
+ * flags keep naming the old id. */
+export const LEGACY_ROLE_IDS: Readonly<Record<string, string>> = {
+  dry: "dedupe",
+};
 
 /** Today's id for a role id a person typed or an old file holds; any other id comes back
  * unchanged. `legacy` is a test seam. */

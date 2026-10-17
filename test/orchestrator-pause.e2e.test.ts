@@ -161,13 +161,13 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
 // within one poll. Each crossing logs exactly one harness-level event naming the role. ---
 
 test("a per-role pause gates only that role, holds a named director, and resumes", async () => {
-  const repo = await makeFastRepo("per-role pause test", ["clean", "dry"]);
+  const repo = await makeFastRepo("per-role pause test", ["clean", "dedupe"]);
   // Pause clean before startup: the marker survives into the run.
   pauseRole(repo, "clean");
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // The unpaused role ticks normally while the paused one never starts.
-    await awaitSettledTick(repo, "dry", 1, "the unpaused role to tick");
+    await awaitSettledTick(repo, "dedupe", 1, "the unpaused role to tick");
     await sleep(600);
     assert.equal(loadLoopState(repo, "clean").runs, 0, "a paused role starts no new ticks");
 

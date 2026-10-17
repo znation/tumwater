@@ -529,7 +529,7 @@ test("a config request naming a disallowed key applies customRoles and warns nam
 test("worktree changes commit even when pi forgets the summary line: the subject names the changed files", async () => {
   const repo = await initializedRepo();
   // Neither the run nor the follow-up turn produces a SUMMARY: the subject is derived from
-  // what changed instead of the bare "dry tick 1" (73 such commits in the first 670).
+  // what changed instead of the bare "dedupe tick 1" (73 such commits in the first 670).
   const script = [
     TOUCH_SESSION,
     APPROVE_PI,
@@ -537,11 +537,11 @@ test("worktree changes commit even when pi forgets the summary line: the subject
     `echo x > x.txt`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "dry");
+    const runner = makeLoopRunner(repo, "dedupe");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "dry"), "changed");
-    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /^tumwater\(dry\): Update x\.txt$/);
+    assert.equal(await landHead(repo, runner, defaultConfig(), "dedupe"), "changed");
+    assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /^tumwater\(dedupe\): Update x\.txt$/);
     const warnings = warningMessages(repo);
     assert.ok(warnings.some((w) => w.includes('reply had no SUMMARY line — follow-up gave none; subject derived from the changed files: "Update x.txt"')), JSON.stringify(warnings));
   });
@@ -564,11 +564,11 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
     `printf '%s\n' '${thinkingOnlyLine("almost done", { output: 5 })}'`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "dry");
+    const runner = makeLoopRunner(repo, "dedupe");
     assert.equal((await runner.tick()).result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "dry"), "changed");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "dedupe"), "changed");
     const message = sh(repo, "git", "log", "-1", "--format=%B");
-    assert.match(message, /^tumwater\(dry\): Add the x marker file\n/);
+    assert.match(message, /^tumwater\(dedupe\): Add the x marker file\n/);
     assert.match(message, /WHY: the harness needed a fixture/);
     const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
     // Author run (fresh), follow-up (--continue), reviewer (fresh): the follow-up is the only

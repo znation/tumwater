@@ -116,12 +116,12 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
 
 test("a work-role tick that becomes due later jumps ahead of maintenance waiters parked in an earlier poll", async () => {
   // Cross-poll slot inversion (BUGS.md 2026-09-12): with one slot, the startup poll admits
-  // bugfix first and parks clean + dry behind it. When bugfix becomes due again (~1s idle
+  // bugfix first and parks clean + dedupe behind it. When bugfix becomes due again (~1s idle
   // backoff) while clean is still in flight, its acquire must jump ahead of the maintenance
-  // waiters that parked in an EARLIER poll — plain FIFO would hand clean's freed slot to dry.
+  // waiters that parked in an EARLIER poll — plain FIFO would hand clean's freed slot to dedupe.
   const repo = makeRepo();
   await initProject(repo, "cross-poll tier test");
-  const base = fastConfig(["clean", "dry", "bugfix"]);
+  const base = fastConfig(["clean", "dedupe", "bugfix"]);
   base.maxConcurrent = 1;
   saveConfig(repo, base);
   // bugfix must become due again ~1s after its first no_change tick; with an empty BUGS.md
@@ -149,7 +149,7 @@ test("a work-role tick that becomes due later jumps ahead of maintenance waiters
     assert.equal(
       order[2],
       "bugfix",
-      `bugfix became due while clean was in flight and must jump ahead of parked dry (${order})`,
+      `bugfix became due while clean was in flight and must jump ahead of parked dedupe (${order})`,
     );
   } finally {
     await stopOrchestrator(orch, restore);

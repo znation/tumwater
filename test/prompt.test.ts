@@ -407,7 +407,7 @@ test("organize states its own scope in place of the shared small-task rules; eve
 });
 
 test("every role prompt skips the baseline suite run and verifies after the change", () => {
-  const role = roleById("dry");
+  const role = roleById("dedupe");
   assert.ok(role);
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   assert.match(prompt, /do not run the build or test suite just to establish a baseline/);

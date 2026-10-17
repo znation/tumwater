@@ -319,7 +319,7 @@ test("fairOrder puts the director first even when it ticked most recently", () =
 test("role catalog puts shipping work before hygiene", () => {
   const ids = ROLES.map((r) => r.id);
   assert.deepEqual(ids.slice(0, 4), ["feature", "bugfix", "plan", "readme"]);
-  for (const hygiene of ["organize", "coverage", "clean", "dry"]) {
+  for (const hygiene of ["organize", "coverage", "clean", "dedupe"]) {
     assert.ok(ids.indexOf(hygiene) > ids.indexOf("readme"), `${hygiene} should rank below readme`);
   }
 });
@@ -330,12 +330,12 @@ test("fairOrder orders the work tier ahead of maintenance; LRU (catalog order fo
   const freshOrganize = runner("organize"); // …a never-ticked maintenance role.
   const recentClean = runner("clean");
   recentClean.state.lastRunEndedAt = 2000;
-  const olderDry = runner("dry");
+  const olderDry = runner("dedupe");
   olderDry.state.lastRunEndedAt = 1500; // Within-tier LRU: dry before clean.
   const freshImprove = runner("improve"); // Fresh tie with organize: input order decides.
   assert.deepEqual(
     fairOrder([staleFeature, recentClean, freshOrganize, olderDry, freshImprove]).map((r) => r.role),
-    ["feature", "organize", "improve", "dry", "clean"],
+    ["feature", "organize", "improve", "dedupe", "clean"],
   );
 });
 
