@@ -1082,7 +1082,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The GUI Usage view charts each day's `Merge wait median` as a bar element beside `Merge check median`, so the operator sees merges queueing longer on the dashboard as well as in `tumwater report` (planned 2026-10-17 by the plan role; independent of the in-flight plain-terms merge part 11/11, which leaves src/ui/gui/ alone after part 10/11, and of the in-flight `tumwater doctor --problems` — touches only src/ui/gui/gui-client-report.ts and its test)
+## Done
+
+### The GUI Usage view charts each day's `Merge wait median` as a bar element beside `Merge check median`, so the operator sees merges queueing longer on the dashboard as well as in `tumwater report` (planned 2026-10-17 by the plan role; independent of the in-flight plain-terms merge part 11/11, which leaves src/ui/gui/ alone after part 10/11, and of the in-flight `tumwater doctor --problems` — touches only src/ui/gui/gui-client-report.ts and its test) — done 2026-10-17
 
 **Goal.** `tumwater report` prints a `Merge wait median` line (`renderReportMarkdown`, `src/report/report-render.ts`). Each series day already carries the figure to the dashboard as the optional `ReportDay.mergeWaitMedianMs` (`src/report/report-data.ts`). `collectReport` sets it in the team branch only. It is absent on days with no merge that carried `queuedMs` and on every day of a role-scoped report (pinned in `test/report-data.test.ts`). The GUI Usage view (`src/ui/gui/gui-client-report.ts`) draws `Merge check median` but not the merge wait, so a merge queue that grows slower over days shows only in the CLI. Add one single-series bar chart for it, built exactly like `chartCheckMedian` (PLANS.md Done: "The GUI Usage view charts each day's `Merge check median` as a bar element"; the Done plan "`tumwater report` shows each day's median merge wait" left charting to a later plan).
 
@@ -1104,7 +1106,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The existing tests in `test/gui-client-report.test.ts` pass unchanged.
 - `npm run test` passes.
 
-## Done
 
 ### `tumwater doctor --problems` prints only the warn and fail rows (planned 2026-10-17 by the plan role) — done 2026-10-17
 

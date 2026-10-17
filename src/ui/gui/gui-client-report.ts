@@ -123,6 +123,13 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       (v) => fmtSpan(v), false);
   }
 
+  // The lower median of the day's merge waits, enqueue to merged on main, from mergeWaitMedianMs;
+  // a day without one keeps its empty slot.
+  function chartMergeWaitMedian(data) {
+    return reportSvg(data.series, (d) => [{ value: Number(d.mergeWaitMedianMs) || 0, color: "#f59e0b", title: d.date + ": " + fmtSpan(Number(d.mergeWaitMedianMs) || 0) + " median merge wait" }],
+      (v) => fmtSpan(v), false);
+  }
+
   // Stacked bars, one color per role in reportRoleOrder's order (the first role at the bottom),
   // with a legend in the same order. Role names are dynamic (custom loops): escaped everywhere.
   function roleStackChart(data, field, fmt, fmtAxis, integer) {
@@ -193,6 +200,10 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // True when some day carries a passing-check median; the element renders only then.
   function seriesHasCheckMedian(data) {
     return data.series.some((d) => Number(d.checkMedianMs) > 0);
+  }
+  // True when some day carries a merge-wait median; the element renders only then.
+  function seriesHasMergeWaitMedian(data) {
+    return data.series.some((d) => Number(d.mergeWaitMedianMs) > 0);
   }
   // report-chart:end
 
@@ -452,6 +463,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +
         (seriesHasAny(d, "mergeFailedByRole") ? block("Merge failures by role", chartMergeFailuresByRole(d)) : "") +
         (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +
+        (seriesHasMergeWaitMedian(d) ? block("Merge wait median", chartMergeWaitMedian(d), "per day · enqueue to merged on main") : "") +
         (d.totals.notionalCostUsd > 0
           ? block("Estimated spend by role", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
         (d.role ? "<p class='muted scope-note'>Role scope: " + esc(d.role) +
