@@ -1,5 +1,5 @@
 // vocabulary: plain
-import { landVetted, type BatchRoleWiring } from "./merge-batch.js";
+import { mergeApproved, type BatchRoleWiring } from "./merge-batch.js";
 import { removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
@@ -89,8 +89,8 @@ export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
   p.merge = startMerge(ctx, p, picks);
 }
 
-/** The merge task — main's one writer in the pipeline: merge `picks` through landVetted on
- * main's current tip — one change through landApprovedChange, two or more as one stack with one
+/** The merge task — main's one writer in the pipeline: merge `picks` through mergeApproved on
+ * main's current tip — one change through mergeApprovedChange, two or more as one stack with one
  * scope-`batch` check, one fast-forward, and 3d's largest-passing-prefix bisect — with no second
  * review. An approved change whose main moved since its verification is re-checked on the tree that
  * lands (the in-lock re-check, or the stack's check), so an approval that outlived its base never
@@ -150,7 +150,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
   const task = (async () => {
     let results: Array<TickResult | undefined>;
     let threw = false;
-    // A result reaches settleMergeOutcome the moment landVetted finalizes it, not after the
+    // A result reaches settleMergeOutcome the moment mergeApproved finalizes it, not after the
     // whole batch; this set lets the end-of-batch loop skip what is already written back.
     const settled = new Set<number>();
     const settleOne = async (s: number, result: TickResult): Promise<void> => {
@@ -159,7 +159,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
       await settleMergeOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file);
     };
     try {
-      results = await landVetted(
+      results = await mergeApproved(
         {
           root,
           mainBranch,
@@ -187,7 +187,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
       results = picks.map(() => undefined);
       const head = picks[0]!.author;
       head.state.lastError = errorMessage(err);
-      // The catch exists to keep every entry queued and unapproved when landVetted throws. A
+      // The catch exists to keep every entry queued and unapproved when mergeApproved throws. A
       // throw out of this write — an unwritable state file — must not skip the settle loop
       // and the finally that frees the merge slot, or the pipeline wedges with p.merge set
       // forever; the write is bookkeeping a later save retries, so warn and keep going.

@@ -1,6 +1,6 @@
-/** The error-degradation paths of landVetted (src/merge/merge-batch.ts) — the catches that
+/** The error-degradation paths of mergeApproved (src/merge/merge-batch.ts) — the catches that
  * turn a THROWN failure (not a returned one) during the merge stage into a per-change "error" with
- * the message on the role's state, instead of losing an already-landed prefix or crashing the merge
+ * the message on the role's state, instead of losing an already-merged prefix or crashing the merge
  * slot. The wiring's runPi is the one stubbed call that can throw its way out (merge-to-main.ts's
  * conflict resolver awaits it unwrapped), so each test makes main conflict with a pinned change and
  * the resolver blow up. The batch and single-change flows are pinned end-to-end in merger.test.ts /
@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { landVetted, vetRequest, type BatchRoleWiring } from "../src/merge/merge-batch.js";
+import { mergeApproved, verifyRequest, type BatchRoleWiring } from "../src/merge/merge-batch.js";
 import { refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import { mainSha } from "./fixtures/repo-fixtures.js";
@@ -28,31 +28,31 @@ function throwingWiring(wiringFor: (role: string) => BatchRoleWiring): (role: st
   });
 }
 
-test("a single vetted change whose conflict resolver throws degrades to 'error' with the pin kept for recovery", async () => {
-  // The pin appends to shared.txt; main rewrites the whole file after the vet, so the merge's
+test("a single approved change whose conflict resolver throws degrades to 'error' with the pin kept for recovery", async () => {
+  // The pin appends to shared.txt; main rewrites the whole file after the verify, so the merge's
   // rebase is an add/add conflict and the resolver is the only way through — and it throws.
   const { root, shas, states, wiringFor } = await batchFixture(["alpha"], {
     edit: (r) => fs.appendFileSync(path.join(r, "shared.txt"), "alpha's line\n"),
   });
   await withApprovePi(async () => {
     const ctx = makeBatchCtx(root);
-    const v = await vetRequest(ctx, request(shas.alpha!, { role: "alpha" }), wiringFor("alpha"));
+    const v = await verifyRequest(ctx, request(shas.alpha!, { role: "alpha" }), wiringFor("alpha"));
     assert.equal(v.kind, "stack");
     if (v.kind !== "stack") return;
     const mainAtMerge = advanceMain(root, "shared.txt", "main rewrote the file\n");
-    const results = await landVetted(ctx, [{ ...request(shas.alpha!, { role: "alpha" }), sha: v.sha }], throwingWiring(wiringFor));
+    const results = await mergeApproved(ctx, [{ ...request(shas.alpha!, { role: "alpha" }), sha: v.sha }], throwingWiring(wiringFor));
     assert.deepEqual(results, ["error"]);
     assert.match(states.alpha!.lastError ?? "", /resolver exploded/);
-    // Nothing half-landed: main sits at the moved tip, and the pin survives so the next
-    // drain (or leftover recovery) can re-land the change.
+    // Nothing half-merged: main sits at the moved tip, and the pin survives so the next
+    // drain (or leftover recovery) can re-merge the change.
     assert.equal(mainSha(root), mainAtMerge);
     assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!);
   });
 });
 
-test("a stack abandoned to one-at-a-time keeps the prefix that landed and degrades a throwing resolver to that change alone", async () => {
+test("a stack abandoned to one-at-a-time keeps the prefix that merged and degrades a throwing resolver to that change alone", async () => {
   // Both changes append to shared.txt from the same base: the stack's cherry-pick of beta
-  // onto main+alpha conflicts, the batch abandons to one-at-a-time, alpha lands cleanly, and
+  // onto main+alpha conflicts, the batch abandons to one-at-a-time, alpha merges cleanly, and
   // beta's merge hits the same conflict — where its resolver throws.
   const { root, shas, states, wiringFor } = await batchFixture(["alpha", "beta"], {
     edit: (r, role) => fs.appendFileSync(path.join(r, "shared.txt"), `${role}'s line\n`),
@@ -61,7 +61,7 @@ test("a stack abandoned to one-at-a-time keeps the prefix that landed and degrad
     const results = (await runBatch(root, shas, ["alpha", "beta"], throwingWiring(wiringFor))).map((r) => r.result);
     assert.deepEqual(results, ["changed", "error"]);
     assert.match(states.beta!.lastError ?? "", /resolver exploded/);
-    // Alpha's landing is real on main; beta's bytes never got there.
+    // Alpha's merge is real on main; beta's bytes never got there.
     const shared = fs.readFileSync(path.join(root, "shared.txt"), "utf8");
     assert.match(shared, /alpha's line/);
     assert.doesNotMatch(shared, /beta's line/);

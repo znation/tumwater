@@ -1,5 +1,5 @@
 /** merge-stack.ts's stack fast-forward (ffStackToMain): one ff of main through a whole
- * vetted stack, the per-change merged events, the question_posted diff, and the
+ * approved stack, the per-change merged events, the question_posted diff, and the
  * merge_blocked contract when main moved under the batch. Moved from test/merge-to-main.test.ts
  * with the function itself (the stack merge-half lives in merge-stack.ts). */
 
@@ -78,7 +78,7 @@ test("ffStackToMain returns merge_blocked when main diverged under the stack, wi
 test("ffStackToMain whose events feed is unwritable still fast-forwards and reports changed", async () => {
   const { root, shaA, shaB } = await stackFixture();
   // The merged/question events are the only appends after the fast-forward. Replace the feed
-  // with a directory so every append throws EISDIR and prove the landed stack is not turned
+  // with a directory so every append throws EISDIR and prove the merged stack is not turned
   // into a failure (or left with syncRootInstall skipped) by a broken observability sink.
   fs.mkdirSync(eventsLogPath(root), { recursive: true });
 
@@ -95,7 +95,7 @@ test("ffStackToMain whose events feed is unwritable still fast-forwards and repo
 test("ffStackToMain emits question_posted for questions the stack adds, not pre-existing ones", async () => {
   // Mirror the single-change question_posted test: a batch's new Open headings must surface
   // as events so the dashboards and report see questions the same way whether one change or a
-  // stack landed them. Seed an existing question so the diff is exercised, not just the empty
+  // stack merged them. Seed an existing question so the diff is exercised, not just the empty
   // `before` list.
   const root = makeRepo();
   // withLock mkdir's <root>/.tumwater/merge.lock without creating its parent.

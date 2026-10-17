@@ -2,7 +2,7 @@
 import type { LoopState } from "../loop/loop-state.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { latestSession } from "../agent/session-ledger.js";
-import { RETRIABLE_LANDING_RESULTS } from "../merge/merge-core.js";
+import { RETRIABLE_MERGE_RESULTS } from "../merge/merge-core.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { sessionDir } from "../paths.js";
 import { buildHandoffPrompt, buildResumePrompt, type ResumeCause } from "../prompt/prompt-followup.js";
@@ -71,7 +71,7 @@ export function planTickStart(opts: {
   // merge_blocked — with the detail it wrote into `lastError`), and when this tick's recovery
   // re-queues that pin, the failure must still feed the error streak (finishRecoveryTick).
   const priorLandingFailure =
-    s.lastResult !== undefined && RETRIABLE_LANDING_RESULTS.has(s.lastResult)
+    s.lastResult !== undefined && RETRIABLE_MERGE_RESULTS.has(s.lastResult)
       ? (s.lastError ?? `merge failed: ${s.lastResult}`)
       : undefined;
   s.lastError = undefined;

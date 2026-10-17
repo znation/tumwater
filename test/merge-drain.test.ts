@@ -23,7 +23,7 @@ import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 // recovery, the verify stage (one verification per queued change, each on a shared maxConcurrent
 // permit), and the merge slot (every approved change, stacked), with the abort and shutdown rules
 // and the marker records the observers read. The review gate's pi runs are real subprocesses behind
-// the fake shim, exactly as merger.test.ts drives vetRequest and landVetted directly.
+// the fake shim, exactly as merger.test.ts drives verifyRequest and mergeApproved directly.
 
 test("an empty queue drains nothing", async () => {
   const root = makeRepo();

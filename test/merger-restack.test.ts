@@ -13,7 +13,7 @@ import { waitForFile } from "./helpers/wait.js";
 import {
   makeCtx,
   request,
-  vetAndLand,
+  verifyAndMerge,
   checkRunNumber,
   declareCheck,
   batchFixture,
@@ -24,21 +24,21 @@ import {
   batchChecks,
 } from "./fixtures/merger-fixtures.js";
 
-// The re-stack slice of the landing tests (see merger.test.ts for the split and what each
-// file holds): landVetted's merge over N vetted changes — stacked into one worktree, one
+// The re-stack slice of the merge tests (see merger.test.ts for the split and what each
+// file holds): mergeApproved's merge over N approved changes — stacked into one worktree, one
 // shared build check, one fast-forward — when main moves under it. The reviewer runs are real pi
 // subprocesses behind the fake shim; the fallback's conflict resolver is the wiring's stub.
 
 // ── A fast-forward lost to a moved main: re-stack, not merge_blocked (BUGS.md 2026-09-23) ──
 // Main moves while the batch's shared check runs — the window is the whole check, and a human
-// commit still writes main outside the land queue. The stack was
+// commit still writes main outside the merge queue. The stack was
 // assembled on the old tip, so its single ff fails; the batch must re-stack on the new tip
 // and go round again rather than send every approved change back through recovery.
 
-test("a batch whose base main moves mid-check through a tick-path landing re-stacks and lands", async () => {
-  // The Repro exactly: a slow batch check, and while it runs another writer lands on main (here
-  // a third role's own vet and landing). The ff loses, the batch re-stacks on the new tip,
-  // re-checks it (the racer is code, not docs), and lands both changes on top of the racer.
+test("a batch whose base main moves mid-check through a tick-path merge re-stacks and merges", async () => {
+  // The Repro exactly: a slow batch check, and while it runs another writer merges on main (here
+  // a third role's own verify and merge). The ff loses, the batch re-stacks on the new tip,
+  // re-checks it (the racer is code, not docs), and merges both changes on top of the racer.
   const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"]);
   const mainBefore = mainSha(root);
   const started = path.join(root, ".batch-started");
@@ -49,7 +49,7 @@ test("a batch whose base main moves mid-check through a tick-path landing re-sta
       const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor);
       await waitForFile(started); // the batch's shared check is running on the old tip
       const { ctx } = makeCtx(root, freshLoopState("gamma"));
-      assert.equal(await vetAndLand(ctx, request(shas.gamma!, { role: "gamma" })), "changed", "the racer landed");
+      assert.equal(await verifyAndMerge(ctx, request(shas.gamma!, { role: "gamma" })), "changed", "the racer merged");
       fs.writeFileSync(release, "");
 
       const results = await batch;
@@ -58,7 +58,7 @@ test("a batch whose base main moves mid-check through a tick-path landing re-sta
       assert.deepEqual(
         sh(root, "git", "log", "--format=%s", `${mainBefore}..main`).split("\n"),
         ["work by beta", "work by alpha", "work by gamma"],
-        "the stack landed on top of the racer, in queue order",
+        "the stack merged on top of the racer, in queue order",
       );
       const merged = eventsOfType(root, "merged");
       assert.deepEqual(merged.map((e) => e.source), ["gamma", "alpha", "beta"]);
@@ -68,7 +68,7 @@ test("a batch whose base main moves mid-check through a tick-path landing re-sta
         ["passed", "passed"],
         "the first check, then one re-check of the re-stacked tree",
       );
-      assert.equal(await refSha(root, mergeRefName("alpha")), null, "landed: the head's ref is gone");
+      assert.equal(await refSha(root, mergeRefName("alpha")), null, "merged: the head's ref is gone");
       assert.equal(await refSha(root, mergeRefName("beta")), null, "and the stacked change's");
     });
   } finally {
@@ -121,7 +121,7 @@ test("a batch that loses the fast-forward race on every attempt keeps every ref 
 test("a re-stack that conflicts with what main gained falls back to one-at-a-time", async () => {
   // Main gains a beta.txt of its own mid-check: the re-stack's pick of beta's change conflicts,
   // so the batch abandons to the per-change path exactly as a first-assembly conflict does —
-  // alpha lands singly, beta resolves through the single path's conflict resolver.
+  // alpha merges singly, beta resolves through the single path's conflict resolver.
   const { root, shas, wiringFor, calls } = await batchFixture(["alpha", "beta"], {
     resolve: (wt) => fs.writeFileSync(path.join(wt, "beta.txt"), "both\n"),
   });
@@ -129,16 +129,16 @@ test("a re-stack that conflicts with what main gained falls back to one-at-a-tim
   await withApprovePi(async () => {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
-    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "both landed one at a time");
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "both merged one at a time");
     assert.equal(batchChecks(root).length, 1, "the conflicting re-stack never reached a second batch check");
     assert.equal(calls.length, 1, "one resolution run, for the conflicting change");
-    assert.equal(sh(root, "git", "show", "main:beta.txt"), "both", "the resolution landed on main");
+    assert.equal(sh(root, "git", "show", "main:beta.txt"), "both", "the resolution merged on main");
     assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"));
     assert.equal(await refSha(root, mergeRefName("beta")), null, "the fallback deleted its ref");
   });
 });
 
-test("an abort between re-stack attempts stops the batch: aborted, refs kept, nothing lands", async () => {
+test("an abort between re-stack attempts stops the batch: aborted, refs kept, nothing merges", async () => {
   // A shutdown that arrives while the first batch check runs must not start a re-stack (and
   // its possible second full check) after the lost race.
   const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
@@ -161,7 +161,7 @@ test("an abort between re-stack attempts stops the batch: aborted, refs kept, no
 
       assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
       assert.equal(batchChecks(root).length, 1, "no re-stack check after the abort");
-      assert.equal(mainSha(root), mainMid, "nothing landed after the racer");
+      assert.equal(mainSha(root), mainMid, "nothing merged after the racer");
       assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "an abort keeps the refs for recovery");
       assert.equal(await refSha(root, mergeRefName("beta")), shas.beta!);
     });
@@ -170,19 +170,19 @@ test("an abort between re-stack attempts stops the batch: aborted, refs kept, no
   }
 });
 
-test("a one-change merge lands on its own: one ff, one merged event", async () => {
+test("a one-change merge merges on its own: one ff, one merged event", async () => {
   await withApprovePi(async () => {
     const { root, shas, wiringFor } = await batchFixture(["alpha"]);
 
     const results = await runBatch(root, shas, ["alpha"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed"]);
-    assert.equal(mainSha(root), shas.alpha!, "landed through landApprovedChange: the pin itself on an unmoved main");
+    assert.equal(mainSha(root), shas.alpha!, "merged through mergeApprovedChange: the pin itself on an unmoved main");
     assert.equal(eventsOfType(root, "merged").length, 1);
   });
 });
 
-test("a red stack check that does not reproduce bisects: both changes land, neither is re-reviewed or rejected", async () => {
+test("a red stack check that does not reproduce bisects: both changes merge, neither is re-reviewed or rejected", async () => {
   const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
   // The check fails on its THIRD run only: the two gate pre-checks pass, the batch's one
   // shared check fails, and every bisect step's check passes again — a flake. One red run
@@ -196,7 +196,7 @@ test("a red stack check that does not reproduce bisects: both changes land, neit
 
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
-    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "each prefix lands on its own green check");
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "each prefix merges on its own green check");
     const checks = eventsOfType(root, "build_check");
     assert.deepEqual(
       checks.map((e) => [e.scope, e.status]),
@@ -209,7 +209,7 @@ test("a red stack check that does not reproduce bisects: both changes land, neit
       ],
       "two gate pre-checks, the red stack check, then alpha's prefix and beta on top of it",
     );
-    assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run for alpha: its prefix lands its approved head");
+    assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run for alpha: its prefix merges its approved head");
     assert.equal(folded.get("beta")!.length, 1, "nor for beta");
     assert.equal(eventsOfType(root, "review_rejected").length, 0, "nobody rejected");
     assert.equal(eventsOfType(root, "merged").length, 2);

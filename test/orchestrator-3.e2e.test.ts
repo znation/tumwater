@@ -325,7 +325,7 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
 test("a landing whose pinned sha no longer exists degrades to an error outcome, not a throw", async () => {
   // The queue entry can outlive its commit: the pin ref is dropped or the dangling commit
   // gc'd while the entry waits (a crash between pin and drop, manual gc). The vet's checkout
-  // throws on the uncheckable sha — vetRequest must turn that into a normal "error" outcome
+  // throws on the uncheckable sha — verifyRequest must turn that into a normal "error" outcome
   // with every bookkeeping step a real failure gets, instead of taking the landing pipeline
   // down with it.
   const repo = makeRepo();
@@ -635,7 +635,7 @@ test("maxConcurrent 4 vets three queued changes at once on the live orchestrator
 });
 
 test("a vet slot that can no longer be created is contained: the healthy change lands, the other drops as an error", async () => {
-  // landVetted degrades failed landings to results, but a git-level failure in a stack's
+  // mergeApproved degrades failed landings to results, but a git-level failure in a stack's
   // assembly still throws, and the merge's catch must keep every entry queued (un-vetted, so
   // each is vetted afresh next poll) instead of escaping as an unhandled rejection; clean's
   // own re-vet degrades the same failure to an "error" outcome. Either way the queue must

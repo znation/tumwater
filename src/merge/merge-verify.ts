@@ -11,7 +11,7 @@ import { addMergeChange, mergeUsage, removeMergeChange, setMergeChangeStatus } f
 import { dropMerge, queuedMergeFiles, staleHeadFile, type MergeEntry } from "./merge-queue.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
-import { vetRequest, type VetVerdict } from "./merge-batch.js";
+import { verifyRequest, type VerifyVerdict } from "./merge-batch.js";
 import {
   abortOnShutdown,
   acquireUnlessAborted,
@@ -131,7 +131,7 @@ export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): 
  * gate is closed hands its permit back — either way nothing ran, and its entry and pin stay queued
  * with no outcome written), then, holding the permit for its whole length: open the change's
  * marker record and verify it — checkout at the pin, rebase onto main, gate check, review
- * (vetRequest), the verdict persisted by the gate. An approval moves it to `approved` (record
+ * (verifyRequest), the verdict persisted by the gate. An approval moves it to `approved` (record
  * `vetted, awaiting merge`). Any other verdict — rejected, a review_error of either kind,
  * main_red, a lost pin's "error", aborted — is final for this queue entry, so its outcome is
  * written at once and its entry dropped, which frees its author on the next poll while the
@@ -171,7 +171,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
         return;
       }
       const { usage, foldUsage } = mergeUsage(author, root);
-      let verdict: VetVerdict;
+      let verdict: VerifyVerdict;
       const startedAt = Date.now();
       try {
         addMergeChange(root, entry, liveRoles(p));
@@ -183,7 +183,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
           lease,
           semaphore,
           () =>
-            vetRequest(
+            verifyRequest(
               { root, mainBranch, config: author.config, signal: () => verify.controller.signal, runGatePi: (opts) => author.runGatePi(opts) },
               {
                 role,

@@ -57,7 +57,7 @@ export interface MergeEntry {
   enqueuedAt: number;
   /** The revision round this change is, absent for a fresh change (plans/revise-rejected.md):
    * 1 for the first revision of a rejected change, 2 for the second. Carried onto the
-   * LandRequest so a rejection of round N sets round N+1; a rejection stops revising on a
+   * MergeRequest so a rejection of round N sets round N+1; a rejection stops revising on a
    * repeated objection or the backstop (BUGS.md 2026-10-14). */
   revisionRound?: number;
   /** The prior rejection this merge is revising, absent for a fresh change

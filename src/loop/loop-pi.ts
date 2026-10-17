@@ -195,7 +195,7 @@ export class LoopPi {
    * never reach it, and the stale per-tick controller of a finished tick must not abort it
    * either. Session naming is the caller's (the reviewer composes its own from
    * ReviewContext.tick; merge-to-main.ts keeps its conflict-resolver naming through
-   * LanderContext.runPi).
+   * MergerContext.runPi).
    */
   async runLandingPi(
     wt: string,
@@ -539,7 +539,7 @@ export class LoopPi {
  * `FoldsUsage` adds one run's spend to the owning loop's counters exactly once (the reviewer
  * and conflict-resolution runs charge to the authoring role). Declared once here so the contract
  * — and its wording — cannot drift apart across the four contexts that restate it:
- * LanderContext and BatchRoleWiring carry all three halves (PiRunWiring), MergeContext only
+ * MergerContext and BatchRoleWiring carry all three halves (PiRunWiring), MergeContext only
  * the resolver's runner (its runPi folds usage internally), and ApprovedMerge only the fold.
  *
  * `runPi`'s optional fourth argument is the config that ONE run executes on (plans/
@@ -565,6 +565,6 @@ export interface FoldsUsage {
 }
 
 /** A landing context that runs pi through the loop's shared wiring and folds each run's
- * usage: both halves (RunsPi + FoldsUsage). LanderContext and BatchRoleWiring extend this;
+ * usage: both halves (RunsPi + FoldsUsage). MergerContext and BatchRoleWiring extend this;
  * contexts needing only one half extend that half instead (MergeContext, ApprovedMerge). */
 export interface PiRunWiring extends RunsPi, GateRunsPi, FoldsUsage {}

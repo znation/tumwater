@@ -53,7 +53,7 @@ import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 // recovery, the verify stage (one verification per queued change, each on a shared maxConcurrent
 // permit), and the merge slot (every approved change, stacked), with the abort and shutdown rules
 // and the marker records the observers read. The review gate's pi runs are real subprocesses behind
-// the fake shim, exactly as merger.test.ts drives vetRequest and landVetted directly.
+// the fake shim, exactly as merger.test.ts drives verifyRequest and mergeApproved directly.
 
 /** The fixture the three busy-merge-slot tests below share: an alpha+beta queue on a real
  * repo, a merge config whose check is a no-op, the fake approver, and a pipeline whose merge
@@ -785,7 +785,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
 }
 
 // ── A plumbing throw in the merge slot ────────────────────────────────────────────────────
-// landVetted's first assembly attempt propagates an unexpected throw (nothing has merged), and
+// mergeApproved's first assembly attempt propagates an unexpected throw (nothing has merged), and
 // startMerge's catch is what keeps the team alive: every entry stays queued, unapproved, the
 // head author's state records the error, and the next poll re-verifies from the surviving pins.
 
@@ -798,7 +798,7 @@ test("a plumbing throw in the merge keeps every entry queued and unapproved, rec
 
     // Break the merge's plumbing: the registered-worktrees home becomes a plain file, so the
     // stack's worktree setup (the verification ran in a different pooled slot) fails hard in git —
-    // not a verdict, a throw, out of landVetted's first attempt.
+    // not a verdict, a throw, out of mergeApproved's first attempt.
     fs.rmSync(worktreesHome, { recursive: true, force: true });
     fs.writeFileSync(worktreesHome, "not a directory");
 
@@ -839,7 +839,7 @@ test("a failing state write in the merge's error path still frees the merge slot
   try {
     await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 2, "both changes to be approved");
 
-    // Break the merge's plumbing so landVetted throws, then break the head author's state
+    // Break the merge's plumbing so mergeApproved throws, then break the head author's state
     // file so the catch's saveLoopState throws too — the exact unwritable-state failure the
     // guard exists for. The catch must not let that second throw skip the settle loop and the
     // finally, or p.merge stays set forever and every later merge is wedged.
@@ -878,7 +878,7 @@ test("a git failure inside the gate's reject path settles the verification as an
   // A stale index.lock in the worktree's gitdir — the wreckage of a crashed concurrent git —
   // planted by the reviewer shim itself, so it exists by the time the gate's reject path
   // resets the worktree (after the verdict, before the pin delete). resetWorktreeToMain's
-  // `git reset --hard` throws, the throw rides out of the gate and vetRequest, and the drain
+  // `git reset --hard` throws, the throw rides out of the gate and verifyRequest, and the drain
   // must turn it into the terminal "error" outcome — never a rejected task promise, which
   // would leave the entry queued and its author interlocked forever.
   const shim = [

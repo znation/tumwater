@@ -192,11 +192,11 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
 
 /** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the landing
  * path (src/merge/merge-to-main.ts's verifyMerge) and the stack lander
- * (src/merge/merge-stack.ts' landStack) — both call it only after their fast-forward
+ * (src/merge/merge-stack.ts' mergeStack) — both call it only after their fast-forward
  * SUCCEEDED, with the exact SHA that just became main: verifyMerge with the POST-rebase head
  * in two cases — its own in-lock re-check just ran this project's declared check green on that
  * tree, or the rebase was a no-op so the review gate's pre-check (which runs outside the merge
- * lock) had already run green on exactly this tree — and landStack with the stacked tip when a
+ * lock) had already run green on exactly this tree — and mergeStack with the stacked tip when a
  * scope-`batch` check ran green on exactly it (a skipped check seeds nothing, and neither does
  * a merge_blocked stack or a doc-only re-stack that landed without a check of its own). Seeding
  * here means that once the merge lands — main now points at this very SHA — the next fresh

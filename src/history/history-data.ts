@@ -247,7 +247,7 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
  * place) walks the pin list newest-first and hands each queued tick the newest unclaimed pin
  * at or before its end, so several queued ticks cannot claim one pin. Within that pin's
  * change the row takes the LAST landing attempt's verdict, not the first: a retriable result
- * (RETRIABLE_LANDING_RESULTS: review_error, merge_conflict, merge_blocked) keeps the pin and
+ * (RETRIABLE_MERGE_RESULTS: review_error, merge_conflict, merge_blocked) keeps the pin and
  * leftover recovery re-enqueues it for another attempt, so a later recovery pin — and its
  * merge_done/merge_failed — owns the real verdict. When main moved before the retry the vet's
  * syncPinToMain rebased the ref (merge-core.ts), so the recovery pin carries the rebased sha

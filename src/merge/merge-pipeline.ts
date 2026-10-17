@@ -44,7 +44,7 @@ export interface ApprovedMerge extends AbortableLanding, FoldsUsage {
   file: string;
   /** The head its gate approved — the synced pin its merge ref names. */
   sha: string;
-  /** `sha` again when the gate's pre-check ran green on exactly it (VetVerdict). */
+  /** `sha` again when the gate's pre-check ran green on exactly it (VerifyVerdict). */
   verifiedHead?: string;
   /** When its verification started: its merge_done/merge_failed event's durationMs runs from here.
    * */
@@ -96,12 +96,12 @@ export interface MergePipelineContext {
 
 /** The scheduler's merge state across polls (land-queue speed 2c), in three parts:
  * - `verifying`: one task per queued change, in queue order, each in a leased pooled slot —
- *   checkout, rebase onto main, gate check and review (vetRequest) — on a shared
+ *   checkout, rebase onto main, gate check and review (verifyRequest) — on a shared
  *   permit (a verification still waiting for its permit is `parked`). Any verdict but an approval
  *   writes its outcome at once and frees its author.
  * - `approved`: the approved changes waiting to merge, still queued.
  * - `merge`: the one task that writes main — every approved change up to mergeBatchMax, in queue
- *   order, through landVetted (a stack of two or more shares one check and one fast-forward).
+ *   order, through mergeApproved (a stack of two or more shares one check and one fast-forward).
  *   It never waits for an unvetted queue head.
  * A role is in at most one of them: its one queued change is approved, then waits, then merges, so
  * a verification and a merge never touch the same worktree or ref. */

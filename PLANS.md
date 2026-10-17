@@ -21,38 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code merge, part 5/11: Rename the merger core and batch and stack identifiers (planned 2026-10-16 by user; requires part 4/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-core.ts merge-batch.ts merge-stack.ts and the merger tests)
-
-**Goal.** The merger (the old lander), the batch verify-and-merge and the stack take merge, merger, verify and approved names in identifiers, comments, test names and fixtures. A mechanical rename of about 450 lines with no behavior change.
-
-**Approach.**
-- **Rename rule**, as in this series:
-  - in identifiers, `landing`/`land` → `merge`, `lander` → `merger`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
-  - comments, test names, temp-dir prefixes (`"lander-rec-"`, `"lander-rereview-rej-"` → `"merger-…"`) and assertion messages follow the same rule;
-  - comment lines wrap at 100 columns.
-- **merge-core.ts:**
-  - `LanderContext` → `MergerContext`. merge-to-main.ts already has `MergeContext`, a different shape. Keep both, and start each doc comment by saying which one it is.
-  - `LandRequest` → `MergeRequest`, `LandingScopeContext` → `MergeScopeContext`, `RETRIABLE_LANDING_RESULTS` → `RETRIABLE_MERGE_RESULTS`, `landApprovedChange` → `mergeApprovedChange`, `landApprovedChangeIn` → `mergeApprovedChangeIn`.
-- **merge-batch.ts:** `landVetted` → `mergeApproved`, `vetRequest` → `verifyRequest`, `vetRequestIn` → `verifyRequestIn`, `VetVerdict` → `VerifyVerdict`, `landOne` → `mergeOne`, `landedCount` → `mergeDoneCount`, and the parameter `vetted` → `approved`.
-- **merge-stack.ts:** `landStack` → `mergeStack`, `landStackIn` → `mergeStackIn`, local `landed` → `mergeDone`.
-- **Fixtures and tests:** `vetAndLand` → `verifyAndMerge`, `vetThenMerge` → `verifyThenMerge`, `landerCtx` → `mergerCtx`, and `landWt` → `mergeWt`. If `mergeWt` is already bound in the same scope, use `mergeWorktree`.
-- **Earlier callers move now:** `VetVerdict`, `vetRequest`, `landVetted` and `landApprovedChange` in part 4/11's files, and `LandRequest` and `LanderContext` in part 2/11's files.
-- **Aliases.** Keep two-line `@deprecated` aliases for `vetRequest`, `landVetted`, `LanderContext`, `RETRIABLE_LANDING_RESULTS`, `landStack` and `vetAndLand`, which later parts call. Move these files off earlier parts' aliases. Delete any alias that test/exports.test.ts reports unused.
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - the `_land-<role>` legacy worktree name;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-- Skip any name that an earlier series already renamed.
-
-**Files touched.** `src/merge/merge-core.ts`, `merge-batch.ts`, `merge-stack.ts`; `test/fixtures/merger-fixtures.ts`; `test/merger.test.ts`, `test/merger-bisect.test.ts`, `test/merger-errors.test.ts`, `test/merger-restack.test.ts`, `test/merge-stack.test.ts`; earlier-caller lines in the part 2/11 and 4/11 modules.
-
-**Acceptance criteria.**
-- `MergerContext`, `MergeRequest`, `mergeApproved`, `verifyRequest`, `VerifyVerdict`, `mergeStack` and the other new names are exported. Each old name is either gone or a `@deprecated` alias of it.
-- `MergeContext` (merge-to-main.ts) and `MergerContext` (merge-core.ts) both exist, and each doc comment names its role.
-- After this part, no file under `src/merge/` has an identifier, comment or test name with a retired merge word, except aliases, `runLandingPi`/`foldLandingUsage`/`AbortableLanding`/`applyLandingOutcome` (parts 6, 7 and 9), quoted backlog titles and legacy-layout names.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 6/11: Rename the merge identifiers in the tick modules (planned 2026-10-16 by user; requires part 5/11 landed; design in plans/terminology.md "Code names"; touches src/tick/ and test/tick-*.test.ts and test/agent-commit-fold.test.ts)
 
 **Goal.** The tick modules' merge-related identifiers, comments and test names say merge. The later code-run series turns tick into run. A mechanical rename of about 315 lines with no behavior change.
@@ -1389,6 +1357,38 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes, including `test/vocabulary.test.ts` and `test/comment-width.test.ts`.
 
 **Note.** The seeded flake warning in the new test is the full headline `✖ the flaky test — expected 2 to be 3` (what `failureHeadline` yields for that outputTail), not `✖ the flaky test` alone: the key is the normalized whole headline.
+
+### Plain terms code merge, part 5/11: Rename the merger core and batch and stack identifiers (done 2026-10-16; planned 2026-10-16 by user; requires part 4/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-core.ts merge-batch.ts merge-stack.ts and the merger tests)
+
+**Goal.** The merger (the old lander), the batch verify-and-merge and the stack take merge, merger, verify and approved names in identifiers, comments, test names and fixtures. A mechanical rename of about 450 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `lander` → `merger`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names, temp-dir prefixes (`"lander-rec-"`, `"lander-rereview-rej-"` → `"merger-…"`) and assertion messages follow the same rule;
+  - comment lines wrap at 100 columns.
+- **merge-core.ts:**
+  - `LanderContext` → `MergerContext`. merge-to-main.ts already has `MergeContext`, a different shape. Keep both, and start each doc comment by saying which one it is.
+  - `LandRequest` → `MergeRequest`, `LandingScopeContext` → `MergeScopeContext`, `RETRIABLE_LANDING_RESULTS` → `RETRIABLE_MERGE_RESULTS`, `landApprovedChange` → `mergeApprovedChange`, `landApprovedChangeIn` → `mergeApprovedChangeIn`.
+- **merge-batch.ts:** `landVetted` → `mergeApproved`, `vetRequest` → `verifyRequest`, `vetRequestIn` → `verifyRequestIn`, `VetVerdict` → `VerifyVerdict`, `landOne` → `mergeOne`, `landedCount` → `mergeDoneCount`, and the parameter `vetted` → `approved`.
+- **merge-stack.ts:** `landStack` → `mergeStack`, `landStackIn` → `mergeStackIn`, local `landed` → `mergeDone`.
+- **Fixtures and tests:** `vetAndLand` → `verifyAndMerge`, `vetThenMerge` → `verifyThenMerge`, `landerCtx` → `mergerCtx`, and `landWt` → `mergeWt`. If `mergeWt` is already bound in the same scope, use `mergeWorktree`.
+- **Earlier callers move now:** `VetVerdict`, `vetRequest`, `landVetted` and `landApprovedChange` in part 4/11's files, and `LandRequest` and `LanderContext` in part 2/11's files.
+- **Aliases.** None were kept: every caller of the renamed names (including those outside part 5/11's own files) moved in this part, so no `@deprecated` alias exists for `vetRequest`, `landVetted`, `LanderContext`, `RETRIABLE_LANDING_RESULTS`, `landStack` or `vetAndLand`.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - the `_land-<role>` legacy worktree name;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/merge/merge-core.ts`, `merge-batch.ts`, `merge-stack.ts`; `test/fixtures/merger-fixtures.ts`; `test/merger.test.ts`, `test/merger-bisect.test.ts`, `test/merger-errors.test.ts`, `test/merger-restack.test.ts`, `test/merge-stack.test.ts`; earlier-caller lines in the part 2/11 and 4/11 modules.
+
+**Acceptance criteria.**
+- `MergerContext`, `MergeRequest`, `mergeApproved`, `verifyRequest`, `VerifyVerdict`, `mergeStack` and the other new names are exported. Each old name is either gone or a `@deprecated` alias of it.
+- `MergeContext` (merge-to-main.ts) and `MergerContext` (merge-core.ts) both exist, and each doc comment names its role.
+- After this part, no file under `src/merge/` has an identifier, comment or test name with a retired merge word, except aliases, `runLandingPi`/`foldLandingUsage`/`AbortableLanding`/`applyLandingOutcome` (parts 6, 7 and 9), quoted backlog titles and legacy-layout names.
+- `npm run test` passes.
 
 ### `tumwater doctor` names open bugs held by a "Waiting for the next failure" note, and stops calling them stale (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, docs/cli.md and test/doctor-backlog.test.ts)
 

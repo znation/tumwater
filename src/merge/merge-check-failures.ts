@@ -14,7 +14,7 @@ import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick/tick-outcome.js";
-import type { LanderContext } from "./merge-core.js";
+import type { MergerContext } from "./merge-core.js";
 
 /** Consecutive red in-lock merge checks of one patch (LoopState.mergeCheckFailures) before
  * the merge is attributed instead of retried: the first red keeps the pin for one more
@@ -42,7 +42,7 @@ function pinKept(patch: string | null, count: number): boolean {
  * An unreadable patch-id cannot be matched, so pinKept never counts it toward the limit.
  * Keeping the strike only under the limit (pinKept) is what ends the streak at attribution. */
 async function tallyCheckFailure(
-  ctx: LanderContext,
+  ctx: MergerContext,
   wt: string,
 ): Promise<{ head: string; patch: string | null; count: number }> {
   const head = await headOf(wt, "HEAD");
@@ -63,7 +63,7 @@ async function tallyCheckFailure(
  * to the caller's terminal sink `attribute`. Both paths decide keep-vs-attribute through
  * pinKept, so the MERGE_CHECK_FAILURE_LIMIT rule has one home. */
 async function keepPinOrAttribute(
-  ctx: LanderContext,
+  ctx: MergerContext,
   wt: string,
   reason: string,
   attribute: (head: string) => Promise<TickResult>,
@@ -116,7 +116,7 @@ function firstCheckReason(red: { check: BuildCheck; outcome: BuildCheckOutcome }
  * (BUGS.md 2026-09-30) — so it is not a strike against the patch: the pin stays for the next
  * attempt and the lastError names the sleep instead of a test failure. */
 export async function mergeCheckRed(
-  ctx: LanderContext,
+  ctx: MergerContext,
   role: string,
   wt: string,
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
@@ -153,7 +153,7 @@ export async function mergeCheckRed(
  * pin's (a stale strike of a discarded pin must not be logged); a pin that was never red (or
  * only cross-check blocked) has none and logs nothing. Call before the strike is cleared. */
 export function noteMergeRetryPassed(
-  ctx: LanderContext,
+  ctx: MergerContext,
   role: string,
   pinPatch: string | null,
 ): void {
@@ -172,7 +172,7 @@ export function noteMergeRetryPassed(
  * cross-check on every re-resolve pays a fresh conflict-resolver run each tick, forever
  * (BUGS.md 2026-10-02: five resolver sessions for one fix-claim-blocked pin). */
 export async function mergeBlocked(
-  ctx: LanderContext,
+  ctx: MergerContext,
   role: string,
   wt: string,
   blocked: string,

@@ -48,7 +48,8 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
  * (the in-lock re-check), and the loop's shared pi wiring so a conflict-resolution run folds into
  * the same tick counters as an authoring run. */
 
-/** What mergeToMain needs from its owning loop: identity (root, main branch), the role for events
+/** MergeContext: what mergeToMain needs from its owning loop (merge-core.ts's MergerContext is
+ * the merger's, a different shape): identity (root, main branch), the role for events
  * and session naming only — the merge code never re-derives it into a branch — plus the tick
  * number that names the conflict-resolution session, the live config and its review-exemption
  * patterns (the in-lock re-check), and the loop's shared pi runner (role config, session dir,

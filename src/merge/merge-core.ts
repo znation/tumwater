@@ -23,30 +23,30 @@ import type { TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { PriorReview } from "./merge-queue.js";
 
-/** Reviewing and landing a pinned commit outside the author's worktree (plans/merge-queue.md,
+/** Reviewing and merging a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A tick commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,
- * resets that worktree to main, and queues the sha for the ORCHESTRATOR's landing pipeline
+ * resets that worktree to main, and queues the sha for the ORCHESTRATOR's merge pipeline
  * (merge-verify.ts, merge queue 3/5 and land-queue speed 2c), which checks it out detached —
- * a pooled `_slot-<n>` for the vet and the shared `_merge` checkout for the landing
+ * a pooled `_slot-<n>` for the verify and the shared `_merge` checkout for the merge
  * (plans/worktree-pool.md) — and runs it through the review gate here
- * (reviewPinnedChange, from merge-batch.ts's vetRequest) and then the landing
- * (landApprovedChange, from its merge) — so no diff reaches main unreviewed (invariant 1) and
+ * (reviewPinnedChange, from merge-batch.ts's verifyRequest) and then the merge
+ * (mergeApprovedChange, from its merge) — so no diff reaches main unreviewed (invariant 1) and
  * nothing is rebased inside a role worktree any more. Leftover recovery re-queues its pin onto
  * that same pipeline. This is harness code, never a role: the only model runs it starts are the
  * reviewer and merge-to-main.ts's conflict resolver. */
 
-/** One landing request: a pinned commit plus everything its gate and events need. `role` names
- * the owning loop (events, session naming, the vet's pooled slot) — the lander itself is not a
+/** One merge request: a pinned commit plus everything its gate and events need. `role` names
+ * the owning loop (events, session naming, the verify's pooled slot) — the merger itself is not a
  * role. */
-export interface LandRequest {
+export interface MergeRequest {
   role: string;
-  /** The pinned commit to land — checked out detached in the shared `_merge` checkout. */
+  /** The pinned commit to merge — checked out detached in the shared `_merge` checkout. */
   sha: string;
   /** Current tick number, for the unique per-run session names (review + conflict resolution). */
   tick: number;
   summary: string;
   /** The author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff. On a
-   * recovery landing these are read back from the pinned commit's message (the authoring run
+   * recovery merge these are read back from the pinned commit's message (the authoring run
    * is gone); a hand-made or pre-contract commit has none. */
   body?: string;
   highFriction?: boolean;
@@ -54,22 +54,22 @@ export interface LandRequest {
    * carried from the MergeEntry so a rejection at round N records round N+1, and a rejection
    * that is final stops the revision there instead of continuing (BUGS.md 2026-10-14). */
   revisionRound?: number;
-  /** The prior rejection this landing is revising, absent for a fresh change
+  /** The prior rejection this merge is revising, absent for a fresh change
    * (plans/revise-rejected.md part 2/2): carried from the MergeEntry so the re-review sees the
-   * prior objections and the interdiff. Absent on a recovery landing. */
+   * prior objections and the interdiff. Absent on a recovery merge. */
   priorReview?: PriorReview;
-  /** The head its vet's gate pre-check ran green on, when it ran one on exactly `sha`
-   * (GateResult.verifiedHead, carried by merge-batch.ts's VetVerdict) — so a landing whose
+  /** The head its verify's gate pre-check ran green on, when it ran one on exactly `sha`
+   * (GateResult.verifiedHead, carried by merge-batch.ts's VerifyVerdict) — so a merge whose
    * in-lock rebase is a no-op seeds the red-main baseline with the SHA that becomes main. */
   verifiedHead?: string;
 }
 
-/** The repo scope every landing step reads from its caller: the worktree root, the branch
- * landings fast-forward, the live config, and the task's abort signal (harness shutdown or a
- * deliberate `abort --role` for any of the task's roles), fresh per call. LanderContext,
+/** The repo scope every merge step reads from its caller: the worktree root, the branch
+ * merges fast-forward, the live config, and the task's abort signal (harness shutdown or a
+ * deliberate `abort --role` for any of the task's roles), fresh per call. MergerContext,
  * ReviewGateContext, and merge-batch.ts's BatchContext extend it, and merge-stack.ts's
- * landStack accepts it directly, so the scope's shape has one home. */
-export interface LandingScopeContext {
+ * mergeStack accepts it directly, so the scope's shape has one home. */
+export interface MergeScopeContext {
   root: string;
   mainBranch: string;
   config: TumwaterConfig;
@@ -77,18 +77,20 @@ export interface LandingScopeContext {
   signal(): AbortSignal;
 }
 
-/** What a landing needs from its owning loop: the repo scope (LandingScopeContext), the live
+/** MergerContext: what the merger (merge-batch.ts and merge-core.ts) needs from its owning
+ * loop — not merge-to-main.ts's MergeContext, which is the conflict-resolving merge's own. It
+ * carries the repo scope (MergeScopeContext), the live
  * state object (the gate updates it in place exactly as when it ran inside runTick), the loop's
  * shared pi wiring for merge-to-main.ts's conflict resolver — which folds usage internally —
  * and an explicit foldUsage for the reviewer run's FINAL result (runGatePi folds a retried
  * first attempt at retry time and leaves the final run to this fold — folding it in both
  * places would count the reviewer twice). */
-export interface LanderContext extends PiRunWiring, LandingScopeContext {
+export interface MergerContext extends PiRunWiring, MergeScopeContext {
   state: LoopState;
 }
 
-/** A gate invocation's outcome: `gate` when the change is approved/exempt and may be landed
- * (`sha` is the head to land — the pin as the gate judged it), `result` when it is already
+/** A gate invocation's outcome: `gate` when the change is approved/exempt and may be merged
+ * (`sha` is the head to merge — the pin as the gate judged it), `result` when it is already
  * terminal (aborted, rejected, or review_error).
  * `discarded` tells a strike-cap review_error (ref deleted — as final as a rejection) from an
  * under-cap one (ref kept for recovery). */
@@ -97,29 +99,29 @@ type GateOutcome =
   | { kind: "result"; result: TickResult; discarded?: true };
 
 /** The identity every gate invocation needs from its caller — merge-batch.ts's BatchContext
- * (and LanderContext) satisfies it, so the gate never hand-assembles its ReviewContext
+ * (and MergerContext) satisfies it, so the gate never hand-assembles its ReviewContext
  * argument object. */
-interface ReviewGateContext extends GateRunsPi, LandingScopeContext {}
+interface ReviewGateContext extends GateRunsPi, MergeScopeContext {}
 
 /** Rebase a pinned change in its leased pool slot `wt` (checked out detached at `req.sha`) onto
  * main's CURRENT head before its review gate, and return the request that gate must judge.
  * The gate must review main's current tree, not the main the author started from: when main
- * moved after the pin (the common queued-landing case), a pre-check against the stale tree
- * fails on a failure main already fixed and every queued landing rejects in a cascade — and a
+ * moved after the pin (the common queued-merge case), a pre-check against the stale tree
+ * fails on a failure main already fixed and every queued merge rejects in a cascade — and a
  * reviewer whose checkout is behind main reads main's newer commits as the change deleting
  * them (BUGS.md 2026-09-23: d13cf2e, a sound feature, rejected for "reverting" five commits
- * that landed after its pin). A no-op when main has not moved; on a clean rebase the ref and
- * the request track the synced head so the strike-cap tell and the landing ref name the tree
- * that can actually land. On a conflict rebaseOntoMain has already aborted and restored the
- * detached pin — the gate reviews the pinned tree and mergeToMain's resolver lands it. Every
- * vet runs it before its gate (merge-batch.ts's vetRequest), so a gate never judges a stale
+ * that merged after its pin). A no-op when main has not moved; on a clean rebase the ref and
+ * the request track the synced head so the strike-cap tell and the merge ref name the tree
+ * that can actually merge. On a conflict rebaseOntoMain has already aborted and restored the
+ * detached pin — the gate reviews the pinned tree and mergeToMain's resolver merges it. Every
+ * verify runs it before its gate (merge-batch.ts's verifyRequest), so a gate never judges a stale
  * pin; each call rebases only its own worktree, onto main itself — never onto another queued
- * change — so concurrent vets in distinct pool slots cannot interfere. */
+ * change — so concurrent verifies in distinct pool slots cannot interfere. */
 export async function syncPinToMain(
   ctx: Pick<ReviewGateContext, "root" | "mainBranch">,
   wt: string,
-  req: LandRequest,
-): Promise<LandRequest> {
+  req: MergeRequest,
+): Promise<MergeRequest> {
   if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return req;
   const syncedHead = await headOf(wt, "HEAD");
   if (syncedHead === req.sha) return req;
@@ -127,15 +129,15 @@ export async function syncPinToMain(
   return { ...req, sha: syncedHead };
 }
 
-/** The ReviewContext for judging landing request `req` in worktree `wt` — the single
- * home of that argument object, shared by reviewPinnedChange's pinned vet and
- * landApprovedChange's re-review of a resolved conflict (its recheckResolved callback), so the
+/** The ReviewContext for judging merge request `req` in worktree `wt` — the single
+ * home of that argument object, shared by reviewPinnedChange's pinned verify and
+ * mergeApprovedChange's re-review of a resolved conflict (its recheckResolved callback), so the
  * two gate invocations cannot drift on which fields the reviewer sees. Both callers' contexts
- * (ReviewGateContext and LanderContext) carry the root/mainBranch/config/signal/runGatePi fields
+ * (ReviewGateContext and MergerContext) carry the root/mainBranch/config/signal/runGatePi fields
  * this reads. */
 function reviewContextFor(
   ctx: Pick<ReviewGateContext, "root" | "mainBranch" | "config" | "signal" | "runGatePi">,
-  req: LandRequest,
+  req: MergeRequest,
   wt: string,
 ): ReviewContext {
   return {
@@ -145,8 +147,8 @@ function reviewContextFor(
     mainBranch: ctx.mainBranch,
     config: ctx.config,
     tick: req.tick,
-    // One directory per review of one change: tick plus the pinned sha, so a re-vet of the
-    // same sha reuses it and the vet and the conflict-resolved re-review agree.
+    // One directory per review of one change: tick plus the pinned sha, so a re-verify of the
+    // same sha reuses it and the verify and the conflict-resolved re-review agree.
     sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.tick}-${shortSha(req.sha)}`),
     signal: ctx.signal(),
     runGatePi: ctx.runGatePi,
@@ -156,21 +158,21 @@ function reviewContextFor(
 }
 
 /** Run one pinned change through the review gate in its leased pool slot `wt` and handle the
- * immediate bookkeeping — the heart of every vet (merge-batch.ts's vetRequest). Persists the
+ * immediate bookkeeping — the heart of every verify (merge-batch.ts's verifyRequest). Persists the
  * verdict at once, folds the reviewer's usage, and routes
- * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-lands it),
+ * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-merges it),
  * rejected (ref deleted — final for this sha), and failed (a strike-cap discard — the gate
  * reports it as `discarded` — deletes the ref; an under-cap failure, a red main's included,
- * keeps it for the next re-land). Returns
- * the gate result only when the change may be landed, alongside the head to land it at. An
+ * keeps it for the next re-merge). Returns
+ * the gate result only when the change may be merged, alongside the head to merge it at. An
  * abort that has already fired is observed HERE, before the gate starts, not only by the
- * gate's pi runs: a gate that short-circuits on an already-approved head (a re-vetted change's)
+ * gate's pi runs: a gate that short-circuits on an already-approved head (a re-verified change's)
  * runs no pi at all, and one that does still spends its build pre-check first — so a stopping
- * landing (a restart hand-off past its deadline, BUGS.md 2026-09-23) would otherwise sail
+ * merge (a restart hand-off past its deadline, BUGS.md 2026-09-23) would otherwise sail
  * through its gate into the check. */
 export async function reviewPinnedChange(
   ctx: ReviewGateContext,
-  req: LandRequest,
+  req: MergeRequest,
   wt: string,
   state: LoopState,
   foldUsage: (run: PiRunResult) => void,
@@ -180,8 +182,8 @@ export async function reviewPinnedChange(
   const ref = mergeRefName(role);
   // Both uses below — a rejection and a strike-cap discard — end a pinned change without
   // keeping it: drop the held-selector note and the pin ref together, so the two-part cleanup
-  // cannot drift between them. The vet's checkout is a pooled slot (plans/worktree-pool.md,
-  // "Vets and merges"): vetRequest releases the lease in its finally, and a slot is reused, so
+  // cannot drift between them. The verify's checkout is a pooled slot (plans/worktree-pool.md,
+  // "Vets and merges"): verifyRequest releases the lease in its finally, and a slot is reused, so
   // this path must not remove the worktree it ran in.
   const discardPin = async () => {
     state.mergeReviewError = undefined;
@@ -197,9 +199,9 @@ export async function reviewPinnedChange(
     req.body,
     req.highFriction,
   );
-  // The gate is over, whatever it decided: move the landing cell off the gate's stages (a no-op
-  // outside a queued landing). What follows is the wait for the merge — the vet marks the change
-  // `vetted` next, and the merge slot re-stages it `merging` when it takes it — and a finished
+  // The gate is over, whatever it decided: move the merge cell off the gate's stages (a no-op
+  // outside a queued merge). What follows is the wait for the merge — the verify marks the change
+  // `approved` next, and the merge slot re-stages it `merging` when it takes it — and a finished
   // reviewer's last turns left in the cell would accrue a false `no pi output` flag for as long
   // as the change waits.
   setMergeStage(root, role, "merging");
@@ -214,7 +216,7 @@ export async function reviewPinnedChange(
   }
   // Persist the verdict immediately, not at the tick's end save: the gate's bookkeeping is
   // cross-tick memory (a persisted "reject" injects a "your previous change was rejected"
-  // note into the next prompt), and this tick's tail — the landing plus the still-to-come
+  // note into the next prompt), and this tick's tail — the merge plus the still-to-come
   // authoring run — can outlive a sudden death by hours. A mid-run crash (power loss,
   // kill -9) would otherwise roll the state file back to the last tick-boundary snapshot
   // and re-inject a superseded rejection even though its replacement is already on main.
@@ -231,7 +233,7 @@ export async function reviewPinnedChange(
   // produced it — one more line here, because a GateResult carries a third run now.
   if (gate.nudgeRun) foldUsage(gate.nudgeRun);
 
-  // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-lands it.
+  // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-merges it.
   // The caller routes "aborted" through its own abort handling (which discards the pin too when
   // the abort was a deliberate user stop).
   if (gate.aborted) return { kind: "result", result: "aborted" };
@@ -244,7 +246,7 @@ export async function reviewPinnedChange(
 
   if (gate.decision === "failed" && gate.mainRed) {
     // Main is red at its tip: nothing judged this diff and nothing is wrong with the reviewer,
-    // so it is main_red, not review_error — the pin stays for a re-land once main is green.
+    // so it is main_red, not review_error — the pin stays for a re-merge once main is green.
     state.lastError = `gate check failed: ${gate.detail}`;
     return { kind: "result", result: "main_red" };
   }
@@ -270,7 +272,7 @@ export async function reviewPinnedChange(
     }
     // Strike-cap discard: the gate says so directly (it reset the worktree off the pin) — the
     // commit is gone and the ref goes too. An under-cap failure — a dead reviewer — keeps the
-    // pin as it is: the gate never commits, so the pin still names the tree the next re-land
+    // pin as it is: the gate never commits, so the pin still names the tree the next re-merge
     // reviews.
     if (gate.discarded) {
       await discardPin();
@@ -280,7 +282,7 @@ export async function reviewPinnedChange(
   }
 
   // Approved or exempt: track the pin to the head the verdict judged, so a merge that cannot
-  // finish (conflict/blocked) leaves recovery re-landing that tree, not a stale pin.
+  // finish (conflict/blocked) leaves recovery re-merging that tree, not a stale pin.
   // verifiedHead carries it when the pre-check ran green; otherwise the worktree head does. An
   // unreadable head keeps the old pin (fail closed).
   const sha = gate.verifiedHead ?? (await headOf(wt, "HEAD").catch(() => req.sha));
@@ -288,18 +290,18 @@ export async function reviewPinnedChange(
     await setRef(root, ref, sha);
     req = { ...req, sha };
   }
-  // The change may land: nothing is held against the previous reviewer selector any more.
+  // The change may merge: nothing is held against the previous reviewer selector any more.
   state.mergeReviewError = undefined;
   return { kind: "gate", gate, sha };
 }
 
-/** The failed landing outcomes that KEEP the pin for another attempt: an under-cap review
- * failure, or a merge that could not be rebased/landed. They are exactly a landing's
+/** The failed merge outcomes that KEEP the pin for another attempt: an under-cap review
+ * failure, or a merge that could not be rebased/merged. They are exactly a merge's
  * non-terminal failures (`rejected` is final and deletes the pin; `aborted` is a shutdown;
- * `changed` landed), so a run of them on the leftover-recovery path is what feeds the error
+ * `changed` merged), so a run of them on the leftover-recovery path is what feeds the error
  * streak — a dead reviewer backend raises the alarm instead of resetting it every tick
  * (BUGS.md 2026-09-21). */
-export const RETRIABLE_LANDING_RESULTS: ReadonlySet<TickResult> = new Set([
+export const RETRIABLE_MERGE_RESULTS: ReadonlySet<TickResult> = new Set([
   "review_error",
   "merge_conflict",
   "merge_blocked",
@@ -313,10 +315,10 @@ export const RETRIABLE_LANDING_RESULTS: ReadonlySet<TickResult> = new Set([
  * revising, point `refs/tumwater/rejected/<role>` at the head the gate judged and set
  * LoopState.revision (with each reason's persistence count) so the author's next tick re-applies
  * it; when final, clear the revision, delete the ref and log `exhausted`. `priorCounts` is the
- * previous round's per-reason persistence counts, carried from the queued landing's PriorReview;
- * absent for a fresh change's first rejection and on a recovery landing, a `(prior N)` tag then
+ * previous round's per-reason persistence counts, carried from the queued merge's PriorReview;
+ * absent for a fresh change's first rejection and on a recovery merge, a `(prior N)` tag then
  * reads as a fresh objection. Shared by a pinned change's rejection (reviewPinnedChange) and the
- * in-lock re-review rejection of a resolved conflict (landApprovedChange), so both send the
+ * in-lock re-review rejection of a resolved conflict (mergeApprovedChange), so both send the
  * change back for revision the same way. A rejection with no `revisionRound` is a fresh change's
  * first round (1). The director never revises. */
 async function recordRejectedChange(
@@ -353,33 +355,33 @@ async function recordRejectedChange(
   state.revision = { sha: rejectedHead, round: nextRound, at: Date.now(), reasonCounts: counts };
 }
 
-/** Land a head that already passed its OWN gate in its vet — the merge slot's one-change landing
- * and each landing of an abandoned stack's one-at-a-time fallback (merge-batch.ts's landVetted)
+/** Merge a head that already passed its OWN gate in its verify — the merge slot's one-change merge
+ * and each merge of an abandoned stack's one-at-a-time fallback (merge-batch.ts's mergeApproved)
  * — without a second gate. Re-gating would rebase first, and by then main has usually moved (a
- * fallback's earlier entries just landed): the rebase rewrites the approved sha, the gate's
- * exact-sha `lastApprovedHead` short-circuit misses, and every such landing paid a second build
+ * fallback's earlier entries just merged): the rebase rewrites the approved sha, the gate's
+ * exact-sha `lastApprovedHead` short-circuit misses, and every such merge paid a second build
  * check and model review of a change it had already approved (BUGS.md 2026-09-23). Here a clean
  * rebase of the approved head is accepted as-is: mergeToMain's own in-lock rebase moves it onto
  * main's tip, and because the pre-merge head it captures is the approved `req.sha`,
- * verifyMerge runs one bounded scope-`landing` check whenever that rebase rewrote anything
+ * verifyMerge runs one bounded scope-`merge` check whenever that rebase rewrote anything
  * (and skips only for the exact bytes the gate judged, seeding the red-main baseline when
  * `req.verifiedHead` names them). A conflicting rebase gets mergeToMain's resolver — the rule for
  * a pin whose pre-gate rebase conflicted. `lastApprovedHead` is neither read nor widened: the
- * caller vouches for `req.sha` (only approved/exempt changes are vetted). Owns the landing ref's
- * lifecycle from here: deleted on landing, KEPT on every non-terminal outcome (aborted,
- * merge_conflict, merge_blocked) for the next tick's leftover recovery. An abort that has
+ * caller vouches for `req.sha` (only changes the gate approved or exempted are merged). Owns
+ * the merge ref's lifecycle from here: deleted on merge, KEPT on every non-terminal outcome
+ * (aborted, merge_conflict, merge_blocked) for the next tick's leftover recovery. An abort that has
  * already fired returns "aborted" before anything starts, ref kept — the merge's step-boundary
  * stop (BUGS.md 2026-09-23): with no gate here, nothing else on this path would notice it
- * before the in-lock check and the merge. Never throws for a failed landing: git-level failures
+ * before the in-lock check and the merge. Never throws for a failed merge: git-level failures
  * propagate like any other failure. */
-export async function landApprovedChange(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
+export async function mergeApprovedChange(ctx: MergerContext, req: MergeRequest): Promise<TickResult> {
   if (ctx.signal().aborted) return "aborted";
   // Hold the merge worktree from before ensureDetachedWorktree (its reset is part of the
   // use) through the merge (plans/disk-floor.md, part 2/4).
-  return useWorktree(ctx.root, mergeWorktreePath(ctx.root), () => landApprovedChangeIn(ctx, req));
+  return useWorktree(ctx.root, mergeWorktreePath(ctx.root), () => mergeApprovedChangeIn(ctx, req));
 }
 
-async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
+async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Promise<TickResult> {
   const wt = await ensureDetachedWorktree(ctx.root, mergeWorktreePath(ctx.root), req.sha);
   const pinPatch = await patchId(wt, ctx.mainBranch, req.sha).catch(() => null);
   let red: { check: BuildCheck; outcome: BuildCheckOutcome } | undefined;
@@ -403,7 +405,7 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
         if (ctx.signal().aborted) return { verdict: "retry" };
         // A resolved diff that left the reviewed change's lines goes back through the same gate
         // the pin went through (BUGS.md 2026-10-01: a resolution that restored code main had
-        // deliberately reverted landed on the build check alone). Same gate, same worktree
+        // deliberately reverted merged on the build check alone). Same gate, same worktree
         // convention as reviewPinnedChange: the reject path records the verdict, resets the
         // worktree to main and logs review_rejected itself; the ref and the lastError are ours.
         const gate = await reviewAheadOfMain(
@@ -441,7 +443,7 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
           return { verdict: "rejected" };
         }
         // A failed gate (dead reviewer, aborted run) is no verdict about the tree: under the
-        // strike cap the pin stays for recovery's re-land (the gate's own discard fires here as
+        // strike cap the pin stays for recovery's re-merge (the gate's own discard fires here as
         // "discarded", and then the commit is gone anyway).
         ctx.state.lastError = `merge failed: re-review failed: ${gate.detail}`;
         if (gate.discarded) {
@@ -456,7 +458,7 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
     req.verifiedHead,
   );
   if (result === "changed") {
-    await deleteRef(ctx.root, mergeRefName(req.role)); // landed: the pin has done its job
+    await deleteRef(ctx.root, mergeRefName(req.role)); // merged: the pin has done its job
     noteMergeRetryPassed(ctx, req.role, pinPatch);
     return result;
   }
@@ -464,7 +466,7 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
   if (result === "merge_blocked" && blocked !== undefined) {
     return mergeBlocked(ctx, req.role, wt, blocked);
   }
-  // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-lands it.
+  // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-merges it.
   // (Cross-check blocks no longer come through here: merge-check-failures.ts's mergeBlocked
   // counts them.)
   // A rejected recheck already wrote its own lastError and deleted its ref — leave it.

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { LandRequest, LanderContext } from "../../src/merge/merge-core.js";
-import { landVetted, vetRequest, type BatchContext, type BatchRoleWiring } from "../../src/merge/merge-batch.js";
+import type { MergeRequest, MergerContext } from "../../src/merge/merge-core.js";
+import { mergeApproved, verifyRequest, type BatchContext, type BatchRoleWiring } from "../../src/merge/merge-batch.js";
 import { setRef } from "../../src/git/git.js";
 import { ensureWorktree } from "../../src/git/worktree.js";
 import { eventsLogPath, mergeRefName } from "../../src/paths.js";
@@ -19,11 +19,11 @@ import { runPi } from "../../src/pi/pi.js";
 import { assistantLine, leasedRoleShell } from "./pi-events.js";
 import { ensureParentDir } from "../../src/files/files.js";
 
-/** Shared fixtures for the landing tests — merger.test.ts, merger-restack.test.ts and
+/** Shared fixtures for the merge tests — merger.test.ts, merger-restack.test.ts and
  * merger-bisect.test.ts,
  * split from one file so node --test runs the three in parallel processes (top-level tests
  * within a file run one after another; each file gets its own process, and its own PATH for
- * fakePi's global swap). Contexts and wiring built the way the landing drain builds
+ * fakePi's global swap). Contexts and wiring built the way the merge drain builds
  * them, pinned-change repos in the queue shape the pipeline reads, and reviewer/check shims. */
 
 export const ROLE = "improve";
@@ -40,18 +40,18 @@ export interface PiCall {
   session: string;
 }
 
-/** A LanderContext wired like merge-batch.ts does: real config/state, a recording runPi stub
+/** A MergerContext wired like merge-batch.ts does: real config/state, a recording runPi stub
  * for the conflict resolver (which may also mutate the worktree via `resolve`), and an abortable
  * signal. */
 export function makeCtx(
   root: string,
   state: LoopState,
   resolve?: (wt: string) => void,
-): { ctx: LanderContext; calls: PiCall[]; folded: PiRunResult[]; controller: AbortController } {
+): { ctx: MergerContext; calls: PiCall[]; folded: PiRunResult[]; controller: AbortController } {
   const calls: PiCall[] = [];
   const folded: PiRunResult[] = [];
   const controller = new AbortController();
-  const ctx: LanderContext = {
+  const ctx: MergerContext = {
     root,
     mainBranch: "main",
     config: defaultConfig(),
@@ -68,7 +68,7 @@ export function makeCtx(
   return { ctx, calls, folded, controller };
 }
 
-/** A repo with one commit NOT contained in main, pinned by the landing ref — exactly what
+/** A repo with one commit NOT contained in main, pinned by the merge ref — exactly what
  * loop.ts leaves behind after pinAndReset. The role worktree is created at main (clean), as the
  * reset left it. */
 export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: string }> {
@@ -84,16 +84,16 @@ export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: 
 }
 
 // The reviewer's fake-pi shim and its approver preset live in pi-events.ts (next to the
-// assistant-line helpers they build on); re-exported here for the lander fixtures' imports.
+// assistant-line helpers they build on); re-exported here for the merger fixtures' imports.
 export { reviewerPi, APPROVE_PI } from "./pi-events.js";
 
-export function request(sha: string, overrides: Partial<LandRequest> = {}): LandRequest {
+export function request(sha: string, overrides: Partial<MergeRequest> = {}): MergeRequest {
   return { role: ROLE, sha, tick: 7, summary: "the work", ...overrides };
 }
 
 /** The BatchRoleWiring a test context implies: its own state and pi/fold halves, so the
  * hand-assembled literal cannot drift from the context it stubs. */
-export function batchWiring(ctx: LanderContext): BatchRoleWiring {
+export function batchWiring(ctx: MergerContext): BatchRoleWiring {
   return {
     state: ctx.state,
     foldUsage: ctx.foldUsage,
@@ -102,18 +102,18 @@ export function batchWiring(ctx: LanderContext): BatchRoleWiring {
   };
 }
 
-/** Land one pinned change the way the pipeline does — its vet, then (approved) a one-change
- * merge — over one LanderContext's wiring, returning the outcome the pipeline writes back. */
-export async function vetAndLand(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
+/** Merge one pinned change the way the pipeline does — its verify, then (approved) a one-change
+ * merge — over one MergerContext's wiring, returning the outcome the pipeline writes back. */
+export async function verifyAndMerge(ctx: MergerContext, req: MergeRequest): Promise<TickResult> {
   const w = batchWiring(ctx);
-  const v = await vetRequest(ctx, req, w);
+  const v = await verifyRequest(ctx, req, w);
   if (v.kind === "result") return v.result;
-  const [result] = await landVetted(ctx, [{ ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) }], () => w);
+  const [result] = await mergeApproved(ctx, [{ ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) }], () => w);
   return result!;
 }
 
 /** Shell that numbers this check run into `$n`, atomically: `mkdir` either creates
- * `<base>.<n>` or fails, so two checks running at once (the pipeline vets changes
+ * `<base>.<n>` or fails, so two checks running at once (the pipeline verifies changes
  * concurrently) can never both read the same count the way a read-increment-write counter
  * file does. Runs number 1, 2, … in start order. */
 export const checkRunNumber = (base: string): string =>
@@ -180,7 +180,7 @@ export function makeBatchCtx(root: string, config?: TumwaterConfig, controller?:
 
 /** Per-role wiring resolved the way the drain resolves its authors: a live state object per
  * role, usage recorded per role, and the shared runPi stub (with an optional resolver) for
- * the one-at-a-time fallback landings. File-internal: only this module's batch fixture uses it. */
+ * the one-at-a-time fallback merges. File-internal: only this module's batch fixture uses it. */
 function makeWiring(
   states: Record<string, LoopState>,
   resolve?: (wt: string) => void,
@@ -201,7 +201,7 @@ function makeWiring(
 }
 
 /** A batch test's whole fixture in one call: one pinned change per role (the queue shape the
- * drain reads), a live state per role, and the per-role wiring to land them — the setup every
+ * drain reads), a live state per role, and the per-role wiring to merge them — the setup every
  * batch test below otherwise spells out as batchPinnedFixture + states + makeWiring. `edit`
  * and `resolve` pass through to the fixture and wiring. */
 export async function batchFixture<R extends string>(
@@ -224,31 +224,31 @@ export async function batchFixture<R extends string>(
   return { root, shas, states, ...makeWiring(states, opts.resolve) };
 }
 
-/** Vet `requests` one after another, in queue order, then merge every approved one as the
- * pipeline's merge slot does (landVetted): each request's result, `undefined` when the merge left
- * it unattempted. A vet's own verdict is final for its request, exactly as the pipeline writes it
- * back at once; only the approved ones reach the merge. */
-export async function vetThenMerge(
+/** Verify `requests` one after another, in queue order, then merge every approved one as the
+ * pipeline's merge slot does (mergeApproved): each request's result, `undefined` when the merge
+ * left it unattempted. A verify's own verdict is final for its request, exactly as the pipeline
+ * writes it back at once; only the approved ones reach the merge. */
+export async function verifyThenMerge(
   ctx: BatchContext,
-  requests: LandRequest[],
+  requests: MergeRequest[],
   wiringFor: (role: string) => BatchRoleWiring,
-): Promise<Array<{ req: LandRequest; result?: TickResult }>> {
-  const results: Array<{ req: LandRequest; result?: TickResult }> = requests.map((req) => ({ req }));
-  const vetted: Array<{ at: number; req: LandRequest }> = [];
+): Promise<Array<{ req: MergeRequest; result?: TickResult }>> {
+  const results: Array<{ req: MergeRequest; result?: TickResult }> = requests.map((req) => ({ req }));
+  const approved: Array<{ at: number; req: MergeRequest }> = [];
   for (const [at, req] of requests.entries()) {
-    const v = await vetRequest(ctx, req, wiringFor(req.role));
+    const v = await verifyRequest(ctx, req, wiringFor(req.role));
     if (v.kind === "result") results[at]!.result = v.result;
-    else vetted.push({ at, req: { ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) } });
+    else approved.push({ at, req: { ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) } });
   }
-  if (vetted.length === 0) return results;
-  const merged = await landVetted(ctx, vetted.map((v) => v.req), wiringFor);
+  if (approved.length === 0) return results;
+  const merged = await mergeApproved(ctx, approved.map((v) => v.req), wiringFor);
   merged.forEach((result, s) => {
-    if (result !== undefined) results[vetted[s]!.at]!.result = result;
+    if (result !== undefined) results[approved[s]!.at]!.result = result;
   });
   return results;
 }
 
-/** The standard vet-and-merge over a fixture's pinned changes, in `roles` order — the
+/** The standard verify-and-merge over a fixture's pinned changes, in `roles` order — the
  * makeBatchCtx + one-request-per-role call every batch test otherwise spells out. */
 export function runBatch(
   root: string,
@@ -257,21 +257,21 @@ export function runBatch(
   wiringFor: (role: string) => BatchRoleWiring,
   controller?: AbortController,
 ) {
-  return vetThenMerge(
+  return verifyThenMerge(
     makeBatchCtx(root, undefined, controller),
     roles.map((role) => request(shas[role]!, { role })),
     wiringFor,
   );
 }
 
-// A test that cares WHICH vet does what keys its reviewer on the change under review, and one
+// A test that cares WHICH verify does what keys its reviewer on the change under review, and one
 // that cares about order waits on an event rather than guessing a sleep long enough for a
 // loaded host.
 
 /** The shell that prints `reply` as a review run's one assistant turn. */
 export const replyLine = (reply: string): string => `printf '%s\\n' '${assistantLine(reply)}'`;
 
-/** A reviewer shim whose review run behaves per change: a vet holds a pooled `_slot-<n>`
+/** A reviewer shim whose review run behaves per change: a verify holds a pooled `_slot-<n>`
  * lease, so `$role` (from slots.json) names the change under review. `byRole` maps a role to
  * the shell its review run executes; every other role runs `otherwise` (approve at once). */
 export function reviewerByRole(byRole: Record<string, string>, otherwise = replyLine("VERDICT: approve")): string {
@@ -292,7 +292,7 @@ export const awaitEvent = (root: string, loop: string, type: string): string =>
   `i=0; until grep -q '"loop":"${loop}","type":"${type}"' '${eventsLogPath(root)}' 2>/dev/null || [ $i -ge 300 ]; do sleep 0.1; i=$((i+1)); done; `;
 
 /** A counting build check: `$n` is the invocation's 1-based number (checkRunNumber) — runs 1
- * and 2 are the two vets' gate pre-checks, run 3 is the stack's first shared check — and `body`
+ * and 2 are the two verifies' gate pre-checks, run 3 is the stack's first shared check — and `body`
  * runs before the check
  * passes (or fails, if `body` exits nonzero). */
 export function countingCheck(root: string, body: string): void {
@@ -300,7 +300,7 @@ export function countingCheck(root: string, body: string): void {
   declareCheck(root, `#!/bin/sh\n${checkRunNumber(count)}${body}\necho ok\n`);
 }
 
-/** Shell that lands one commit on main from inside a running check — the primary checkout
+/** Shell that merges one commit on main from inside a running check — the primary checkout
  * sits on main, so a commit there is main moving under the batch. `line` is single-quoted
  * into the script, so it must not contain a quote itself. */
 export const commitOnMain = (root: string, file: string, line: string): string =>
@@ -314,7 +314,7 @@ export const parkUntil = (started: string, release: string): string =>
 export const batchChecks = (root: string) =>
   readEvents(root).filter((e) => e.type === "build_check" && e.scope === "batch");
 
-/** A check that passes its first `gates` runs (the vets' gate pre-checks, which all run
+/** A check that passes its first `gates` runs (the verifies' gate pre-checks, which all run
  * before any batch check) and afterwards runs `after` — which sees `$n`, and the invoking
  * worktree as `$INIT_CWD` (npm runs the script at the package root). */
 export function checkAfterGates(root: string, gates: number, after: string): void {
@@ -323,7 +323,7 @@ export function checkAfterGates(root: string, gates: number, after: string): voi
 }
 
 /** Advance main past the fixture's pins with one commit touching only `file` — the "pins
- * based on an older main" shape: the queue's pins were taken before other landings moved
+ * based on an older main" shape: the queue's pins were taken before other merges moved
  * main. Only `file` is staged, so an untracked declared check at the root stays untracked. */
 export function advanceMain(root: string, file: string, content: string): string {
   fs.writeFileSync(path.join(root, file), content);
@@ -342,7 +342,7 @@ export const perRoleReviewerPi = (replies: Record<string, string>): string =>
     `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$r"; exit 0;; esac; done`,
   ].join("\n");
 
-/** A vet-and-merge run with the merge's status hook recorded as `role:status`, in call order —
+/** A verify-and-merge run with the merge's status hook recorded as `role:status`, in call order —
  * the reports the pipeline mirrors into each change's marker record once it merges. */
 export async function runBatchRecorded(
   root: string,
@@ -351,7 +351,7 @@ export async function runBatchRecorded(
   wiringFor: (role: string) => BatchRoleWiring,
 ): Promise<{ results: Array<TickResult | undefined>; seen: string[] }> {
   const seen: string[] = [];
-  const results = await vetThenMerge(
+  const results = await verifyThenMerge(
     { ...makeBatchCtx(root), onChangeStatus: (role, status) => seen.push(`${role}:${status}`) },
     roles.map((role) => request(shas[role]!, { role })),
     wiringFor,
