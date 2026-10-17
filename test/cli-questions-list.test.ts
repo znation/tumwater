@@ -80,7 +80,7 @@ test("questions --answered lists the newest answers and refuses misuse", async (
   );
   const r = await cli(repo, "questions", "--answered");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /answered questions in QUESTIONS\.md, newest first:\n- New/);
+  assert.match(r.stdout, /answered questions in QUESTIONS\.md, newest first:\n1\. New/);
   const j = await cli(repo, "questions", "--answered", "-n", "1", "--json");
   const payload = JSON.parse(j.stdout) as { questions: { title: string }[]; older: number };
   assert.equal(payload.questions.length, 1);
@@ -120,6 +120,33 @@ test("questions --show prints one open question in full, in prose and as JSON", 
   }
 });
 
+test("questions --show <n> --answered prints one answered question in full", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions show answered");
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n### Open one\n\nshort\n\n## Answered\n\n### Old\n\nctx\n\n**Answered 2026-10-01 by operator:** a\n\n### New\n\nline a\nline b\n\n**Answered 2026-10-02 by operator:**\n\nkeep\nthis\n",
+  );
+  const r = await cli(repo, "questions", "--show", "1", "--answered");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trimEnd(), "New\n\nline a\nline b\n\n**Answered 2026-10-02 by operator:**\n\nkeep\nthis");
+  const old = await cli(repo, "questions", "--show", "2", "--answered");
+  assert.equal(old.stdout.trimEnd(), "Old\n\nctx\n\n**Answered 2026-10-01 by operator:** a");
+  const j = await cli(repo, "questions", "--answered", "--show", "1", "--json");
+  const q = JSON.parse(j.stdout) as { position: number; title: string; body: string; answeredOn: string };
+  assert.equal(q.position, 1);
+  assert.equal(q.title, "New");
+  assert.match(q.body, /keep\nthis/);
+  assert.equal(q.answeredOn, "2026-10-02");
+  const past = await cli(repo, "questions", "--show", "3", "--answered");
+  assert.equal(past.code, 1);
+  assert.match(past.stderr, /no answered question at position 3 \(2 in QUESTIONS\.md\)/);
+  const n = await cli(repo, "questions", "--show", "1", "--answered", "-n", "2");
+  assert.equal(n.code, 1);
+  assert.match(n.stderr, /-n does not apply to --show/);
+  assert.match((await cli(repo, "questions", "--show", "1")).stdout, /^Open one/);
+});
+
 test("questions --show refuses misuse", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli questions show refusals");
@@ -130,7 +157,6 @@ test("questions --show refuses misuse", async () => {
     [["--show"], /--show needs a position number/],
     [["--show", "1", "--show", "2"], /--show may only be given once/],
     [["--show=1"], /--show/],
-    [["--show", "1", "--answered"], /--show and --answered cannot be combined/],
     [["--show", "1", "--file", "x"], /--file only applies to questions answer <n>/],
     [["answer", "--show", "1"], /--show prints one open question; it takes no subcommand/],
   ];

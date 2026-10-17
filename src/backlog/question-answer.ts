@@ -140,18 +140,33 @@ function answeredQuestionsNewestFirst(root: string, count: number): { entries: B
   return { entries: all.slice(0, count), older: Math.max(0, all.length - count) };
 }
 
-/** `tumwater questions --answered`: bullets, not numbers, because `questions answer <n>`
- * positions address only `## Open`. */
+/** `tumwater questions --answered`: lines numbered by `--show <n> --answered` position, newest
+ * first — a numbering separate from the `## Open` positions `questions answer <n>` takes. */
 export function answeredQuestionList(root: string, count: number): string {
   const { entries, older } = answeredQuestionsNewestFirst(root, count);
   if (entries.length === 0) return "no answered questions";
   const lines = ["answered questions in QUESTIONS.md, newest first:"];
-  for (const e of entries) {
+  for (const [i, e] of entries.entries()) {
     const preview = answerPreview(e.body);
-    lines.push(`- ${e.title}${preview === "" ? "" : ` — ${preview}`}`);
+    lines.push(`${i + 1}. ${e.title}${preview === "" ? "" : ` — ${preview}`}`);
   }
   if (older > 0) lines.push(`(${older} older; -n <count> shows more)`);
   return lines.join("\n");
+}
+
+/** The Nth (1-based) newest answered question, or null past the end: the reader behind
+ * `tumwater questions --show <n> --answered`. */
+export function answeredQuestionAt(
+  root: string,
+  n: number,
+): { position: number; title: string; body: string; answeredOn: string | null } | null {
+  const e = answeredQuestionEntries(root).reverse()[n - 1];
+  return e === undefined ? null : { position: n, title: e.title, body: e.body, answeredOn: answerDate(e.body) };
+}
+
+/** How many answered questions QUESTIONS.md holds. */
+export function answeredQuestionCount(root: string): number {
+  return answeredQuestionEntries(root).length;
 }
 
 /** The same list as data for `--json`. */

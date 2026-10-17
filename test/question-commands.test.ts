@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { answerQuestion, sayAnswered } from "../src/cli/question-commands.js";
-import { tryAnswerQuestion, openQuestionList, questionListPayload, answeredQuestionList, answeredQuestionPayload, answeredQuestionSummaries } from "../src/backlog/question-answer.js";
+import { tryAnswerQuestion, openQuestionList, questionListPayload, answeredQuestionList, answeredQuestionAt, answeredQuestionPayload, answeredQuestionSummaries } from "../src/backlog/question-answer.js";
 import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files/files.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
@@ -467,8 +467,8 @@ test("answeredQuestionList shows the newest answers first with their answer line
   seed(root, twelveAnswered());
   const lines = answeredQuestionList(root, 10).split("\n");
   assert.equal(lines[0], "answered questions in QUESTIONS.md, newest first:");
-  assert.match(lines[1] as string, /^- Q12 — Answered 2026-10-12 by operator: decision 12$/);
-  assert.match(lines[10] as string, /^- Q3 — Answered 2026-10-03 by operator: decision 3$/);
+  assert.match(lines[1] as string, /^1\. Q12 — Answered 2026-10-12 by operator: decision 12$/);
+  assert.match(lines[10] as string, /^10\. Q3 — Answered 2026-10-03 by operator: decision 3$/);
   assert.equal(lines[11], "(2 older; -n <count> shows more)");
   assert.doesNotMatch(lines.join("\n"), /Still open/);
   assert.doesNotMatch(answeredQuestionList(root, 12), /older/);
@@ -478,10 +478,22 @@ test("answeredQuestionList shows the newest answers first with their answer line
   assert.equal(payload.questions[0]?.answeredOn, "2026-10-12");
 });
 
+test("answeredQuestionAt returns the Nth newest answered question or null past the end", () => {
+  const root = tmpdir();
+  seed(root, twelveAnswered());
+  const a = answeredQuestionAt(root, 1);
+  assert.equal(a?.position, 1);
+  assert.equal(a?.title, "Q12");
+  assert.equal(a?.answeredOn, "2026-10-12");
+  assert.match(a?.body ?? "", /decision 12/);
+  assert.equal(answeredQuestionAt(root, 12)?.title, "Q1");
+  assert.equal(answeredQuestionAt(root, 13), null);
+});
+
 test("answeredQuestionList handles an entry without a stamp and empty sections", () => {
   const root = tmpdir();
   seed(root, "# Q\n\n## Open\n\n_None yet._\n\n## Answered\n\n### Bare\n\njust text\n");
-  assert.equal(answeredQuestionList(root, 10), "answered questions in QUESTIONS.md, newest first:\n- Bare");
+  assert.equal(answeredQuestionList(root, 10), "answered questions in QUESTIONS.md, newest first:\n1. Bare");
   assert.equal(answeredQuestionPayload(root, 10).questions[0]?.answeredOn, null);
   seed(root, "# Q\n\n## Open\n\n_None yet._\n\n## Answered\n\n_None yet._\n");
   assert.equal(answeredQuestionList(root, 10), "no answered questions");
@@ -493,7 +505,7 @@ test("a question answered through answerQuestion is listed first", () => {
   seed(root, twoQuestionFile());
   answerQuestion(root, 1, "use ink");
   const out = answeredQuestionList(root, 10).split("\n");
-  assert.match(out[1] as string, /^- First: which renderer\?/);
+  assert.match(out[1] as string, /^1\. First: which renderer\?/);
   assert.match(out[1] as string, /by the user: use ink/);
 });
 

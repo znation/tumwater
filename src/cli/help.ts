@@ -269,9 +269,13 @@ Usage:
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data
   tumwater questions --answered [-n <count>] [--json]
-                                   List the newest answered questions, newest first (default
-                                   10), each with its answer line; --json prints {questions,
+                                   List the newest answered questions, numbered, newest first
+                                   (default 10), each with its answer line; --json prints {questions,
                                    older}, each with title, body, answeredOn
+  tumwater questions --show <n> --answered [--json]
+                                   Print the Nth entry of "questions --answered" (newest
+                                   first) in full, context and recorded answer; --json
+                                   prints {position, title, body, answeredOn}
   tumwater questions --show <n> [--json]
                                    Print the Nth open question in full (heading, blank line,
                                    body), the numbering "questions" lists and "questions

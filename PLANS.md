@@ -1117,7 +1117,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater questions --show <n> --answered` prints the Nth newest answered question in full, context and recorded answer (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/backlog/question-answer.ts, src/cli/cli-query-commands.ts, src/cli/help.ts, docs/cli.md and their tests)
+## Done
+
+### `tumwater questions --show <n> --answered` prints the Nth newest answered question in full, context and recorded answer (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/backlog/question-answer.ts, src/cli/cli-query-commands.ts, src/cli/help.ts, docs/cli.md and their tests) — done 2026-10-17
 
 **Goal.** `questions --answered` prints each answered question as a `- <title> — <answer line>` bullet, the answer line truncated. To reread a question's full context or a multi-line decision, the operator must pipe `--answered --json` through a JSON tool or scroll QUESTIONS.md. `plan --show <n> --done` and `bug --show <n> --done` already print a finished entry in full, and the dashboard drawer and TUI backlog pane open answered questions read-only; only the CLI lacks it — today `questions --show 1 --answered` fails with `--show and --answered cannot be combined`. Let that combination print the Nth newest answered question, and number the `--answered` lines so `<n>` can be read off the list.
 
@@ -1137,8 +1139,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - New test in `test/cli-questions-list.test.ts`, "questions --show <n> --answered prints one answered question in full": with QUESTIONS.md holding one open and two answered entries (the newer with a multi-line context and decision), `questions --show 1 --answered` exits 0 and prints exactly the newer heading, a blank line, and its body; `--show 2 --answered` prints the older; `--answered --show 1 --json` parses to `{position: 1, title, body, answeredOn: "<its date>"}`; `--show 3 --answered` exits 1 matching `no answered question at position 3 \(2 in QUESTIONS\.md\)`; `--show 1 --answered -n 2` exits 1 matching `-n does not apply to --show`; `--show 1` still prints the open entry.
 - In "questions --show refuses misuse", the `[["--show", "1", "--answered"], /cannot be combined/]` case is removed (that form now succeeds); the other cases are unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### The TUI backlog pane's up/down reach the "answered recently" rows and open each answered question's full context and recorded answer read-only (planned 2026-10-17 by the plan role; done 2026-10-17 by the feature role; independent of the waiting plain-terms rename series and of the in-flight GUI "Answered recently" drawer plan — touches only src/ui/tui/tui-backlog.ts, tui-pane.ts, tui-panes.ts, tui-editors.ts, docs/cli.md and their tests)
 

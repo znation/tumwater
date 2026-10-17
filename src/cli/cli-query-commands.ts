@@ -34,7 +34,7 @@ import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { wakeQuestionAsker } from "../operator/operator-intent.js";
 import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFromEditorBuffer, sayAnswered, sayQuestionList } from "./question-commands.js";
-import { answeredQuestionList, answeredQuestionPayload, openQuestionAt, questionListPayload, renderShownQuestion } from "../backlog/question-answer.js";
+import { answeredQuestionAt, answeredQuestionCount, answeredQuestionList, answeredQuestionPayload, openQuestionAt, questionListPayload, renderShownQuestion } from "../backlog/question-answer.js";
 import { editInEditor } from "./cli-editor.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
@@ -232,8 +232,15 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   if (limit !== undefined && !answeredFlag) fail("-n needs --answered (it limits the answered questions listed)");
   if (show !== undefined) {
     if (words.length > 0) fail("--show prints one open question; it takes no subcommand");
-    if (answeredFlag) fail("--show and --answered cannot be combined");
     if (file !== undefined) fail("--file only applies to questions answer <n>");
+    if (answeredFlag) {
+      if (limit !== undefined) fail("-n does not apply to --show");
+      const a = answeredQuestionAt(root, show);
+      if (a === null) fail(`no answered question at position ${show} (${answeredQuestionCount(root)} in QUESTIONS.md)`);
+      if (jsonFlag) sayJson(a);
+      else say(renderShownQuestion(a));
+      return;
+    }
     const q = openQuestionAt(root, show);
     if (q === null) fail(`no open question at position ${show} (${questionListPayload(root).questions.length} in QUESTIONS.md)`);
     if (jsonFlag) sayJson(q);
