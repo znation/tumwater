@@ -37,13 +37,7 @@ export function readBranchHead(root: string, branch: string): string | null {
   } catch {
     return null; // Neither store has it: the branch does not exist (or no repo state).
   }
-  const suffix = ` refs/heads/${branch}`;
-  for (const line of packed.split("\n")) {
-    if (!line.endsWith(suffix)) continue; // Skips comments, peel lines, and other refs.
-    const sha = line.slice(0, -suffix.length);
-    if (isSha(sha)) return sha;
-  }
-  return null;
+  return shaFromPackedRefs(packed, ` refs/heads/${branch}`) ?? null;
 }
 
 /** Resolve a branch's head without paying for a spawn when the ref files suffice:
@@ -119,6 +113,23 @@ function isPlainRefName(ref: string): boolean {
   return ref.split("/").every((part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"));
 }
 
+/** The SHA a packed-refs line whose refname ends with `suffix` (e.g. " refs/heads/main")
+ * names, else null when no line matches. undefined when a line matches the refname but holds
+ * a non-SHA — the "the files say something git would read differently" signal storedRef's
+ * callers distinguish from a plain miss. Both packed-refs readers (readBranchHead and
+ * storedRef) scan the file this way: git writes every packed-refs line as ``<sha> <refname>``
+ * (or ``<sha> <refname>^{}`` peel lines), so skipping lines that do not end in the suffix and
+ * slicing that suffix off the first match is the whole format. */
+function shaFromPackedRefs(packed: string, suffix: string): string | null | undefined {
+  for (const line of packed.split("\n")) {
+    if (!line.endsWith(suffix)) continue; // Skips the header, comments, peel lines and other refs.
+    const sha = line.slice(0, -suffix.length);
+    if (isSha(sha)) return sha;
+    return undefined;
+  }
+  return null;
+}
+
 /** The SHA a full ref name holds in `commondir`: its loose file (which wins in git too), else
  * its packed-refs line. null when neither has it, and undefined when the files hold something
  * git would read differently (a symref, unreadable content). */
@@ -135,13 +146,7 @@ function storedRef(commondir: string, ref: string): string | null | undefined {
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === "ENOENT" ? null : undefined;
   }
-  const suffix = ` ${ref}`;
-  for (const line of packed.split("\n")) {
-    if (!line.endsWith(suffix)) continue; // Skips the header, peel lines and other refs.
-    const sha = line.slice(0, -suffix.length);
-    return isSha(sha) ? sha : undefined;
-  }
-  return null;
+  return shaFromPackedRefs(packed, ` ${ref}`);
 }
 
 /** The SHA `git rev-parse --verify <ref>` would print in `dir`, read from files, or undefined
