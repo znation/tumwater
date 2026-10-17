@@ -7,6 +7,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Fallback chain, part 7/7: Show the fallback chain in doctor, the status badge, the TUI, the dashboard and the role view (planned 2026-10-16 by user; requires parts 2/7 and 6/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/doctor/ src/fleet/orchestrator-info.ts src/status/ src/ui/ src/roles/role-view.ts src/roles/role-render.ts src/events/ and their tests)
 
+**Needs review 2026-10-16 by feature: too large for one run**
+
 **Goal.** After parts 1/7–6/7, the team can be on step 2 of a chain because the window is used up, because a step's cap is spent, or because a step was demoted. Several surfaces still describe the old world:
 
 - the window badge reads "claude seams held until 14:30" while the work runs on a fallback;
