@@ -38,7 +38,7 @@ type FallbackChain = FallbackStep | FallbackStep[];
  * registry (src/agent/agent-backend.ts) is the runtime source, but the schema reserves these
  * ids so validation rejects a typo'd backend at load time instead of falling back to pi. The
  * agent id doubles as the selector provider namespace: `claude/<id>` always routes to claude. */
-export const AGENT_IDS = ["pi", "claude"] as const;
+export const AGENT_IDS = ["pi", "claude", "opencode"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
 /** The tier-map key list validation feeds checkKnownKeys: a `model` or `fallback` map whose

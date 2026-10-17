@@ -363,6 +363,43 @@ test("checkTierModels warns when pi's definitions name a reserved agent id", asy
   assert.match(outcome.detail, /declare provider "claude" — the name is reserved for an agent backend/);
 });
 
+// opencode (part 2/7): a model routed to opencode is not a pi pair and must not consult (or
+// require) pi's definitions nor probe pi's auth; the routing note names OpenCode's CLI and the
+// design §2 caveat that a bare `opencode/…` id always means the OpenCode CLI, never pi's
+// built-in `opencode` gateway.
+test("checkTierModels notes opencode-routed models and the built-in opencode caveat", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "opencode/deepseek-v4.1-flash-free" });
+  let probed = 0;
+  const outcome = await checkTierModels(root, path.join(tmpdir(), "absent-models.json"), async () => {
+    probed++;
+    return "ready";
+  });
+  assert.equal(outcome.level, "ok");
+  assert.match(outcome.detail, /opencode-routed .* ids run on the OpenCode CLI/);
+  assert.match(
+    outcome.detail,
+    /pi's built-in `opencode` provider is not reachable from tumwater/,
+  );
+  assert.equal(probed, 0, "an opencode-routed config probes no pi provider");
+});
+
+test("checkTierModels warns when pi's definitions name the reserved opencode provider", async () => {
+  const dir = tmpdir("doctor-reserved-");
+  const file = path.join(dir, "models.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ providers: { opencode: { models: [{ id: "deepseek-x" }] } } }),
+  );
+  const root = readyRepo();
+  // opencode declares no tier defaults, so name an explicit model to get past the
+  // "no models declared" early return and reach the reserved-provider warning.
+  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free" });
+  const outcome = await checkTierModels(root, file, async () => "ready");
+  assert.equal(outcome.level, "warn");
+  assert.match(outcome.detail, /declare provider "opencode" — the name is reserved for an agent backend/);
+});
+
 // The subscription-vs-API billing trap (plans/provider-concurrency.md §9 gap 6): with
 // ANTHROPIC_API_KEY exported (for pi's anthropic provider) a claude seam prefers the key over a
 // claude.ai login, silently moving every claude run to API billing. Doctor warns only when the

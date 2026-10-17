@@ -56,10 +56,10 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 | `provider` | none | The pi provider name; unset leaves pi's own default. |
 | `model` | none | The model for runs: one selector `provider/id[:thinking]`, or a map of tiers `small`/`default`/`strong`; unset leaves pi's own default. |
 | `thinking` | none | The pi thinking level; unset leaves pi's own default. |
-| `backend` | `"pi"` | The agent backend for bare model ids and the no-model default: `"pi"` or `"claude"`; see [backends.md](backends.md). |
+| `backend` | `"pi"` | The agent backend for bare model ids and the no-model default: `"pi"`, `"claude"` or `"opencode"`; see [backends.md](backends.md). |
 | `baseBranch` | none | The branch the team merges into and bases every role's worktree on; unset targets whichever branch the primary checkout has checked out, and an explicit value must exist. |
 | `agentBin` | none | The agent binary to spawn (`TUMWATER_PI_BIN` overrides it for one invocation); unset means `pi`, and a value with a path separator is resolved to an absolute path. |
-| `backends` | `{}` | Per-backend overrides of the binary (`bin`) and extra arguments (`args`), keyed by `pi` or `claude`; see [backends.md](backends.md). |
+| `backends` | `{}` | Per-backend overrides of the binary (`bin`) and extra arguments (`args`), keyed by `pi`, `claude` or `opencode`; see [backends.md](backends.md). An opencode passthrough arg is appended last and a positional value would be joined into OpenCode's message, so pass flag values as `--flag=value`. |
 | `check` | none | The project's own verification command (`command`, optional cheaper `gateCommand`, `cwd`, `timeoutSeconds`); unset detects an npm script at the nearest installed root. |
 | `piArgs` | `[]` | Extra arguments passed straight to pi; a flag the team sets itself is rejected. |
 | `maxConcurrent` | `6` | The most model runs in flight at once across all roles, merges included; the director's own runs sit outside it. |

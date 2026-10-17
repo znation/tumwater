@@ -12,6 +12,7 @@ import {
   NO_COMMITS_MESSAGE,
 } from "../src/gates/readiness.js";
 import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/gates/startup-gate.js";
+import { registerAgentBackend, type AgentBackend } from "../src/agent/agent-backend.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
@@ -169,5 +170,56 @@ test("a named branch in a repo with no local branches reports an empty branch li
       await runStartupProblem(repo, "ghost"),
       "branch ghost does not exist (branches: none)",
     );
+  });
+});
+
+// opencode backend (part 2/7): a backend an enabled seam routes to that this build has no
+// registered adapter for must refuse startup, naming the backend — a run would otherwise fall
+// through to pi with an opencode model id pi cannot serve. The registry is read through
+// src/agent/run-agent.ts (startup-gate.ts imports it), which registers the built-in pi and
+// claude adapters; a fake under `opencode` stands in for a future adapter.
+
+test("an opencode seam with no registered adapter fails startup, naming the backend", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "startup gate opencode no adapter");
+  await withPi("exit 0", async () => {
+    const file = path.join(repo, "tumwater.json");
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    cfg.model = "opencode/deepseek-v4.1-flash-free";
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    assert.equal(
+      await runStartupProblem(repo, null),
+      "backend opencode is configured but this build has no adapter for it",
+    );
+  });
+});
+
+test("a registered opencode adapter whose binary exists passes the gate", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "startup gate opencode registered");
+  const opencodeBin = tmpdir("startup-opencode-");
+  writeScript(path.join(opencodeBin, "opencode"), "exit 0");
+  // Register a fake opencode adapter so the registry knows the backend exists (only the
+  // startup gate runs here; the adapter's invocation is never used).
+  const fake: AgentBackend = {
+    id: "opencode",
+    label: "opencode",
+    defaultBin: "opencode",
+    binEnv: "TUMWATER_OPENCODE_BIN",
+    resolveBin: () => ({ bin: path.join(opencodeBin, "opencode"), source: "config" }),
+    invocation: () => ({ args: [], env: process.env }),
+    translator: () => ({ translate: (line) => [line] }),
+    classifyExit: () => ({}),
+  };
+  registerAgentBackend(fake);
+  await withPi("exit 0", async () => {
+    const file = path.join(repo, "tumwater.json");
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
+    cfg.model = "opencode/deepseek-v4.1-flash-free";
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    const check = await runStartupCheck(repo, null);
+    assert.ok(!("problem" in check), JSON.stringify(check));
+    assert.ok(check.config.roles, "the loaded config");
   });
 });

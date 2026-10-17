@@ -5,67 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### OpenCode backend, part 2/7: `opencode` becomes a backend id, `opencode/<model>` ids route to it, and `backends.opencode` is validated (planned 2026-10-17 by user; requires part 1/7 landed; design in plans/opencode-backend.md "Config and routing"; touches src/config/config-schema.ts src/config/model-selector.ts src/agent/backend-traits.ts src/agent/opencode/opencode-args.ts (new) src/gates/startup-gate.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts docs/config.md and their tests)
-
-**Goal.** Make `opencode` a valid backend everywhere config is read:
-
-- `backend: "opencode"`
-- `backends.opencode.bin` / `.args`
-- model ids such as `opencode/deepseek-v4.1-flash-free`, which route to it
-
-There is no adapter yet (part 5/7). So this part also makes the team refuse to start when a model job routes to a backend this build cannot run. Today such a run would silently fall through to pi with an OpenCode model id.
-
-**Approach.**
-- src/config/config-schema.ts: `AGENT_IDS` gains `"opencode"`.
-- src/config/model-selector.ts:
-  - `AGENT_DEFAULT_MODELS.opencode` is `{}`, with no tier defaults (design decision 3). With no `model`, OpenCode's own default applies, as pi's does.
-  - `routeModel` needs no change: a provider that names a backend id already routes to that backend. Pin the cases with tests (below).
-- src/agent/opencode/opencode-args.ts (new, `// vocabulary: plain`) holds only `HARNESS_OPENCODE_FLAGS` in this part. Part 3/7 adds the builder beside it. The set:
-  - `--format`, `--model`, `-m`
-  - `--session`, `-s`, `--continue`, `-c`, `--fork`
-  - `--standalone`, `--server`, `--attach`
-  - `--auto` and its aliases `--yolo` and `--dangerously-skip-permissions`
-  - `--agent`, `--thinking`, `--dir`
-- src/agent/backend-traits.ts: an `opencode` entry.
-  - It does not stream tool output and does not use pi's models.
-  - Its reserved flags are `HARNESS_OPENCODE_FLAGS`.
-  - Its label is `opencode/<model>`.
-- src/gates/startup-gate.ts: for every backend in `agentsInUse(config)`, a missing registered adapter (`agentBackend(id)` undefined) is a startup problem.
-  - The message: "backend opencode is configured but this build has no adapter for it".
-  - Read the registry through src/agent/run-agent.ts, so the built-in adapters are registered.
-  - doctor's binary row (src/doctor/doctor-checks.ts) reports the same.
-  - After part 5/7 this stays as the general rule for any future id.
-- src/doctor/doctor-model-checks.ts: when any model job routes to opencode, the routing section adds one note: `opencode/…` ids run on the OpenCode CLI, and pi's built-in `opencode` provider is not reachable from tumwater (design §2).
-- docs/config.md:
-  - `backend` accepts `"opencode"`.
-  - `backends` is keyed by `pi`, `claude` or `opencode`.
-  - A positional passthrough arg would be joined into OpenCode's message, so pass flag values as `--flag=value`.
-
-**Files touched.**
-- Source: src/config/config-schema.ts, src/config/model-selector.ts, src/agent/backend-traits.ts, src/agent/opencode/opencode-args.ts (new), src/gates/startup-gate.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts.
-- Docs: docs/config.md.
-- Tests: test/model-selector.test.ts, test/config-validation-model.test.ts, test/config-validation.test.ts, test/startup-gate.test.ts, test/backend-traits.test.ts, test/doctor-model-checks.test.ts.
-
-**Acceptance criteria.**
-- `routeModel`:
-  - `opencode/deepseek-v4.1-flash-free` gives `{agent: "opencode", model: "deepseek-v4.1-flash-free"}`.
-  - `opencode/anthropic/claude-sonnet-5-5` keeps `anthropic/claude-sonnet-5-5` as the model.
-  - `opencode/deepseek-v4.1-flash-free:low` strips thinking `low`.
-  - A bare `deepseek-v4.1-flash-free` under `backend: "opencode"` routes to opencode.
-  - `opencode-go/deepseek-v4.1-flash` stays on pi, with provider `opencode-go`.
-  - A bare `claude-…` id under `backend: "opencode"` still routes to claude (rule 3a).
-  - With no `model`, an opencode job resolves no model.
-- Validation:
-  - `backend: "opencode"` loads.
-  - `backends.opencode.args: ["--model", "x"]` is refused, naming the flag and its position.
-  - `backends.opencode.args: ["--title=x"]` loads.
-  - An unknown backend id is still refused.
-- Startup gate:
-  - With `model: "opencode/deepseek-v4.1-flash-free"` and no `opencode` adapter registered, the problem names the backend.
-  - With a fake adapter registered under `opencode` whose binary exists, the gate passes.
-  - A pi-only config is unaffected.
-- `npm test` passes.
-
 ### OpenCode backend, part 3/7: The OpenCode invocation, its injected config, and its environment (planned 2026-10-17 by user; requires part 2/7 landed; design in plans/opencode-backend.md "The invocation"; touches src/agent/opencode/opencode-args.ts src/agent/opencode/opencode-config.ts (new) src/agent/opencode/opencode-env.ts (new) and their tests)
 
 **Goal.** Build one OpenCode run's command line, its `OPENCODE_CONFIG_CONTENT` and its environment as pure functions, with no subprocess and no registration. This mirrors src/agent/claude/claude-args.ts and claude-env.ts. Part 5/7 wires them into the adapter.
@@ -1419,6 +1358,67 @@ docs/backends.md explains the backend and the free model's catch. `npm run smoke
 - `npm run test` passes.
 
 ## Done
+
+### OpenCode backend, part 2/7: `opencode` becomes a backend id, `opencode/<model>` ids route to it, and `backends.opencode` is validated (planned 2026-10-17 by user; requires part 1/7 landed; design in plans/opencode-backend.md "Config and routing"; touches src/config/config-schema.ts src/config/model-selector.ts src/agent/backend-traits.ts src/agent/opencode/opencode-args.ts (new) src/gates/startup-gate.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts docs/config.md and their tests — done 2026-10-17 by the feature role)
+
+**Goal.** Make `opencode` a valid backend everywhere config is read:
+
+- `backend: "opencode"`
+- `backends.opencode.bin` / `.args`
+- model ids such as `opencode/deepseek-v4.1-flash-free`, which route to it
+
+There is no adapter yet (part 5/7). So this part also makes the team refuse to start when a model job routes to a backend this build cannot run. Today such a run would silently fall through to pi with an OpenCode model id.
+
+**Approach.**
+- src/config/config-schema.ts: `AGENT_IDS` gains `"opencode"`.
+- src/config/model-selector.ts:
+  - `AGENT_DEFAULT_MODELS.opencode` is `{}`, with no tier defaults (design decision 3). With no `model`, OpenCode's own default applies, as pi's does.
+  - `routeModel` needs no change: a provider that names a backend id already routes to that backend. Pin the cases with tests (below).
+- src/agent/opencode/opencode-args.ts (new, `// vocabulary: plain`) holds only `HARNESS_OPENCODE_FLAGS` in this part. Part 3/7 adds the builder beside it. The set:
+  - `--format`, `--model`, `-m`
+  - `--session`, `-s`, `--continue`, `-c`, `--fork`
+  - `--standalone`, `--server`, `--attach`
+  - `--auto` and its aliases `--yolo` and `--dangerously-skip-permissions`
+  - `--agent`, `--thinking`, `--dir`
+- src/agent/backend-traits.ts: an `opencode` entry.
+  - It does not stream tool output and does not use pi's models.
+  - Its reserved flags are `HARNESS_OPENCODE_FLAGS`.
+  - Its label is `opencode/<model>`.
+- src/gates/startup-gate.ts: for every backend in `agentsInUse(config)`, a missing registered adapter (`agentBackend(id)` undefined) is a startup problem.
+  - The message: "backend opencode is configured but this build has no adapter for it".
+  - Read the registry through src/agent/run-agent.ts, so the built-in adapters are registered.
+  - doctor's binary row (src/doctor/doctor-checks.ts) reports the same.
+  - After part 5/7 this stays as the general rule for any future id.
+- src/doctor/doctor-model-checks.ts: when any model job routes to opencode, the routing section adds one note: `opencode/…` ids run on the OpenCode CLI, and pi's built-in `opencode` provider is not reachable from tumwater (design §2).
+- docs/config.md:
+  - `backend` accepts `"opencode"`.
+  - `backends` is keyed by `pi`, `claude` or `opencode`.
+  - A positional passthrough arg would be joined into OpenCode's message, so pass flag values as `--flag=value`.
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/model-selector.ts, src/agent/backend-traits.ts, src/agent/opencode/opencode-args.ts (new), src/gates/startup-gate.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts.
+- Docs: docs/config.md.
+- Tests: test/model-selector.test.ts, test/config-validation-model.test.ts, test/config-validation.test.ts, test/startup-gate.test.ts, test/backend-traits.test.ts, test/doctor-model-checks.test.ts.
+
+**Acceptance criteria.**
+- `routeModel`:
+  - `opencode/deepseek-v4.1-flash-free` gives `{agent: "opencode", model: "deepseek-v4.1-flash-free"}`.
+  - `opencode/anthropic/claude-sonnet-5-5` keeps `anthropic/claude-sonnet-5-5` as the model.
+  - `opencode/deepseek-v4.1-flash-free:low` strips thinking `low`.
+  - A bare `deepseek-v4.1-flash-free` under `backend: "opencode"` routes to opencode.
+  - `opencode-go/deepseek-v4.1-flash` stays on pi, with provider `opencode-go`.
+  - A bare `claude-…` id under `backend: "opencode"` still routes to claude (rule 3a).
+  - With no `model`, an opencode job resolves no model.
+- Validation:
+  - `backend: "opencode"` loads.
+  - `backends.opencode.args: ["--model", "x"]` is refused, naming the flag and its position.
+  - `backends.opencode.args: ["--title=x"]` loads.
+  - An unknown backend id is still refused.
+- Startup gate:
+  - With `model: "opencode/deepseek-v4.1-flash-free"` and no `opencode` adapter registered, the problem names the backend.
+  - With a fake adapter registered under `opencode` whose binary exists, the gate passes.
+  - A pi-only config is unaffected.
+- `npm test` passes.
 
 ### The dashboard Activity card's per-type tally chips filter the feed to that exact event type, the browser twin of `tumwater logs --type <type>` (planned 2026-10-17 by the plan role; the Activity card already renders the `logs --count` tally as display-only chips — `tallyChips` in src/ui/gui/gui-client-team.ts, whose own comment says it mirrors `sayTally` — and already narrows the feed by Loop picker (`feedRole`) and Search (`feedText`), but those are the only filters: `grep -n type src/ui/gui/gui-client-team.ts` finds no type filter and `grep -n canonicalEventType src/gui src/ui/gui` finds nothing, so an operator who wants one event type has to type it into the substring Search or leave for the CLI's exact-match `--type`. This is a client-side narrowing only: `eventFeedItem` (src/events/event-format.ts) ships each row's already-canonical `type` (legacy names are rewritten by `normalizeLegacyEvent` at read), so an exact `it.type === feedType` on the rows in hand is the same match `cmdLogs`'s `canonicalEventType(type)` yields, with no `/api/logs` change. Independent of every eligible Planned entry (restart, prompt `--top`, TUI image attach: none touches src/ui/gui or this test file) and of the blocked plain-terms merge comment parts 11c/11d (comments only, test/*.test.ts) — the blocked plain-terms runner series will eventually rewrite this file's comments in its part 7/14, which waits behind parts 1/14–6/14, so this lands now and that series rebases. A TUI Activity-pane type filter is a separate, later sibling: this plan touches no src/ui/tui file. Touches src/ui/gui/gui-client-team.ts, src/ui/gui/gui-styles.ts and test/gui-client-team.test.ts) — done 2026-10-17 by the feature role)
 

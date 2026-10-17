@@ -52,7 +52,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
-import { agentsInUse } from "../gates/startup-gate.js";
+import { agentsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
 import { claudeSeamsInUse } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
@@ -260,6 +260,13 @@ export function checkAgentBinary(
 ): CheckOutcome {
   const { config } = loadConfigSafe(root);
   const agents = config !== undefined ? agentsInUse(config) : ["pi"];
+  // A seam backend with no registered adapter in this build can never run; naming that beats
+  // the binary check (which would pass an installed binary only to fall through to pi). The
+  // same rule and wording as the startup gate's. After opencode's adapter lands (part 5/7)
+  // this stays the general rule for any future id.
+  const unregistered = config !== undefined ? unregisteredBackendInUse(config) : undefined;
+  if (unregistered !== undefined)
+    return failOutcome(`backend ${unregistered} is configured but this build has no adapter for it`);
   const checks = agents.map((agent) => ({
     agent,
     outcome: agentBinaryCheck(config ?? {}, agent, pathEnv),

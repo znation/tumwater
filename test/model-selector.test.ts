@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatModelSelector, parseModelSelector } from "../src/config/model-selector.js";
+import { formatModelSelector, parseModelSelector, routeModel } from "../src/config/model-selector.js";
 
 // parseModelSelector / formatModelSelector (plans/model-tiers.md "Selectors"): the
 // provider/id[:thinking] strings `model` and `fallback` accept, and their round-trip.
@@ -57,4 +57,44 @@ test("formatModelSelector is parseModelSelector's inverse", () => {
     const sel = parseModelSelector(s);
     assert.equal(s, formatModelSelector(sel));
   }
+});
+
+// routeModel's opencode routing (plans/opencode-backend.md "Config and routing", part 2/7):
+// once `opencode` is a registered agent id, the existing rule — a provider naming an agent
+// routes to that agent — covers it with no code change; these pin that routing.
+test("routeModel routes opencode/<model> ids to the opencode backend", () => {
+  // Everything after `opencode/` is the model: one slash is OpenCode's own gateway.
+  assert.deepEqual(routeModel("opencode", "deepseek-v4.1-flash-free", "pi", "default"), {
+    agent: "opencode",
+    model: "deepseek-v4.1-flash-free",
+  });
+  // With a second slash the rest is another provider OpenCode knows; the model id keeps it.
+  assert.deepEqual(routeModel("opencode", "anthropic/claude-sonnet-5-5", "pi", "default"), {
+    agent: "opencode",
+    model: "anthropic/claude-sonnet-5-5",
+  });
+  // A bare id under backend: "opencode" routes to opencode (parseModelSelector strips the
+  // `:low` thinking suffix before routeModel sees the model).
+  assert.deepEqual(parseModelSelector("opencode/deepseek-v4.1-flash-free:low"), {
+    provider: "opencode",
+    model: "deepseek-v4.1-flash-free",
+    thinking: "low",
+  });
+  assert.deepEqual(routeModel(undefined, "deepseek-v4.1-flash-free", "opencode", "default"), {
+    agent: "opencode",
+    model: "deepseek-v4.1-flash-free",
+  });
+  // pi's own opencode-go provider is untouched: not an agent id, so it stays on pi.
+  assert.deepEqual(routeModel("opencode-go", "deepseek-v4.1-flash", "pi", "default"), {
+    agent: "pi",
+    model: "deepseek-v4.1-flash",
+  });
+  // A bare claude-… id still routes to claude whatever the config backend says (rule 3a).
+  assert.deepEqual(routeModel(undefined, "claude-opus-5-5", "opencode", "strong"), {
+    agent: "claude",
+    model: "claude-opus-5-5",
+  });
+  // opencode declares no tier defaults, so a no-model opencode job resolves no model.
+  assert.deepEqual(routeModel(undefined, undefined, "opencode", "default"), { agent: "opencode" });
+  assert.deepEqual(routeModel(undefined, undefined, "opencode", "strong"), { agent: "opencode" });
 });

@@ -331,9 +331,10 @@ test("validateConfig accepts a reserved agent id and rejects an unknown or blank
   // (src/agent/run-agent.ts), running the wrong backend against a named one.
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), backend: "pi" }));
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), backend: "claude" }));
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), backend: "opencode" }));
   assert.match(
     validationError({ ...defaultConfig(), backend: "codex" }),
-    /backend must name a backend \(pi, claude; got "codex"\)/,
+    /backend must name a backend \(pi, claude, opencode; got "codex"\)/,
   );
   assert.match(validationError({ ...defaultConfig(), backend: "" }), /backend must not be empty/);
 });
@@ -381,6 +382,12 @@ test("validateConfig validates the backends section: entry shapes and reserved f
   assert.doesNotThrow(() => validateConfig({ backends: { claude: { args: ["--debug"] } } }));
   assert.doesNotThrow(() =>
     validateConfig({ backends: { claude: { bin: "claude", args: ["--debug", "--extra"] } } }),
+  );
+  // opencode's reserved set is enforced like claude's, and a non-conflicting extra passes.
+  assert.doesNotThrow(() => validateConfig({ backends: { opencode: { args: ["--title=x"] } } }));
+  assert.match(
+    validationError({ backends: { opencode: { args: ["--model", "x"] } } }),
+    /backends\.opencode\.args\[0\] "--model" duplicates a flag tumwater sets/,
   );
 
   // Shape errors, each naming where the problem is.

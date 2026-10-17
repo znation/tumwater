@@ -15,6 +15,10 @@ import {
 } from "./readiness.js";
 import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
+import { agentBackend } from "../agent/agent-backend.js";
+// Register the built-in pi and claude adapters into the registry this module reads (see
+// unregisteredBackendInUse) — importing run-agent.ts is the one place they register.
+import "../agent/run-agent.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
@@ -67,6 +71,14 @@ export async function runStartupCheck(
   if (notReady !== null) return { problem: notReady };
   const { config, error } = loadConfigSafe(root);
   if (config === undefined) return { problem: error };
+  // A backend an enabled seam routes to that this build has no registered adapter for cannot
+  // run its jobs: refuse to start rather than letting the run fall through to pi with a model
+  // id pi cannot serve (plans/opencode-backend.md part 2/7). Read the registry through
+  // run-agent.ts, whose module scope registers the built-in pi and claude adapters.
+  const unregistered = unregisteredBackendInUse(config);
+  if (unregistered !== undefined) {
+    return { problem: `backend ${unregistered} is configured but this build has no adapter for it` };
+  }
   // Fail fast instead of starting loops whose every tick dies with "spawn <bin> ENOENT". Every
   // enabled seam's agent — the top-level `agent` plus each enabled loop's resolved view and the
   // reviewer — resolves through the same resolveAgentBin the spawn uses (and doctor's pi check);
@@ -106,6 +118,17 @@ const claudeSeedAttempted = new Set<string>();
  * spawn is checked on both surfaces. */
 export function agentsInUse(config: TumwaterConfig): string[] {
   return [...new Set(seamsInUse(config).map((s) => s.agent ?? "pi"))];
+}
+
+/** The first backend an enabled seam routes to that this build has no registered adapter for,
+ * or undefined when every seam's backend is registered. The built-in pi and claude adapters
+ * are registered by importing src/agent/run-agent.ts (see the import above); a seam backend
+ * that is not in the registry is one this build cannot run. Doctor's binary check asks the
+ * same question, so the startup gate and doctor cannot disagree about which backend a build
+ * can serve. After the opencode adapter lands (part 5/7) this stays the general rule for any
+ * future id. */
+export function unregisteredBackendInUse(config: TumwaterConfig): string | undefined {
+  return agentsInUse(config).find((agent) => agentBackend(agent) === undefined);
 }
 
 /** runStartupCheck reduced to its verdict: the message a generation would fail on right now, or

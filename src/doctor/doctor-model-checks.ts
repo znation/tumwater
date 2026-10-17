@@ -408,7 +408,9 @@ export async function checkTierModels(
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
   const pairs = new Map<string, { provider?: string; model?: string }>();
-  const claudeModels = new Set<string>();
+  // Routed (non-pi) models keyed by the backend they resolved to, so the routing note names
+  // each backend correctly; opencode is not claude.
+  const routedModels = new Map<string, Set<string>>();
   const add = (
     agent: string | undefined,
     provider: string | undefined,
@@ -416,9 +418,11 @@ export async function checkTierModels(
   ) => {
     if (model === undefined) return;
     // A non-pi backend's models are not in pi's definitions, so they are not swept for
-    // resolution or auth here — the claude checks cover them instead.
+    // resolution or auth here — the backend's own checks cover them instead.
     if (agent !== undefined && agent !== "pi") {
-      claudeModels.add(model);
+      let models = routedModels.get(agent);
+      if (models === undefined) routedModels.set(agent, (models = new Set()));
+      models.add(model);
       return;
     }
     pairs.set(`${provider ?? ""}/${model}`, { provider, model });
@@ -431,7 +435,7 @@ export async function checkTierModels(
     ompVars.length === 0
       ? ""
       : ` — ${ompVars.join(" and ")} ${agree(ompVars.length, "is", "are")} set: tumwater does not read ${agree(ompVars.length, "it", "them")} (oh-my-pi's variables; pi ignores them; with omp as agentBin they still reach omp through the inherited environment) — set model.small / model.strong instead`;
-  if (pairs.size === 0 && claudeModels.size === 0)
+  if (pairs.size === 0 && routedModels.size === 0)
     return (ompVars.length === 0 ? okOutcome : warnOutcome)(`no models declared — every model job uses pi's own default${ompNote}`);
   const providers = readPiProviders(modelsPath);
   const fails: string[] = [];
@@ -493,13 +497,22 @@ export async function checkTierModels(
   }
   const found = [...fails, ...warns].join("; ");
   const resolvedPi = `${pairs.size} declared ${agree(pairs.size, "model", "models")} resolve${readyProviders.size > 0 ? ` and ${agree(readyProviders.size, "provider", "all providers")} ${[...readyProviders].sort().join(", ")} report ready` : ""}`;
-  const claudeNote =
-    claudeModels.size > 0
-      ? `${claudeModels.size} claude-routed ${agree(claudeModels.size, "model", "models")} — resolved by the claude backend, not pi's definitions`
-      : "";
+  // One routing note per non-pi backend in use, so an opencode-routed model is never labeled
+  // as claude's. The opencode note also carries the design §2 caveat that a bare `opencode/…`
+  // id always means the OpenCode CLI, never pi's built-in `opencode` gateway.
+  const routedNotes: string[] = [];
+  for (const [agent, models] of routedModels) {
+    const n = models.size;
+    routedNotes.push(
+      agent === "opencode"
+        ? `${n} opencode-routed ${agree(n, "model", "models")} — \`opencode/…\` ids run on the OpenCode CLI, and pi's built-in \`opencode\` provider is not reachable from tumwater`
+        : `${n} claude-routed ${agree(n, "model", "models")} — resolved by the claude backend, not pi's definitions`,
+    );
+  }
+  const routedText = routedNotes.length > 0 ? routedNotes.join("; ") : "";
   const base =
     fails.length === 0 && warns.length === 0
-      ? [pairs.size > 0 ? resolvedPi : "", claudeNote].filter(Boolean).join("; ")
+      ? [pairs.size > 0 ? resolvedPi : "", routedText].filter(Boolean).join("; ")
       : found;
   if (fails.length > 0) return failOutcome(`${base}${ompNote}`);
   return (warns.length > 0 || ompVars.length > 0 ? warnOutcome : okOutcome)(`${base}${ompNote}`);

@@ -66,6 +66,10 @@ const AGENT_DEFAULT_MODELS: Record<AgentId, Partial<Record<ModelTier, string>>> 
     default: "claude-sonnet-5-5",
     strong: "claude-opus-5-5",
   },
+  // opencode has no tier defaults (design decision 3): with no model, OpenCode's own default
+  // applies, exactly as pi's does. The free model is a time-limited promotion, so its id
+  // belongs in tumwater.json, not in code.
+  opencode: {},
 };
 
 /** The backend and concrete model a resolved seam's provider/model pair routes to
