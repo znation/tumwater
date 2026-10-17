@@ -383,8 +383,13 @@ test("validateConfig validates the backends section: entry shapes and reserved f
   assert.doesNotThrow(() =>
     validateConfig({ backends: { claude: { bin: "claude", args: ["--debug", "--extra"] } } }),
   );
-  // opencode's reserved set is enforced like claude's, and a non-conflicting extra passes.
-  assert.doesNotThrow(() => validateConfig({ backends: { opencode: { args: ["--title=x"] } } }));
+  // opencode's reserved set is enforced like claude's. `--title` is now harness-set
+  // (finding 6) and part of HARNESS_OPENCODE_FLAGS, so it is refused; a non-conflicting extra
+  // passes.
+  assert.match(
+    validationError({ backends: { opencode: { args: ["--title=x"] } } }),
+    /backends\.opencode\.args\[0\] "--title=x" duplicates a flag tumwater sets/,
+  );
   assert.match(
     validationError({ backends: { opencode: { args: ["--model", "x"] } } }),
     /backends\.opencode\.args\[0\] "--model" duplicates a flag tumwater sets/,

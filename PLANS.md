@@ -50,74 +50,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Client (`test/gui-client-team.test.ts`): the Queued tab paints a `data-action='prompttop'` button, carrying the same `data-file`/`data-role` address as Cancel and Edit, on every row except the first of its role's group — a fixture with two director rows and two qa rows renders two such buttons (the second row of each role) and none on either first row.
 - `npm run test` passes.
 
-### OpenCode backend, part 3/7: The OpenCode invocation, its injected config, its environment, and the session-id minter (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 2/7 landed; design in plans/opencode-backend.md "The invocation" and "Findings, verified live" 3, 6, 11–16; touches src/agent/opencode/opencode-args.ts src/agent/opencode/opencode-config.ts (new) src/agent/opencode/opencode-env.ts (new) src/agent/opencode/opencode-session-id.ts (new) and their tests)
-
-**Goal.** Build one OpenCode run's pieces as pure functions, with no subprocess and no registration:
-
-- its command line;
-- its `OPENCODE_CONFIG_CONTENT`;
-- its environment;
-- its session id.
-
-This mirrors src/agent/claude/claude-args.ts and claude-env.ts. Part 5/7 wires these into the adapter. Every choice here was verified live on OpenCode 2.0.32 (plans/opencode-backend.md "Findings, verified live").
-
-**Approach.**
-- **`opencodeArgs({ model, variant?, sessionId, title, args?, prompt })`** in src/agent/opencode/opencode-args.ts returns `{ args, stdin }`.
-  - The args are `run --standalone --format json --auto --model <id>[#<variant>] --session <sessionId> --title <title>`, then the passthrough args.
-  - `--title` skips OpenCode's hidden title-generation model call (finding 6). Add `--title` to `HARNESS_OPENCODE_FLAGS`.
-  - `stdin` is the prompt; it is never an argv element.
-  - A model with no `/` gets the `opencode/` provider; anything else passes as is.
-  - `variant` is passed only when given. Part 6/7 gives it only for an effort the catalog lists, because an unlisted variant fails the run (finding 9).
-  - A reserved passthrough throws, matched also as `--flag=value`.
-- **`mintOpencodeSessionId(now = Date.now(), randomBytes?)`** in src/agent/opencode/opencode-session-id.ts reproduces OpenCode's `Identifier.descending()` (packages/schema/src/identifier.ts):
-  - `current = BigInt(now) * 0x1000n + BigInt(counter)`, where `counter` restarts at 1 for each new millisecond.
-  - The 12 hex digits are the low 48 bits of `~current`, big-endian.
-  - Then 14 characters drawn from `0-9A-Za-z` (random byte % 62).
-  - The prefix is `ses_`.
-  - Any other shape gets the free-tier 403 (finding 3), so this must match OpenCode exactly.
-- **`opencodeConfigContent({ cwd, operatorMcpNames })`** in src/agent/opencode/opencode-config.ts returns the JSON string. It contains:
-  - `snapshots: false` and `update: "disable"`;
-  - `permissions`: `deny` for `execute`, `subagent`, `webfetch`, `websearch`, `question` and `skill` (resource `*`). It **never** denies `read`, which trips the gate (finding 11).
-  - `instructions: ["CLAUDE.md"]`, only when `cwd` has a `CLAUDE.md` and no `AGENTS.md` (finding 14);
-  - `mcp.servers.<name>: { disabled: true }` for each operator server;
-  - no MCP server of tumwater's own. Role notes are off on OpenCode (design decision 8).
-- **`operatorMcpNames(env, homeDir)`** reads the server names in the operator's global opencode config:
-  - from `$XDG_CONFIG_HOME/opencode/`, or `~/.config/opencode/`;
-  - in `config.json`, `opencode.json` or `opencode.jsonc` (comments and trailing commas stripped);
-  - the keys of V2's `mcp.servers`, plus V1-shaped `mcp.<name>` keys other than `servers`;
-  - `[]` for a missing or unreadable file.
-- **`opencodeEnv(base, { dbPath, configContent })`** in src/agent/opencode/opencode-env.ts never mutates `base`.
-  - **Removes** `OPENCODE`, every `OPENCODE_*` except `OPENCODE_API_KEY` (so `OPENCODE_CLIENT` and a host session's `OPENCODE_SESSION_ID` never pass through), and `AI_AGENT`.
-  - **Sets** `OPENCODE_DISABLE_CLAUDE_CODE=1`, `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`, `OPENCODE_DISABLE_AUTOUPDATE=1`, `OPENCODE_DISABLE_FILEWATCHER=1`, `OPENCODE_DB=dbPath` and `OPENCODE_CONFIG_CONTENT=configContent`.
-  - **Never sets** a shell-timeout variable (2.0.32 has none, finding 16) or any `XDG_*` variable.
-
-**Files touched.**
-- Source: src/agent/opencode/opencode-args.ts, src/agent/opencode/opencode-config.ts (new), src/agent/opencode/opencode-env.ts (new), src/agent/opencode/opencode-session-id.ts (new).
-- Tests: test/opencode-args.test.ts (new), test/opencode-config.test.ts (new), test/opencode-env.test.ts (new), test/opencode-session-id.test.ts (new), and test/config-validation.test.ts for `--title`.
-
-**Acceptance criteria.**
-- **`opencodeArgs`:**
-  - Exact argv, with and without a variant.
-  - Gateway and non-gateway model mapping.
-  - The prompt is in stdin only.
-  - A reserved passthrough throws in both forms.
-  - `backends.opencode.args: ["--title=x"]` is now refused by validation.
-- **`mintOpencodeSessionId`:**
-  - Ids match `/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/`.
-  - Two ids in the same millisecond differ in their counter.
-  - A later millisecond sorts before an earlier one (descending).
-  - Decoding the hex of the OpenCode-minted session ids in test/fixtures/opencode-captures/parallel-tools.jsonl, oversized-output.jsonl and background-shell.jsonl gives counter 1 and a millisecond 0–10 s before that capture's first event timestamp, both taken modulo 2^36 (the 48 kept bits hold ms × 4096 + counter; the live captures decode about 2.3 s early). That shows the encoder matches OpenCode's.
-- **`opencodeConfigContent`**, parsed back:
-  - It has `snapshots: false`, `update: "disable"` and the six denials, and no rule for `read`.
-  - The `instructions` entry follows the CLAUDE.md/AGENTS.md matrix.
-  - Operator servers come out `disabled: true`, and there is no `tumwater` server.
-- **`operatorMcpNames`** reads both config shapes from a jsonc file with comments, and returns `[]` for missing and malformed files.
-- **`opencodeEnv`:**
-  - `OPENCODE`, `OPENCODE_CLIENT`, `OPENCODE_SESSION_ID` and `AI_AGENT` are removed; `OPENCODE_API_KEY` is kept.
-  - The six variables are set.
-  - No `XDG_*` is added, and an inherited one passes through untouched.
-- `npm test` passes.
-
 ### OpenCode backend, part 5/7: The opencode adapter runs model jobs, with minted sessions, the export after each run, a PATH fake and its prompt dialect (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 3/7 and part 4/7 landed; design in plans/opencode-backend.md "Sessions", "The prompt dialect and role notes" and "The stream translator, and the export that completes it"; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/opencode/opencode-backend.ts (new) src/prompt/dialect.ts src/prompt/prompt.ts src/paths.ts test/fakes/fake-opencode.ts (new) test/test-runner.ts and their tests)
 
 **Goal.** Register an `opencode` backend that runs real model jobs through `opencode run`: authoring, review, follow-ups and resolver runs.
@@ -1413,6 +1345,74 @@ The live stream drops the final step's usage in most runs (41 of 49, finding 5).
   - The synthetic 429 folds to `transientRateLimit`.
 - An unknown event type is warned once.
 - A stream without `run_usage` folds exactly as before (existing test/pi-parser.test.ts cases unchanged).
+- `npm test` passes.
+
+### OpenCode backend, part 3/7: The OpenCode invocation, its injected config, its environment, and the session-id minter (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 2/7 landed; design in plans/opencode-backend.md "The invocation" and "Findings, verified live" 3, 6, 11–16; touches src/agent/opencode/opencode-args.ts src/agent/opencode/opencode-config.ts (new) src/agent/opencode/opencode-env.ts (new) src/agent/opencode/opencode-session-id.ts (new) and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** Build one OpenCode run's pieces as pure functions, with no subprocess and no registration:
+
+- its command line;
+- its `OPENCODE_CONFIG_CONTENT`;
+- its environment;
+- its session id.
+
+This mirrors src/agent/claude/claude-args.ts and claude-env.ts. Part 5/7 wires these into the adapter. Every choice here was verified live on OpenCode 2.0.32 (plans/opencode-backend.md "Findings, verified live").
+
+**Approach.**
+- **`opencodeArgs({ model, variant?, sessionId, title, args?, prompt })`** in src/agent/opencode/opencode-args.ts returns `{ args, stdin }`.
+  - The args are `run --standalone --format json --auto --model <id>[#<variant>] --session <sessionId> --title <title>`, then the passthrough args.
+  - `--title` skips OpenCode's hidden title-generation model call (finding 6). Add `--title` to `HARNESS_OPENCODE_FLAGS`.
+  - `stdin` is the prompt; it is never an argv element.
+  - A model with no `/` gets the `opencode/` provider; anything else passes as is.
+  - `variant` is passed only when given. Part 6/7 gives it only for an effort the catalog lists, because an unlisted variant fails the run (finding 9).
+  - A reserved passthrough throws, matched also as `--flag=value`.
+- **`mintOpencodeSessionId(now = Date.now(), randomBytes?)`** in src/agent/opencode/opencode-session-id.ts reproduces OpenCode's `Identifier.descending()` (packages/schema/src/identifier.ts):
+  - `current = BigInt(now) * 0x1000n + BigInt(counter)`, where `counter` restarts at 1 for each new millisecond.
+  - The 12 hex digits are the low 48 bits of `~current`, big-endian.
+  - Then 14 characters drawn from `0-9A-Za-z` (random byte % 62).
+  - The prefix is `ses_`.
+  - Any other shape gets the free-tier 403 (finding 3), so this must match OpenCode exactly.
+- **`opencodeConfigContent({ cwd, operatorMcpNames })`** in src/agent/opencode/opencode-config.ts returns the JSON string. It contains:
+  - `snapshots: false` and `update: "disable"`;
+  - `permissions`: `deny` for `execute`, `subagent`, `webfetch`, `websearch`, `question` and `skill` (resource `*`). It **never** denies `read`, which trips the gate (finding 11).
+  - `instructions: ["CLAUDE.md"]`, only when `cwd` has a `CLAUDE.md` and no `AGENTS.md` (finding 14);
+  - `mcp.servers.<name>: { disabled: true }` for each operator server;
+  - no MCP server of tumwater's own. Role notes are off on OpenCode (design decision 8).
+- **`operatorMcpNames(env, homeDir)`** reads the server names in the operator's global opencode config:
+  - from `$XDG_CONFIG_HOME/opencode/`, or `~/.config/opencode/`;
+  - in `config.json`, `opencode.json` or `opencode.jsonc` (comments and trailing commas stripped);
+  - the keys of V2's `mcp.servers`, plus V1-shaped `mcp.<name>` keys other than `servers`;
+  - `[]` for a missing or unreadable file.
+- **`opencodeEnv(base, { dbPath, configContent })`** in src/agent/opencode/opencode-env.ts never mutates `base`.
+  - **Removes** `OPENCODE`, every `OPENCODE_*` except `OPENCODE_API_KEY` (so `OPENCODE_CLIENT` and a host session's `OPENCODE_SESSION_ID` never pass through), and `AI_AGENT`.
+  - **Sets** `OPENCODE_DISABLE_CLAUDE_CODE=1`, `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`, `OPENCODE_DISABLE_AUTOUPDATE=1`, `OPENCODE_DISABLE_FILEWATCHER=1`, `OPENCODE_DB=dbPath` and `OPENCODE_CONFIG_CONTENT=configContent`.
+  - **Never sets** a shell-timeout variable (2.0.32 has none, finding 16) or any `XDG_*` variable.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-args.ts, src/agent/opencode/opencode-config.ts (new), src/agent/opencode/opencode-env.ts (new), src/agent/opencode/opencode-session-id.ts (new).
+- Tests: test/opencode-args.test.ts (new), test/opencode-config.test.ts (new), test/opencode-env.test.ts (new), test/opencode-session-id.test.ts (new), and test/config-validation.test.ts for `--title`.
+
+**Acceptance criteria.**
+- **`opencodeArgs`:**
+  - Exact argv, with and without a variant.
+  - Gateway and non-gateway model mapping.
+  - The prompt is in stdin only.
+  - A reserved passthrough throws in both forms.
+  - `backends.opencode.args: ["--title=x"]` is now refused by validation.
+- **`mintOpencodeSessionId`:**
+  - Ids match `/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/`.
+  - Two ids in the same millisecond differ in their counter.
+  - A later millisecond sorts before an earlier one (descending).
+  - Decoding the hex of the OpenCode-minted session ids in test/fixtures/opencode-captures/parallel-tools.jsonl, oversized-output.jsonl and background-shell.jsonl gives counter 1 and a millisecond 0–10 s before that capture's first event timestamp, both taken modulo 2^36 (the 48 kept bits hold ms × 4096 + counter; the live captures decode about 2.3 s early). That shows the encoder matches OpenCode's.
+- **`opencodeConfigContent`**, parsed back:
+  - It has `snapshots: false`, `update: "disable"` and the six denials, and no rule for `read`.
+  - The `instructions` entry follows the CLAUDE.md/AGENTS.md matrix.
+  - Operator servers come out `disabled: true`, and there is no `tumwater` server.
+- **`operatorMcpNames`** reads both config shapes from a jsonc file with comments, and returns `[]` for missing and malformed files.
+- **`opencodeEnv`:**
+  - `OPENCODE`, `OPENCODE_CLIENT`, `OPENCODE_SESSION_ID` and `AI_AGENT` are removed; `OPENCODE_API_KEY` is kept.
+  - The six variables are set.
+  - No `XDG_*` is added, and an inherited one passes through untouched.
 - `npm test` passes.
 
 ### The TUI's Activity pane filters the feed by one exact event type with Ctrl+O, the terminal twin of `tumwater logs --type <type>` and the dashboard Activity card's tally chips (planned 2026-10-17 by the plan role; the Activity pane narrows its feed only by role scope (`activityRole`, Ctrl+G) and free-text search (`activityGrep`, `/`), so an operator who wants one event type must type it into the substring search or leave for the CLI's exact-match `--type`: `activityEvents` (src/ui/tui/tui-pane.ts) takes only role and grep, and no TUI file filters on `e.type`. Ctrl+O already cycles a view's categorical filter — the History pane's outcome class and the Health pane's problems-only toggle — and is routed to each pane by view in src/ui/tui/tui-panes.ts, so Activity takes the same key with no new binding. Independent of the three eligible Planned entries (prompt `--top`, TUI image attach, dashboard tally chips: none edits this feed filter) and of the blocked plain-terms series; the in-flight image-attach plan binds Ctrl+V on Activity and touches tui-frame.ts/tui.tsx, so the two rebase but neither takes Ctrl+O. Touches src/ui/tui/tui-pane-activity.ts, src/ui/tui/tui-pane.ts, src/ui/tui/tui-panes.ts, src/ui/tui/tui-frame.ts, src/ui/tui/tui-keys.ts, src/ui/tui/tui.tsx, docs/cli.md, test/tui-keys.test.ts and test/tui-frame.test.ts — done 2026-10-17 by the feature role)

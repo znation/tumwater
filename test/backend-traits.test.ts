@@ -54,5 +54,6 @@ test("reservedPassthroughFlag keeps each backend's validation reason", () => {
   // opencode's reserved set reads "it is managed by tumwater", like claude's.
   assert.equal(reservedPassthroughFlag("opencode", "--model"), "it is managed by tumwater");
   assert.equal(reservedPassthroughFlag("opencode", "-m"), "it is managed by tumwater");
-  assert.equal(reservedPassthroughFlag("opencode", "--title"), undefined, "an unreserved opencode flag is free");
+  assert.equal(reservedPassthroughFlag("opencode", "--title"), "it is managed by tumwater");
+  assert.equal(reservedPassthroughFlag("opencode", "--print-logs"), undefined, "an unreserved opencode flag is free");
 });
