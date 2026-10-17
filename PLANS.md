@@ -1188,6 +1188,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The dashboards raise an amber `install` alert while the root checkout's `node_modules` is behind `package-lock.json` (planned 2026-10-16 by the plan role; independent of the waiting plain-terms series and of the in-flight "Image reroutes by role" report plan — it adds one module under `src/status/`, one optional `StatusSnapshot` field, and one branch in `src/ui/team-alerts.ts`)
+
+**Goal.** When a post-merge re-sync (`syncRootInstall` in `src/build/dep-install.ts`) fails, every check installs into its own tree until a later merge retries. Today the operator sees this only as a `warn` line in the feed or by running `tumwater doctor`, whose `root install` row (`checkRootInstall` in `src/doctor/doctor-install.ts`) reports the drift. The dashboard, the TUI, and `tumwater status` raise no alert. These surfaces should show the drift the way they show the disk floor: an amber alert that names the drifted packages and the fix, and clears once the drift is gone. Clearing on drift, not on a later `dep_install` event, also clears it when the operator fixes the install by hand.
+
+**Approach.**
+- New module `src/status/status-install.ts` (`// vocabulary: plain` header like its siblings) exporting `collectRootInstallDrift(root: string, now: number): string[]`. It returns `installDrift(root)` from `src/build/dep-install.ts`, throttled per root through a module-level `Map<string, { at: number; drift: string[] }>`. A cached value younger than `ROOT_INSTALL_POLL_MS = 60_000` (measured against the passed `now`) is returned as a copy. Otherwise it recomputes and stores. Cap the map like `MAX_STAT_CACHED` in `src/files/stat-cache.ts` does: clear it when it reaches 64 roots. Throttle rather than stat-key because the answer depends on two files (the lockfile and each installed manifest), and the dashboard polls every second, so it must not re-parse a large lockfile each time. Export a `resetRootInstallCache()` for tests. `installDrift` already returns `[]` when there is no lockfile or it cannot be read, so a non-node project costs one failed read per minute.
+- `src/status/status-data.ts`: `StatusSnapshot` gains `rootInstallDrift?: string[]`, documented as "direct dependencies the root checkout's `node_modules` does not hold at `package-lock.json`'s pin (the doctor's `root install` row); absent when none drift". `snapshot()` sets it from `collectRootInstallDrift(root, now)` only when the result is non-empty. The value does not depend on the team running: a stopped team's worktrees still borrow the root install.
+- `src/ui/team-alerts.ts`: add `"rootInstallDrift"` to `teamAlerts`'s `Pick<StatusSnapshot, …>` and push right after the `disk` branch:
+  - key `"install"`, tone `"amber"`
+  - title: "The root install is behind package-lock.json"
+  - detail: `${plural(n, "direct dependency", "direct dependencies")} not installed as pinned (${names}). Run npm install in the project's root checkout; until then each check installs into its own tree, and \`tumwater doctor\` names the last re-sync failure.`
+  - `actions: []`
+  - Show at most 5 names, then `, +N more`. `plural` is already imported from `src/text/phrases.ts`. No change to `src/ui/gui/gui-client-team.ts` or `tui-frame.ts` alertLines: both render alerts generically. `status-render.ts` filters only `stopped`, so `tumwater status` shows it too.
+
+**Files touched.** `src/status/status-install.ts` (new), `src/status/status-data.ts`, `src/ui/team-alerts.ts`, `test/team-alerts.test.ts`, and a new `test/status-install.test.ts`.
+
+**Acceptance criteria.**
+- `test/team-alerts.test.ts`: a snapshot with `rootInstallDrift: ["ink", "typescript"]` raises exactly one alert with key `install` and tone `amber`, whose detail names both packages and "npm install". `base` (no field) and `rootInstallDrift: []` raise no `install` alert. Seven names show five, then "+2 more".
+- `test/status-install.test.ts`, on a temp dir with a `package-lock.json` pinning one devDependency at `1.0.0` and `node_modules/<name>/package.json` at `0.9.0`:
+  - `collectRootInstallDrift` returns `[name]`.
+  - After the manifest is rewritten to `1.0.0`, a call with the same `now` still returns `[name]` (throttled), and a call with `now + 60_001` returns `[]`.
+  - A dir with no lockfile returns `[]`.
+  - Call `resetRootInstallCache()` between tests.
+- `snapshot()` on a fixture repo with that drift carries `rootInstallDrift: [name]`. With matching versions the key is absent. Assert this in `test/status-install.test.ts` through `snapshot(root)` if the existing status tests' fixture helper makes that cheap; otherwise the two unit tests above suffice.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater report` gains an `Image reroutes by role` line counting each role's image reroutes (planned 2026-10-16 by the plan role) — done 2026-10-16
