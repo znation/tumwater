@@ -135,10 +135,16 @@ export default tseslint.config(
       // cannot be written by hand: a value that is `any` because a library (or `Array.isArray`,
       // which narrows to `any[]` so `[0]` is `any`) handed one out, not because the author wrote
       // `: any`. no-unsafe-assignment flags that `any` flowing into a typed variable or property;
-      // no-unsafe-argument flags it crossing into a typed call. src is spotless today (0 sites),
-      // so these are regression guards like no-explicit-any, not migrations.
+      // no-unsafe-argument flags it crossing into a typed call; no-unsafe-member-access (the
+      // biggest of the three gaps — reading a field off an `any`, the one flow the assignment and
+      // argument rules cannot see), no-unsafe-call (calling an `any`), and no-unsafe-return
+      // (returning an `any` from a typed function) complete the family. src is spotless today (0
+      // sites for all five), so these are regression guards like no-explicit-any, not migrations.
       "@typescript-eslint/no-unsafe-assignment": "error",
       "@typescript-eslint/no-unsafe-argument": "error",
+      "@typescript-eslint/no-unsafe-member-access": "error",
+      "@typescript-eslint/no-unsafe-call": "error",
+      "@typescript-eslint/no-unsafe-return": "error",
     },
   },
 );
