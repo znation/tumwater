@@ -1117,6 +1117,65 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater report` shows each day's median merge wait, from a merge's enqueue to its commit on main (planned 2026-10-17 by the plan role)
+
+**Goal.** The report shows how long the merge check takes ("Merge check median") but not how
+long a finished run's commit waits before it reaches main: queued behind other merges, reviewed,
+checked, and fast-forwarded. When merges back up, every role's work sits finished but unmerged,
+and nothing in `tumwater report` or its `--json` says so. Add a per-day "Merge wait median" line
+beside the existing "Merge check median", fed by a new `queuedMs` field on the merge outcome
+event.
+
+**Approach.**
+1. `src/merge/merge-slot.ts` `writeMergeOutcome`: add
+   `queuedMs: Math.max(0, Date.now() - entry.enqueuedAt)` to the `merge_done`/`merge_failed`
+   event it logs (both types, the same payload; `entry.enqueuedAt` is the `MergeEntry` field
+   already set at enqueue in `src/merge/merge-queue.ts`). It is the span from this entry's
+   enqueue to its outcome and includes the slot's own `durationMs`. A leftover-recovery
+   re-enqueue writes a new entry with its own `enqueuedAt`, so a retried change's wait counts
+   from its last enqueue; say so in the comment. Update the `merge_done` and `merge_failed`
+   comments in `src/events/events.ts` to name `queuedMs`.
+2. `src/report/report-data.ts`: add `mergeWaitsMs: number[]` to `UsageFold` and `DayFold` (and
+   initialize it to `[]` everywhere `checkDurationsMs: []` is initialized now). In
+   `foldUsageEvent`'s `merge_done`/`merge_failed` branch, for `merge_done` only, push
+   `finiteNumber(ev.queuedMs, 0)` when it is > 0, so a merge logged before this change (no
+   field) is skipped rather than counted as zero. Add an optional `mergeWaitMedianMs?: number`
+   to `ReportDay` with a doc comment like `checkMedianMs`'s. In `collectReport`, set it inside
+   the `role === undefined` block with the same lower-median rule as `checkMedianMs`. Move
+   the two-line lower-median computation into a small local `lowerMedian(values)` helper in
+   report-data.ts and use it for both fields. Leave the field absent when the day has no
+   measured merge. The `--since` report (`collectReportSince`) is not changed.
+3. `src/report/report-render.ts`: right after the `**Merge check median:**` line in the
+   team-scope block, print `**Merge wait median:** <MM-DD> <span> · …` using the same
+   `monthDay` + `shortSpanPhrase` formatting. Print it only when some day carries
+   `mergeWaitMedianMs`.
+4. `docs/cli.md`: in the `tumwater report` description in the Audit row, add that the team
+   report shows each day's median merge wait (enqueue to merged on main) beside the merge
+   check median.
+
+**Files touched.** `src/merge/merge-slot.ts`, `src/events/events.ts`,
+`src/report/report-data.ts`, `src/report/report-render.ts`, `docs/cli.md`,
+`test/merge-slot.test.ts`, `test/report-data.test.ts`, `test/report.test.ts`.
+
+**Acceptance criteria.**
+- `test/merge-slot.test.ts`: extend "a merge's nonzero usage rides its merge_done event and
+  the entry is dropped" (or add a sibling test) to assert that `mergeDone.queuedMs` is a
+  number ≥ 0 and at most `Date.now() - entry.enqueuedAt` taken after the call. A
+  `merge_failed` outcome carries `queuedMs` too.
+- `test/report-data.test.ts`: a new test beside "collectReport gives each day the lower median
+  of its passing full-suite checks, team scope only". From `merge_done` events with `queuedMs`
+  values on two days, plus one `merge_done` without the field and one `merge_failed` with one,
+  assert that each day's `mergeWaitMedianMs` is the lower median of only the `merge_done`
+  values that carry the field. A day with none must not have the key at all
+  (`!("mergeWaitMedianMs" in day)`), and a role-scoped `collectReport(root, n, "feature")`
+  sets it on no day.
+- `test/report.test.ts`: a new test beside "renderReportMarkdown prints Merge check median for
+  the days that carry one, team scope only". It asserts that
+  `/^\*\*Merge wait median:\*\* 09-10 12m$/m` (or whatever `shortSpanPhrase` prints for the
+  fixture value) appears for a day carrying the field, and that the line is absent when no day
+  carries one and on a role-scoped report.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater questions --show <n> --answered` prints the Nth newest answered question in full, context and recorded answer (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/backlog/question-answer.ts, src/cli/cli-query-commands.ts, src/cli/help.ts, docs/cli.md and their tests) — done 2026-10-17
