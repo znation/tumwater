@@ -1650,6 +1650,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### A notify page the once-a-minute throttle holds back is sent when the minute ends, so a second question, refusal or failed merge in a burst still reaches the operator (planned 2026-10-16 by plan; independent of every other entry — touches src/events/notify.ts, test/notify.test.ts and docs/config.md)
+
+**Goal.** `newNotifier` (`src/events/notify.ts`) throttles each `NOTIFY_EVENT_TYPES` type to one spawn per `NOTIFY_MIN_GAP_MS`. It keys `lastSpawnAt` per type and simply `return`s for a same-type event inside the gap. A suppressed event is never paged: two roles each posting a question, or two entries refused, or two changes failing to land within a minute page only the first. The operator never hears about the second one unless a third event of that type arrives after the gap. `test/notify.test.ts` "the throttle suppresses same-type events within the gap, per type" pins the drop. Keep the rate bound (at most one spawn per type per gap) but send the held-back event once the gap ends instead of dropping it.
+
+**Approach.**
+- `src/events/notify.ts`, `newNotifier`: add a fourth optional parameter `schedule: (fn: () => void, delayMs: number) => () => void`. It is a test seam like `now`, and it returns a cancel function. The default calls `setTimeout(fn, delayMs)`, calls `.unref()` on the timer (so a held page never keeps the process alive), and returns `() => clearTimeout(timer)`.
+- Keep per-type state in a `Map<NotifyEventType, { event: HarnessEvent; held: number; cancel: () => void }>` named `pending`. When an allowlisted event falls inside the gap:
+  - With no pending entry for the type, store `{ event, held: 1, cancel: schedule(flush, last + minGapMs - at) }`.
+  - With one already pending, replace its `event` with the newer one and increment `held`, keeping the same timer. The newest event is the one paged.
+- `flush(type)`: delete the type's `pending` entry. If `command` is no longer a non-empty string (a live `config set notify ""`), drop it. Otherwise set `lastSpawnAt` to `now()` and spawn for the stored event. When `held > 1`, append ` (and ${held - 1} more ${type} event(s) in the same minute; \`tumwater logs\` lists them)` to the message. Setting `lastSpawnAt` at the flush keeps the bound: an event arriving right after the flush is held for the next gap.
+- To append that suffix, give `spawnNotifyCommand` an optional `suffix = ""` parameter, appended after `stripTerminalControls(formatEvent(event))`. `notifyFleetDown` and the first-in-gap spawn pass none, so their messages stay exactly `formatEvent(event)`.
+- `dispose`: unsubscribe, then for each pending entry call its `cancel()` and flush it right away. A stopping team still sends the page it was holding. Pages are detached spawns, as today.
+- Update `newNotifier`'s and `NOTIFY_MIN_GAP_MS`'s doc comments: a burst pages once at once and once more when the gap ends, carrying the newest held event and how many were held.
+- `docs/config.md`, the sentence above the notify table ("each type pages at most once a minute"): add "; an event that minute held back is sent when the minute ends (the newest one, with a count of the others)".
+- Leave `NOTIFY_EVENT_TYPES`, every event type and every payload key unchanged. Do not touch `src/orchestrator/orchestrator.ts`: it already calls `notifier.dispose()` in its finally.
+
+**Files touched.** `src/events/notify.ts`, `test/notify.test.ts`, `docs/config.md`.
+
+**Acceptance criteria.** All in `test/notify.test.ts`. Each uses the injected clock and a capturing `schedule` stub that records `(fn, delayMs)` and returns a cancel spy, so no test waits on a real minute.
+- Rewrite "the throttle suppresses same-type events within the gap, per type" to keep its per-type assertion and add the following. The in-gap event spawns nothing immediately and registers one scheduled flush whose `delayMs` is `NOTIFY_MIN_GAP_MS - 1`. Running the captured `fn` spawns one more page, whose recorded type is `budget_paused`.
+- New test: three same-type events inside one gap, (`question_posted` events whose `question` fields are A, B and C). This yields exactly one scheduled flush. Running it records two lines in total: the first page renders A, and the flushed page renders C and ends with `(and 1 more question_posted event(s) in the same minute; \`tumwater logs\` lists them)`.
+- New test: after a flush, an event of that type inside the next gap is held again rather than spawned (the bound holds after a flush).
+- New test: `dispose()` with one held event calls the stub's cancel and spawns the held page. `dispose()` with nothing held spawns nothing.
+- New test: a held event whose flush runs after `update({ notify: "" })` spawns nothing.
+- The `notifyFleetDown` tests and "an allowlisted event spawns the notify command once with the three env vars set" pass unchanged. The un-held message is still exactly `formatEvent(event)`.
+- `npm run test` passes.
+
 ## Done
 
 ### The budget-paused page names how the pause lifts, so the notify message is something the operator can act on (planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts) — done 2026-10-16
