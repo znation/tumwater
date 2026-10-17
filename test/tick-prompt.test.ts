@@ -187,6 +187,10 @@ test("a role run prompt reads the note from roleNotesPath, and omits the block w
   assert.match(withNote.prompt, /<role-notes>\ncoverage runs through the oracle helpers\n<\/role-notes>/);
   assert.match(withNote.prompt, /call role_notes with/);
 
+  const past = new Date(2026, 8, 30, 12);
+  fs.utimesSync(notes, past, past);
+  assert.match(promptFor(dir, "coverage")!.prompt, /last saved 2026-09-30, /);
+
   fs.rmSync(notes);
   const without = promptFor(dir, "coverage");
   assert.ok(without);

@@ -275,7 +275,7 @@ files, and a bundled pi extension that trims oversized tool output to its head a
 Each role also has notes: a short, model-written note its own earlier runs left for the
 next fresh session (where things live, what was ruled out, what to look at next). They live at
 `.tumwater/state/notes/<role>.md`, are capped at 4 KB, and are the only state carried between a
-role's runs besides the repo itself. A run sees the note when one exists and may replace it
+role's runs besides the repo itself. A run sees the note when one exists, along with the day it was last saved and how many days ago that was, and may replace it
 with the bundled `role_notes` tool; the director, whose work is your prompt rather
 than a recurring search, has no notes. You can clear or replace a note with
 `tumwater role <id> --clear-notes` or `--notes-file <path>`; a run in progress at that moment may

@@ -70,6 +70,16 @@ export function dayKey(ms: number): string {
   return formatDate(new Date(ms));
 }
 
+/** Whole days from one `YYYY-MM-DD` key to another (negative when `toKey` is earlier). Parsed with
+ * Date.UTC so a DST shift cannot move the count by one. */
+export function daysBetween(fromKey: string, toKey: string): number {
+  const utc = (key: string): number => {
+    const [y = 0, m = 1, d = 1] = key.split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((utc(toKey) - utc(fromKey)) / 86_400_000);
+}
+
 /** The `MM-DD` half of a `YYYY-MM-DD` day key (dayKey/formatDate): the redundant year
  * dropped for a line whose date lies inside the current window. Shared by the failure
  * digest's cluster ranges and transition stamps (failure-render.ts) and the usage report's

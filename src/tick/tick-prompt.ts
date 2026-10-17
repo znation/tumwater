@@ -18,7 +18,8 @@ import { detectBuildCheck } from "../build/build-check-detect.js";
 import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
-import { readTextOrNull } from "../files/files.js";
+import { readTextOrNull, statOrNull } from "../files/files.js";
+import { dayKey } from "../text/datetime.js";
 import { appendPromptNote } from "../text/format.js";
 import { ROLE_NOTES_MAX_BYTES } from "../pi-extension/role-notes.js";
 import { truncateWithNote } from "../text/text.js";
@@ -157,6 +158,10 @@ export function assembleTickPrompt(
     // instruction in buildTickPrompt is present either way. The director branch above never
     // reads this path, so it carries no notebook.
     const notes = readRoleNote(root, role);
+    // The note file's mtime is when the notes were last saved (writes replace the file), so the
+    // run can weigh how stale they are.
+    const savedStat = notes === undefined ? null : statOrNull(roleNotesPath(root, role));
+    const notesSavedDay = savedStat ? dayKey(savedStat.mtimeMs) : undefined;
     // The plan charter's stop threshold is derived from config (plans/parallel-work-
     // instances.md "…keeping the plan loop ahead", part 5c/7). The catalog text stays a
     // config-free description of the rule; this note supplies the concrete eligible-plan count
@@ -175,6 +180,7 @@ export function assembleTickPrompt(
       backlogStructure,
       backlogIndex,
       notes,
+      notesSavedDay,
       planTargetNote,
       extraInstructions: config.roles[base]?.instructions,
       check,

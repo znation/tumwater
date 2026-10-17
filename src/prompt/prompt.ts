@@ -6,6 +6,7 @@ import type { Role } from "../roles/roles.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "../roles/role-guidance.js";
 import { CLAIMS_RULE, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";
+import { daysBetween } from "../text/datetime.js";
 import { worktreePath } from "../paths.js";
 import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
 
@@ -218,12 +219,22 @@ function digestBlock(digest: string): string {
   return `Runtime failure digest of tumwater's own event log — your evidence base:\n<failure-digest>\n${digest}\n</failure-digest>`;
 }
 
+/** The age clause opening the notes heading: `last saved today; `, `last saved <day>, N days
+ * ago; `, or `last saved <day>; ` for a day after today (clock skew). Empty without both days. */
+function savedClause(savedDay?: string, today?: string): string {
+  if (!savedDay || !today) return "";
+  const age = daysBetween(savedDay, today);
+  if (age < 0) return `last saved ${savedDay}; `;
+  if (age === 0) return "last saved today; ";
+  return `last saved ${savedDay}, ${age === 1 ? "1 day" : `${age} days`} ago; `;
+}
+
 /** The role's notebook as shown to it: its own earlier ticks' note, labeled as unverified.
  * Rides only when there is a non-empty note; the standing instruction to write one is always
  * present (roleNotesInstruction), so a role's FIRST tick — with no note yet — still learns the
  * tool exists and can seed the notebook. */
-function roleNotesBlock(notes: string): string {
-  return `Notes your role wrote in earlier runs (yours, unverified — check against the code before
+function roleNotesBlock(notes: string, savedDay?: string, today?: string): string {
+  return `Notes your role wrote in earlier runs (${savedClause(savedDay, today)}yours, unverified — check against the code before
 relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
 }
 
@@ -257,6 +268,9 @@ interface TickPromptInput {
    * <role-notes> block is omitted; the write instruction is always present. The director
    * never reaches buildTickPrompt, so it never carries either. */
   notes?: string;
+  /** The note file's mtime as a local YYYY-MM-DD (read by tick-prompt.ts). Omitted: the notes
+   * heading carries no age. */
+  notesSavedDay?: string;
   extraInstructions?: string;
   /** The plan charter's stop target, rendered right after the charter's task text. The catalog
    * text is config-free, so the concrete eligible-plan count (`planBacklogTarget`) is supplied
@@ -314,11 +328,12 @@ from the repo.`,
 
 /** The full prompt for one role run. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, extraInstructions, planTargetNote, check, briefFile, today, userRequest, agent } = input;
+  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, check, briefFile, today, userRequest, agent } = input;
   const dialect = dialectFor(agent);
+  const day = today ?? todayStamp();
   const parts = [
     `You are the "${role.id}" role (${role.title}) on this project's tumwater team — tumwater runs a team of AI roles that develop the project.`,
-    ...sharedPreamble(initialPrompt, today),
+    ...sharedPreamble(initialPrompt, day),
   ];
   if (principles) parts.push(principlesBlock(principles));
   if (userRequest)
@@ -331,7 +346,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (digest) parts.push(digestBlock(digest));
   if (backlogStructure) parts.push(backlogStructure);
   if (backlogIndex) parts.push(backlogIndex);
-  if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes));
+  if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes, notesSavedDay, day));
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (planTargetNote) parts.push(planTargetNote.trim());
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);

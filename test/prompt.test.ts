@@ -60,6 +60,22 @@ test("a role's run prompt carries the role-notes block only when a note exists",
   }
 });
 
+test("the role-notes heading says when the notes were last saved", () => {
+  const role = roleById("feature")!;
+  const render = (notesSavedDay?: string) =>
+    buildTickPrompt({ role, initialPrompt: "", notes: "n", notesSavedDay, today: "2026-10-16" });
+  assert.match(render("2026-10-16"), /\(last saved today; yours, unverified/);
+  assert.match(render("2026-10-15"), /last saved 2026-10-15, 1 day ago; yours, unverified/);
+  assert.match(render("2026-09-30"), /last saved 2026-09-30, 16 days ago; yours, unverified/);
+  const future = render("2026-10-20");
+  assert.match(future, /last saved 2026-10-20; yours/);
+  assert.ok(!/2026-10-20, .* ago/.test(future), "no age for a future day");
+  const none = render();
+  assert.match(none, /\(yours, unverified/);
+  assert.ok(!none.includes("last saved"));
+  assert.match(none, /today is 2026-10-16|2026-10-16/i, "the date line uses the same day");
+});
+
 test("every role run is told to write a note, even the first one with none", () => {
   const role = roleById("feature")!;
   const prompt = buildTickPrompt({ role, initialPrompt: "" });

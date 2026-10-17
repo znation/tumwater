@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatTime, formatTimestamp, humanSeconds, pad2, reportWindow } from "../src/text/datetime.js";
+import { daysBetween, dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatTime, formatTimestamp, humanSeconds, pad2, reportWindow } from "../src/text/datetime.js";
 import { clockOf, dateOf } from "./helpers/oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
@@ -139,4 +139,10 @@ test("elapsedSeconds ages an instant in clamped whole seconds", () => {
   } finally {
     Date.now = realNow;
   }
+});
+
+test("daysBetween counts whole calendar days, across DST and in either direction", () => {
+  assert.equal(daysBetween("2026-10-16", "2026-10-16"), 0);
+  assert.equal(daysBetween("2026-03-01", "2026-04-01"), 31);
+  assert.equal(daysBetween("2026-10-20", "2026-10-16"), -4);
 });

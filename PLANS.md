@@ -1912,7 +1912,27 @@ This part makes every surface say which step each tier is on, why, and when it r
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### A role's run prompt says when its notes were last saved, so the run can weigh how stale they are (planned 2026-10-16 by plan; independent of every other entry. It touches only the notes block in `src/prompt/prompt.ts`, the note read in `src/tick/tick-prompt.ts`, their tests, and one docs sentence. No waiting entry edits `roleNotesBlock` or `TickPromptInput.notes`. Blocked Plain terms parts later rename `buildTickPrompt` and `initialPrompt` in the same file, and rebase over this change without touching it)
+### The plan role's stop-target line also gives the harness's count of eligible plans, so the run does not recount the index by hand (planned 2026-10-16 by plan; independent of every other entry)
+
+**Goal.** A plan run decides whether to stop by comparing the eligible plans in `## Planned` with its stop target. Today the prompt states only the target: `planTargetNote` in `assembleTickPrompt` (`src/tick/tick-prompt.ts`) renders "This run's stop target: when PLANS.md `## Planned` already holds N or more eligible plans…". The model then counts the `<backlog-index>` lines not marked `[blocked: …]` itself, every run. It can miscount, for example by leaving out in-flight entries or counting a whole blocked series as one plan. The harness already computes this count: `planBacklogFull` (`src/scheduling/claims.ts`) compares `eligibleEntries(root, "feature").length` with `planBacklogTarget(config)` to decide whether a plan run is deferred. The prompt should give that same number, so the model and the scheduler use one count.
+
+**Approach.**
+- `src/tick/tick-prompt.ts`, in the `base === "plan"` branch that builds `planTargetNote`: compute `const eligible = eligibleEntries(root, "feature").length`. `eligibleEntries` is already imported from `../backlog/backlog-eligibility.js`. Append one sentence to the note: `` It holds ${eligible} now (the harness's count of entries feature could take, the same count that decides whether a plan run is deferred).`` Use the bare number as shown, not `plural` from `src/text/phrases.ts`: "It holds N now" reads correctly for any N, and it keeps the test regexes simple. The existing sentence stays word for word, so the current `/2 or more eligible plans/` matches keep passing.
+- Leave `src/roles/role-catalog.ts`'s charter text alone. Its rule, "count only eligible entries — those the index block does not mark blocked", stays the definition. The new sentence only gives the result.
+- The preview path (`tumwater role plan`'s next prompt, via `rolePayload`) builds its prompt through `assembleTickPrompt`, so it shows the same count with no extra code.
+- `docs/how-it-works.md`, in the paragraph that says the plan role keeps `instances(feature) + 1` eligible plans ahead: add that the plan run's prompt gives both the target and the current count, the same count the deferral uses.
+
+**Files touched.** `src/tick/tick-prompt.ts`, `test/tick-prompt.test.ts`, `docs/how-it-works.md`.
+
+**Acceptance criteria.**
+- In `test/tick-prompt.test.ts`, "the plan prompt counts only takeable entries and marks the blocked ones in the index" also checks `/It holds 1 now/`. Its fixture has one takeable entry and four blocked ones.
+- A new test in `test/tick-prompt.test.ts` writes a PLANS.md with no `## Planned` entries and finds `/It holds 0 now/` in the plan prompt. A non-plan role's prompt (feature) does not contain `It holds`.
+- "the plan charter's stop target scales with feature.instances" (`test/tick-prompt.test.ts`) and "the plan payload resolves the stop target without leaking a template" (`test/role-view.test.ts`) pass without edits.
+- `npm run test` passes.
+
+## Done
+
+### A role's run prompt says when its notes were last saved, so the run can weigh how stale they are (planned 2026-10-16 by plan; independent of every other entry. It touches only the notes block in `src/prompt/prompt.ts`, the note read in `src/tick/tick-prompt.ts`, their tests, and one docs sentence. No waiting entry edits `roleNotesBlock` or `TickPromptInput.notes`. Blocked Plain terms parts later rename `buildTickPrompt` and `initialPrompt` in the same file, and rebase over this change without touching it) — done 2026-10-16
 
 **Goal.** Every role run sees its notes as `Notes your role wrote in earlier runs (yours, unverified — …)`, with no hint of their age. A note saved this morning and one last replaced three weeks and hundreds of merges ago look the same. So a run cannot tell whether "where things live" and "ruled out" still hold before it spends tool calls checking them. The note file's mtime is when the notes were last saved. `saveRoleNote` writes through `writeTextAtomic` (tmp + rename), so the mtime changes only when the file is replaced. A run that never calls `role_notes` leaves the date alone, which is the date the run should see.
 
@@ -1933,26 +1953,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - With no note, or with no `notesSavedDay`, the notes block and the write instruction are unchanged, and the existing role-notes tests pass as written.
 - The date line and the notes age come from the same resolved day: a test passing `today` sees both use it.
 - `npm run test` passes.
-
-### The plan role's stop-target line also gives the harness's count of eligible plans, so the run does not recount the index by hand (planned 2026-10-16 by plan; independent of every other entry)
-
-**Goal.** A plan run decides whether to stop by comparing the eligible plans in `## Planned` with its stop target. Today the prompt states only the target: `planTargetNote` in `assembleTickPrompt` (`src/tick/tick-prompt.ts`) renders "This run's stop target: when PLANS.md `## Planned` already holds N or more eligible plans…". The model then counts the `<backlog-index>` lines not marked `[blocked: …]` itself, every run. It can miscount, for example by leaving out in-flight entries or counting a whole blocked series as one plan. The harness already computes this count: `planBacklogFull` (`src/scheduling/claims.ts`) compares `eligibleEntries(root, "feature").length` with `planBacklogTarget(config)` to decide whether a plan run is deferred. The prompt should give that same number, so the model and the scheduler use one count.
-
-**Approach.**
-- `src/tick/tick-prompt.ts`, in the `base === "plan"` branch that builds `planTargetNote`: compute `const eligible = eligibleEntries(root, "feature").length`. `eligibleEntries` is already imported from `../backlog/backlog-eligibility.js`. Append one sentence to the note: `` It holds ${eligible} now (the harness's count of entries feature could take, the same count that decides whether a plan run is deferred).`` Use the bare number as shown, not `plural` from `src/text/phrases.ts`: "It holds N now" reads correctly for any N, and it keeps the test regexes simple. The existing sentence stays word for word, so the current `/2 or more eligible plans/` matches keep passing.
-- Leave `src/roles/role-catalog.ts`'s charter text alone. Its rule, "count only eligible entries — those the index block does not mark blocked", stays the definition. The new sentence only gives the result.
-- The preview path (`tumwater role plan`'s next prompt, via `rolePayload`) builds its prompt through `assembleTickPrompt`, so it shows the same count with no extra code.
-- `docs/how-it-works.md`, in the paragraph that says the plan role keeps `instances(feature) + 1` eligible plans ahead: add that the plan run's prompt gives both the target and the current count, the same count the deferral uses.
-
-**Files touched.** `src/tick/tick-prompt.ts`, `test/tick-prompt.test.ts`, `docs/how-it-works.md`.
-
-**Acceptance criteria.**
-- In `test/tick-prompt.test.ts`, "the plan prompt counts only takeable entries and marks the blocked ones in the index" also checks `/It holds 1 now/`. Its fixture has one takeable entry and four blocked ones.
-- A new test in `test/tick-prompt.test.ts` writes a PLANS.md with no `## Planned` entries and finds `/It holds 0 now/` in the plan prompt. A non-plan role's prompt (feature) does not contain `It holds`.
-- "the plan charter's stop target scales with feature.instances" (`test/tick-prompt.test.ts`) and "the plan payload resolves the stop target without leaking a template" (`test/role-view.test.ts`) pass without edits.
-- `npm run test` passes.
-
-## Done
 
 ### Plain terms state, part 4/5: Rename the merging marker and the workspace lease purposes (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/landing/ src/ui/status-model.ts src/git/ src/loop/loop-tick.ts src/orchestrator/startup-migration-steps.ts src/events/ src/doctor/doctor-checks.ts test/; done 2026-10-16)
 
