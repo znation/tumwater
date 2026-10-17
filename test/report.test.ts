@@ -438,6 +438,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     rejectionsByRole: {},
     revisionsByRole: {},
     failedRunsByRole: {},
+    fallbacksByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -464,6 +465,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     rejectionsByRole: { feature: 1, clean: 1 },
     revisionsByRole: { feature: 1 },
     failedRunsByRole: {},
+    fallbacksByRole: {},
     // clean carries the most tokens but $0 spend — it must appear on the tokens line (its
     // own ranked data) while the cost line omits it, proving the lines differ.
     tokensByRole: { clean: 12000, feature: 5000, bugfix: 800 },
@@ -494,6 +496,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     rejectionsByRole: {},
     revisionsByRole: {},
     failedRunsByRole: {},
+    fallbacksByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -513,6 +516,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     rejectionsByRole: {},
     revisionsByRole: {},
     failedRunsByRole: {},
+    fallbacksByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
     mergedByRole: {},
@@ -534,6 +538,7 @@ test("renderSinceReportMarkdown shows (N failed) on the landing line when a land
     rejectionsByRole: {},
     revisionsByRole: {},
     failedRunsByRole: {},
+    fallbacksByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
     mergedByRole: {},
@@ -555,6 +560,7 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     rejectionsByRole: {},
     revisionsByRole: { feature: 3 },
     failedRunsByRole: {},
+    fallbacksByRole: {},
     tokensByRole: { feature: 1500 },
     // The same ranking (count desc / spend desc, then name asc) and `usd` formatting the
     // day render applies to its Commits/Estimated by role lines — window and day speak one shape.
@@ -580,6 +586,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     rejectionsByRole: {},
     revisionsByRole: {},
     failedRunsByRole: {},
+    fallbacksByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -1081,4 +1088,19 @@ test("renderReportMarkdown prints notional spend by role and per commit only whe
   assert.ok(out.includes("**Cost per commit:** -"));
   const none = render([day("2026-09-10", {})]).split("\n");
   assert.ok(!none.some((l) => l.startsWith("**Estimated")));
+});
+
+test("report --json carries fallbacksByRole on the day and --since report that have fallback episodes", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "model_fallback_started" }),
+    JSON.stringify({ ts: ago(HOUR), loop: "qa", type: "model_fallback_started" }),
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "model_fallback_started" }),
+  ]);
+  const md = await runCli(root, "report", "--days", "1");
+  assert.match(md.out, /\*\*Fallbacks by role:\*\* feature — 2 · qa — 1/);
+  const day = JSON.parse((await runCli(root, "report", "--json", "--days", "1")).out);
+  assert.deepEqual(day.series[day.series.length - 1].fallbacksByRole, { feature: 2, qa: 1 });
+  const since = JSON.parse((await runCli(root, "report", "--json", "--since", "3h")).out);
+  assert.deepEqual(since.fallbacksByRole, { feature: 2, qa: 1 });
 });

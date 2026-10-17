@@ -1204,7 +1204,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater report` gains a `Fallbacks by role` line counting each role's model-fallback episodes (planned 2026-10-16 by the plan role)
+## Done
+
+### `tumwater report` gains a `Fallbacks by role` line counting each role's model-fallback episodes (planned 2026-10-16 by the plan role) — done 2026-10-16
 
 **Goal.** A role that keeps tripping its model-fallback episode (`model_fallback_started`: consecutive provider-class failures on the primary, so its runs move to the fallback pair) shows up today only as one feed line per trip and a Team state changes line in `report --failures`. The usage report already ranks rejections, revisions and failed runs per role, but it has no line for "this role's primary model kept failing over the window". Add a ranked `Fallbacks by role` line to the day report and the `--since` report, with the counts in `--json`, so the operator can see which role's primary provider is unreliable when they look at cost.
 
@@ -1228,8 +1230,6 @@ The GUI report charts (`src/ui/gui/gui-client-report.ts`) are out of scope: the 
 - `test/report.test.ts`: the day render prints `**Fallbacks by role:** feature — 3 · qa — 1` for a two-day series carrying those counts, and `**Fallbacks by role:** -` when there are none. The `--since` render prints the same line from `SinceReport.fallbacksByRole`. Every existing `lines[N]` index assertion in the file still passes.
 - `tumwater report --json` (day and `--since`) carries `fallbacksByRole`.
 - `npm run test` passes.
-
-## Done
 
 ### The event feed gives `backend_binary`, `quiet_hours_started`, `quiet_hours_ended`, and `restart_forced` their own lines, and a test makes every event type render one (planned 2026-10-16 by plan) (done 2026-10-16)
 

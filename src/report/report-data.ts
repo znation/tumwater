@@ -47,6 +47,9 @@ interface UsageFold {
    * ticks that burned agent time and landed nothing without going through review. Split by role,
    * a parallel tally to runsByRole (never subtracted from it). */
   failedRunsByRole: Record<string, number>;
+  /** model_fallback_started events per loop id, so a role whose primary keeps failing is
+   * visible beside its runs and cost. */
+  fallbacksByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   tokensOut: number;
@@ -135,6 +138,9 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // One rework round per event, on the day it happened, per loop. Zero-means-absent: a role
     // that never reworked a rejected change stays absent, like rejectionsByRole.
     addTo(target.revisionsByRole, eventRole(ev), 1);
+  } else if (ev.type === "model_fallback_started") {
+    // One episode per start event; durations are not summed (an episode can span the window edge).
+    addTo(target.fallbacksByRole, eventRole(ev), 1);
   } else if (ev.type === "merged") {
     target.commits++;
     // Work ratio 4/4: split landed commits by base role and by tier. Instance suffixes fold
@@ -183,6 +189,7 @@ interface DayFold {
   rejectionsByRole: Record<string, number>;
   revisionsByRole: Record<string, number>;
   failedRunsByRole: Record<string, number>;
+  fallbacksByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   notionalByRole: Record<string, number>;
@@ -286,6 +293,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       rejectionsByRole: {},
       revisionsByRole: {},
       failedRunsByRole: {},
+      fallbacksByRole: {},
       tokensByRole: {},
       costByRole: {},
       notionalByRole: {},
@@ -409,6 +417,9 @@ export interface ReportDay {
   /** error-class run_end events per loop id; absent when the day has none (zero means
    * absent, so a failure-free day keeps its exact pre-feature shape). */
   failedRunsByRole?: Record<string, number>;
+  /** model_fallback_started events per loop id; absent when the day has none (zero means
+   * absent). */
+  fallbacksByRole?: Record<string, number>;
   commits: number;
   commitsByRole?: Record<string, number>; // landed commits by base role (Work ratio 4/4)
   workCommits?: number; // of those, feature/bugfix/director
@@ -496,6 +507,8 @@ export interface SinceReport {
   revisionsByRole: Record<string, number>;
   /** error-class run_end events per loop id; empty when the window has none. */
   failedRunsByRole: Record<string, number>;
+  /** model_fallback_started events per loop id; empty when the window has none. */
+  fallbacksByRole: Record<string, number>;
   /** Output tokens per loop id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;
@@ -551,6 +564,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     rejectionsByRole: {},
     revisionsByRole: {},
     failedRunsByRole: {},
+    fallbacksByRole: {},
     tokensByRole: {},
     costByRole: {},
     tokensOut: 0,
@@ -619,6 +633,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     rejectionsByRole: base === undefined ? acc.rejectionsByRole : narrowToRole(acc.rejectionsByRole, base),
     revisionsByRole: base === undefined ? acc.revisionsByRole : narrowToRole(acc.revisionsByRole, base),
     failedRunsByRole: base === undefined ? acc.failedRunsByRole : narrowToRole(acc.failedRunsByRole, base),
+    fallbacksByRole: base === undefined ? acc.fallbacksByRole : narrowToRole(acc.fallbacksByRole, base),
     tokensByRole: base === undefined ? acc.tokensByRole : narrowToRole(acc.tokensByRole, base),
     commitsByRole: base === undefined ? acc.commitsByRole : narrowToRole(acc.commitsByRole, base),
     mergedByRole: base === undefined ? acc.mergedByRole : narrowToRole(acc.mergedByRole, base),
@@ -673,6 +688,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.failedRunsByRole).length > 0)
         day.failedRunsByRole = fold.failedRunsByRole;
+      if (Object.keys(fold.fallbacksByRole).length > 0)
+        day.fallbacksByRole = fold.fallbacksByRole;
       day.commits = fold.commits;
       day.commitsByRole = fold.commitsByRole;
       day.workCommits = fold.workCommits;
@@ -716,6 +733,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       if (Object.keys(revs).length > 0) day.revisionsByRole = revs;
       const fails = narrowToRole(fold.failedRunsByRole, base);
       if (Object.keys(fails).length > 0) day.failedRunsByRole = fails;
+      const falls = narrowToRole(fold.fallbacksByRole, base);
+      if (Object.keys(falls).length > 0) day.fallbacksByRole = falls;
       day.commits = commits;
       day.commitsByRole = narrowToRole(fold.commitsByRole, base);
       day.workCommits = tier === "work" ? commits : 0;

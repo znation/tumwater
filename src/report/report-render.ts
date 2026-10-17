@@ -152,6 +152,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // going through review, which rejections/revisions would miss entirely. A window with
   // none renders "-" like the other lines.
   lines.push(rankedRoleLine("Failed runs by role", rankedRoleMap(data.failedRunsByRole).filter(([, n]) => n > 0), String));
+  lines.push(rankedRoleLine("Fallbacks by role", rankedRoleMap(data.fallbacksByRole).filter(([, n]) => n > 0), String));
   // The landed-commits split by base role, matching the day render's unfiltered line: the
   // window's totals.commits carries the count; this line says which role's commits it was.
   lines.push(rankedRoleLine("Commits by role", rankedRoleMap(data.commitsByRole), String));
@@ -286,6 +287,7 @@ export function renderReportMarkdown(data: ReportData): string {
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a
   // failure-free window renders no line and an all-zero window renders "-" like the others.
   lines.push(rankedRoleLine("Failed runs by role", rankedRoleTotals(data.series, (d) => d.failedRunsByRole ?? {}).filter(([, n]) => n > 0), String));
+  lines.push(rankedRoleLine("Fallbacks by role", rankedRoleTotals(data.series, (d) => d.fallbacksByRole ?? {}).filter(([, n]) => n > 0), String));
   // Work ratio 4/4: the landed commits split by base role and by tier. The totals line's
   // `commits` carries the count; these lines say who made it and how much of it was work.
   lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
