@@ -2,13 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, mergeWaitPhrase, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { mergeQueueDir } from "../src/paths.js";
+import { shortSpanPhrase } from "../src/text/phrases.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
@@ -655,4 +656,32 @@ test("checkRegressedFixes names the first of several regressed records and count
   assert.equal(out.level, "warn");
   assert.match(out.detail, /startParentDeathWatch/);
   assert.match(out.detail, /and 1 more/);
+});
+
+const done = (queuedMs?: number, extra: Record<string, unknown> = {}) =>
+  ({ ts: Date.now(), source: "merge", type: "merge_done", ...(queuedMs === undefined ? {} : { queuedMs }), ...extra }) as unknown as HarnessEvent;
+
+test("mergeWaitPhrase reports the lower median and longest of merge_done waits", () => {
+  assert.equal(
+    mergeWaitPhrase([done(600_000), done(60_000), done(180_000)]),
+    `merges in the last 24h waited ${shortSpanPhrase(180_000)} median, ${shortSpanPhrase(600_000)} longest (3 merges)`,
+  );
+  assert.match(mergeWaitPhrase([done(60_000), done(600_000)])!, new RegExp(`waited ${shortSpanPhrase(60_000)} median`));
+  assert.equal(mergeWaitPhrase([{ ...done(60_000), type: "merge_failed" } as HarnessEvent, done(), done(0), { ...done(60_000), type: "warning" } as HarnessEvent]), undefined);
+});
+
+test("checkStaleQueuedMerges appends the last 24h merge wait to its detail", () => {
+  const now = Date.now();
+  const root = queueRoot();
+  logEvent(root, { source: "merge", type: "merge_done", queuedMs: 60_000 });
+  logEvent(root, { source: "merge", type: "merge_done", queuedMs: 120_000 });
+  logEvent(root, { source: "merge", type: "merge_done", queuedMs: 9_000_000, ts: now - 48 * 3600_000 });
+  const ok = checkStaleQueuedMerges(root, now);
+  assert.equal(ok.level, "ok");
+  assert.match(ok.detail, / · merges in the last 24h waited .* \(2 merges\)$/);
+  enqueueMerge(root, { ...advice("organize", "move the helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
+  const warn = checkStaleQueuedMerges(root, now);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, / · merges in the last 24h waited .* \(2 merges\)$/);
+  assert.ok(!checkStaleQueuedMerges(queueRoot(), now).detail.includes(" · merges"));
 });

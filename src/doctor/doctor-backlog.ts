@@ -18,7 +18,8 @@ import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
 import { formatTimestamp, humanSeconds, secondsSince } from "../text/datetime.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
-import { stringList } from "../files/json-object.js";
+import { finiteNumber, stringList } from "../files/json-object.js";
+import { plural, shortSpanPhrase } from "../text/phrases.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the five checks that
@@ -259,6 +260,8 @@ export function checkPlanDependencies(root: string): CheckOutcome {
  * separately — is never a merely busy pipeline: it reads as a drain that has stalled. The one
  * opinionated default, like STALE_QUESTION_DAYS, so no knob. */
 const MERGE_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
+/** The window of the merge-wait phrase on the stale merge-queue row. */
+const MERGE_WAIT_WINDOW_MS = 24 * 3600_000;
 
 /** Stale queued merges — a change that has sat in the durable merge queue too long without starting
  * (plans/merge-queue.md). Every queued-change health fact is otherwise a hook into its own role or
@@ -275,6 +278,15 @@ const MERGE_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
  * checkStaleQuestions/checkStalledPlans precedent: a queued wait is legitimate while the team is
  * genuinely held, and those holds already warn separately. */
 export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome {
+  const withWait = (out: CheckOutcome): CheckOutcome => {
+    let phrase: string | undefined;
+    try {
+      phrase = mergeWaitPhrase(readEventsSince(root, MERGE_WAIT_WINDOW_MS).events.filter((ev) => ev.ts >= now - MERGE_WAIT_WINDOW_MS));
+    } catch {
+      return out; // an unreadable event log never changes this row's level
+    }
+    return phrase ? { ...out, detail: `${out.detail} · ${phrase}` } : out;
+  };
   const marker = readMergeMarker(root);
   const inFlight = new Set(marker ? mergeChanges(marker).map((c) => c.role) : []);
   const stale = queuedMerges(root)
@@ -282,10 +294,26 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
     .map((e) => ({ role: e.role, summary: e.summary, age: humanSeconds(secondsSince(e.enqueuedAt, now)) }));
   const [first, ...rest] = stale;
   if (!first)
-    return okOutcome(`no merge-queue entry has waited more than ${humanSeconds(MERGE_QUEUE_STALE_MS / 1000)} to start`);
+    return withWait(okOutcome(`no merge-queue entry has waited more than ${humanSeconds(MERGE_QUEUE_STALE_MS / 1000)} to start`));
   const more = andMore(rest, (e) => `${e.role} — "${truncate(e.summary, FIX_CLAIM_HEADING_MAX)}"`);
-  return warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
-      `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`);
+  return withWait(warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
+      `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`));
+}
+
+/** How long merges that reached main waited: the lower median and the longest `queuedMs` of the
+ * `merge_done` events given, undefined when none qualifies. The wait runs from the entry's last
+ * enqueue to its outcome, so it includes the merge check. A merge logged before `queuedMs` existed
+ * (missing or 0) is skipped, and a `merge_failed` is not a wait that ended on main. */
+export function mergeWaitPhrase(events: readonly HarnessEvent[]): string | undefined {
+  const waits = events
+    .filter((e) => e.type === "merge_done")
+    .map((e) => finiteNumber(e.queuedMs, 0))
+    .filter((ms) => ms > 0)
+    .sort((a, b) => a - b);
+  if (waits.length === 0) return undefined;
+  const median = waits[Math.floor((waits.length - 1) / 2)]!;
+  const longest = waits[waits.length - 1]!;
+  return `merges in the last 24h waited ${shortSpanPhrase(median)} median, ${shortSpanPhrase(longest)} longest (${plural(waits.length, "merge")})`;
 }
 
 /** Stale questions — open QUESTIONS.md questions that have waited more than 7 days for an

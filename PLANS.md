@@ -1117,7 +1117,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor` says how long merges waited over the last 24 h, from enqueue to merged on main (planned 2026-10-17 by the plan role)
+## Done
+
+### `tumwater doctor` says how long merges waited over the last 24 h, from enqueue to merged on main (planned 2026-10-17 by the plan role) — done 2026-10-17
 
 **Goal.** `tumwater report` now shows each day's median merge wait, and `tumwater doctor` says how
 long passing merge checks took over the last 24 h. But doctor, the pre-flight an operator runs
@@ -1172,8 +1174,6 @@ and docs/cli.md.
 - The existing `checkStaleQueuedMerges` tests pass unchanged. With no `merge_done` in the
   window, the detail has no ` · merges` suffix.
 - `npm run test` passes.
-
-## Done
 
 ### `plan|bug --list --done` and `questions --answered` take `--grep <text>` to find an old finished entry by its text (planned 2026-10-17 by the plan role) — done 2026-10-17
 
