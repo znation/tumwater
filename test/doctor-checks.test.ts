@@ -8,6 +8,7 @@ import {
   checkBrief,
   checkBuild,
   checkBuildCheck,
+  checkDurationPhrase,
   checkClaudeTranscripts,
   checkDiskSpace,
   checkEventLog,
@@ -31,7 +32,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { TUMWATER_SOURCE, logEvent } from "../src/events/events.js";
+import { TUMWATER_SOURCE, logEvent, type HarnessEvent } from "../src/events/events.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { bootstrapLatchPath, slotWorktreePath, worktreesDir } from "../src/paths.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
@@ -975,4 +976,45 @@ test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones,
   writeConfig(root, {});
   assert.match((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /feature-2/);
   assert.deepEqual(await checkLeftoverRoleBranches(root, null), { level: "ok", detail: "no readable tumwater.json — nothing to verify" });
+});
+
+const buildEvent = (fields: Record<string, unknown>): HarnessEvent =>
+  ({ ts: Date.now(), source: "merge", type: "build_check", status: "passed", scope: "merge", durationMs: 1000, ...fields }) as HarnessEvent;
+
+test("checkDurationPhrase reports the lower median and slowest of passing full-suite runs", () => {
+  assert.equal(
+    checkDurationPhrase([
+      buildEvent({ scope: "merge", durationMs: 60_000 }),
+      buildEvent({ scope: "batch", durationMs: 125_000 }),
+      buildEvent({ scope: "baseline", durationMs: 90_000 }),
+    ]),
+    "passing merge checks in the last 24h took 90s median, 2m slowest (3 runs)",
+  );
+  assert.match(
+    checkDurationPhrase([buildEvent({ durationMs: 40_000 }), buildEvent({ durationMs: 100_000 })])!,
+    /took 40s median, 100s slowest \(2 runs\)/,
+  );
+});
+
+test("checkDurationPhrase skips gate, failed, untimed, and non-check events", () => {
+  assert.equal(
+    checkDurationPhrase([
+      buildEvent({ scope: "gate" }),
+      buildEvent({ status: "failed" }),
+      buildEvent({ durationMs: undefined }),
+      buildEvent({ type: "warning" }),
+    ]),
+    undefined,
+  );
+});
+
+test("checkBuildCheck appends the passing merge check timing from the last 24h", () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }));
+  fs.mkdirSync(path.join(root, "node_modules"));
+  for (const durationMs of [30_000, 50_000])
+    logEvent(root, { source: "merge", type: "build_check", scope: "merge", status: "passed", script: "test", durationMs });
+  const out = checkBuildCheck(root);
+  assert.equal(out.level, "ok");
+  assert.match(out.detail, /^npm test · passing merge checks in the last 24h took .*\(2 runs\)$/);
 });

@@ -1233,7 +1233,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor`'s `check` row says how long the declared check's passing merge checks took over the last 24 h, so the operator sees the suite slowing the merge lock before it times out (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts, docs/cli.md)
+## Done
+
+### `tumwater doctor`'s `check` row says how long the declared check's passing merge checks took over the last 24 h, so the operator sees the suite slowing the merge lock before it times out (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts, docs/cli.md) (done 2026-10-16)
 
 **Goal.** Each merge runs the project's declared check inside the merge lock: the `merge` and `batch` scope `build_check` events, plus the `baseline` checks on main's tip. So the suite's wall clock sets an upper limit on how many changes merge per hour. Every one of those runs is logged with its `durationMs` (`buildCheckEvent` in src/build/build-check-events.ts), but no surface reads the number back. `MainCheckStatus` (src/status/status-polls.ts) carries status, counts and time but no duration. The `report` and failure digest do not price check time. Doctor's `check` row (`checkBuildCheck` in src/doctor/doctor-checks.ts) names only the command. An operator first learns the suite slowed down when merges back up or a check hits its deadline. BUGS.md's open supervisor-flake entry cites one such run that took 145 s.
 
@@ -1257,8 +1259,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - two qualifying events of 40 000 and 100 000 ms give a median of `40s` (the lower median).
 - test/doctor-checks.test.ts: for a repo with a declared npm `test` script and two passed `merge`-scope `build_check` events written with `logEvent`, `checkBuildCheck(root)` returns level `ok` with a detail that starts `npm test · passing merge checks in the last 24h took` and ends `(2 runs)`. The existing "checkBuildCheck names the declared script and walks up from a worktree to the installed root" test passes unchanged; its repos log no events.
 - `npm run test` passes.
-
-## Done
 
 ### A refused plan or bug raises a standing `refused` team alert on the dashboard, the TUI and `tumwater status`, the way an open question does (planned 2026-10-16 by plan; independent of every other Planned entry — touches src/backlog/backlog-eligibility.ts, src/ui/team-alerts.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx and their tests; no src/merge, src/tick, src/doctor or src/ui/gui edit) (done 2026-10-16)
 

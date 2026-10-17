@@ -47,6 +47,7 @@ import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { eventLogState, readEventsSince, type EventLogState } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
+import type { HarnessEvent } from "../events/events.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
@@ -658,6 +659,22 @@ export function checkProviderConcurrency(config: TumwaterConfig | undefined, roo
   return warnOutcome(warnings.join("; "));
 }
 
+/** The `passing merge checks …` phrase for the `check` row: median and slowest wall clock of
+ * the passed full-suite runs (`merge`, `batch`, `baseline` scopes — a `gate` check can run a
+ * subset, and failed or skipped runs do not measure a full pass). The lower median keeps the
+ * figure a run that happened. Undefined when no event qualifies. */
+export function checkDurationPhrase(events: readonly HarnessEvent[]): string | undefined {
+  const durations = events
+    .filter((e) => e.type === "build_check" && e.status === "passed" && ["merge", "batch", "baseline"].includes(String(e.scope)))
+    .map((e) => finiteNumber(e.durationMs, 0))
+    .filter((ms) => ms > 0)
+    .sort((a, b) => a - b);
+  if (durations.length === 0) return undefined;
+  const median = durations[Math.floor((durations.length - 1) / 2)]!;
+  const slowest = durations[durations.length - 1]!;
+  return `passing merge checks in the last 24h took ${shortSpanPhrase(median)} median, ${shortSpanPhrase(slowest)} slowest (${plural(durations.length, "run")})`;
+}
+
 /** Declared project check — names what the review gate's deterministic pre-check, the
  * red-main baseline, and redeploy's green check will run, without running it: a configured
  * `check.command` (plans/portability.md §6/7), else the npm auto-detection. None declared is
@@ -673,12 +690,14 @@ export function checkBuildCheck(
   const check = detectBuildCheck(root, config ?? undefined);
   if (!check)
     return warnOutcome("none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo)");
+  const phrase = checkDurationPhrase(readEventsSince(root, 24 * 60 * 60 * 1000).events);
+  const withTiming = (detail: string) => okOutcome(phrase ? `${detail} · ${phrase}` : detail);
   if (check.kind === "command") {
     const where = path.relative(root, check.cwd);
-    return okOutcome(where ? `${check.command} (cwd ${where})` : check.command);
+    return withTiming(where ? `${check.command} (cwd ${where})` : check.command);
   }
   const where = path.relative(root, check.rootDir);
-  return okOutcome(where ? `npm ${check.script} in ${where}` : `npm ${check.script}`);
+  return withTiming(where ? `npm ${check.script} in ${where}` : `npm ${check.script}`);
 }
 
 /** The review gate's flake memory surfaced read-only: names which checks the gate kept
