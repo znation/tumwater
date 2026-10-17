@@ -4,6 +4,7 @@ import {
   requestAbort,
   requestResetCounters,
   requestScheduledStop,
+  requestRestart,
   requestWake,
   cancelWakes,
   rolePauseMessage,
@@ -137,6 +138,29 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
           session.cursor = 0;
           session.flashMessage('stop the team later: a duration, e.g. "2h" — current runs finish, then the team stops — Enter to schedule, Esc to cancel');
         }
+      } catch (err) {
+        session.flashError(err);
+      }
+      return true;
+    }
+    if (
+      key.ctrl && key.name === "r" && ctx.view === 0 && !pauseEditMode &&
+      !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
+      !session.held.defer && !session.held.queued && !session.held.answer && !session.held.entry &&
+      !session.held.attach
+    ) {
+      // Ctrl+R on the Activity view applies the pending self-redeploy now — the terminal twin
+      // of `tumwater restart` and the dashboard update alert's restart button, all three
+      // through the same requestRestart marker writer. A refusal carries the CLI's wording
+      // (a red main, failed compile, swap error, or boot refusal still blocks; a fresh build
+      // refuses as "current with main"), so the flash matches what a terminal press would
+      // print. Inert on every other view (the transcript's Ctrl+R still opens the per-role
+      // prompt editor, Backlog's still releases an entry, Pending/Health's still refresh) and
+      // out of pause-edit mode, whose prompt line the restart must not disturb. The write can
+      // fail like any marker write, so flash the reason instead of letting the throw escape.
+      try {
+        const result = requestRestart(session.root);
+        session.flashMessage(result.ok ? result.message : result.error);
       } catch (err) {
         session.flashError(err);
       }

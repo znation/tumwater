@@ -11,7 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { isTeamPaused, scheduledStopAt, pauseTeam, pausedRoles, standingTeamPause } from "../src/team/team-state.js";
 import { listWakes, requestWake } from "../src/operator/operator-intent.js";
-import { abortRequestPath, pausedRolesPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, pausedRolesPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
@@ -469,5 +469,43 @@ test("Ctrl+V is inert outside the transcript and while the budget editor is open
     tui.key(undefined, "v", { ctrl: true });
     assert.equal(fs.existsSync(resetRequestPath(repo)), false);
     assert.equal(tui.lines().at(-1), "daily cap $ 50", "still editing the cap, Ctrl+V inert");
+  });
+});
+
+// Ctrl+R on the Activity view (view 0) applies the pending self-redeploy: the terminal twin of
+// `tumwater restart` and the dashboard update alert's restart button, all three through the
+// same requestRestart marker writer (src/operator/operator-intent.ts). A stale published build
+// waives the cooldown and drops the restart marker a live team consumes within one poll; a
+// fresh build refuses with the CLI's "current with main" wording and writes nothing.
+test("Ctrl+R on the Activity view requests the pending self-redeploy when the build is stale", async () => {
+  const repo = await makeTuiRepo();
+  writeOrchestratorMarker(repo, ["clean"], { build: { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 2 } });
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "r", { ctrl: true });
+    assert.match(tui.lastFrame(), /restart requested/);
+    assert.match(tui.lastFrame(), /cooldown is waived/);
+    assert.equal(fs.existsSync(restartRequestPath(repo)), true, "the marker a live team consumes is on disk");
+  });
+});
+
+test("Ctrl+R on a fresh build refuses and writes no restart marker", async () => {
+  const repo = await makeTuiRepo();
+  writeOrchestratorMarker(repo, ["clean"], { build: { sha: "a".repeat(40), builtAt: 1, stale: false } });
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "r", { ctrl: true });
+    assert.match(tui.lastFrame(), /no update is waiting/);
+    assert.equal(fs.existsSync(restartRequestPath(repo)), false, "a fresh build's press writes nothing");
+  });
+});
+
+test("Ctrl+R is inert while the budget editor holds the prompt line", async () => {
+  const repo = await makeTuiRepo();
+  writeOrchestratorMarker(repo, ["clean"], { build: { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 2 } });
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "b", { ctrl: true }); // enter budget mode
+    assert.match(tui.lastFrame(), /edit daily cost budget/);
+    tui.key(undefined, "r", { ctrl: true });
+    assert.equal(fs.existsSync(restartRequestPath(repo)), false, "still editing the cap, Ctrl+R inert");
+    assert.equal(tui.lines().at(-1), "daily cap $ 50", "still editing the cap, Ctrl+R inert");
   });
 });
