@@ -23,8 +23,8 @@ import { abortRequestPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } 
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
-import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { readBrief, renderBrief } from "../src/brief/brief.js";
+import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { waitFor, waitForFile, sleep } from "./helpers/wait.js";
@@ -2718,6 +2718,94 @@ test("the Brief tab caches renderBrief of the brief file on entry, and holds nul
   for (let i = 0; i < 8; i++) bareKeys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(bareKeys.state().view, 8);
   assert.equal(bareKeys.state().paneCache, null);
+});
+
+// Ctrl+E on the Brief view replaces the brief from a typed file path — the terminal twin of
+// `tumwater brief --file <path>` and the dashboard's Brief card, all through the same
+// editInitialPrompt core (and its commit). The open arm is guarded to the Brief view, so the
+// Health reclaim and Report window-cycle arms keep Ctrl+E on their own views.
+test("the Brief view's Ctrl+E replaces the brief from a typed file path", async () => {
+  const root = await initializedRepo();
+  const replacement = path.join(root, "replacement.md");
+  fs.writeFileSync(replacement, "the replacement brief\n");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 8; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Brief
+  assert.equal(keys.state().view, 8);
+  keys.handleKey(undefined, { ctrl: true, name: "e" }); // open the brief editor
+  assert.equal(keys.state().briefEditMode, true);
+  assert.match(keys.state().flash!, /replace the brief from a file/);
+  assert.equal(keys.state().input, "");
+  for (const ch of replacement) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  // The replace commits asynchronously; poll until the editor leaves (the outcome flash only
+  // fires once the commit lands, a microtask later, so the git-log read below is safe).
+  await waitFor(() => !keys.state().briefEditMode, "the brief editor exits after a successful replace");
+  assert.equal(keys.state().briefEditMode, false);
+  assert.match(keys.state().flash!, /brief updated in README\.md/);
+  assert.equal(readBrief(root)!.prompt, "the replacement brief");
+  assert.equal(sh(root, "git", "log", "-1", "--format=%s"), "tumwater(operator): Edit brief");
+  // Every refusal and the escape below must leave this (replaced) README byte-identical.
+  const replacedReadme = fs.readFileSync(path.join(root, "README.md"), "utf8");
+
+  // An empty path and a missing file flash and keep the editor open (both synchronous, before
+  // the core's async write).
+  keys.handleKey(undefined, { ctrl: true, name: "e" }); // reopen (the editor exited after success)
+  assert.equal(keys.state().briefEditMode, true);
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().briefEditMode, true, "an empty path stays in the brief editor");
+  assert.match(keys.state().flash!, /a file path is required/);
+  keys.handleKey(undefined, { name: "escape" });
+
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  for (const ch of path.join(root, "nope.md")) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().briefEditMode, true, "a missing file stays in the brief editor");
+  assert.match(keys.state().flash!, /no such file/);
+  keys.handleKey(undefined, { name: "escape" });
+
+  // A whitespace-only replacement, an over-cap one, and one carrying the prompt marker are all
+  // refused by editInitialPrompt with the core's wording, staying in the editor. Each refusal
+  // flashes asynchronously (inside the core's promise), so await the wording.
+  const blank = path.join(root, "blank.md");
+  fs.writeFileSync(blank, "   \n");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  for (const ch of blank) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().briefEditMode, true, "an empty brief stays in the editor");
+  await waitFor(() => (keys.state().flash ?? "").includes("the new brief is empty"), "the empty-brief refusal flash");
+  keys.handleKey(undefined, { name: "escape" });
+
+  const bigFile = path.join(root, "big.md");
+  fs.writeFileSync(bigFile, "x".repeat(5000));
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  for (const ch of bigFile) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().briefEditMode, true, "an over-cap brief stays in the editor");
+  await waitFor(() => (keys.state().flash ?? "").includes("shorten it to at most 4096"), "the over-cap refusal flash");
+  keys.handleKey(undefined, { name: "escape" });
+
+  const marker = path.join(root, "marker.md");
+  fs.writeFileSync(marker, `contains ${PROMPT_START} marker\n`);
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  for (const ch of marker) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().briefEditMode, true, "a marker brief stays in the editor");
+  await waitFor(() => (keys.state().flash ?? "").includes("contains a tumwater:prompt marker"), "the marker refusal flash");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(fs.readFileSync(path.join(root, "README.md"), "utf8"), replacedReadme, "every refusal leaves README byte-identical");
+
+  // Esc cancels: restores the saved prompt draft, flashes, and writes nothing.
+  for (const ch of "a director draft") keys.handleKey(ch, { name: ch });
+  assert.equal(keys.state().input, "a director draft");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().input, "", "entering the brief editor blanks the line");
+  for (const ch of "other/path.md") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().briefEditMode, false);
+  assert.equal(keys.state().input, "a director draft", "Esc restores the saved prompt draft");
+  assert.match(keys.state().flash!, /brief edit cancelled/);
+  assert.equal(fs.readFileSync(path.join(root, "README.md"), "utf8"), replacedReadme, "Esc writes nothing");
 });
 
 // Ctrl+E on the Health view runs one manual reclaim pass — the terminal twin of the dashboard

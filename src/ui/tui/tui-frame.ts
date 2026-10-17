@@ -71,7 +71,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
 }
 
 /** The footer's key hints for what the keys do right now: keys bright, words dim. */
-export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; images?: number }, width: number): StatusLine {
+export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number }, width: number): StatusLine {
   let keys: Array<[string, string]>;
   if (mode.entryEditFor?.position === null) keys = [["Enter", `file ${mode.entryEditFor.kind}`], ["Ctrl+N", `switch to ${mode.entryEditFor.kind === "plan" ? "bug" : "plan"}`], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.entryEditFor) keys = [["Enter", "save title"], ["Ctrl+E", "body file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -84,6 +84,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (mode.deferMode) keys = [["Enter", "save the delay"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.briefEditMode) keys = [["Enter", "replace brief from file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (view.kind === "transcript") {
     keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notes"], ...(view.note ? [["Ctrl+X", "clear notes"] as [string, string], ["Ctrl+E", "edit notes"] as [string, string]] : []), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "stop run"], ["Ctrl+V", "reset counters"],
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
@@ -92,14 +93,14 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+Y", view.summary ? "rows" : "summary"], ["Ctrl+N", view.trail ? "history" : "run trail"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+R", "refresh"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+E", "edit brief"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+V", "top"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+O", view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
   // The defer editor is the prompt line's fourth meta-editor (after budget, role, and
   // search), so every view whose hint is about sending names its state: the pending delay
   // when one is set, otherwise the way to open it. The mode branches above already name
   // their own keys and keep the line, so this only rides the view hints.
-  if (!mode.deferMode && !mode.attachMode && !mode.notesEditFor && !mode.pauseEditMode && !mode.budget && !mode.rolePromptFor && !mode.queuedEditFor && !mode.answerFor && !mode.entryEditFor)
+  if (!mode.deferMode && !mode.attachMode && !mode.notesEditFor && !mode.briefEditMode && !mode.pauseEditMode && !mode.budget && !mode.rolePromptFor && !mode.queuedEditFor && !mode.answerFor && !mode.entryEditFor)
     keys.push(["Ctrl+L", mode.defer ? `send later: ${mode.defer}` : "send later"]);
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {
@@ -110,8 +111,9 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
 }
 
 /** The prompt line's target, like the dashboard composer's: who Enter sends to. */
-export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; images?: number }): StatusSpan[] {
+export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number }): StatusSpan[] {
   if (mode.budget) return [{ text: "daily cap $", tone: "brand" }, { text: " " }];
+  if (mode.briefEditMode) return [{ text: "brief", tone: "brand" }, { text: " › " }];
   if (mode.notesEditFor) return [{ text: `notes for ${mode.notesEditFor}`, tone: "brand" }, { text: " › " }];
   if (mode.entryEditFor) return [{ text: mode.entryEditFor.position === null ? `new ${mode.entryEditFor.kind}` : `edit ${mode.entryEditFor.kind} #${mode.entryEditFor.position}`, tone: "brand" }, { text: " › " }];
   if (mode.answerFor) return [{ text: `answer #${mode.answerFor.position}`, tone: "brand" }, { text: " › " }];

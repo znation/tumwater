@@ -156,6 +156,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "health", problems: false }), /Ctrl\+O all checks/);
   assert.match(hint({ kind: "health", problems: true }), /Ctrl\+O problems only/);
   assert.match(hint({ kind: "brief" }), /PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "brief" }), /Ctrl\+E edit brief/);
   assert.match(hint({ kind: "queued" }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "queued" }), /Ctrl\+V top/);
   assert.match(hint({ kind: "queued" }), /Ctrl\+E edit/);
@@ -243,6 +244,9 @@ test("the prompt line names who Enter sends to", () => {
   assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, deferMode: false, attachMode: true, defer: null, queuedEditFor: null, answerFor: null }, 300)), "Enter attach image path · Esc cancel · Ctrl+D quit");
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: { role: "clean", file: "a.md" }, answerFor: null })), "edit clean › ");
   assert.equal(prefixWidth(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), 11);
+  // Brief-edit mode names its own hint keys and prefixes the line with `brief`.
+  assert.equal(plain(hintLine({ kind: "brief" }, { ...base, briefEditMode: true }, 300)), "Enter replace brief from file · Esc cancel · Ctrl+D quit");
+  assert.equal(plain(promptPrefix({ ...base, briefEditMode: true })), "brief › ");
 });
 
 test("activity and transcript lines take the tones of what they report", () => {

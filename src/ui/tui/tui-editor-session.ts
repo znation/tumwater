@@ -43,6 +43,8 @@ interface TuiHeld {
   /** The notes view's Ctrl+E replace-notes editor: the role whose notes the prompt line
    * is replacing from a typed file path, or null when closed. */
   notes: string | null;
+  /** The Brief view's Ctrl+E replace-the-brief editor holds the prompt line. */
+  brief: boolean;
 }
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
@@ -76,6 +78,8 @@ export interface TuiEditorSession {
   refreshQueued(): void;
   /** Repaint the notes view's cached notebook after a replace/clear write. */
   refreshNotes(role: string): void;
+  /** Repaint the Brief view's cached body after a replace write. */
+  refreshBrief(): void;
   /** Clear the project-status pane's entry selection and its body scroll after a recorded
    * answer/edited entry leaves the list. */
   clearBacklogSelection(): void;
@@ -100,7 +104,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "defer" | "attach" | "notes"): string | null;
+  heldEditorFlash(entering: "budget" | "defer" | "attach" | "notes" | "brief"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -126,12 +130,14 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       entry: null,
       attach: false,
       notes: null,
+      brief: false,
     },
     root: deps.root,
     now: deps.now,
     flat: deps.flat,
     refreshQueued: deps.refreshQueued,
     refreshNotes: deps.refreshNotes,
+    refreshBrief: deps.refreshBrief,
     clearBacklogSelection: deps.clearBacklogSelection,
     applyHistorySearch: deps.applyHistorySearch,
     applyActivitySearch: deps.applyActivitySearch,
@@ -162,10 +168,12 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.rolePromptFor) return session.busyFlash(`prompt for ${h.rolePromptFor}`);
       if (h.attach && entering !== "attach") return session.busyFlash("image attach");
       if (h.notes && entering !== "notes") return session.busyFlash("notes edit");
+      if (h.brief && entering !== "brief") return session.busyFlash("brief edit");
       if (entering === "defer" && h.budget) return session.busyFlash("budget edit");
       if (entering === "budget" && h.defer) return session.busyFlash("send-later edit");
       if (entering === "attach" && (h.budget || h.defer)) return session.busyFlash(h.budget ? "budget edit" : "send-later edit");
       if (entering === "notes" && (h.attach || h.budget || h.defer)) return session.busyFlash(h.attach ? "image attach" : h.budget ? "budget edit" : "send-later edit");
+      if (entering === "brief" && (h.budget || h.defer)) return session.busyFlash(h.budget ? "budget edit" : "send-later edit");
       return null;
     },
   };

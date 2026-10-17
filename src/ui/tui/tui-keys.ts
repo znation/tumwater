@@ -59,6 +59,9 @@ interface TuiKeysState {
   /** The notes view's Ctrl+E replace-notes mode holds the prompt line: the role whose notes
    * the prompt line is replacing from a typed file path, or null when closed. */
   notesEditFor: string | null;
+  /** The Brief view's Ctrl+E replace-the-brief mode holds the prompt line, editing one typed
+   * file path that becomes the whole brief through editInitialPrompt. */
+  briefEditMode: boolean;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
   /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */
@@ -264,6 +267,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     flat,
     refreshQueued: panes.refreshQueued,
     refreshNotes: panes.refreshNotes,
+    refreshBrief: panes.refreshBrief,
     clearBacklogSelection: panes.clearBacklogSelection,
     applyHistorySearch: panes.applyHistorySearch,
     applyActivitySearch: panes.applyActivitySearch,

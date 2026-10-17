@@ -22,6 +22,10 @@ export interface TuiEditorCtx {
    * transcript — the notes Ctrl+E editor's open guard: it may only take the prompt line
    * while the notes view is up, so the Report window arm keeps Ctrl+E on its own views. */
   noteMode: boolean;
+  /** Whether the Brief view is selected — the brief Ctrl+E editor's open guard: it may only
+   * take the prompt line on the Brief view, so the Health reclaim and Report window arms keep
+   * Ctrl+E on their own views. */
+  briefMode: boolean;
 }
 
 /** The shared contract every per-editor module returns to the aggregator: its handleKey arms

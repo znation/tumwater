@@ -15,6 +15,9 @@ export interface TuiPaneEditorState {
   /** The notes view's Ctrl+E replace-notes mode holds the prompt line: the role whose notes
    * the prompt line is replacing from a typed file path, or null when closed. */
   notesEditFor: string | null;
+  /** The Brief view's Ctrl+E replace-the-brief mode holds the prompt line, editing one typed
+   * file path that becomes the whole brief through editInitialPrompt. */
+  briefEditMode: boolean;
 }
 
 /** The per-keypress read `createTuiKeys` passes to every pane arm — the editor flags the
@@ -34,7 +37,7 @@ export function promptLineFree(es: TuiPaneEditorState): boolean {
   return (
     !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode &&
     !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
-    !es.notesEditFor
+    !es.notesEditFor && !es.briefEditMode
   );
 }
 
@@ -61,6 +64,8 @@ export interface TuiPaneModule {
   /** Repaint a view's cached body after an editor wrote to the disk it renders (the notes
    * view repaints its notebook after a replace/clear). */
   refreshNotes?(role: string): void;
+  /** Repaint the Brief view's cached body after a replace write. */
+  refreshBrief?(): void;
   /** The pane's slice of the render state the frame merges. */
   state?(): Record<string, unknown>;
 }

@@ -59,6 +59,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       historyGrep: s.historyGrep,
       activityGrep: s.activityGrep,
       noteMode: s.noteMode,
+      briefMode: s.view === s.roleIds.length + 8,
     };
   };
 
@@ -265,6 +266,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   return {
     refreshQueued: queued.refreshQueued,
     refreshNotes: (role: string) => transcript.refreshNotes?.(role),
+    refreshBrief: () => brief.refreshBrief?.(),
     clearBacklogSelection: backlog.clearBacklogSelection,
     applyHistorySearch: history.applySearch,
     applyActivitySearch: activity.applySearch,
