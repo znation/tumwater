@@ -29,76 +29,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Every editor consumes and leaves the prompt line exactly as today: the same keys open it, the same Esc/repeat-key exits it, the same saved draft is restored byte-for-byte, and the busy-guard flash wording and priority are unchanged.
 - No behavior change: `npm run test` passes, with `test/tui-*.test.ts` unmodified as the regression net.
 
-### Each day's red full-suite merge checks are counted in the `tumwater report` day report (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight problems-only Health view plan; the report half of a red-check signal whose GUI chart is left to a later plan, as the project did for `Merge check median`; touches src/build/build-check-events.ts, src/report/report-data.ts, src/report/report-render.ts, docs/cli.md and their tests)
-
-**Goal.** The day report shows `**Merge check median:**` — how long the passing full-suite
-merge checks took — but not how often that check went red. A flaky or broken suite is the
-team's biggest merge bottleneck: a red merge check keeps its pin and retries, so it usually
-produces no `merge_failed` and no `Merge failures by role` row, and the median happily reports
-a fast pass on a day when half the checks failed first. Count each day's failed full-suite
-`build_check` events (the merge, batch and baseline scopes `isPassingFullCheck` already
-counts) and print them as a `**Red merge checks:**` line beside the medians, so a spike shows
-a flaky or broken suite without reading the failure digest.
-
-**Approach.**
-
-1. `src/build/build-check-events.ts`: add `export function isRedFullCheck(ev: HarnessEvent): boolean`
-   right after `isPassingFullCheck` (line 23). Body:
-   `ev.type === "build_check" && ev.status === "failed" && ["merge", "batch", "baseline"].includes(String(ev.scope))`.
-   Doc it as the red sibling of `isPassingFullCheck`: the same three scopes and the failed
-   status; a `skipped` check made no verdict about the tree, and a merge-scope timeout is
-   already remapped to `failed` by `runScopedBuildCheck` (`MERGE_SCOPES`), so `failed` alone is
-   the rule. The two predicates are mutually exclusive on `status`, so the fold branch below
-   never sees the other's events.
-2. `src/report/report-data.ts`:
-   - `UsageFold` (starts line 37): add `checkFailures: number;` beside `checkDurationsMs`, with
-     a doc comment: a count of failed full-suite build_check events (`isRedFullCheck`), so a day
-     whose checks went red before passing is visible beside its passing-check median.
-   - `foldUsageEvent` (line 121): after the `isPassingFullCheck(ev)` branch that pushes
-     `checkDurationsMs`, add `else if (isRedFullCheck(ev)) { target.checkFailures++; }` with a
-     one-line comment, and import `isRedFullCheck` beside `isPassingFullCheck`.
-   - `DayFold` (line 199): add `checkFailures: number;` beside `checkDurationsMs`.
-   - `dayFoldFor` (line 308): initialize `checkFailures: 0,` beside `checkDurationsMs: []`.
-   - `collectReportSince`'s `acc` initializer (line ~603): initialize `checkFailures: 0,`
-     beside `checkDurationsMs: []` (the field is part of `UsageFold`, so the shape must satisfy
-     it).
-   - `ReportDay` (line ~420): add
-     `/** Failed full-suite build_check events that day (isRedFullCheck); absent when the day has none (zero means absent). */ checkFailures?: number;`
-     beside `checkMedianMs`.
-   - The day assembly's team branch (beside
-     `if (fold.checkDurationsMs.length > 0) day.checkMedianMs = …`, line ~731): add
-     `if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;`. Leave the
-     role-scoped branch alone — checks belong to the merge slot, so a scoped series carries
-     none, exactly like `checkMedianMs`.
-3. `src/report/report-render.ts`: in the team branch of `renderReportMarkdown`, right after the
-   `**Merge check median:**` push (line ~293), push a `**Red merge checks:**` line when any day
-   has `checkFailures`, each day rendered `${monthDay(d.date)} ×${d.checkFailures}` and joined
-   with ` · `. Zero-absent: no line when no day carries the field.
-4. `docs/cli.md`: in the Audit row's `tumwater report` parenthetical (line 47), extend the
-   merge-check clause to say the team report also names each day's count of red full-suite
-   merge checks beside the merge check median.
-
-**Files touched.** `src/build/build-check-events.ts`, `src/report/report-data.ts`,
-`src/report/report-render.ts`, `docs/cli.md`, `test/build-check-events.test.ts`,
-`test/report-data.test.ts`, `test/report.test.ts`.
-
-**Acceptance criteria.**
-- `test/build-check-events.test.ts`: a test beside "isPassingFullCheck counts passed
-  merge/batch/baseline checks only". `isRedFullCheck` is true for `failed` at `merge`, `batch`
-  and `baseline`, false for `failed` at `gate`, false for `passed` and `skipped` at `merge`, and
-  false for a non-`build_check` event.
-- `test/report-data.test.ts`: a new test, "collectReport counts each day's red full-suite merge
-  checks, team scope only". Using the existing `writeEvents` + `check(status, scope, durationMs)`
-  pattern, a day with `failed merge`, `failed batch`, `failed baseline`, a `failed gate` and a
-  `passed merge` gives `data.series[1].checkFailures === 3`; a day with only passing checks has
-  no `checkFailures` key; every day of `collectReport(root, 2, "feature").series` has none.
-- `test/report.test.ts`: a new test, "renderReportMarkdown prints Red merge checks for the days
-  that carry one, team scope only", modelled on "renderReportMarkdown prints Merge check median
-  for the days that carry one, team scope only". A two-day series whose newer day carries
-  `checkFailures: 3` renders `/^\*\*Red merge checks:\*\* 09-10 ×3$/m`; a series with no
-  `checkFailures` renders no such line; a `{ ...base, role: "feature" }` report renders none.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 11b/11: Rewrite the merge family in the operator-surface and support modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11c/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in src/ui/ src/cli/ src/config/ src/prompt/ src/roles/ src/doctor/ src/history/ src/operator/ src/backlog/ src/text/ src/budget/ src/pi/ src/redeploy/ src/files/ src/inbox/ src/team/ src/pi-extension/ src/init/ src/agent/ src/gui/ src/orchestrator/ and src/paths.ts)
 
 **Goal.** Same as part 11a for the operator-facing and support modules: the merge family's identifiers and file names are already renamed and guarded, and this part rewrites the merge family in their comments so the code reads in the glossary's words.
@@ -1181,6 +1111,76 @@ a flaky or broken suite without reading the failure digest.
 - `npm run test` passes.
 
 ## Done
+
+### Each day's red full-suite merge checks are counted in the `tumwater report` day report (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight problems-only Health view plan; the report half of a red-check signal whose GUI chart is left to a later plan, as the project did for `Merge check median`; touches src/build/build-check-events.ts, src/report/report-data.ts, src/report/report-render.ts, docs/cli.md and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** The day report shows `**Merge check median:**` — how long the passing full-suite
+merge checks took — but not how often that check went red. A flaky or broken suite is the
+team's biggest merge bottleneck: a red merge check keeps its pin and retries, so it usually
+produces no `merge_failed` and no `Merge failures by role` row, and the median happily reports
+a fast pass on a day when half the checks failed first. Count each day's failed full-suite
+`build_check` events (the merge, batch and baseline scopes `isPassingFullCheck` already
+counts) and print them as a `**Red merge checks:**` line beside the medians, so a spike shows
+a flaky or broken suite without reading the failure digest.
+
+**Approach.**
+
+1. `src/build/build-check-events.ts`: add `export function isRedFullCheck(ev: HarnessEvent): boolean`
+   right after `isPassingFullCheck` (line 23). Body:
+   `ev.type === "build_check" && ev.status === "failed" && ["merge", "batch", "baseline"].includes(String(ev.scope))`.
+   Doc it as the red sibling of `isPassingFullCheck`: the same three scopes and the failed
+   status; a `skipped` check made no verdict about the tree, and a merge-scope timeout is
+   already remapped to `failed` by `runScopedBuildCheck` (`MERGE_SCOPES`), so `failed` alone is
+   the rule. The two predicates are mutually exclusive on `status`, so the fold branch below
+   never sees the other's events.
+2. `src/report/report-data.ts`:
+   - `UsageFold` (starts line 37): add `checkFailures: number;` beside `checkDurationsMs`, with
+     a doc comment: a count of failed full-suite build_check events (`isRedFullCheck`), so a day
+     whose checks went red before passing is visible beside its passing-check median.
+   - `foldUsageEvent` (line 121): after the `isPassingFullCheck(ev)` branch that pushes
+     `checkDurationsMs`, add `else if (isRedFullCheck(ev)) { target.checkFailures++; }` with a
+     one-line comment, and import `isRedFullCheck` beside `isPassingFullCheck`.
+   - `DayFold` (line 199): add `checkFailures: number;` beside `checkDurationsMs`.
+   - `dayFoldFor` (line 308): initialize `checkFailures: 0,` beside `checkDurationsMs: []`.
+   - `collectReportSince`'s `acc` initializer (line ~603): initialize `checkFailures: 0,`
+     beside `checkDurationsMs: []` (the field is part of `UsageFold`, so the shape must satisfy
+     it).
+   - `ReportDay` (line ~420): add
+     `/** Failed full-suite build_check events that day (isRedFullCheck); absent when the day has none (zero means absent). */ checkFailures?: number;`
+     beside `checkMedianMs`.
+   - The day assembly's team branch (beside
+     `if (fold.checkDurationsMs.length > 0) day.checkMedianMs = …`, line ~731): add
+     `if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;`. Leave the
+     role-scoped branch alone — checks belong to the merge slot, so a scoped series carries
+     none, exactly like `checkMedianMs`.
+3. `src/report/report-render.ts`: in the team branch of `renderReportMarkdown`, right after the
+   `**Merge check median:**` push (line ~293), push a `**Red merge checks:**` line when any day
+   has `checkFailures`, each day rendered `${monthDay(d.date)} ×${d.checkFailures}` and joined
+   with ` · `. Zero-absent: no line when no day carries the field.
+4. `docs/cli.md`: in the Audit row's `tumwater report` parenthetical (line 47), extend the
+   merge-check clause to say the team report also names each day's count of red full-suite
+   merge checks beside the merge check median.
+
+**Files touched.** `src/build/build-check-events.ts`, `src/report/report-data.ts`,
+`src/report/report-render.ts`, `docs/cli.md`, `test/build-check-events.test.ts`,
+`test/report-data.test.ts`, `test/report.test.ts`.
+
+**Acceptance criteria.**
+- `test/build-check-events.test.ts`: a test beside "isPassingFullCheck counts passed
+  merge/batch/baseline checks only". `isRedFullCheck` is true for `failed` at `merge`, `batch`
+  and `baseline`, false for `failed` at `gate`, false for `passed` and `skipped` at `merge`, and
+  false for a non-`build_check` event.
+- `test/report-data.test.ts`: a new test, "collectReport counts each day's red full-suite merge
+  checks, team scope only". Using the existing `writeEvents` + `check(status, scope, durationMs)`
+  pattern, a day with `failed merge`, `failed batch`, `failed baseline`, a `failed gate` and a
+  `passed merge` gives `data.series[1].checkFailures === 3`; a day with only passing checks has
+  no `checkFailures` key; every day of `collectReport(root, 2, "feature").series` has none.
+- `test/report.test.ts`: a new test, "renderReportMarkdown prints Red merge checks for the days
+  that carry one, team scope only", modelled on "renderReportMarkdown prints Merge check median
+  for the days that carry one, team scope only". A two-day series whose newer day carries
+  `checkFailures: 3` renders `/^\*\*Red merge checks:\*\* 09-10 ×3$/m`; a series with no
+  `checkFailures` renders no such line; a `{ ...base, role: "feature" }` report renders none.
+- `npm run test` passes.
 
 ### Plain terms code merge, part 11a/11: Rewrite the merge family in the pipeline modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11b/11, 11c/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in src/merge/ src/events/ src/review/ src/verdict/ src/git/ src/tick/ src/failure/ src/change/ src/build/ src/process/ and src/loop/) — done 2026-10-17 by the feature role
 

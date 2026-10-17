@@ -313,6 +313,12 @@ export function renderReportMarkdown(data: ReportData): string {
       d.checkMedianMs === undefined ? [] : [`${monthDay(d.date)} ${shortSpanPhrase(d.checkMedianMs)}`],
     );
     if (medians.length > 0) lines.push(`**Merge check median:** ${medians.join(" · ")}`);
+    // Per-day count of red full-suite checks, beside the passing medians above; a day whose
+    // suite went red before passing shows here. Zero-absent: no line when no day fails.
+    const reds = data.series.flatMap((d) =>
+      d.checkFailures === undefined ? [] : [`${monthDay(d.date)} ×${d.checkFailures}`],
+    );
+    if (reds.length > 0) lines.push(`**Red merge checks:** ${reds.join(" · ")}`);
     const waits = data.series.flatMap((d) =>
       d.mergeWaitMedianMs === undefined ? [] : [`${monthDay(d.date)} ${shortSpanPhrase(d.mergeWaitMedianMs)}`],
     );

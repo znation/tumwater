@@ -1146,6 +1146,25 @@ test("renderReportMarkdown prints Merge check median for the days that carry one
   assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("Merge check median"));
 });
 
+test("renderReportMarkdown prints Red merge checks for the days that carry one, team scope only", () => {
+  const base: ReportData = {
+    days: 2,
+    from: "2026-09-09",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, checkFailures: 3 },
+    ],
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    coversFullWindow: true,
+  };
+  assert.match(renderReportMarkdown(base), /^\*\*Red merge checks:\*\* 09-10 ×3$/m);
+
+  const none: ReportData = { ...base, series: base.series.map(({ checkFailures: _c, ...d }) => d) };
+  assert.ok(!renderReportMarkdown(none).includes("Red merge checks"));
+  assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("Red merge checks"));
+});
+
 test("renderReportMarkdown prints Merge wait median for the days that carry one, team scope only", () => {
   const day = { tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 };
   const base: ReportData = {

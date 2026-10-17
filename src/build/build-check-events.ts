@@ -24,6 +24,15 @@ export function isPassingFullCheck(ev: HarnessEvent): boolean {
   return ev.type === "build_check" && ev.status === "passed" && ["merge", "batch", "baseline"].includes(String(ev.scope));
 }
 
+/** The red sibling of isPassingFullCheck: a failed build_check over the same three scopes —
+ * merge, batch and the red-main baseline. A `skipped` check made no verdict about the tree,
+ * and a merge-scope timeout is already remapped to `failed` by runScopedBuildCheck
+ * (`MERGE_SCOPES`), so `failed` alone is the rule. The two predicates are mutually exclusive
+ * on `status`, so a fold branch on them never sees the other's events. */
+export function isRedFullCheck(ev: HarnessEvent): boolean {
+  return ev.type === "build_check" && ev.status === "failed" && ["merge", "batch", "baseline"].includes(String(ev.scope));
+}
+
 /** How late a check's deadline timer may fire before the timeout's wording stops naming the
  * configured bound alone. Normal timer lag is milliseconds; past this the warning and the
  * merge-scope reason name the wall-clock time the deadline actually fired and how late (see

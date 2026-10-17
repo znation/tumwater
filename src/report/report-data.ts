@@ -14,7 +14,7 @@ import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/ev
 import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
-import { isPassingFullCheck } from "../build/build-check-events.js";
+import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.js";
 import { DONE_DATE_RE, FIXED_DATE_RE, sectionCompletionDates } from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo, lowerMedian, memoSetLru } from "../collections.js";
@@ -46,6 +46,9 @@ interface UsageFold {
   revisionsByRole: Record<string, number>;
   /** Wall-clock ms of each passing full-suite build_check (isPassingFullCheck), unsorted. */
   checkDurationsMs: number[];
+  /** Count of failed full-suite build_check events (isRedFullCheck), so a day whose checks went
+   * red before passing is visible beside its passing-check median. */
+  checkFailures: number;
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
   /** run_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
@@ -150,6 +153,9 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // The merge slot's passing full-suite checks, for the day report's check-time median.
     const durationMs = finiteNumber(ev.durationMs, 0);
     if (durationMs > 0) target.checkDurationsMs.push(durationMs);
+  } else if (isRedFullCheck(ev)) {
+    // The merge slot's red full-suite checks, for the day report's red-check count.
+    target.checkFailures++;
   } else if (ev.type === "model_fallback_started") {
     // One episode per start event; durations are not summed (an episode can span the window edge).
     addTo(target.fallbacksByRole, eventRole(ev), 1);
@@ -209,6 +215,8 @@ interface DayFold {
   revisionsByRole: Record<string, number>;
   /** Wall-clock ms of each passing full-suite build_check that day, unsorted. */
   checkDurationsMs: number[];
+  /** Count of failed full-suite build_check events that day (isRedFullCheck). */
+  checkFailures: number;
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
   failedRunsByRole: Record<string, number>;
@@ -317,6 +325,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       rejectionsByRole: {},
       revisionsByRole: {},
       checkDurationsMs: [],
+      checkFailures: 0,
       mergeWaitsMs: [],
       failedRunsByRole: {},
       fallbacksByRole: {},
@@ -444,6 +453,9 @@ export interface ReportDay {
   /** Lower median of the day's passing full-suite check durations (ms); absent when the day
    * has none. */
   checkMedianMs?: number;
+  /** Failed full-suite build_check events that day (isRedFullCheck); absent when the day has
+   * none (zero means absent). */
+  checkFailures?: number;
   /** Lower median of the day's merge waits (enqueue to merged on main, ms); absent when the
    * day has no merge that carried queuedMs. */
   mergeWaitMedianMs?: number;
@@ -601,6 +613,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     rejectionsByRole: {},
     revisionsByRole: {},
     checkDurationsMs: [],
+    checkFailures: 0,
     mergeWaitsMs: [],
     failedRunsByRole: {},
     fallbacksByRole: {},
@@ -731,6 +744,7 @@ export function collectReport(root: string, days: number, role?: string): Report
       if (fold.checkDurationsMs.length > 0) {
         day.checkMedianMs = lowerMedian(fold.checkDurationsMs);
       }
+      if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;
       if (fold.mergeWaitsMs.length > 0) day.mergeWaitMedianMs = lowerMedian(fold.mergeWaitsMs);
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.failedRunsByRole).length > 0)

@@ -917,6 +917,26 @@ test("collectReport gives each day the lower median of its passing full-suite ch
   for (const d of collectReport(root, 2, "feature").series) assert.ok(!("checkMedianMs" in d));
 });
 
+test("collectReport counts each day's red full-suite merge checks, team scope only", () => {
+  const root = tmpdir();
+  const check = (status: string, scope: string) =>
+    JSON.stringify({ ts: at(0), loop: "lander", type: "build_check", status, scope });
+  writeEvents(root, [
+    check("failed", "merge"),
+    check("failed", "batch"),
+    check("failed", "baseline"),
+    check("failed", "gate"), // a gate check can run a subset of the suite
+    check("passed", "merge"),
+  ]);
+  const data = collectReport(root, 2);
+  assert.equal(data.series[1]!.checkFailures, 3);
+  assert.ok(!("checkFailures" in data.series[0]!));
+  const passing = tmpdir();
+  writeEvents(passing, [check("passed", "merge")]);
+  assert.ok(!("checkFailures" in collectReport(passing, 2).series[1]!));
+  for (const d of collectReport(root, 2, "feature").series) assert.ok(!("checkFailures" in d));
+});
+
 test("collectReport gives each day the lower median of its merge_done queuedMs, team scope only", () => {
   const root = tmpdir();
   const ev = (ts: number, type: string, extra: Record<string, unknown>) =>

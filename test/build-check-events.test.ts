@@ -4,6 +4,7 @@ import {
   buildCheckEvent,
   buildCheckSkipWarning,
   isPassingFullCheck,
+  isRedFullCheck,
   MERGE_SCOPES,
   SCOPE_WORDS,
   timedOutPhrase,
@@ -142,4 +143,12 @@ test("isPassingFullCheck counts passed merge/batch/baseline checks only", () => 
   for (const scope of ["merge", "batch", "baseline"]) assert.equal(isPassingFullCheck(ev("passed", scope)), true);
   assert.equal(isPassingFullCheck(ev("passed", "gate")), false);
   assert.equal(isPassingFullCheck(ev("failed", "merge")), false);
+});
+
+test("isRedFullCheck counts failed merge/batch/baseline checks only", () => {
+  const ev = (status: string, scope: string): HarnessEvent => ({ ts: 0, source: "x", type: "build_check", status, scope });
+  for (const scope of ["merge", "batch", "baseline"]) assert.equal(isRedFullCheck(ev("failed", scope)), true);
+  assert.equal(isRedFullCheck(ev("failed", "gate")), false);
+  for (const status of ["passed", "skipped"]) assert.equal(isRedFullCheck(ev(status, "merge")), false);
+  assert.equal(isRedFullCheck({ ts: 0, source: "x", type: "run_end", run: 1, result: "changed" }), false);
 });
