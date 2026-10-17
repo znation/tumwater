@@ -274,3 +274,40 @@ test("the Fallbacks and Image reroutes charts stack per role and seriesHasAny ga
   assert.equal(seriesHasAny(data, "fallbacksByRole"), true);
   assert.equal(seriesHasAny(data, "imageReroutesByRole"), true);
 });
+
+test("the Failed runs and Merge failures charts stack per role and seriesHasAny gates them", () => {
+  interface Builders {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+    chartFailedRunsByRole(d: ReportData): string;
+    chartMergeFailuresByRole(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportRoleOrder, chartTicksByRole, chartFailedRunsByRole, chartMergeFailuresByRole, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole", "chartFailedRunsByRole", "chartMergeFailuresByRole", "seriesHasAny"],
+  );
+  const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { feature: 3 }, { failedRunsByRole: { feature: 2 }, mergeFailedByRole: { qa: 1 } }),
+    mkDay("2026-09-02", { feature: 1 }, { failedRunsByRole: { bugfix: 1 } }),
+  ]);
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["bugfix", 0], ["qa", 0]]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.equal(titles(chartFailedRunsByRole(data)).length, 2);
+  assert.ok(titles(chartFailedRunsByRole(data)).some((t) => t.includes("2026-09-01 · feature: 2 failed runs")));
+  assert.equal(titles(chartMergeFailuresByRole(data)).length, 1);
+  assert.ok(titles(chartMergeFailuresByRole(data)).some((t) => t.includes("qa: 1 merge failure")));
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartFailedRunsByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.equal(legendOf(chartMergeFailuresByRole(data)), legendOf(chartTicksByRole(data)));
+  const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 }, { failedRunsByRole: { feature: 0 } })]);
+  assert.equal(seriesHasAny(plain, "failedRunsByRole"), false);
+  assert.equal(seriesHasAny(plain, "mergeFailedByRole"), false);
+  assert.equal(seriesHasAny(data, "failedRunsByRole"), true);
+  assert.equal(seriesHasAny(data, "mergeFailedByRole"), true);
+});

@@ -1153,7 +1153,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The GUI Usage view charts `Failed runs by role` and `Merge failures by role` as stacked per-role elements (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series)
+## Done
+
+### The GUI Usage view charts `Failed runs by role` and `Merge failures by role` as stacked per-role elements (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series) — done 2026-10-16
 
 **Goal.** `tumwater report` prints a `Failed runs by role` line and, on the team report, a `Merge failures by role` line (`src/report/report-render.ts`, both via `rankedRoleTotals`). Both counts already reach the dashboard on each series day as `ReportDay.failedRunsByRole` and `ReportDay.mergeFailedByRole` (`src/report/report-data.ts`). The GUI Usage view (`src/ui/gui/gui-client-report.ts`) draws neither. An operator watching the dashboard cannot see which role keeps erroring out or whose changes keep bouncing off the merge gate. Add one stacked per-role chart for each, the same way as `chartFallbacksByRole` (PLANS.md Done: "The GUI Usage view charts `Fallbacks by role` and `Image reroutes by role`").
 
@@ -1173,8 +1175,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `seriesHasAny(d, "failedRunsByRole")` and `seriesHasAny(d, "mergeFailedByRole")` are false for a series without the map and true once a day carries a nonzero count.
 - The existing tests in `test/gui-client-report.test.ts` pass unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### The GUI Usage view charts `Fallbacks by role` and `Image reroutes by role` as stacked per-role elements (planned 2026-10-16 by the plan role; independent of the merge-rename series and the install alert) — done 2026-10-16
 

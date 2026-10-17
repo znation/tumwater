@@ -38,6 +38,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       for (const role of Object.keys(d.rejectionsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.fallbacksByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.imageReroutesByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
+      for (const role of Object.keys(d.failedRunsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
+      for (const role of Object.keys(d.mergeFailedByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
     }
     return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
@@ -162,6 +164,14 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // Image reroutes per loop, drawn the same way: one segment per (day, loop) with a reroute.
   function chartImageReroutesByRole(data) {
     return roleStackChart(data, "imageReroutesByRole", (n) => plural(n, "image reroute"), countAxis, true);
+  }
+  // Runs that ended in an error, per loop, drawn the same way.
+  function chartFailedRunsByRole(data) {
+    return roleStackChart(data, "failedRunsByRole", (n) => plural(n, "failed run"), countAxis, true);
+  }
+  // Merges that were blocked or conflicted, per loop, drawn the same way.
+  function chartMergeFailuresByRole(data) {
+    return roleStackChart(data, "mergeFailedByRole", (n) => plural(n, "merge failure"), countAxis, true);
   }
   // True when some day carries a map under field with an own value above zero; both counts
   // are rare, so their elements render only then.
@@ -422,6 +432,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         block("Rejections by role", chartRejectionsByRole(d)) +
         (seriesHasAny(d, "fallbacksByRole") ? block("Fallbacks by role", chartFallbacksByRole(d)) : "") +
         (seriesHasAny(d, "imageReroutesByRole") ? block("Image reroutes by role", chartImageReroutesByRole(d)) : "") +
+        (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +
+        (seriesHasAny(d, "mergeFailedByRole") ? block("Merge failures by role", chartMergeFailuresByRole(d)) : "") +
         (d.totals.notionalCostUsd > 0
           ? block("Estimated spend by role", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
         (d.role ? "<p class='muted scope-note'>Role scope: " + esc(d.role) +
