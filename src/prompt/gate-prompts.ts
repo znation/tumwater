@@ -512,3 +512,16 @@ The review gate's deterministic pre-check runs main + your change, so a change t
 If the failure is environmental — flaky, load-sensitive, or a broken local toolchain — say so plainly in your reply rather than editing unrelated code.
 </main-red>`;
 }
+
+/** The note appended to an assigned series part's prompt naming the later planned parts that
+ * wait on it, so the implementer sees where its part ends and leaves their share alone. At most
+ * five are listed, then a literal `- …and N more` line (the `moreSuffix` phrase renders inline,
+ * not as a list line). A pure function so its shape is pinned in tests. */
+export function buildWaitingPartsNote(entries: readonly { title: string; start: number; end: number }[]): string {
+  const shown = entries.slice(0, 5).map((e) => `- "${e.title}" (PLANS.md lines ${e.start}-${e.end})`);
+  if (entries.length > 5) shown.push(`- …and ${entries.length - 5} more`);
+  return `<waiting-parts>
+Later parts of your series wait for yours to land, and each one plans its own share of the work: do none of it here, and keep in place the names and files they say your part leaves behind. Read one by its range when you need to know what it expects:
+${shown.join("\n")}
+</waiting-parts>`;
+}

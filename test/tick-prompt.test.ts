@@ -283,6 +283,36 @@ test("a feature instance's claimed series part names its landed prerequisites", 
   assert.doesNotMatch(plain.prompt, /<merged-prerequisites>/);
 });
 
+test("a feature instance's claimed series part names the parts waiting on it", () => {
+  const dir = root();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans", "## Planned",
+      "### S, part 1/3: a", "body a",
+      "### Unrelated plan", "body u",
+      "### S, part 2/3: b (requires part 1/3 landed)", "body b",
+      "### S, part 3/3: c (requires part 2/3 landed)", "body c",
+      "## Done", "_None._", "",
+    ].join("\n"),
+  );
+  const claimOf = (title: string, file: "PLANS.md" | "BUGS.md" = "PLANS.md") => ({
+    file, key: entryKey(title), title, at: 1, source: "assigned" as const,
+  });
+  const first = promptFor(dir, "feature", { state: { claim: claimOf("S, part 1/3: a") } });
+  assert.ok(first);
+  assert.match(first.prompt, /<assigned-entry>/);
+  const note = /<waiting-parts>[\s\S]*<\/waiting-parts>/.exec(first.prompt)?.[0] ?? "";
+  assert.match(note, /"S, part 2\/3: b \(requires part 1\/3 landed\)" \(PLANS\.md lines 7-8\)/);
+  assert.match(note, /"S, part 3\/3: c \(requires part 2\/3 landed\)" \(PLANS\.md lines 9-10\)/);
+  const last = promptFor(dir, "feature", { state: { claim: claimOf("S, part 3/3: c (requires part 2/3 landed)") } });
+  assert.ok(last);
+  assert.doesNotMatch(last.prompt, /<waiting-parts>/);
+  const bug = promptFor(dir, "feature", { state: { claim: claimOf("S, part 1/3: a", "BUGS.md") } });
+  assert.ok(bug);
+  assert.doesNotMatch(bug.prompt, /<waiting-parts>/);
+});
+
 test("the assignment names the claimed entry's paths missing from the checkout", () => {
   const dir = root();
   fs.mkdirSync(path.join(dir, "src"), { recursive: true });

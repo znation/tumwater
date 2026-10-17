@@ -20,6 +20,7 @@ import {
   plansWaitingOn,
   requiredParts,
   seriesPart,
+  waitingPartRanges,
   type EligibleEntry,
   type EntryHold,
   type PartRef,
@@ -461,4 +462,28 @@ test("landedPrerequisiteRanges names each landed prerequisite's newest Done entr
   assert.deepEqual(landedPrerequisiteRanges(dir, "Plain"), []);
   assert.deepEqual(landedPrerequisiteRanges(dir, "S, part 3/3: c (requires part 9/9 landed)"), []);
   assert.deepEqual(landedPrerequisiteRanges(tmpdir(), c), []);
+});
+
+test("waitingPartRanges names the planned parts that wait on an entry, with their ranges", () => {
+  const dir = tmpdir();
+  const lines = [
+    "# Plans", "## Planned",
+    "### S, part 1/3: a", "body a",
+    "### Unrelated plan", "body u",
+    "### S, part 2/3: b (requires part 1/3 landed)", "body b",
+    "### S, part 3/3: c (requires part 2/3 landed)", "body c",
+    "## Done", "_None._",
+  ];
+  fs.writeFileSync(path.join(dir, "PLANS.md"), lines.join("\n") + "\n");
+  assert.deepEqual(
+    waitingPartRanges(dir, "S, part 1/3: a").map((e) => [e.title, e.start, e.end]),
+    [
+      ["S, part 2/3: b (requires part 1/3 landed)", 7, 8],
+      ["S, part 3/3: c (requires part 2/3 landed)", 9, 10],
+    ],
+  );
+  assert.deepEqual(waitingPartRanges(dir, "S, part 3/3: c (requires part 2/3 landed)"), []);
+  assert.deepEqual(waitingPartRanges(dir, "Unrelated plan"), []);
+  assert.deepEqual(waitingPartRanges(dir, "Not there"), []);
+  assert.deepEqual(waitingPartRanges(tmpdir(), "S, part 1/3: a"), []);
 });

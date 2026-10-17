@@ -147,6 +147,26 @@ export function landedPrerequisiteRanges(root: string, title: string): EligibleE
   return out;
 }
 
+/** The still-planned parts that wait on the planned entry titled `title`, with their line ranges,
+ * in file order: plansWaitingOn's indexes (transitive, so a part waiting through a chain is
+ * listed) paired by index with the Planned ranges, as eligibleEntries pairs them. [] when no
+ * planned entry has that title, the entry has no series part, or PLANS.md is missing. Lets the
+ * assignment prompt name the work a series part must leave to the parts after it. */
+export function waitingPartRanges(root: string, title: string): EligibleEntry[] {
+  const planned = plannedPlanEntries(root);
+  const ranges = actionableEntryRangesFor(root, "PLANS.md", "Planned");
+  const want = entryKey(title);
+  const index = planned.findIndex((e) => entryKey(e.title) === want);
+  if (index < 0 || seriesPart(planned[index]!.title) === null) return [];
+  const out: EligibleEntry[] = [];
+  for (const i of plansWaitingOn(planned, index)) {
+    const range = ranges[i];
+    if (range === undefined) continue;
+    out.push({ key: entryKey(planned[i]!.title), title: planned[i]!.title, start: range.start, end: range.end });
+  }
+  return out;
+}
+
 /** The prerequisite-set identities of the still-planned entries — seriesPart(title) of each,
  * keyed by partKey — built once for a batch and reused across every entry judged against it, so
  * judging n entries is n seriesPart parses rather than n² (entryHold rebuilt the set per entry).

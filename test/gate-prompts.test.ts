@@ -10,6 +10,7 @@ import {
   buildLandedPrerequisitesNote,
   buildConflictPrompt,
   buildMainRedNote,
+  buildWaitingPartsNote,
   buildRejectedReviewNote,
   buildReviewPrompt,
   buildReviewResumePrompt,
@@ -468,6 +469,17 @@ test("buildLandedPrerequisitesNote lists each entry's title and range and caps a
   const seven = buildLandedPrerequisitesNote(
     Array.from({ length: 7 }, (_, i) => ({ title: `t${i}`, start: i, end: i + 1 })),
   );
+  assert.equal(seven.split("\n").filter((l) => l.startsWith('- "')).length, 5);
+  assert.ok(seven.includes("- …and 2 more"));
+  assert.ok(!seven.includes('"t5"'));
+});
+
+test("buildWaitingPartsNote lists each part's title and range and caps at five", () => {
+  const one = buildWaitingPartsNote([{ title: "S, part 2/3: b", start: 10, end: 20 }]);
+  assert.ok(one.startsWith("<waiting-parts>"));
+  assert.ok(one.includes('"S, part 2/3: b" (PLANS.md lines 10-20)'));
+  assert.ok(one.endsWith("</waiting-parts>"));
+  const seven = buildWaitingPartsNote(Array.from({ length: 7 }, (_, i) => ({ title: `t${i}`, start: i, end: i + 1 })));
   assert.equal(seven.split("\n").filter((l) => l.startsWith('- "')).length, 5);
   assert.ok(seven.includes("- …and 2 more"));
   assert.ok(!seven.includes('"t5"'));
