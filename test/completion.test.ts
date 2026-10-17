@@ -39,6 +39,7 @@ test("completionSpec over the real help", () => {
   assert.ok(spec.commands.includes("completion"));
   assert.deepEqual(spec.subcommands.config, ["get", "set", "unset"]);
   assert.deepEqual(spec.subcommands.questions, ["answer"]);
+  assert.deepEqual(spec.subcommands.completion, ["bash", "zsh", "fish"]);
   for (const f of ["--failures", "--since", "--role", "--json"]) assert.ok(spec.flags.report?.includes(f), f);
   for (const c of ["tui", "version", "role"]) assert.deepEqual(spec.subcommands[c], [], c);
   for (const c of spec.commands) assert.ok(spec.flags[c]?.includes("--help"), c);
@@ -59,6 +60,7 @@ test("the bash script parses and completes commands, subcommands, and flags", as
   assert.ok((await complete(script, ["tumwater", "con"], 1)).includes("config"));
   assert.deepEqual(await complete(script, ["tumwater", "config", "u"], 2), ["unset"]);
   assert.deepEqual(await complete(script, ["tumwater", "report", "--fa"], 2), ["--failures"]);
+  assert.deepEqual(await complete(script, ["tumwater", "completion", "z"], 2), ["zsh"]);
 });
 
 test("the zsh script wraps the bash script in bashcompinit", () => {

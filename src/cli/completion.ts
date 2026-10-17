@@ -33,6 +33,16 @@ function usageWords(firstLine: string, command: string): string[] {
   let depth = 0;
   let leading = true;
   for (const token of usage.split(/\s+/).filter(Boolean)) {
+    // An angle-bracket alternation of plain words — `<bash|zsh|fish>`, the completion
+    // command's shell positional — expands to each alternative as a subcommand word, so
+    // `tumwater completion <TAB>` lists exactly the shells the command accepts. A bare
+    // placeholder like `<id>` or `<k>` carries no `|` and so stays a placeholder, skipped
+    // as before (its `<`/`>` never leave the token, so it never looked like a word).
+    const alternation = /^<([a-z][a-z-]*(?:\|[a-z][a-z-]*)+)>$/.exec(token);
+    if (alternation && leading) {
+      for (const alt of alternation[1]!.split("|")) words.push(alt);
+      continue;
+    }
     const bare = token.replace(/[[\]|]/g, "");
     const isWord = /^[a-z][a-z-]*$/.test(bare);
     if (isWord && (depth > 0 || token.startsWith("[") || leading)) words.push(bare);
