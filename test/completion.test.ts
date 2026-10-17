@@ -157,6 +157,13 @@ test("the bash script completes file names, template ids, and result classes aft
   assert.deepEqual(await complete(script, ["tumwater", "history", "--result", "p"], 3), ["problems"]);
 });
 
+test("the bash script completes event-type codes after logs --type", async () => {
+  const script = completionScript("bash");
+  assert.deepEqual(await complete(script, ["tumwater", "logs", "--type", "merge_"], 3), ["merge_done", "merge_failed", "merge_queued"]);
+  assert.deepEqual(await complete(script, ["tumwater", "logs", "--type", "run_"], 3), ["run_aborted", "run_deferred", "run_end", "run_start"]);
+  assert.ok((await complete(script, ["tumwater", "logs", "--type", ""], 3)).length > 0);
+});
+
 const fishScriptLines = (): string[] => completionScript("fish").split("\n");
 
 test("the fish script names every command, subcommand, and flag from the spec", () => {
@@ -187,6 +194,7 @@ test("the fish script completes values after --role, path flags, --template, and
   }
   assert.ok(flagLines("template").some((l) => templateIds().every((id) => l.includes(id))));
   assert.ok(flagLines("result").some((l) => l.includes("problems")));
+  assert.ok(flagLines("type").some((l) => l.includes("merge_failed") && l.includes("run_start")));
   assert.ok(lines.some((l) => l.includes("__fish_seen_subcommand_from get set unset") && l.includes("completion --config-keys")));
 });
 

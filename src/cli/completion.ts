@@ -8,6 +8,7 @@ import { DOTTED_MAP_KEYS } from "../config/config-keys.js";
 import { HISTORY_RESULT_FLAG_NAMES } from "../history/history-data.js";
 import { templateIds } from "../init/init-templates.js";
 import { allRoleIds } from "../roles/roles.js";
+import { EVENT_TYPE_LABELS } from "../events/event-labels.js";
 import { HELP, helpStanzas } from "./help.js";
 
 export const SUPPORTED_SHELLS = ["bash", "zsh", "fish"] as const;
@@ -94,6 +95,12 @@ export function completionConfigKeys(root: string): string[] {
 /** Flags whose value is a file path: completion offers file names after them. */
 const PATH_FLAGS = ["--file", "--attach", "--notes-file"];
 
+/** The event-type codes `logs --type` filters by: the keys of the labels map, so a new event
+ * type completes the moment it gains a label. Sorted for a stable, alphabetical offer of a
+ * vocabulary too large to recall offhand — the same reason `--role`, `--template`, and
+ * `--result` complete their values. */
+const EVENT_TYPE_CODES = Object.keys(EVENT_TYPE_LABELS).sort();
+
 function bashScript(help: string): string {
   const spec = completionSpec(help);
   const arms = spec.commands.map((command) => {
@@ -136,6 +143,10 @@ function bashScript(help: string): string {
     `    COMPREPLY=( $(compgen -W "${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}" -- "$cur") )`,
     `    return 0`,
     `  fi`,
+    `  if [ "$prev" = "--type" ]; then`,
+    `    COMPREPLY=( $(compgen -W "${EVENT_TYPE_CODES.join(" ")}" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
     `  if [ "$COMP_CWORD" -eq 3 ] && [ "\${COMP_WORDS[1]}" = config ] && [[ "\${COMP_WORDS[2]}" == get || "\${COMP_WORDS[2]}" == set || "\${COMP_WORDS[2]}" == unset ]] && [[ "$cur" != -* ]]; then`,
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --config-keys 2>/dev/null)" -- "$cur") )`,
     `    return 0`,
@@ -160,6 +171,7 @@ function fishFlagValue(flag: string): string {
   if (PATH_FLAGS.includes(flag)) return ` -r -F`;
   if (flag === "--template") return ` -x -a "${templateIds().join(" ")}"`;
   if (flag === "--result") return ` -x -a "${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}"`;
+  if (flag === "--type") return ` -x -a "${EVENT_TYPE_CODES.join(" ")}"`;
   return "";
 }
 
