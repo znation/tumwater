@@ -1737,6 +1737,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The `entry_refused` event names the refused plan or bug, so `tumwater logs` and the notify page say which entry is now held (planned 2026-10-16 by plan; independent of every other entry — touches src/verdict/refusal.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md and their tests)
+
+**Goal.** When a refusal note lands, `handleRefusal` (`src/verdict/refusal.ts`) logs `{ type: "entry_refused", reason, files }`. `formatEvent` (`src/events/event-format.ts`) renders that as `entry refused: <reason> (PLANS.md)`. `notify.ts` pages that same line as `TUMWATER_EVENT_MESSAGE`, because `entry_refused` is in `NOTIFY_EVENT_TYPES`. The operator learns that some entry is now held until a human releases it, but not which one. To act (`tumwater plan|bug --release <n>`, the dashboard's release button, or an edit), they must open PLANS.md or BUGS.md and look for the note. The harness already holds both versions of the file in `handleRefusal`: main's copy (`fileContentAt(wt, ctx.mainBranch, "PLANS.md")`) and the worktree's. So it can name the entries whose Refused note is new and put their titles on the event.
+
+**Approach.**
+- `src/verdict/refusal.ts`:
+  - Add and export `newlyRefusedTitles(baseMd: string, headMd: string, section: string): string[]`. Parse `headMd` with `parseEntryDetails(headMd, section)`. Keep each entry whose `refusalNote(entry.body)` is non-null and whose base entry is either missing from `parseEntryDetails(baseMd, section)` or has a null `refusalNote`. Match base and head entries by `entryKey(title)`. Return the kept entries' titles passed through `stripEntryStamp` (`src/backlog/backlog-structure.ts`), in file order. Give it a one-paragraph doc comment in the style of `withoutBlockedPlanRefusals`.
+  - In `handleRefusal`, compute the titles once `notes` is known and before `commitPathsAndDiscardRest`. That commit resets and cleans the worktree, but the committed notes stay at HEAD, so read before committing to keep the read simple. Do this for each of `[{ file: "PLANS.md", section: "Planned" }, { file: "BUGS.md", section: "Open" }]` whose file is in `notes`: call `newlyRefusedTitles(await fileContentAt(wt, ctx.mainBranch, file), fs.readFileSync(path.join(wt, file), "utf8"), section)` and concatenate the results into `entries`. Read PLANS.md after the `withoutBlockedPlanRefusals` rewrite, so a dropped note is never named. Wrap the reads in `try/catch`, falling back to `[]`: the event is best-effort, and naming must never fail the refusal.
+  - Add `entries` to the existing `entry_refused` event: `{ source, type: "entry_refused", reason, files: notes, entries }`. Leave the `reason` and `files` keys unchanged.
+- `src/events/event-format.ts`, `case "entry_refused"`: when `Array.isArray(e.entries)` and it is non-empty, render `` entry refused: "<first>"<more>: <reason> (<files>) ``. Here `<first>` is the first title clipped with `truncate(…, 80)` from `src/text/text.ts`, and `<more>` is ` (and N more)` when more than one title is listed. Otherwise keep today's exact line `entry refused: <reason> (<files>)`, so events logged before this change still render as they did.
+- `src/events/events.ts`: extend the `entry_refused` union comment to say the event also carries `entries` (the stamp-free titles of the plans and bugs whose Refused note is new).
+- `docs/config.md`: in the notify table's `entry_refused` row, say that the message names the held entry.
+
+**Files touched.** `src/verdict/refusal.ts`, `src/events/event-format.ts`, `src/events/events.ts`, `docs/config.md`, `test/refusal.test.ts`, `test/event-format.test.ts`.
+
+**Acceptance criteria.**
+- `test/refusal.test.ts`, new unit tests for `newlyRefusedTitles`. A Planned entry that gained a Refused note is returned with its `(planned … by …)` stamp stripped. An entry already refused on base is not returned. An entry that is new on head and carries a note is returned. A note on a `## Done` entry is not returned for section `Planned`. A `### ` line inside a fenced block is not taken as an entry.
+- `test/refusal.test.ts`, the existing landed-note tests: the test "a refusal note on a plan whose prerequisite is Done lands as usual" also asserts that the one `entry_refused` event's `entries` equals the refused part's stamp-free title. A new handleRefusal test refuses one PLANS.md plan and one BUGS.md bug in the same run and asserts that `entries` lists both, plan first. The test "a refusal with a markdown note commits only the note and merges it directly" appends a note under no heading, and it asserts `entries` is `[]` and that the event still fires.
+- `test/refusal.test.ts`: the test "only the blocked plan's note is dropped when an eligible entry is refused too" asserts that `entries` names only the eligible entry, not the blocked plan whose note was dropped.
+- `test/event-format.test.ts`: the existing test "formatEvent renders entry_refused with the reason and files and no warning prefix" passes unchanged. A new test asserts that `{ reason: "too risky", files: ["PLANS.md"], entries: ["Add X", "Add Y"] }` renders `entry refused: "Add X" (and 1 more): too risky (PLANS.md)`, and that a single entry renders with no `(and … more)`.
+- `npm run test` passes.
+
 ## Done
 
 ### The backlog index lists the newest five `## Done` plans and `## Fixed` bugs with line ranges, so a run reads recent history by range instead of grepping for it (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry)
