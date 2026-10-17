@@ -54,6 +54,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### OpenCode backend, part 5/7: The opencode adapter runs model jobs, with minted sessions, the export after each run, a PATH fake and its prompt dialect (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 3/7 and part 4/7 landed; design in plans/opencode-backend.md "Sessions", "The prompt dialect and role notes" and "The stream translator, and the export that completes it"; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/opencode/opencode-backend.ts (new) src/prompt/dialect.ts src/prompt/prompt.ts src/paths.ts test/fakes/fake-opencode.ts (new) test/test-runner.ts and their tests)
 
+**Needs replan 2026-10-17 by feature: rejected after 2 review rounds**
+1. (prior 2) The `!settled` failed-spawn guard still has no effective regression test. The new test's `!warnings.includes("opencode_usage_partial")` assertion observes a warning that `finish()` has already collected before the `close` handler (where `afterRun` would run) executes, so it passes whether the guard works or not — it never observes the run where `!settled` triggers.
+
 **Goal.** Register an `opencode` backend that runs real model jobs through `opencode run`: authoring, review, follow-ups and resolver runs.
 
 - Its cost and usage are complete: they come from the session export, not only from the lossy stream.
