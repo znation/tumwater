@@ -420,6 +420,10 @@ claude's is.
 ### 5. The prompt dialect and role notes
 
 - The canonical stream maps tool names (§6), so the prompts' shell-command wording stays.
+- **Superseded 2026-10-17 by plans/notes-command.md:** every backend, OpenCode included, is moving
+  to one `tumwater-notes` shell command ("Notes command, part i/4" in PLANS.md). Once its part 2
+  lands, OpenCode runs carry no notes MCP server, and its part 3 deletes the MCP notes code below.
+  The rest of this section records the MCP path as it landed in part 5b.
 - **Notes ride the role-notes MCP server, as on claude** (the `mcp.servers.tumwater` entry in
   §3). The tool is `tumwater_role_notes`.
   - **The first-request gap is harmless here.** A run's first model request lacks MCP tools
@@ -666,7 +670,8 @@ over:
    Requires parts 3 and 4. It was in progress when notes were turned back on, so its entry still
    says notes are off.
    - **Part 5b:** role notes on OpenCode — the `mcp.servers.tumwater` entry, the adapter passing
-     it, and the dialect's notes tool. Requires part 5.
+     it, and the dialect's notes tool. Requires part 5. **Landed;** to be replaced by the
+     `tumwater-notes` command (plans/notes-command.md).
 6. Free-ness, the catalog cache and spend. **Split 2026-10-17 into parts 6a–6d:**
    - **6a:** the models.dev catalog fetch, parse and cache. Requires part 5b.
    - **6b:** a free OpenCode model counts as free to the budget gate, the fallback view and the
@@ -697,7 +702,8 @@ over:
    `OPENCODE_CLIENT`.
 8. **Role notes ride the MCP server on OpenCode,** as on claude (decided 2026-10-17, reversing the
    earlier "no notes" call). Notes are written at a run's end, after OpenCode's first-request MCP
-   gap has passed (finding 21).
+   gap has passed (finding 21). **Superseded the same day:** all backends move to the
+   `tumwater-notes` command (plans/notes-command.md decision 2), which needs no MCP at all.
 9. **One OpenCode database per team root,** not per session (finding 4).
 
 ## Risks
