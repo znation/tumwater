@@ -13,7 +13,7 @@ import { renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
 import { readTickDetail, type TickDetail } from "../../tick/tick-detail-data.js";
 import { renderTickDetail } from "../../tick/tick-detail.js";
-import { stepEntryScroll } from "./tui-backlog.js";
+import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { nextInCycle, cycleLabel, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
@@ -281,8 +281,7 @@ export function createHistoryPane(
     if (page !== null && trailMode) {
       // Within-body scroll in the tick-trail view: PgDn/PgUp page the cached trail Markdown,
       // clamped at both ends, exactly like the notebook/change and usage/failures panes.
-      const total = (trailCache ?? "").split("\n").length;
-      session.paneScroll = stepEntryScroll(session.paneScroll, total, session.eventBudget, page);
+      session.paneScroll = pageMarkdownBody(session.paneScroll, trailCache, session.eventBudget, page);
       session.requestRender();
       return true;
     }

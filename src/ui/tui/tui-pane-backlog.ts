@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { tryCancelEntry, tryMoveEntryToTop, tryReleaseEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
 import { requestWake } from "../../operator/operator-intent.js";
-import { moveEntrySelection, stepEntryScroll } from "./tui-backlog.js";
+import { moveEntrySelection, pageMarkdownBody } from "./tui-backlog.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
@@ -207,12 +207,7 @@ export function createBacklogPane(
         const entries = session.flat();
         const sel = entries.length > 0 ? Math.min(selectedEntry, entries.length - 1) : null;
         const body = sel === null ? "" : entries[sel]!.body;
-        entryScroll = stepEntryScroll(
-          entryScroll,
-          body ? body.split("\n").length : 0,
-          session.entryBudget,
-          page,
-        );
+        entryScroll = pageMarkdownBody(entryScroll, body, session.entryBudget, page);
       }
       session.requestRender();
       return true;

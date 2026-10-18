@@ -5,7 +5,7 @@ import { REPORT_DEFAULT_DAYS } from "../../events/event-window.js";
 import { collectFailureReport, collectFailureReportSince } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
 import { pageDir } from "./tui-keymap.js";
-import { stepEntryScroll } from "./tui-backlog.js";
+import { pageMarkdownBody } from "./tui-backlog.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { nextInCycle, cycleLabel, REPORT_WINDOWS, scopeCycle, type TuiPaneSession } from "./tui-pane-session.js";
 
@@ -96,8 +96,7 @@ export function createReportPane(session: TuiPaneSession) {
       // view-index bound, the other text panes from History on): PgDn/PgUp page the cached
       // string, clamped at both ends. The total is derived from the cache, mirroring how entry
       // mode derives it from e.body; every other view ignores these keys as today.
-      const total = (session.paneCache ?? "").split("\n").length;
-      session.paneScroll = stepEntryScroll(session.paneScroll, total, session.eventBudget, page);
+      session.paneScroll = pageMarkdownBody(session.paneScroll, session.paneCache, session.eventBudget, page);
       session.requestRender();
       return true;
     }

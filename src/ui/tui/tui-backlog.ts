@@ -188,3 +188,18 @@ export function stepEntryScroll(
   const next = dir === "down" ? offset + budget : offset - budget;
   return Math.max(0, Math.min(maxOffset, next));
 }
+
+/** Page a cached Markdown body by one screenful in `dir`, measuring its height as its line
+ * count (an empty or missing body reads as zero lines) and clamping to `[0, lines − budget]`.
+ * The within-body PgDn/PgUp step the Markdown panes share: the notebook/change views, the
+ * tick-trail view, the Usage/Failures panes, and the backlog entry body each derive a cached
+ * string's line count and page with it, so this is the one place that height is measured and
+ * the step applied. Pure, so it is unit-testable without a TTY. */
+export function pageMarkdownBody(
+  offset: number,
+  body: string | null | undefined,
+  budget: number,
+  dir: "up" | "down",
+): number {
+  return stepEntryScroll(offset, body ? body.split("\n").length : 0, budget, dir);
+}

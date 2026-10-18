@@ -3,7 +3,7 @@ import { saveRoleNote } from "../../agent/role-notes-write.js";
 import { roleNotesPath } from "../../paths.js";
 import { renderRoleChange } from "../../change/change-render.js";
 import { roleInspectMarkdown } from "./tui-pane.js";
-import { stepEntryScroll } from "./tui-backlog.js";
+import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
@@ -122,8 +122,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
       // Within-body scroll in the notebook and change views: PgDn/PgUp page the cached
       // inspection Markdown, clamped at both ends, exactly like the usage/failures panes
       // below. (The tick-trail view's arm lives in the history module beside trailMode.)
-      const total = (noteMode ? (noteCache ?? "") : (changeCache ?? "")).split("\n").length;
-      session.paneScroll = stepEntryScroll(session.paneScroll, total, session.eventBudget, page);
+      session.paneScroll = pageMarkdownBody(session.paneScroll, noteMode ? noteCache : changeCache, session.eventBudget, page);
       session.requestRender();
       return true;
     }
