@@ -141,7 +141,7 @@ test("isOneLineRecord matches the compressed record forms and never a body bulle
   assert.ok(isOneLineRecord("- A bug (found by qa 2026-09-29, fixed 2026-09-29; commit 0165c3b6; gap: no-fake)"));
   assert.ok(isOneLineRecord("- A bug (fixed 2026-09-29; commit 0165c3b6)"));
   assert.ok(isOneLineRecord("- A bug (commit f09b3d74)"), "a heading with no dates keeps only the commit");
-  assert.ok(isOneLineRecord("- A bug (found 2026-09-29, fixed 2026-09-29; gap: slow-check)"), "no landing commit");
+  assert.ok(isOneLineRecord("- A bug (found 2026-09-29, fixed 2026-09-29; gap: slow-check)"), "no merge commit");
   assert.ok(!isOneLineRecord("- **Fix:** `realFix` now handles it (commit 0165c3b6)."), "a labelled bullet");
   assert.ok(!isOneLineRecord("- same shape as the sibling bug (fixed 2026-09-24)"), "a body bullet");
   assert.ok(!isOneLineRecord("A bug (commit 0165c3b6)"), "not a bullet");

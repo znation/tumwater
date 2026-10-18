@@ -33,7 +33,7 @@ test("a role with no worktree yet degrades to a line, exit 0", async () => {
   assert.equal(r.stdout.trim(), "no worktree for feature");
 });
 
-test("diff shows the unlanded commit and its patch, then uncommitted edits", async () => {
+test("diff shows the unmerged commit and its patch, then uncommitted edits", async () => {
   const { repo, wt } = await seededFeatureRepo();
   const committed = await cli(repo, "diff", "--role", "feature");
   assert.equal(committed.code, 0);

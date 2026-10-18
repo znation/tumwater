@@ -73,7 +73,7 @@ test("a refusal with a markdown note commits only the note and merges it directl
   assert.equal(merges[0]!.summary, "refused: it would delete user data");
 
   const refused = readEvents(root).filter((e) => e.type === "entry_refused");
-  assert.equal(refused.length, 1, "the landed note pages once");
+  assert.equal(refused.length, 1, "the merged note pages once");
   assert.equal(refused[0]!.source, "improve");
   assert.equal(refused[0]!.reason, "it would delete user data");
   assert.ok((refused[0]!.files as string[]).includes("PLANS.md"));
@@ -96,7 +96,7 @@ test("a refusal with no note resets the worktree and never merges", async () => 
   assert.equal(mainSha(root), before, "main is untouched");
   assert.ok(!fs.existsSync(path.join(wt, "broken.ts")), "the half-work was discarded");
   assertClean(wt, "the worktree is clean after the reset");
-  assert.equal(readEvents(root).filter((e) => e.type === "entry_refused").length, 0, "no note landed, no page");
+  assert.equal(readEvents(root).filter((e) => e.type === "entry_refused").length, 0, "no note merged, no page");
 });
 
 test("a bare sentinel falls back to a generic reason", async () => {
@@ -147,7 +147,7 @@ test("a failed note merge records lastError and still reports the commit", async
   const outcome = await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "it would delete user data" }));
 
   assert.equal(outcome.result, "refused", "the refusal itself still stands");
-  assert.ok(outcome.commit, "the note commit exists on the branch even though it did not land");
+  assert.ok(outcome.commit, "the note commit exists on the branch even though it did not merge");
   assert.equal(merges.length, 1);
   assert.equal(state.lastError, "refusal note merge failed: merge_conflict");
   assert.equal(readEvents(root).filter((e) => e.type === "entry_refused").length, 0, "a failed merge pages nothing");
@@ -157,14 +157,14 @@ test("a failed note merge records lastError and still reports the commit", async
 // itself — otherwise a role whose refused note merged is still told to address an objection
 // main has moved past (BUGS.md 2026-10-07). A still-owed revision keeps it, exactly as the
 // merge fold does; a failed merge merges nothing and clears nothing.
-test("a landed refusal note clears a superseded rejection unless a revision is owed", async () => {
+test("a merged refusal note clears a superseded rejection unless a revision is owed", async () => {
   const { root, wt } = await initializedWorktree();
   fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** it would delete user data\n");
   const state: LoopState = freshLoopState("improve");
   state.lastReview = { verdict: "reject", reasons: ["old objection"], at: 1 };
   const { ctx } = makeCtx(root);
   await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "it would delete user data" }));
-  assert.equal(state.lastReview, undefined, "the landed note supersedes the rejection");
+  assert.equal(state.lastReview, undefined, "the merged note supersedes the rejection");
 
   const { root: pendingRoot, wt: pendingWt } = await initializedWorktree();
   fs.appendFileSync(path.join(pendingWt, "PLANS.md"), "\n**Refused:** still risky\n");
@@ -243,7 +243,7 @@ test("the dropped-refusal PLANS.md rewrite is atomic and leaves no tmp remnant",
   assert.deepEqual(leftovers, [], "no tmp remnant survives the atomic rewrite");
 });
 
-test("a refusal note on a plan whose prerequisite is Done lands as usual", async () => {
+test("a refusal note on a plan whose prerequisite is Done merges as usual", async () => {
   const base = BLOCKED_BASE("Done");
   const { root, wt } = await worktreeWithPlans(base);
   fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(base, "### S, part 2/2"));

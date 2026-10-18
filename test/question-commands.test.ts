@@ -364,7 +364,7 @@ test("answering still works when a fence inside ## Open is closed before the sec
 // fast-forwards it in the primary checkout. The child holds the shared lock, snapshots the
 // pre-answer file, and writes the stale snapshot back once it has seen the answer (an unlocked
 // writer's lands immediately; a locked one waits). The fix makes both live in the file.
-test("an answered question cannot be clobbered by a landing that fast-forwards the same file", async () => {
+test("an answered question cannot be clobbered by a merge that fast-forwards the same file", async () => {
   const root = tmpdir();
   const file = seed(root, '# Questions\n\n## Open\n\n### Question A\n\nbody\n\n## Answered\n\n_None yet._\n');
   const lock = primaryWorktreeLockPath(root);
@@ -391,7 +391,7 @@ test("an answered question cannot be clobbered by a landing that fast-forwards t
     await holder.exited;
     assert.ok(
       read(file).includes("**Answered"),
-      "the answered question survives the lander's stale write-back",
+      "the answered question survives the merger's stale write-back",
     );
   } finally {
     await stopChild(holder);

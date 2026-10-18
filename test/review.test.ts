@@ -102,7 +102,7 @@ test("a revision's review carries its round and shows the prior objections and i
   });
 });
 
-test("a fresh landing's review_start carries no revision marker", async () => {
+test("a fresh merge's review_start carries no revision marker", async () => {
   const { root, wt } = await gateFixture();
   await withPi(`printf '%s\n' '${assistantLine("VERDICT: approve")}'`, async () => {
     await reviewGate(root, wt);

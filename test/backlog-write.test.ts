@@ -264,7 +264,7 @@ test("a filed bug cannot be clobbered by a merge that fast-forwards the same fil
     await holder.exited;
     assert.ok(
       fs.readFileSync(bugsFile, "utf8").includes("operator symptom"),
-      "the filed entry survives the lander's stale write-back",
+      "the filed entry survives the merger's stale write-back",
     );
   } finally {
     await stopChild(holder);

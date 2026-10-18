@@ -307,7 +307,7 @@ test("the readme prompt works from the delta since its own last commit", () => {
   // Sync is need-based now: a merge that touched no user-facing surface needs no sync.
   assert.match(find, /a merge that touched no user-facing surface \(commands, flags, config keys, docs\) needs no sync/);
 });
-test("the readme prompt forbids per-run merge narrative; landings belong in PLANS.md/BUGS.md and git log", () => {
+test("the readme prompt forbids per-run merge narrative; merges belong in PLANS.md/BUGS.md and git log", () => {
   const find = oneLine(readme!.find);
   // Listed under "Keep these out of the status section" — the heading states the ban once.
   assert.match(find, /Keep these out of the status section: .* - Per-run merge narrative: merges are recorded/);

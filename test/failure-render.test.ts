@@ -953,7 +953,7 @@ test("collectFailureReport scopes every section to one base role", () => {
   assert.match(md, /role qa paused/);
   assert.ok(!md.includes("feature warn"), "the other role's clusters are excluded");
   assert.ok(!md.includes("role feature paused"), "the other role's transitions are excluded");
-  assert.ok(!md.includes("land feature"), "the other role's landings are excluded");
+  assert.ok(!md.includes("land feature"), "the other role's merges are excluded");
 });
 
 test("a scoped digest folds an instance id into its base role group", () => {

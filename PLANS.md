@@ -51,24 +51,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - docs/cli.md's role row names the drawer's model-triple control.
 - `npm test` passes.
 
-### Plain terms code merge, part 11g/11: Rewrite the merge family in test titles and assertion messages (planned 2026-10-18 by user; requires parts 11c/11 and 11d/11 landed; no runner series part waits on it; design in plans/terminology.md "Code names"; touches test titles and assertion messages in test/*.test.ts test/helpers/ test/fakes/ and test/fixtures/, plus one stale test-name citation in docs/invariants.md)
-
-**Goal.** plans/terminology.md "Code names" says test names adopt the glossary. Parts 6/11–10/11 converted the test names and assertion messages of the directories they renamed, and parts 11c/11 and 11d/11 rewrite the test comments, but about 40 test titles and a smaller set of assertion messages across the suite still describe the merge pipeline with retired words — e.g. test/merge-pipeline.test.ts "a single queued pinned entry lands through the pipeline: …" and "a merge whose role has no live runner verifies and lands through a throwaway author", test/review.test.ts "a fresh landing's review_start carries no revision marker", test/cli-diff.test.ts "diff shows the unlanded commit and its patch, …", test/startup-migrations.test.ts "runStartupMigrations moves the land queue once …", and test/question-commands.test.ts "… a landing that fast-forwards the same file" with its message "the lander's stale write-back". This part rewrites those strings so a failing test names the merge in today's words.
-
-**Approach.**
-- Rewrite only two kinds of string literal: a test title (the first argument of `test(…)`, `it(…)`, `describe(…)` and their `.skip`/`.only`/`.todo` forms) and an assertion message (the trailing message argument of an `assert.*` call). Apply the part 11a rename rule (plans/terminology.md "Code names"), editing each as a sentence, not as a word swap.
-- Keep these title and message matches: the `requires … landed` grammar and a quoted PLANS.md/BUGS.md title; a legacy name the test exercises on purpose (an old event type such as `landed`, an old state key such as `lastLandedAt`, `_land-<role>`, `removeLegacyLandWorktrees`, the legacy lease purpose `vet`, `landing.json`, the legacy land-queue path); and the ordinary English verb `land` meaning "arrive" (e.g. "until its newline lands", "every tier lands on it").
-- Leave every other literal exactly as it is: fabricated data (role ids such as `"landing-r"` and `"vetted-v"`, an event's `loop: "lander"`, tmpdir prefixes), expected-output literals and regexes that match what src prints, identifiers, and comments (parts 11c/11 and 11d/11).
-- docs/invariants.md's "Pinned by" paragraph for the failure time-spend invariant still quotes "a review_error landing prices its authoring hours under the matching review_failed cause"; the test in test/failure-time-spend.test.ts is already named "a review_error merge prices …", so fix that citation. Update any other doc or test that quotes a title this part renames in the same change.
-
-**Files touched.** Test titles and assertion messages in test/*.test.ts, test/helpers/, test/fakes/ and test/fixtures/; docs/invariants.md (the one citation). plans/terminology.md is read, not edited.
-
-**Acceptance criteria.**
-- `git grep -nE '[Ll]and(ings?|es|ed|ers?|s)?[^a-z]|[Ll]and(ings?|s|ed|ers?)?$|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- 'test/*.test.ts' test/helpers test/fakes test/fixtures`, kept to the matches inside a test title or an assertion message, lists only the kept kinds above, and the run's summary names each remaining title or message match and its kept kind. Every other match is untouched.
-- `git grep -n 'review_error landing prices' -- docs test` prints nothing.
-- The diff changes test-title and assertion-message strings and that citation only, and the suite's test count is unchanged.
-- `npm run test` passes.
-
 ### Plain terms code runner, part 1/14: Move the loop modules to src/runner and their tests to runner names (planned 2026-10-16 by user; requires Plain terms code merge 11a/11, Plain terms code merge 11b/11, Plain terms code merge 11c/11, Plain terms code merge 11d/11, Plain terms code merge 11e/11 and Plain terms code merge 11f/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ + src/roles/loop-ids.ts + src/ui/gui/gui-client-loops.ts + test/loop*.test.ts + test/fixtures/loop-*.ts + every importer + docs/invariants.md + DEVELOPMENT.md)
 
 **Goal.** Mechanical. The per-instance worker's modules and their tests move to `runner` names, with every import path and path citation updated and no identifier changed, so later parts rename symbols inside files that already carry their final names.
@@ -1125,6 +1107,24 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Pressing Ctrl+L opens no editor; every send-capable view's footer hint omits `send later`; the prompt prefix reads `director › ` (or `<role> › `) with no `(in …)` suffix.
 - `tumwater prompt --at` and the queue's `tumwater:not-before` marker are unchanged; `test/inbox.test.ts` and the prompt CLI tests still pass.
 - `npm test` passes.
+
+### Plain terms code merge, part 11g/11: Rewrite the merge family in test titles and assertion messages (planned 2026-10-18 by user; requires parts 11c/11 and 11d/11 landed; no runner series part waits on it; design in plans/terminology.md "Code names"; touches test titles and assertion messages in test/*.test.ts test/helpers/ test/fakes/ and test/fixtures/, plus one stale test-name citation in docs/invariants.md) — done 2026-10-18 by the feature role
+
+**Goal.** plans/terminology.md "Code names" says test names adopt the glossary. Parts 6/11–10/11 converted the test names and assertion messages of the directories they renamed, and parts 11c/11 and 11d/11 rewrite the test comments, but about 40 test titles and a smaller set of assertion messages across the suite still describe the merge pipeline with retired words — e.g. test/merge-pipeline.test.ts "a single queued pinned entry lands through the pipeline: …" and "a merge whose role has no live runner verifies and lands through a throwaway author", test/review.test.ts "a fresh landing's review_start carries no revision marker", test/cli-diff.test.ts "diff shows the unlanded commit and its patch, …", test/startup-migrations.test.ts "runStartupMigrations moves the land queue once …", and test/question-commands.test.ts "… a landing that fast-forwards the same file" with its message "the lander's stale write-back". This part rewrites those strings so a failing test names the merge in today's words.
+
+**Approach.**
+- Rewrite only two kinds of string literal: a test title (the first argument of `test(…)`, `it(…)`, `describe(…)` and their `.skip`/`.only`/`.todo` forms) and an assertion message (the trailing message argument of an `assert.*` call). Apply the part 11a rename rule (plans/terminology.md "Code names"), editing each as a sentence, not as a word swap.
+- Keep these title and message matches: the `requires … landed` grammar and a quoted PLANS.md/BUGS.md title; a legacy name the test exercises on purpose (an old event type such as `landed`, an old state key such as `lastLandedAt`, `_land-<role>`, `removeLegacyLandWorktrees`, the legacy lease purpose `vet`, `landing.json`, the legacy land-queue path); and the ordinary English verb `land` meaning "arrive" (e.g. "until its newline lands", "every tier lands on it").
+- Leave every other literal exactly as it is: fabricated data (role ids such as `"landing-r"` and `"vetted-v"`, an event's `loop: "lander"`, tmpdir prefixes), expected-output literals and regexes that match what src prints, identifiers, and comments (parts 11c/11 and 11d/11).
+- docs/invariants.md's "Pinned by" paragraph for the failure time-spend invariant still quotes "a review_error landing prices its authoring hours under the matching review_failed cause"; the test in test/failure-time-spend.test.ts is already named "a review_error merge prices …", so fix that citation. Update any other doc or test that quotes a title this part renames in the same change.
+
+**Files touched.** Test titles and assertion messages in test/*.test.ts, test/helpers/, test/fakes/ and test/fixtures/; docs/invariants.md (the one citation). plans/terminology.md is read, not edited.
+
+**Acceptance criteria.**
+- `git grep -nE '[Ll]and(ings?|es|ed|ers?|s)?[^a-z]|[Ll]and(ings?|s|ed|ers?)?$|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- 'test/*.test.ts' test/helpers test/fakes test/fixtures`, kept to the matches inside a test title or an assertion message, lists only the kept kinds above, and the run's summary names each remaining title or message match and its kept kind. Every other match is untouched.
+- `git grep -n 'review_error landing prices' -- docs test` prints nothing.
+- The diff changes test-title and assertion-message strings and that citation only, and the suite's test count is unchanged.
+- `npm run test` passes.
 
 ### The dashboard composer drops its "Send later…" box (planned 2026-10-18 by the director role; sibling of part 2/2, the TUI Ctrl+L removal, and independent of it — the two land in either order and whichever is second rebases at docs/cli.md; the CLI's `tumwater prompt --at` and the queues' `tumwater:not-before` mechanism stay, out of scope; touches src/ui/gui/gui-page.ts src/ui/gui/gui-styles.ts src/ui/gui/gui-client-composer.ts docs/cli.md test/gui-client-composer.test.ts test/gui-client.test.ts — done 2026-10-18 by the feature role)
 

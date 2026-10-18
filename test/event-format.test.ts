@@ -647,7 +647,7 @@ test("formatEvent renders merge_queued, landed, and merge_failed", () => {
 
   // Spent nothing (review-exempt or zero-usage reviewer): renders bare, like run_end.
   const bare = formatEvent({ ts: 0, source: "clean", type: "merge_done", commit: "abcdef1234567890", result: "changed", durationMs: 1234 } as never);
-  assert.match(bare, /clean\s+merge of abcdef12 done \(in 1s\)$/, `zero-usage landing renders bare: ${bare}`);
+  assert.match(bare, /clean\s+merge of abcdef12 done \(in 1s\)$/, `zero-usage merge renders bare: ${bare}`);
   // The merge's own spend rides after the duration, "·"-separated like run_end (minutes
   // at two minutes and up, compact tokens at 10k and up — the shared text.ts rules).
   const withUsage = formatEvent({
@@ -743,7 +743,7 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
 // eventResult — the activity feeds' outcome key: a tick's result, else a merge's or build
 // check's status, else undefined. Single-homes the extraction the status payload's eventItem
 // and the TUI's eventTone both render through, so the two surfaces cannot key differently.
-test("eventResult takes a tick's result, else a landing's or build check's status, else undefined", () => {
+test("eventResult takes a tick's result, else a merge's or build check's status, else undefined", () => {
   assert.equal(eventResult({ ts: 0, source: "x", type: "run_end", result: "changed" }), "changed");
   assert.equal(eventResult({ ts: 0, source: "x", type: "merge_done", status: "merged" }), "merged");
   assert.equal(eventResult({ ts: 0, source: "x", type: "build_check", status: "failed" }), "failed");

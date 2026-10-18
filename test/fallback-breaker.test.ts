@@ -78,7 +78,7 @@ test("startFallbackProbe marks the slot busy; abandon hands it back without touc
   assert.deepEqual(abandoned, demoted(5_000)); // due again at the next poll, cool-down intact
 });
 
-test("fallbackEvidence maps the TickResult vocabulary: error alone fails, a model reply serves, kills and landing results say nothing", () => {
+test("fallbackEvidence maps the TickResult vocabulary: error alone fails, a model reply serves, kills and merge results say nothing", () => {
   assert.equal(fallbackEvidence("error"), "failed");
   for (const served of ["queued", "changed", "no_change", "refused", "rejected"] as const) {
     assert.equal(fallbackEvidence(served), "served", served);

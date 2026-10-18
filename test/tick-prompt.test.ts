@@ -285,7 +285,7 @@ test("a bugfix instance's claim names the bug's line range from BUGS.md", () => 
   assert.match(result.prompt, /BUGS\.md lines 3-4/);
 });
 
-test("a feature instance's claimed series part names its landed prerequisites", () => {
+test("a feature instance's claimed series part names its merged prerequisites", () => {
   const dir = root();
   const c = "S, part 3/3: c (requires parts 1/3–2/3 landed)";
   fs.writeFileSync(

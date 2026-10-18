@@ -31,7 +31,7 @@ test("observers read the old layout before any migration, mapping tick to run", 
   assert.equal(view.unreadable, 1);
 });
 
-test("runStartupMigrations moves the land queue once and logs one state_migrated", async () => {
+test("runStartupMigrations migrates the legacy land queue into the merge queue once and logs one state_migrated", async () => {
   const root = makeRepo();
   oldLayout(root);
   await runStartupMigrations(root);

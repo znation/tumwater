@@ -308,11 +308,11 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     assert.equal(result.detail, `main ${shortSha(movedMainSha)} is red — not this change's failure`);
     assert.equal(result.aborted, undefined);
     assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
-    assert.equal(result.mainRed, true, "the landing reports main_red, not a reviewer failure");
+    assert.equal(result.mainRed, true, "the merge reports main_red, not a reviewer failure");
     assert.ok(!fs.existsSync(marker), "no pi run: nothing was spent on main's failure");
     assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
     assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");
-    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-land");
+    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
     assert.equal(await aheadOfMain(wt, "main"), 1);
     const events = readEvents(root);
     assert.ok(!events.some((e) => e.type === "review_rejected"), "no rejection logged");
@@ -431,7 +431,7 @@ test("a repeat failure matching a recorded flake keeps the commit and counts no 
     assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
     assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
     assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");
-    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-land");
+    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
     assert.equal(await aheadOfMain(wt, "main"), 1);
     assert.ok(!fs.existsSync(marker), "no pi run before a flake decision");
     const events = readEvents(root);
@@ -466,7 +466,7 @@ test("a repeat failure with no recorded flake re-runs main fresh instead of trus
     assert.equal(result.mainRed, true, "the fresh run finds main red, not this change's failure");
     assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
     assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
-    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-land");
+    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
     assert.ok(!fs.existsSync(marker), "no pi run: main's fresh verdict decided alone");
     assert.deepEqual(
       buildCheckEvents(root),
@@ -568,7 +568,7 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
 // seeding and the post-rebase re-verify). A skipped pre-check makes no fresh observation:
 // verifiedHead stays
 // absent even when the model approves (asserted in the timeout test above).
-test("a green pre-check hands its verified head to the landing path", async () => {
+test("a green pre-check hands its verified head to the merge path", async () => {
   const { root, wt } = await greenBuildFixture();
   await withPi(reviewerStub(), async () => {
     const { result } = await reviewGate(root, wt);
@@ -842,7 +842,7 @@ test("a pre-check that sleeps and fails on every attempt keeps the commit and re
   assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
   assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
   assert.equal(state.lastReview, undefined, "no rejection recorded against the author");
-  assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-land");
+  assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
   assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:failed", "gate:failed"], "each attempt is priced");
   const warnings = warningMessages(root);
   assert.ok(

@@ -164,7 +164,7 @@ test("a parked verification starts nothing when a shutdown or a closed start gat
       await drainMergeQueue(ctx, pipeline);
       await waitForFile(path.join(flags, "alpha-reviewing"));
       const beta = pipeline.verifying.get("beta");
-      assert.equal(beta?.parked, true, `${stop}: beta's vet is parked behind alpha's`);
+      assert.equal(beta?.parked, true, `${stop}: beta's verify is parked behind alpha's`);
       if (stop === "gate") {
         held = true; // a restart hold, say: the scheduler stops draining, and parked verifications meet it
         fs.writeFileSync(path.join(flags, "alpha-release"), "");

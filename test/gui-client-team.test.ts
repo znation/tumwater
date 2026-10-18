@@ -275,7 +275,7 @@ test("the In flight tile counts a running director even though it holds no permi
   assert.match(html, />2 working</, "the subtitle names both as working");
 });
 
-test("the Landed today tile shows the work/maintenance commit split", () => {
+test("the Merged today tile shows the work/maintenance commit split", () => {
   const { scope, panels } = statsScope({
     totals: { commits: 5, featuresDone: 4, bugsFixed: 2, workCommits: 2, maintenanceCommits: 3, runs: 0, tokensOut: 0, costUsd: 0 },
   });

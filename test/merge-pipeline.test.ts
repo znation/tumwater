@@ -70,7 +70,7 @@ async function busyMergePipeline() {
   return { root, mainBefore, restore, ctx, pipeline };
 }
 
-test("a torn head is dropped with a warning and the healthy entry behind it lands", async () => {
+test("a torn head is dropped with a warning and the healthy entry behind it merges", async () => {
   const root = makeRepo();
   const sha = pinnedCommit(root, "improve");
   await setRef(root, mergeRefName("improve"), sha);
@@ -96,7 +96,7 @@ test("a torn head is dropped with a warning and the healthy entry behind it land
   });
 });
 
-test("a single queued pinned entry lands through the pipeline: main advances, ref and entry and marker clear", async () => {
+test("a single queued pinned entry merges through the pipeline: main advances, ref and entry and marker clear", async () => {
   const root = makeRepo();
   const sha = pinnedCommit(root, "improve");
   await setRef(root, mergeRefName("improve"), sha);
@@ -172,7 +172,7 @@ test("changes approved while the merge slot is busy merge as one stack: one shar
   }
 });
 
-test("an approved change whose queue entry is gone is forgotten while its neighbor still lands", async () => {
+test("an approved change whose queue entry is gone is forgotten while its neighbor still merges", async () => {
   const { root, mainBefore, restore, ctx, pipeline } = await busyMergePipeline();
   try {
     await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 2, "both changes to be approved");
@@ -246,7 +246,7 @@ test("the merge's conflict resolver takes a shared permit, ahead of a verificati
     held = true;
     enqueueMerge(root, entry("beta", beta));
     await drainMergeQueue(ctx, pipeline);
-    assert.equal(pipeline.verifying.get("beta")?.parked, true, "beta's vet parks for the permit");
+    assert.equal(pipeline.verifying.get("beta")?.parked, true, "beta's verify parks for the permit");
     pipeline.merge = null;
     await drainMergeQueue(ctx, pipeline);
     assert.deepEqual(mergeTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "alpha's merge is running");
@@ -345,7 +345,7 @@ test("a change settled early in a batch writes back before a slower batch-mate's
   }
 });
 
-test("a red stack lands its passing prefix, rejects the change red alone, and merges the one behind it next", async () => {
+test("a red stack merges its passing prefix, rejects the change red alone, and merges the one behind it next", async () => {
   // PLANS.md land-queue 3d through the pipeline: beta breaks the suite only on top of alpha (its
   // own verification passed — an interaction the stack check exists to catch). The bisect merges
   // alpha on its own green check, attributes beta's red through main's baseline (a cache hit:
@@ -435,7 +435,7 @@ test("verifications leave one permit for authoring: at cap 3 two review, the thi
   }
 });
 
-test("a verification rejection drops its entry at once — its role may tick next poll — while the other vet runs on", async () => {
+test("a verification rejection drops its entry at once — its role may tick next poll — while the other verify runs on", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta"];
   const shas = await queueChanges(root, roles);
@@ -455,7 +455,7 @@ test("a verification rejection drops its entry at once — its role may tick nex
     assert.equal(loadLoopState(root, "alpha").lastResult, "rejected", "the outcome is saved before the drop");
     assert.equal(readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha").length, 1);
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes the pin");
-    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta's vet is still running");
+    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta's verify is still running");
     const marker = readMergeMarker(root);
     assert.deepEqual(
       marker?.changes?.map((c) => [c.role, c.status, c.stage]),
@@ -476,7 +476,7 @@ test("a verification rejection drops its entry at once — its role may tick nex
   }
 });
 
-test("a merge whose role has no live runner verifies and lands through a throwaway author", async () => {
+test("a merge whose role has no live runner verifies and merges through a throwaway author", async () => {
   // resolveAuthor's fallback: a role disabled before this process started (or removed from
   // the team after its change was queued) has no runner in ctx.runners, so the drain builds
   // a throwaway one with the same merge wiring and a disk-loaded state — the queue must
@@ -651,7 +651,7 @@ test("a shutdown reaches every verification and keeps their pins; an approved ch
 
     for (const role of ["alpha", "beta"]) {
       const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === role);
-      assert.deepEqual(failed.map((e) => e.result), ["aborted"], `${role}'s vet ended aborted`);
+      assert.deepEqual(failed.map((e) => e.result), ["aborted"], `${role}'s verify ended aborted`);
       assert.equal(await refSha(root, mergeRefName(role)), shas[role], `${role}'s pin survives the shutdown`);
     }
     assert.deepEqual(
@@ -670,7 +670,7 @@ test("a shutdown reaches every verification and keeps their pins; an approved ch
   }
 });
 
-test("abort --role stops that role's vet, or discards its approved change, pin and all, while another verification runs on", async () => {
+test("abort --role stops that role's verify, or discards its approved change, pin and all, while another verification runs on", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
   const shas = await queueChanges(root, roles);
@@ -698,7 +698,7 @@ test("abort --role stops that role's vet, or discards its approved change, pin a
       assert.deepEqual(failed.map((e) => e.result), ["aborted"], `${role} ended aborted`);
       assert.equal(await refSha(root, mergeRefName(role)), null, `${role}'s pin was discarded`);
     }
-    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta's vet runs on");
+    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta's verify runs on");
 
     pipeline.merge = null; // the busy slot frees
     fs.writeFileSync(path.join(flags, "beta-release"), "");
@@ -765,7 +765,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
         `beta:${alphaAfter}beta=merging/reviewing`,
       ];
       if (headVerdict === "reject") {
-        assert.deepEqual(seen, verifies, "a one-change merge lands on its own: no stack check, no re-check on an unmoved main");
+        assert.deepEqual(seen, verifies, "a one-change merge goes through on its own: no stack check, no re-check on an unmoved main");
         assert.equal(loadLoopState(root, "alpha").lastResult, "rejected");
       } else {
         assert.deepEqual(

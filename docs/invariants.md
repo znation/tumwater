@@ -222,7 +222,7 @@ names no rejection and is not invented as one.
 price into error-class, not merged" (its `coverage` fixture prices a rejected merge's span as
 error-class under a `review-rejected` cause carrying the reason; its `organize` fixture prices
 the `merge_conflict` arm as error-class under a `merge-conflict` cause with the shared no-text
-placeholder, not a review-rejection), and "a review_error landing prices its authoring hours
+placeholder, not a review-rejection), and "a review_error merge prices its authoring hours
 under the matching review_failed cause".
 
 ## Disclosed cuts and recorded causes

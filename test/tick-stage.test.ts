@@ -331,7 +331,7 @@ test("an unassigned tick that moves a plan a sibling holds gets a finding, not a
   assert.equal(outcome.result, "queued");
 });
 
-test("a fix-up that drops a sibling's held entry leaves nothing to land", async () => {
+test("a fix-up that drops a sibling's held entry leaves nothing to merge", async () => {
   const { root, wt } = await movedPlansTick(["Alpha"]);
   const state = freshLoopState("feature-2");
   state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
