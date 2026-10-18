@@ -41,6 +41,7 @@ import type {
 import { resumableSession } from "../session-ledger.js";
 import { opencodeArgs } from "./opencode-args.js";
 import { opencodeConfigContent, operatorMcpNames } from "./opencode-config.js";
+import { opencodeModelKey, readOpencodeCache } from "./opencode-catalog.js";
 import { opencodeEnv } from "./opencode-env.js";
 import { mintOpencodeSessionId } from "./opencode-session-id.js";
 import { opencodeExportLines, opencodeTranslator, type OpencodeStreamTranslator } from "./opencode-stream.js";
@@ -70,6 +71,14 @@ function teamRootOf(sessionDir: string): string {
   }
   // Unreachable in a harness run; a sensible fallback for an odd session dir.
   return path.dirname(path.dirname(sessionDir));
+}
+
+/** The catalog cache key for a run's resolved model id (part 6d/7): a bare gateway id gets the
+ * `opencode/` provider prefix, a provider-qualified id passes as is — the same rule
+ * opencodeArgs uses to build the `--model` arg and opencode-catalog.ts uses to key the cache,
+ * so an invocation's lookup always matches the key a run is priced and billed by. */
+function catalogModelKey(model: string): string {
+  return opencodeModelKey(model);
 }
 
 /** Run `opencode session export <id> --standalone` (the same database the run used, bounded at
@@ -173,7 +182,8 @@ export const opencodeBackend: AgentBackend = {
   invocation(run: AgentRunSpec): AgentInvocation {
     // The shared database and injected config are per-root, built the same way for every run of
     // this team so a resume's export check reads the same OPENCODE_DB the original run wrote.
-    const dbPath = opencodeDbPath(teamRootOf(run.sessionDir));
+    const root = teamRootOf(run.sessionDir);
+    const dbPath = opencodeDbPath(root);
     const configContent = opencodeConfigContent({
       cwd: run.cwd,
       operatorMcpNames: operatorMcpNames(process.env, os.homedir()),
@@ -193,8 +203,16 @@ export const opencodeBackend: AgentBackend = {
         : { ...agentBaseEnv(run.runMarker), TUMWATER_NOTES_PATH: run.notesPath };
     const env = opencodeEnv(base, { dbPath, configContent });
     const { sessionId } = resolveOpencodeSession(run, env);
+    // The thinking variant (part 6d/7): ride the catalog's effort levels for the resolved
+    // model as a `#level` suffix, and drop a level the catalog does not list — an unlisted
+    // variant would otherwise be a permanent config error from OpenCode (finding 9).
+    const model = run.config.model ?? "";
+    const thinking = run.config.thinking;
+    const entry = readOpencodeCache(root).models[catalogModelKey(model)];
+    const variant = thinking !== undefined && thinking !== "" && entry?.efforts?.includes(thinking) ? thinking : undefined;
     const { args, stdin } = opencodeArgs({
-      model: run.config.model ?? "",
+      model,
+      ...(variant !== undefined ? { variant } : {}),
       sessionId,
       title: run.sessionName,
       args: resolvedAgentConfig(run.config, "opencode").args,
@@ -205,6 +223,16 @@ export const opencodeBackend: AgentBackend = {
 
   translator(): OpencodeStreamTranslator {
     return opencodeTranslator();
+  },
+
+  imageInput(model: string | undefined): boolean {
+    // Answer from the catalog cache (part 6d/7): a model reads images when its catalog entry
+    // says so; a model missing from the cache answers false — the safe direction, so a blind
+    // image read is never silently assumed readable. The cache is per-root, found by walking up
+    // from the process's working directory to its `.tumwater`, the same root the runs' shared
+    // database and cache live under.
+    if (model === undefined) return false;
+    return readOpencodeCache(teamRootOf(process.cwd())).models[catalogModelKey(model)]?.images === true;
   },
 
   resumable(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean {

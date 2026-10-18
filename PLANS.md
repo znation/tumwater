@@ -59,24 +59,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - **Fallback:** a free OpenCode model works as the budget `fallback` for a priced pi primary.
 - `npm test` passes.
 
-### OpenCode backend, part 6d/7: OpenCode thinking variants and image input come from the catalog (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/agent/opencode/opencode-backend.ts src/agent/opencode/opencode-args.ts and their tests)
-
-**Goal.** A thinking level OpenCode's catalog lists for the model rides the invocation as `#<level>`; a level it does not list is dropped; and the backend answers whether its model reads images from the same catalog.
-
-**Approach.**
-- **src/agent/opencode/opencode-backend.ts `invocation`:** when the catalog's `efforts` for the resolved model lists the run's resolved thinking level, pass it as `variant`; otherwise pass none.
-- **src/agent/opencode/opencode-backend.ts:** add the `imageInput(model)` hook, answering `images` from the model's catalog entry (a model missing from the cache answers false).
-- Update the doc comment in src/agent/opencode/opencode-args.ts (`OpencodeArgOptions`: "part 6/7 supplies that list") to name part 6d/7.
-
-**Files touched.**
-- Source: src/agent/opencode/opencode-backend.ts, src/agent/opencode/opencode-args.ts.
-- Tests: test/opencode-run.test.ts, test/opencode-args.test.ts.
-
-**Acceptance criteria.**
-- Thinking `high` on the free model passes `#high`; `medium` (not among the fixture's efforts) passes no variant.
-- `imageInput` on the free model is true; an unknown model is false.
-- `npm test` passes.
-
 ### OpenCode backend, part 7/7: Doctor checks the OpenCode install, models and leaks; session retention; docs; and an opt-in `smoke:opencode` live check (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires parts 6b/7, 6c/7 and 6d/7 landed; design in plans/opencode-backend.md "Sessions", "Spend, free-ness, image input and doctor" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/agent/opencode/opencode-backend.ts src/agent/session-ledger.ts docs/backends.md docs/config.md scripts/smoke-opencode.mjs (new) package.json and their tests)
 
 **Goal.** Before any OpenCode run starts, `tumwater doctor` says everything that would make one fail or leak:
@@ -1209,6 +1191,24 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 
 
 ## Done
+
+### OpenCode backend, part 6d/7: OpenCode thinking variants and image input come from the catalog (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/agent/opencode/opencode-backend.ts src/agent/opencode/opencode-args.ts and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** A thinking level OpenCode's catalog lists for the model rides the invocation as `#<level>`; a level it does not list is dropped; and the backend answers whether its model reads images from the same catalog.
+
+**Approach.**
+- **src/agent/opencode/opencode-backend.ts `invocation`:** when the catalog's `efforts` for the resolved model lists the run's resolved thinking level, pass it as `variant`; otherwise pass none.
+- **src/agent/opencode/opencode-backend.ts:** add the `imageInput(model)` hook, answering `images` from the model's catalog entry (a model missing from the cache answers false).
+- Update the doc comment in src/agent/opencode/opencode-args.ts (`OpencodeArgOptions`: "part 6/7 supplies that list") to name part 6d/7.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-backend.ts, src/agent/opencode/opencode-args.ts.
+- Tests: test/opencode-run.test.ts, test/opencode-args.test.ts.
+
+**Acceptance criteria.**
+- Thinking `high` on the free model passes `#high`; `medium` (not among the fixture's efforts) passes no variant.
+- `imageInput` on the free model is true; an unknown model is false.
+- `npm test` passes.
 
 ### The day report and GUI Usage view show each day's median provider-slot wait, beside `Merge wait median` (planned 2026-10-17 by the plan role; independent of every Planned and blocked entry — the OpenCode parts 6b/7, 6c/7 and 6d/7 touch src/pi, src/agent/opencode, src/gates, src/status, src/tick, src/merge, src/doctor and their docs, not src/report or src/ui/gui/gui-client-report.ts, and the blocked plain-terms series is far behind and waits on refused parts; touches src/report/report-data.ts, src/report/report-render.ts, src/ui/gui/gui-client-report.ts, docs/cli.md, test/report-data.test.ts, test/report.test.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 

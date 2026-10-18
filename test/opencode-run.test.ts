@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runAgent } from "../src/agent/run-agent.js";
 import { opencodeBackend } from "../src/agent/opencode/opencode-backend.js";
+import { writeOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
 import { readSessions, recordSession } from "../src/agent/session-ledger.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { PiRunOptions } from "../src/agent/run-agent.js";
@@ -83,6 +84,46 @@ test("runAgent runs the opencode backend on a fake, exports after the run, and f
     assert.match(raw, /"type":"run_usage"/);
     const native = fs.readFileSync(run.nativeLogFile, "utf8");
     assert.match(native, /"type":"step_finish"/, "the native log holds opencode's own lines");
+  });
+});
+
+test("the catalog supplies the thinking variant and the image-input answer (part 6d/7)", async () => {
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  // A fixture cache: the free model gets effort levels [low, high] and image input; a model
+  // with no entry is simply absent.
+  writeOpencodeCache(dir, {
+    fetchedAt: Date.now(),
+    models: {
+      "opencode/deepseek-v4.1-flash-free": { free: true, efforts: ["low", "high"], images: true },
+    },
+  });
+  await withOpencodeReplay(opencodeCaptures.editRun, async (fake) => {
+    // high is among the fixture's efforts, so the invocation rides it as #high.
+    let run = opencodeRun(dir, {
+      config: { ...defaultConfig(), agent: "opencode", model: "opencode/deepseek-v4.1-flash-free", thinking: "high" },
+    });
+    let result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.equal(argValue(readRunBlocks(fake.argvFile)[0]!, "--model"), "opencode/deepseek-v4.1-flash-free#high");
+
+    // medium is not among the fixture's efforts, so no variant is passed.
+    run = opencodeRun(dir, {
+      config: { ...defaultConfig(), agent: "opencode", model: "opencode/deepseek-v4.1-flash-free", thinking: "medium" },
+    });
+    result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.equal(argValue(readRunBlocks(fake.argvFile)[1]!, "--model"), "opencode/deepseek-v4.1-flash-free");
+
+    // The same cache answers imageInput, read from the process's cwd at that root.
+    const cwd = process.cwd();
+    try {
+      process.chdir(fs.realpathSync(dir));
+      assert.equal(opencodeBackend.imageInput!("deepseek-v4.1-flash-free"), true, "a cataloged image model reads images");
+      assert.equal(opencodeBackend.imageInput!("deepseek-v4.1-flash-unknown"), false, "a model missing from the cache is blind");
+    } finally {
+      process.chdir(cwd);
+    }
   });
 });
 

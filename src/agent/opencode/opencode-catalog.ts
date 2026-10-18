@@ -163,7 +163,7 @@ export function observeOpencodeRun(
   run: { model: string; costUsd: number },
   opts: OpencodeObserveOptions,
 ): OpencodeCatalogCache | null {
-  const cache = loadOpencodeCache(root);
+  const cache = readOpencodeCache(root);
   const entry = cache.models[run.model];
   if (entry === undefined || !entry.free || entry.billedAt !== undefined || run.costUsd <= 0) {
     return null;
@@ -176,8 +176,10 @@ export function observeOpencodeRun(
 }
 
 /** Read the cached catalog, or an empty one (fetchedAt 0, no models) when the file is missing
- * or malformed — the harness's no-data policy, so a torn write reads as "needs a refresh". */
-function loadOpencodeCache(root: string): OpencodeCatalogCache {
+ * or malformed — the harness's no-data policy, so a torn write reads as "needs a refresh".
+ * Exported so the opencode backend's adapter (part 6d/7) and doctor can read the same cache
+ * without triggering a network fetch. */
+export function readOpencodeCache(root: string): OpencodeCatalogCache {
   const existing = readJsonFile<Partial<OpencodeCatalogCache>>(opencodeModelsPath(root));
   if (existing !== null && typeof existing.fetchedAt === "number" && existing.models !== undefined && typeof existing.models === "object" && !Array.isArray(existing.models)) {
     return {
@@ -230,7 +232,7 @@ interface OpencodeRefreshOptions {
 export async function refreshOpencodeCatalog(root: string, opts: OpencodeRefreshOptions): Promise<OpencodeCatalogCache> {
   const now = opts.now !== undefined ? opts.now() : Date.now();
   const version = opts.cliVersion !== undefined ? opts.cliVersion : readCliVersion();
-  const current = loadOpencodeCache(root);
+  const current = readOpencodeCache(root);
   const fresh =
     current.fetchedAt !== 0 &&
     now - current.fetchedAt < CATALOG_CACHE_TTL_MS &&

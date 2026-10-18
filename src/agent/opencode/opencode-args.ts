@@ -42,7 +42,8 @@ export const HARNESS_OPENCODE_FLAGS: ReadonlySet<string> = new Set([
 
 /** The opencode argv builder's inputs. `model` is the concrete resolved id (a tier map is
  * resolved before the seam, as claudeArgs's view is). `variant` is passed only when OpenCode's
- * catalog lists it for the model; part 6/7 supplies that list, until then callers pass none.
+ * catalog lists it for the model; part 6d/7 supplies that list from the catalog, and the
+ * backend drops a level the catalog does not list.
  * `sessionId` is the resolved session choice from part 4/7's ledger. `title` names the session
  * so OpenCode skips its hidden title-generation model call (finding 6). */
 export interface OpencodeArgOptions {
