@@ -124,6 +124,15 @@ export function applyKey(
   return { text, cursor: c };
 }
 
+/** Six parsers below signal an invalid value through the same `{ ok: false, error }` arm
+ * of a `{ ok: true, … } | { ok: false, error: string }` result. `fail` is that arm's one
+ * constructor — the same-named error-arm helper quiet-hours.ts's parseQuietHours uses — so
+ * the error shape each parser returns cannot drift from the others (a prior copy pasted the
+ * same rejection line twice before the shape had a single home). */
+function fail(error: string): { ok: false; error: string } {
+  return { ok: false, error };
+}
+
 /** Parse a daily cost budget cap from the TUI's Ctrl+B edit line: empty → 0 (disabled —
  * empty means "no cap" on save), otherwise a plain decimal number ≥ 0 with fractional
  * dollars allowed ("25", "12.34", ".5") — hex and exponent notation are rejected, so the
@@ -153,10 +162,7 @@ export function parseBudgetInput(
     !/^\d*\.?\d+$/.test(t) ||
     !Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER
   )
-    return {
-      ok: false,
-      error: `budget must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}${gotSuffix(text)}`,
-    };
+    return fail(`budget must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}${gotSuffix(text)}`);
   return { ok: true, value: n };
 }
 
@@ -166,7 +172,7 @@ export function parseBudgetInput(
  * drift between the five parsers. Returns the error result when `ms` exceeds the cap, else
  * null so the caller keeps its ok result. */
 function overDurationCap(ms: number, verb: string): { ok: false; error: string } | null {
-  return ms > PAUSE_FOR_MAX_MS ? { ok: false, error: `${verb} is capped at 90d` } : null;
+  return ms > PAUSE_FOR_MAX_MS ? fail(`${verb} is capped at 90d`) : null;
 }
 
 /** Parse the TUI's Ctrl+L defer line: empty → null (clear the pending delay; deliver now),
@@ -183,7 +189,7 @@ export function parseDeferInput(
   if (t === "") return { ok: true, ms: null };
   const ms = parseDurationMs(t);
   if (ms === null)
-    return { ok: false, error: `send later needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(text)}` };
+    return fail(`send later needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(text)}`);
   // The dashboard composer's server check caps the same duration at the same limit, so the
   // TUI refuses it inline with the identical wording instead of queueing a marker past the cap.
   const over = overDurationCap(ms, "send later");
@@ -220,10 +226,7 @@ export function parseRolePauseInput(
   if (t === "") return { ok: true };
   const ms = parseDurationMs(t);
   if (ms === null) {
-    return {
-      ok: false,
-      error: "a role pause takes only a duration like 45m or 2h (empty pauses until resumed) — reasons are team-wide, use Ctrl+F",
-    };
+    return fail("a role pause takes only a duration like 45m or 2h (empty pauses until resumed) — reasons are team-wide, use Ctrl+F");
   }
   const over = overDurationCap(ms, "pause");
   if (over) return over;
@@ -241,10 +244,7 @@ export function parseRoleWakeInput(
   if (t.toLowerCase() === "cancel") return { ok: true, cancel: true };
   const ms = parseDurationMs(t);
   if (ms === null) {
-    return {
-      ok: false,
-      error: 'a role wake takes a duration like 45m or 2h, "cancel" to drop its scheduled wakes, or empty to wake now',
-    };
+    return fail('a role wake takes a duration like 45m or 2h, "cancel" to drop its scheduled wakes, or empty to wake now');
   }
   const over = overDurationCap(ms, "wake");
   if (over) return over;
@@ -256,7 +256,7 @@ export function parseRoleWakeInput(
  * must never mean "stop now". */
 export function parseStopInInput(text: string): { ok: true; inMs: number } | { ok: false; error: string } {
   const ms = parseDurationMs(text.trim());
-  if (ms === null) return { ok: false, error: "a scheduled stop takes a duration like 45m or 2h — Esc to cancel" };
+  if (ms === null) return fail("a scheduled stop takes a duration like 45m or 2h — Esc to cancel");
   const over = overDurationCap(ms, "stop");
   if (over) return over;
   return { ok: true, inMs: ms };
@@ -272,7 +272,7 @@ export function parseRolePromptInput(
   text: string,
 ): { ok: true; value: string } | { ok: false; error: string } {
   const t = text.trim();
-  if (!t) return { ok: false, error: "prompt text is empty — type something, or Esc to cancel" };
+  if (!t) return fail("prompt text is empty — type something, or Esc to cancel");
   return { ok: true, value: t };
 }
 
