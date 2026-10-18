@@ -85,11 +85,11 @@ function readDoc(p: string): { doc: string } | { error: string } {
 /** The single-file check's read prologue, shared by checkFixClaims and checkStrandedPlans:
  * an absent file is that check's own "nothing to verify" ok outcome, an unreadable one a warn
  * naming the file. Returns the document, or the outcome the caller should return as-is. */
-function readDocChecked(p: string, file: string, missingDetail: string): { doc: string } | { outcome: CheckOutcome } {
-  if (!fs.existsSync(p)) return { outcome: okOutcome(missingDetail) };
+function readDocChecked(p: string, file: string, missingDetail: string): string | CheckOutcome {
+  if (!fs.existsSync(p)) return okOutcome(missingDetail);
   const read = readDoc(p);
-  if ("error" in read) return { outcome: warnOutcome(`cannot read ${file} — ${read.error}`) };
-  return read;
+  if ("error" in read) return warnOutcome(`cannot read ${file} — ${read.error}`);
+  return read.doc;
 }
 
 /** Fix claims — the standalone half of the merge gate's false-fix check (src/verdict/fix-claim.ts):
@@ -103,9 +103,8 @@ function readDocChecked(p: string, file: string, missingDetail: string): { doc: 
  * legitimate. A warn, never a fail (the checkFallbackModel precedent): a suspicious record is
  * operator signal, not a broken environment. */
 export function checkFixClaims(root: string): CheckOutcome {
-  const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
-  if ("outcome" in read) return read.outcome;
-  const { doc } = read;
+  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  if (typeof doc !== "string") return doc;
   // One parse feeds every record's title and body: bugEntryBody re-parsed the whole document
   // per heading, and BUGS.md grows without bound, so the newest-10 scan paid 1 + 10 full-document
   // walks where one suffices.
@@ -140,9 +139,8 @@ export function checkFixClaims(root: string): CheckOutcome {
  * the primary checkout IS main's tree — like checkFixClaims. A warn, never a fail: a misplaced
  * heading is operator signal, not a broken environment. */
 export function checkStrandedPlans(root: string): CheckOutcome {
-  const read = readDocChecked(path.join(root, "PLANS.md"), "PLANS.md", "no PLANS.md — nothing to verify");
-  if ("outcome" in read) return read.outcome;
-  const { doc } = read;
+  const doc = readDocChecked(path.join(root, "PLANS.md"), "PLANS.md", "no PLANS.md — nothing to verify");
+  if (typeof doc !== "string") return doc;
   const stranded = strandedPlanEntries(doc);
   const clean = "no plan headings filed under the wrong PLANS.md section";
   if (stranded.length === 0) return okOutcome(clean);
@@ -368,8 +366,8 @@ function sinceWindowMs(sinces: readonly number[]): number {
  * the checkStalledPlans/checkRefusedEntries precedent: a question awaiting a human is
  * operator signal, not a broken environment. */
 export function checkStaleQuestions(root: string): CheckOutcome {
-  const read = readDocChecked(path.join(root, "QUESTIONS.md"), "QUESTIONS.md", "no QUESTIONS.md — nothing to verify");
-  if ("outcome" in read) return read.outcome;
+  const doc = readDocChecked(path.join(root, "QUESTIONS.md"), "QUESTIONS.md", "no QUESTIONS.md — nothing to verify");
+  if (typeof doc !== "string") return doc;
   const stale = openQuestionEntries(root).flatMap((q) => {
     const stamp = questionFilingDate(q.title);
     if (stamp === null) return [];
@@ -389,8 +387,8 @@ export function checkStaleQuestions(root: string): CheckOutcome {
  * (checkRefusedEntries names it), a waiting bug is skipped (checkWaitingBugs names it) and so is
  * an undated heading. A warn, never a fail. */
 export function checkStaleBugs(root: string): CheckOutcome {
-  const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
-  if ("outcome" in read) return read.outcome;
+  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  if (typeof doc !== "string") return doc;
   const stale = openBugEntries(root).flatMap((entry, index) => {
     if (refusalNote(entry.body) !== null || waitingNote(entry.body) !== null) return [];
     const stamp = filingDate(entry.title);
@@ -448,8 +446,8 @@ export function failureMentions(events: readonly HarnessEvent[], name: string, s
  * date, so a same-day failure cannot be told from the one it was written about). A warn is
  * never a fail, and doctor writes nothing to BUGS.md. */
 export function checkWaitingBugs(root: string): CheckOutcome {
-  const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
-  if ("outcome" in read) return read.outcome;
+  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  if (typeof doc !== "string") return doc;
   const held = openBugEntries(root).flatMap((entry, index) => {
     const note = waitingNote(entry.body);
     if (note === null || refusalNote(entry.body) !== null) return [];
@@ -489,9 +487,9 @@ export function checkWaitingBugs(root: string): CheckOutcome {
  * already quotes the same test, which means the regression is filed. A warn, never a fail, and
  * doctor writes nothing to BUGS.md. */
 export function checkRegressedFixes(root: string): CheckOutcome {
-  const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
-  if ("outcome" in read) return read.outcome;
-  const candidates = fixedEntries(read.doc).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
+  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  if (typeof doc !== "string") return doc;
+  const candidates = fixedEntries(doc).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
     const name = quotedTestName(entry.title);
     const date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/);
     if (name === null || date === null) return [];
