@@ -102,7 +102,12 @@ test("claudeArgs rejects an unknown thinking level, including Object.prototype k
 });
 
 test("claudeArgs rejects a passthrough arg that repeats a flag tumwater sets", () => {
-  assert.throws(() => claudeArgs(opts({ args: ["--model=x"] })), /repeats a flag tumwater sets/);
+  // The message names the reserved flag it collided with and the fix, so a `--flag=value`
+  // spelling still says which harness-set flag to drop.
+  assert.throws(
+    () => claudeArgs(opts({ args: ["--model=x"] })),
+    /repeats a flag tumwater sets \(--model is reserved\) — drop it/,
+  );
   assert.throws(() => claudeArgs(opts({ args: ["-p"] })), /repeats a flag tumwater sets/);
   // Every flag claudeArgs itself emits is reserved, including the ones the builder appends
   // after the model: a passthrough repeating `--append-system-prompt-file` is appended last

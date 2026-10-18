@@ -18,7 +18,13 @@ export function appendPassthroughArgs(
     // Match the flag itself even when it carries its value as `--flag=value`.
     const flag = arg.split("=", 1)[0] as string;
     if (reserved.has(flag)) {
-      throw new Error(`${moduleName}: passthrough arg ${JSON.stringify(arg)} repeats a flag tumwater sets`);
+      // Name the reserved flag (the arg may carry it as `--flag=value`, so `flag` here is the
+      // normalized token) and the fix, so the operator knows exactly which passthrough to drop
+      // rather than which of several harness-set flags the arg collided with.
+      throw new Error(
+        `${moduleName}: passthrough arg ${JSON.stringify(arg)} repeats a flag tumwater sets (` +
+          `${flag} is reserved) — drop it from your passthrough args`,
+      );
     }
     args.push(arg);
   }
