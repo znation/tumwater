@@ -122,6 +122,15 @@ export const POSITIVE_INTEGER: NumberRule = {
 };
 export const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of at least 1" };
 
+/** The upper bound every seconds field that feeds a ×1000 duration shares: 2147483 s
+ * × 1000 stays inside node's signed-32-bit setTimeout/setInterval range (2^31−1 ms,
+ * about 24.8 days). Above it node clamps the delay to 1ms — a one-zero typo like
+ * `"runTimeoutSeconds": 1e300` became Infinity ms, and every pi run died the moment it
+ * started (BUGS.md 2026-10-03). One home for the bound, shared by the config schema's
+ * duration rules (config-validation.ts) and checkMinRunInterval (config-keys.ts), so the
+ * dashboard's interval editor cannot drift from the schema's bound. */
+export const MAX_DURATION_SECONDS = 2147483;
+
 /** Shared known-role guard for the per-role config sections (`roles.<id>` entries and
  * `maxDailyCostUsdPerRole.<id>` keys): an id outside the role catalog and customRoles cannot
  * work — a `roles` typo spawns a phantom loop that errors every tick forever; a caps typo

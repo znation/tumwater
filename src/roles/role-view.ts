@@ -11,7 +11,7 @@
  * team stopped and never throws on a torn repo. */
 
 import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
-import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe } from "../config/config.js";
+import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe, parseJsonConfig } from "../config/config.js";
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../team/team-state.js";
@@ -31,10 +31,10 @@ import { roleImageInfo } from "../agent/image-input.js";
 import { readImageProbeCache } from "../doctor/image-probe.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { claudeWindowEntries, readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
-import { roleNotesPath } from "../paths.js";
+import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
-import { finiteNumber } from "../files/json-object.js";
+import { finiteNumber, objectOrEmpty } from "../files/json-object.js";
 import { canonicalRoleId } from "./legacy-role-ids.js";
 import { orchestratorAlive, readOrchestratorInfo, type ChainTierInfo } from "../team/orchestrator-info.js";
 
@@ -113,6 +113,10 @@ export interface RoleViewPayload {
   chainStep: ChainTierInfo | null;
   /** The effective min-tick interval: the role's override or the global value. */
   minRunIntervalSeconds: number;
+  /** The role's own min-tick-interval override (roles.<base>.minRunIntervalSeconds), present
+   * only when set — so a payload without one renders the team default and every existing
+   * `role --json` golden stays byte-identical. */
+  minRunIntervalOverride?: number;
   /** The roles.<id>.instructions override verbatim, or null when unset. */
   instructions: string | null;
   /** The role's own find-something-to-do text verbatim (a custom loop's `task`), or null
@@ -167,6 +171,21 @@ export interface RoleViewPayload {
    * spend today, `roleIds` the instances sharing the cap. Absent when no cap above 0 applies
    * (and for the director), so a team without per-role caps keeps its JSON shape. */
   dailyCap?: { capUsd: number; spentUsd: number; over: boolean; roleIds: string[] };
+}
+
+/** The roles.<base>.<field> value the FILE actually holds, or undefined when the file never
+ * set that field. Needed only for the seeded per-role fields: overlayDefaults fills every
+ * built-in role's minRunIntervalSeconds from config.ts's catalog, so the merged config cannot
+ * tell an operator-set override from a seeded default. This reads the same raw file view
+ * unsetConfigKey judges presence against (configPath + CONFIG_BASENAME + objectOrEmpty), so
+ * the override tag and the drawer's clear path agree with what unsetting can actually remove. */
+function rawRoleField(root: string, roleId: string, field: string): unknown {
+  const { raw } = parseJsonConfig(configPath(root), CONFIG_BASENAME);
+  const rawRoles = objectOrEmpty(raw).roles as Record<string, unknown> | undefined;
+  const entry = rawRoles && typeof rawRoles === "object" ? rawRoles[roleId] : undefined;
+  const obj = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : undefined;
+  if (!obj) return undefined;
+  return obj[field];
 }
 
 /** Collect one loop's inspection payload. `modelsPath` overrides pi's model definitions location
@@ -300,6 +319,15 @@ export function rolePayload(
   // over the base role's instances, so the page cannot disagree with the hold. A cap of 0
   // disables (roleCapPaused's rule) and the director is exempt, so neither carries the field.
   const base = baseRoleOf(role);
+  // The roles.<base>.minRunIntervalSeconds override, resolved through the base role like the
+  // cap, quiet hours and instructions — an instance id shows (and can edit) the override its
+  // runs carry. Presence is judged against the FILE (rawRoleField), not the merged cfg:
+  // overlayDefaults seeds every built-in role's minRunIntervalSeconds from config.ts's catalog,
+  // so the merged value would make steward/qa/... always look overridden and the drawer's
+  // clear a no-op. undefined when unset, so the spread below drops it (the payload stays
+  // byte-identical when there is no override).
+  const rawInterval = rawRoleField(root, base, "minRunIntervalSeconds");
+  const minRunIntervalOverride = typeof rawInterval === "number" ? rawInterval : undefined;
   const capUsd = cfg.maxDailyCostUsdPerRole?.[base];
   let dailyCap: RoleViewPayload["dailyCap"];
   if (role !== DIRECTOR_ROLE && typeof capUsd === "number" && Number.isFinite(capUsd) && capUsd > 0) {
@@ -359,6 +387,7 @@ export function rolePayload(
     chainStep,
     ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
+    ...(minRunIntervalOverride !== undefined ? { minRunIntervalOverride } : {}),
     // The roles.<base>.instructions override verbatim — resolved through the base role like
     // the cap and quiet hours, so an instance id shows (and can edit) the override its runs
     // carry (tick-prompt reads config.roles[base]); null when unset.

@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleInstructions, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleInterval, handleRoleInstructions, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -888,6 +888,116 @@ test("handleRoleQuietHours clearing a key the file never set writes nothing", as
   assert.equal(captured.status, 200);
   // Clearing an absent map entry is a no-op success — the file bytes stay identical.
   assert.equal(fs.readFileSync(configPath(root), "utf8"), before);
+});
+function serveRoleInterval(root: string, body: unknown) {
+  return captureJson((res) => handleRoleInterval(fakeReq(JSON.stringify(body)), res, root));
+}
+
+// POST /api/role-interval: the role drawer's min run interval editor. Writes through the
+// CLI's own setConfigKey dotted path (per-key checkMinRunInterval + whole-config
+// validateConfig), so the browser cannot drift from `tumwater config set
+// roles.<id>.minRunIntervalSeconds`; null/empty/whitespace clears through unsetConfigKey.
+test("handleRoleInterval writes the role's override through setConfigKey and answers 200", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { minRunIntervalSeconds: 20 });
+  const { captured, data } = await serveRoleInterval(root, { role: "feature", minRunIntervalSeconds: 300 });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, role: "feature", minRunIntervalSeconds: 300, message: "feature: min run interval set to 300s" });
+  // The file on disk is what the scheduler polls — the write went through setConfigKey.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { feature: { minRunIntervalSeconds: number } }).feature.minRunIntervalSeconds, 300);
+});
+
+test("handleRoleInterval maps an instance id to its base role's override and the director is accepted", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { instances: 2 } } });
+  const inst = await serveRoleInterval(root, { role: "feature-2", minRunIntervalSeconds: 240 });
+  assert.equal(inst.captured.status, 200);
+  // An instance id writes roles.feature.minRunIntervalSeconds (the key its runs carry).
+  assert.deepEqual(inst.data, { ok: true, role: "feature", minRunIntervalSeconds: 240, message: "feature: min run interval set to 240s" });
+  // The director ticks on the same clock — no exemption like the cap's.
+  const dir = await serveRoleInterval(root, { role: "director", minRunIntervalSeconds: 60 });
+  assert.equal(dir.captured.status, 200);
+  assert.deepEqual(dir.data, { ok: true, role: "director", minRunIntervalSeconds: 60, message: "director: min run interval set to 60s" });
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  const roles = onDisk.roles as { feature: { minRunIntervalSeconds: number }; director: { minRunIntervalSeconds: number } };
+  assert.equal(roles.feature.minRunIntervalSeconds, 240);
+  assert.equal(roles.director.minRunIntervalSeconds, 60);
+});
+
+test("handleRoleInterval clears on null/empty/whitespace and rejects bad input without writing", async () => {
+  const root = tmpdir();
+  const seed = () => writeJsonFile(configPath(root), { roles: { feature: { minRunIntervalSeconds: 300 } } });
+  seed();
+  // Each empty form clears: null (the drawer posts for an empty input), "" and whitespace.
+  for (const empty of [null, "", "   "]) {
+    const cleared = await serveRoleInterval(root, { role: "feature", minRunIntervalSeconds: empty });
+    assert.equal(cleared.captured.status, 200);
+    assert.deepEqual(cleared.data, { ok: true, role: "feature", message: "feature: min run interval cleared" });
+    let onDisk = readJson(configPath(root)) as Record<string, unknown>;
+    assert.equal((onDisk.roles as { feature?: Record<string, unknown> } | undefined)?.feature?.minRunIntervalSeconds, undefined);
+    seed(); // re-seed for the next empty form
+  }
+  // A bad value is refused with the per-role dotted key named.
+  for (const bad of [-1, 2147484, "abc", { n: 1 }]) {
+    const rej = await serveRoleInterval(root, { role: "feature", minRunIntervalSeconds: bad });
+    assert.equal(rej.captured.status, 400);
+    assert.match((rej.data as { error: string }).error, /roles\.feature\.minRunIntervalSeconds/);
+  }
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { feature?: Record<string, unknown> } | undefined)?.feature?.minRunIntervalSeconds, 300, "a refused write never touches the file");
+});
+
+test("handleRoleInterval clears a key the file never set without writing and refuses a missing field or unknown role", async () => {
+  const root = tmpdir();
+  const before = Buffer.from(JSON.stringify({ minRunIntervalSeconds: 20 }, null, 2) + "\n");
+  fs.mkdirSync(path.dirname(configPath(root)), { recursive: true });
+  fs.writeFileSync(configPath(root), before);
+  // Unsetting a key the file never set is a no-op: the file's bytes stay identical.
+  const cleared = await serveRoleInterval(root, { role: "feature", minRunIntervalSeconds: null });
+  assert.equal(cleared.captured.status, 200);
+  const after = fs.readFileSync(configPath(root));
+  assert.equal(after.equals(before), true, "clearing a never-set key leaves the file byte-identical");
+  // A missing role or a missing value (absent, not null) is refused.
+  const noRole = await serveRoleInterval(root, { minRunIntervalSeconds: 300 });
+  assert.equal(noRole.captured.status, 400);
+  assert.match((noRole.data as { error: string }).error, /role required/);
+  const noValue = await serveRoleInterval(root, { role: "feature" });
+  assert.equal(noValue.captured.status, 400);
+  assert.match((noValue.data as { error: string }).error, /minRunIntervalSeconds required/);
+  // An unknown role id is refused through validateConfig, writing nothing.
+  const fresh = tmpdir();
+  const unknown = await serveRoleInterval(fresh, { role: "nope", minRunIntervalSeconds: 300 });
+  assert.equal(unknown.captured.status, 400);
+  assert.equal(fs.existsSync(configPath(fresh)), false, "a refused write never creates the file");
+  // Clearing an unknown role is refused too — unsetConfigKey's no-op map path (a role the
+  // file never holds) skips validateConfig, so the clear branch checks the id explicitly.
+  const fresh2 = tmpdir();
+  const unknownClear = await serveRoleInterval(fresh2, { role: "nope", minRunIntervalSeconds: null });
+  assert.equal(unknownClear.captured.status, 400);
+  assert.match((unknownClear.data as { error: string }).error, /unknown role "nope"/);
+  assert.equal(fs.existsSync(configPath(fresh2)), false, "a refused clear never creates the file");
+});
+
+test("handleRoleInterval writes and clears a seeded built-in role's override the same way", async () => {
+  // qa is a built-in whose catalog seed fills roles.qa.minRunIntervalSeconds (7200) in the
+  // merged config even when the file never sets it — the drawer's tag/clear path must not
+  // rely on that seed. The route writes through setConfigKey/unsetConfigKey: setting qa's
+  // override lands in the file, and clearing a key the file never set is a real no-op that
+  // keeps the seeded value in the merged view but leaves the file bytes identical.
+  const root = tmpdir();
+  const before = Buffer.from(JSON.stringify({ minRunIntervalSeconds: 20 }, null, 2) + "\n");
+  fs.mkdirSync(path.dirname(configPath(root)), { recursive: true });
+  fs.writeFileSync(configPath(root), before);
+  // Clearing a never-set built-in's override writes nothing (no-op success).
+  const cleared = await serveRoleInterval(root, { role: "qa", minRunIntervalSeconds: null });
+  assert.equal(cleared.captured.status, 200);
+  assert.equal(fs.readFileSync(configPath(root)).equals(before), true, "a built-in's never-set clear is a byte-identical no-op");
+  // Setting it writes roles.qa.minRunIntervalSeconds.
+  const set = await serveRoleInterval(root, { role: "qa", minRunIntervalSeconds: 300 });
+  assert.equal(set.captured.status, 200);
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { qa: { minRunIntervalSeconds: number } }).qa.minRunIntervalSeconds, 300);
 });
 
 function serveRoleEnable(root: string, body: unknown) {

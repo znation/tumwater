@@ -37,6 +37,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     capEditing = null;
     instructionsEditing = null;
     quietEditing = null;
+    intervalEditing = null;
     disarmNoteClear();
     if (wasLoop && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
     drawerTicks = null;
@@ -333,7 +334,26 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       const window = view.billing === "subscription" && view.billingWindow ? " (" + view.billingWindow + " window)" : "";
       rows.push(kvRow("Billing", (view.billing === "api" ? "API" : view.billing) + window));
     }
-    if (typeof view.minRunIntervalSeconds === "number") rows.push(kvRow("Min run interval", view.minRunIntervalSeconds + "s"));
+    // The min run interval (rolePayload's minRunIntervalSeconds), worded like role-render.ts's
+    // Min run interval line, plus a control to set/clear the per-role override — the last
+    // per-role hold the drawer edits. Shown whenever the payload names an interval (always —
+    // the effective value is the role's override or the team default); the body tags whether
+    // the shown value is the role's own override or the team default. While the editor is open
+    // for this role, an input prefilled with the override (empty when none) and Save/Discard
+    // replace the sentence, mirroring the daily-cap editor's markup; a role with no override
+    // still seeds an empty input, so an empty buffer on Save clears.
+    if (typeof view.minRunIntervalSeconds === "number") {
+      const editing = intervalEditing && intervalEditing.role === role;
+      const intervalBody = String(view.minRunIntervalSeconds) + "s" +
+        (typeof view.minRunIntervalOverride === "number" ? " (override)" : " (team default)");
+      const seed = intervalEditing ? intervalEditing.value : null;
+      const intervalControl = editing
+        ? "<input id='intervaleditinput' type='number' min='0' step='1' value='" + (seed === "" || seed == null ? "" : String(seed)) + "' placeholder='team default'>" +
+          "<div><button type='button' class='btn btn-sm btn-primary' data-act='interval-save' data-arg='" + esc(role) + "'>Save</button> " +
+          "<button type='button' class='btn btn-sm' data-act='interval-discard' data-arg='" + esc(role) + "'>Discard</button></div>"
+        : "<button type='button' class='btn btn-sm' data-act='interval-edit' data-arg='" + esc(role) + "'>" + (typeof view.minRunIntervalOverride === "number" ? "Edit" : "Set interval") + "</button>";
+      rows.push("<div><dt>Min run interval</dt><dd title='" + esc(intervalBody) + "'>" + esc(intervalBody) + intervalControl + "</dd></div>");
+    }
     // The windows governing the loop, worded like role-render.ts's Quiet hours line; the end time
     // mirrors quietWindowEnd (browser code cannot import it). A non-director role's own window
     // is an always-shown editable row (the Daily cap row's rationale: the control sits where
@@ -425,6 +445,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let capEditing = null; // { role, value }
   let instructionsEditing = null; // { role, text }
   let quietEditing = null; // { role, window }
+  let intervalEditing = null; // { role, value } — value is the seeded override (number) or "" when none
   function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
   // The notebook clear and the backlog entry cancel each build a two-click confirm slot from
   // the shared confirmSlot factory (defined in the loops splice, an earlier one), so the arm,
@@ -439,6 +460,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function stopCapEdit() { capEditing = null; repaintDrawerRole(); }
   function startInstructionsEdit(role, text) { instructionsEditing = { role, text: String(text ?? "") }; repaintDrawerRole(); }
   function stopInstructionsEdit() { instructionsEditing = null; repaintDrawerRole(); }
+  function startIntervalEdit(role, value) { intervalEditing = { role, value: value === "" || value == null ? "" : Number(value) }; repaintDrawerRole(); }
+  function stopIntervalEdit() { intervalEditing = null; repaintDrawerRole(); }
   function startQuietEdit(role, window) { quietEditing = { role, window: String(window ?? "") }; repaintDrawerRole(); }
   function stopQuietEdit() { quietEditing = null; repaintDrawerRole(); }
   // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so

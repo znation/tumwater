@@ -456,6 +456,58 @@ test("quiet-edit seeds the editor from the own window, quiet-save posts it, quie
   assert.deepEqual(events, ["stop"]);
 });
 
+test("interval-edit opens the editor, interval-save posts the interval (empty input posts null), interval-discard posts nothing", () => {
+  const posts: unknown[] = [];
+  const flashes: string[] = [];
+  const events: string[] = [];
+  const field = { value: "300", validity: { badInput: false } };
+  const intervalState: { current: unknown } = { current: null };
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      drawerRole: { role: "clean", state: "ok", view: { minRunIntervalOverride: 300 } },
+      $: (id: string) => (id === "intervaleditinput" ? field : null),
+      startIntervalEdit: (r: string, v: number | string) => events.push(`edit ${r} ${v}`),
+      stopIntervalEdit: () => events.push("stop"),
+      intervalEditing: intervalState,
+      showFlash: (m: string) => flashes.push(m),
+      loadDrawerRole: (r: string) => events.push(`load ${r}`),
+      postAction: (path: string, body: unknown, done: (d: unknown) => string) => {
+        posts.push([path, body]);
+        // postAction toasts the callback's message — record it as the flash.
+        const msg = done({ message: "clean: min run interval set to 300s" });
+        flashes.push(msg);
+        events.push(msg);
+      },
+    },
+  );
+  // interval-edit seeds the editor with the current override.
+  scope.runAct("interval-edit", "clean");
+  assert.deepEqual(events, ["edit clean 300"]);
+  // interval-save posts the interval and flashes the server's message.
+  scope.runAct("interval-save", "clean");
+  assert.deepEqual(posts[0], ["/api/role-interval", { role: "clean", minRunIntervalSeconds: 300 }]);
+  assert.deepEqual(flashes[0], "clean: min run interval set to 300s");
+  assert.deepEqual(events.slice(-2), ["load clean", "clean: min run interval set to 300s"]);
+  // An empty input posts null (the server clears the override).
+  field.value = "  ";
+  posts.length = 0;
+  scope.runAct("interval-save", "clean");
+  assert.deepEqual(posts[0], ["/api/role-interval", { role: "clean", minRunIntervalSeconds: null }]);
+  // A non-numeric field flashes the number error and posts nothing.
+  flashes.length = 0;
+  posts.length = 0;
+  field.value = "abc";
+  field.validity.badInput = true;
+  scope.runAct("interval-save", "clean");
+  assert.deepEqual(posts, []);
+  assert.deepEqual(flashes, ["error: the interval must be a number of 0 or more — leave it empty for the team default"]);
+  // interval-discard closes the editor, posting nothing.
+  events.length = 0;
+  scope.runAct("interval-discard", "clean");
+  assert.deepEqual(events, ["stop"]);
+});
+
 test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
   const log: string[] = [];
   const calls: string[] = [];

@@ -45,6 +45,7 @@ import {
   NON_NEGATIVE,
   NON_NEGATIVE_OR_DISABLED,
   DOLLAR_CAP,
+  MAX_DURATION_SECONDS,
   POSITIVE,
   POSITIVE_INTEGER,
   show,
@@ -62,12 +63,6 @@ import {
  * lives in config-field-checks.ts; this module is the section-by-section rules plus the
  * cross-field checks, and the one export gate (validateConfig) for them. */
 
-/** The upper bound every seconds field that feeds a ×1000 duration shares: 2147483 s
- * × 1000 stays inside node's signed-32-bit setTimeout/setInterval range (2^31−1 ms,
- * about 24.8 days). Above it node clamps the delay to 1ms — a one-zero typo like
- * `"runTimeoutSeconds": 1e300` became Infinity ms, and every pi run died the moment it
- * started (BUGS.md 2026-10-03). */
-const MAX_DURATION_SECONDS = 2147483;
 const DURATION_POSITIVE: NumberRule = {
   ok: (n) => n > 0 && n <= MAX_DURATION_SECONDS,
   what: `a number greater than 0, at most ${MAX_DURATION_SECONDS}`,

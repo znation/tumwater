@@ -10,7 +10,7 @@
  * writers and the read side show. */
 import { AGENT_KEYS, CLAUDE_AGENT_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
 import { typoSuffix } from "../text/suggest.js";
-import { POSITIVE_INTEGER, show } from "./config-field-checks.js";
+import { MAX_DURATION_SECONDS, POSITIVE_INTEGER, show } from "./config-field-checks.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
@@ -56,6 +56,26 @@ export function checkProviderConcurrencyCap(value: unknown, key = "maxConcurrent
 export function checkQuietHours(value: unknown, key = "quietHours"): string | null {
   const parsed = parseQuietHours(value, key);
   return parsed.ok ? null : parsed.error;
+}
+
+/** One definition of "a valid min run interval" — the seconds value the team-wide
+ * `minRunIntervalSeconds` and a per-role `roles.<id>.minRunIntervalSeconds` override hold:
+ * a finite number of 0 or more, at most MAX_DURATION_SECONDS (the ×1000 setTimeout bound the
+ * config schema's duration rules share). The dashboard's interval editor runs this before
+ * writing; `config set roles.<id>.minRunIntervalSeconds` leans on validateConfig's
+ * DURATION_NON_NEGATIVE for the CLI path instead, but the two cannot drift on the upper bound
+ * because both read the same MAX_DURATION_SECONDS constant. `key` names the config key in the
+ * error, defaulting to the team-wide `minRunIntervalSeconds`; the per-role path passes
+ * `roles.<id>.minRunIntervalSeconds` so a rejected entry names the key actually set. */
+export function checkMinRunInterval(value: unknown, key = "minRunIntervalSeconds"): string | null {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > MAX_DURATION_SECONDS
+  )
+    return `${key} must be a number of 0 or more, at most ${MAX_DURATION_SECONDS} (got ${show(value)})`;
+  return null;
 }
 
 /** Per-key value validators `config set` (and the dashboard editors that call it) run

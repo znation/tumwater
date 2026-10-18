@@ -33,6 +33,8 @@ interface DrawerScope {
   stopInstructionsEdit(): void;
   startQuietEdit(role: string, window: string): void;
   stopQuietEdit(): void;
+  startIntervalEdit(role: string, value: number | string): void;
+  stopIntervalEdit(): void;
   loadDrawerRole(role: string): Promise<void>;
   toggleLoop(role: string): void;
   toggleEntry(file: string, index: number): void;
@@ -658,7 +660,7 @@ test("the loop drawer renders the Configuration section from the role payload", 
   assert.match(role, /<dt>Model fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 — on fallback since 2m ago \(primary failing: http 429\)<\/dd>/);
   assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 \(free\)<\/dd>/);
   assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription \(five_hour window\)<\/dd>/);
-  assert.match(role, /<dt>Min run interval<\/dt><dd[^>]*>30s<\/dd>/);
+  assert.match(role, /<dt>Min run interval<\/dt><dd title='30s \(team default\)'>30s \(team default\)<button[^>]*data-act='interval-edit'[^>]*>Set interval<\/button><\/dd>/);
   assert.match(role, /<dt>Queued prompts<\/dt><dd[^>]*>4<\/dd>/);
   // Instructions and find text clamp to one line with the verbatim text in the tooltip; the
   // instructions row always renders an Edit button (the control below replaces the sentence).
@@ -920,6 +922,47 @@ test("the instructions row always renders and its editor prefills the override, 
   assert.match(noneRole, /data-act='instructions-edit' data-arg='clean'>Edit<\/button>/);
   none.scope.startInstructionsEdit("clean", "");
   assert.match(none.paintedFor("drawerrole"), /<textarea id='instructionsedittext'[^>]*><\/textarea>/);
+});
+
+// The min run interval row renders for every role whose payload names an interval (always —
+// the effective value is the role's override or the team default), tagging which it is, with
+// a Set interval/Edit control to write the per-role override — the last per-role hold the
+// drawer edits. Its editor prefills the override, seeded empty when none, so Save-with-empty
+// clears.
+test("the min run interval row tags override vs team default and its editor prefills the override", async () => {
+  const withOv = openDrawer(["toggleLoop", "startIntervalEdit", "stopIntervalEdit"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, minRunIntervalSeconds: 300, minRunIntervalOverride: 300 } },
+  });
+  withOv.scope.toggleLoop("clean");
+  await flush();
+  let role = withOv.paintedFor("drawerrole");
+  // An override tags the body and shows an Edit control.
+  assert.match(role, /<dt>Min run interval<\/dt><dd title='300s \(override\)'>300s \(override\)<button[^>]*data-act='interval-edit'[^>]*>Edit<\/button><\/dd>/);
+  // Editing swaps in an input prefilled with the override plus Save/Discard.
+  withOv.scope.startIntervalEdit("clean", 300);
+  role = withOv.paintedFor("drawerrole");
+  assert.match(role, /<input id='intervaleditinput' type='number' min='0' step='1' value='300'/);
+  assert.match(role, /data-act='interval-save' data-arg='clean'/);
+  assert.match(role, /data-act='interval-discard' data-arg='clean'/);
+  // Discarding restores the sentence and button.
+  withOv.scope.stopIntervalEdit();
+  role = withOv.paintedFor("drawerrole");
+  assert.match(role, /data-act='interval-edit' data-arg='clean'>Edit<\/button>/);
+  assert.doesNotMatch(role, /intervaleditinput/);
+
+  // A role with no override tags the team default and offers a Set interval control; once
+  // editing, the input is seeded empty (so Save with an empty buffer clears).
+  const none = openDrawer(["toggleLoop", "startIntervalEdit"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, minRunIntervalSeconds: 20 } },
+  });
+  none.scope.toggleLoop("clean");
+  await flush();
+  const noneRole = none.paintedFor("drawerrole");
+  assert.match(noneRole, /<dt>Min run interval<\/dt><dd title='20s \(team default\)'>20s \(team default\)<button[^>]*data-act='interval-edit'[^>]*>Set interval<\/button><\/dd>/);
+  none.scope.startIntervalEdit("clean", "");
+  assert.match(none.paintedFor("drawerrole"), /<input id='intervaleditinput'[^>]*value=''/);
 });
 
 // A default pi team runs on pi's own saved default model: rolePayload sets `piDefault`

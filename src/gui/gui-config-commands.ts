@@ -7,7 +7,7 @@
  * own `res`.
  */
 import { setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
-import { checkDailyBudgetUsd } from "../config/config-keys.js";
+import { checkDailyBudgetUsd, checkMinRunInterval } from "../config/config-keys.js";
 import { testNotifyHook } from "../cli/notify-command.js";
 import { rejectBadRole, requireConfigKey } from "./gui-args.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -86,6 +86,58 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
   const result = setConfigKey(root, "maxDailyCostUsdPerRole." + baseRole, JSON.stringify(value));
   if (!result.ok) return configKeyError(res, "maxDailyCostUsdPerRole." + baseRole, result);
   sendJson(res, 200, { ok: true, role: baseRole, maxDailyCostUsd: value as number });
+}
+
+/** Handle POST /api/role-interval: the role drawer's min run interval editor sets or clears
+ * one role's override of the team-wide minRunIntervalSeconds — the knob that makes one role
+ * act rarely, distinct from the fleet-wide value. Same body discipline as /api/role-cap
+ * (readPostBody → 400 malformed/non-object, 413 oversized); a null, "" or whitespace-only
+ * value clears the key through unsetConfigKey (so the role falls back to the team-wide
+ * interval), otherwise the write rides the CLI's own setConfigKey dotted path so
+ * checkMinRunInterval and whole-candidate validateConfig (which rejects an unknown role id)
+ * own the final truth. The director is accepted here — it ticks on the same clock, unlike
+ * the cap's director exemption. A bare `feature-2` loop id maps to its base role's override
+ * (baseRoleOf), since the interval is about the role. A write failure is configKeyError's 400
+ * exactly as handleRoleCap reports it. */
+export async function handleRoleInterval(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"role": "feature", "minRunIntervalSeconds": 300}');
+  if (!body) return;
+  const role = body.role;
+  if (typeof role !== "string" || role.trim() === "") {
+    badRequest(res, "role required");
+    return;
+  }
+  const value = body.minRunIntervalSeconds;
+  if (value === undefined) {
+    badRequest(res, "minRunIntervalSeconds required");
+    return;
+  }
+  const base = baseRoleOf(role);
+  // A null, empty or whitespace-only value clears the override, so the role falls back to the
+  // team-wide minRunIntervalSeconds (unsetConfigKey, like the CLI's config unset of the key).
+  if (value === null || (typeof value === "string" && value.trim() === "")) {
+    // unsetConfigKey's no-op map path (a role the file never holds, an unknown id included)
+    // skips validateConfig, so without this the set branch's unknown-role refusal would never
+    // fire on a clear and a bogus id would answer 200 "cleared" — the explicit check mirrors
+    // the CLI's knownRoleIds guard and the role-quiet-hours clear branch.
+    if (rejectBadRole(root, res, role)) return;
+    const clearResult = unsetConfigKey(root, `roles.${base}.minRunIntervalSeconds`);
+    if (!clearResult.ok) return configKeyError(res, `roles.${base}.minRunIntervalSeconds`, clearResult);
+    sendJson(res, 200, { ok: true, role: base, message: `${base}: min run interval cleared` });
+    return;
+  }
+  // The shared rule (finite 0..MAX_DURATION_SECONDS), naming the per-role dotted key so a
+  // rejected write tells the operator which key the drawer would set.
+  const problem = checkMinRunInterval(value, `roles.${base}.minRunIntervalSeconds`);
+  if (problem) {
+    badRequest(res, problem);
+    return;
+  }
+  // setConfigKey takes the raw CLI text; a JSON round-trip of an already-parsed value is
+  // exact, so the shared per-key validator + whole-config validateConfig apply unchanged.
+  const result = setConfigKey(root, `roles.${base}.minRunIntervalSeconds`, JSON.stringify(value));
+  if (!result.ok) return configKeyError(res, `roles.${base}.minRunIntervalSeconds`, result);
+  sendJson(res, 200, { ok: true, role: base, minRunIntervalSeconds: value as number, message: `${base}: min run interval set to ${value as number}s` });
 }
 
 /** Handle POST /api/role-instructions: the role drawer's standing-instructions editor — the

@@ -74,13 +74,36 @@ test("the config file's role overrides resolve: instructions, model pair, interv
   assert.equal(p.model, "model-b");
   assert.equal(p.thinking, "high");
   assert.equal(p.minRunIntervalSeconds, 300);
+  // The override rides along: the drawer can say the shown value is the role's own, not the
+  // team default (the legacy alias minTickIntervalSeconds resolved to the canonical key).
+  assert.equal(p.minRunIntervalOverride, 300);
   // A role without overrides resolves to the top-level pair and the global interval
-  // (bugfix carries no clock override of its own in the defaults).
+  // (bugfix carries no clock override of its own in the defaults) and carries no
+  // minRunIntervalOverride — a payload without one stays byte-identical to before.
   const bugfix = rolePayload(dir, "bugfix", NO_MODELS);
   assert.equal(bugfix.provider, "prov-a");
   assert.equal(bugfix.model, "model-a");
   assert.equal(bugfix.instructions, null);
   assert.equal(bugfix.minRunIntervalSeconds, 20); // defaultConfig's global value
+  assert.equal("minRunIntervalOverride" in bugfix, false);
+});
+
+test("a seeded built-in role with no file override reports no min-run-interval override", () => {
+  // qa is a built-in whose catalog entry seeds minRunIntervalSeconds (7200 in config.ts's
+  // defaults) even when the file never sets it. Presence must be judged against the FILE, not
+  // the merged config — or every built-in role would look overridden (steward/qa/selfcheck/
+  // readme/plan/organize) and the drawer's clear would be a no-op success that keeps the
+  // seeded value. The payload carries the override only once the file sets the key.
+  const dir = root();
+  writeConfig(dir, {});
+  const seeded = rolePayload(dir, "qa", NO_MODELS);
+  assert.equal(seeded.minRunIntervalSeconds, 7200); // the catalog seed, not an override
+  assert.equal("minRunIntervalOverride" in seeded, false);
+  writeConfig(dir, { roles: { qa: { minRunIntervalSeconds: 300 } } });
+  const set = rolePayload(dir, "qa", NO_MODELS);
+  assert.equal(set.minRunIntervalSeconds, 300);
+  assert.equal("minRunIntervalOverride" in set, true);
+  assert.equal(set.minRunIntervalOverride, 300);
 });
 
 test("an instance id resolves the instructions override through its base role", () => {
