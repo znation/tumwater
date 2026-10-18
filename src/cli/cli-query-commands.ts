@@ -357,6 +357,33 @@ function sayAskerWake(root: string, title: string): void {
   if (wake !== null) say(wake);
 }
 
+/** The config-key write the three per-role hold branches (quiet hours, daily cap, min run
+ * interval) share: with `clear`, or an empty typed value, unset `key` under `base`; else set
+ * it. `serialize` shapes the value `setConfigKey` stores (it JSON-encodes nothing itself) and
+ * `display` gives the human phrase for the confirmation line. The caller returns right after.
+ * The instructions branch keeps its own block: its value is a file's text, so an empty value
+ * is a legitimate write, not a clear. */
+function writeRoleConfigKey(
+  root: string,
+  base: string,
+  clear: boolean,
+  raw: string,
+  key: string,
+  noun: string,
+  serialize: (value: string) => string,
+  display: (value: string) => string,
+): void {
+  if (clear || raw.trim() === "") {
+    const result = unsetConfigKey(root, key);
+    if (!result.ok) fail(result.error);
+    say(`${base}: ${noun} cleared`);
+  } else {
+    const result = setConfigKey(root, key, serialize(raw));
+    if (!result.ok) fail(result.error);
+    say(`${base}: ${noun} set to ${display(raw)}`);
+  }
+}
+
 /** `tumwater role <id>`: one loop's standing prompt and next tick's assembled prompt. */
 export async function cmdRole(root: string, args: string[]): Promise<void> {
   // No requireReadyRepo gate, like backlog: role-view degrades (missing state files →
@@ -448,15 +475,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     if (id === DIRECTOR_ROLE) fail("the director has no quiet hours");
     const base = baseRoleOf(id);
     const window = flagValue(rest, "--quiet-hours") ?? "";
-    if (clearQuiet || window.trim() === "") {
-      const result = unsetConfigKey(root, `quietHoursPerRole.${base}`);
-      if (!result.ok) fail(result.error);
-      say(`${base}: quiet hours cleared`);
-    } else {
-      const result = setConfigKey(root, `quietHoursPerRole.${base}`, JSON.stringify(window));
-      if (!result.ok) fail(result.error);
-      say(`${base}: quiet hours set to ${window}`);
-    }
+    writeRoleConfigKey(root, base, clearQuiet, window, `quietHoursPerRole.${base}`, "quiet hours", (v) => JSON.stringify(v), (v) => v);
     return;
   }
   // The daily-cap write: the terminal twin of `config set maxDailyCostUsdPerRole.<base>
@@ -474,15 +493,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     if (id === DIRECTOR_ROLE) fail("the director has no daily cap");
     const base = baseRoleOf(id);
     const cap = flagValue(rest, "--cap") ?? "";
-    if (clearCap || cap.trim() === "") {
-      const result = unsetConfigKey(root, `maxDailyCostUsdPerRole.${base}`);
-      if (!result.ok) fail(result.error);
-      say(`${base}: daily cap cleared`);
-    } else {
-      const result = setConfigKey(root, `maxDailyCostUsdPerRole.${base}`, cap);
-      if (!result.ok) fail(result.error);
-      say(`${base}: daily cap set to ${cap}`);
-    }
+    writeRoleConfigKey(root, base, clearCap, cap, `maxDailyCostUsdPerRole.${base}`, "daily cap", (v) => v, (v) => v);
     return;
   }
   // The min-run-interval write: the terminal twin of `config set
@@ -499,15 +510,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
     const base = baseRoleOf(id);
     const secs = flagValue(rest, "--min-run-interval") ?? "";
-    if (clearInterval || secs.trim() === "") {
-      const result = unsetConfigKey(root, `roles.${base}.minRunIntervalSeconds`);
-      if (!result.ok) fail(result.error);
-      say(`${base}: min run interval cleared`);
-    } else {
-      const result = setConfigKey(root, `roles.${base}.minRunIntervalSeconds`, secs);
-      if (!result.ok) fail(result.error);
-      say(`${base}: min run interval set to ${secs}s`);
-    }
+    writeRoleConfigKey(root, base, clearInterval, secs, `roles.${base}.minRunIntervalSeconds`, "min run interval", (v) => v, (v) => `${v}s`);
     return;
   }
   // The enable/disable write: the scoped write for the enabled state `tumwater role <id>`
