@@ -193,6 +193,19 @@ test("prompt cancel/edit without --role names the longest queue, not the total a
   assert.equal(inboxSize(root, "clean"), 1);
 });
 
+// A list-wide miss on a completely empty inbox — no loop holds any prompt — drops the
+// "valid: 1-N" suffix (failQueueMiss's empty-range branch): with no queue at any length,
+// there is no position any loop's numbering can reach, so echoing a range would be wrong.
+// The cancel and edit wordings share the same miss helper, so one flagless case pins the
+// empty branch for both verbs.
+test("prompt cancel/edit without --role miss cleanly on an empty inbox with no range suffix", async () => {
+  const root = makeRoot(); // no prompt queued for any loop
+  const cancel = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "1"]));
+  assert.match(cancel, /no prompt at position 1 \(longest inbox holds 0\)\n$/);
+  const edit = await expectFailAsync(() => cmdPrompt(root, ["--edit", "1", "x"]));
+  assert.match(edit, /no prompt at position 1 \(longest inbox holds 0\)\n$/);
+});
+
 test("prompt cancel --role succeeds in scope and fails out of range with the queue count", async () => {
   const root = makeRoot();
   enqueueRolePrompt(root, "clean", "a");
