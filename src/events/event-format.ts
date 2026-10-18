@@ -91,6 +91,13 @@ function providerScope(e: HarnessEvent): string {
   return typeof e.provider === "string" ? "that provider" : "every provider";
 }
 
+/** The provider/model pair a fallback-ish line names, as "provider/model", defaulting each
+ * half when the event omits it (a bare pi run carries neither). Shared by the budget_fallback
+ * and model_fallback lines so the pair's shape and defaults cannot drift between them. */
+function providerModelPair(e: HarnessEvent, providerDefault: string, modelDefault: string): string {
+  return `${textOr(e.provider, providerDefault)}/${textOr(e.model, modelDefault)}`;
+}
+
 /** An event's outcome string — a tick's `result`, or a merge's or build check's `status`,
  * whichever the event carries; undefined when neither does. The activity feeds' tone and
  * filter key (tone.ts's eventKind takes it beside the event type), also shipped as the
@@ -315,7 +322,7 @@ export function eventMessage(e: HarnessEvent): string {
       const tierEntries = fallbackTierEntries(isJsonObject(e.tiers) ? e.tiers : undefined);
       if (tierEntries.length >= 2)
         return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; roles continue on ${tierEntries.join(", ")} (cost n/a)`;
-      return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; roles continue on ${textOr(e.provider, "pi's default provider")}/${textOr(e.model, "pi's default model")} (cost n/a)`;
+      return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; roles continue on ${providerModelPair(e, "pi's default provider", "pi's default model")} (cost n/a)`;
     }
     case "budget_resumed":
       return `budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
@@ -476,10 +483,10 @@ export function eventMessage(e: HarnessEvent): string {
     case "model_fallback_started":
       // Routine-with-explanation, like rate_limit_hold: the switch IS the harness handling the
       // failure. Names the pair the role now runs on and why the primary was abandoned.
-      return `model fallback — ${textOr(e.provider, "pi's default")}/${textOr(e.model, "pi's default")} engaged (primary failing: ${textOr(e.reason, "backend failure")})`;
+      return `model fallback — ${providerModelPair(e, "pi's default", "pi's default")} engaged (primary failing: ${textOr(e.reason, "backend failure")})`;
     case "model_fallback_ended":
       // The return counterpart: names the pair ticks resume on and how long the episode ran.
-      return `model fallback ended — back on ${textOr(e.provider, "pi's default")}/${textOr(e.model, "pi's default")} after ${minutes(e.durationMs)}m`;
+      return `model fallback ended — back on ${providerModelPair(e, "pi's default", "pi's default")} after ${minutes(e.durationMs)}m`;
     case "opencode_free_model_billed":
       // The promotion ended (plans/opencode-backend.md §7, part 6c/7): a run billed what the
       // catalog called free, so the team now prices that model as paid from here on. No warning
