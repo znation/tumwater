@@ -46,11 +46,13 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcom
  * checkInit already fails on a broken config, so a model check only reports that it could not
  * run. One home for the guard and its wording, shared by checkFallbackModel and
  * checkTierModels (the same shape doctor-backlog.ts's readDocChecked uses for unreadable
- * files). */
-function loadConfigForCheck(root: string): { config: TumwaterConfig } | { outcome: CheckOutcome } {
+ * files). The config or the warn outcome, so each check's one-line guard — `const config =
+ * loadConfigForCheck(root); if ("level" in config) return config;` — is all a check needs to
+ * read its config instead of repeating a load-and-unwrap prologue. */
+function loadConfigForCheck(root: string): TumwaterConfig | CheckOutcome {
   const { config, error } = loadConfigSafe(root);
-  if (config === undefined) return { outcome: warnOutcome(`cannot check — ${error}`) };
-  return { config };
+  if (config === undefined) return warnOutcome(`cannot check — ${error}`);
+  return config;
 }
 
 /** Fallback model readiness — the daily-cost budget's third state (plans/fallback-model.md): with
@@ -71,9 +73,8 @@ export function checkFallbackModel(
   modelsPath: string = piModelsPath(),
   demoted: FallbackDemotion | null = null,
 ): CheckOutcome {
-  const loaded = loadConfigForCheck(root);
-  if ("outcome" in loaded) return loaded.outcome;
-  const { config } = loaded;
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
   const declared = fallbackPair(config);
   if (!declared) return okOutcome("none configured — roles pause at the cap");
   // A pair missing either half would fall through to pi's own (unverified) default, so it can
@@ -122,9 +123,8 @@ export async function checkFallbackChain(
   modelsPath: string = piModelsPath(),
   probe: (url: string) => Promise<boolean> = probeModels,
 ): Promise<CheckOutcome> {
-  const loaded = loadConfigForCheck(root);
-  if ("outcome" in loaded) return loaded.outcome;
-  const { config } = loaded;
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
   const steps = tierChainSteps(config);
   if (steps.length === 0) return okOutcome("none configured");
   const states = loadLoopStates(root, config);
@@ -282,9 +282,8 @@ export async function checkClaudeAuth(
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome> {
-  const loaded = loadConfigForCheck(root);
-  if ("outcome" in loaded) return loaded.outcome;
-  const { config } = loaded;
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
   if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
   const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
   if (auth === null)
@@ -312,9 +311,8 @@ export async function checkAnthroApiKey(
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome> {
-  const loaded = loadConfigForCheck(root);
-  if ("outcome" in loaded) return loaded.outcome;
-  const { config } = loaded;
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
   if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
   const apiKey = env.ANTHROPIC_API_KEY;
   if (apiKey === undefined || apiKey === "") return okOutcome("no ANTHROPIC_API_KEY set");
@@ -345,9 +343,8 @@ export async function checkClaudeVersion(
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome> {
-  const loaded = loadConfigForCheck(root);
-  if ("outcome" in loaded) return loaded.outcome;
-  const { config } = loaded;
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
   const seams = seamPairs(config).filter((pair) => pair.agent === "claude" && pair.model !== undefined);
   if (seams.length === 0) return okOutcome("no model jobs run on claude");
   // The floor each configured model needs; a model the adapter does not gate contributes none.
@@ -404,9 +401,8 @@ export async function checkTierModels(
     piProviderAuth(loadConfigSafe(root).config ?? defaultConfig(), provider),
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<CheckOutcome> {
-  const loaded = loadConfigForCheck(root);
-  if ("outcome" in loaded) return loaded.outcome;
-  const { config } = loaded;
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
   const pairs = new Map<string, { provider?: string; model?: string }>();
   // Routed (non-pi) models keyed by the backend they resolved to, so the routing note names
   // each backend correctly; opencode is not claude.
@@ -547,9 +543,8 @@ export async function checkImageInput(
     env: NodeJS.ProcessEnv,
   ) => Promise<ImageProbeResult> = runImageProbe,
 ): Promise<CheckOutcome> {
-  const loaded = loadConfigForCheck(root);
-  if ("outcome" in loaded) return loaded.outcome;
-  const { config } = loaded;
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
   // `tier models` already fails on a missing/unknown pair, so this check names only what it can
   // answer; unknown (null) pairs are left to that check. A missing definitions file only blocks
   // this check when a seam actually needs it — an all-claude team reads images without it.
