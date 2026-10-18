@@ -62,6 +62,9 @@ export interface ReportDay {
   rejectionsByRole?: Record<string, number>;
   /** revision events per loop id; absent when the day has none (zero means absent). */
   revisionsByRole?: Record<string, number>;
+  /** run_end events per loop id (its result is `refused` — a tick that deliberately declined
+   * its entry); absent when the day has none (zero means absent). */
+  refusalsByRole?: Record<string, number>;
   /** Lower median of the day's passing full-suite check durations (ms); absent when the day
    * has none. */
   checkMedianMs?: number;
@@ -194,6 +197,9 @@ export interface SinceReport {
   rejectionsByRole: Record<string, number>;
   /** revision events per loop id; empty when the window has none. */
   revisionsByRole: Record<string, number>;
+  /** run_end events per loop id whose result is `refused` (a tick that deliberately declined
+   * its entry); empty when the window has none. */
+  refusalsByRole: Record<string, number>;
   /** error-class run_end events per loop id; empty when the window has none. */
   failedRunsByRole: Record<string, number>;
   /** model_fallback_started events per loop id; empty when the window has none. */
@@ -267,6 +273,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     runsByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
+    refusalsByRole: {},
     checkDurationsMs: [],
     checkFailures: 0,
     mergeWaitsMs: [],
@@ -349,6 +356,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     costByRole: scopedByRole(acc.costByRole, base),
     rejectionsByRole: scopedByRole(acc.rejectionsByRole, base),
     revisionsByRole: scopedByRole(acc.revisionsByRole, base),
+    refusalsByRole: scopedByRole(acc.refusalsByRole, base),
     failedRunsByRole: scopedByRole(acc.failedRunsByRole, base),
     fallbacksByRole: scopedByRole(acc.fallbacksByRole, base),
     imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, base),
@@ -412,6 +420,8 @@ export function collectReport(root: string, days: number, role?: string): Report
         day.rejectionsByRole = fold.rejectionsByRole;
       if (Object.keys(fold.revisionsByRole).length > 0)
         day.revisionsByRole = fold.revisionsByRole;
+      if (Object.keys(fold.refusalsByRole).length > 0)
+        day.refusalsByRole = fold.refusalsByRole;
       // Checks belong to the merge slot, so only the team series carries the median.
       if (fold.checkDurationsMs.length > 0) {
         day.checkMedianMs = lowerMedian(fold.checkDurationsMs);
@@ -485,6 +495,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       if (Object.keys(rejs).length > 0) day.rejectionsByRole = rejs;
       const revs = narrowToRole(fold.revisionsByRole, base);
       if (Object.keys(revs).length > 0) day.revisionsByRole = revs;
+      const refusals = narrowToRole(fold.refusalsByRole, base);
+      if (Object.keys(refusals).length > 0) day.refusalsByRole = refusals;
       const fails = narrowToRole(fold.failedRunsByRole, base);
       if (Object.keys(fails).length > 0) day.failedRunsByRole = fails;
       const falls = narrowToRole(fold.fallbacksByRole, base);

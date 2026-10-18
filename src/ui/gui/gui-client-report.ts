@@ -52,7 +52,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // Object.prototype key whose inherited value would otherwise seed the counter and satisfy
   // the membership test (the browser twin of addTo's fix; BUGS.md 2026-10-10).
   function reportRoleOrder(data) {
-    return tallyAcross(data.series, ["runsByRole"], ["costByRole", "notionalByRole", "rejectionsByRole", "revisionsByRole", "fallbacksByRole", "imageReroutesByRole", "failedRunsByRole", "mergeFailedByRole", "commitsByRole", "mergedByRole"]);
+    return tallyAcross(data.series, ["runsByRole"], ["costByRole", "notionalByRole", "rejectionsByRole", "revisionsByRole", "refusalsByRole", "fallbacksByRole", "imageReroutesByRole", "failedRunsByRole", "mergeFailedByRole", "commitsByRole", "mergedByRole"]);
   }
 
   // X-axis labels: MM-DD, thinned to at most seven, counted back from the newest day so today
@@ -297,6 +297,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // Revisions (rework rounds after a rejection), per loop, drawn the same way.
   function chartRevisionsByRole(data) {
     return roleStackChart(data, "revisionsByRole", (n) => plural(n, "revision"), countAxis, true);
+  }
+  // Runs that deliberately declined their entry (result "refused"), per loop, drawn the same
+  // way as its rejection/revision siblings.
+  function chartRefusalsByRole(data) {
+    return roleStackChart(data, "refusalsByRole", (n) => plural(n, "refusal"), countAxis, true);
   }
   // The team's model-fallback episodes, per loop, on the same count axis: one segment per
   // (day, loop) with a fallback.
@@ -655,6 +660,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +
         block("Rejections by role", chartRejectionsByRole(d)) +
         (seriesHasAny(d, "revisionsByRole") ? block("Revisions by role", chartRevisionsByRole(d)) : "") +
+        (seriesHasAny(d, "refusalsByRole") ? block("Refusals by role", chartRefusalsByRole(d)) : "") +
         (seriesHasAny(d, "fallbacksByRole") ? block("Fallbacks by role", chartFallbacksByRole(d)) : "") +
         (seriesHasAny(d, "imageReroutesByRole") ? block("Image reroutes by role", chartImageReroutesByRole(d)) : "") +
         (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +

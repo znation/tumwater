@@ -41,6 +41,12 @@ export interface UsageFold {
    * split by role so a loop whose every iteration is a fresh rework is visible (the author-side
    * share of the rejection, where the reviewer's objection cost is the merge slot's). */
   revisionsByRole: Record<string, number>;
+  /** run_end events per loop id whose result is `refused` — ticks that deliberately declined
+   * their entry and merged nothing. The one deliberate per-role outcome the report used to
+   * leave out, counted on the same already-computed role as the other usage lines, a parallel
+   * tally never subtracted from runsByRole. `refused` is not error-class, so this is an
+   * explicit check, not OUTCOME_CLASS. */
+  refusalsByRole: Record<string, number>;
   /** Wall-clock ms of each passing full-suite build_check (isPassingFullCheck), unsorted. */
   checkDurationsMs: number[];
   /** Count of failed full-suite build_check events (isRedFullCheck), so a day whose checks went
@@ -161,6 +167,11 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // line — reusing the digest's OUTCOME_CLASS so "failed" cannot drift from the failure
     // report's meaning. Never subtracted from runsByRole; the two are independent counts.
     if (OUTCOME_CLASS[ev.result as TickResult] === "error") addTo(target.failedRunsByRole, role, 1);
+    // A refusal is its own deliberate outcome (src/verdict/refusal.ts), not error-class, so
+    // it needs an explicit result check: the one per-role rejection-without-review count a
+    // day report should surface beside rejections, revisions and falls. Never subtracted from
+    // runsByRole; a refused tick still counts as a run.
+    if (ev.result === "refused") addTo(target.refusalsByRole, role, 1);
     if (target.runs !== undefined) target.runs++;
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     addTo(target.tokensByRole, role, tokens);
@@ -276,6 +287,7 @@ interface DayFold {
   runsByRole: Record<string, number>;
   rejectionsByRole: Record<string, number>;
   revisionsByRole: Record<string, number>;
+  refusalsByRole: Record<string, number>;
   /** Wall-clock ms of each passing full-suite build_check that day, unsorted. */
   checkDurationsMs: number[];
   /** Count of failed full-suite build_check events that day (isRedFullCheck). */
@@ -403,6 +415,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       runsByRole: {},
       rejectionsByRole: {},
       revisionsByRole: {},
+      refusalsByRole: {},
       checkDurationsMs: [],
       checkFailures: 0,
       mergeWaitsMs: [],

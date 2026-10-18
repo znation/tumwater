@@ -405,6 +405,52 @@ test("the Revisions chart stacks per role and seriesHasAny gates it", () => {
   assert.equal(seriesHasAny(data, "revisionsByRole"), true);
 });
 
+test("the Refusals chart stacks per role and seriesHasAny gates it", () => {
+  interface Builders {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+    chartRefusalsByRole(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportRoleOrder, chartTicksByRole, chartRefusalsByRole, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole", "chartRefusalsByRole", "seriesHasAny"],
+  );
+  const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { feature: 3 }, { refusalsByRole: { feature: 2 } }),
+    mkDay("2026-09-02", { feature: 1 }, { refusalsByRole: { bugfix: 1 } }),
+  ]);
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["bugfix", 0]]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  const got = titles(chartRefusalsByRole(data));
+  assert.equal(got.length, 2);
+  assert.ok(got.some((t) => t.includes("2026-09-01 · feature: 2 refusals")));
+  assert.ok(got.some((t) => t.includes("2026-09-02 · bugfix: 1 refusal")));
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartRefusalsByRole(data)), legendOf(chartTicksByRole(data)));
+  const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 }, { refusalsByRole: { feature: 0 } })]);
+  assert.equal(seriesHasAny(plain, "refusalsByRole"), false, "a refusal-free series whose only refusal map is { feature: 0 } gates the chart off");
+  assert.equal(seriesHasAny(data, "refusalsByRole"), true);
+});
+
+test("the Usage render chain gates the Refusals by role chart right after Revisions by role", () => {
+  // The usage view's render chain must name the Refusals by role chart exactly once, gated
+  // on the series really carrying refusals, sitting right after the Revisions by role term.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const revisions = chain.indexOf('block("Revisions by role"');
+  const refusals = chain.indexOf('block("Refusals by role"');
+  assert.ok(revisions >= 0, "the Revisions by role term exists");
+  assert.ok(refusals > revisions, "Refusals by role sits after Revisions by role in the chain");
+  assert.match(chain, /seriesHasAny\(d, "refusalsByRole"\) \? block\("Refusals by role", chartRefusalsByRole\(d\)\) : ""/);
+  // Exactly one such gated term.
+  assert.equal((chain.match(/block\("Refusals by role", chartRefusalsByRole\(d\)\)/g) || []).length, 1);
+});
+
 test("the Tokens by role chart stacks per role and matches the ticks legend", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;

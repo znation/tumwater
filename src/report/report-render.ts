@@ -175,6 +175,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // a window with none renders "-" like the other lines.
   lines.push(rankedRoleLine("Rejections by role", rankedRoleMap(data.rejectionsByRole).filter(([, r]) => r > 0), String));
   lines.push(rankedRoleLine("Revisions by role", rankedRoleMap(data.revisionsByRole).filter(([, r]) => r > 0), String));
+  lines.push(rankedRoleLine("Refusals by role", rankedRoleMap(data.refusalsByRole).filter(([, r]) => r > 0), String));
   // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — the ticks that burned agent time and merged nothing without
   // going through review, which rejections/revisions would miss entirely. A window with
@@ -340,6 +341,7 @@ export function renderReportMarkdown(data: ReportData): string {
   // events, ranked like the ticks line; a window with none renders "-".
   lines.push(rankedRoleLine("Rejections by role", rankedRoleTotals(data.series, (d) => d.rejectionsByRole ?? {}).filter(([, r]) => r > 0), String));
   lines.push(rankedRoleLine("Revisions by role", rankedRoleTotals(data.series, (d) => d.revisionsByRole ?? {}).filter(([, r]) => r > 0), String));
+  lines.push(rankedRoleLine("Refusals by role", rankedRoleTotals(data.series, (d) => d.refusalsByRole ?? {}).filter(([, r]) => r > 0), String));
   // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — ticks that burned agent time and merged nothing without going
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a

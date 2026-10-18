@@ -192,6 +192,49 @@ test("report --since folds failed ticks by role and narrows to the scoped base r
   assert.match(cleanNone.out, /\*\*Failed runs by role:\*\* -/, "a scoped role with no failures renders '-'");
 });
 
+test("report folds refused run_ends into Refusals by role, beside Revisions by role", async () => {
+  const root = makeRepo();
+  // Two refusals today on distinct roles, plus one clean run_end today and one revision. A
+  // refusal is a deliberate outcome (result "refused") — not error-class — so it gets its own
+  // line and must never join Failed runs by role, while Runs by role still counts it.
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "refused", tokens: 10 }),
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "refused", tokens: 5 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 3, result: "changed", tokens: 20 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }),
+  ]);
+
+  const md = await runCli(root, "report", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Refusals by role:\*\* clean — 1 · feature — 1/, "refused run_ends fold as their own line, ranked desc then name asc");
+  assert.match(md.out, /\*\*Revisions by role:\*\* feature — 1/, "revisions stay on their own line");
+  assert.match(md.out, /\*\*Runs by role:\*\* bugfix — 1 · clean — 1 · feature — 1/, "the refused ticks still count in Runs by role (never subtracted)");
+  assert.match(md.out, /\*\*Failed runs by role:\*\* -/, "a refusal is not error-class, so Failed runs by role stays empty");
+
+  const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
+  const today = json.series[1];
+  assert.deepEqual(today.refusalsByRole, { feature: 1, clean: 1 }, "--json carries refusalsByRole on the day that has them");
+  assert.ok(!("failedRunsByRole" in today), "a refused run is not error-class, so no failedRunsByRole key");
+});
+
+test("report --since folds refused ticks by role and narrows to the scoped base role", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "refused", tokens: 10 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 2, result: "refused", tokens: 5 }),
+  ]);
+
+  const team = await runCli(root, "report", "--since", "6h");
+  assert.equal(team.code, 0);
+  assert.match(team.out, /\*\*Refusals by role:\*\* clean — 1 · feature — 1/, "the team window sums both roles' refusals, ranked name asc on a tie");
+
+  const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
+  assert.equal(scoped.code, 0);
+  assert.match(scoped.out, /\*\*Refusals by role:\*\* feature — 1/, "scoping --since narrows refusals to the base role");
+  const scopedJson = JSON.parse((await runCli(root, "report", "--role", "feature", "--json", "--since", "6h")).out);
+  assert.deepEqual(scopedJson.refusalsByRole, { feature: 1 }, "the scoped since JSON narrows refusalsByRole");
+});
+
 test("renderReportMarkdown prints the fixed bugs' Validation gaps as a team-only line", () => {
   const base = collectReport(tmpdir(), 2);
   const data: ReportData = {
@@ -479,6 +522,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     costByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
+    refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -509,6 +553,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     costByRole: { feature: 0.75, bugfix: 0 },
     rejectionsByRole: { feature: 1, clean: 1 },
     revisionsByRole: { feature: 1 },
+    refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -543,6 +588,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     costByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
+    refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -566,6 +612,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
     revisionsByRole: {},
+    refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -591,6 +638,7 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
     revisionsByRole: {},
+    refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -616,6 +664,7 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     costByRole: { feature: 0.75 },
     rejectionsByRole: {},
     revisionsByRole: { feature: 3 },
+    refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -645,6 +694,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     costByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
+    refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
