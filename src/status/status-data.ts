@@ -336,6 +336,11 @@ export interface StatusSnapshot {
    * orchestrator runs, its build predates the field, or statfs could not measure the volume —
    * every surface then renders exactly as before. */
   disk?: DiskStatus;
+  /** The standing per-provider failure holds (src/team/team-hold.ts `standingHolds`), read
+   * from the running orchestrator's info file: a provider storm's hold, so the dashboards and
+   * `tumwater status` name why a provider's roles sit idle. Absent while none stands or the
+   * orchestrator is not alive. */
+  providerHolds?: OrchestratorInfo["providerHolds"];
   /** Direct dependencies the root checkout's `node_modules` does not hold at `package-lock.json`'s
    * pin (the doctor's `root install` row); absent when none drift. */
   rootInstallDrift?: string[];
@@ -457,6 +462,9 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     budget,
     ...(claudeWindow ? { claudeWindow } : {}),
     ...(running && info?.chain && Object.keys(info.chain).length > 0 ? { chain: info.chain } : {}),
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped
+    // team, and only while a hold stands (an empty list is the same as none).
+    ...(running && info?.providerHolds && info.providerHolds.length > 0 ? { providerHolds: info.providerHolds } : {}),
     paused: teamPause !== null,
     pausedRoles: markerRoles,
     pausedLoops: roles.filter((id) => loopPaused(markerSet, id)),

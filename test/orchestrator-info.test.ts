@@ -105,6 +105,7 @@ test("readOrchestratorInfo drops nested fields with a foreign shape and keeps we
       build: "oops",
       budget: { spentUsd: "5", capUsd: 10 },
       disk: { freeGB: "lots", holdGB: 10, reclaimGB: 40, held: true },
+      providerHolds: "oops",
     }),
   );
   const info = readOrchestratorInfo(root);
@@ -112,6 +113,7 @@ test("readOrchestratorInfo drops nested fields with a foreign shape and keeps we
   assert.equal(info?.fallbackDemotions, undefined, "a scalar demotion map drops");
   assert.equal(info?.budget, undefined, "a string spend drops");
   assert.equal(info?.disk, undefined, "a disk missing its numbers drops");
+  assert.equal(info?.providerHolds, undefined, "a non-array providerHolds drops");
   assert.equal(info?.pid, process.pid, "the required fields survive");
 
   const demoted = { pair: "local/local-free", failures: 3, probeAt: 123 };
@@ -140,6 +142,7 @@ test("readOrchestratorInfo drops nested fields with a foreign shape and keeps we
       fallbackDemotions: { "local/local-free": demoted },
       budget: { spentUsd: 1.5, capUsd: 10 },
       disk,
+      providerHolds: "oops",
     }),
   );
   const ok = readOrchestratorInfo(root);
@@ -148,6 +151,42 @@ test("readOrchestratorInfo drops nested fields with a foreign shape and keeps we
   assert.deepEqual(ok?.fallbackDemotions, { "local/local-free": demoted }, "a well-formed map stays");
   assert.deepEqual(ok?.budget, { spentUsd: 1.5, capUsd: 10 }, "a well-formed budget stays");
   assert.deepEqual(ok?.disk, disk, "a well-formed disk stays");
+  assert.equal(ok?.providerHolds, undefined, "a non-array providerHolds drops");
+});
+
+test("readOrchestratorInfo round-trips a well-formed providerHolds and drops foreign entries", () => {
+  const root = tmpdir();
+  const file = orchestratorStatePath(root);
+  ensureParentDir(file);
+  const holds = [
+    { provider: "deepinfra", until: 1_700_000_000_000, kind: "rate-limit" },
+    { until: 1_700_000_100_000, kind: "connection" },
+  ];
+  writeOrchestratorInfo(root, { pid: process.pid, startedAt: 1, roles: [], providerHolds: holds });
+  assert.deepEqual(readOrchestratorInfo(root)?.providerHolds, holds, "a well-formed list round-trips");
+
+  // A foreign entry (a non-finite until, a missing kind, a non-string provider) drops while a
+  // well-formed sibling stays; the guarded list is kept, not dropped wholesale. Written raw to
+  // the file (bypassing writeOrchestratorInfo's type signature) to model a hand-edited or
+  // future-format block crossing the boundary.
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      pid: process.pid,
+      startedAt: 1,
+      roles: [],
+      providerHolds: [
+        { provider: "deepinfra", until: "soon", kind: "rate-limit" },
+        { provider: "deepinfra", kind: "rate-limit" },
+        { provider: 7, until: 1_700_000_000_000, kind: "rate-limit" },
+        { provider: "openai", until: 1_700_000_000_000, kind: "rate-limit" },
+        "nope",
+      ],
+    }),
+  );
+  assert.deepEqual(readOrchestratorInfo(root)?.providerHolds, [
+    { provider: "openai", until: 1_700_000_000_000, kind: "rate-limit" },
+  ]);
 });
 
 test("readOrchestratorInfo keeps a numeric stopsAt and drops a string one", () => {

@@ -204,6 +204,23 @@ test("snapshot carries the running orchestrator's published disk state", async (
   assert.equal(snapshot(repo).disk, undefined);
 });
 
+// The standing provider-failure hold rides the info file like disk: only while a live
+// orchestrator publishes one, and only while at least one hold stands.
+test("snapshot carries the running orchestrator's published providerHolds", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "published provider holds test");
+  const providerHolds = [{ provider: "deepinfra", until: Date.now() + 120_000, kind: "rate-limit" }];
+  writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: Date.now(), roles: [], providerHolds });
+  assert.deepEqual(snapshot(repo).providerHolds, providerHolds);
+  // An empty list is the same as none: absent from the snapshot.
+  writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: Date.now(), roles: [], providerHolds: [] });
+  assert.equal(snapshot(repo).providerHolds, undefined);
+  // A stale block beside a dead pid speaks for no team.
+  writeJsonFile(orchestratorStatePath(repo), { pid: 2_000_000_000, startedAt: Date.now(), roles: [], providerHolds });
+  assert.equal(snapshot(repo).running, false, "a dead pid is not a running orchestrator");
+  assert.equal(snapshot(repo).providerHolds, undefined);
+});
+
 // The orchestrator info file's nested fields sit behind a hand-editable boundary: a foreign
 // `fallbackDemotions` (a scalar, not the pair-keyed record) must read as "no demotions" rather
 // than throw out of the every-second snapshot — `modelPairName(p) in publishedDemotions` throws

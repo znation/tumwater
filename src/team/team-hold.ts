@@ -155,6 +155,37 @@ export function heldProviders(
   return held;
 }
 
+/** One provider's standing hold as the info file and status surfaces publish it
+ * (src/team/orchestrator-info.ts `providerHolds`, src/status/status-data.ts): the provider
+ * (omitted for pi's default backend — the same meaning `heldProviders` gives undefined), the
+ * epoch ms it re-opens at, and the failure kind it is about. */
+interface StandingHold {
+  provider?: string;
+  until: number;
+  kind: HoldKind;
+}
+
+/** The holds that STAND, as a structured list for observers (the dashboards and `tumwater
+ * status` name them; the event feed and failure digest already do): iterate the map, skip an
+ * entry whose `until` is null (a lifted hold kept only for relapse memory) and one whose kind
+ * is `"subscription-window"` (that hold already has the snapshot's `claudeWindow` block and
+ * its header badge), and emit one `StandingHold` each, sorted by provider name so two reads of
+ * one map agree. An `undefined` provider means pi's default backend, the same meaning
+ * `heldProviders` gives it, so it is omitted rather than written as null. */
+export function standingHolds(
+  holds: ReadonlyMap<string | undefined, TeamHold>,
+): Array<StandingHold> {
+  const out: StandingHold[] = [];
+  for (const [provider, hold] of holds) {
+    // A lifted hold (until null) and a null kind (never standing) never publish; a
+    // subscription-window hold already has the snapshot's claudeWindow block and its badge.
+    if (hold.until === null || hold.kind === null || hold.kind === "subscription-window") continue;
+    out.push({ ...(provider !== undefined ? { provider } : {}), until: hold.until, kind: hold.kind });
+  }
+  out.sort((a, b) => (a.provider ?? "").localeCompare(b.provider ?? ""));
+  return out;
+}
+
 /** Step the hold by one orchestrator poll: from `prev` and every role's latest failure
  * observations, decide what holds at `now`. A held team stays held until `until` and then
  * re-opens by itself — nothing can get stuck, the same guarantee the budget gate's stateless

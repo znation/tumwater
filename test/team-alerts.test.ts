@@ -265,6 +265,53 @@ test("the maintenance allowance hold raises one gray maintenance alert; an empty
   );
 });
 
+// A standing provider failure hold (src/team/team-hold.ts `standingHolds`, published through
+// the orchestrator info file): a provider storm holds roles on that provider, so an operator
+// watching idle loops with no log open sees why. Self-clearing by design, so it informs (blue,
+// no actions) like the quiet and maintenance alerts rather than asking.
+test("a standing provider failure hold raises one blue provider-hold alert; an empty hold raises none", () => {
+  const now = Date.now();
+  const held = teamAlerts(
+    { ...base, providerHolds: [{ provider: "deepinfra", until: now + 120_000, kind: "rate-limit" }] },
+    [],
+    [],
+    now,
+  );
+  const [alert] = held.filter((a) => a.key === "provider-hold");
+  assert.equal(alert?.tone, "blue");
+  assert.match(alert?.title ?? "", /Provider limit is holding new runs/);
+  assert.match(alert?.detail ?? "", /deepinfra/);
+  assert.match(alert?.detail ?? "", /rate-limit/);
+  assert.match(alert?.detail ?? "", /re-opens in 2m/);
+  assert.deepEqual(alert?.actions, []);
+  assert.equal(alertNeedsYou(alert!), false, "self-clearing — it informs, not asks");
+
+  // A second entry with no provider names pi's default backend; the title turns plural.
+  const two = teamAlerts(
+    {
+      ...base,
+      providerHolds: [
+        { provider: "deepinfra", until: now + 120_000, kind: "rate-limit" },
+        { until: now + 60_000, kind: "connection" },
+      ],
+    },
+    [],
+    [],
+    now,
+  );
+  const [pluralAlert] = two.filter((a) => a.key === "provider-hold");
+  assert.match(pluralAlert?.title ?? "", /Provider limits are holding new runs/);
+  assert.match(pluralAlert?.detail ?? "", /pi's default backend/);
+  assert.match(pluralAlert?.detail ?? "", /connection/);
+
+  // Absent or empty providerHolds raises none.
+  assert.equal(teamAlerts(base, [], [], now).filter((a) => a.key === "provider-hold").length, 0);
+  assert.equal(
+    teamAlerts({ ...base, providerHolds: [] }, [], [], now).filter((a) => a.key === "provider-hold").length,
+    0,
+  );
+});
+
 test("the terminal's tones and the dashboard's tell the same story", () => {
   const { phaseInfo, resultInfo } = clientScope<{
     phaseInfo(phase: string): { tone: string };

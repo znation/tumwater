@@ -117,6 +117,12 @@ export interface OrchestratorInfo {
    * by the orchestrator's poll whenever it changes, like `budget` and `disk`; absent when the
    * running orchestrator predates it or there is no pool. */
   permits?: PermitSnapshot;
+  /** The standing per-provider failure holds (src/team/team-hold.ts `standingHolds`): a
+   * provider storm's hold, as the orchestrator's poll publishes them, so the status snapshot
+   * and the alert banner name why held providers hold. An entry's `provider` is omitted for
+   * pi's default backend. Written by the orchestrator's poll whenever a hold opens or lifts;
+   * absent while none stands. */
+  providerHolds?: Array<{ provider?: string; until: number; kind: string }>;
 }
 
 /** Assign one field of the orchestrator info file in place, but only when the value differs
@@ -205,6 +211,16 @@ function parseBuild(v: unknown): BuildStatus | undefined {
 /** The published permit snapshot, or undefined for any foreign shape. Each `byKey` entry must
  * carry its two numbers; `limit` is kept only when it is a number, so a malformed provider
  * map is dropped to `undefined` rather than reaching a render that reads it as a valid cap. */
+/** One entry of the published provider-holds list, or undefined for any foreign shape: a
+ * well-formed entry is an object with a finite `until` and a string `kind`; a `provider` that
+ * is present but not a string drops the entry, so a guarded list keeps its well-formed
+ * siblings rather than dropping wholesale. */
+function parseProviderHold(v: unknown): { provider?: string; until: number; kind: string } | undefined {
+  if (!isJsonObject(v) || !isFiniteNumber(v.until) || typeof v.kind !== "string") return undefined;
+  if (v.provider !== undefined && typeof v.provider !== "string") return undefined;
+  return { ...(v.provider !== undefined ? { provider: v.provider } : {}), until: v.until, kind: v.kind };
+}
+
 function parsePermits(v: unknown): PermitSnapshot | undefined {
   if (!isJsonObject(v) || !isFiniteNumber(v.inUse) || !isFiniteNumber(v.limit) || !isFiniteNumber(v.reserve)) return undefined;
   if (!isJsonObject(v.byKey)) return undefined;
@@ -259,6 +275,17 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
   const permits = parsePermits(rec.permits);
   if (permits === undefined) delete rec.permits;
   else rec.permits = permits;
+
+  const providerHolds = rec.providerHolds;
+  if (!Array.isArray(providerHolds)) delete rec.providerHolds;
+  else {
+    const kept: Array<{ provider?: string; until: number; kind: string }> = [];
+    for (const value of providerHolds) {
+      const parsed = parseProviderHold(value);
+      if (parsed !== undefined) kept.push(parsed);
+    }
+    rec.providerHolds = kept;
+  }
 
   const disk = rec.disk;
   if (

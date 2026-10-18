@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   TEAM_OPEN,
   teamHold,
+  standingHolds,
   HOLD_BASE_MS,
   HOLD_CAP_MS,
   HOLD_RELAPSE_MS,
@@ -176,6 +177,33 @@ test("a storm that outlasts every re-open escalates to the cap and stays there",
   }
   const min = 60_000;
   assert.deepEqual(lengths, [1 * min, 2 * min, 4 * min, 8 * min, 15 * min, 15 * min, 15 * min]);
+});
+
+test("standingHolds names each standing provider hold and skips lifted and subscription-window ones", () => {
+  // A standing deepinfra rate-limit hold: one structured entry naming it.
+  const held = teamHold(TEAM_OPEN, [obs("feature", T0, "rate-limit"), obs("bugfix", T0, "rate-limit")], T0);
+  const map = new Map<string | undefined, TeamHold>();
+  map.set("deepinfra", held);
+  assert.deepEqual(standingHolds(map), [{ provider: "deepinfra", until: held.until, kind: "rate-limit" }]);
+
+  // A lifted hold (until null, kept for relapse memory) and a subscription-window hold (which
+  // the snapshot's claudeWindow block already names) each yield no entry; an empty map none.
+  const lifted = teamHold(held, [], held.until!);
+  const window = teamHold(
+    TEAM_OPEN,
+    [{ role: "claude", provider: "claude", kind: "subscription-window", at: T0, resetsAt: T0 + 3_600_000 }],
+    T0,
+  );
+  map.set("pi", lifted);
+  map.set("claude", window);
+  assert.deepEqual(standingHolds(map), [{ provider: "deepinfra", until: held.until, kind: "rate-limit" }]);
+  assert.deepEqual(standingHolds(new Map()), []);
+
+  // An undefined provider (pi's default backend) yields one entry with no provider key.
+  const openHeld = teamHold(TEAM_OPEN, [obs("feature", T0), obs("bugfix", T0)], T0);
+  const defaultMap = new Map<string | undefined, TeamHold>();
+  defaultMap.set(undefined, openHeld);
+  assert.deepEqual(standingHolds(defaultMap), [{ until: openHeld.until, kind: "rate-limit" }]);
 });
 
 test("a rejected subscription window holds its provider until resetsAt, whatever the role count", () => {

@@ -42,7 +42,7 @@ import {
 import { pollErrorStorm, pollFailureSpread, pollTeamHold, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../team/team-polls.js";
 import { readClaudeAccount } from "../agent/claude/claude-account.js";
 import type { ReclaimController } from "../team/reclaim.js";
-import type { TeamHold } from "../team/team-hold.js";
+import { standingHolds, type TeamHold } from "../team/team-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../team/error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/failure-spread.js";
 import type { LoopRunner } from "../loop/loop.js";
@@ -497,6 +497,15 @@ export function pollTeamGates(
     windowTiers,
     liveConfig.claudeWindowReserve,
   );
+  // The standings hold, published for observers (PLANS.md 2026-10-17 "the dashboards and
+  // `tumwater status` name a standing provider failure hold"): `standingHolds` turns the holds
+  // map into the per-provider list the status snapshot and the alert banner name, the same
+  // omit-when-empty idiom as `chain`/`disk`, so an open team leaves the file untouched and a
+  // hold change writes once.
+  const providerHolds = standingHolds(states.teamHold);
+  publishInfoFields(root, info, [
+    ["providerHolds", providerHolds.length > 0 ? providerHolds : undefined],
+  ]);
   states.claudeWindowReserved = pollClaudeWindowReserve(
     root,
     states.claudeWindowReserved,

@@ -17,7 +17,7 @@ import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { STALL_RE, duration } from "./tick-progress-model.js";
 import { formatGB, usd, usdCap } from "../text/format.js";
-import { formatTimestamp } from "../text/datetime.js";
+import { formatTimestamp, humanSeconds, secondsUntil } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 
 /** Something that needs the operator — or that they should know — about the team as a whole,
@@ -118,6 +118,7 @@ export function teamAlerts(
     | "chain"
     | "capPaused"
     | "maintenanceQuota"
+    | "providerHolds"
   >,
   questions: readonly string[],
   loops: readonly AlertLoop[],
@@ -313,6 +314,27 @@ export function teamAlerts(
       tone: "gray",
       title: "Maintenance is held at its rolling allowance",
       detail: `${mq.used} of ${mq.allowance} maintenance allowance used over the last 24 h; ${listRoleIds(mq.held)} ${agree(mq.held.length, "resumes", "resume")} as work merges.`,
+      actions: [],
+    });
+  }
+  // A standing provider failure hold (src/team/team-hold.ts `standingHolds`, published through
+  // the orchestrator info file): a provider storm holds roles on that provider, so an operator
+  // watching idle loops with no log open sees why nothing new starts there. Self-clearing by
+  // design — the hold re-opens at its own deadline — so it informs (blue, no actions), the
+  // quiet and maintenance alerts' tone, rather than asking. The snapshot carries the holds only
+  // while a live orchestrator publishes one.
+  if (snap.providerHolds && snap.providerHolds.length > 0) {
+    const phrased = snap.providerHolds
+      .map(
+        (h) =>
+          `${h.provider ?? "pi's default backend"} (${h.kind}) until it re-opens in ${humanSeconds(secondsUntil(h.until, now))}`,
+      )
+      .join("; ");
+    out.push({
+      key: "provider-hold",
+      tone: "blue",
+      title: agree(snap.providerHolds.length, "Provider limit is holding new runs", "Provider limits are holding new runs"),
+      detail: `${phrased}. Runs in progress finish; roles on a held provider start no new runs until it re-opens.`,
       actions: [],
     });
   }
