@@ -6,7 +6,7 @@ import { MODEL_TIERS } from "../config/config-schema.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import { clockHm, humanSeconds, secondsUntil } from "../text/datetime.js";
+import { clockHm, humanUntil } from "../text/datetime.js";
 import { pauseReasonSuffix, plural } from "../text/phrases.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 
@@ -254,7 +254,7 @@ export function mergeBadge(mergeQueue: { depth: number }): string {
  * ahead, ` · stopping` once it has passed (the drain), empty for an unwindowed team. */
 export function runWindowBadge(stopsAt: number | undefined, now: number): string {
   if (stopsAt === undefined) return "";
-  return stopsAt > now ? ` · stops in ${humanSeconds(secondsUntil(stopsAt, now))}` : " · stopping";
+  return stopsAt > now ? ` · stops in ${humanUntil(stopsAt, now)}` : " · stopping";
 }
 
 /** The header's scheduled-wake fragment: `· wake scheduled in <duration> (<roles>)` while a
@@ -262,7 +262,7 @@ export function runWindowBadge(stopsAt: number | undefined, now: number): string
  * invisible between the CLI writing it and the consumer applying it. */
 export function wakeBadge(wake: { roles: string[]; atMs: number } | undefined, now: number): string {
   if (!wake || wake.atMs <= now) return "";
-  return ` · wake scheduled in ${humanSeconds(secondsUntil(wake.atMs, now))} (${wake.roles.join(", ")})`;
+  return ` · wake scheduled in ${humanUntil(wake.atMs, now)} (${wake.roles.join(", ")})`;
 }
 
 /** One loop's own pending-wake marker for its state cell: ` · wake in <duration>` for the
@@ -280,7 +280,7 @@ export function loopWakeMarker(
     if (w.atMs <= now || !(w.roles.includes(role) || (instanceOf !== undefined && w.roles.includes(instanceOf)))) continue;
     if (at === undefined || w.atMs < at) at = w.atMs;
   }
-  return at === undefined ? "" : ` · wake in ${humanSeconds(secondsUntil(at, now))}`;
+  return at === undefined ? "" : ` · wake in ${humanUntil(at, now)}`;
 }
 
 /** The header's team timed-pause fragment: `· paused — auto-resumes in <duration>` while a
@@ -319,7 +319,7 @@ export function pauseBadge(pausedUntil: number | undefined, now: number, reason?
  * (gui-client-operator.ts) — a separate runtime that cannot import TypeScript. */
 export function pauseCountdown(pausedUntil: number | undefined, now: number): string | null {
   if (pausedUntil === undefined || pausedUntil <= now) return null;
-  return humanSeconds(secondsUntil(pausedUntil, now));
+  return humanUntil(pausedUntil, now);
 }
 
 /** The header's quiet-hours fragment (plans: "Quiet hours … part 2/2, observability"): the

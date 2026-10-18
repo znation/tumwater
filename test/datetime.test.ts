@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { daysBetween, dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatTime, formatTimestamp, humanSeconds, pad2, reportWindow } from "../src/text/datetime.js";
+import { daysBetween, dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatTime, formatTimestamp, humanSeconds, humanUntil, pad2, reportWindow } from "../src/text/datetime.js";
 import { clockOf, dateOf } from "./helpers/oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
@@ -122,6 +122,16 @@ test("humanSeconds buckets sub-second-to-day spans compactly", () => {
   // A rounding carry rolls into the next bucket instead of printing "60m" or "24h".
   assert.equal(humanSeconds(3599), "1h", "59m59s rounds up into the hour bucket");
   assert.equal(humanSeconds(86399), "1d", "23h59m59s rounds up into the day bucket");
+});
+
+test("humanUntil renders how-long-until an instant in one call", () => {
+  const now = new Date(2026, 9, 4, 12, 0, 0).getTime();
+  // Future instant reads the same compact span humanSeconds gives from secondsUntil.
+  assert.equal(humanUntil(now + 120_000, now), "2m");
+  assert.equal(humanUntil(now + 3 * 3600_000, now), "3h");
+  assert.equal(humanUntil(now + 90 * 86400_000, now), "90d");
+  // A past instant clamps to 0s, matching secondsUntil's no-negative guarantee.
+  assert.equal(humanUntil(now - 1000, now), "0s");
 });
 
 test("elapsedSeconds ages an instant in clamped whole seconds", () => {

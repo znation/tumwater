@@ -16,7 +16,7 @@ import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
-import { humanSeconds, secondsUntil } from "../text/datetime.js";
+import { humanUntil } from "../text/datetime.js";
 import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { claudeUtilizationPct, claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
 import { claudeWindowObservation } from "../team/team-polls.js";
@@ -47,12 +47,12 @@ export function checkPause(root: string, now: number = Date.now()): CheckOutcome
   let rolesPhrase = "";
   if (roles.length > 0) {
     const until = pausedRolesUntil(root);
-    rolesPhrase = `paused roles: ${roles.join(", ")}${until !== undefined ? ` (auto-resume in ${humanSeconds(secondsUntil(until, now))})` : ""}`;
+    rolesPhrase = `paused roles: ${roles.join(", ")}${until !== undefined ? ` (auto-resume in ${humanUntil(until, now)})` : ""}`;
   }
   if (!team) return rolesPhrase ? okOutcome(rolesPhrase) : okOutcome("not paused");
   const head =
     team.until !== undefined
-      ? `team paused — auto-resumes in ${humanSeconds(secondsUntil(team.until, now))}`
+      ? `team paused — auto-resumes in ${humanUntil(team.until, now)}`
       : "team paused — no role starts a run until `tumwater resume`";
   return warnOutcome(`${head}${pauseReasonSuffix(team.reason)}${rolesPhrase ? `; ${rolesPhrase}` : ""}`);
 }
@@ -169,7 +169,7 @@ export function checkClaudeWindow(
   const held = claudeWindowObservation(account, now);
   if (held?.kind === "subscription-window" && held.windowType !== undefined && held.resetsAt !== undefined) {
     const label = claudeWindowLabel(held.windowType);
-    const resets = humanSeconds(secondsUntil(held.resetsAt, now));
+    const resets = humanUntil(held.resetsAt, now);
     const moved = MODEL_TIERS.filter((t) => {
       const reason = chain?.[t]?.reason;
       return reason === "window" || reason === "reserve";
@@ -232,7 +232,7 @@ export function checkProviderHolds(root: string, now: number = Date.now()): Chec
   const lines = held.map(([provider, h]) => {
     const name = provider ?? "pi's default backend";
     const roles = Array.isArray(h.roles) && h.roles.length > 0 ? `; roles: ${h.roles.join(", ")}` : "";
-    return `${name} (${h.kind}) holds until it re-opens in ${humanSeconds(secondsUntil(h.end, now))}${roles}`;
+    return `${name} (${h.kind}) holds until it re-opens in ${humanUntil(h.end, now)}${roles}`;
   });
   return warnOutcome(lines.join("; "));
 }

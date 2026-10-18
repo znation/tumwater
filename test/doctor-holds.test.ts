@@ -30,6 +30,8 @@ test("checkPause: a timed team pause shows the countdown and reason", () => {
   const out = checkPause(root, now);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /auto-resumes in/);
+  assert.ok(out.detail.includes(humanSeconds(5400)));
+  assert.ok(!out.detail.includes(humanSeconds(5400) + "}"), "countdown must not leak a literal brace");
   assert.match(out.detail, /"deploy freeze"/);
 });
 
@@ -392,6 +394,8 @@ test("checkProviderHolds: a standing hold warns naming provider, kind, roles, an
   assert.match(out.detail, /rate-limit/);
   assert.match(out.detail, /feature, qa/);
   assert.match(out.detail, /re-opens in/);
+  assert.ok(out.detail.includes(humanSeconds(3600)));
+  assert.ok(!out.detail.includes(humanSeconds(3600) + "}"), "re-open span must not leak a literal brace");
 });
 
 test("checkProviderHolds: a resumed event clears the hold", () => {

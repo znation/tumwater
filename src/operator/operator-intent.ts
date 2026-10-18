@@ -5,7 +5,7 @@ import path from "node:path";
 import { cancelScheduledStop, isTeamPaused, scheduleStop } from "../team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
 import { durationLabel } from "../cli/cli-args.js";
-import { formatDate, formatTime, humanSeconds, secondsUntil } from "../text/datetime.js";
+import { formatDate, formatTime, humanUntil } from "../text/datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { questionAsker } from "../backlog/question-answer.js";
@@ -117,7 +117,7 @@ export function listWakes(root: string, role: string | undefined, now: number): 
 export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: number, role?: string): string {
   if (wakes.length === 0) return noWakePending(role);
   return wakes
-    .map((w, i) => `${i + 1}. in ${humanSeconds(secondsUntil(w.atMs, now))} — ${w.roles.join(", ")}`)
+    .map((w, i) => `${i + 1}. in ${humanUntil(w.atMs, now)} — ${w.roles.join(", ")}`)
     .join("\n");
 }
 

@@ -147,6 +147,16 @@ export function humanSeconds(s: number): string {
   return `${Math.round(s / 86400)}d`;
 }
 
+/** Humanized duration from `now` until a future epoch-ms instant — the "how long until it
+ * happens" phrase (a scheduled wake, a timed pause's auto-resume, a hold's re-open):
+ * humanSeconds over secondsUntil in one call, collapsing the ten sites that spelled the
+ * two-step composition out, so the s/m/h/d bucketing and the past-deadline zero-clamp for
+ * the future direction have one home. Reads `0s` once the instant has passed (secondsUntil
+ * clamps at zero), matching every countdown's existing behavior. */
+export function humanUntil(atMs: number, now: number): string {
+  return humanSeconds(secondsUntil(atMs, now));
+}
+
 /** The shared "when may this loop next act" phrase — the `next run` cell (status-render.ts's
  * nextRunCell) and the `Next tick` line (role-render.ts's scheduleLine) render their schedule
  * through it, so the two surfaces cannot drift on the backoff prefix or the humanSeconds

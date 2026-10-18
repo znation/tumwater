@@ -17,7 +17,7 @@ import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { STALL_RE, duration } from "./tick-progress-model.js";
 import { formatGB, usd, usdCap } from "../text/format.js";
-import { formatTimestamp, humanSeconds, secondsUntil } from "../text/datetime.js";
+import { formatTimestamp, humanUntil } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 
 /** Something that needs the operator — or that they should know — about the team as a whole,
@@ -336,7 +336,7 @@ export function teamAlerts(
     const phrased = snap.providerHolds
       .map(
         (h) =>
-          `${h.provider ?? "pi's default backend"} (${h.kind}) until it re-opens in ${humanSeconds(secondsUntil(h.until, now))}`,
+          `${h.provider ?? "pi's default backend"} (${h.kind}) until it re-opens in ${humanUntil(h.until, now)}`,
       )
       .join("; ");
     out.push({
