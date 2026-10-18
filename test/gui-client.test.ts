@@ -412,7 +412,7 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
 test("the composer queues for the director or one loop through the CLI's endpoints", async () => {
   const posts: Array<{ path: string; body: unknown }> = [];
   let fail = false;
-  const { sendPrompt } = clientScope<{ sendPrompt(target: string, text: string, images?: unknown, defer?: string): Promise<string> }>(["labels", "composer-send"], ["sendPrompt"], {
+  const { sendPrompt } = clientScope<{ sendPrompt(target: string, text: string, images?: unknown): Promise<string> }>(["labels", "composer-send"], ["sendPrompt"], {
     postJson: async (path: string, body: unknown) => {
       posts.push({ path, body });
       if (fail) throw new Error(path + " failed: HTTP 400 — the prompt is 5000 chars");
@@ -423,10 +423,6 @@ test("the composer queues for the director or one loop through the CLI's endpoin
   assert.deepEqual(posts.shift(), { path: "/api/prompt", body: { text: "prefer the stdlib" } });
   assert.equal(await sendPrompt("qa", "retest --watch"), "Added to the qa inbox for its next run — it wakes now");
   assert.deepEqual(posts.shift(), { path: "/api/prompt-role", body: { role: "qa", text: "retest --watch" } });
-  assert.equal(await sendPrompt("director", "later", undefined, "45m"), "Added to the director's inbox — delivers in 45m");
-  assert.deepEqual(posts.shift(), { path: "/api/prompt", body: { text: "later", defer: "45m" } });
-  assert.equal(await sendPrompt("qa", "later", undefined, "45m"), "Added to the qa inbox — delivers in 45m");
-  assert.deepEqual(posts.shift(), { path: "/api/prompt-role", body: { role: "qa", text: "later", defer: "45m" } });
   fail = true;
   await assert.rejects(sendPrompt("director", "too long"), /HTTP 400/, "a refused prompt rejects, so the page keeps the text");
 });

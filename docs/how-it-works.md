@@ -334,8 +334,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   token as `Authorization: Bearer <token>` or `?token=`.
 - The web dashboard opens on Team: alerts for whatever needs you (a failing or stuck role, a
   failing check on main, a spent budget, an available update, open questions, a pause), the prompt
-  box (a prompt can be sent later after a duration — the same grammar and `tumwater:not-before`
-  marker `tumwater prompt --at` uses), today's progress, the roles grouped by what they are doing,
+  box, today's progress, the roles grouped by what they are doing,
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow
   the events the card carries, and an active picker or Search filter also searches the log's
   recent slice through `/api/logs` (well past the events a status poll carries), persisted like
