@@ -553,8 +553,8 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
 /** Provider-slot contention: sums the last 24 h of `provider_wait` events (each a role tick
  * whose semaphore admission waited PROVIDER_WAIT_EVENT_MS or more, recorded in
  * orchestrator-launch.ts) and warns when the total reaches PROVIDER_WAIT_WARN_TOTAL_MS — the
- * provider cap is too small. Names the key of the largest per-key wait total (the key-less
- * bucket reads "the run cap") and, on a warn, the maxConcurrentPerProvider cap to raise. A
+ * provider cap is too small. Names every key that waited, busiest first (the key-less
+ * bucket reads "the run cap") and, on a warn, each key's maxConcurrentPerProvider cap to raise. A
  * counterpoint to checkWorktreePool's slot-wait half; read-only, like every doctor check.
  * `now` is a test seam for the window. */
 export function checkProviderContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
@@ -580,22 +580,28 @@ export function checkProviderContention(root: string, config: TumwaterConfig | u
     return okOutcome(`could not read the event log for provider waits: ${errorMessage(err)}`);
   }
   if (count === 0) return okOutcome("no provider waits");
-  // The bucket with the largest wait total names the cap to raise (the key-less bucket reads
-  // "the run cap" — maxConcurrent, since no seam keys to a provider).
-  let bestKey = "";
-  let bestTotal = -1;
-  for (const [k, v] of perKey) {
-    if (v > bestTotal) {
-      bestTotal = v;
-      bestKey = k;
-    }
-  }
-  const keyLabel = bestKey === "" ? "the run cap" : `the ${bestKey} slot`;
-  let detail = `${plural(count, "wait")} for a provider slot in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(longestMs)} (${keyLabel})`;
+  // Rank the buckets by wait total, ties breaking on key name so the detail is deterministic.
+  // The key-less bucket reads "the run cap" — maxConcurrent, since no seam keys to a provider.
+  const ranked = [...perKey.entries()]
+    .map(([key, total]) => ({ key, total }))
+    .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key));
+  const bucketLabel = (key: string) => (key === "" ? "the run cap" : `the ${key} slot`);
+  const cells = ranked.map((b) => `${bucketLabel(b.key)} ${shortSpanPhrase(b.total)}`);
+  // A single bucket keeps the pre-existing wording, a bare `(the X slot)` without the total
+  // (the total is already named by the `shortSpanPhrase(total)` in the clause before it);
+  // two or more name each bucket's total so the ranking reads at a glance.
+  const parenthetical =
+    ranked.length === 1
+      ? `(${bucketLabel(ranked[0]!.key)})`
+      : `(${cells[0]}, also ${cells.slice(1).join(", ")})`;
+  let detail = `${plural(count, "wait")} for a provider slot in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(longestMs)} ${parenthetical}`;
   const contended = total >= PROVIDER_WAIT_WARN_TOTAL_MS;
-  if (contended && bestKey !== "") {
-    const cap = config?.maxConcurrentPerProvider?.[bestKey];
-    if (cap !== undefined) detail += ` — raise maxConcurrentPerProvider.${bestKey} above ${cap}`;
+  if (contended) {
+    const advice = ranked
+      .filter((b) => b.key !== "" && config?.maxConcurrentPerProvider?.[b.key] !== undefined)
+      .map((b) => `raise maxConcurrentPerProvider.${b.key} above ${config?.maxConcurrentPerProvider?.[b.key]}`)
+      .join(" and ");
+    if (advice) detail += ` — ${advice}`;
   }
   return (contended ? warnOutcome : okOutcome)(detail);
 }

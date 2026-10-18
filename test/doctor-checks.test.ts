@@ -959,7 +959,7 @@ test("checkProviderContention sums the last day of provider_wait events and warn
   wait("clean", undefined, 60_000);
   const quiet = checkProviderContention(root, undefined);
   assert.equal(quiet.level, "ok");
-  assert.match(quiet.detail, /2 waits for a provider slot in the last 24h, 5m total, longest 4m \(the omlx slot\)/);
+  assert.match(quiet.detail, /2 waits for a provider slot in the last 24h, 5m total, longest 4m \(the omlx slot 4m, also the run cap 60s\)/);
 
   wait("feature", "omlx", 600_000);
   const cfg = { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 2 } };
@@ -970,6 +970,44 @@ test("checkProviderContention sums the last day of provider_wait events and warn
   const later = checkProviderContention(root, cfg, Date.now() + 48 * 3_600_000);
   assert.equal(later.level, "ok");
   assert.equal(later.detail, "no provider waits");
+});
+
+test("checkProviderContention names every keyed provider that waited and its cap in rank order", () => {
+  const root = readyRepo();
+  const wait = (role: string, key: string | undefined, waitedMs: number) =>
+    logEvent(root, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, waitedMs });
+  // omlx is busier but entered second; rank must still put it first and name both caps.
+  wait("clean", "acme", 400_000);
+  wait("feature", "omlx", 800_000);
+  const cfg = { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 2, acme: 1 } };
+  const out = checkProviderContention(root, cfg);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /\(the omlx slot 13m, also the acme slot 7m\)/);
+  assert.match(
+    out.detail,
+    /raise maxConcurrentPerProvider\.omlx above 2 and raise maxConcurrentPerProvider\.acme above 1/,
+  );
+});
+
+test("checkProviderContention keeps single-bucket wording and skips advice for an uncapped key", () => {
+  const root = readyRepo();
+  const wait = (role: string, key: string | undefined, waitedMs: number) =>
+    logEvent(root, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, waitedMs });
+  wait("feature", "omlx", 700_000);
+  const single = checkProviderContention(root, { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 2 } });
+  assert.equal(single.level, "warn");
+  assert.match(single.detail, /\(the omlx slot\)/);
+  assert.doesNotMatch(single.detail, /also/);
+  assert.match(single.detail, /raise maxConcurrentPerProvider\.omlx above 2/);
+
+  const root2 = readyRepo();
+  const wait2 = (role: string, key: string, waitedMs: number) =>
+    logEvent(root2, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, waitedMs });
+  wait2("feature", "omlx", 700_000); // wait whose key has no configured cap
+  const noCap = checkProviderContention(root2, { ...defaultConfig(), maxConcurrentPerProvider: {} });
+  assert.equal(noCap.level, "warn");
+  assert.match(noCap.detail, /\(the omlx slot\)/);
+  assert.doesNotMatch(noCap.detail, /raise/);
 });
 
 test("checkFlakyChecks stays quiet for no flake and for a single one-off flake", () => {

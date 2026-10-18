@@ -136,7 +136,7 @@ discards a role's in-flight merge.
   (a claude job's own id, else the pi provider, or pi's saved default for a job that names no
   model). A run whose admission waits 30 s or more for its provider/team slot logs a
   `provider_wait` event, and `tumwater doctor`'s "provider contention" row sums the last 24 h
-  and warns at 10 minutes, naming the key to raise.
+  and warns at 10 minutes, naming every key that waited, busiest first.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: pipeline, merge, batch, and main-baseline checks share it, the rest queue, and merges go
   first.
