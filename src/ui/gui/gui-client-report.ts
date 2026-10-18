@@ -200,16 +200,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   // Window tallies per merge-failure reason code, count desc then code asc — the reason
   // twin of reportModelOrder, so the "Merge failures by reason" chart matches the day
-  // report's line ordering. Reason keys are dynamic (result strings), so reads and seeds use
-  // Object.hasOwn as reportModelOrder does; a code a day series never failed with still gets
-  // a row only if some day carries it.
+  // report's line ordering. Reason keys are dynamic (result strings), so reads and seeds go
+  // through tallyAcross's Object.hasOwn checks as reportModelOrder does; a code a day series
+  // never failed with still gets a row only if some day carries it.
   function reportMergeFailureOrder(data) {
-    const byReason = {};
-    for (const d of data.series) {
-      for (const [reason, n] of Object.entries(d.mergeFailedByReason || {})) byReason[reason] = (Object.hasOwn(byReason, reason) ? byReason[reason] : 0) + n;
-      for (const reason of Object.keys(d.mergeFailedByReason || {})) if (!Object.hasOwn(byReason, reason)) byReason[reason] = 0;
-    }
-    return Object.entries(byReason).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return tallyAcross(data.series, ["mergeFailedByReason"], []);
   }
 
   // Window tallies per deferred-reason code, count desc then code asc — the reason twin of
