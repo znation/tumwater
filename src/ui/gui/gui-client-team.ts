@@ -11,16 +11,17 @@
  * paintPanel, showFlash) through that concatenation. */
 export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team status, budget and pause controls ----
   // restart-button:start
-  // The restart affordance's exact markup — one home shared by the sidebar's stale-build row
-  // and alertParts()'s build alert, so styling and the global [data-act='restart'] handler
-  // serve both icons from one place.
-  function restartButton(glyph) {
-    return "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the update now'>" + glyph + "</button>";
+  // The alert affordances' exact markup — one home shared by the sidebar's stale-build row and
+  // alertParts()'s build alert (a restart) and the held/reclaim disk row (a reclaim), so styling
+  // and the global [data-act='restart'] / [data-act='reclaim'] handlers serve both from one place.
+  function actionButton(glyph, act, title) {
+    return "<button type='button' class='alert-icon' data-act='" + act + "' title='" + title + "'>" + glyph + "</button>";
   }
-  // The disk row's reclaim affordance: its icon IS the button when the row is held or in the
-  // reclaim band; the global [data-act='reclaim'] handler posts /api/reclaim.
+  function restartButton(glyph) {
+    return actionButton(glyph, "restart", "Restart onto the update now");
+  }
   function reclaimButton(glyph) {
-    return "<button type='button' class='alert-icon' data-act='reclaim' title='Reclaim idle build outputs now'>" + glyph + "</button>";
+    return actionButton(glyph, "reclaim", "Reclaim idle build outputs now");
   }
   // restart-button:end
   // sidebar:start
