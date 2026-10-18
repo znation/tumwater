@@ -84,7 +84,8 @@ test("an explicit agent override selects the dialect over the config's primary",
     agent: "claude",
   });
   assert.ok(result);
-  assert.match(result.prompt, /mcp__tumwater__role_notes/, "the override speaks claude's dialect");
+  assert.match(result.prompt, /tumwater-notes write <<'TUMWATER_NOTES'/, "the override's run names the notes command");
+  assert.ok(!result.prompt.includes("mcp__tumwater__role_notes"), "no MCP notes tool name on claude");
   assert.ok(!result.prompt.includes("call role_notes with"), "never the pi tool name");
 });
 
@@ -222,7 +223,7 @@ test("a role run prompt reads the note from roleNotesPath, and omits the block w
   const withNote = promptFor(dir, "coverage");
   assert.ok(withNote);
   assert.match(withNote.prompt, /<role-notes>\ncoverage runs through the oracle helpers\n<\/role-notes>/);
-  assert.match(withNote.prompt, /call role_notes with/);
+  assert.match(withNote.prompt, /tumwater-notes write <<'TUMWATER_NOTES'/);
 
   const past = new Date(2026, 8, 30, 12);
   fs.utimesSync(notes, past, past);
@@ -232,7 +233,7 @@ test("a role run prompt reads the note from roleNotesPath, and omits the block w
   const without = promptFor(dir, "coverage");
   assert.ok(without);
   assert.ok(!without.prompt.includes("<role-notes>"), "a missing note file means no block");
-  assert.match(without.prompt, /call role_notes with/, "the write instruction is still present");
+  assert.match(without.prompt, /tumwater-notes write <<'TUMWATER_NOTES'/, "the write instruction is still present");
 });
 
 // The notebook is bounded on read too: the tool caps writes at ROLE_NOTES_MAX_BYTES, but the

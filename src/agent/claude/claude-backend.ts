@@ -17,7 +17,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { resolvedAgentConfig } from "../../config/config-views.js";
 import { MODEL_TIERS } from "../../config/config-schema.js";
@@ -111,14 +110,6 @@ function classifyClaudeExit(info: AgentExitInfo): AgentExitClassification {
   return {};
 }
 
-/** The inline `--mcp-config` JSON that runs the bundled role-notes server (part 5/7): the
- * same dist module pi's extension resolves to, spawned by the same node running this harness
- * so it needs no PATH lookup. */
-function roleNotesMcpConfig(): string {
-  const server = fileURLToPath(new URL("../mcp/role-notes-server.js", import.meta.url));
-  return JSON.stringify({ mcpServers: { tumwater: { command: process.execPath, args: [server] } } });
-}
-
 /** The ledger record this run may resume, or null: the newest record of `opts.kind` for
  * claude, at `opts.cwd` when one is given, whose transcript file exists. Shared by
  * `resolveClaudeSession` and the backend's `resumable` hook, so the resume guard and the
@@ -182,16 +173,12 @@ export const claudeBackend: AgentBackend = {
       // The caller computes the remaining daily budget for an API-billed claude run and the
       // adapter forwards it; a subscription run or the director passes none (part 7a/7).
       ...(run.maxBudgetUsd !== undefined ? { maxBudgetUsd: run.maxBudgetUsd } : {}),
-      // claude does not load the bundled pi extensions, so a run carrying a notebook gets the
-      // role_notes MCP server instead. Passed on EVERY claude invocation that carries a
-      // notebook — fresh or resumed, a transient retry, a SUMMARY follow-up — because claude
-      // keeps no flags across --resume, so a resume without this would lose the tool.
-      ...(run.notesPath !== undefined ? { mcpConfig: roleNotesMcpConfig() } : {}),
     });
     // agentBaseEnv applies the run marker and the macOS preload (shared with the pi adapter);
     // claudeEnv layers the backend's own scrub-and-set on top. The notebook path rides beside
-    // the marker the same way pi's adapter carries it (pi-backend.ts withNotesPath), so the
-    // spawned MCP server — which inherits this environment — reads the same notes file.
+    // the marker the same way pi's adapter carries it (pi-backend.ts withNotesPath); from part
+    // 2/4 the run saves its note through the `tumwater-notes` command on PATH, so no MCP server
+    // reaches the run and `--strict-mcp-config` (always in claude-args.ts) keeps it that way.
     const base =
       run.notesPath === undefined
         ? agentBaseEnv(run.runMarker, undefined, run.binDir)

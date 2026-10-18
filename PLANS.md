@@ -29,33 +29,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `runAct("cap-save", "clean")` with `#capeditinput` holding `2` posts `{ role: "clean", maxDailyCostUsd: 2 }` and flashes `Daily cap set to $2`; `0` flashes `Daily cap removed`; a non-numeric field flashes the parse error and posts nothing.
 - `npm test` passes.
 
-### Notes command, part 2/4: Every backend's prompt has roles save notes with `tumwater-notes`, and runs stop loading the pi notes extension and the notes MCP server (planned 2026-10-17 by user; requires part 1/4 landed; design in plans/notes-command.md "One prompt instruction" and "Retiring the old carriers"; touches src/prompt/prompt.ts src/prompt/dialect.ts src/tick/tick-prompt.ts src/pi/pi-args.ts src/agent/claude/claude-backend.ts src/agent/opencode/opencode-backend.ts scripts/smoke-claude.mjs and their tests)
-
-**Goal.** Switch every backend to the one notes carrier from part 1/4. Each prompt tells the role to save its note by running `tumwater-notes write` with a heredoc. The three old carriers stop being attached to runs: pi's `role_notes` extension, Claude Code's notes MCP server, and OpenCode's `mcp.servers.tumwater` entry. Their code is deleted in part 3/4, once this has run in the team.
-
-**Approach.**
-- **src/prompt/prompt.ts:** `roleNotesInstruction()` no longer takes a dialect. Its text is plans/notes-command.md §3: save the full replacement note (at most 4 KB) by running `tumwater-notes write <<'TUMWATER_NOTES'` … `TUMWATER_NOTES`. The `roleNotesBlock` a run sees is unchanged, and the director still gets neither.
-- **src/prompt/dialect.ts:** stop reading `notesTool` for the instruction. The field itself is deleted in part 3/4.
-- **src/tick/tick-prompt.ts:** stop passing the dialect to `roleNotesInstruction`.
-- **src/pi/pi-args.ts:** drop `role-notes.js` from `bundledExtensionPaths`.
-- **src/agent/claude/claude-backend.ts:** stop passing `mcpConfig` for notes. `--strict-mcp-config` stays, so no MCP server reaches a Claude Code run.
-- **src/agent/opencode/opencode-backend.ts:** stop passing `notesServer`. Disabling the operator's MCP servers stays.
-- **Every adapter still exports `TUMWATER_NOTES_PATH`** for a run that carries notes; the command reads it.
-- **scripts/smoke-claude.mjs:** one run carrying a notes file saves a note through `tumwater-notes` before ending, and the check reads the file back. OpenCode part 7/7's smoke check already saves an end-of-run note; with this part it goes through the command.
-
-**Files touched.**
-- Source: src/prompt/prompt.ts, src/prompt/dialect.ts, src/tick/tick-prompt.ts, src/pi/pi-args.ts, src/agent/claude/claude-backend.ts, src/agent/opencode/opencode-backend.ts.
-- Scripts: scripts/smoke-claude.mjs.
-- Tests: test/prompt.test.ts, test/prompt-dialect.test.ts, test/tick-prompt.test.ts, test/pi-args.test.ts, test/claude-args.test.ts, test/claude-run.test.ts, test/opencode-run.test.ts, test/loop-pi.test.ts.
-
-**Acceptance criteria.**
-- **Prompts:** a role's prompt on every backend names `tumwater-notes write` with the `TUMWATER_NOTES` heredoc, and none names `role_notes`, `mcp__tumwater__role_notes` or `tumwater_role_notes`. The director's prompt has no notes instruction.
-- **pi argv** no longer has the role-notes extension; the other bundled extensions keep their order.
-- **A Claude Code run carrying notes** has no `--mcp-config` and keeps `--strict-mcp-config`.
-- **An OpenCode run carrying notes** has no `mcp.servers.tumwater` in its `OPENCODE_CONFIG_CONTENT`.
-- **Env:** each of the three runs still has `TUMWATER_NOTES_PATH`, and the shim dir on `PATH`.
-- `npm test` passes.
-
 ### Notes command, part 3/4: Delete the retired notes carriers, the dialect's notes tool and their tests, and update the docs (planned 2026-10-17 by user; requires part 2/4 and OpenCode backend 7/7 landed; design in plans/notes-command.md "Retiring the old carriers"; touches src/pi-extension/role-notes.ts src/agent/mcp/role-notes-server.ts src/agent/role-notes-write.ts src/agent/claude/claude-backend.ts src/agent/claude/claude-args.ts src/agent/opencode/opencode-config.ts src/prompt/dialect.ts docs/how-it-works.md docs/backends.md scripts/smoke-opencode.mjs and their tests)
 
 **Goal.** After part 2/4, nothing attaches the pi notes extension, the notes MCP server or OpenCode's notes server entry. This part deletes that dead code and its tests, and corrects the docs that still describe the old tools.
@@ -1227,6 +1200,33 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
 
 
 ## Done
+### Notes command, part 2/4: Every backend's prompt has roles save notes with `tumwater-notes`, and runs stop loading the pi notes extension and the notes MCP server (planned 2026-10-17 by user; design in plans/notes-command.md "One prompt instruction" and "Retiring the old carriers"; touches src/prompt/prompt.ts src/pi/pi-args.ts src/agent/claude/claude-backend.ts src/agent/opencode/opencode-backend.ts scripts/smoke-claude.mjs scripts/smoke-opencode.mjs and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** Switch every backend to the one notes carrier from part 1/4. Each prompt tells the role to save its note by running `tumwater-notes write` with a heredoc. The three old carriers stop being attached to runs: pi's `role_notes` extension, Claude Code's notes MCP server, and OpenCode's `mcp.servers.tumwater` entry. Their code is deleted in part 3/4, once this has run in the team.
+
+**Approach.**
+- **src/prompt/prompt.ts:** `roleNotesInstruction()` no longer takes a dialect. Its text is plans/notes-command.md §3 (save the full replacement note, at most 4 KB, by running `tumwater-notes write <<'TUMWATER_NOTES'` … `TUMWATER_NOTES`), pushed unconditionally from `buildTickPrompt`. The `roleNotesBlock` a run sees is unchanged, and the director still gets neither.
+- **src/prompt/dialect.ts:** its `notesTool` field is no longer read for the instruction; the field itself is deleted in part 3/4.
+- **src/tick/tick-prompt.ts:** builds via `buildTickPrompt`, which now supplies the command instruction, so only its tests changed.
+- **src/pi/pi-args.ts:** dropped `role-notes.js` from `bundledExtensionPaths`; the other bundled extensions keep their order.
+- **src/agent/claude/claude-backend.ts:** stopped passing `mcpConfig` for notes; `--strict-mcp-config` stays, so no MCP server reaches a Claude Code run. The now-unused `roleNotesMcpConfig` helper was removed (its server is deleted in part 3/4).
+- **src/agent/opencode/opencode-backend.ts:** stopped passing `notesServer`; disabling the operator's MCP servers stays. The now-unused `roleNotesServerPath` helper was removed.
+- **Every adapter still carries `TUMWATER_NOTES_PATH`** for a run that carries notes; the command reads it.
+- **scripts/smoke-claude.mjs and scripts/smoke-opencode.mjs:** a notes-carrying run saves a note through `tumwater-notes` and the checks read the file back. The opencode fake now records `TUMWATER_NOTES_PATH` so the env assertion holds there.
+
+**Files touched.**
+- Source: src/prompt/prompt.ts, src/pi/pi-args.ts, src/agent/claude/claude-backend.ts, src/agent/opencode/opencode-backend.ts.
+- Scripts: scripts/smoke-claude.mjs, scripts/smoke-opencode.mjs, test/fakes/fake-opencode.ts.
+- Tests: test/prompt.test.ts, test/prompt-dialect.test.ts, test/tick-prompt.test.ts, test/pi-args.test.ts, test/claude-run.test.ts, test/opencode-run.test.ts.
+
+**Acceptance criteria.**
+- **Prompts:** a role's prompt on every backend names `tumwater-notes write` with the `TUMWATER_NOTES` heredoc, and none names `role_notes`, `mcp__tumwater__role_notes` or `tumwater_role_notes`. The director's prompt has no notes instruction.
+- **pi argv** no longer has the role-notes extension; the other bundled extensions keep their order.
+- **A Claude Code run carrying notes** has no `--mcp-config` and keeps `--strict-mcp-config`.
+- **An OpenCode run carrying notes** has no `mcp.servers.tumwater` in its `OPENCODE_CONFIG_CONTENT`.
+- **Env:** each of the three runs still has `TUMWATER_NOTES_PATH`, and the shim dir on `PATH`.
+- `npm test` passes.
+
 ### The budget banner names the roles whose tier has no free pair and stays paused (planned 2026-10-17 by the plan role; the snapshot field landed with the per-tier budget pause (gate-polls.ts's `budgetPausedRoles`) but no banner reads it, so a spent cap can look like every role is still working; it shares src/ui/team-alerts.ts and test/team-alerts.test.ts with the in-flight provider-hold banner plan — that one adds a `providerHolds` Pick key and a banner, this one adds a `budgetPausedRoles` Pick key and edits the existing budget alert's detail — so whichever lands second rebases over adjacent Pick lines and a different banner block; independent of the deferred-runs plan (src/report, src/ui/gui/gui-client-report.ts) and OpenCode 7/7 (src/doctor, src/agent/opencode), and it touches no src/status, src/gates or src/team file) — done 2026-10-17 by the feature role
 
 **Goal.** When the daily cap is reached and some tiers have a usable free fallback while others do not, `teamAlerts` pushes the blue `fallback` alert whose title reads "Today's budget is spent — roles switched to the over-cap model". Its detail lists only the tiers that moved; the roles whose tier has no usable free pair sit idle reading `budget paused` on their own loop row while the banner implies every role is still running. The snapshot already computes exactly that set (`budgetPausedRoles`, always present, empty when none) and no banner reads it. Name those roles in the same sentence, so one banner covers both halves of the split — the roles that moved to a free pair and the roles that stopped.

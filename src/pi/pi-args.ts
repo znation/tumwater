@@ -12,9 +12,10 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
  * oversized tool results, context-shake then reclaims old bulky results at 70% of the window,
  * context-budget appends its context-usage note to the (already bounded) result that crosses a
  * threshold, strip-thinking drops the model's replayed thinking from each request on a
- * small-window chat-completions model, trim-system-prompt drops pi's docs section from the system
- * prompt on a window of at most 128k, and role-notes registers the `role_notes` tool (only when
- * TUMWATER_NOTES_PATH names a notebook — see pi-extension/role-notes.ts). */
+ * small-window chat-completions model, and trim-system-prompt drops pi's docs section from the
+ * system prompt on a window of at most 128k. Notes ride the `tumwater-notes` command on
+ * every backend from part 2/4 on, so the role-notes extension is no longer bundled (part 3/4
+ * deletes src/pi-extension/role-notes.ts). */
 export function bundledExtensionPaths(): string[] {
   return [
     "bounded-output.js",
@@ -22,7 +23,6 @@ export function bundledExtensionPaths(): string[] {
     "context-budget.js",
     "strip-thinking.js",
     "trim-system-prompt.js",
-    "role-notes.js",
   ].map((file) => fileURLToPath(new URL(`../pi-extension/${file}`, import.meta.url)));
 }
 

@@ -97,7 +97,7 @@ const BASE = { ...defaultConfig(), agent: "claude", model: MODEL.default };
 
 let logSeq = 0;
 /** One live run through the real adapter, exactly as a tick builds it. */
-function runClaude({ model, prompt, sessionName, continueSession = false, signal, onToolCallStart }) {
+function runClaude({ model, prompt, sessionName, continueSession = false, signal, onToolCallStart, notesPath }) {
   logSeq += 1;
   return runAgent({
     cwd: CWD,
@@ -109,6 +109,7 @@ function runClaude({ model, prompt, sessionName, continueSession = false, signal
     nativeLogFile: path.join(ROOT, `native-${logSeq}.jsonl`),
     kind: "author",
     continueSession,
+    ...(notesPath !== undefined ? { notesPath } : {}),
     ...(signal !== undefined ? { signal } : {}),
     ...(onToolCallStart !== undefined ? { onToolCallStart } : {}),
   });
@@ -254,6 +255,29 @@ try {
     "an unknown model classifies as configError",
     unknown.configError === true,
     `configError=${unknown.configError} ${unknown.errorMessage ?? ""}`,
+  );
+
+  // 8. A run carrying a notebook saves its note through `tumwater-notes` (part 2/4): the
+  //    command is first on PATH, so a prompt that asks the run to write its end-of-run note
+  //    through the heredoc lands in the notes file, which this check reads back.
+  const notesFile = path.join(ROOT, "note.md");
+  const noted = await runClaude({
+    model: MODEL.default,
+    prompt: [
+      "Write your end-of-run role note by running exactly this shell command and nothing else:",
+      "tumwater-notes write <<'TUMWATER_NOTES'",
+      "smoke note marker",
+      "TUMWATER_NOTES",
+      "Then reply with exactly SMOKE_NOTE_DONE and nothing else.",
+    ].join("\n"),
+    sessionName: "note",
+    notesPath: notesFile,
+  });
+  const noteText = fs.existsSync(notesFile) ? fs.readFileSync(notesFile, "utf8") : "";
+  check(
+    "a notes-carrying run saves its note through tumwater-notes",
+    noted.ok && noteText.includes("smoke note marker"),
+    `ok=${noted.ok} note=${JSON.stringify(noteText)} ${noted.errorMessage ?? ""}`,
   );
 
   console.log("SMOKE PASS");

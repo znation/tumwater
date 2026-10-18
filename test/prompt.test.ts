@@ -79,7 +79,7 @@ test("the role-notes heading says when the notes were last saved", () => {
 test("every role run is told to write a note, even the first one with none", () => {
   const role = roleById("feature")!;
   const prompt = buildTickPrompt({ role, initialPrompt: "" });
-  assert.match(prompt, /call role_notes with\nthe full replacement note/);
+  assert.match(prompt, /tumwater-notes write <<'TUMWATER_NOTES'/);
   assert.match(prompt, /at most 4 KB/);
   assert.ok(!prompt.includes("<role-notes>"), "no note content block when there is no note");
 });

@@ -33,14 +33,11 @@ test("pi's reading-budget rule is the historical text, byte for byte", () => {
   the full-output file path) instead of retrying the same read.`;
   assert.equal(CONTEXT_BUDGET_RULE, historical);
   assert.equal(contextBudgetRule(PI_DIALECT), historical);
-  // The notebook instruction's pi text, likewise unchanged by the dialect split.
-  assert.equal(
-    roleNotesInstruction(PI_DIALECT),
-    `Before you end, if you learned something the next run of your role should know (where
-things live, what you ruled out and why, what you would look at next), call role_notes with
-the full replacement note (at most 4 KB). Do not copy backlog entries into it — PLANS.md and
-BUGS.md hold the work itself.`,
-  );
+  // The notebook instruction is the same on every backend (part 2/4): it names the
+  // tumwater-notes command, never a per-backend tool.
+  const instruction = roleNotesInstruction();
+  assert.match(instruction, /tumwater-notes write <<'TUMWATER_NOTES'/);
+  assert.ok(!instruction.includes("role_notes"), "the instruction names the command, not a tool");
 });
 
 test("claude's dialect differs only in the tool name and output-spill wording", () => {
@@ -54,36 +51,44 @@ test("claude's dialect differs only in the tool name and output-spill wording", 
   assert.equal(dialectFor(undefined), PI_DIALECT, "unknown or unset agents speak pi's dialect");
 });
 
-test("a claude run prompt names the MCP notes tool; pi's names the pi tool", () => {
+test("every backend's run prompt names the tumwater-notes command, and none names the old tools", () => {
   const role = roleById("feature")!;
-  const pi = buildTickPrompt({ role, initialPrompt: "" });
-  assert.match(pi, /call role_notes with/);
-  assert.ok(!pi.includes("mcp__tumwater__role_notes"), "pi never sees the MCP name");
-
+  for (const agent of ["pi", "claude", "opencode"] as const) {
+    const prompt = buildTickPrompt({ role, initialPrompt: "", agent });
+    assert.match(prompt, /tumwater-notes write <<'TUMWATER_NOTES'/, `${agent} names the notes command`);
+    assert.ok(!prompt.includes("role_notes"), `${agent} never names the pi tool`);
+    assert.ok(!prompt.includes("mcp__tumwater__role_notes"), `${agent} never names claude's MCP tool`);
+    assert.ok(!prompt.includes("tumwater_role_notes"), `${agent} never names opencode's MCP tool`);
+  }
   const claude = buildTickPrompt({ role, initialPrompt: "", agent: "claude" });
-  assert.match(claude, /call mcp__tumwater__role_notes with/);
-  assert.ok(!claude.includes("call role_notes with"), "claude never sees the pi tool name");
   assert.match(claude, /saved to a file the tool names/);
 });
 
-test("the notes instruction switches tool name with the dialect", () => {
-  assert.match(roleNotesInstruction(PI_DIALECT), /call role_notes with/);
-  assert.match(roleNotesInstruction(CLAUDE_DIALECT), /call mcp__tumwater__role_notes with/);
+test("the notes instruction is backend-independent and names only the command", () => {
+  // Part 2/4: the one carrier is the tumwater-notes command, so roleNotesInstruction takes no
+  // dialect and never names a per-backend tool. The dialect's notesTool field survives until
+  // part 3/4 deletes it.
+  const instruction = roleNotesInstruction();
+  assert.match(instruction, /save the full replacement\nnote \(at most 4 KB\) by running:/);
+  assert.match(instruction, /tumwater-notes write <<'TUMWATER_NOTES'/);
+  assert.match(instruction, /^TUMWATER_NOTES$/m, "the heredoc delimiter closes the instruction");
+  assert.ok(!instruction.includes("role_notes"));
+  assert.equal(CLAUDE_DIALECT.notesTool, "mcp__tumwater__role_notes");
 });
 
 test("opencode's dialect names the MCP notes tool and carries both backend rules", () => {
   assert.equal(dialectFor("opencode"), OPENCODE_DIALECT);
-  // Part 5b/7 turns the role-notes MCP server on: the notes tool is tumwater_role_notes and the
-  // prompt asks for the note "before the run ends" — past OpenCode's first-request MCP gap
-  // (finding 21, design §5).
+  // Part 5b/7 turned the role-notes MCP server on; the notesTool field survives until part 3/4
+  // deletes it. The prompt, though, names the tumwater-notes command (part 2/4).
   assert.equal(OPENCODE_DIALECT.notesTool, "tumwater_role_notes");
-  assert.match(roleNotesInstruction(OPENCODE_DIALECT), /call tumwater_role_notes with/);
+  assert.match(roleNotesInstruction(), /tumwater-notes write <<'TUMWATER_NOTES'/, "the instruction names the command");
 
   const role = roleById("feature")!;
   const opencode = buildTickPrompt({ role, initialPrompt: "", agent: "opencode" });
-  assert.match(opencode, /call tumwater_role_notes with/, "the opencode prompt names the MCP notes tool");
+  assert.match(opencode, /tumwater-notes write <<'TUMWATER_NOTES'/, "the opencode prompt names the notes command");
   assert.ok(!opencode.includes("call role_notes with"), "opencode never sees the pi tool name");
-  assert.ok(!opencode.includes("mcp__tumwater__role_notes"), "opencode uses its own MCP name, not claude's");
+  assert.ok(!opencode.includes("mcp__tumwater__role_notes"), "opencode never sees claude's MCP name");
+  assert.ok(!opencode.includes("tumwater_role_notes"), "opencode no longer names its own MCP tool");
   // The two backend rules (plans/opencode-backend.md §5) ride the reading-budget section.
   assert.match(opencode, /pass `timeout` in milliseconds/);
   assert.match(opencode, /never set `background`/);

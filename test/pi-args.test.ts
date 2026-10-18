@@ -54,17 +54,16 @@ test("piArgs loads the context-shake extension right after bounded-output", () =
     "context-budget.js",
     "strip-thinking.js",
     "trim-system-prompt.js",
-    "role-notes.js",
   ]);
   for (const e of exts) assert.ok(fs.existsSync(e), `extension exists in dist: ${e}`);
 });
 
-test("piArgs loads the role-notes extension last", () => {
+test("piArgs no longer loads the role-notes extension (notes ride tumwater-notes)", () => {
   const args = piArgs({ config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" });
   const exts = args.flatMap((a, i) => (a === "-e" ? [args[i + 1]!] : []));
   const last = exts[exts.length - 1]!;
-  assert.equal(path.basename(last), "role-notes.js");
-  assert.ok(fs.existsSync(last), `extension exists in dist: ${last}`);
+  assert.equal(path.basename(last), "trim-system-prompt.js", "the other bundled extensions keep their order");
+  assert.ok(!exts.some((e) => path.basename(e) === "role-notes.js"), "role-notes.js is no longer bundled");
 });
 
 test("piArgs skips the extension for non-pi agents, keeps it for a configured pi path", () => {

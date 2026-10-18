@@ -378,7 +378,7 @@ function savedClause(savedDay?: string, today?: string): string {
 /** The role's notebook as shown to it: its own earlier ticks' note, labeled as unverified.
  * Rides only when there is a non-empty note; the standing instruction to write one is always
  * present (roleNotesInstruction), so a role's FIRST tick — with no note yet — still learns the
- * tool exists and can seed the notebook. */
+ * command exists and can seed the notebook. */
 function roleNotesBlock(notes: string, savedDay?: string, today?: string): string {
   return `Notes your role wrote in earlier runs (${savedClause(savedDay, today)}yours, unverified — check against the code before
 relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
@@ -386,15 +386,19 @@ relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
 
 /** The standing instruction that makes the notebook seedable: every role tick is told it may
  * write one, so the first tick (when no note exists yet) can create it. The note content block
- * (roleNotesBlock) is what is omitted when there is nothing to show. */
-export function roleNotesInstruction(dialect: PromptDialect = PI_DIALECT): string {
-  // A backend whose dialect carries no notes tool (`notesTool: ""`) has no tool to call,
-  // so no instruction is rendered at all rather than one naming a tool the model lacks.
-  if (dialect.notesTool === "") return "";
+ * (roleNotesBlock) is what is omitted when there is nothing to show. Every backend speaks the
+ * same shell command (plans/notes-command.md §3), and the director never reaches
+ * buildTickPrompt, so it never carries one. */
+export function roleNotesInstruction(): string {
   return `Before you end, if you learned something the next run of your role should know (where
-things live, what you ruled out and why, what you would look at next), call ${dialect.notesTool} with
-the full replacement note (at most 4 KB). Do not copy backlog entries into it — PLANS.md and
-BUGS.md hold the work itself.`;
+things live, what you ruled out and why, what you would look at next), save the full replacement
+note (at most 4 KB) by running:
+
+tumwater-notes write <<'TUMWATER_NOTES'
+<the note>
+TUMWATER_NOTES
+
+Do not copy backlog entries into it — PLANS.md and BUGS.md hold the work itself.`;
 }
 
 interface TickPromptInput {
@@ -510,8 +514,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (planTargetNote) parts.push(planTargetNote.trim());
   if (flakyChecks) parts.push(flakyChecks.trim());
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
-  const notesInstruction = roleNotesInstruction(dialect);
-  if (notesInstruction !== "") parts.push(notesInstruction);
+  parts.push(roleNotesInstruction());
   parts.push(commonRules(check, briefFile, role.scope, dialect, compact).trim());
   return parts.join("\n\n");
 }

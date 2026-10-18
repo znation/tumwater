@@ -83,7 +83,7 @@ export function fakeOpencodeReplay(
     `    for a in "$@"; do case "$prev" in --session) id="$a";; esac; prev="$a"; done`,
     `    { printf '%s\\n' "$@"; echo "${RUN_MARKER}"; } >> "$argvFile"`,
     `    cat >> "$stdinFile"; echo "${RUN_MARKER}" >> "$stdinFile"`,
-    `    env | grep -E '^(OPENCODE(_|$)|PATH=)' | sort > "$envFile"`,
+    `    env | grep -E '^(OPENCODE(_|$)|PATH=|TUMWATER_NOTES_PATH=)' | sort > "$envFile"`,
     `    printf '%s\\n' "$id" >> "$ledgerFile"`,
     runTail,
     `    ;;`,

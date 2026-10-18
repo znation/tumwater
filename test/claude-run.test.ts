@@ -549,11 +549,11 @@ test("the native log rotates under logMaxBytes like the raw log", async () => {
   });
 });
 
-// The role-notes MCP wiring (plans/agent-backends.md "What the pi extensions did, per
-// backend", PLANS.md "Agent backends, part 5/7"): an authoring run with a notebook gets
-// --mcp-config naming the bundled server and TUMWATER_NOTES_PATH in its environment; a run
-// without a notebook gets neither, so review/landing/director runs expose no notebook tool.
-test("an authoring run with a notebook passes the role-notes MCP server and the notes path", async () => {
+// The notes wiring from part 2/4: an authoring run with a notebook saves its note through the
+// `tumwater-notes` command on PATH, so no `--mcp-config` reaches a Claude Code run and
+// `--strict-mcp-config` (always in claude-args.ts) keeps every MCP server out. The notes path
+// still rides the env beside the run marker.
+test("an authoring run with a notebook carries the notes path but no MCP server", async () => {
   const dir = tmpdir();
   const envFile = path.join(dir, "notes-env.txt");
   await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
@@ -563,11 +563,9 @@ test("an authoring run with a notebook passes the role-notes MCP server and the 
     const result = await runAgent(claudeRun(dir, { notesPath: notes }));
     assert.equal(result.ok, true, `${result.errorMessage}`);
     const argv = readRunBlocks(fake.argvFile)[0]!.split("\n");
-    const at = argv.indexOf("--mcp-config");
-    assert.ok(at >= 0, `an authoring run passes --mcp-config: ${argv.join(" ")}`);
-    const mcp = JSON.parse(argv[at + 1]!) as { mcpServers: { tumwater: { args: string[] } } };
-    assert.match(mcp.mcpServers.tumwater.args[0]!, /role-notes-server\.js$/);
-    assert.equal(fs.readFileSync(envFile, "utf8").trim(), notes, "the notes path reaches the spawned server");
+    assert.ok(!argv.includes("--mcp-config"), "an authoring run passes no MCP server");
+    assert.ok(argv.includes("--strict-mcp-config"), "--strict-mcp-config stays, so no MCP server reaches the run");
+    assert.equal(fs.readFileSync(envFile, "utf8").trim(), notes, "the notes path reaches the run");
   });
 });
 
@@ -585,7 +583,7 @@ test("a claude run without a notebook passes no MCP config and no notes path", a
   });
 });
 
-test("a resumed claude run re-passes --mcp-config, since claude keeps no flags across --resume", async () => {
+test("a resumed claude run also carries no MCP server across --resume", async () => {
   const dir = tmpdir();
   await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], async (fake) => {
     const notes = path.join(dir, "notes.md");
@@ -595,7 +593,7 @@ test("a resumed claude run re-passes --mcp-config, since claude keeps no flags a
     assert.equal(resumed.ok, true, `${resumed.errorMessage}`);
     const second = readRunBlocks(fake.argvFile)[1]!.split("\n");
     assert.ok(second.includes("--resume"), "the second run resumes");
-    assert.ok(second.includes("--mcp-config"), "the resume re-passes the notes MCP server");
+    assert.ok(!second.includes("--mcp-config"), "no MCP server on the resume either");
   });
 });
 

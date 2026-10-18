@@ -208,14 +208,18 @@ try {
 
   // 4. The real usage pattern (finding 21): a run that reads a file, runs a command, and then
   //    saves a role note before it ends — end-of-run notes are written after OpenCode's
-  //    first-request MCP gap has passed, so the note must land in the notes file.
+  //    first-request MCP gap has passed, so the note must land in the notes file. From part
+  //    2/4 the run writes it through the `tumwater-notes` command on PATH (no MCP server).
   const notesPath = path.join(ROOT, "role-notes.md");
   fs.writeFileSync(path.join(CWD, "file.txt"), "x\n");
   const noted = await runOpencode({
     prompt: [
-      "Read file.txt, run `printf ok > ran.txt`, and before you end call the role-notes tool to ",
-      "save this note exactly: SMOKE_NOTE_SAVED",
-    ].join(""),
+      "Read file.txt, run `printf ok > ran.txt`, and before you end write your role note by ",
+      "running exactly this shell command and nothing else:",
+      "tumwater-notes write <<'TUMWATER_NOTES'",
+      "SMOKE_NOTE_SAVED",
+      "TUMWATER_NOTES",
+    ].join("\n"),
     sessionName: "notes",
     notesPath,
   });

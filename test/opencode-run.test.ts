@@ -244,7 +244,7 @@ function tumwaterServer(fake: FakeOpencodeReplay): NotesServer | undefined {
   return parsed.mcp?.servers?.tumwater;
 }
 
-test("an authoring run with a notebook carries the role-notes MCP server on every invocation", async () => {
+test("an authoring run with a notebook carries the notes path but no tumwater MCP server", async () => {
   const dir = tmpdir();
   fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
   const notes = path.join(dir, ".tumwater", "notes", "feature.md");
@@ -252,19 +252,14 @@ test("an authoring run with a notebook carries the role-notes MCP server on ever
     const run = opencodeRun(dir, { notesPath: notes });
     let result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);
-    let server = tumwaterServer(fake);
-    assert.ok(server, "a notes-carrying run configures the tumwater server");
-    assert.equal(server!.type, "local");
-    assert.equal(server!.codemode, false);
-    assert.match(server!.command[server!.command.length - 1]!, /role-notes-server\.js$/, "points at the bundled role-notes server");
-    assert.equal((server!.environment as { TUMWATER_NOTES_PATH: string }).TUMWATER_NOTES_PATH, notes, "points at the role's notes path");
+    assert.equal(tumwaterServer(fake), undefined, "a notes-carrying run configures no tumwater MCP server");
+    assert.match(fs.readFileSync(fake.envFile, "utf8"), new RegExp(`TUMWATER_NOTES_PATH=${notes}`), "the notes path reaches the run");
 
-    // A continue of that run carries the server too (OpenCode's config is per process).
+    // A continue of that run keeps the notes path too (OpenCode's config is per process).
     result = await runAgent({ ...run, continueSession: true });
     assert.equal(result.ok, true, `${result.errorMessage}`);
-    server = tumwaterServer(fake);
-    assert.ok(server, "the continue carries the server too");
-    assert.equal((server!.environment as { TUMWATER_NOTES_PATH: string }).TUMWATER_NOTES_PATH, notes);
+    assert.equal(tumwaterServer(fake), undefined, "the continue configures no tumwater server either");
+    assert.match(fs.readFileSync(fake.envFile, "utf8"), new RegExp(`TUMWATER_NOTES_PATH=${notes}`), "the continue keeps the notes path");
   });
 
   // A run without a notebook names no tumwater server at all.

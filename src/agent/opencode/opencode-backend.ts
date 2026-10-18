@@ -22,7 +22,6 @@
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedAgentConfig } from "../../config/config-views.js";
 import { agentBaseEnv } from "../../process/run-marker.js";
@@ -172,13 +171,6 @@ function classifyOpencodeExit(info: AgentExitInfo): AgentExitClassification {
   return {};
 }
 
-/** The bundled role-notes MCP server's dist module, resolved exactly as claude-backend.ts's
- * `roleNotesMcpConfig` resolves it (the same dist module the bundled pi extensions reach), so
- * OpenCode runs it under the same node running this harness. */
-function roleNotesServerPath(): string {
-  return fileURLToPath(new URL("../mcp/role-notes-server.js", import.meta.url));
-}
-
 /** The agent-backend seam's opencode adapter. */
 export const opencodeBackend: AgentBackend = {
   id: "opencode",
@@ -198,16 +190,10 @@ export const opencodeBackend: AgentBackend = {
     const configContent = opencodeConfigContent({
       cwd: run.cwd,
       operatorMcpNames: operatorMcpNames(process.env, os.homedir()),
-      // A run carrying a notebook gets tumwater's bundled role-notes MCP server under
-      // `mcp.servers.tumwater`. Passed on EVERY invocation that carries notes — fresh or
-      // resumed, a transient retry, a SUMMARY follow-up — because OpenCode's config is per
-      // process.
-      ...(run.notesPath !== undefined
-        ? { notesServer: { command: [process.execPath, roleNotesServerPath()], notesPath: run.notesPath } }
-        : {}),
     });
-    // The notebook path rides beside the run marker so the spawned MCP server — which inherits
-    // this environment — reads the same notes file, as the pi and claude adapters' envs do.
+    // The notebook path rides beside the run marker, as the pi and claude adapters' envs do;
+    // from part 2/4 the run saves its note through the `tumwater-notes` command on PATH, so
+    // OpenCode configures no tumwater MCP server for notes.
     const base =
       run.notesPath === undefined
         ? agentBaseEnv(run.runMarker, undefined, run.binDir)
