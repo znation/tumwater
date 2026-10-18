@@ -140,6 +140,53 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
   sendJson(res, 200, { ok: true, role: base, minRunIntervalSeconds: value as number, message: `${base}: min run interval set to ${value as number}s` });
 }
 
+/** Handle POST /api/role-instances: the role drawer's instance-count editor sets or clears one
+ * role's parallel-runner count — the count that lets `feature-2`…`feature-N` tick. Same body
+ * discipline as /api/role-interval (readPostBody → 400 malformed/non-object, 413 oversized); a
+ * null, "" or whitespace-only value clears the key through unsetConfigKey (so the role falls
+ * back to the default 1), otherwise the write rides the CLI's own setConfigKey dotted path so
+ * whole-candidate validateConfig owns the final truth. There is no own range or role check here
+ * (unlike handleRoleCap's director exemption): setConfigKey runs the candidate through
+ * validateConfig, whose INSTANCE_COUNT rejects 0, 9, 1.5 and `abc` and whose INSTANCE_ROLES
+ * branch rejects an instances key under any role but feature and bugfix (the director and
+ * custom roles included). A bare `feature-2` loop id maps to its base role's count (baseRoleOf),
+ * since the count is about the role. A write failure is configKeyError's 400 exactly as
+ * handleRoleInterval reports it. */
+export async function handleRoleInstances(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"role": "feature", "instances": 3}');
+  if (!body) return;
+  const role = body.role;
+  if (typeof role !== "string" || role.trim() === "") {
+    badRequest(res, "role required");
+    return;
+  }
+  const value = body.instances;
+  if (value === undefined) {
+    badRequest(res, "instances required");
+    return;
+  }
+  const base = baseRoleOf(role);
+  // A null, empty or whitespace-only value clears the key, so the role falls back to the
+  // default 1 (unsetConfigKey, like the CLI's config unset of the key).
+  if (value === null || (typeof value === "string" && value.trim() === "")) {
+    // unsetConfigKey's no-op map path (a role the file never holds, an unknown id included)
+    // skips validateConfig, so without this the set branch's unknown-role refusal would never
+    // fire on a clear and a bogus id would answer 200 "cleared" — the explicit check mirrors
+    // the CLI's knownRoleIds guard and the role-interval clear branch.
+    if (rejectBadRole(root, res, role)) return;
+    const clearResult = unsetConfigKey(root, `roles.${base}.instances`);
+    if (!clearResult.ok) return configKeyError(res, `roles.${base}.instances`, clearResult);
+    sendJson(res, 200, { ok: true, role: base, message: `${base}: instances cleared` });
+    return;
+  }
+  // setConfigKey takes the raw CLI text; a JSON round-trip of an already-parsed value is
+  // exact, so the shared per-key validator + whole-config validateConfig (which owns which
+  // roles may split and the 1–8 integer bound) apply unchanged.
+  const result = setConfigKey(root, `roles.${base}.instances`, JSON.stringify(value));
+  if (!result.ok) return configKeyError(res, `roles.${base}.instances`, result);
+  sendJson(res, 200, { ok: true, role: base, instances: value, message: `${base}: instances set to ${value as number}` });
+}
+
 /** Handle POST /api/role-instructions: the role drawer's standing-instructions editor — the
  * `Instructions override` row's Edit/Save. Same body discipline as /api/role-cap (readPostBody
  * → 400 malformed/non-object, 413 oversized); an empty role id is a 400, and a bare `feature-2`

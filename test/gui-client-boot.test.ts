@@ -508,6 +508,58 @@ test("interval-edit opens the editor, interval-save posts the interval (empty in
   assert.deepEqual(events, ["stop"]);
 });
 
+test("instances-edit opens the editor, instances-save posts the count (empty input posts null), instances-discard posts nothing", () => {
+  const posts: unknown[] = [];
+  const flashes: string[] = [];
+  const events: string[] = [];
+  const field = { value: "3", validity: { badInput: false } };
+  const instancesState: { current: unknown } = { current: null };
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      drawerRole: { role: "feature", state: "ok", view: { instances: 3 } },
+      $: (id: string) => (id === "instanceseditinput" ? field : null),
+      startInstancesEdit: (r: string, v: number | string) => events.push(`edit ${r} ${v}`),
+      stopInstancesEdit: () => events.push("stop"),
+      instancesEditing: instancesState,
+      showFlash: (m: string) => flashes.push(m),
+      loadDrawerRole: (r: string) => events.push(`load ${r}`),
+      postAction: (path: string, body: unknown, done: (d: unknown) => string) => {
+        posts.push([path, body]);
+        // postAction toasts the callback's message — record it as the flash.
+        const msg = done({ message: "feature: instances set to 3" });
+        flashes.push(msg);
+        events.push(msg);
+      },
+    },
+  );
+  // instances-edit seeds the editor with the current count.
+  scope.runAct("instances-edit", "feature");
+  assert.deepEqual(events, ["edit feature 3"]);
+  // instances-save posts the count and flashes the server's message.
+  scope.runAct("instances-save", "feature");
+  assert.deepEqual(posts[0], ["/api/role-instances", { role: "feature", instances: 3 }]);
+  assert.deepEqual(flashes[0], "feature: instances set to 3");
+  assert.deepEqual(events.slice(-2), ["load feature", "feature: instances set to 3"]);
+  // An empty input posts null (the server clears the count back to the default 1).
+  field.value = "  ";
+  posts.length = 0;
+  scope.runAct("instances-save", "feature");
+  assert.deepEqual(posts[0], ["/api/role-instances", { role: "feature", instances: null }]);
+  // A non-numeric field flashes the number error and posts nothing.
+  flashes.length = 0;
+  posts.length = 0;
+  field.value = "abc";
+  field.validity.badInput = true;
+  scope.runAct("instances-save", "feature");
+  assert.deepEqual(posts, []);
+  assert.deepEqual(flashes, ["error: the instances must be an integer from 1 to 8 — leave it empty for the default 1"]);
+  // instances-discard closes the editor, posting nothing.
+  events.length = 0;
+  scope.runAct("instances-discard", "feature");
+  assert.deepEqual(events, ["stop"]);
+});
+
 test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
   const log: string[] = [];
   const calls: string[] = [];

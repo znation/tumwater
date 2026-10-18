@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleInterval, handleRoleInstructions, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -998,6 +998,101 @@ test("handleRoleInterval writes and clears a seeded built-in role's override the
   assert.equal(set.captured.status, 200);
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal((onDisk.roles as { qa: { minRunIntervalSeconds: number } }).qa.minRunIntervalSeconds, 300);
+});
+
+function serveRoleInstances(root: string, body: unknown) {
+  return captureJson((res) => handleRoleInstances(fakeReq(JSON.stringify(body)), res, root));
+}
+
+// POST /api/role-instances: the role drawer's parallel-runner-count editor. Writes through the
+// CLI's own setConfigKey dotted path, so whole-candidate validateConfig owns the final truth
+// (only feature and bugfix may split, and the count is an integer 1–8); null/empty/whitespace
+// clears through unsetConfigKey, and a bare instance id maps to its base role's count.
+test("handleRoleInstances writes the role's count through setConfigKey and answers 200", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), {});
+  const { captured, data } = await serveRoleInstances(root, { role: "feature", instances: 3 });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, role: "feature", instances: 3, message: "feature: instances set to 3" });
+  // The file on disk is what the scheduler polls — the write went through setConfigKey.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { feature: { instances: number } }).feature.instances, 3);
+});
+
+test("handleRoleInstances maps an instance id to its base role's count", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { instances: 2 } } });
+  const inst = await serveRoleInstances(root, { role: "feature-2", instances: 3 });
+  assert.equal(inst.captured.status, 200);
+  // An instance id writes roles.feature.instances (the key its runs read).
+  assert.deepEqual(inst.data, { ok: true, role: "feature", instances: 3, message: "feature: instances set to 3" });
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { feature: { instances: number } }).feature.instances, 3);
+});
+
+test("handleRoleInstances clears on null/empty/whitespace and rejects bad input without writing", async () => {
+  const root = tmpdir();
+  const seed = () => writeJsonFile(configPath(root), { roles: { feature: { instances: 3 } } });
+  seed();
+  // Each empty form clears: null (the drawer posts for an empty input), "" and whitespace.
+  for (const empty of [null, "", "   "]) {
+    const cleared = await serveRoleInstances(root, { role: "feature", instances: empty });
+    assert.equal(cleared.captured.status, 200);
+    assert.deepEqual(cleared.data, { ok: true, role: "feature", message: "feature: instances cleared" });
+    const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+    assert.equal((onDisk.roles as { feature?: Record<string, unknown> } | undefined)?.feature?.instances, undefined);
+    seed(); // re-seed for the next empty form
+  }
+  // A bad value is refused through validateConfig with the per-role dotted key named.
+  for (const bad of [0, 9, 1.5, "abc"]) {
+    const rej = await serveRoleInstances(root, { role: "feature", instances: bad });
+    assert.equal(rej.captured.status, 400);
+    assert.match((rej.data as { error: string }).error, /roles\.feature\.instances/);
+  }
+  // Only feature and bugfix may split; the director and steward are refused through
+  // validateConfig's INSTANCE_ROLES branch.
+  for (const id of ["steward", "director"]) {
+    const rej = await serveRoleInstances(root, { role: id, instances: 2 });
+    assert.equal(rej.captured.status, 400);
+    assert.match((rej.data as { error: string }).error, /only valid for feature and bugfix/);
+  }
+  // An unknown id is refused earlier, at validateConfig's known-role guard.
+  const unknown = await serveRoleInstances(root, { role: "nope", instances: 2 });
+  assert.equal(unknown.captured.status, 400);
+  assert.match((unknown.data as { error: string }).error, /nope is not a known role/);
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { feature?: Record<string, unknown> } | undefined)?.feature?.instances, 3, "a refused write never touches the file");
+});
+
+test("handleRoleInstances clears a key the file never set without writing and refuses a missing field or unknown role", async () => {
+  const root = tmpdir();
+  const before = Buffer.from(JSON.stringify({ roles: { feature: { enabled: true } } }, null, 2) + "\n");
+  fs.mkdirSync(path.dirname(configPath(root)), { recursive: true });
+  fs.writeFileSync(configPath(root), before);
+  // Unsetting a key the file never set is a no-op: the file's bytes stay identical.
+  const cleared = await serveRoleInstances(root, { role: "feature", instances: null });
+  assert.equal(cleared.captured.status, 200);
+  const after = fs.readFileSync(configPath(root));
+  assert.equal(after.equals(before), true, "clearing a never-set key leaves the file byte-identical");
+  // A missing role or a missing value (absent, not null) is refused.
+  const noRole = await serveRoleInstances(root, { instances: 3 });
+  assert.equal(noRole.captured.status, 400);
+  assert.match((noRole.data as { error: string }).error, /role required/);
+  const noValue = await serveRoleInstances(root, { role: "feature" });
+  assert.equal(noValue.captured.status, 400);
+  assert.match((noValue.data as { error: string }).error, /instances required/);
+  // An unknown role id is refused on the set branch through validateConfig, writing nothing.
+  const fresh = tmpdir();
+  const unknown = await serveRoleInstances(fresh, { role: "nope", instances: 2 });
+  assert.equal(unknown.captured.status, 400);
+  assert.equal(fs.existsSync(configPath(fresh)), false, "a refused write never creates the file");
+  // Clearing an unknown role is refused too — unsetConfigKey's no-op map path (a role the
+  // file never holds) skips validateConfig, so the clear branch checks the id explicitly.
+  const fresh2 = tmpdir();
+  const unknownClear = await serveRoleInstances(fresh2, { role: "nope", instances: null });
+  assert.equal(unknownClear.captured.status, 400);
+  assert.match((unknownClear.data as { error: string }).error, /unknown role "nope"/);
+  assert.equal(fs.existsSync(configPath(fresh2)), false, "a refused clear never creates the file");
 });
 
 function serveRoleEnable(root: string, body: unknown) {

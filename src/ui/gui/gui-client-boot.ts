@@ -267,6 +267,30 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         loadDrawerRole(arg);
         return d && typeof d.message === "string" ? d.message : "Min run interval updated";
       });
+    } else if (act === "instances-edit") {
+      startInstancesEdit(arg, drawerRole?.view?.instances ?? "");
+    } else if (act === "instances-discard") {
+      stopInstancesEdit();
+    } else if (act === "instances-save") {
+      const input = $("instanceseditinput");
+      if (!input) return;
+      // A type=number input reports "" both for a field cleared on purpose (the default 1)
+      // and for text the browser rejected ("$2"); validity.badInput tells them apart, so a
+      // typo is an error instead of silently clearing the count — the interval arm's guard,
+      // in scope from the operator blob concatenated earlier. (A rejected "2.5" is a real
+      // number the browser accepts, so it posts and validateConfig's 1–8 integer rule 400s
+      // it, flashed through postAction's error path.)
+      if (input.validity && input.validity.badInput) {
+        showFlash("error: the instances must be an integer from 1 to 8 — leave it empty for the default 1");
+        return;
+      }
+      const raw = input.value.trim();
+      const value = raw === "" ? null : Number(raw);
+      postAction("/api/role-instances", { role: arg, instances: value }, (d) => {
+        instancesEditing = null;
+        loadDrawerRole(arg);
+        return d && typeof d.message === "string" ? d.message : "Instances updated";
+      });
     } else if (act === "instructions-edit") {
       startInstructionsEdit(arg, drawerRole?.view?.instructions ?? "");
     } else if (act === "instructions-discard") {

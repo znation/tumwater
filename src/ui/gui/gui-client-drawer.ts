@@ -38,6 +38,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     instructionsEditing = null;
     quietEditing = null;
     intervalEditing = null;
+    instancesEditing = null;
     disarmNoteClear();
     if (wasLoop && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
     drawerTicks = null;
@@ -354,6 +355,30 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         : "<button type='button' class='btn btn-sm' data-act='interval-edit' data-arg='" + esc(role) + "'>" + (typeof view.minRunIntervalOverride === "number" ? "Edit" : "Set interval") + "</button>";
       rows.push("<div><dt>Min run interval</dt><dd title='" + esc(intervalBody) + "'>" + esc(intervalBody) + intervalControl + "</dd></div>");
     }
+    // The parallel-runner count (roles.<base>.instances), worded like role-render.ts's
+    // Instances line — the last per-role hold the drawer edits. Rendered only for a role that
+    // may split (its base, an instance strip, is feature or bugfix): the count is meaningless
+    // for any other role, which role-view never carries. The body reads the payload's numeric
+    // count (roles.<base>.instances) tagged (set) or falls back to 1 tagged (default) when the
+    // file leaves it unset — role-view carries instances only when the file sets it. While the
+    // editor is open for this role, an input prefilled with the count (empty when none) and
+    // Save/Discard
+    // replace the sentence, mirroring the interval editor's markup; a role with no count still
+    // seeds an empty input, so an empty buffer on Save clears.
+    const splitBase = role.replace(/-\d+$/, "");
+    if (splitBase === "feature" || splitBase === "bugfix") {
+      const hasInstances = typeof view.instances === "number";
+      const instCount = hasInstances ? view.instances : 1;
+      const instBody = String(instCount) + (hasInstances ? " (set)" : " (default)");
+      const editingInst = instancesEditing && instancesEditing.role === role;
+      const seed = instancesEditing ? instancesEditing.value : null;
+      const instControl = editingInst
+        ? "<input id='instanceseditinput' type='number' min='1' max='8' step='1' value='" + (seed === "" || seed == null ? "" : String(seed)) + "' placeholder='default 1'>" +
+          "<div><button type='button' class='btn btn-sm btn-primary' data-act='instances-save' data-arg='" + esc(role) + "'>Save</button> " +
+          "<button type='button' class='btn btn-sm' data-act='instances-discard' data-arg='" + esc(role) + "'>Discard</button></div>"
+        : "<button type='button' class='btn btn-sm' data-act='instances-edit' data-arg='" + esc(role) + "'>" + (hasInstances ? "Edit" : "Set instances") + "</button>";
+      rows.push("<div><dt>Instances</dt><dd title='" + esc(instBody) + "'>" + esc(instBody) + instControl + "</dd></div>");
+    }
     // The windows governing the loop, worded like role-render.ts's Quiet hours line; the end time
     // mirrors quietWindowEnd (browser code cannot import it). A non-director role's own window
     // is an always-shown editable row (the Daily cap row's rationale: the control sits where
@@ -446,6 +471,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let instructionsEditing = null; // { role, text }
   let quietEditing = null; // { role, window }
   let intervalEditing = null; // { role, value } — value is the seeded override (number) or "" when none
+  let instancesEditing = null; // { role, value } — value is the seeded count (number) or "" when none
   function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
   // The notebook clear and the backlog entry cancel each build a two-click confirm slot from
   // the shared confirmSlot factory (defined in the loops splice, an earlier one), so the arm,
@@ -462,6 +488,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function stopInstructionsEdit() { instructionsEditing = null; repaintDrawerRole(); }
   function startIntervalEdit(role, value) { intervalEditing = { role, value: value === "" || value == null ? "" : Number(value) }; repaintDrawerRole(); }
   function stopIntervalEdit() { intervalEditing = null; repaintDrawerRole(); }
+  function startInstancesEdit(role, value) { instancesEditing = { role, value: value === "" || value == null ? "" : Number(value) }; repaintDrawerRole(); }
+  function stopInstancesEdit() { instancesEditing = null; repaintDrawerRole(); }
   function startQuietEdit(role, window) { quietEditing = { role, window: String(window ?? "") }; repaintDrawerRole(); }
   function stopQuietEdit() { quietEditing = null; repaintDrawerRole(); }
   // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so

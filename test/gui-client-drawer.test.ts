@@ -35,6 +35,8 @@ interface DrawerScope {
   stopQuietEdit(): void;
   startIntervalEdit(role: string, value: number | string): void;
   stopIntervalEdit(): void;
+  startInstancesEdit(role: string, value: number | string): void;
+  stopInstancesEdit(): void;
   loadDrawerRole(role: string): Promise<void>;
   toggleLoop(role: string): void;
   toggleEntry(file: string, index: number): void;
@@ -963,6 +965,67 @@ test("the min run interval row tags override vs team default and its editor pref
   assert.match(noneRole, /<dt>Min run interval<\/dt><dd title='20s \(team default\)'>20s \(team default\)<button[^>]*data-act='interval-edit'[^>]*>Set interval<\/button><\/dd>/);
   none.scope.startIntervalEdit("clean", "");
   assert.match(none.paintedFor("drawerrole"), /<input id='intervaleditinput'[^>]*value=''/);
+});
+
+// The Instances row is the parallel-runner count (roles.<base>.instances) — the last
+// per-role hold the drawer edits. It renders only for a role that may split (its base,
+// an instance strip, is feature or bugfix), reads the count from the role payload tagged
+// `(set)` or falls back to 1 tagged `(default)`, and while open prefills an editor that
+// survives a poll repaint.
+test("the Instances row renders only for split-capable roles, tags set vs default, and prefills its editor", async () => {
+  const splitStatus = (role: string) => {
+    const now = Date.now();
+    return {
+      running: true, pausedRoles: [], pausedLoops: [],
+      roles: [{ role, phase: "working", inFlight: true, currentWork: "", lastResult: "", lastSummary: "",
+        lastRunEndedAt: now - 60000, commits: 0, runs: 1, generated: 0, peakCtx: 0, todayUsd: 0, costUsd: 0,
+        nextRunAt: now + 30000, yieldMultiplier: 1, backoffSeconds: 0 }],
+    };
+  };
+  // With the count in the payload, the body reads `N (set)` and offers an Edit control.
+  const withSet = openDrawer(["toggleLoop", "startInstancesEdit", "stopInstancesEdit"], {
+    status: splitStatus("feature"),
+    responses: { "/api/role?role=feature": { notes: null, nextPrompt: null, instances: 3 } },
+  });
+  withSet.scope.toggleLoop("feature");
+  await flush();
+  assert.match(withSet.paintedFor("drawerrole"), /<dt>Instances<\/dt><dd title='3 \(set\)'>3 \(set\)<button[^>]*data-act='instances-edit'[^>]*>Edit<\/button><\/dd>/);
+  // Opening the editor seeds the count; the painted input survives a poll repaint.
+  withSet.scope.startInstancesEdit("feature", 3);
+  const editing = withSet.paintedFor("drawerrole");
+  assert.match(editing, /<input id='instanceseditinput' type='number' min='1' max='8' step='1' value='3'/);
+  assert.match(editing, /data-act='instances-save' data-arg='feature'/);
+  assert.match(editing, /data-act='instances-discard' data-arg='feature'/);
+  assert.equal(withSet.paintedFor("drawerrole"), editing, "an open edit repaints the same seeded input");
+  withSet.scope.stopInstancesEdit();
+  assert.match(withSet.paintedFor("drawerrole"), /data-act='instances-edit' data-arg='feature'>Edit<\/button>/);
+  assert.doesNotMatch(withSet.paintedFor("drawerrole"), /instanceseditinput/);
+  // An instance id splits too: its base strip is feature, so it renders the same row.
+  const inst = openDrawer(["toggleLoop"], {
+    status: splitStatus("feature-2"),
+    responses: { "/api/role?role=feature-2": { notes: null, nextPrompt: null, instances: 4 } },
+  });
+  inst.scope.toggleLoop("feature-2");
+  await flush();
+  assert.match(inst.paintedFor("drawerrole"), /<dt>Instances<\/dt><dd title='4 \(set\)'>4 \(set\)<button[^>]*data-act='instances-edit'[^>]*>Edit<\/button><\/dd>/);
+  // Without the count the body reads `1 (default)` and offers a Set instances control.
+  const withDefault = openDrawer(["toggleLoop"], {
+    status: splitStatus("feature"),
+    responses: { "/api/role?role=feature": { notes: null, nextPrompt: null } },
+  });
+  withDefault.scope.toggleLoop("feature");
+  await flush();
+  assert.match(withDefault.paintedFor("drawerrole"), /<dt>Instances<\/dt><dd title='1 \(default\)'>1 \(default\)<button[^>]*data-act='instances-edit'[^>]*>Set instances<\/button><\/dd>/);
+  // A role that cannot split (steward/director) renders no Instances row at all.
+  for (const r of ["steward", "director"]) {
+    const t = openDrawer(["toggleLoop"], {
+      status: splitStatus(r),
+      responses: { [`/api/role?role=${r}`]: { notes: null, nextPrompt: null, instances: 3 } },
+    });
+    t.scope.toggleLoop(r);
+    await flush();
+    assert.doesNotMatch(t.paintedFor("drawerrole"), /<dt>Instances<\/dt>/);
+  }
 });
 
 // A default pi team runs on pi's own saved default model: rolePayload sets `piDefault`
