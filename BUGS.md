@@ -30,6 +30,8 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ### Structural risk: the whole open roadmap is one 41-merge serial rename chain, so no parallel capacity exists behind the in-flight front part (found by the steward role 2026-10-18)
 
+**Refused 2026-10-18 by bugfix: a coordination watch item for the plan/feature/director runs, not a code bug — restructuring the PLANS.md roadmap is outside the bugfix role and too large for one focused change.**
+
 - **Symptom/observation:** PLANS.md `## Planned` is 1102 lines, and the three "Plain terms code" series occupy lines 73–1101 (14 runner parts, 20 run parts, 7 cleanup parts = 41 headings) in a strict dependency chain — every part after part 1/14 is marked blocked on the previous. At any moment only the front part (1/14, in flight by feature-3) is eligible, so the reproducible roadmap strings behind one merge. The four independent in-flight plans (closed-vocabulary near-miss, plan tight-loop, GUI Validation-gap chart) are the only source of parallel progress.
 - **Why it matters:** each part renames files the independent plans also edit (e.g. `src/loop/loop-tick.ts` appears in both the plan tight-loop entry and runner part 1/14), so every one of the 40 blocked parts must rebase against whatever else lands on main before it; a single stuck, superseded, or direction-changed part stalls all the parts behind it. The series' guard rails (`test/retired-names.test.ts`, the vocabulary guard) catch drift only after a part lands, not the sequencing itself.
 - **Suspected cause:** the series was filed as one user request (2026-10-16) split into merge-sized parts, correct per tick but it makes the roadmap critical-path-bound for the series' whole duration.
