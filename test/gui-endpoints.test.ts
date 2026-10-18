@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleInstructions, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleInstructions, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -798,6 +798,96 @@ test("handleRoleInstructions refuses an unknown role id and creates no file", as
   const { captured } = await serveRoleInstructions(root, { role: "nope", text: "z" });
   assert.equal(captured.status, 400);
   assert.equal(fs.existsSync(configPath(root)), false, "a refused write never creates the file");
+});
+
+function serveRoleQuietHours(root: string, body: unknown) {
+  return captureJson((res) => handleRoleQuietHours(fakeReq(JSON.stringify(body)), res, root));
+}
+
+// POST /api/role-quiet-hours: the role drawer's own-window editor. Writes through the CLI's
+// own setConfigKey/unsetConfigKey, so an empty window clears (like --clear-quiet-hours) and
+// checkQuietHours (naming quietHoursPerRole.<base>) plus validateConfig's unknown-role check
+// own the truth; an instance id maps to its base role's key; the director is refused (its key
+// is inert — roleQuietHold and doctor both exempt it), unlike handleRoleInstructions.
+test("handleRoleQuietHours writes the role's own window through setConfigKey and answers 200", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), {});
+  const { captured, data } = await serveRoleQuietHours(root, { role: "feature", window: "23:00-07:00" });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, role: "feature", message: "feature: quiet hours set to 23:00-07:00" });
+  // The file on disk is what roleQuietHold reads — the write went through setConfigKey.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.quietHoursPerRole as Record<string, unknown>).feature, "23:00-07:00");
+});
+
+test("handleRoleQuietHours maps an instance id to its base role's key", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { instances: 2 } } });
+  const { captured, data } = await serveRoleQuietHours(root, { role: "feature-2", window: "23:00-07:00" });
+  assert.equal(captured.status, 200);
+  // The window governs the role, so a bare loop id writes the base role's key.
+  assert.deepEqual(data, { ok: true, role: "feature", message: "feature: quiet hours set to 23:00-07:00" });
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.quietHoursPerRole as Record<string, unknown>).feature, "23:00-07:00");
+});
+
+test("handleRoleQuietHours clears on an empty window and rejects bad input without writing", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { quietHoursPerRole: { feature: "23:00-07:00" } });
+  const post = (body: unknown) => captureJson((res) => handleRoleQuietHours(fakeReq(JSON.stringify(body)), res, root));
+  // An empty or whitespace-only window removes the key (unsetConfigKey), like --clear-quiet-hours.
+  const cleared = await post({ role: "feature", window: "   " });
+  assert.equal(cleared.captured.status, 200);
+  assert.deepEqual(cleared.data, { ok: true, role: "feature", message: "feature: quiet hours cleared" });
+  let onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.quietHoursPerRole as Record<string, unknown> | undefined)?.feature, undefined);
+  // A non-string window is refused with the gotSuffix wording.
+  const nonString = await post({ role: "feature", window: 5 });
+  assert.equal(nonString.captured.status, 400);
+  assert.match((nonString.data as { error: string }).error, /"window" must be a string/);
+  // A malformed window is refused 400 naming the dotted key, writing nothing.
+  for (const bad of ["nope", "23:00", "23:00-23:00"]) {
+    const rejected = await post({ role: "feature", window: bad });
+    assert.equal(rejected.captured.status, 400);
+    assert.match((rejected.data as { error: string }).error, /quietHoursPerRole\.feature/);
+  }
+  onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.quietHoursPerRole as Record<string, unknown> | undefined)?.feature, undefined, "a refused write never touches the file");
+});
+
+test("handleRoleQuietHours refuses the director, an unknown role, and a missing field", async () => {
+  const root = tmpdir();
+  // The director has no quiet hours (its key is inert).
+  const dir = await serveRoleQuietHours(root, { role: "director", window: "23:00-07:00" });
+  assert.equal(dir.captured.status, 400);
+  assert.match((dir.data as { error: string }).error, /the director has no quiet hours/);
+  assert.doesNotMatch((dir.data as { error: string }).error, /quietHoursPerRole/);
+  // An unknown role id is refused through validateConfig, writing nothing.
+  const unknown = await serveRoleQuietHours(root, { role: "nope", window: "23:00-07:00" });
+  assert.equal(unknown.captured.status, 400);
+  assert.equal(fs.existsSync(configPath(root)), false, "a refused write never creates the file");
+  // Clearing an unknown role is refused too — unsetConfigKey's no-op path would otherwise
+  // clear nothing and report success, so the clear branch carries rejectBadRole's own 400.
+  const unknownClear = await serveRoleQuietHours(root, { role: "nope", window: "" });
+  assert.equal(unknownClear.captured.status, 400);
+  assert.match((unknownClear.data as { error: string }).error, /unknown role "nope"/);
+  assert.equal(fs.existsSync(configPath(root)), false, "a refused clear never creates the file");
+  // A missing role or a missing/blank role is refused.
+  const noRole = await serveRoleQuietHours(root, { window: "23:00-07:00" });
+  assert.equal(noRole.captured.status, 400);
+  assert.match((noRole.data as { error: string }).error, /role required/);
+  const blankRole = await serveRoleQuietHours(root, { role: "  ", window: "23:00-07:00" });
+  assert.equal(blankRole.captured.status, 400);
+});
+
+test("handleRoleQuietHours clearing a key the file never set writes nothing", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), {});
+  const before = fs.readFileSync(configPath(root), "utf8");
+  const { captured } = await serveRoleQuietHours(root, { role: "feature", window: "" });
+  assert.equal(captured.status, 200);
+  // Clearing an absent map entry is a no-op success — the file bytes stay identical.
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before);
 });
 
 test("handleConfigSet refuses a key outside the curated set, naming it", async () => {

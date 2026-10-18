@@ -31,6 +31,8 @@ interface DrawerScope {
   stopCapEdit(): void;
   startInstructionsEdit(role: string, text: string): void;
   stopInstructionsEdit(): void;
+  startQuietEdit(role: string, window: string): void;
+  stopQuietEdit(): void;
   loadDrawerRole(role: string): Promise<void>;
   toggleLoop(role: string): void;
   toggleEntry(file: string, index: number): void;
@@ -691,24 +693,63 @@ test("the Configuration section names the resolved seam's context window and com
   assert.doesNotMatch(legacy.paintedFor("drawerrole"), /Context window/);
 });
 
-test("the Configuration section paints a Quiet hours row per window, worded like the CLI", async () => {
+test("the Configuration section paints a Quiet hours own-window row and a read-only fleet row", async () => {
   const mk = (extra: object) => openDrawer(["toggleLoop"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/default", modelTier: "default", minRunIntervalSeconds: 30, ...extra } },
   });
   const t = mk({ quietHours: [
     { scope: "role", window: "23:00-07:00", inWindow: true },
-    { scope: "team", window: "12:00-13:00", inWindow: false },
+    { scope: "fleet", window: "12:00-13:00", inWindow: false },
   ] });
   t.scope.toggleLoop("clean");
   await flush();
   const role = t.paintedFor("drawerrole");
-  assert.match(role, /<dt>Quiet hours<\/dt><dd[^>]*>23:00-07:00 \(own window; holding now — quiet until 07:00\)<\/dd>/);
+  // The own window is an always-shown editable row; the fleet window a read-only row.
+  assert.match(role, /<dt>Quiet hours<\/dt><dd[^>]*>23:00-07:00 \(own window; holding now — quiet until 07:00\).*data-act='quiet-edit' data-arg='clean'>Edit<\/button>/);
   assert.match(role, /<dt>Quiet hours<\/dt><dd[^>]*>12:00-13:00 \(team window; not holding now\)<\/dd>/);
+  // A payload with no quiet-hours entries still shows the own-window row ("no own window").
   const none = mk({});
   none.scope.toggleLoop("clean");
   await flush();
-  assert.doesNotMatch(none.paintedFor("drawerrole"), /Quiet hours/);
+  const noneRole = none.paintedFor("drawerrole");
+  assert.match(noneRole, /<dt>Quiet hours<\/dt><dd[^>]*>no own window/);
+  assert.match(noneRole, /data-act='quiet-edit' data-arg='clean'>Set quiet hours<\/button>/);
+});
+
+test("the quiet-hours own-window editor prefills the window and the director has no own-window row", async () => {
+  const t = openDrawer(["toggleLoop", "startQuietEdit", "stopQuietEdit"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0, quietHours: [{ scope: "role", window: "23:00-07:00", inWindow: true }] } },
+  });
+  t.scope.toggleLoop("clean");
+  await flush();
+  let role = t.paintedFor("drawerrole");
+  assert.match(role, /data-act='quiet-edit' data-arg='clean'>Edit<\/button>/);
+  // Editing swaps in an input prefilled with the current window plus Save/Discard.
+  t.scope.startQuietEdit("clean", "23:00-07:00");
+  role = t.paintedFor("drawerrole");
+  assert.match(role, /<input id='quieteditinput' type='text' placeholder='23:00-07:00' value='23:00-07:00'>/);
+  assert.match(role, /data-act='quiet-save' data-arg='clean'/);
+  assert.match(role, /data-act='quiet-discard' data-arg='clean'/);
+  // Discarding restores the sentence and button.
+  t.scope.stopQuietEdit();
+  role = t.paintedFor("drawerrole");
+  assert.match(role, /data-act='quiet-edit' data-arg='clean'>Edit<\/button>/);
+  assert.doesNotMatch(role, /quieteditinput/);
+
+  // The director renders no own-window row (its fleet row stays), unlike a non-director role.
+  const directorStatus = workingStatus();
+  directorStatus.roles[0]!.role = "director";
+  const dir = openDrawer(["toggleLoop"], {
+    status: directorStatus,
+    responses: { "/api/role?role=director": { notes: null, nextPrompt: null, inboxCount: 0, quietHours: [{ scope: "fleet", window: "12:00-13:00", inWindow: false }] } },
+  });
+  dir.scope.toggleLoop("director");
+  await flush();
+  const dirRole = dir.paintedFor("drawerrole");
+  assert.doesNotMatch(dirRole, /data-act='quiet-edit'/);
+  assert.match(dirRole, /<dt>Quiet hours<\/dt><dd[^>]*>12:00-13:00 \(team window; not holding now\)<\/dd>/);
 });
 
 test("the Configuration section omits absent fields (cap-less team, no fallback, image-\nyes, notes-only)", async () => {

@@ -255,6 +255,21 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         loadDrawerRole(arg);
         return d && typeof d.message === "string" ? d.message : "Instructions updated";
       });
+    } else if (act === "quiet-edit") {
+      startQuietEdit(arg, drawerRole?.view?.quietHours?.find((w) => w && w.scope === "role")?.window ?? "");
+    } else if (act === "quiet-discard") {
+      stopQuietEdit();
+    } else if (act === "quiet-save") {
+      const input = $("quieteditinput");
+      const window = input ? input.value : "";
+      // A text input has no badInput guard; an empty value reaches the server's clear branch,
+      // and a malformed window is refused by checkQuietHours, flashed through postAction's
+      // error path.
+      postAction("/api/role-quiet-hours", { role: arg, window }, (d) => {
+        quietEditing = null;
+        loadDrawerRole(arg);
+        return d && typeof d.message === "string" ? d.message : "Quiet hours updated";
+      });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
       const title = entryTitleAt(file, index);

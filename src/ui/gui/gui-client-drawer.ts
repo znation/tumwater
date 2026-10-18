@@ -36,6 +36,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     noteEditing = null;
     capEditing = null;
     instructionsEditing = null;
+    quietEditing = null;
     disarmNoteClear();
     if (wasLoop && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
     drawerTicks = null;
@@ -334,12 +335,31 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     }
     if (typeof view.minRunIntervalSeconds === "number") rows.push(kvRow("Min run interval", view.minRunIntervalSeconds + "s"));
     // The windows governing the loop, worded like role-render.ts's Quiet hours line; the end time
-    // mirrors quietWindowEnd (browser code cannot import it).
+    // mirrors quietWindowEnd (browser code cannot import it). A non-director role's own window
+    // is an always-shown editable row (the Daily cap row's rationale: the control sits where
+    // the hold is shown) — including when the payload carries no role-scope window ("no own
+    // window"); any other window stays a read-only row worded exactly as before ("team window").
+    const own = Array.isArray(view.quietHours) ? view.quietHours.find(function (w) { return w && w.scope === "role"; }) : undefined;
+    const ownWindow = own && typeof own.window === "string" ? own.window : "";
+    if (role !== "director") {
+      const ownEnd = String(ownWindow).split("-")[1];
+      const ownState = own && own.inWindow
+        ? "holding now — quiet until " + (ownEnd ? ownEnd.trim() : "")
+        : "not holding now";
+      const editQuiet = quietEditing && quietEditing.role === role;
+      const quietBody = ownWindow !== "" ? ownWindow + " (own window; " + ownState + ")" : "no own window";
+      const quietControl = editQuiet
+        ? "<input id='quieteditinput' type='text' placeholder='23:00-07:00' value='" + esc(quietEditing.window) + "'>" +
+          "<div><button type='button' class='btn btn-sm btn-primary' data-act='quiet-save' data-arg='" + esc(role) + "'>Save</button> " +
+          "<button type='button' class='btn btn-sm' data-act='quiet-discard' data-arg='" + esc(role) + "'>Discard</button></div>"
+        : "<button type='button' class='btn btn-sm' data-act='quiet-edit' data-arg='" + esc(role) + "'>" + (ownWindow !== "" ? "Edit" : "Set quiet hours") + "</button>";
+      rows.push("<div><dt>Quiet hours</dt><dd title='" + esc(quietBody) + "'>" + esc(quietBody) + quietControl + "</dd></div>");
+    }
     if (Array.isArray(view.quietHours)) view.quietHours.forEach(function (w) {
-      if (!w || typeof w.window !== "string") return;
+      if (!w || w.scope === "role" || typeof w.window !== "string") return;
       const end = String(w.window).split("-")[1];
       const state = w.inWindow ? "holding now — quiet until " + (end ? end.trim() : "") : "not holding now";
-      rows.push(kvRow("Quiet hours", w.window + " (" + (w.scope === "role" ? "own window" : "team window") + "; " + state + ")"));
+      rows.push(kvRow("Quiet hours", w.window + " (team window; " + state + ")"));
     });
     if (typeof view.inboxCount === "number") rows.push(kvRow("Queued prompts", String(view.inboxCount)));
     // The loop's own spend over its retained event window (rolePayload's usage, summed from the
@@ -404,6 +424,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let noteEditing = null; // { role, text }
   let capEditing = null; // { role, value }
   let instructionsEditing = null; // { role, text }
+  let quietEditing = null; // { role, window }
   function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
   // The notebook clear and the backlog entry cancel each build a two-click confirm slot from
   // the shared confirmSlot factory (defined in the loops splice, an earlier one), so the arm,
@@ -418,6 +439,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function stopCapEdit() { capEditing = null; repaintDrawerRole(); }
   function startInstructionsEdit(role, text) { instructionsEditing = { role, text: String(text ?? "") }; repaintDrawerRole(); }
   function stopInstructionsEdit() { instructionsEditing = null; repaintDrawerRole(); }
+  function startQuietEdit(role, window) { quietEditing = { role, window: String(window ?? "") }; repaintDrawerRole(); }
+  function stopQuietEdit() { quietEditing = null; repaintDrawerRole(); }
   // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so
   // reopening refetches.
   function loadDrawerRole(role) {

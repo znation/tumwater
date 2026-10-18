@@ -422,6 +422,40 @@ test("instructions-edit opens the editor, instructions-save posts the textarea, 
   assert.deepEqual(events, ["stop"]);
 });
 
+test("quiet-edit seeds the editor from the own window, quiet-save posts it, quiet-discard posts nothing", () => {
+  const posts: unknown[] = [];
+  const events: string[] = [];
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      drawerRole: { role: "clean", state: "ok", view: { quietHours: [{ scope: "role", window: "23:00-07:00", inWindow: true }] } },
+      $: (id: string) => (id === "quieteditinput" ? { value: "20:00-06:00" } : null),
+      startQuietEdit: (r: string, w: string) => events.push(`edit ${r} ${w}`),
+      stopQuietEdit: () => events.push("stop"),
+      quietEditing: { current: null },
+      loadDrawerRole: (r: string) => events.push(`load ${r}`),
+      postAction: (path: string, body: unknown, done: (d: unknown) => string) => {
+        posts.push([path, body]);
+        // postAction toasts the callback's message — record it as an event.
+        events.push(done({ message: "clean: quiet hours set to 20:00-06:00" }));
+      },
+    },
+  );
+  // quiet-edit seeds the editor with the role's own window.
+  scope.runAct("quiet-edit", "clean");
+  assert.deepEqual(events, ["edit clean 23:00-07:00"]);
+  // quiet-save posts the input's window (an empty value would hit the server's clear branch)
+  // and refetches the role.
+  scope.runAct("quiet-save", "clean");
+  assert.deepEqual(posts, [["/api/role-quiet-hours", { role: "clean", window: "20:00-06:00" }]]);
+  assert.deepEqual(events.slice(-2), ["load clean", "clean: quiet hours set to 20:00-06:00"]);
+  // quiet-discard closes the editor, posting nothing.
+  events.length = 0;
+  scope.runAct("quiet-discard", "clean");
+  assert.deepEqual(posts, [["/api/role-quiet-hours", { role: "clean", window: "20:00-06:00" }]]);
+  assert.deepEqual(events, ["stop"]);
+});
+
 test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
   const log: string[] = [];
   const calls: string[] = [];

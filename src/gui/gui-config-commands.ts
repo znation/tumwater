@@ -8,7 +8,7 @@
 import { setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { checkDailyBudgetUsd } from "../config/config-keys.js";
 import { testNotifyHook } from "../cli/notify-command.js";
-import { requireConfigKey } from "./gui-args.js";
+import { rejectBadRole, requireConfigKey } from "./gui-args.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { badRequest, sendJson } from "./http-body.js";
@@ -119,6 +119,48 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
   const result = setConfigKey(root, `roles.${base}.instructions`, JSON.stringify(body.text));
   if (!result.ok) return configKeyError(res, `roles.${base}.instructions`, result);
   sendJson(res, 200, { ok: true, role: base, message: `${base}: instructions saved (${body.text.length} chars)` });
+}
+
+/** Handle POST /api/role-quiet-hours: the role drawer's own-window editor sets or clears one
+ * role's daily quiet-hours window — the control the `Quiet hours` row it already shows leads
+ * to (the counterpart of the in-flight `tumwater role <id> --quiet-hours` CLI write). Same body
+ * discipline as /api/role-cap (readPostBody → 400 malformed/non-object, 413 oversized); a
+ * missing/blank role is a 400, and a bare `feature-2` loop id maps to its base role's key
+ * (baseRoleOf), so an instance edits the window its runs read. The director is refused up front:
+ * `quietHoursPerRole.director` is inert (roleQuietHold and doctor both exempt the director). An
+ * empty/whitespace-only window clears the key (unsetConfigKey, like the CLI's --clear-quiet-hours);
+ * the clear branch checks the role id explicitly (rejectBadRole) because unsetConfigKey's no-op
+ * map path skips validateConfig — the guard the set branch gets free from validateConfig's
+ * unknown-role refusal; otherwise the write goes through setConfigKey with the same
+ * JSON.stringify wrapper, so checkQuietHours (naming quietHoursPerRole.<base>) and validateConfig
+ * own the truth, and a write failure is configKeyError's 400 naming the dotted key. */
+export async function handleRoleQuietHours(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"role": "feature", "window": "23:00-07:00"}');
+  if (!body) return;
+  const role = body.role;
+  if (typeof role !== "string" || role.trim() === "") return badRequest(res, "role required");
+  if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no quiet hours");
+  if (typeof body.window !== "string") return badRequest(res, `"window" must be a string — a window like 23:00-07:00, or "" to clear it${gotSuffix(body.window)}`);
+  const base = baseRoleOf(role);
+  const key = `quietHoursPerRole.${base}`;
+  // An empty or whitespace-only window clears the hold, like the CLI's --clear-quiet-hours.
+  if (body.window.trim() === "") {
+    // unsetConfigKey's no-op map path (a role the file never holds, an unknown id included)
+    // skips validateConfig, so without this the set branch's unknown-role refusal would never
+    // fire on a clear and a bogus id would answer 200 "cleared" — the explicit check mirrors
+    // the CLI's knownRoleIds guard.
+    if (rejectBadRole(root, res, role)) return;
+    const result = unsetConfigKey(root, key);
+    if (!result.ok) return configKeyError(res, key, result);
+    sendJson(res, 200, { ok: true, role: base, message: `${base}: quiet hours cleared` });
+    return;
+  }
+  // setConfigKey takes raw CLI text; a JSON round-trip of the already-parsed string is exact,
+  // and its map branch runs checkQuietHours with the dotted key as the label, so a malformed
+  // window is refused before any write, and validateConfig owns the unknown-role check.
+  const result = setConfigKey(root, key, JSON.stringify(body.window));
+  if (!result.ok) return configKeyError(res, key, result);
+  sendJson(res, 200, { ok: true, role: base, message: `${base}: quiet hours set to ${body.window}` });
 }
 
 /** The shared 400 for a failed config mutation — the set and unset write paths both nest the
