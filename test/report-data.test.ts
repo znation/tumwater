@@ -1058,3 +1058,46 @@ test("collectReport and collectReportSince tally run_start per model, zero meani
   assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*Runs by model:/);
   assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*Runs by model:/);
 });
+
+test("collectReport and collectReportSince tally merge_failed by reason, zero meaning absent, team scope only", () => {
+  const failed = (ts: number, result?: string) =>
+    JSON.stringify({ ts, loop: "feature", type: "merge_failed", run: 1, ...(result === undefined ? {} : { result }) });
+  const root = tmpdir();
+  writeEvents(root, [
+    failed(at(0), "rejected"),
+    failed(at(0), "rejected"),
+    failed(at(0), "merge_conflict"),
+    failed(at(0)), // legacy event with no result: folds under unknown
+    failed(at(1), "merge_blocked"),
+  ]);
+  const data = collectReport(root, 3);
+  assert.deepEqual(
+    data.series[2]?.mergeFailedByReason,
+    { rejected: 2, merge_conflict: 1, unknown: 1 },
+    "bucket by result, folding a result-less event under unknown",
+  );
+  assert.deepEqual(data.series[1]?.mergeFailedByReason, { merge_blocked: 1 }, "another day's failures carry their own map");
+  assert.ok(!("mergeFailedByReason" in (data.series[0] ?? {})), "a failure-free day omits the field");
+  // Each day's reason buckets sum to its mergeFailed.
+  const today = data.series[2]!;
+  assert.equal(Object.values(today.mergeFailedByReason ?? {}).reduce((a, b) => a + b, 0), today.mergeFailed, "the reason buckets sum to mergeFailed");
+
+  const since = collectReportSince(root, 3 * 24 * HOUR);
+  assert.deepEqual(since.mergeFailedByReason, { rejected: 2, merge_conflict: 1, unknown: 1, merge_blocked: 1 }, "--since carries the same window map");
+  // Renders name the tally, count desc then code asc, team report only.
+  assert.match(renderReportMarkdown(data), /\*\*Merge failures by reason:\*\* rejected — 2 · merge_blocked — 1 · merge_conflict — 1 · unknown — 1/);
+  assert.match(renderSinceReportMarkdown(since), /\*\*Merge failures by reason:\*\* rejected — 2 · merge_blocked — 1 · merge_conflict — 1 · unknown — 1/);
+  assert.doesNotMatch(renderReportMarkdown(collectReport(root, 3, "feature")), /\*\*Merge failures by reason:/, "a scoped day report omits it");
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(root, 3 * 24 * HOUR, "feature")), /\*\*Merge failures by reason:/, "a scoped --since report omits it");
+
+  // Team-only: a reason code is not a role, so a role-scoped report carries no map.
+  assert.deepEqual(collectReportSince(root, 3 * 24 * HOUR, "feature").mergeFailedByReason, {}, "scoped window carries an empty map");
+  const scoped = collectReport(root, 3, "feature");
+  assert.ok(!("mergeFailedByReason" in (scoped.series[2] ?? {})), "scoped day omits the field");
+
+  // A log with no merge_failed: the team day omits the field and --since returns an empty map.
+  const plain = tmpdir();
+  writeEvents(plain, [JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed" })]);
+  assert.ok(!("mergeFailedByReason" in collectReport(plain, 2).series[0]!), "a failure-free team day omits the field");
+  assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).mergeFailedByReason, {});
+});

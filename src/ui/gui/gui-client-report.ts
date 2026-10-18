@@ -190,6 +190,20 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return tallyAcross(data.series, ["runsByModel"], []);
   }
 
+  // Window tallies per merge-failure reason code, count desc then code asc — the reason
+  // twin of reportModelOrder, so the "Merge failures by reason" chart matches the day
+  // report's line ordering. Reason keys are dynamic (result strings), so reads and seeds use
+  // Object.hasOwn as reportModelOrder does; a code a day series never failed with still gets
+  // a row only if some day carries it.
+  function reportMergeFailureOrder(data) {
+    const byReason = {};
+    for (const d of data.series) {
+      for (const [reason, n] of Object.entries(d.mergeFailedByReason || {})) byReason[reason] = (Object.hasOwn(byReason, reason) ? byReason[reason] : 0) + n;
+      for (const reason of Object.keys(d.mergeFailedByReason || {})) if (!Object.hasOwn(byReason, reason)) byReason[reason] = 0;
+    }
+    return Object.entries(byReason).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+
   // Stacked bars, one color per entry in the caller's order (the first at the bottom), with a
   // legend in the same order. entries is the ordered [key, total][] list that drives the
   // colors, stack order, and legend; keys are dynamic (roles, providers): escaped everywhere.
@@ -282,6 +296,12 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // Merges that were blocked or conflicted, per loop, drawn the same way.
   function chartMergeFailuresByRole(data) {
     return roleStackChart(data, "mergeFailedByRole", (n) => plural(n, "merge failure"), countAxis, true);
+  }
+  // WHY merges failed, per reason code (each merge_failed's result), drawn the same way as
+  // the by-role chart so the two read as a pair; the reason codes' own ordering comes from
+  // reportMergeFailureOrder.
+  function chartMergeFailuresByReason(data) {
+    return stackChart(data, reportMergeFailureOrder(data), "mergeFailedByReason", (n) => plural(n, "merge failure"), countAxis, true);
   }
   // The day's merged outcomes per loop, the success sibling of chartMergeFailuresByRole,
   // drawn exactly like it (same roleStackChart shape, palette, legend order and integer count
@@ -599,6 +619,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (seriesHasAny(d, "mergedByRole") ? block("Merged by role", chartMergedByRole(d)) : "") +
         (!d.role && seriesHasAny(d, "runsByModel") ? block("Runs by model", chartRunsByModel(d)) : "") +
         (seriesHasAny(d, "mergeFailedByRole") ? block("Merge failures by role", chartMergeFailuresByRole(d)) : "") +
+        (seriesHasAny(d, "mergeFailedByReason") ? block("Merge failures by reason", chartMergeFailuresByReason(d)) : "") +
         (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +
         (seriesHasCheckFailures(d) ? block("Red merge checks", chartCheckFailures(d), "per day · failed full-suite checks") : "") +
         (seriesHasMergeWaitMedian(d) ? block("Merge wait median", chartMergeWaitMedian(d), "per day · enqueue to merged on main") : "") +

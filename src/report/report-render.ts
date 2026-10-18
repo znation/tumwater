@@ -195,6 +195,13 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
     const mergeFailures = rankedRoleMap(data.mergeFailedByRole).filter(([, n]) => n > 0);
     if (mergeFailures.length > 0)
       lines.push(rankedRoleLine("Merge failures by role", mergeFailures, String));
+    // WHY the window's merges failed, from each merge_failed's result code — the day
+    // report's reason twin of the role line above, so an operator can tell a review
+    // rejection (fix the change) from a conflict/block (rebase) from a shutdown abort
+    // (capacity). Ranked the same way (count desc then code asc), reason-free only.
+    const mergeFailureReasons = rankedRoleMap(data.mergeFailedByReason ?? {}).filter(([, n]) => n > 0);
+    if (mergeFailureReasons.length > 0)
+      lines.push(rankedRoleLine("Merge failures by reason", mergeFailureReasons, String));
   }
   // Subscription spend is notional: its own line, only when the window has any — the same
   // conditional/filtered `usd` form the day render's "Estimated by role" uses.
@@ -348,6 +355,11 @@ export function renderReportMarkdown(data: ReportData): string {
     const mergeFailures = rankedRoleTotals(data.series, (d) => d.mergeFailedByRole ?? {}).filter(([, n]) => n > 0);
     if (mergeFailures.length > 0)
       lines.push(rankedRoleLine("Merge failures by role", mergeFailures, String));
+    // The --since reason twin, folded across the series the same way; a reason-free window
+    // prints no line, so its output is byte-for-byte unchanged.
+    const mergeFailureReasons = rankedRoleTotals(data.series, (d) => d.mergeFailedByReason ?? {}).filter(([, n]) => n > 0);
+    if (mergeFailureReasons.length > 0)
+      lines.push(rankedRoleLine("Merge failures by reason", mergeFailureReasons, String));
     // Per-day median passing check time, so a suite slowing over days shows; days without a
     // check are left out, and no line prints when no day has one (zero means absent).
     const medians = medianLine(data.series, "Merge check median", (d) => d.checkMedianMs);

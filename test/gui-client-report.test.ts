@@ -725,3 +725,47 @@ test("the Usage render chain gates the Runs by model chart right after Merged by
   // Exactly one such gated term.
   assert.equal((chain.match(/block\("Runs by model", chartRunsByModel\(d\)\)/g) || []).length, 1);
 });
+
+test("reportMergeFailureOrder lists each reason once and chartMergeFailuresByReason stacks per day, gated by seriesHasAny", () => {
+  interface Builders {
+    reportMergeFailureOrder(data: ReportData): [string, number][];
+    chartMergeFailuresByReason(data: ReportData): string;
+    seriesHasAny(data: ReportData, field: string): boolean;
+  }
+  const { reportMergeFailureOrder, chartMergeFailuresByReason, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportMergeFailureOrder", "chartMergeFailuresByReason", "seriesHasAny"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { mergeFailedByReason: { rejected: 2, unknown: 1 } }),
+    mkDay("2026-09-02", { mergeFailedByReason: { merge_conflict: 1, rejected: 1 } }),
+    mkDay("2026-09-03"),
+  ]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  // Count desc, then name asc: rejected (3) ahead of merge_conflict and unknown (1 each, name asc).
+  assert.deepEqual(reportMergeFailureOrder(data), [["rejected", 3], ["merge_conflict", 1], ["unknown", 1]]);
+  assert.deepEqual(titles(chartMergeFailuresByReason(data)), [
+    "2026-09-01 · rejected: 2 merge failures",
+    "2026-09-01 · unknown: 1 merge failure",
+    "2026-09-02 · rejected: 1 merge failure",
+    "2026-09-02 · merge_conflict: 1 merge failure",
+  ]);
+  const empty = mk([mkDay("2026-09-01"), mkDay("2026-09-02"), mkDay("2026-09-03")]);
+  assert.equal(seriesHasAny(empty, "mergeFailedByReason"), false);
+  assert.equal(seriesHasAny(data, "mergeFailedByReason"), true);
+});
+
+test("the Usage render chain gates the Merge failures by reason chart right after Merge failures by role", () => {
+  const chain = GUI_CLIENT_REPORT_JS;
+  const byRole = chain.indexOf('block("Merge failures by role"');
+  const byReason = chain.indexOf('block("Merge failures by reason"');
+  assert.ok(byRole >= 0, "the Merge failures by role term exists");
+  assert.ok(byReason > byRole, "Merge failures by reason sits after Merge failures by role in the chain");
+  assert.match(chain, /seriesHasAny\(d, "mergeFailedByReason"\) \? block\("Merge failures by reason", chartMergeFailuresByReason\(d\)\) : ""/);
+  assert.equal((chain.match(/block\("Merge failures by reason", chartMergeFailuresByReason\(d\)\)/g) || []).length, 1);
+});

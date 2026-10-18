@@ -96,6 +96,13 @@ interface UsageFold {
    * the merge gate (review rejection, under-cap review, a conflict, a blocked fast-forward,
    * a shutdown abort), so an operator can see whether gate failures concentrate in one role. */
   mergeFailedByRole: Record<string, number>;
+  /** The merge_failed outcomes keyed by their event's `result` (the TickResult
+   * writeMergeOutcome logs — `rejected` for a review rejection, `merge_conflict`, a
+   * `merge_blocked` failed fast-forward, an `aborted` shutdown, …), so a report can say
+   * WHY a day's merges failed (fix the change vs rebase vs capacity), not just how many and
+   * by which role. A legacy event with no `result` folds under `unknown`. A parallel tally,
+   * never subtracted from mergeFailedByRole or mergeFailed. */
+  mergeFailedByReason: Record<string, number>;
   /** Per-provider spend folded from the events' `providerCost` maps (run_end's own runs and
    * merge_done/merge_failed's reviewer seam): real cost per provider, a parallel tally to
    * costByRole that is never subtracted from it or from costUsd. A provider with no real
@@ -210,7 +217,14 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
       // Events logged before queuedMs existed carry none: skipped, not counted as zero.
       const waited = finiteNumber(ev.queuedMs, 0);
       if (waited > 0) target.mergeWaitsMs.push(waited);
-    } else addTo(target.mergeFailedByRole, role, 1);
+    } else {
+      addTo(target.mergeFailedByRole, role, 1);
+      // The event's result (writeMergeOutcome's TickResult) names WHY the merge bounced
+      // off the gate — rejected/merge_conflict/merge_blocked/aborted. A legacy event with
+      // no result folds under `unknown`, so the reason buckets always sum to mergeFailed.
+      const reason = typeof ev.result === "string" && ev.result.length > 0 ? ev.result : "unknown";
+      addTo(target.mergeFailedByReason, reason, 1);
+    }
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     target.mergeTokens = (target.mergeTokens ?? 0) + tokens;
     target.mergeCostUsd = (target.mergeCostUsd ?? 0) + costUsd;
@@ -259,6 +273,7 @@ interface DayFold {
   mergeFailed?: number; // of those runs, the merge_failed events (absent when none)
   mergedByRole: Record<string, number>;
   mergeFailedByRole: Record<string, number>;
+  mergeFailedByReason: Record<string, number>;
   costByProvider: Record<string, number>;
   notionalByProvider: Record<string, number>;
   runsByModel: Record<string, number>;
@@ -375,6 +390,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       ...zeroMergeCounts(),
       mergedByRole: {},
       mergeFailedByRole: {},
+      mergeFailedByReason: {},
       costByProvider: {},
       notionalByProvider: {},
       runsByModel: {},
@@ -527,6 +543,9 @@ export interface ReportDay {
   mergedByRole?: Record<string, number>;
   /** merge_failed outcomes by base role; absent when the day has none (zero means absent). */
   mergeFailedByRole?: Record<string, number>;
+  /** merge_failed outcomes by their event's `result` code; absent when the day has none
+   * (zero means absent). A result code is not a role, so only the team series carries it. */
+  mergeFailedByReason?: Record<string, number>;
   notionalCostUsd?: number; // subscription spend, on its own notional line, never in costUsd
   /** Subscription spend by loop id, never in costByRole; absent when the day has none. */
   notionalByRole?: Record<string, number>;
@@ -623,6 +642,10 @@ export interface SinceReport {
   /** merge_failed outcomes by base role; always present (empty map when none), so the render
    * can gate its new failure line on the window's own merge_failed events. */
   mergeFailedByRole: Record<string, number>;
+  /** merge_failed outcomes by their event's `result` code; always present (empty map when
+   * none), so the render can gate its reason line on the window's own merge_failed events.
+   * A result code is not a role, so a role-scoped window carries an empty map. */
+  mergeFailedByReason: Record<string, number>;
   /** Subscription spend per loop id, never in costByRole; absent when the window has none —
    * the same conditional the day collector applies to ReportDay.notionalByRole, so a
    * --since JSON carries it only when nonzero. */
@@ -685,6 +708,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     ...zeroMergeCounts(),
     mergedByRole: {},
     mergeFailedByRole: {},
+    mergeFailedByReason: {},
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
@@ -750,6 +774,9 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     commitsByRole: scopedByRole(acc.commitsByRole, base),
     mergedByRole: scopedByRole(acc.mergedByRole, base),
     mergeFailedByRole: scopedByRole(acc.mergeFailedByRole, base),
+    // A result code is not a role, so a role-scoped window carries an empty map (a code
+    // never baseRoleOf to the role) — the render gates the reason line to the team report.
+    mergeFailedByReason: scopedByRole(acc.mergeFailedByReason, base),
     ...(Object.keys(notionalByRole).length > 0 ? { notionalByRole } : {}),
     // Provider spend is a team attribution (a provider is not a role), so a role-scoped
     // window carries empty maps — providers never baseRoleOf to the role — and the render
@@ -843,6 +870,12 @@ export function collectReport(root: string, days: number, role?: string): Report
       if (Object.keys(fold.mergedByRole).length > 0) day.mergedByRole = fold.mergedByRole;
       if (Object.keys(fold.mergeFailedByRole).length > 0)
         day.mergeFailedByRole = fold.mergeFailedByRole;
+      // Reason codes are a team attribution (a result is not a role), so only the team
+      // series carries the map; only set when nonzero, so a failure-free day keeps its
+      // exact pre-feature shape. The role branch below leaves it unset — merge runs are
+      // the merge slot's.
+      if (Object.keys(fold.mergeFailedByReason).length > 0)
+        day.mergeFailedByReason = fold.mergeFailedByReason;
     } else {
       // Role scope: derive this day from the fold's per-role maps, so the series carries only
       // the named role's ticks/tokens/cost and (base-role-keyed) commits. The scope is the

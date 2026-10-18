@@ -463,6 +463,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     commitsByRole: {},
     mergedByRole: {},
     mergeFailedByRole: {},
+    mergeFailedByReason: {},
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
@@ -494,6 +495,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     commitsByRole: {},
     mergedByRole: {},
     mergeFailedByRole: {},
+    mergeFailedByReason: {},
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
@@ -525,6 +527,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     commitsByRole: {},
     mergedByRole: {},
     mergeFailedByRole: {},
+    mergeFailedByReason: {},
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
@@ -547,6 +550,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     commitsByRole: {},
     mergedByRole: {},
     mergeFailedByRole: {},
+    mergeFailedByReason: {},
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
@@ -571,6 +575,7 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
     commitsByRole: {},
     mergedByRole: {},
     mergeFailedByRole: {},
+    mergeFailedByReason: {},
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
@@ -597,6 +602,7 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     commitsByRole: { feature: 3, clean: 1 },
     mergedByRole: {},
     mergeFailedByRole: {},
+    mergeFailedByReason: {},
     costByProvider: {},
     notionalByProvider: {},
     notionalByRole: { feature: 0.4, plan: 0.5 },
@@ -623,6 +629,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     commitsByRole: {},
     mergedByRole: {},
     mergeFailedByRole: {},
+    mergeFailedByReason: {},
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
@@ -916,6 +923,51 @@ test("team day report breaks merge outcomes down by role, folding instances into
   assert.deepEqual(today.mergeFailedByRole, { bugfix: 1 });
   assert.equal(direct.totals.mergeRuns, 2);
   assert.equal(direct.totals.mergeFailed, 1);
+});
+
+test("team day report and --since break merge failures down by reason; scoped and merge-free omit them", async () => {
+  const root = makeRepo();
+  // Two rejections and a conflict today, a result-less legacy event and a blocked ff
+  // yesterday: the reason line ranks count desc then code asc.
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_failed", commit: "a1", summary: "x", result: "rejected" }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_failed", commit: "a2", summary: "x", result: "rejected" }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "merge_failed", commit: "b1", summary: "y", result: "merge_conflict" }),
+    JSON.stringify({ ts: at(0), loop: "docs", type: "merge_failed", commit: "c1", summary: "z" }),
+    JSON.stringify({ ts: at(1), loop: "feature", type: "merge_failed", commit: "a3", summary: "x", result: "merge_blocked" }),
+  ]);
+  const md = await runCli(root, "report", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Merge failures by role:\*\*/);
+  assert.match(md.out, /\*\*Merge failures by reason:\*\* rejected — 2 · merge_blocked — 1 · merge_conflict — 1 · unknown — 1/, "the day report names each result, count desc then code asc");
+
+  const since = await runCli(root, "report", "--since", "2d");
+  assert.equal(since.code, 0);
+  assert.match(since.out, /\*\*Merge failures by reason:\*\* rejected — 2 · merge_blocked — 1 · merge_conflict — 1 · unknown — 1/, "--since folds the same reasons across the window");
+
+  // The collector's JSON carries the day-series and --since maps.
+  const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
+  assert.deepEqual(json.series[json.series.length - 1].mergeFailedByReason, { rejected: 2, merge_conflict: 1, unknown: 1 });
+  const sinceJson = JSON.parse((await runCli(root, "report", "--json", "--since", "2d")).out);
+  assert.deepEqual(sinceJson.mergeFailedByReason, { rejected: 2, merge_conflict: 1, unknown: 1, merge_blocked: 1 });
+
+  // A role-scoped day and --since report omit the merge lines entirely.
+  const scopedDay = await runCli(root, "report", "--role", "feature", "--days", "2");
+  assert.ok(!scopedDay.out.includes("**Merge failures by reason:"), "a scoped day report omits the reason line");
+  const scopedSince = await runCli(root, "report", "--role", "feature", "--since", "2d");
+  assert.ok(!scopedSince.out.includes("**Merge failures by reason:"), "a scoped --since report omits the reason line");
+});
+
+test("a merge-free report prints no Merge failures by reason line", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x" }),
+  ]);
+  const md = await runCli(root, "report", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.ok(!md.out.includes("**Merge failures by reason:"), "a merge-free window omits the reason line");
+  const since = await runCli(root, "report", "--since", "2d");
+  assert.ok(!since.out.includes("**Merge failures by reason:"), "a merge-free --since window omits the reason line");
 });
 
 test("team day report omits Merge failures by role when none fail; a merge-free window omits both", async () => {
