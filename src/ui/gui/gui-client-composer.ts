@@ -50,7 +50,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     if (key !== targetKey) {
       targetKey = key;
       targetSelect.innerHTML = "<option value='director'>Director</option>" + (roles.length ? "<optgroup label='One role, at its next run'>" +
-        roles.map((r) => "<option value='" + esc(r) + "'>" + esc(roleLabel(r) + " — " + roleTitle(r)) + "</option>").join("") + "</optgroup>" : "");
+        roles.map((r) => "<option value='" + esc(r) + "'>" + esc(roleLabel(r)) + "</option>").join("") + "</optgroup>" : "");
       if (promptTarget !== "director" && !roles.includes(promptTarget)) setTarget("director");
       targetSelect.value = promptTarget;
     }

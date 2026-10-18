@@ -107,7 +107,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const l = (d.roles || []).find((x) => x.role === role);
     if (!l) {
       paintPanel("drawerhead", "<div class='kicker'>Role</div><h2 id='drawertitle' class='mono'>" + esc(roleLabel(role)) +
-        "</h2><div class='muted role-title'>" + esc(roleTitle(role)) + "</div><span class='muted'>This role is no longer part of the team.</span>");
+        "</h2><span class='muted'>This role is no longer part of the team.</span>");
       paintPanel("draweractions", "");
       paintPanel("drawermeta", drawerChangeSection());
       paintPanel("drawerrole", drawerRoleSection());
@@ -117,7 +117,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const paused = (d.pausedLoops || []).includes(l.role);
     const detail = phaseDetail(l, info, d);
     paintPanel("drawerhead", "<div class='kicker'>Role" + (l.custom ? " · user-defined" : "") + "</div>" +
-      "<h2 id='drawertitle' class='mono'>" + esc(roleLabel(l.role)) + "</h2><div class='muted role-title'>" + esc(roleTitle(l.role)) + "</div><div class='chips'>" + pill(info) +
+      "<h2 id='drawertitle' class='mono'>" + esc(roleLabel(l.role)) + "</h2><div class='chips'>" + pill(info) +
       (detail ? "<span class='muted'>" + esc(detail) + "</span>" : "") + "</div>");
 
     const btn = (action, ic, label, cls) => "<button type='button' class='btn btn-sm rowaction" + (cls ? " " + cls : "") + "' data-action='" + action +

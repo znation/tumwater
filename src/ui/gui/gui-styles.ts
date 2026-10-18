@@ -107,7 +107,6 @@ export const GUI_STYLES = String.raw`
   .mono { font-family: var(--font-mono); }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .muted { color: var(--text-3); }
-  .role-title { font-size: 11px; white-space: nowrap; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
              clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .skip { position: absolute; left: 12px; top: -48px; z-index: 100; padding: 8px 12px; border-radius: 8px;

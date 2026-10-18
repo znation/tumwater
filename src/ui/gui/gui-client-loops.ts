@@ -135,7 +135,6 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const detail = phaseDetail(l, info, d);
     const stalled = info.live && STALL.test(l.phase);
     const name = "<div class='loop-name'><button type='button' class='linkish role' data-open='" + esc(l.role) + "' title='Open " + esc(roleLabel(l.role)) + "'>" + esc(roleLabel(l.role)) + "</button>" + // vocabulary-ok: CSS class the stylesheet and tests match
-      "<span class='muted role-title'>" + esc(roleTitle(l.role)) + "</span>" +
       (l.custom ? "<span class='tag' title='A custom role from tumwater.json'>custom</span>" : "") +
       (l.modelTier ? "<span class='tag' title='The model tier this role resolves at'>" + esc(l.modelTier) + "</span>" : "") +
       (l.fallback ? "<span class='tag t-amber' title='Running on the model fallback while its primary keeps failing provider-class errors'>fallback</span>" : "") +
