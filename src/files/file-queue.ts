@@ -11,9 +11,20 @@ import { errCode } from "../errno.js";
 /** Every entry file under `dir` whose name ends in `ext`, oldest first by filename sort. A
  * missing directory reads as an empty queue, like every reader in both queues. */
 export function listQueueFiles(dir: string, ext: string): string[] {
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch (err) {
+    // The "no queue here" cases — a directory removed between the caller's existence check
+    // and this read (ENOENT), or a regular file squatting at the path (ENOTDIR) — read the
+    // same empty list a missing directory does, per the contract. Any other error (EACCES:
+    // a real but unreadable directory) is a genuine failure the caller must see, never a
+    // silently empty queue that would hide queued work.
+    const code = errCode(err);
+    if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
+    return [];
+  }
+  return entries
     .filter((f) => f.endsWith(ext))
     .sort()
     .map((f) => path.join(dir, f));

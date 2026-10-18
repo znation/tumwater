@@ -73,3 +73,16 @@ test("removeQueueFile rethrows errors other than ENOENT", () => {
     return true;
   });
 });
+
+test("listQueueFiles reads a queue path that is a regular file as an empty queue", () => {
+  // A directory listing can be surprised by a path that exists but is not a directory (a
+  // stale file squatting where the queue dir should be): fs.existsSync returns true for a
+  // regular file, so the guard passes and readdirSync then throws ENOTDIR. The missing-
+  // reads-as-empty contract covers this shape too — a non-directory is, for listing
+  // purposes, no queue — so it must degrade to [] rather than throwing out of the hot
+  // inbox/merge-queue listing (a stuck role instead of an empty queue).
+  const dir = tmpdir();
+  const squat = path.join(dir, "not-a-dir");
+  fs.writeFileSync(squat, "a stale file");
+  assert.deepEqual(listQueueFiles(squat, ".json"), []);
+});
