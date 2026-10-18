@@ -36,6 +36,18 @@ export function isPromptImageSibling(stem: string, entry: string): boolean {
   );
 }
 
+/** Pick a file name with extension `ext` under `stem` that does not collide with any name
+ * already in `taken`, and record it: `<stem><ext>` when free, else the first
+ * `<stem>-<n><ext>` (n from 2 up) that is. The one home of the dedup-suffix rule
+ * savePromptImages and movePromptImages both use, so a same-stem sibling can never overwrite
+ * another. `taken` is updated with the chosen name. */
+function uniqueStemName(stem: string, ext: string, taken: Set<string>): string {
+  let name = `${stem}${ext}`;
+  for (let n = 2; taken.has(name); n++) name = `${stem}-${n}${ext}`;
+  taken.add(name);
+  return name;
+}
+
 /** Per-image decoded-size cap. Exported so a surface that holds a file before reading it
  * (the GUI composer's drop/paste handler) can refuse an oversized image with the same bound
  * the endpoint enforces, instead of offering a chip the server later rejects. */
@@ -200,9 +212,7 @@ export function savePromptImages(
   try {
     for (const image of images) {
       const ext = path.extname(image.name).toLowerCase();
-      let name = `${stem}${ext}`;
-      for (let n = 2; taken.has(name); n++) name = `${stem}-${n}${ext}`;
-      taken.add(name);
+      const name = uniqueStemName(stem, ext, taken);
       const file = path.join(dir, name);
       inFlight = file;
       fs.writeFileSync(file, Buffer.from(image.dataBase64, "base64"));
@@ -293,9 +303,7 @@ export function movePromptImages(
       continue;
     }
     const ext = path.extname(base).toLowerCase();
-    let name = `${toStem}${ext}`;
-    for (let n = 2; taken.has(name); n++) name = `${toStem}-${n}${ext}`;
-    taken.add(name);
+    const name = uniqueStemName(toStem, ext, taken);
     const target = path.join(toDir, name);
     try {
       fs.renameSync(resolved, target);
