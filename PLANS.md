@@ -70,6 +70,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code runner, part 1/14: Move the loop modules to src/runner and their tests to runner names (planned 2026-10-16 by user; requires Plain terms code merge 11a/11, Plain terms code merge 11b/11, Plain terms code merge 11c/11, Plain terms code merge 11d/11, Plain terms code merge 11e/11 and Plain terms code merge 11f/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ + src/roles/loop-ids.ts + src/ui/gui/gui-client-loops.ts + test/loop*.test.ts + test/fixtures/loop-*.ts + every importer + docs/invariants.md + DEVELOPMENT.md)
 
+**Needs replan 2026-10-18 by feature: rejected after 2 review rounds.** The reviewer's numbered objections:
+1. (prior 1) Rename sweep incomplete: 12 stale `loop-*.test.ts` path citations remain in `test/` comments (8 files, listed above) while the actual siblings are `runner-*.test.ts`; the plan requires updating these comment citations in `test/`.
+2. (prior 2) The strengthened acceptance regex `loop(-[0-9]+)?\.(test|e2e)` still cannot match hyphenated names like `loop-leftover-recovery.test.ts`, so it prints nothing over the stragglers and the PLANS.md entry remains marked Done under a criterion that does not enforce its own sweep.
+
 **Goal.** Mechanical. The per-instance worker's modules and their tests move to `runner` names, with every import path and path citation updated and no identifier changed, so later parts rename symbols inside files that already carry their final names.
 
 **Approach.**
