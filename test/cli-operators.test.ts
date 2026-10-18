@@ -607,6 +607,121 @@ test("role --quiet-hours and --clear-quiet-hours write the role's quiet hours", 
   assert.equal(config().quietHoursPerRole, undefined, "no write from the refused invocations");
 });
 
+test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval write the role's holds", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role cap and interval");
+  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+
+  // `--cap <usd>` writes maxDailyCostUsdPerRole.feature through the config core.
+  let r = await cli(repo, "role", "feature", "--cap", "5");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: daily cap set to 5/);
+  assert.equal(config().maxDailyCostUsdPerRole.feature, 5);
+
+  // `--min-run-interval <seconds>` writes roles.feature.minRunIntervalSeconds.
+  r = await cli(repo, "role", "feature", "--min-run-interval", "300");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: min run interval set to 300s/);
+  assert.equal(config().roles.feature.minRunIntervalSeconds, 300);
+
+  // An instance id targets its base role: feature-2 writes the .feature keys.
+  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
+  r = await cli(repo, "role", "feature-2", "--cap", "5");
+  assert.equal(r.code, 0);
+  assert.equal(config().maxDailyCostUsdPerRole.feature, 5);
+  r = await cli(repo, "role", "feature-2", "--min-run-interval", "300");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.feature.minRunIntervalSeconds, 300);
+
+  // `0` is a real value (it disables the cap / allows back-to-back runs), so it sets, not clears.
+  r = await cli(repo, "role", "feature", "--cap", "0");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: daily cap set to 0/);
+  assert.equal(config().maxDailyCostUsdPerRole.feature, 0);
+  r = await cli(repo, "role", "feature", "--min-run-interval", "0");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: min run interval set to 0s/);
+  assert.equal(config().roles.feature.minRunIntervalSeconds, 0);
+
+  // A clear removes the key; `--cap ""` and a whitespace-only value clear it too, and a
+  // clear writes nothing when unset.
+  r = await cli(repo, "role", "feature", "--clear-cap");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: daily cap cleared/);
+  assert.equal(config().maxDailyCostUsdPerRole, undefined);
+  const bytesAfterCapClear = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--clear-cap");
+  assert.equal(r.code, 0);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytesAfterCapClear, "clearing an unset key writes nothing");
+  r = await cli(repo, "role", "feature", "--min-run-interval", "");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: min run interval cleared/);
+  assert.equal(config().roles.feature.minRunIntervalSeconds, undefined);
+  r = await cli(repo, "role", "feature", "--clear-min-run-interval");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: min run interval cleared/);
+  assert.equal(config().roles.feature.minRunIntervalSeconds, undefined);
+
+  // A malformed cap fails with checkDailyBudgetUsd's message naming the key, leaving the
+  // file unchanged; a malformed interval fails with validateConfig's message.
+  const before = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  for (const bad of ["-1", "abc"]) {
+    r = await cli(repo, "role", "feature", "--cap", bad);
+    assert.equal(r.code, 1, bad);
+    assert.match(r.stderr, /maxDailyCostUsdPerRole.feature/);
+    assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, `file unchanged on ${bad}`);
+  }
+  for (const bad of ["-1", "2147484", "abc"]) {
+    r = await cli(repo, "role", "feature", "--min-run-interval", bad);
+    assert.equal(r.code, 1, bad);
+    assert.match(r.stderr, /roles\.feature\.minRunIntervalSeconds/);
+    assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, `file unchanged on ${bad}`);
+  }
+
+  // The director's cap is refused (it has none) but its min-run-interval is accepted.
+  r = await cli(repo, "role", "director", "--cap", "5");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /the director has no daily cap/);
+  r = await cli(repo, "role", "director", "--clear-cap");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /the director has no daily cap/);
+  r = await cli(repo, "role", "director", "--min-run-interval", "60");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.director.minRunIntervalSeconds, 60);
+
+  // An unknown id is refused for both, writing nothing.
+  r = await cli(repo, "role", "bogus", "--cap", "5");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus/);
+  r = await cli(repo, "role", "bogus", "--min-run-interval", "60");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus/);
+
+  // Mutually exclusive or inapplicable flags are refused and write nothing.
+  r = await cli(repo, "role", "feature", "--clear-cap", "--cap", "5");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /give --clear-cap or --cap, not both/);
+  r = await cli(repo, "role", "feature", "--clear-min-run-interval", "--min-run-interval", "60");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /give --clear-min-run-interval or --min-run-interval, not both/);
+  r = await cli(repo, "role", "feature", "--cap", "5", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to a cap write/);
+  r = await cli(repo, "role", "feature", "--min-run-interval", "60", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to a min-run-interval write/);
+  r = await cli(repo, "role", "feature", "--cap", "5", "--min-run-interval", "60");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /cap and min-run-interval writes cannot share one invocation/);
+  r = await cli(repo, "role", "feature", "--cap", "5", "--clear-notes");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /notes and cap writes cannot share one invocation/);
+  const afterRefusals = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  assert.equal(JSON.parse(afterRefusals).maxDailyCostUsdPerRole, undefined, "no cap write from the refused invocations");
+});
+
 test("role validates its arguments like every other command", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role validation");

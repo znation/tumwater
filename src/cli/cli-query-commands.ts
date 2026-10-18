@@ -55,9 +55,18 @@ const INSTRUCTIONS_FILE_SPEC = { names: ["--instructions-file"], value: true, va
 const CLEAR_QUIET_HOURS_SPEC = { names: ["--clear-quiet-hours"] };
 const QUIET_HOURS_SPEC = { names: ["--quiet-hours"], value: true, valueName: "<window>" };
 
+/** `role`'s daily-cap write flags: clear the cap, or set it to a USD amount (0 disables). */
+const CLEAR_CAP_SPEC = { names: ["--clear-cap"] };
+const CAP_SPEC = { names: ["--cap"], value: true, valueName: "<usd>" };
+
+/** `role`'s min-run-interval write flags: clear it, or set it to a second count (0 is
+ * back-to-back). */
+const CLEAR_MIN_RUN_INTERVAL_SPEC = { names: ["--clear-min-run-interval"] };
+const MIN_RUN_INTERVAL_SPEC = { names: ["--min-run-interval"], value: true, valueName: "<seconds>" };
+
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
- * neither a flag nor the value of a --role, --notes-file, --instructions-file or
- * --quiet-hours flag. Returns
+ * neither a flag nor the value of a --role, --notes-file, --instructions-file,
+ * --quiet-hours, --cap or --min-run-interval flag. Returns
  * the id (null when
  * absent) and the remaining arguments — flags only, ready for rejectUnknownArgs and
  * sayJsonOrRender. The id may also arrive as --role <id>, the flag spelling every other
@@ -66,7 +75,7 @@ const QUIET_HOURS_SPEC = { names: ["--quiet-hours"], value: true, valueName: "<w
  * command's mixed positional/flag vocabulary. */
 function peelRolePositional(args: string[]): { id: string | null; rest: string[] } {
   const valueIdx = new Set<number>();
-  for (const flag of ["--role", "--notes-file", "--instructions-file", "--quiet-hours"]) {
+  for (const flag of ["--role", "--notes-file", "--instructions-file", "--quiet-hours", "--cap", "--min-run-interval"]) {
     const at = args.indexOf(flag);
     if (at >= 0) valueIdx.add(at + 1);
   }
@@ -74,7 +83,7 @@ function peelRolePositional(args: string[]): { id: string | null; rest: string[]
   const rest: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? ""; // Unreachable fallback: the loop bound guarantees a token here.
-    // A non-flag token that is not a --role or --notes-file flag's value is the positional,
+    // A non-flag token that is not a value-taking flag's value is the positional,
     // taken once; everything else — flags and their values alike — rides in rest for
     // rejectUnknownArgs and flagValue to claim.
     if (!arg.startsWith("-") && id === null && !valueIdx.has(i)) {
@@ -349,7 +358,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
   // a repo the team never started in — and a torn one — instead of refusing.
   const { id: positional, rest } = peelRolePositional(args);
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC]);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
   // a silent pick of one.
@@ -364,13 +373,19 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const clearInst = rest.includes("--clear-instructions");
   const instFile = flagValue(rest, "--instructions-file");
   const clearQuiet = rest.includes("--clear-quiet-hours");
+  const clearCap = rest.includes("--clear-cap");
+  const clearInterval = rest.includes("--clear-min-run-interval");
   const notesWrite = clear || rest.includes("--notes-file");
   const instructionsWrite = clearInst || rest.includes("--instructions-file");
   const quietWrite = clearQuiet || rest.includes("--quiet-hours");
+  const capWrite = clearCap || rest.includes("--cap");
+  const intervalWrite = clearInterval || rest.includes("--min-run-interval");
   const writes: string[] = [];
   if (notesWrite) writes.push("notes");
   if (instructionsWrite) writes.push("instructions");
   if (quietWrite) writes.push("quiet-hours");
+  if (capWrite) writes.push("cap");
+  if (intervalWrite) writes.push("min-run-interval");
   if (writes.length > 1)
     fail(`${writes.join(" and ")} writes cannot share one invocation`);
   if (notesWrite) {
@@ -432,6 +447,57 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
       const result = setConfigKey(root, `quietHoursPerRole.${base}`, JSON.stringify(window));
       if (!result.ok) fail(result.error);
       say(`${base}: quiet hours set to ${window}`);
+    }
+    return;
+  }
+  // The daily-cap write: the terminal twin of `config set maxDailyCostUsdPerRole.<base>
+  // <usd>`, the two remaining per-role holds' write the dashboard and the TUI already own.
+  // The value lands in maxDailyCostUsdPerRole.<base> through the same
+  // setConfigKey/unsetConfigKey core `config set`/`config unset` use, so checkDailyBudgetUsd
+  // (with the typed key as its label) and validateConfig own validation and the write is
+  // atomic. The director is exempt — it has no cap, like the notes and quiet-hours branches'
+  // director refusals.
+  if (capWrite) {
+    if (clearCap && rest.includes("--cap")) fail("give --clear-cap or --cap, not both");
+    if (rest.includes("--json")) fail("--json does not apply to a cap write");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    if (id === DIRECTOR_ROLE) fail("the director has no daily cap");
+    const base = baseRoleOf(id);
+    const cap = flagValue(rest, "--cap") ?? "";
+    if (clearCap || cap.trim() === "") {
+      const result = unsetConfigKey(root, `maxDailyCostUsdPerRole.${base}`);
+      if (!result.ok) fail(result.error);
+      say(`${base}: daily cap cleared`);
+    } else {
+      const result = setConfigKey(root, `maxDailyCostUsdPerRole.${base}`, cap);
+      if (!result.ok) fail(result.error);
+      say(`${base}: daily cap set to ${cap}`);
+    }
+    return;
+  }
+  // The min-run-interval write: the terminal twin of `config set
+  // roles.<base>.minRunIntervalSeconds <seconds>`, the fourth per-role hold's write. The
+  // value lands in roles.<base>.minRunIntervalSeconds through the same
+  // setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig's
+  // roles.<id>.minRunIntervalSeconds DURATION_NON_NEGATIVE check owns validation and the
+  // write is atomic. Unlike the notes/quiet-hours/cap branches there is no director refusal:
+  // the director ticks on the same clock.
+  if (intervalWrite) {
+    if (clearInterval && rest.includes("--min-run-interval")) fail("give --clear-min-run-interval or --min-run-interval, not both");
+    if (rest.includes("--json")) fail("--json does not apply to a min-run-interval write");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    const base = baseRoleOf(id);
+    const secs = flagValue(rest, "--min-run-interval") ?? "";
+    if (clearInterval || secs.trim() === "") {
+      const result = unsetConfigKey(root, `roles.${base}.minRunIntervalSeconds`);
+      if (!result.ok) fail(result.error);
+      say(`${base}: min run interval cleared`);
+    } else {
+      const result = setConfigKey(root, `roles.${base}.minRunIntervalSeconds`, secs);
+      if (!result.ok) fail(result.error);
+      say(`${base}: min run interval set to ${secs}s`);
     }
     return;
   }

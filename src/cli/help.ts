@@ -335,6 +335,15 @@ Usage:
                                    Set that role's own daily local-time quiet-hours
                                    window (e.g. "23:00-07:00"; empty clears it),
                                    written to quietHoursPerRole.<id> for the base id
+  tumwater role <id> --cap <usd>  Set that role's daily cap in USD (0 disables it),
+                                   written to maxDailyCostUsdPerRole.<id> for the base id
+  tumwater role <id> --clear-cap  Clear that role's daily cap
+  tumwater role <id> --min-run-interval <seconds>
+                                   Set that role's own minimum-run interval (0 allows
+                                   back-to-back runs), written to roles.<id>.minRunIntervalSeconds
+                                   for the base id; clearing falls back to the team-wide interval
+  tumwater role <id> --clear-min-run-interval
+                                   Clear that role's own minimum-run interval
   tumwater prompt <text...>        Send a message to the director's inbox
   tumwater prompt --file <path>    Send a message read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...>
