@@ -344,6 +344,14 @@ test("history --result fails with its own wording for a missing or unknown class
   assert.equal(bogus.code, 1);
   assert.match(bogus.stderr, /merged, none, problems/);
   assert.match(bogus.stderr, /got "bogus"/);
+  assert.ok(!bogus.stderr.includes("did you mean"), bogus.stderr); // not a near-miss
+
+  // A near-miss of a real result gets the did-you-mean, the same typoSuffix `logs --type` gives.
+  const typo = await cli(repo, "history", "--result", "mergd");
+  assert.equal(typo.code, 1);
+  assert.match(typo.stderr, /merged, none, problems/);
+  assert.match(typo.stderr, /got "mergd"/);
+  assert.match(typo.stderr, /did you mean `merged`\?/);
 });
 
 test("history --summary tallies each loop's outcomes over the rows the table would print", async () => {

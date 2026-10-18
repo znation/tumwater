@@ -5,6 +5,7 @@ import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, hi
 import { renderRow, renderSummary, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
+import { typoSuffix } from "../text/suggest.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
@@ -80,7 +81,9 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // rule the dashboard's History filter applies (shared from history-data.ts, not copied). It
   // composes with --role, -n, --since, and --grep, so no rival-shape rule: a missing or empty
   // value fails with its own wording, and an unknown class names the accepted ones (the gotSuffix
-  // shape the other flag validators use). Applied after --grep, over the same rows both the table
+  // shape the other flag validators use, plus a did-you-mean hint for a near-miss of a real
+  // result — the same typoSuffix treatment `logs --type` gives its codes). Applied after --grep,
+  // over the same rows both the table
   // and --json serialize.
   const resultRaw = flagValue(rest, "--result");
   let resultClass: HistoryResultClass | null = null;
@@ -88,7 +91,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     if (resultRaw === undefined || resultRaw === "") fail(HISTORY_RESULT_VALUE_ERROR);
     resultClass = parseHistoryResultClass(resultRaw);
     if (resultClass === null)
-      fail(`history --result must be one of ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(", ")}${gotSuffix(resultRaw)}`);
+      fail(`history --result must be one of ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(", ")}${gotSuffix(resultRaw)}${typoSuffix(resultRaw, Object.values(HISTORY_RESULT_FLAG_NAMES))}`);
     rows = rows.filter((r) => historyClass(r.result) === resultClass);
   }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
