@@ -97,7 +97,11 @@ function shouldAppendAgents(cwd: string): boolean {
  * each would otherwise silently change what the harness asked for. */
 export function claudeArgs(opts: ClaudeArgOptions): { args: string[]; stdin: string } {
   if ((opts.sessionId === undefined) === (opts.resumeSessionId === undefined)) {
-    throw new Error("claudeArgs: pass exactly one of sessionId or resumeSessionId");
+    // Name which side fired so the invariant that would otherwise silently change the run's
+    // session is diagnosable at a glance: a conflicting pair (both set) differs from a missing
+    // choice (neither) and the two bugs have different fixes.
+    const state = opts.sessionId === undefined ? "neither is set" : "both are set";
+    throw new Error(`claudeArgs: pass exactly one of sessionId or resumeSessionId (${state})`);
   }
   const args = ["-p", "--output-format", "stream-json", "--verbose", "--model", opts.model];
   if (opts.thinking !== undefined) {

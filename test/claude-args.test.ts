@@ -85,10 +85,12 @@ test("claudeArgs passes no --max-budget-usd by default", () => {
 });
 
 test("claudeArgs rejects an unusable session choice", () => {
-  assert.throws(() => claudeArgs(opts({ sessionId: undefined })), /exactly one of sessionId or resumeSessionId/);
+  // The message names which side fired: a missing choice (neither set) reads differently from
+  // a conflicting pair (both set), and each has a different fix.
+  assert.throws(() => claudeArgs(opts({ sessionId: undefined })), /exactly one of sessionId or resumeSessionId \(neither is set\)/);
   assert.throws(
     () => claudeArgs(opts({ sessionId: "a", resumeSessionId: "b" })),
-    /exactly one of sessionId or resumeSessionId/,
+    /exactly one of sessionId or resumeSessionId \(both are set\)/,
   );
 });
 
