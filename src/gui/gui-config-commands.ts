@@ -1,13 +1,16 @@
 /**
  * The dashboard's POST config/budget command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
- * config-set, config-unset, budget, and notify-test — the post-handler layer onto the
- * config-write domain module. Each handler adapts HTTP and touches no socket beyond its own `res`.
+ * config-set, config-unset, budget, role-cap, and notify-test — the post-handler layer onto
+ * the config-write domain module. Each handler adapts HTTP and touches no socket beyond its
+ * own `res`.
  */
 import { setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { checkDailyBudgetUsd } from "../config/config-keys.js";
 import { testNotifyHook } from "../cli/notify-command.js";
 import { requireConfigKey } from "./gui-args.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { badRequest, sendJson } from "./http-body.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
@@ -39,6 +42,48 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
     return;
   }
   sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number });
+}
+
+/** Handle POST /api/role-cap: the dashboard role drawer's editor saves one role's daily cost
+ * cap — the control the amber role-cap alert remedies. Same body discipline as /api/budget
+ * (readPostBody → 400 malformed/non-object, 413 oversized); the value rides the team editor's
+ * shared checkDailyBudgetUsd screen (naming the per-role dotted key), then the write goes
+ * through the CLI's own setConfigKey dotted path so the per-key validator and whole-candidate
+ * validateConfig (which rejects an unknown role id) own the final truth. The director has no
+ * cap (role-view.ts's guard exempts it), so it is refused up front with wording that mirrors
+ * handleRoleNotes. A bare `feature-2` loop id maps to its base role's cap (baseRoleOf), since
+ * the cap is about the role. A write failure is configKeyError's 400 exactly as handleConfigSet
+ * reports it. */
+export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"role": "feature", "maxDailyCostUsd": 2}');
+  if (!body) return;
+  const role = body.role;
+  if (typeof role !== "string" || role.trim() === "") {
+    badRequest(res, "role required");
+    return;
+  }
+  if (role === DIRECTOR_ROLE) {
+    badRequest(res, "the director has no daily cap");
+    return;
+  }
+  const value = body.maxDailyCostUsd;
+  if (value === undefined) {
+    badRequest(res, "maxDailyCostUsd required");
+    return;
+  }
+  const baseRole = baseRoleOf(role);
+  // The shared rule (finite ≥ 0; 0 disables), naming the per-role dotted key so a rejected
+  // write tells the operator which key the drawer would set.
+  const problem = checkDailyBudgetUsd(value, "maxDailyCostUsdPerRole." + baseRole);
+  if (problem) {
+    badRequest(res, problem);
+    return;
+  }
+  // setConfigKey takes the raw CLI text; a JSON round-trip of an already-parsed value is
+  // exact, so the shared per-key validator + whole-config validateConfig apply unchanged.
+  const result = setConfigKey(root, "maxDailyCostUsdPerRole." + baseRole, JSON.stringify(value));
+  if (!result.ok) return configKeyError(res, "maxDailyCostUsdPerRole." + baseRole, result);
+  sendJson(res, 200, { ok: true, role: baseRole, maxDailyCostUsd: value as number });
 }
 
 /** The shared 400 for a failed config mutation — the set and unset write paths both nest the

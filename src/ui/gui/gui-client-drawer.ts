@@ -34,6 +34,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     drawer = null;
     entryEditing = null;
     noteEditing = null;
+    capEditing = null;
     disarmNoteClear();
     if (wasLoop && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
     drawerTicks = null;
@@ -272,7 +273,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
               "<span class='clamp1' title='" + esc(detail) + "'><span class='res t-" + info.tone + "'>" + esc(info.label) + "</span>" + (detail ? " " + esc(detail) : "") + "</span>" +
               "<span class='when'>" + (o.durationMs == null ? "" : esc(fmtSpan(Number(o.durationMs)))) + "</span></li>";
           }).join("") + "</ul></section>" : "") +
-        drawerConfigHtml(view);
+        drawerConfigHtml(view, r.role);
     }
     return "<section>" + body + "</section>";
   }
@@ -285,7 +286,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // rows, and a notes-only payload adds an empty (omitted) section. Labels and wording mirror
   // role-render.ts's family; no backticks allowed here (this whole script is one big
   // String.raw template).
-  function drawerConfigHtml(view) {
+  function drawerConfigHtml(view, role) {
     const pair = (p, m) => [p, m].filter(Boolean).join("/");
     const singleLine = (s) => String(s).replace(/\s+/g, " ").trim();
     // A verbatim value's single-line clamped rendering (80 chars + ellipsis) with the full
@@ -356,11 +357,25 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       rows.push(kvRow("Spend", spend));
     }
     // The per-role daily cap (rolePayload's dailyCap), worded like role-render.ts's Daily cap line.
-    if (view.dailyCap && typeof view.dailyCap === "object") {
-      const dc = view.dailyCap;
-      let cap = fmtUsd(Number(dc.spentUsd) || 0) + " of " + fmtUsd(Number(dc.capUsd) || 0) + " spent today (" + (dc.over ? "holding now — no new runs until local midnight" : "not holding") + ")";
-      if (Array.isArray(dc.roleIds) && dc.roleIds.length > 1) cap += " · shared by " + dc.roleIds.join(", ");
-      rows.push(kvRow("Daily cap", cap));
+    // The per-role daily cap (rolePayload's dailyCap), worded like role-render.ts's Daily cap
+    // line. Shown for every non-director role — always, cap or not — because the "Set a cap"/
+    // "Edit cap" control is the end of the amber role-cap alert's path: the alert's remedy
+    // leads here. A director shows no row (role-view.ts's guard exempts it from a cap). While
+    // the cap editor is open for this role, an input prefilled with the current cap (empty for
+    // none) and Save/Discard replace the sentence, mirroring the notebook editor's markup.
+    if (role !== "director") {
+      const dc = view.dailyCap && typeof view.dailyCap === "object" ? view.dailyCap : null;
+      const editing = capEditing && capEditing.role === role;
+      const capBody = dc
+        ? fmtUsd(Number(dc.spentUsd) || 0) + " of " + fmtUsd(Number(dc.capUsd) || 0) + " spent today (" + (dc.over ? "holding now — no new runs until local midnight" : "not holding") + ")" +
+          (Array.isArray(dc.roleIds) && dc.roleIds.length > 1 ? " · shared by " + dc.roleIds.join(", ") : "")
+        : "no cap";
+      const capControl = editing
+        ? "<input id='capeditinput' type='number' min='0' step='0.01' value='" + (capEditing.value ? String(capEditing.value) : "") + "' placeholder='no cap'>" +
+          "<div><button type='button' class='btn btn-sm btn-primary' data-act='cap-save' data-arg='" + esc(role) + "'>Save</button> " +
+          "<button type='button' class='btn btn-sm' data-act='cap-discard' data-arg='" + esc(role) + "'>Discard</button></div>"
+        : "<button type='button' class='btn btn-sm' data-act='cap-edit' data-arg='" + esc(role) + "'>" + (dc ? "Edit cap" : "Set a cap") + "</button>";
+      rows.push("<div><dt>Daily cap</dt><dd title='" + esc(capBody) + "'>" + esc(capBody) + capControl + "</dd></div>");
     }
     if (typeof view.instructions === "string" && view.instructions.trim() !== "") rows.push(kvRow("Instructions override", clamp(view.instructions), view.instructions));
     if (typeof view.find === "string" && view.find.trim() !== "") rows.push(kvRow("Find text", clamp(view.find), view.find));
@@ -370,6 +385,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // refetch neither wipes the textarea nor changes the painted panel string. Clear waits for a
   // confirming click like entry cancel: the first click arms it for 5 s, the second posts.
   let noteEditing = null; // { role, text }
+  let capEditing = null; // { role, value }
   function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
   // The notebook clear and the backlog entry cancel each build a two-click confirm slot from
   // the shared confirmSlot factory (defined in the loops splice, an earlier one), so the arm,
@@ -380,6 +396,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function disarmNoteClear() { noteClear.disarm(); }
   function startNoteEdit(role, text) { noteEditing = { role, text }; disarmNoteClear(); repaintDrawerRole(); }
   function stopNoteEdit() { noteEditing = null; repaintDrawerRole(); }
+  function startCapEdit(role, capUsd) { capEditing = { role, value: capUsd ? Number(capUsd) || 0 : 0 }; repaintDrawerRole(); }
+  function stopCapEdit() { capEditing = null; repaintDrawerRole(); }
   // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so
   // reopening refetches.
   function loadDrawerRole(role) {

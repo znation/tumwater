@@ -331,6 +331,64 @@ test("note-save posts the textarea, note-clear needs a second click, note-discar
   assert.deepEqual(events.slice(-2), ["load feature", "notebook saved (8 bytes)"]);
 });
 
+test("cap-edit opens the cap editor, cap-save posts the parsed cap, cap-discard closes it, and an invalid field posts nothing", () => {
+  const posts: unknown[] = [];
+  const flashes: string[] = [];
+  const events: string[] = [];
+  const field = { value: "2", validity: { badInput: false } };
+  const capState: { current: unknown } = { current: null };
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      drawerRole: { role: "clean", state: "ok", view: { dailyCap: { capUsd: 1 } } },
+      $: (id: string) => (id === "capeditinput" ? field : null),
+      startCapEdit: (r: string, v: number) => events.push(`edit ${r} ${v}`),
+      stopCapEdit: () => events.push("stop"),
+      capEditing: capState,
+      showFlash: (m: string) => flashes.push(m),
+      parseBudgetField: (raw: string) => {
+        const t = String(raw).trim();
+        const n = Number(t);
+        if (t === "" || !Number.isFinite(n) || n < 0) return { ok: false, error: "the cap must be a number of 0 or more" };
+        return { ok: true, value: n };
+      },
+      fmtCap: (n: number) => "$" + n.toFixed(2).replace(/\.00$/, ""),
+      loadDrawerRole: (r: string) => events.push(`load ${r}`),
+      postAction: (path: string, body: unknown, done: (d: unknown) => string) => {
+        posts.push([path, body]);
+        // postAction toasts the callback's message — record it as the flash.
+        const msg = done({});
+        flashes.push(msg);
+        events.push(msg);
+      },
+    },
+  );
+  // cap-edit opens the editor with the current cap.
+  scope.runAct("cap-edit", "clean");
+  assert.deepEqual(events, ["edit clean 1"]);
+  // cap-save posts the parsed value and flashes the set wording.
+  scope.runAct("cap-save", "clean");
+  assert.deepEqual(posts[0], ["/api/role-cap", { role: "clean", maxDailyCostUsd: 2 }]);
+  assert.deepEqual(flashes, ["Daily cap set to $2"]);
+  assert.deepEqual(events.slice(-2), ["load clean", "Daily cap set to $2"]);
+  // A 0 value flashes the removed wording.
+  field.value = "0";
+  scope.runAct("cap-save", "clean");
+  assert.deepEqual(posts[1], ["/api/role-cap", { role: "clean", maxDailyCostUsd: 0 }]);
+  assert.deepEqual(flashes[1], "Daily cap removed");
+  // A non-numeric field flashes the parse error and posts nothing.
+  flashes.length = 0;
+  posts.length = 0;
+  field.value = "abc";
+  scope.runAct("cap-save", "clean");
+  assert.deepEqual(posts, []);
+  assert.deepEqual(flashes, ["error: the cap must be a number of 0 or more"]);
+  // cap-discard closes the editor.
+  events.length = 0;
+  scope.runAct("cap-discard", "clean");
+  assert.deepEqual(events, ["stop"]);
+});
+
 test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
   const log: string[] = [];
   const calls: string[] = [];

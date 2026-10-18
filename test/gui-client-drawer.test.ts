@@ -27,6 +27,8 @@ interface DrawerScope {
   openEntryKey(): string | null;
   startNoteEdit(role: string, text: string): void;
   stopNoteEdit(): void;
+  startCapEdit(role: string, capUsd: number): void;
+  stopCapEdit(): void;
   loadDrawerRole(role: string): Promise<void>;
   toggleLoop(role: string): void;
   toggleEntry(file: string, index: number): void;
@@ -723,14 +725,19 @@ test("the Configuration section omits absent fields (cap-less team, no fallback,
   assert.doesNotMatch(role, /<dt>Billing<\/dt>/);
   assert.doesNotMatch(role, /Min run interval/);
 
-  // A notes-only payload renders no Configuration section at all.
+  // A notes-only payload renders just the always-on Daily cap row — no other rows. The Daily
+  // cap row always renders for a non-director role (cap or not), so a bare payload still
+  // shows a Configuration section built from that one row.
   const minimal = openDrawer(["toggleLoop"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: "a note", nextPrompt: null } },
   });
   minimal.scope.toggleLoop("clean");
   await flush();
-  assert.doesNotMatch(minimal.paintedFor("drawerrole"), /Configuration/);
+  const minimalRole = minimal.paintedFor("drawerrole");
+  assert.match(minimalRole, /<h3>Configuration<\/h3>/);
+  assert.match(minimalRole, /<dt>Daily cap<\/dt><dd[^>]*>no cap/);
+  assert.doesNotMatch(minimalRole, /<dt>Model<\/dt>/);
 });
 
 // The loop drawer's Spend row mirrors role-render.ts's Spend line from the same /api/role
@@ -770,8 +777,8 @@ test("the loop drawer renders a Spend row from the role payload's usage", async 
   assert.doesNotMatch(none.paintedFor("drawerrole"), /<dt>Spend<\/dt>/);
 });
 
-test("the loop drawer renders a Daily cap row only when the payload has a dailyCap", async () => {
-  const withCap = openDrawer(["toggleLoop"], {
+test("the loop drawer always renders a Daily cap row for a non-director role, and the cap editor replaces it while editing", async () => {
+  const withCap = openDrawer(["toggleLoop", "startCapEdit", "stopCapEdit"], {
     status: workingStatus(),
     responses: {
       "/api/role?role=clean": {
@@ -784,17 +791,45 @@ test("the loop drawer renders a Daily cap row only when the payload has a dailyC
   });
   withCap.scope.toggleLoop("clean");
   await flush();
-  assert.match(
-    withCap.paintedFor("drawerrole"),
-    /<dt>Daily cap<\/dt><dd[^>]*>\$1\.20 of \$1\.00 spent today \(holding now — no new runs until local midnight\) · shared by clean, clean-2<\/dd>/,
-  );
+  let role = withCap.paintedFor("drawerrole");
+  // Cap present: the spend sentence and an Edit cap button — the alert's path's end.
+  assert.match(role, /<dt>Daily cap<\/dt><dd[^>]*>\$1\.20 of \$1\.00 spent today \(holding now — no new runs until local midnight\) · shared by clean, clean-2/);
+  assert.match(role, /data-act='cap-edit' data-arg='clean'>Edit cap<\/button>/);
+  // Editing swaps in an input prefilled with the current cap plus Save/Discard.
+  withCap.scope.startCapEdit("clean", 1);
+  role = withCap.paintedFor("drawerrole");
+  assert.match(role, /<input id='capeditinput' type='number' min='0' step='0.01' value='1'/);
+  assert.match(role, /data-act='cap-save' data-arg='clean'/);
+  assert.match(role, /data-act='cap-discard' data-arg='clean'/);
+  // Discarding restores the sentence and button.
+  withCap.scope.stopCapEdit();
+  role = withCap.paintedFor("drawerrole");
+  assert.match(role, /data-act='cap-edit' data-arg='clean'>Edit cap<\/button>/);
+  assert.doesNotMatch(role, /capeditinput/);
+
+  // No cap on the payload: the row shows "no cap" and a Set a cap button.
   const none = openDrawer(["toggleLoop"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0 } },
   });
   none.scope.toggleLoop("clean");
   await flush();
-  assert.doesNotMatch(none.paintedFor("drawerrole"), /Daily cap/);
+  const noneRole = none.paintedFor("drawerrole");
+  assert.match(noneRole, /<dt>Daily cap<\/dt><dd[^>]*>no cap/);
+  assert.match(noneRole, /data-act='cap-edit' data-arg='clean'>Set a cap<\/button>/);
+
+  // The director shows no cap row.
+  const directorStatus = workingStatus();
+  directorStatus.roles[0]!.role = "director";
+  const dir = openDrawer(["toggleLoop"], {
+    status: directorStatus,
+    responses: {
+      "/api/role?role=director": { notes: null, nextPrompt: null, inboxCount: 0, dailyCap: { capUsd: 1, spentUsd: 0, over: false } },
+    },
+  });
+  dir.scope.toggleLoop("director");
+  await flush();
+  assert.doesNotMatch(dir.paintedFor("drawerrole"), /Daily cap/);
 });
 
 // A default pi team runs on pi's own saved default model: rolePayload sets `piDefault`

@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -676,6 +676,61 @@ test("handleBudget refuses a finite-but-unrepresentable cap with the shared scre
   assert.match(captured.body, /got 1e\+24/);
   // The config file was never created by the refused write.
   assert.equal(fs.existsSync(configPath(root)), false);
+});
+
+function serveRoleCap(root: string, body: unknown) {
+  return captureJson((res) => handleRoleCap(fakeReq(JSON.stringify(body)), res, root));
+}
+
+// POST /api/role-cap: the role drawer's per-role daily-cap editor, the endpoint the amber
+// role-cap alert's Open-role drawer lands on. Writes through the CLI's own setConfigKey dotted
+// path (per-key checkDailyBudgetUsd + whole-config validateConfig), so the browser cannot
+// drift from `tumwater config set maxDailyCostUsdPerRole.<role>`; /api/budget is untouched.
+test("handleRoleCap writes the role's cap through setConfigKey and answers 200", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { maxDailyCostUsd: 25 });
+  const { captured, data } = await serveRoleCap(root, { role: "feature", maxDailyCostUsd: 2 });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, role: "feature", maxDailyCostUsd: 2 });
+  // The file on disk is what the running team polls — the write went through setConfigKey.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.maxDailyCostUsdPerRole as Record<string, unknown>).feature, 2);
+});
+
+test("handleRoleCap maps an instance id to its base role's cap", async () => {
+  const root = tmpdir();
+  const { captured, data } = await serveRoleCap(root, { role: "feature-2", maxDailyCostUsd: 4 });
+  assert.equal(captured.status, 200);
+  // The cap is about the role, so a bare loop id writes the base role's key.
+  assert.deepEqual(data, { ok: true, role: "feature", maxDailyCostUsd: 4 });
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.maxDailyCostUsdPerRole as Record<string, unknown>).feature, 4);
+});
+
+test("handleRoleCap rejects a bad value, the director, an unknown role, and a missing field", async () => {
+  const root = tmpdir();
+  // A negative value is refused with the per-role dotted key named.
+  const neg = await serveRoleCap(root, { role: "feature", maxDailyCostUsd: -1 });
+  assert.equal(neg.captured.status, 400);
+  assert.match((neg.data as { error: string }).error, /maxDailyCostUsdPerRole\.feature/);
+  // A non-number value is refused the same way.
+  const nan = await serveRoleCap(root, { role: "feature", maxDailyCostUsd: "two" });
+  assert.equal(nan.captured.status, 400);
+  assert.match((nan.data as { error: string }).error, /maxDailyCostUsdPerRole\.feature/);
+  // The director has no cap.
+  const dir = await serveRoleCap(root, { role: "director", maxDailyCostUsd: 2 });
+  assert.equal(dir.captured.status, 400);
+  assert.match((dir.data as { error: string }).error, /the director has no daily cap/);
+  assert.doesNotMatch((dir.data as { error: string }).error, /maxDailyCostUsdPerRole/);
+  // An unknown role id is refused through validateConfig, writing nothing.
+  const unknown = await serveRoleCap(root, { role: "nope", maxDailyCostUsd: 2 });
+  assert.equal(unknown.captured.status, 400);
+  assert.equal(fs.existsSync(configPath(root)), false, "a refused write never creates the file");
+  // A missing role or value is refused.
+  const noRole = await serveRoleCap(root, { maxDailyCostUsd: 2 });
+  assert.equal(noRole.captured.status, 400);
+  const noValue = await serveRoleCap(root, { role: "feature" });
+  assert.equal(noValue.captured.status, 400);
 });
 
 test("handleConfigSet refuses a key outside the curated set, naming it", async () => {

@@ -217,6 +217,32 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         loadDrawerRole(arg);
         return d && typeof d.message === "string" ? d.message : "Notes updated";
       });
+    } else if (act === "cap-edit") {
+      startCapEdit(arg, drawerRole?.view?.dailyCap?.capUsd ?? 0);
+    } else if (act === "cap-discard") {
+      stopCapEdit();
+    } else if (act === "cap-save") {
+      const input = $("capeditinput");
+      if (!input) return;
+      // A type=number input reports "" both for a field cleared on purpose (no cap) and for
+      // text the browser rejected ("$2"); validity.badInput tells them apart, so a typo is an
+      // error instead of silently removing the cap — the team editor's guard, in scope from
+      // the operator blob concatenated earlier.
+      if (input.validity && input.validity.badInput) {
+        showFlash("error: the cap must be a number of 0 or more — leave it empty for no cap");
+        return;
+      }
+      const parsed = parseBudgetField(input.value);
+      if (!parsed.ok) {
+        showFlash("error: " + parsed.error);
+        return;
+      }
+      const value = parsed.value;
+      postAction("/api/role-cap", { role: arg, maxDailyCostUsd: value }, (d) => {
+        capEditing = null;
+        loadDrawerRole(arg);
+        return value > 0 ? "Daily cap set to " + fmtCap(value) : "Daily cap removed";
+      });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
       const title = entryTitleAt(file, index);
