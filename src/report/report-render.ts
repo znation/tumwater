@@ -374,6 +374,8 @@ export function renderReportMarkdown(data: ReportData): string {
     if (waits !== undefined) lines.push(waits);
     const providerWaits = medianLine(data.series, "Provider wait median", (d) => d.providerWaitMedianMs);
     if (providerWaits !== undefined) lines.push(providerWaits);
+    const slotWaits = medianLine(data.series, "Workspace wait median", (d) => d.slotWaitMedianMs);
+    if (slotWaits !== undefined) lines.push(slotWaits);
   }
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
   // Subscription spend is notional: its own two lines, only when the window has any.
