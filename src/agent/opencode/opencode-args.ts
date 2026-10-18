@@ -67,8 +67,17 @@ export interface OpencodeArgOptions {
  * provider-qualified id and passes as is. Throws on a passthrough arg that repeats a harness
  * flag, since OpenCode's last-wins parser would otherwise silently override what the harness
  * asked for. */
+/** The opencode-namespaced model id: a bare id (no `/`) names a model on OpenCode's own
+ * gateway and gets the `opencode/` provider; an id bearing a slash is provider-qualified and
+ * passes as-is. The single home of this routing rule — shared by the argv builder
+ * (opencodeArgs, here) and the catalog's cache key (opencode-catalog.ts's opencodeModelKey) —
+ * so the id a run is invoked with always matches the id a run is priced by. */
+export function opencodeQualifiedModel(model: string): string {
+  return model.includes("/") ? model : `opencode/${model}`;
+}
+
 export function opencodeArgs(opts: OpencodeArgOptions): { args: string[]; stdin: string } {
-  const model = (opts.model.includes("/") ? "" : "opencode/") + opts.model + (opts.variant !== undefined ? `#${opts.variant}` : "");
+  const model = opencodeQualifiedModel(opts.model) + (opts.variant !== undefined ? `#${opts.variant}` : "");
   const args = ["run", "--standalone", "--format", "json", "--auto", "--model", model, "--session", opts.sessionId, "--title", opts.title];
   for (const arg of opts.args ?? []) {
     // Match the flag itself even when it carries its value as `--flag=value`.

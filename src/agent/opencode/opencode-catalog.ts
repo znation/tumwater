@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
 import { opencodeModelsPath } from "../../paths.js";
 import { logEventBestEffort, type HarnessEventInput } from "../../events/events.js";
+import { opencodeQualifiedModel } from "./opencode-args.js";
 
 /** models.dev's catalog, the data OpenCode caches in its database `kv` table (finding 10). */
 const CATALOG_URL = "https://models.dev/api.json";
@@ -130,12 +131,11 @@ export function opencodeModelFree(cache: OpencodeCatalogCache, model: string): b
 }
 
 /** The catalog cache key for an opencode run's resolved selector: the `<provider>/<model>`
- * form part 6a/7 keys the cache by. A selector already bearing a slash is a routed provider
- * key (`opencode-go/<model>`), kept as-is; a bare id is the `opencode` gateway and gets the
- * `opencode/` prefix — the same rule opencode-args.ts applies when it builds the `--model`
- * arg, so the key a run is priced by always matches the key a run is billed by. */
+ * form part 6a/7 keys the cache by. Delegates the bare-gateway-prefix rule to
+ * opencode-args.ts's opencodeQualifiedModel (the single home), so the key a run is priced by
+ * always matches the id a run is invoked by. */
 export function opencodeModelKey(selector: string): string {
-  return selector.includes("/") ? selector : `opencode/${selector}`;
+  return opencodeQualifiedModel(selector);
 }
 
 /** Options for observeOpencodeRun, every moving part injectable so the demo logic is testable
