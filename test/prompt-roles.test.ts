@@ -410,6 +410,8 @@ test("the feature find text moves a done plan under the EXISTING ## Done heading
   assert.match(find, /leave a `_None yet\._` placeholder there/);
   assert.match(find, /`grep -n '\^## ' PLANS\.md` must list the same headings before and after/);
   assert.ok(!find.includes('Done section'), "the 'create a section' wording is gone");
+  // tumwater archives the pasted entry (plans/backlog-archive.md); the run never opens the archive.
+  assert.match(find, /When your change commits, tumwater moves the pasted entry to the top of PLANS-DONE\.md; do not open or edit PLANS-DONE\.md yourself/);
 });
 test("the bugfix find text moves a fixed bug under the EXISTING ## Fixed heading", () => {
   const find = oneLine(roleById("bugfix")!.find);
@@ -418,6 +420,7 @@ test("the bugfix find text moves a fixed bug under the EXISTING ## Fixed heading
   assert.match(find, /never add, remove, or rename a `## ` heading/i);
   assert.match(find, /`grep -n '\^## ' BUGS\.md` must list the same headings before and after/);
   assert.ok(!find.includes('Fixed section'), "the 'create a section' wording is gone");
+  assert.match(find, /tumwater moves the pasted entry to the top of BUGS-FIXED\.md; do not open or edit BUGS-FIXED\.md yourself/);
 });
 test("the plan role prioritizes a Needs review plan, clears the note after splitting, and stops while plans wait", () => {
   const find = oneLine(roleById("plan")!.find);
@@ -452,26 +455,6 @@ test("the director investigates only enough to route", () => {
   const prompt = oneLine(buildDirectorPrompt("the tui flickers", "a project"));
   assert.match(prompt, /Investigate only as much as routing precisely needs/);
   assert.match(prompt, /never a survey of the codebase, and never the implementation itself/);
-});
-test("the steward never deletes a one-line record and keeps epitaph titles", () => {
-  const find = oneLine(roleById("steward")!.find);
-  assert.match(find, /Never delete a one-line record/);
-  assert.match(find, /an epitaph for a deleted or merged entry keeps the entry's title/);
-  assert.match(find, /`plans-citations\.test\.ts` fails when a `PLANS\.md "<title>"` citation/);
-});
-
-test("the steward reads the injected index and reads bodies only by range", () => {
-  const find = oneLine(roleById("steward")!.find);
-  assert.match(find, /you may see PLANS\.md and BUGS\.md whole, but do it cheaply/i);
-  assert.match(find, /The prompt's <backlog-index> block lists every Planned and Open entry with its line range/);
-  assert.match(find, /read Done\/Fixed entries by line range only where your move needs their bodies/);
-  // The compressed Fixed record's `gap:` tag comes from the body's Validation gap line, so that
-  // one line IS read; the old blanket "no body read required" was self-contradictory.
-  assert.match(
-    find,
-    /except a Fixed entry's `gap:` suffix, which comes from the `\*\*Validation gap:\*\*` line in its body/,
-  );
-  assert.match(find, /read that one line \(`grep -n 'Validation gap' FILE`\), not the whole body/);
 });
 const qa = roleById("qa");
 const selfcheck = roleById("selfcheck");
@@ -533,7 +516,7 @@ test("bugfix treats an all-refused Open section as nothing to do, and only an em
 });
 test("the steward's tally query stands as its own sentence, not inside a parenthetical", () => {
   const find = oneLine(roleById("steward")!.find);
-  assert.match(find, /citing those entries\. One query counts both the verbatim line and the compressed `gap: <tag>` suffix:/);
+  assert.match(find, /citing those entries\. One query counts both the verbatim line and the older compressed `gap: <tag>` suffix across BUGS\.md and its archive:/);
   assert.ok(!find.includes("uniq -c`.);"), "no sentence-in-parentheses rendering");
 });
 

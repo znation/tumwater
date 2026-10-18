@@ -19,6 +19,7 @@ import {
   DONE_DATE_RE,
   FIXED_DATE_RE,
   completionDate,
+  finishedFiles,
   fixedBugEntries,
   sectionCompletionDates,
   sectionFilingDates,
@@ -849,7 +850,8 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
 }
 
 /** Aggregate team usage over exactly `days` local calendar days ending today, from the event
- * log (run_end/merged) and the backlog history files (PLANS.md ## Done, BUGS.md ## Fixed). */
+ * log (run_end/merged) and the backlog history (`## Done` in PLANS.md and PLANS-DONE.md,
+ * `## Fixed` in BUGS.md and BUGS-FIXED.md). */
 export function collectReport(root: string, days: number, role?: string): ReportData {
   const now = new Date();
   // One captured instant for the whole window, so every day key derives from the same day.
@@ -1003,17 +1005,25 @@ export function collectReport(root: string, days: number, role?: string): Report
   // file metadata with no role, so a scoped report cannot attribute a completion or a filing
   // (the render states the omission).
   if (role === undefined) {
-    for (const d of sectionCompletionDates(root, "PLANS.md", "Done", DONE_DATE_RE))
-      countOn(d, "featuresDone");
-    for (const d of sectionCompletionDates(root, "BUGS.md", "Fixed", FIXED_DATE_RE))
-      countOn(d, "bugsFixed");
+    // Finished entries sit in the live file's finished section and in its archive file
+    // (plans/backlog-archive.md); each per-file read is stat-cached.
+    for (const file of finishedFiles("PLANS.md")) {
+      for (const d of sectionCompletionDates(root, file, "Done", DONE_DATE_RE)) countOn(d, "featuresDone");
+    }
+    for (const file of finishedFiles("BUGS.md")) {
+      for (const d of sectionCompletionDates(root, file, "Fixed", FIXED_DATE_RE)) countOn(d, "bugsFixed");
+    }
     // Fold the filing stamps too: plans/bugs that opened this day, over the same entry
     // detection `entryDates` applies to the completion reads, so an entry's opened and done
     // days are read the same way.
     for (const d of sectionFilingDates(root, "PLANS.md", "Planned")) countOn(d, "plansAdded");
-    for (const d of sectionFilingDates(root, "PLANS.md", "Done")) countOn(d, "plansAdded");
+    for (const file of finishedFiles("PLANS.md")) {
+      for (const d of sectionFilingDates(root, file, "Done")) countOn(d, "plansAdded");
+    }
     for (const d of sectionFilingDates(root, "BUGS.md", "Open")) countOn(d, "bugsFiled");
-    for (const d of sectionFilingDates(root, "BUGS.md", "Fixed")) countOn(d, "bugsFiled");
+    for (const file of finishedFiles("BUGS.md")) {
+      for (const d of sectionFilingDates(root, file, "Fixed")) countOn(d, "bugsFiled");
+    }
   }
 
   // Tally the fixed bugs' `Validation gap` tags over the window, so the team can see where

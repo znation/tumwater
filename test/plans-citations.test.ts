@@ -5,10 +5,10 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 // Comments cite plans by quoted title, by quoted title (the file name, then the title in
-// double quotes). This test fails when such a citation matches no PLANS.md heading or
-// one-line Done record, so a steward compression that drops a record cannot merge
-// silently. Only this exact quoted form is checked: unquoted citations (PLANS.md
-// 2026-09-30, part 1/3) are out of scope.
+// double quotes). This test fails when such a citation matches no heading or one-line Done
+// record in PLANS.md or PLANS-DONE.md (where finished plans are archived), so an edit that
+// drops a record cannot merge silently. Only this exact quoted form is checked: unquoted
+// citations (PLANS.md 2026-09-30, part 1/3) are out of scope.
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 // The suite runs both from test/ and from dist/test/, so walk up to the repo root.
@@ -43,7 +43,10 @@ function walk(dir: string): string[] {
 }
 
 test("every quoted PLANS.md title cited in a src/ or test/ comment names a record", () => {
-  const plans = fs.readFileSync(path.join(ROOT, "PLANS.md"), "utf8").split("\n");
+  const plans = ["PLANS.md", "PLANS-DONE.md"]
+    .map((file) => path.join(ROOT, file))
+    .filter((full) => fs.existsSync(full))
+    .flatMap((full) => fs.readFileSync(full, "utf8").split("\n"));
   const titles: string[] = [];
   for (const line of plans) {
     const m = /^### (.*)$/.exec(line) ?? /^- (.*\(planned .*)$/.exec(line);

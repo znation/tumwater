@@ -5,9 +5,10 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 /** The pointer guard behind PLANS.md's citation convention: a comment in `src/` or `test/` that
- * cites a PLANS.md entry must cite one the file still records. Entries are curated as the backlog
- * moves — a `## Planned` heading is rewritten and moved to the terse `## Done` bullet, and a
- * superseded one is deleted — and each move silently strands every comment that named it. Nothing
+ * cites a PLANS.md entry must cite one the file — or PLANS-DONE.md, where finished plans are
+ * archived — still records. Entries are curated as the backlog moves — a `## Planned` heading was
+ * rewritten to a terse `## Done` bullet, and a superseded one is deleted — and each move silently
+ * strands every comment that named it. Nothing
  * checked that, so the review gate found the survivors one change at a time and rejected the sweep
  * for being incomplete, and the same cleanup was re-authored tick after tick (BUGS.md 2026-10-12,
  * "REVISION_LIMIT exhaustion …"): ~100 citations name entries PLANS.md no longer holds. This guard
@@ -128,7 +129,12 @@ function tsFiles(dir: string): string[] {
   return out;
 }
 
-const ENTRIES = planEntries(fs.readFileSync(path.join(ROOT, "PLANS.md"), "utf8"));
+/** Every entry PLANS.md still records: its own, and the finished ones archived in PLANS-DONE.md
+ * (plans/backlog-archive.md), which keeps them under the same `## Done` heading. */
+const ENTRIES = ["PLANS.md", "PLANS-DONE.md"].flatMap((file) => {
+  const full = path.join(ROOT, file);
+  return fs.existsSync(full) ? planEntries(fs.readFileSync(full, "utf8")) : [];
+});
 
 test("planEntries reads the heading and Done-bullet titles and cuts each one's status", () => {
   const md = [

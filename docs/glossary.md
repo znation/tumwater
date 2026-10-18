@@ -246,4 +246,4 @@ For readers of old commits. None of the older identifiers is kept.
 
 ## What keeps the older words
 
-Some places keep the older words on purpose, because they are a record rather than current text: PLANS.md `## Done`, BUGS.md, QUESTIONS.md answers, `plans/*.md`, git history and commit subjects, the `tumwater(operator):` prefix, and `tumwater/<id>` branches. The tables above translate them.
+Some places keep the older words on purpose, because they are a record rather than current text: the finished entries in PLANS-DONE.md and BUGS-FIXED.md, BUGS.md, QUESTIONS.md answers, `plans/*.md`, git history and commit subjects, the `tumwater(operator):` prefix, and `tumwater/<id>` branches. The tables above translate them.

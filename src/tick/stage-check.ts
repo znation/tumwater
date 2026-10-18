@@ -35,12 +35,15 @@ import { secretLeakReason } from "../review/secret-leaks.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { readTextOrNull } from "../files/files.js";
-import { parseEntryDetails } from "../backlog/backlog-md.js";
+import { BACKLOG_FILES, finishedArchiveOf, parseEntryDetails } from "../backlog/backlog-md.js";
 import { entryKey, planDependencyProblems, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { WAITING_FOR_FAILURE_NOTE } from "../roles/role-guidance.js";
 import { gitTry } from "../git/git-run.js";
 import { moreSuffix } from "../text/phrases.js";
+
+/** Where finished plans are archived (plans/backlog-archive.md). */
+const PLANS_ARCHIVE = finishedArchiveOf("PLANS.md").archive;
 
 /** How many `file:line` hits a single stale-reference finding lists before it stops. */
 const MAX_STALE_HITS = 10;
@@ -68,15 +71,16 @@ function cappedList(items: readonly string[], max: number): string {
 }
 
 /** The finding for the heading `requires` clause problems that `head` (the edited PLANS.md)
- * adds over `base` (its text at the merge-base), or undefined when it adds none. Only new
+ * adds over `base` (its text at the merge-base), or undefined when it adds none; `archivedTitles`
+ * (PLANS-DONE.md's headings) count as existing headings on both sides. Only new
  * problems count: one already on main is not this run's fault and stays doctor's to report, so
  * the author is never asked to fix another run's heading. The most serious new problem is named
  * — cycle, then dangling, unparsed, then misworded — with a count of the rest. */
-export function planDependencyFinding(head: string, base: string): string | undefined {
+export function planDependencyFinding(head: string, base: string, archivedTitles: readonly string[] = []): string | undefined {
   const problems = (text: string) =>
     planDependencyProblems(
       parseEntryDetails(text, "Planned"),
-      parseEntryDetails(text, "Done").map((e) => e.title),
+      [...parseEntryDetails(text, "Done").map((e) => e.title), ...archivedTitles],
     );
   const was = problems(base);
   const now = problems(head);
@@ -155,7 +159,10 @@ export async function stageCheckFindings(
   if (files.includes("PLANS.md")) {
     const head = readTextOrNull(path.join(wt, "PLANS.md")) ?? "";
     const base = await fileContentAt(wt, await changeBaseRev(wt, mainBranch), "PLANS.md").catch(() => undefined);
-    const dependency = base === undefined ? undefined : planDependencyFinding(head, base);
+    // Finished plans are archived in PLANS-DONE.md (plans/backlog-archive.md): a requires clause
+    // naming a merged part resolves there, on both sides of the comparison alike.
+    const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
+    const dependency = base === undefined ? undefined : planDependencyFinding(head, base, archived);
     if (dependency !== undefined) findings.push(dependency);
   }
   if (baseRoleOf(role) === "bugfix" && files.includes("BUGS.md")) {
@@ -347,7 +354,7 @@ async function missingPathFindings(
   // references, so it spares them (the rename/delete stale-reference scan still covers them).
   function isBacklogProse(path: string): boolean {
     const base = path.slice(path.lastIndexOf("/") + 1);
-    return base === "PLANS.md" || base === "BUGS.md" || base === "QUESTIONS.md";
+    return BACKLOG_FILES.has(base);
   }
   const seen = new Set<string>();
   const missing: string[] = [];

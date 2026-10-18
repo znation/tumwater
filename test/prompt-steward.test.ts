@@ -35,14 +35,14 @@ test("the steward prompt makes ONE curation move from the planned list", () => {
   assert.match(find, /make ONE curation move, the most valuable one/);
   assert.match(
     find,
-    /delete or merge stale\/duplicative\/superseded PLANS\.md entries \(with a one-line epitaph in the entry's place or in Done\)/,
+    /delete or merge stale\/duplicative\/superseded PLANS\.md entries: move each one under PLANS\.md's ## Done with a one-line epitaph as its body/,
   );
   assert.match(find, /flag drift between what is being built and the brief as a PLANS\.md note/);
   assert.match(find, /tighten or update a principle or complexity budget in PRINCIPLES\.md/);
   assert.match(find, /record a structural risk in BUGS\.md/);
   assert.match(
     find,
-    /promote a recurring non-`none` `gap:` tag — three or more retained Fixed entries carrying it — into a PLANS\.md entry for the infrastructure that would retire it, citing those entries/,
+    /promote a recurring non-`none` `gap:` tag — three or more Fixed entries carrying it — into a PLANS\.md entry for the infrastructure that would retire it, citing those entries/,
   );
 });
 
@@ -53,156 +53,26 @@ test("the steward prompt restricts writes to markdown", () => {
   assert.match(find, /You edit only markdown — never source\./);
 });
 
-// Prompt contract for PLANS.md Done-section curation: ## Done
-// is bounded by construction — a ten-entry verbatim window, older entries compressed to
-// one-line epitaphs carrying title, dates, and merge hashes. Every steward tick is a fresh
-// session with no memory of earlier curation moves, so the find text must carry the whole
-// policy in prose; these assertions pin that contract. Same whitespace-collapsed matching as
-// above — the prose is hard-wrapped and formatting ticks reflow it, so assertions match
-// content, not layout.
+// Finished history is archived, not curated (plans/backlog-archive.md): finished entries live in
+// PLANS-DONE.md and BUGS-FIXED.md, which nothing reads whole, so the steward never compresses
+// or trims them — that move, and its ten-entry window, is retired — and reads them only by
+// search or by an entry's line range.
 
-test("the steward prompt bounds PLANS.md's Done section to a ten-entry verbatim window", () => {
+test("the steward reads the archive files only by search or range and never compresses them", () => {
   const find = oneLine(steward!.find);
-  assert.match(find, /PLANS\.md's ## Done section is curated to stay bounded/);
-  assert.match(
-    find,
-    /keep the ten most recent entries verbatim \(newest first, by position in file\)/i,
-  );
+  assert.match(find, /PLANS\.md and BUGS\.md hold open work, so read them whole when your move needs it/);
+  assert.match(find, /Finished entries live in PLANS-DONE\.md and BUGS-FIXED\.md, newest first, and those files only grow: never read them whole/);
+  assert.match(find, /Search them with `grep -n`, and read an entry by its line range only where your move needs its body/);
+  assert.match(find, /Finished history is not curated: nothing reads the archive files whole, so they are never compressed or trimmed/);
+  assert.doesNotMatch(find, /compress older ones to one line each/);
+  assert.doesNotMatch(find, /records-overflow/);
+  assert.doesNotMatch(find, /no archive file/);
 });
 
-test("the steward prompt compresses older Done entries to one-line epitaphs with title, dates, and hashes", () => {
+test("the steward's epitaph keeps the entry's title for the citation guard and lets tumwater archive it", () => {
   const find = oneLine(steward!.find);
-  assert.match(find, /compress older ones to one line each/);
-  // The exact one-line form: title, planned/done dates, merge commit(s).
-  assert.match(
-    find,
-    /`- <title> \(planned YYYY-MM-DD, done YYYY-MM-DD; commit\(s\) <sha>\[, <sha>\]\)`/,
-  );
-  assert.match(find, /title and dates from the entry's heading/);
-});
-
-test("the steward prompt sources epitaph hashes from merge citations or git log, never verification references", () => {
-  const find = oneLine(steward!.find);
-  // Priority: an explicit merge citation in the body, else git log on main.
-  assert.match(find, /an explicit merge citation in the entry body/);
-  assert.match(find, /else git log on main/);
-  // A Done note's "against main <sha>" is a base reference — never the record's hash; when no
-  // merge commit exists, omit the field rather than guess.
-  assert.match(
-    find,
-    /never use a verification or base reference \("Verified … against main `<sha>`", "at HEAD `<sha>`"\)/i,
-  );
-  assert.match(find, /omit the commit\(s\) field rather than guess/);
-});
-
-test("the steward prompt never compresses Done entries carrying a Refused note", () => {
-  const find = oneLine(steward!.find);
-  assert.match(find, /Never compress an entry carrying a standing \*\*Refused …\*\* note/);
-  assert.match(find, /such entries stay full \(they are rare\)/);
-});
-
-test("the steward prompt treats Done compression as lossy with git history as the archive", () => {
-  const find = oneLine(steward!.find);
-  assert.match(
-    find,
-    /lossy on purpose: pre-compression text stays in git history — no archive file/,
-  );
-});
-
-// Prompt contract for BUGS.md Fixed-section curation: ## Fixed is
-// bounded by construction — a ten-entry verbatim window, older entries compressed to one-line
-// records carrying the symptom headline, the heading's own date clause as-is, and the merge
-// commit where resolvable. Same whitespace-collapsed matching as above — the prose is
-// hard-wrapped and formatting ticks reflow it, so assertions match content, not layout.
-
-test("the steward prompt bounds BUGS.md's Fixed section to a ten-entry verbatim window", () => {
-  const find = oneLine(steward!.find);
-  assert.match(
-    find,
-    /BUGS\.md's ## Fixed section is curated to stay bounded by the same policy/,
-  );
-  // The Done paragraph says "(newest first, by position in file)"; this clause is the Fixed
-  // one — both windows are ten entries.
-  assert.match(
-    find,
-    /keep the ten most recent entries verbatim \(newest first\) and compress older ones to one line each/i,
-  );
-});
-
-test("the steward prompt compresses older Fixed entries to one-line records with headline, date clause, and gap tag", () => {
-  const find = oneLine(steward!.find);
-  // The exact one-line form: symptom headline, the heading's own date clause, merge commit,
-  // and the entry's validation-gap tag.
-  assert.match(
-    find,
-    /`- <symptom headline> \(<the heading's own date clause>; commit <sha>; gap: <tag>\)`/,
-  );
-  // `none` costs nothing: the suffix is omitted so the common case stays byte-identical.
-  assert.match(find, /omitting the `gap: <tag>` suffix entirely when the tag is `none`/);
-  assert.match(find, /The headline comes from the entry's heading/);
-  // The date clause is copied verbatim: BUGS.md headings vary across found/reported/re-recorded
-  // × fixed/closed/resolved and may carry notes inside their parentheses.
-  assert.match(find, /the date clause is copied from that heading as-is/);
-  assert.match(
-    find,
-    /headings vary across found\/reported\/re-recorded × fixed\/closed\/resolved/,
-  );
-  assert.match(find, /do not normalize or fabricate dates/);
-  // A heading without dates drops the date part rather than inventing one.
-  assert.match(
-    find,
-    /when a heading carries no dates at all, omit that part of the line/,
-  );
-});
-
-test("the steward prompt sources Fixed-record commits from merge citations or git log, never verification references", () => {
-  const find = oneLine(steward!.find);
-  assert.match(
-    find,
-    /The commit is the entry's MERGE commit — the one that merged the fix to main/,
-  );
-  // Priority: an explicit merge citation in the body (the "tick N (`sha`)" form naming the
-  // fix commit itself), else git log on main.
-  assert.match(
-    find,
-    /an explicit merge citation in the entry body \(the "run N \(`<sha>`\)" form naming the fix commit itself\), else git log on main/,
-  );
-  // A verification reference is main's state at check time, not the fix; bodies citing several
-  // shas need the one cited as having merged the fix.
-  assert.match(
-    find,
-    /never use a verification reference \("Verified … on main `<sha>`", "at HEAD `<sha>`"\) as the record's hash/,
-  );
-  assert.match(find, /bodies citing several shas need the one cited as having merged the fix/);
-  // Entries closed without code change have no merge commit — omit rather than guess.
-  assert.match(
-    find,
-    /when no merge commit exists \(an entry closed without code change says so in its \*\*Resolution:\*\* note\) omit the `commit` field rather than guess/i,
-  );
-  // The gap tag survives even without a merge commit, and `none` still costs nothing.
-  assert.match(
-    find,
-    /keeping the `gap: <tag>` suffix \(the no-commit variant reads `- <symptom headline> \(<date clause>; gap: <tag>\)`, and plain `\(<date clause>\)` when the tag is `none`\)/,
-  );
-});
-
-test("the steward prompt never compresses Fixed entries carrying a Refused note", () => {
-  const find = oneLine(steward!.find);
-  // The Refused guard, the lossy-archive rule, and one-move-per-tick are stated once, for both
-  // compressions (the local-model retune of 2026-10-01 merged the two restated copies).
-  assert.match(
-    find,
-    /Rules for both compressions: - Never compress an entry carrying a standing \*\*Refused …\*\* note/,
-  );
-  assert.match(find, /such entries stay full/);
-});
-
-test("the steward prompt carries the shared curation rules over to Fixed compression", () => {
-  const find = oneLine(steward!.find);
-  const shared = find.slice(find.indexOf("Rules for both compressions:"));
-  assert.ok(find.indexOf("Rules for both compressions:") > find.indexOf("Compressing BUGS.md ## Fixed"), "stated after both policies");
-  assert.match(shared, /Compression is lossy on purpose: pre-compression text stays in git history/);
-  assert.match(shared, /One curation move per run still holds/);
+  assert.match(find, /\(tumwater archives it to PLANS-DONE\.md when your change commits\), keeping the entry's title/);
+  assert.match(find, /`plans-citations\.test\.ts` fails when a `PLANS\.md "<title>"` citation/);
 });
 
 test("buildTickPrompt for steward carries the find text plus the shared rules", () => {

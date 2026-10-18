@@ -43,6 +43,8 @@ test("classifies a path by its longest-matching rule", async () => {
     ["BUGS.md", "docs:backlog"],
     ["PLANS.md", "docs:backlog"],
     ["QUESTIONS.md", "docs:backlog"],
+    ["PLANS-DONE.md", "docs:backlog"],
+    ["BUGS-FIXED.md", "docs:backlog"],
     ["plans/model-tiers.md", "docs:backlog"],
     // Remaining prose.
     ["README.md", "docs:prose"],

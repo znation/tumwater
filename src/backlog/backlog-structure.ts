@@ -5,6 +5,7 @@ import { readTextOrNull } from "../files/files.js";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import {
   BACKLOG_FILES,
+  FINISHED_ARCHIVES,
   fenceTracker,
   headingMetadata,
   parseEntryDetails,
@@ -25,6 +26,10 @@ import {
 } from "./backlog-eligibility.js";
 import { plannedPlanEntries } from "./backlog.js";
 
+/** The archive files of PLANS.md and BUGS.md (FINISHED_ARCHIVES). */
+const PLANS_ARCHIVE = FINISHED_ARCHIVES[0].archive;
+const BUGS_ARCHIVE = FINISHED_ARCHIVES[1].archive;
+
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) — the
  * same files loops edit and readers parse, but read here for states no reader wants: an entry filed
  * under the wrong `## ` section. This module holds PLANS.md's stranding rules (plans:
@@ -43,6 +48,9 @@ import { plannedPlanEntries } from "./backlog.js";
 export interface StrandedPlanEntry {
   title: string;
   section: "Planned" | "Done";
+  /** The file it sits in, when a reader scanned more than PLANS.md: PLANS-DONE.md's `## Done`
+   * can hold one too (strandedPlanEntriesFor). */
+  file?: string;
 }
 
 /** The stamp verbs a backlog heading's trailing `(planned 2026-09-29)`-style parenthetical
@@ -255,33 +263,37 @@ export async function backlogStructureReason(
           `${file} drops the "## ${title}" section the base had — entries filed under it would ` +
           `be invisible to every section reader; restore "## ${title}"`
         );
-    // Part 4/4's rule, PLANS.md only (see this function's doc comment): a NEW plan filed
-    // directly under ## Done with no done date. strandedPlanEntries already does the
-    // fence-aware, joined-metadata reading the first two conditions need; the base's key set
-    // supplies the third.
-    if (file === "PLANS.md") {
-      const baseKeys = planHeadingKeys(base);
+    // Part 4/4's rule, PLANS.md and its archive (see this function's doc comment): a NEW plan
+    // filed directly under ## Done with no done date. strandedPlanEntries already does the
+    // fence-aware, joined-metadata reading the first two conditions need; the base's key set —
+    // over both files, since tumwater moves a finished plan from one to the other
+    // (plans/backlog-archive.md) — supplies the third.
+    if (file === "PLANS.md" || file === PLANS_ARCHIVE) {
+      const baseKeys = new Set([
+        ...planHeadingKeys(file === "PLANS.md" ? base : await fileContentAt(wt, baseRev, "PLANS.md")),
+        ...planHeadingKeys(file === PLANS_ARCHIVE ? base : await fileContentAt(wt, baseRev, PLANS_ARCHIVE)),
+      ]);
       const newcomer = strandedPlanEntries(head).find(
         (e) => e.section === "Done" && !baseKeys.has(planHeadingKey(e.title)),
       );
       if (newcomer)
         return (
-          `PLANS.md files "${newcomer.title}" directly under "## Done" with no done date — a plan ` +
+          `${file} files "${newcomer.title}" directly under "## Done" with no done date — a plan ` +
           `written into the done section is invisible to every Planned reader; file it under ` +
-          `"## Planned" instead`
+          `"## Planned"${file === "PLANS.md" ? "" : " in PLANS.md"} instead`
         );
     }
     // A new headingless record cannot hide in a Fixed entry's body: reject a head whose
     // multi-block entries the base did not carry (an existing one never blocks unrelated
     // edits, matching the heading-set rules above). The Fix paragraph is the guard's unit, so
     // a merged second block would otherwise sit inside the neighbor it was symbol-checked
-    // against.
-    if (file === "BUGS.md") {
+    // against. BUGS-FIXED.md holds the same entries once archived.
+    if (file === "BUGS.md" || file === BUGS_ARCHIVE) {
       const baseTitles = new Set(doubleBlockFixedEntries(base));
       const newcomer = doubleBlockFixedEntries(head).find((title) => !baseTitles.has(title));
       if (newcomer)
         return (
-          `BUGS.md's Fixed entry "${newcomer}" holds more than one **Symptom:**/**Fix:** block — ` +
+          `${file}'s Fixed entry "${newcomer}" holds more than one **Symptom:**/**Fix:** block — ` +
           `a record with no "### " heading has merged into it, so the hidden record is invisible ` +
           `to every section reader; give it its own "### " heading`
         );
@@ -290,26 +302,29 @@ export async function backlogStructureReason(
   return undefined;
 }
 
-/** Per-file cache of PLANS.md's stranded entries (strandedPlanEntriesFor). */
+/** Per-file cache of PLANS.md's and PLANS-DONE.md's stranded entries (strandedPlanEntriesFor). */
 const strandedPlanCache = new Map<string, StatKeyedValue<StrandedPlanEntry[]>>();
 
-/** `strandedPlanEntries` for the primary checkout's PLANS.md, stat-cached per file path
- * (stat-cache.cachedTextByStat): the clean loop asks for it every tick and `tumwater role`
- * previews the same block, and PLANS.md's `## Done` history grows without bound, so an
+/** `strandedPlanEntries` for the primary checkout's PLANS.md and PLANS-DONE.md (where finished
+ * plans are archived, plans/backlog-archive.md), each entry tagged with its file, stat-cached per
+ * file path (stat-cache.cachedTextByStat): the clean loop asks for it every tick, `tumwater role`
+ * previews the same block and doctor reports it, and the archive grows without bound, so an
  * unchanged file costs one stat instead of a full read and section walk. A missing or
  * unreadable file reads as no entries. The result is copied out, so each caller owns its
  * data. */
-function strandedPlanEntriesFor(root: string): StrandedPlanEntry[] {
-  const full = path.join(root, "PLANS.md");
-  return (
-    cachedTextByStat(
-      strandedPlanCache,
-      full,
-      full,
-      (md) => strandedPlanEntries(md),
-      (entries) => entries.slice(), // A copy: callers may treat the result as their own.
-    ) ?? []
-  );
+export function strandedPlanEntriesFor(root: string): StrandedPlanEntry[] {
+  return ["PLANS.md", PLANS_ARCHIVE].flatMap((file) => {
+    const full = path.join(root, file);
+    return (
+      cachedTextByStat(
+        strandedPlanCache,
+        full,
+        full,
+        (md) => strandedPlanEntries(md).map((e) => ({ ...e, file })),
+        (entries) => entries.slice(), // A copy: callers may treat the result as their own.
+      ) ?? []
+    );
+  });
 }
 
 /** The clean loop's `<backlog-structure>` prompt block for the primary checkout at `root`
@@ -322,12 +337,12 @@ export function renderBacklogStructureBlock(root: string): string | undefined {
   const stranded = strandedPlanEntriesFor(root);
   if (stranded.length === 0) return undefined;
   const listed = stranded
-    .map((e) => `- (now under ## ${e.section}) ${e.title}`)
+    .map((e) => `- (now under ${e.file !== undefined && e.file !== "PLANS.md" ? `${e.file} ` : ""}## ${e.section}) ${e.title}`)
     .join("\n");
   // The task wording lives in the clean role's find text (src/roles/role-catalog.ts); the block
   // only carries the evidence, like the digest and coverage blocks do.
-  return `Plan headings filed under the wrong section of PLANS.md — invisible to the readers
-that scan one section, so no role sees them as backlog work:
+  return `Plan headings filed under the wrong section of PLANS.md or PLANS-DONE.md — invisible to
+the readers that scan one section, so no role sees them as backlog work:
 <backlog-structure>
 ${listed}
 </backlog-structure>`;
@@ -428,12 +443,13 @@ const INDEX_SECTIONS: readonly { file: string; section: string }[] = [
 /** How many closed entries per closed section the index lists. */
 const RECENT_CLOSED_MAX = 5;
 
-/** The closed sections whose newest entries the index also lists; both files keep them newest
- * first, so the first entries in file order are the recent ones. */
-const CLOSED_SECTIONS: readonly { file: string; section: string }[] = [
-  { file: "PLANS.md", section: "Done" },
-  { file: "BUGS.md", section: "Fixed" },
-];
+/** The closed sections whose newest entries the index also lists, each read from the live file
+ * and then its archive (FINISHED_ARCHIVES, plans/backlog-archive.md); every one keeps its entries
+ * newest first, so the first entries in file order are the recent ones. */
+const CLOSED_SECTIONS: readonly { files: readonly string[]; section: string }[] = FINISHED_ARCHIVES.map((a) => ({
+  files: [a.file, a.archive],
+  section: a.section,
+}));
 
 /** One actionable entry as the index renders it: the 1-based range the loop reads, the verbatim
  * heading, and the body a hold note is read from. Cached per file stat
@@ -653,23 +669,30 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
     const isPlans = file === "PLANS.md" && section === "Planned";
     listed.push(...(isPlans ? collapseBlockedSeries(rows) : rows.map(renderIndexRow)));
   }
-  for (const { file, section } of CLOSED_SECTIONS) {
-    const full = path.join(root, file);
-    const entries = cachedTextByStat(
-      closedSectionCache,
-      full,
-      full,
-      (md) => actionableEntryRanges(md, section).slice(0, RECENT_CLOSED_MAX),
-      (v) => v.slice(),
-    );
-    if (entries === null || entries.length === 0) continue;
-    listed.push(`${file} ## ${section} (newest ${entries.length})`);
-    for (const e of entries) listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}`);
+  for (const { files, section } of CLOSED_SECTIONS) {
+    // The newest RECENT_CLOSED_MAX across the live section (normally empty) and the archive.
+    let room = RECENT_CLOSED_MAX;
+    for (const file of files) {
+      if (room <= 0) break;
+      const full = path.join(root, file);
+      const entries = cachedTextByStat(
+        closedSectionCache,
+        full,
+        full,
+        (md) => actionableEntryRanges(md, section).slice(0, RECENT_CLOSED_MAX),
+        (v) => v.slice(),
+      )?.slice(0, room);
+      if (entries === undefined || entries.length === 0) continue;
+      room -= entries.length;
+      listed.push(`${file} ## ${section} (newest ${entries.length})`);
+      for (const e of entries) listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}`);
+    }
   }
   if (listed.length === 0) return undefined;
   return `Backlog index — each actionable entry, then the newest closed ones, with the 1-based line range it occupies in its file.
-Read the entries you need by those ranges; the files' closed sections make a full heading map
-grow with every run. Blocked parts of a multi-part series are shown as one line per series.
+Read the entries you need by those ranges; the archive files (PLANS-DONE.md, BUGS-FIXED.md) grow
+with every merge, so search them rather than reading them. Blocked parts of a multi-part series are
+shown as one line per series.
 <backlog-index>
 ${listed.join("\n")}
 </backlog-index>`;

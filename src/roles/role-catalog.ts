@@ -30,10 +30,6 @@ const README_TRAILER = "Run: readme #";
 const README_TRAILER_GREP = "^(Run|Tick): readme #"; // vocabulary-ok: legacy name read from old refs or commits
 const README_TRAILER_LEGACY = "Tick: readme #"; // vocabulary-ok: legacy name read from old refs or commits
 
-/** The older spelling of a merge citation in existing BUGS.md/PLANS.md entries, which the steward
- * still reads; kept verbatim because those entries say it. Interpolated into the template. */
-const OLD_CITATION = "tick N"; // vocabulary-ok: older entries cite merges in this form
-
 /** One role in the catalog: its id and title, the role-specific "find something to do" text,
  * and the model tier its runs resolve to. */
 export interface Role {
@@ -86,7 +82,7 @@ export const ROLES: Role[] = [
       the entry's files-touched list and acceptance criteria, so land everything the entry
       promises, or update the entry to say what changed and why. When a plan's anchors no longer
       match the code, correct the entry in the same change instead of refusing.
-   6. Mark the plan done in PLANS.md — ${backlogMoveGuidance("PLANS.md", "## Planned", "## Done")}
+   6. Mark the plan done in PLANS.md — ${backlogMoveGuidance("PLANS.md", "## Planned", "## Done", "PLANS-DONE.md")}
    7. Verify last, after the PLANS.md edit, so one run of the project's check covers everything
       you changed (see "Leave the project working" below).
 A plan that resists implementation is a finding: refuse it with the objection recorded rather
@@ -107,7 +103,7 @@ than forcing it.`,
       heading, and end the run. Do not keep investigating without new evidence.
    3. Fix it, and add a regression test that fails without the fix — run that test to watch it
       fail before the fix and pass after.
-   4. Mark it fixed in BUGS.md — ${backlogMoveGuidance("BUGS.md", "## Open", "## Fixed")}
+   4. Mark it fixed in BUGS.md — ${backlogMoveGuidance("BUGS.md", "## Open", "## Fixed", "BUGS-FIXED.md")}
    5. In the moved entry, write the required validation-gap trace line (format below).
    6. Verify last, after the BUGS.md edits, so one run of the project's check covers everything
       you changed (see "Leave the project working" below).
@@ -151,7 +147,8 @@ within that budget, there is nothing to do.`,
       project brief (TUMWATER.md when it exists with the tumwater:prompt markers, else README.md)
       and by what already exists.
    3. Before planning, confirm with grep that the capability does not already exist and that no
-      Planned or Done entry already covers it (read only the entries whose headings look related).
+      Planned entry, nor any finished plan in PLANS-DONE.md, already covers it — grep the archive
+      rather than reading it, and read only the entries whose headings look related.
    4. Ground the plan in the code: name the actual files and functions it touches, having looked
       at them in ranges.
    5. Write it as a short markdown section under \`## Planned\` in PLANS.md: goal, approach, files
@@ -273,9 +270,10 @@ scratch analysis scripts — that is a different, much larger task.`,
     tier: "default",
     title: "code cleaner",
     find: `When a \`<backlog-structure>\` block is present in your prompt, that repair is instead
-this run's ONE task: move each listed PLANS.md entry to the section its heading's dates say it
-belongs in (cut and paste, under the existing \`## \` heading — never add, remove, or rename a
-\`## \` heading), leave its text verbatim, and change nothing else.
+this run's ONE task: move each listed entry to the section its heading's dates say it belongs in
+(cut and paste, under the existing \`## \` heading — never add, remove, or rename a \`## \`
+heading), leave its text verbatim, and change nothing else. An entry listed under PLANS-DONE.md's
+\`## Done\` with no done date goes back under PLANS.md's \`## Planned\`.
 
 Otherwise, pick ONE kind of uncleanliness — dead code, misleading names, commented-out blocks,
 overly clever constructs, missing or wrong doc comments on public surfaces, inconsistent
@@ -492,76 +490,26 @@ arguments, config files, environment), and rough edges you meet while running th
    1. Re-read the brief, PRINCIPLES.md, PLANS.md, BUGS.md — and QUESTIONS.md if it
       exists — and skim the codebase's shape (sizes, module list, test count).
    2. Then make ONE curation move, the most valuable one:
-      - delete or merge stale/duplicative/superseded PLANS.md entries (with a one-line epitaph in
-        the entry's place or in Done);
+      - delete or merge stale/duplicative/superseded PLANS.md entries: move each one under
+        PLANS.md's ## Done with a one-line epitaph as its body (tumwater archives it to
+        PLANS-DONE.md when your change commits), keeping the entry's title, because
+        \`plans-citations.test.ts\` fails when a \`PLANS.md "<title>"\` citation in a \`src/\` or
+        \`test/\` comment matches no heading;
       - flag drift between what is being built and the brief as a PLANS.md note;
       - tighten or update a principle or complexity budget in PRINCIPLES.md;
       - record a structural risk in BUGS.md;
-      - promote a recurring non-\`none\` \`gap:\` tag — three or more retained Fixed entries
-        carrying it — into a PLANS.md entry for the infrastructure that would retire it, citing
-        those entries. ${VALIDATION_GAP_TALLY}
-      - compress an overflowing ## Done or ## Fixed section (rules below).
+      - promote a recurring non-\`none\` \`gap:\` tag — three or more Fixed entries carrying it —
+        into a PLANS.md entry for the infrastructure that would retire it, citing those entries.
+        ${VALIDATION_GAP_TALLY}
 You edit only markdown — never source.
 
-Reading the backlog files: you may see PLANS.md and BUGS.md whole, but do it cheaply — they run to
-hundreds of KB. The prompt's <backlog-index> block lists every Planned and Open entry with its
-line range; read those from it, and read Done/Fixed entries by line range only where your move
-needs their bodies. For the compression moves below, an entry's
-heading line plus a \`grep -n\` for its merge citation (the "run N (\`<sha>\`)" form, or "${OLD_CITATION} (\`<sha>\`)" in older entries) supply
-everything the one-line record needs — except a Fixed entry's \`gap:\` suffix, which comes from the
-\`**Validation gap:**\` line in its body: read that one line (\`grep -n 'Validation gap' FILE\`), not
-the whole body.
-When a \`<records-overflow>\` block is present, it counts the full entries past the ten kept in each
-closed section and lists the oldest ones with their line ranges: read those by range instead of
-searching for them.
+Reading the backlog files: PLANS.md and BUGS.md hold open work, so read them whole when your move
+needs it. Finished entries live in PLANS-DONE.md and BUGS-FIXED.md, newest first, and those files
+only grow: never read them whole. Search them with \`grep -n\`, and read an entry by its line range
+only where your move needs its body. The prompt's <backlog-index> block lists the newest ones.
+Finished history is not curated: nothing reads the archive files whole, so they are never
+compressed or trimmed.
 
-Compressing PLANS.md ## Done — PLANS.md's ## Done section is curated to stay bounded:
-   - Keep the ten most recent entries verbatim (newest first, by position in file) and compress
-     older ones to one line each:
-     \`- <title> (planned YYYY-MM-DD, done YYYY-MM-DD; commit(s) <sha>[, <sha>])\` — title and
-     dates from the entry's heading.
-   - The hashes are the MERGE commit(s): an explicit merge citation in the entry body (the
-     "run N (\`<sha>\`)" form naming the commit that merged it), else git log on main, whose
-     self-explaining subjects name the role and describe the change.
-   - Never use a verification or base reference ("Verified … against main \`<sha>\`", "at HEAD
-     \`<sha>\`") as the record's hash — bodies citing several shas need the one cited as having
-     merged the work — and when no merge commit exists (a plan closed without code change says
-     so in its Done note) omit the commit(s) field rather than guess.
-   - The one-line form keeps every existing cross-reference resolvable: references cite titles or
-     commit hashes, both preserved. Never delete a
-     one-line record, and an epitaph for a deleted or merged entry keeps the entry's title, because
-     \`plans-citations.test.ts\` fails when a \`PLANS.md "<title>"\` citation in a \`src/\` or
-     \`test/\` comment matches no heading or one-line record.
-
-Compressing BUGS.md ## Fixed — BUGS.md's ## Fixed section is curated to stay bounded by the same
-policy:
-   - Keep the ten most recent entries verbatim (newest first) and compress older ones to one line
-     each: \`- <symptom headline> (<the heading's own date clause>; commit <sha>; gap: <tag>)\` —
-     carrying the entry's validation-gap tag as a suffix, and omitting the \`gap: <tag>\` suffix
-     entirely when the tag is \`none\` (so the common case costs nothing).
-   - The headline comes from the entry's heading, and the date clause is copied from that heading
-     as-is: BUGS.md headings vary across found/reported/re-recorded × fixed/closed/resolved and
-     may carry extra notes inside their parentheses, so do not normalize or fabricate dates; when
-     a heading carries no dates at all, omit that part of the line.
-   - The commit is the entry's MERGE commit — the one that merged the fix to main: an explicit
-     merge citation in the entry body (the "run N (\`<sha>\`)" form naming the fix commit
-     itself), else git log on main, whose self-explaining subjects name the role and describe the
-     change; never use a verification reference ("Verified … on main \`<sha>\`", "at HEAD
-     \`<sha>\`") as the record's hash — bodies citing several shas need the one cited as having
-     merged the fix.
-   - When no merge commit exists (an entry closed without code change says so in its
-     **Resolution:** note) omit the \`commit\` field rather than guess, keeping the \`gap: <tag>\`
-     suffix (the no-commit variant reads \`- <symptom headline> (<date clause>; gap: <tag>)\`, and
-     plain \`(<date clause>)\` when the tag is \`none\`).
-${VALIDATION_GAP_GUIDANCE}
-
-Rules for both compressions:
-   - Never compress an entry carrying a standing **Refused …** note — the objection stands until
-     a human or director edits it, and compression would bury it; such entries stay full (they are
-     rare).
-   - Compression is lossy on purpose: pre-compression text stays in git history — no archive file.
-   - One curation move per run still holds: one steward run compresses one section's overflow
-     (or makes any other planned move) — a large backlog takes several runs to reach the window,
-     each shrinking the file by tens of KB; once at the window it stays bounded.`,
+${VALIDATION_GAP_GUIDANCE}`,
   },
 ];

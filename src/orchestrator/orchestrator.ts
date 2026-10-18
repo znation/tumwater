@@ -52,6 +52,7 @@ import { ReclaimController } from "../team/reclaim.js";
 import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
 import { planBacklogFull, workReserveCount } from "../scheduling/claims.js";
 import { runStartupMigrations } from "./startup-migration-steps.js";
+import { archiveAtTeamStart } from "../backlog/backlog-archive.js";
 
 const POLL_MS = 2000;
 
@@ -202,6 +203,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // persisted-name migrations run before it. (After the info write and start event above, which
   // an in-process test or a second `tumwater run` probe reads synchronously.)
   await runStartupMigrations(root);
+  // Finished backlog entries still in the live files move to the archives now
+  // (plans/backlog-archive.md), while no merge is in progress and no run is in flight: a
+  // repository migrates on its first start with this build, and an entry a hand commit moved is
+  // swept. One commit on main, or a warning; the team starts either way.
+  await archiveAtTeamStart(root);
   const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, roleSignal));
   // Legacy merger checkouts (`_land-<role>`) from a pre-pool build hold nothing now that verifies
   // and merges lease pooled slots: remove them once, before any tick, so the retired layout

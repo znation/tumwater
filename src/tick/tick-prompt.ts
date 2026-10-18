@@ -28,7 +28,6 @@ import { appendPromptNote } from "../text/format.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
 import { renderBacklogIndexBlock, renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
-import { renderRecordsOverflowBlock } from "../backlog/records-overflow.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
  * holds, so the assembly stays a pure function of (root, config, role, state). */
@@ -200,8 +199,6 @@ export function assembleTickPrompt(
     // checkout's PLANS.md (plans, part 3/4), rendered like the digest and coverage blocks.
     // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
     const backlogStructure = base === "clean" ? renderBacklogStructureBlock(root) : undefined;
-    // The steward's closed-section overflow count (how far compression is behind), by base role.
-    const recordsOverflow = base === "steward" ? renderRecordsOverflowBlock(root) : undefined;
     // The role's notebook (PLANS.md "Role notebook"): its own earlier ticks' note. A missing,
     // empty, or unreadable file yields undefined, so the block is omitted; the write
     // instruction in buildTickPrompt is present either way. The director branch above never
@@ -236,7 +233,6 @@ export function assembleTickPrompt(
       digest,
       coverage,
       backlogStructure,
-      recordsOverflow,
       backlogIndex: variant?.assigned ? undefined : backlogIndex,
       notes,
       notesSavedDay,

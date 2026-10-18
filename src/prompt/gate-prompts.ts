@@ -443,29 +443,32 @@ ${titles.map((t) => `- "${t}"`).join("\n")}
  * the plan's dates and every file it touches, which its range already leads to. */
 const COMPACT_TITLE_CHARS = 100;
 
-function entryRangeLines(entries: readonly { title: string; start: number; end: number }[], compact = false): string[] {
+function entryRangeLines(
+  entries: readonly { title: string; start: number; end: number; file?: string }[],
+  compact = false,
+): string[] {
   // Cut by code point, so an astral character is never split in half.
   const title = (t: string): string => {
     const cps = Array.from(t);
     return compact && cps.length > COMPACT_TITLE_CHARS ? `${cps.slice(0, COMPACT_TITLE_CHARS).join("").trimEnd()}…` : t;
   };
-  const lines = entries.slice(0, 5).map((e) => `- "${title(e.title)}" (PLANS.md lines ${e.start}-${e.end})`);
+  const lines = entries.slice(0, 5).map((e) => `- "${title(e.title)}" (${e.file ?? "PLANS.md"} lines ${e.start}-${e.end})`);
   if (entries.length > 5) lines.push(`- …and ${entries.length - 5} more`);
   return lines;
 }
 
 /** The note appended to a series part's assignment when parts it requires already merged: each
- * one's Done heading and PLANS.md line range, so the implementer reads exactly what that part
- * changed instead of searching a Done section that runs to thousands of lines. Lists at most
- * five, then a count of the rest. A pure function so its shape is pinned in tests. */
+ * one's Done heading, file (PLANS-DONE.md once archived) and line range, so the implementer reads
+ * exactly what that part changed instead of searching a history that runs to thousands of lines.
+ * Lists at most five, then a count of the rest. A pure function so its shape is pinned in tests. */
 export function buildMergedPrerequisitesNote(
-  entries: readonly { title: string; start: number; end: number }[],
+  entries: readonly { title: string; start: number; end: number; file?: string }[],
   /** The compact prompt every run gets: each title cut to COMPACT_TITLE_CHARS. */
   compact = false,
 ): string {
   const lines = entryRangeLines(entries, compact);
   return `<merged-prerequisites>
-Your assigned entry builds on parts that are already merged. Each one's Done entry records what it actually changed; read one by its range when your entry depends on its details, rather than searching PLANS.md:
+Your assigned entry builds on parts that are already merged. Each one's Done entry records what it actually changed; read one by its range when your entry depends on its details, rather than searching the backlog files:
 ${lines.join("\n")}
 </merged-prerequisites>`;
 }

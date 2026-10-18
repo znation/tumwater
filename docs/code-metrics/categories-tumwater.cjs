@@ -8,7 +8,7 @@ module.exports = function category(f) {
   if (f.startsWith("test/")) return "test:support";
   if (f.startsWith("scripts/") || f === "eslint.config.js") return "scripts";
   if (f.startsWith(".github/")) return "ci";
-  if (/^(BUGS|PLANS|QUESTIONS)\.md$/.test(f) || f.startsWith("plans/")) return "docs:backlog";
+  if (/^(BUGS|PLANS|QUESTIONS|PLANS-DONE|BUGS-FIXED)\.md$/.test(f) || f.startsWith("plans/")) return "docs:backlog";
   if (f.endsWith(".md") || f === "LICENSE") return "docs:prose";
   return "config/other";
 };

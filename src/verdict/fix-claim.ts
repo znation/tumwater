@@ -26,8 +26,9 @@
  * replacing the earlier hand-rolled fenceTracker walk), so the two cannot drift apart.
  *
  * A fourth (BUGS.md 2026-10-13): the compressed one-line records below the newest-ten full
- * entries have no `### ` heading, so the parser read the whole archive as the LAST full entry's
- * body. Every steward compression makes a different entry last, so that entry's body "changed"
+ * entries have no `### ` heading, so the parser read the whole block of records as the LAST full
+ * entry's body. Every steward compression made a different entry last, so that entry's body
+ * "changed"
  * and all ~170 records' names faced its symbol check — two prose names no code ever held
  * rejected three compressions in a row. fixedSection now ends an entry's own body at its first
  * one-line record and checks records on their own: a record the diff adds or edits may carry
@@ -38,6 +39,7 @@ import { extname, join } from "node:path";
 import { readTextOrNull, walkFiles } from "../files/files.js";
 import {
   fenceTracker,
+  finishedArchiveOf,
   parseEntryDetails,
   sectionLines,
   trailingParenthetical,
@@ -77,7 +79,7 @@ export function fixedHeadings(doc: string): string[] {
  * re-parsed the whole document: with ~200 Fixed entries, building the base body map and
  * walking the head section re-parsed BUGS.md ~400 times per check, and the doctor's newest-10
  * scan re-parsed it once per heading. */
-export function fixedEntries(doc: string): BacklogEntry[] {
+function fixedEntries(doc: string): BacklogEntry[] {
   return fixedSection(doc).entries;
 }
 
@@ -92,16 +94,28 @@ export function isOneLineRecord(line: string): boolean {
   return /\bcommits?\b|\bgap:/.test(trailingParenthetical(line));
 }
 
+/** Where fixed bugs are archived (plans/backlog-archive.md): BUGS-FIXED.md, under the same
+ * `## Fixed` heading, newest first. */
+const BUGS_ARCHIVE = finishedArchiveOf("BUGS.md").archive;
+
+/** The Fixed entries of the checkout at `root` as fixedEntries reads them, newest first:
+ * BUGS.md's own section (normally empty), then BUGS-FIXED.md's. `bugsMd` is BUGS.md's text when
+ * the caller has already read it. Doctor's newest-Fixed checks read through this. */
+export function fixedEntriesAt(root: string, bugsMd?: string): BacklogEntry[] {
+  const live = bugsMd ?? readTextOrNull(join(root, "BUGS.md")) ?? "";
+  return [...fixedEntries(live), ...fixedEntries(readTextOrNull(join(root, BUGS_ARCHIVE)) ?? "")];
+}
+
 /** The `## Fixed` section split the way the false-fix check reads it: each `### ` entry with
  * only its OWN body, and the one-line records apart, trimmed, blank lines dropped. The parser
  * opens an entry only at a `### ` line, so the headingless records after the full entries parse
  * as the last full entry's body; here an entry's own body ends at its first unfenced one-line
- * record, and that line and every line after it up to the next heading are archive lines. An
+ * record, and that line and every line after it up to the next heading are record lines. An
  * entry body's fence state starts closed (its heading line was outside any fence), so a fresh
  * tracker reads the body in step with the document. */
-export function fixedSection(doc: string): { entries: BacklogEntry[]; archive: string[] } {
+export function fixedSection(doc: string): { entries: BacklogEntry[]; records: string[] } {
   const entries: BacklogEntry[] = [];
-  const archive: string[] = [];
+  const records: string[] = [];
   for (const entry of parseEntryDetails(doc, "Fixed")) {
     const lines = entry.body.split("\n");
     const fenced = fenceTracker();
@@ -111,9 +125,9 @@ export function fixedSection(doc: string): { entries: BacklogEntry[]; archive: s
       continue;
     }
     entries.push({ title: entry.title, body: lines.slice(0, start).join("\n").trim() });
-    for (const line of lines.slice(start)) if (line.trim()) archive.push(line.trim());
+    for (const line of lines.slice(start)) if (line.trim()) records.push(line.trim());
   }
-  return { entries, archive };
+  return { entries, records };
 }
 
 /** The own body of one `### ` entry in a BUGS.md document: everything from after its heading to
@@ -225,31 +239,37 @@ export async function falseFixReason(
   mainBranch: string,
   files: string[],
 ): Promise<string | undefined> {
-  if (!files.includes("BUGS.md")) return undefined;
-  // A deleted or unreadable BUGS.md reads as empty: there is no Fixed transition to verify,
+  // Fixed entries live in BUGS.md's own section and in its archive, BUGS-FIXED.md
+  // (plans/backlog-archive.md): tumwater moves a fixed bug there right before the commit, so a
+  // fix claim reaches the gate as an archive edit, and an archived entry whose body is intact
+  // is no claim at all. Both sides of the comparison read both files.
+  if (!files.includes("BUGS.md") && !files.includes(BUGS_ARCHIVE)) return undefined;
+  // A deleted or unreadable file reads as empty: there is no Fixed transition to verify,
   // so this check passes and lets the gate's sibling structural check (backlog-structure.ts)
   // report the dropped section. Reading it raw would throw ENOENT out of the gate instead —
   // and a file the change deletes is exactly the input the sibling check already handles.
-  const head = readTextOrNull(join(wt, "BUGS.md")) ?? "";
-  if (!head.includes("## Fixed")) return undefined;
+  const heads = ["BUGS.md", BUGS_ARCHIVE].map((f) => readTextOrNull(join(wt, f)) ?? "");
+  if (!heads.some((head) => head.includes("## Fixed"))) return undefined;
   // The diff's own base, not main's tip: the gate diffs `mainBranch...HEAD` against the
   // merge-base, and the entry's Open/Fixed state lives in the tree the change builds on —
   // pre-batch main can still carry the record as (falsely) Fixed and make an Open→Fixed
   // restoration in a stacked batch compare as already done (BUGS.md 2026-09-23).
   const baseRev = await changeBaseRev(wt, mainBranch);
-  const base = await fileContentAt(wt, baseRev, "BUGS.md");
+  const bases = [await fileContentAt(wt, baseRev, "BUGS.md"), await fileContentAt(wt, baseRev, BUGS_ARCHIVE)];
   // An already-Fixed entry is skipped only when its body is unchanged: an md-only edit that
   // rewrites an existing Fixed record's narrative must face the symbol check too (BUGS.md
   // 2026-09-23 — the in-place narrative rewrite is how a second phantom merge evaded it).
   const baseBodies = new Map(
-    fixedEntries(base).map((e) => [normalizeFixedHeading(e.title), e.body]),
+    bases.flatMap((base) => fixedEntries(base)).map((e) => [normalizeFixedHeading(e.title), e.body]),
   );
   // Built lazily, only once a Fixed record's body actually changed: the haystack walks and
   // reads the entire source tree (~5 MB here), and the common BUGS.md edit moves nothing to
   // Fixed — an Open bug added, a narrative touched elsewhere — so the gate and the in-lock
   // recheck each paid that walk for a check that never reached a symbol.
   let haystack: string | undefined;
-  const { entries, archive } = fixedSection(head);
+  const sections = heads.map((head) => fixedSection(head));
+  const entries = sections.flatMap((section) => section.entries);
+  const records = sections.flatMap((section) => section.records);
   for (const { title: heading, body } of entries) {
     const baseBody = baseBodies.get(normalizeFixedHeading(heading));
     if (baseBody === body) continue;
@@ -272,10 +292,10 @@ export async function falseFixReason(
   // keeps a renamed symbol's old name, so a record the diff adds or edits may carry forward any
   // name the base's Fixed section already records. A name it introduces must exist on the tree:
   // a bug moved straight from Open into a one-line record faces the same check as a full entry.
-  const baseLines = sectionLines(base, "Fixed").map((line) => line.trim());
+  const baseLines = bases.flatMap((base) => sectionLines(base, "Fixed")).map((line) => line.trim());
   const seen = new Set(baseLines);
   const baseText = baseLines.join("\n");
-  for (const record of archive) {
+  for (const record of records) {
     if (seen.has(record)) continue;
     const introduced = fixSymbols(record).filter((symbol) => !baseText.includes(symbol));
     if (introduced.length === 0) continue;

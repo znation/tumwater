@@ -165,11 +165,15 @@ test("other sections and sectionless content are out of scope; dates in bodies n
   assert.deepEqual(strandedPlanEntries(md), []);
 });
 
-test("this repo's current PLANS.md yields nothing", () => {
-  // ../../ from test/ (or dist/test/): the repo root, whichever tree the suite runs from.
-  const md = fs.readFileSync(fileURLToPath(new URL("../../PLANS.md", import.meta.url)), "utf8");
-  const stranded: StrandedPlanEntry[] = strandedPlanEntries(md);
-  assert.deepEqual(stranded, []);
+test("this repo's current PLANS.md and PLANS-DONE.md yield nothing", () => {
+  // ../../ from test/ (or dist/test/): the repo root, whichever tree the suite runs from. Finished
+  // plans are archived in PLANS-DONE.md (plans/backlog-archive.md), under the same `## Done`.
+  for (const url of [new URL("../../PLANS.md", import.meta.url), new URL("../../PLANS-DONE.md", import.meta.url)]) {
+    const file = fileURLToPath(url);
+    if (!fs.existsSync(file)) continue;
+    const stranded: StrandedPlanEntry[] = strandedPlanEntries(fs.readFileSync(file, "utf8"));
+    assert.deepEqual(stranded, [], file);
+  }
 });
 
 test("the clean tick's block lists each stranded heading with its section; a clean file gives none", () => {

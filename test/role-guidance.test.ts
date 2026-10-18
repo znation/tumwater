@@ -78,16 +78,17 @@ test("the documented gap tally counts the verbatim line and the compressed suffi
   // the
   // newest entries are invisible to the only recorded query. Run it for real on both forms.
   const query =
-    "grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c";
+    "grep -sohE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md BUGS-FIXED.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c";
   assert.ok(VALIDATION_GAP_TALLY.includes(query), "the tally constant documents this exact query");
   // Only the steward aggregates the tags, so only its prompt carries the query.
   assert.ok(roleById("steward")!.find.includes(VALIDATION_GAP_TALLY), "the steward embeds the tally");
   assert.ok(!roleById("bugfix")!.find.includes(query), "bugfix writes one line and never needs the tally");
+  // Fixed entries are archived in BUGS-FIXED.md (plans/backlog-archive.md); the query reads both.
   const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "**Validation gap:** no-fake — had to write a shim.\n");
   fs.writeFileSync(
-    path.join(dir, "BUGS.md"),
+    path.join(dir, "BUGS-FIXED.md"),
     [
-      "**Validation gap:** no-fake — had to write a shim.",
       "**Validation gap:** none — the existing suite confirmed it.",
       "- Old headline (fixed 2026-09-01; commit abc1234; gap: no-repro)",
       "- Untraced headline (fixed 2026-09-02; commit def5678)",
@@ -129,7 +130,12 @@ test("the validation-gap query names every non-none tag for a consumer, and only
       "",
     ].join("\n"),
   );
+  // With no archive yet, the query still answers from BUGS.md alone (`-s` keeps it quiet).
+  assert.match(sh(dir, "sh", "-c", VALIDATION_GAP_QUERY), /^BUGS\.md:1:.*no-fake/);
+  // Fixed bugs are archived in BUGS-FIXED.md (plans/backlog-archive.md); the query reads it too.
+  fs.writeFileSync(path.join(dir, "BUGS-FIXED.md"), "## Fixed\n\n**Validation gap:** unclear-invariant — had to reconstruct it.\n");
   const out = sh(dir, "sh", "-c", VALIDATION_GAP_QUERY);
+  assert.match(out, /^BUGS-FIXED\.md:3:.*unclear-invariant/m, "query prints the archived hit with its file and line");
   assert.ok(out.includes("no-fake"), "query prints the no-fake hit");
   assert.ok(!out.includes("none"), "query does not print the none line");
   assert.ok(!out.includes("no-repro"), "query does not print the compressed gap: no-repro line");

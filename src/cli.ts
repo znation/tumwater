@@ -245,6 +245,11 @@ async function main(): Promise<void> {
     case "backlog":
       await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
       break;
+    case "archive":
+      rejectUnknownArgs("archive", args, []);
+      await requireReadyRepo(root);
+      await (await import("./backlog/backlog-cli.js")).cmdArchive(root);
+      break;
     case "bug": {
       const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, moveEntryToTop, releaseEntry, editBug, editBugFromText, fileBug, fileBugFromText } =
         await import("./backlog/backlog-write.js");

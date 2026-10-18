@@ -243,8 +243,8 @@ test("COMMON_RULES carries the Refused-note skip rule for every role", () => {
 
 // Prompt contract for section-aware tick reads: every tick
 // re-reads the backlog files, so the read-first rule bounds how much of each gets prefilled —
-// README in full, PLANS.md/BUGS.md only at their actionable tops, older history via git log or
-// a targeted read, and a carve-out for the steward, which curates those files whole.
+// README in full, PLANS.md/BUGS.md by the index's ranges, and the archive files that hold
+// finished entries (plans/backlog-archive.md) never whole: searched, or read one entry by range.
 
 test("every role prompt carries the section-aware read-first rule", () => {
   const role = roleById("feature");
@@ -253,18 +253,13 @@ test("every role prompt carries the section-aware read-first rule", () => {
   // The brief file is named; with no briefFile given it is the README.md compatibility default.
   assert.match(prompt, /First read the project brief \(README\.md\) in full/);
   assert.match(prompt, /plus QUESTIONS\.md when present/);
-  // PLANS.md and BUGS.md are never read wholesale — their actionable sections come first by
-  // template convention, so only the top of each file is read.
-  assert.match(prompt, /never read them wholesale/);
-  assert.match(prompt, /## Planned before ## Done; ## Open before ## Fixed/);
-  assert.match(prompt, /Planned plus recent Done entries, Open plus recent Fixed ones/);
-  // Older history is consulted only when a specific entry is needed.
-  assert.match(
-    prompt,
-    /Consult older history via git log or a targeted read only when a specific entry is needed/,
-  );
-  // The steward curates those files and must see them whole.
-  assert.match(prompt, /The steward role is the exception: it curates those files and must see them whole/);
+  // PLANS.md and BUGS.md hold open work, read by the index's ranges.
+  assert.match(prompt, /PLANS\.md and BUGS\.md hold open work: the prompt's <backlog-index> block lists/);
+  assert.match(prompt, /so read only the entries you need by those ranges/);
+  // Finished entries live in the archive files, which are never read whole.
+  assert.match(prompt, /Finished entries live in PLANS-DONE\.md and BUGS-FIXED\.md, newest first/);
+  assert.match(prompt, /never read them whole: search them with grep, or read one entry by its range/);
+  assert.doesNotMatch(prompt, /must see them whole/, "no role reads the archive whole, the steward included");
 });
 
 test("both prompt builders name the resolved brief file instead of a hardcoded README.md", () => {

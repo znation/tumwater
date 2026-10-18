@@ -148,17 +148,17 @@ test("isOneLineRecord matches the compressed record forms and never a body bulle
 });
 
 test("fixedSection ends an entry's own body at its first one-line record", () => {
-  // The archive of headingless one-line records parses as the last full entry's body; the
+  // The headingless one-line records parse as the last full entry's body; the
   // false-fix check must read that entry's own text and the records apart (BUGS.md 2026-10-13).
   const doc =
     "## Fixed\n\n### A full entry (fixed 2026-10-01)\n\n**Fix:** `realFix` handles it.\n\n" +
     "```md\n- A quoted record (fixed 2026-01-01; commit abc12345)\n```\n\n" +
     "- An old bug (fixed 2026-09-01; commit 1234abcd)\n\n- Another (fixed 2026-09-02; gap: no-fake)\n";
-  const { entries, archive } = fixedSection(doc);
+  const { entries, records } = fixedSection(doc);
   assert.equal(entries.length, 1);
   assert.match(entries[0]!.body, /^\*\*Fix:\*\* `realFix` handles it\.\n\n```md\n- A quoted record/);
   assert.ok(entries[0]!.body.endsWith("```"), "a record quoted in a fence stays body text");
-  assert.deepEqual(archive, [
+  assert.deepEqual(records, [
     "- An old bug (fixed 2026-09-01; commit 1234abcd)",
     "- Another (fixed 2026-09-02; gap: no-fake)",
   ]);

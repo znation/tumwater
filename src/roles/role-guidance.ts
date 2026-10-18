@@ -22,9 +22,11 @@ independently; if the parts are not truly independent, keep a single entry.`;
  * commits left PLANS.md with two `## Done` headings — so the wording names the file's EXISTING
  * resolved heading, forbids touching `## ` structure, and gives the verifiable invariant
  * (the same headings before and after). Lettered sub-steps, because the callers embed it as one
- * numbered step of their task. Takes the file and section names so the feature and bugfix texts
- * cannot drift apart; lives here with the other shared fragments. */
-export function backlogMoveGuidance(file: string, openSection: string, resolvedSection: string): string {
+ * numbered step of their task. The pasted entry does not stay there: tumwater moves it to the top
+ * of `archive` when the change commits (plans/backlog-archive.md), which the last line says so no
+ * run opens the archive to do it by hand. Takes the file, section and archive names so the feature
+ * and bugfix texts cannot drift apart; lives here with the other shared fragments. */
+export function backlogMoveGuidance(file: string, openSection: string, resolvedSection: string, archive: string): string {
   return `move the entry, step by step:
       a. cut the entry out of \`${openSection}\`;
       b. add the closing date to its \`### \` heading;
@@ -32,7 +34,8 @@ export function backlogMoveGuidance(file: string, openSection: string, resolvedS
       d. if it was the last entry under \`${openSection}\`, leave a \`_None yet._\` placeholder
          there.
       Never add, remove, or rename a \`## \` heading: \`grep -n '^## ' ${file}\` must list the
-      same headings before and after the edit.`;
+      same headings before and after the edit. When your change commits, tumwater moves the
+      pasted entry to the top of ${archive}; do not open or edit ${archive} yourself.`;
 }
 
 /** The heading clause requiredParts parses, spelled as the parser reads it. Interpolated because
@@ -91,23 +94,26 @@ made the bug hard to CONFIRM — not to fix — as one line, \`**Validation gap:
 When nothing fits exactly, use the closest tag and say so in the sentence — never invent a
 tag. \`none\` is written, never omitted, so a tally has an honest denominator.`;
 
-/** The one query that tallies validation-gap tags across BUGS.md, counting both the verbatim
- * \`**Validation gap:**\` line bugfix writes and the steward's compressed \`gap: <tag>\` suffix.
+/** The one query that tallies validation-gap tags across BUGS.md and BUGS-FIXED.md (where fixed
+ * bugs are archived), counting both the verbatim \`**Validation gap:**\` line bugfix writes and
+ * the \`gap: <tag>\` suffix of the one-line records the steward used to compress older entries to.
  * Split from VALIDATION_GAP_GUIDANCE so only the steward — the one role that aggregates the
  * tags — carries it; a bugfix run writes one line and never needs the tally. */
-export const VALIDATION_GAP_TALLY = `One query counts both the verbatim line and the compressed
-\`gap: <tag>\` suffix: \`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c\`.`;
+export const VALIDATION_GAP_TALLY = `One query counts both the verbatim line and the older compressed
+\`gap: <tag>\` suffix across BUGS.md and its archive: \`grep -sohE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md BUGS-FIXED.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c\`.`;
 
 /** The one query a *consumer* of the validation-gap traces — a role like coverage that picks its
- * next target from BUGS.md's record of what made past bugs hard to confirm — runs to pull the
+ * next target from the record of what made past bugs hard to confirm — runs to pull the
  * recent, still-full-body entries. Split from VALIDATION_GAP_TALLY (the steward's aggregate
  * count) because this one lists the *entries*, newest-first: \`head\` not \`tail\`, since
  * \`## Fixed\` is newest-first, so the recent full-body entries sit at the top, for a role to
- * read each hit's free text. Built from the closed vocabulary (minus \`none\`, which names
- * nothing to build) so it cannot drift. */
-export const VALIDATION_GAP_QUERY = `grep -nE '\\*\\*Validation gap:\\*\\* (${VALIDATION_GAP_TAGS.filter(
+ * read each hit's free text. It reads BUGS.md's own section first, then BUGS-FIXED.md, where
+ * fixed bugs are archived (plans/backlog-archive.md); \`-s\` keeps a missing archive quiet, and
+ * each hit names its file and line. Built from the closed vocabulary (minus \`none\`, which
+ * names nothing to build) so it cannot drift. */
+export const VALIDATION_GAP_QUERY = `grep -snE '\\*\\*Validation gap:\\*\\* (${VALIDATION_GAP_TAGS.filter(
   (t) => t !== "none",
-).join("|")})' BUGS.md | head -20`;
+).join("|")})' BUGS.md BUGS-FIXED.md | head -20`;
 
 /** The literal prefix every Needs-review note starts with. Exported so a reader that only has
  * to recognize one (the backlog index's ` [blocked: needs review]` mark) can match on it instead of

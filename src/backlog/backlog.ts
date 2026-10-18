@@ -1,6 +1,6 @@
 import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { entryDates, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
+import { entryDates, finishedArchiveOf, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
 
@@ -159,21 +159,36 @@ export function plannedPlans(root: string): string[] {
   return sectionEntries(root, "PLANS.md", "Planned").map((e) => e.title);
 }
 
-/** Done plans: the `### ` headings under PLANS.md's `## Done` section. The bootstrap gate
- * (src/gates/bootstrap-gates.ts) counts these to decide when to latch bootstrap complete; the
- * stat-keyed cache means an unchanged PLANS.md costs one syscall per poll, not a re-read. */
+/** The finished entries of a live backlog file, newest first: its own finished section's
+ * (normally none — tumwater moves a finished entry to the archive as the change that finished it
+ * commits) followed by its archive file's (plans/backlog-archive.md). Both reads are stat-cached
+ * like every section read here. */
+function finishedEntries(root: string, file: "PLANS.md" | "BUGS.md"): BacklogEntry[] {
+  const { section, archive } = finishedArchiveOf(file);
+  return [...sectionEntries(root, file, section), ...sectionEntries(root, archive, section)];
+}
+
+/** The files a live backlog file's finished entries sit in: the file itself, then its archive.
+ * The per-day date reads below are per file, so the report walks both. */
+export function finishedFiles(file: "PLANS.md" | "BUGS.md"): [string, string] {
+  return [file, finishedArchiveOf(file).archive];
+}
+
+/** Done plans: the `### ` headings under `## Done` in PLANS.md and PLANS-DONE.md. The bootstrap
+ * gate (src/gates/bootstrap-gates.ts) counts these to decide when to latch bootstrap complete;
+ * the stat-keyed cache means unchanged files cost one syscall each per poll, not a re-read. */
 export function donePlans(root: string): string[] {
-  return sectionEntries(root, "PLANS.md", "Done").map((e) => e.title);
+  return finishedEntries(root, "PLANS.md").map((e) => e.title);
 }
 
-/** Done plans as entries (title and body), in file order: the newest first. */
+/** Done plans as entries (title and body), newest first. */
 export function donePlanEntries(root: string): BacklogEntry[] {
-  return sectionEntries(root, "PLANS.md", "Done");
+  return finishedEntries(root, "PLANS.md");
 }
 
-/** Fixed bugs as entries (title and body), in file order: the newest first. */
+/** Fixed bugs as entries (title and body), newest first. */
 export function fixedBugEntries(root: string): BacklogEntry[] {
-  return sectionEntries(root, "BUGS.md", "Fixed");
+  return finishedEntries(root, "BUGS.md");
 }
 
 /** Open bugs: the `### ` headings under BUGS.md's `## Open` section. Missing or unreadable →

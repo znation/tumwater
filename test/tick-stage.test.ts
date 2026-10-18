@@ -250,6 +250,34 @@ test("a bare feature tick that moves a plan stages no claim and leaves the next 
   assert.doesNotMatch(next.prompt, /<assigned-entry>/, "the next prompt carries no assignment note");
 });
 
+test("a tick's finished plan is archived in its own commit: PLANS-DONE.md gains it, PLANS.md keeps open work", async () => {
+  // plans/backlog-archive.md: the commit-time sweep runs right before the commit, so the commit
+  // the review and the merge see carries the archived form.
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
+  commitIn(root, "plans");
+  const wt = await ensureWorktree(root, "feature", "main");
+  const moved = STAGE_PLANS.replace(/### Alpha[^\n]*\n\nBody\.\n\n/, "").replace(
+    "## Done",
+    "## Done\n\n### Alpha (planned 2026-01-01 by operator; done 2026-01-02 by feature)",
+  );
+  fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
+  const { ctx } = makeCtx(root, wt, freshLoopState("feature"), {
+    role: "feature",
+    mainBranch: "main",
+    finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
+  });
+
+  const outcome = await stageTickMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  const plans = sh(wt, "git", "show", `${outcome.commit}:PLANS.md`);
+  assert.doesNotMatch(plans, /### Alpha/, "the live file holds only open work");
+  assert.match(plans, /## Done$/, "the live file keeps its finished heading");
+  assert.match(sh(wt, "git", "show", `${outcome.commit}:PLANS-DONE.md`), /## Done\n\n### Alpha \(planned 2026-01-01 by operator; done 2026-01-02 by feature\)/);
+});
+
 test("an assigned tick that moves a different plan gets a stage-check finding", async () => {
   const root = await initializedRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);

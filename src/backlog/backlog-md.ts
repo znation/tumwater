@@ -8,12 +8,36 @@
  * pays for a stat. Both layers share one fenceTracker state machine, so independent readers can
  * never disagree about what is body content. */
 
+/** Where each live backlog file's finished entries go (plans/backlog-archive.md): PLANS.md's
+ * `## Done` empties into PLANS-DONE.md and BUGS.md's `## Fixed` into BUGS-FIXED.md, each under
+ * the same `## ` heading, newest first, so one section parser reads both files. The live file
+ * keeps the heading, empty: roles paste a finished entry there, and tumwater moves it into the
+ * archive (src/backlog/backlog-archive.ts). */
+export const FINISHED_ARCHIVES = [
+  { file: "PLANS.md", section: "Done", archive: "PLANS-DONE.md" },
+  { file: "BUGS.md", section: "Fixed", archive: "BUGS-FIXED.md" },
+] as const;
+
+/** One FINISHED_ARCHIVES row: a live file, its finished section, and its archive file. */
+export type FinishedArchive = (typeof FINISHED_ARCHIVES)[number];
+
+/** The archive row for a live backlog file. */
+export function finishedArchiveOf(file: FinishedArchive["file"]): FinishedArchive {
+  return file === "PLANS.md" ? FINISHED_ARCHIVES[0] : FINISHED_ARCHIVES[1];
+}
+
 /** The repo-root backlog markdown files shared by every layer that knows them by name: the
  * tracked files loops edit and readers parse by `## ` section — read by backlog-structure.ts's
  * structural checks, merge/backlog-conflicts.ts's mechanical insert-conflict resolver, and
  * doctor-backlog.ts's duplicate-heading check. One definition, so the three cannot disagree
- * about which files count. */
-export const BACKLOG_FILES = new Set(["PLANS.md", "BUGS.md", "QUESTIONS.md"]);
+ * about which files count. The archive files count too: merges insert at their top, and their
+ * `## ` heading is as load-bearing as the live files'. */
+export const BACKLOG_FILES = new Set([
+  "PLANS.md",
+  "BUGS.md",
+  "QUESTIONS.md",
+  ...FINISHED_ARCHIVES.map((a) => a.archive),
+]);
 
 /** One backlog entry as parsed from a markdown section: the full `### ` heading text (kept
  * verbatim, including any `(planned …)`/`(reported …)` suffix) plus the entry's body — the

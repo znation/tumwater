@@ -125,7 +125,8 @@ export function templateCatalog(): { id: string; description: string }[] {
 export const PLANS_TEMPLATE = `# Plans
 
 Planned features, written by the plan role and implemented by the feature role.
-Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
+Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done;
+tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
@@ -142,7 +143,7 @@ Known bugs, recorded by any role and fixed by the bugfix role.
 Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs to Fixed, with the
 required \`**Validation gap:** <tag> — <one sentence>\` line recording what made the bug hard to
 confirm (tag one of: none, no-repro, no-fake, real-run-needed, no-observability, slow-check,
-unclear-invariant).
+unclear-invariant); tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 

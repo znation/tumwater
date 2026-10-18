@@ -32,9 +32,22 @@ team for that long and then stops it.
    the repo's markdown files.
 3. If pi changed files, commit and put the change in the merge queue, where the merge pipeline
    reviews it and fast-forwards main. A rejection resets the branch and passes the reasons to the
-   author's next run.
+   author's next run. Right before the commit, a plan or bug the run pasted under PLANS.md's
+   `## Done` or BUGS.md's `## Fixed` moves to the top of PLANS-DONE.md or BUGS-FIXED.md.
 4. If pi found nothing to do, the role sleeps, with the wait growing after each empty run.
    Sleeping roles wake early when main moves, since the answer may have changed.
+
+### The backlog files
+
+PLANS.md, BUGS.md and QUESTIONS.md hold open work, and every run reads them, so they stay
+short. Finished plans and fixed bugs live in PLANS-DONE.md and BUGS-FIXED.md, newest first,
+under the same `## Done` and `## Fixed` headings. Roles still paste a finished entry under the
+live file's heading. tumwater moves the entries a change added there into the archive right
+before that change commits. `tumwater start` moves anything else still there in one commit on
+main, such as legacy history or a hand commit's move, and so does `tumwater archive`.
+`tumwater doctor` warns while a live file still holds finished entries. Nothing reads an archive
+file whole: the dashboards, the report and `plan|bug --list --done` read the live section and
+then the archive, and roles search the archives or read one entry by its line range.
 
 ## The merge pipeline
 

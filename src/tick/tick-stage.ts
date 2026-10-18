@@ -24,6 +24,7 @@ import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-i
 import { stagedMovedEntries } from "../scheduling/claims.js";
 import { entryKey } from "../backlog/backlog-eligibility.js";
 import { assignedMovedFinding, heldMovedFinding } from "./stage-check.js";
+import { archiveNewFinishedEntries } from "../backlog/backlog-archive.js";
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is
  * module-private there; this mirrors it so the tick staging needs no export from it). */
@@ -52,9 +53,9 @@ interface TickStageContext {
    * applied this tick (or a resume carried its already-applied edits), never read from
    * `state.revision`: a per-role user-request tick leaves that field set by design. */
   revisionRound?: number;
-  /** The branch main's name, for the staged-moved-entry comparison's merge-base (part 4/7).
-   * Optional so callers that never staged a backlog move (and older tests) keep compiling;
-   * loop-tick.ts always supplies it. */
+  /** The branch main's name, for the merge-base of the staged-moved-entry comparison (part 4/7)
+   * and of the backlog archive's commit-time sweep. Optional so callers that never staged a
+   * backlog move (and older tests) keep compiling; loop-tick.ts always supplies it. */
   mainBranch?: string;
   wt: string;
   /** The pi run's final reply text, the summary's source. */
@@ -271,6 +272,12 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
       revisionRound,
     ),
   );
+  // The backlog archive (plans/backlog-archive.md): an entry this change pasted under PLANS.md's
+  // ## Done or BUGS.md's ## Fixed moves to the top of PLANS-DONE.md or BUGS-FIXED.md now, after
+  // the self-check and its fix-up turn worked on the tree the author wrote and before the
+  // commit, so the review and the merge see the archived form and the live files keep only
+  // open work. A failed sweep leaves the entry where the author put it; nothing reads it lost.
+  if (ctx.mainBranch) await archiveNewFinishedEntries(ctx.wt, ctx.mainBranch).catch(() => []);
   const commit = await commitAll(ctx.wt, message);
 
   // Pin the commit by its merge ref BEFORE freeing the worktree (invariant 4), then hand it

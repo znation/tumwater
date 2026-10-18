@@ -8,8 +8,9 @@ import { ageInDays, donePlans, filingDate, openBugEntries, openQuestionEntries, 
 import { questionFilingDate } from "../backlog/question-answer.js";
 import { entryHold, planDependencyProblems, plannedPartKeys, plansWaitingOn, prerequisitesMerged, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES, lastDate, validationGapTag } from "../backlog/backlog-md.js";
-import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
-import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
+import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
+import { liveFinishedHistory } from "../backlog/backlog-archive.js";
+import { fixSymbols, fixedEntriesAt, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
 import { briefFile } from "../brief/brief.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { currentBranch, targetBranch } from "../git/git.js";
@@ -110,7 +111,7 @@ export function checkFixClaims(root: string): CheckOutcome {
   // One parse feeds every record's title and body: bugEntryBody re-parsed the whole document
   // per heading, and BUGS.md grows without bound, so the newest-10 scan paid 1 + 10 full-document
   // walks where one suffices.
-  const records = fixedEntries(doc).slice(0, FIX_CLAIMS_CHECKED);
+  const records = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED);
   // The haystack walks src/, test/ and scripts/: build it only once a record names something.
   let haystack: string | undefined;
   const phantoms: Array<{ heading: string; missing: string[] }> = [];
@@ -147,7 +148,7 @@ export function checkFixClaims(root: string): CheckOutcome {
 export function checkValidationGaps(root: string): CheckOutcome {
   const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
   if (typeof doc !== "string") return doc;
-  const records = fixedEntries(doc).slice(0, FIX_CLAIMS_CHECKED);
+  const records = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED);
   const suspects: Array<{ title: string; problem: string; tag?: string }> = [];
   for (const { title, body } of records) {
     const tag = validationGapTag(body);
@@ -176,14 +177,32 @@ export function checkValidationGaps(root: string): CheckOutcome {
 export function checkStrandedPlans(root: string): CheckOutcome {
   const doc = readDocChecked(path.join(root, "PLANS.md"), "PLANS.md", "no PLANS.md — nothing to verify");
   if (typeof doc !== "string") return doc;
-  const stranded = strandedPlanEntries(doc);
+  // PLANS-DONE.md too: finished plans are archived there (plans/backlog-archive.md), and a plan
+  // filed under its ## Done is as invisible as one under PLANS.md's. Each entry names its file.
+  const stranded = strandedPlanEntriesFor(root);
   const clean = "no plan headings filed under the wrong PLANS.md section";
   if (stranded.length === 0) return okOutcome(clean);
   const [first, ...rest] = stranded;
   if (!first) return okOutcome(clean);
   const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
-  return warnOutcome(`PLANS.md has a plan stranded under ## ${first.section}: "${first.title}"${more} — ` +
-      `move it under ## ${first.section === "Done" ? "Planned" : "Done"} (the clean role repairs these)`);
+  const file = first.file ?? "PLANS.md";
+  return warnOutcome(`${file} has a plan stranded under ## ${first.section}: "${first.title}"${more} — ` +
+      `move it under ## ${first.section === "Done" ? "Planned" : "Done"}${file === "PLANS.md" ? "" : " in PLANS.md"} ` +
+      "(the clean role repairs these)");
+}
+
+/** Finished history still in the live backlog files (plans/backlog-archive.md): entries under
+ * PLANS.md's `## Done` or BUGS.md's `## Fixed` that have not moved to PLANS-DONE.md or
+ * BUGS-FIXED.md. Every run that reads the live file pays for them. A starting team archives them
+ * unless that is refused (a dirty file, a checkout off the base branch), and a hand commit can put
+ * new ones there between starts, so this names how many there are and the fix. A warn, never a
+ * fail: the team works either way, only more expensively. */
+export function checkLiveFinished(root: string): CheckOutcome {
+  const live = liveFinishedHistory(root);
+  if (live.length === 0) return okOutcome("PLANS.md and BUGS.md hold no finished entries — they are archived");
+  const parts = live.map((l) => `${l.file} ## ${l.section} holds ${plural(l.entries, "finished entry", "finished entries")} (${Math.round(l.bytes / 1024)} KB)`);
+  return warnOutcome(`${parts.join("; ")} — every run that reads the file pays for them; ` +
+    "`tumwater archive` moves them to the archive files and commits them (a starting team does too)");
 }
 
 /** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure
@@ -524,7 +543,7 @@ export function checkWaitingBugs(root: string): CheckOutcome {
 export function checkRegressedFixes(root: string): CheckOutcome {
   const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
   if (typeof doc !== "string") return doc;
-  const candidates = fixedEntries(doc).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
+  const candidates = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
     const name = quotedTestName(entry.title);
     const date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/);
     if (name === null || date === null) return [];

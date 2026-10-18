@@ -82,8 +82,14 @@ test("the validation-gap guard flags only post-cutoff Fixed entries without a va
 });
 
 test("BUGS.md Fixed entries fixed since the guard carry a validation-gap trace", () => {
-  const md = fs.readFileSync(new URL("../../BUGS.md", import.meta.url), "utf8");
-  const missing = entriesMissingValidationGap(md);
+  // Fixed entries are archived in BUGS-FIXED.md (plans/backlog-archive.md), under the same
+  // `## Fixed` heading; BUGS.md's own section holds any not yet archived. Each URL is a literal,
+  // so a change to either file selects this test (test/affected-tests.ts).
+  const read = (url: URL): string => (fs.existsSync(url) ? fs.readFileSync(url, "utf8") : "");
+  const live = read(new URL("../../BUGS.md", import.meta.url));
+  const archive = read(new URL("../../BUGS-FIXED.md", import.meta.url));
+  assert.ok(parseEntryDetails(live, "Fixed").length + parseEntryDetails(archive, "Fixed").length > 0, "no Fixed entries found to check");
+  const missing = [...entriesMissingValidationGap(live), ...entriesMissingValidationGap(archive)];
   assert.equal(
     missing.length,
     0,

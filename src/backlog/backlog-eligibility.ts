@@ -18,7 +18,7 @@ import { baseRoleOf } from "../roles/loop-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { openParenthetical, trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
 import { actionableEntryRangesFor, stripEntryStamp } from "./backlog-structure.js";
-import { openBugEntries, plannedPlanEntries } from "./backlog.js";
+import { finishedFiles, openBugEntries, plannedPlanEntries } from "./backlog.js";
 
 /** Why an entry is held, or null when it is eligible. `blockedBy` names the unmerged
  * prerequisites in the form `Series i/n` so a renderer can show `requires …`. */
@@ -32,6 +32,9 @@ export interface EligibleEntry {
   title: string;
   start: number;
   end: number;
+  /** The file the range is in, when it is not the entry's own backlog file — a merged
+   * prerequisite's Done entry, read from PLANS.md or PLANS-DONE.md (mergedPrerequisiteRanges). */
+  file?: string;
 }
 
 /** A `series, part i/n` pair: the series name, the part token (`5`, or `2a` for the historical
@@ -147,16 +150,19 @@ function partKey(series: string, part: string): string {
 }
 
 /** The Done entries of the parts `title` requires, in the order its requires clause names them:
- * for each requiredParts ref, the first `## Done` entry of root's PLANS.md whose seriesPart has
- * the same partKey. Done is newest-first, so the first match is the most recent merge. A ref
- * with no Done match (still planned, or renamed) adds nothing, so a title with no requires
- * clause, or a missing PLANS.md, gives []. Lets the assignment prompt point at the exact range
- * to read instead of leaving the implementer to search a Done section that runs to thousands of
+ * for each requiredParts ref, the first `## Done` entry whose seriesPart has the same partKey,
+ * searching PLANS.md's live section and then PLANS-DONE.md (plans/backlog-archive.md), each
+ * carrying the file it was found in. Done is newest-first, so the first match is the most recent
+ * merge. A ref with no Done match (still planned, or renamed) adds nothing, so a title with no
+ * requires clause, or missing files, gives []. Lets the assignment prompt point at the exact
+ * range to read instead of leaving the implementer to search a history that runs to thousands of
  * lines. */
 export function mergedPrerequisiteRanges(root: string, title: string): EligibleEntry[] {
   const refs = requiredParts(title);
   if (refs.length === 0) return [];
-  const done = actionableEntryRangesFor(root, "PLANS.md", "Done");
+  const done = finishedFiles("PLANS.md").flatMap((file) =>
+    actionableEntryRangesFor(root, file, "Done").map((e) => ({ ...e, file })),
+  );
   const out: EligibleEntry[] = [];
   for (const ref of refs) {
     const want = partKey(ref.series, ref.part);
@@ -164,7 +170,9 @@ export function mergedPrerequisiteRanges(root: string, title: string): EligibleE
       const part = seriesPart(e.title);
       return part !== null && partKey(part.series, part.part) === want;
     });
-    if (hit !== undefined) out.push({ key: entryKey(hit.title), title: hit.title, start: hit.start, end: hit.end });
+    if (hit !== undefined) {
+      out.push({ key: entryKey(hit.title), title: hit.title, start: hit.start, end: hit.end, file: hit.file });
+    }
   }
   return out;
 }

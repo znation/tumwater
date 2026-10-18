@@ -189,14 +189,12 @@ Rules for this run:
 
 Orientation — read this much before choosing your task, and no more:
 - First read the project brief (${briefFile}) in full, plus QUESTIONS.md when present.
-- PLANS.md and BUGS.md grow without bound — never read them wholesale. Their actionable
-  sections come first (## Planned before ## Done; ## Open before ## Fixed): the prompt's
-  <backlog-index> block lists the actionable entries (PLANS.md ## Planned, BUGS.md ## Open,
-  QUESTIONS.md ## Open) and the newest few ## Done and ## Fixed entries, each with its 1-based
-  line range, so read only the entries you need
-  by those ranges — Planned plus recent Done entries, Open plus recent Fixed ones. Consult older
-  history via git log or a targeted read only when a specific entry is needed. The steward role
-  is the exception: it curates those files and must see them whole.
+- PLANS.md and BUGS.md hold open work: the prompt's <backlog-index> block lists their actionable
+  entries (PLANS.md ## Planned, BUGS.md ## Open, QUESTIONS.md ## Open), each with its 1-based line
+  range, so read only the entries you need by those ranges. Finished entries live in
+  PLANS-DONE.md and BUGS-FIXED.md, newest first; the index lists the newest few with their
+  ranges. Those archive files only grow — never read them whole: search them with grep, or read
+  one entry by its range, and only when a specific finished entry matters to your task.
 - Your worktree starts clean at main, and tumwater checks main's build before code roles
   start: do not run the build or test suite just to establish a baseline. Run it after your
   change, or when the task itself needs its output (reproducing a failure, counting the suite).
@@ -429,9 +427,6 @@ interface TickPromptInput {
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */
   backlogStructure?: string;
-  /** Rendered closed-section overflow block (see records-overflow.ts); steward only, omitted when
-   * both closed sections are within the policy or unreadable. */
-  recordsOverflow?: string;
   /** Rendered actionable backlog index (see backlog-structure.ts); every tick carries it. */
   backlogIndex?: string;
   /** The role's notebook (roleNotesPath, read by tick-prompt.ts): the note its own earlier
@@ -505,7 +500,7 @@ from the repo.`,
 
 /** The full prompt for one role run. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, backlogStructure, recordsOverflow, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, briefFile, today, userRequest, agent, compact } = input;
+  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, briefFile, today, userRequest, agent, compact } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
   const parts = [
@@ -522,7 +517,6 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (coverage) parts.push(coverage);
   if (digest) parts.push(digestBlock(digest));
   if (backlogStructure) parts.push(backlogStructure);
-  if (recordsOverflow) parts.push(recordsOverflow);
   if (backlogIndex) parts.push(backlogIndex);
   if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes, notesSavedDay, day));
   parts.push(`Your task this run:\n${role.find.trim()}`);
