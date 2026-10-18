@@ -101,6 +101,31 @@ test("an over-cap note exits 1 and leaves the old note in place", () => {
   assert.equal(noteText(notesPath), "old");
 });
 
+test("write with a flag that is not --file exits 1 with usage", () => {
+  const notesPath = path.join(tmpdir(), "feature.md");
+  const res = run(["write", "--bogus", "x"], notesPath, "never read");
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /usage: tumwater-notes/);
+  assert.equal(noteText(notesPath), undefined, "no note is touched");
+});
+
+test("write --file with no path exits 1 with usage", () => {
+  const notesPath = path.join(tmpdir(), "feature.md");
+  const res = run(["write", "--file"], notesPath);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /usage: tumwater-notes/);
+  assert.equal(noteText(notesPath), undefined, "no note is touched");
+});
+
+test("write --file with an unreadable path exits 1 naming the path", () => {
+  const notesPath = path.join(tmpdir(), "feature.md");
+  const missing = path.join(tmpdir(), "no-such-draft.txt");
+  const res = run(["write", "--file", missing], notesPath);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, new RegExp(`cannot read ${missing}`));
+  assert.equal(noteText(notesPath), undefined, "no note is written");
+});
+
 test("no TUMWATER_NOTES_PATH exits 1 with 'this run keeps no notes'", () => {
   const res = run(["show"], null);
   assert.equal(res.status, 1);
