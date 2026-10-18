@@ -303,6 +303,14 @@ export function opencodeDbPath(root: string): string {
   return path.join(tumwaterDir(root), "opencode", "opencode.db");
 }
 
+/** tumwater's cached models.dev catalog for OpenCode (plans/opencode-backend.md §7; part
+ * 6a/7 opencode-catalog.ts): the providers the config routes through OpenCode, priced from
+ * models.dev's `api.json` at most once a day. Runtime state under .tumwater/state/, never
+ * committed. */
+export function opencodeModelsPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "opencode-models.json");
+}
+
 /** Session dir for a role's review-gate runs. Kept OUTSIDE the role's own session dir on
  * purpose: hasResumableSession (the resume-after-shutdown guard) must only ever see the
  * AUTHOR's sessions — a leftover reviewer session would make an interrupted tick "resume"

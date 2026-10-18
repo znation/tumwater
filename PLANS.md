@@ -31,27 +31,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/event-format.test.ts`: `formatEvent` over a keyed `provider_wait` reads `waited 2m for a omlx slot (feature)` and over a key-less one `waited 30s for a run slot (feature)` (the same phrasing family as the `slot_wait` case).
 - `npm run test` passes.
 
-### OpenCode backend, part 6a/7: The models.dev catalog fetch, parse and cache answer whether an OpenCode model is free (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; split 2026-10-17 by the plan role from part 6/7 into parts 6a/7–6d/7; requires part 5b/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/paths.ts test/opencode-catalog.test.ts (new))
-
-**Goal.** The data half of OpenCode free-ness, with no seam wired yet: a bounded fetch of the catalog OpenCode itself caches, a parse that keeps only the models the config routes through OpenCode, a cache that survives a failed fetch, and `opencodeModelFree(cache, model)` as the one predicate part 6b/7's seam reads.
-
-**Approach.**
-- **src/agent/opencode/opencode-catalog.ts (new):**
-  - `fetchOpencodeCatalog()` GETs `https://models.dev/api.json`, bounded at 30 s (finding 10); V2's `opencode models` prints ids only.
-  - `parseOpencodeCatalog(body, providers)` keeps the `opencode` provider plus any provider the config routes through OpenCode (`opencode/<provider>/…`). For each model it records: `free` (input and output cost both 0); `inputPerM`, `outputPerM`; `context` (`limit.context`); `images` (`modalities.input` includes `"image"`); `efforts` (the `values` of the `reasoning_options` entry with `type: "effort"`).
-  - The cache is `.tumwater/state/opencode-models.json` (a new path helper in src/paths.ts): `{ fetchedAt, cliVersion, models: { "<provider>/<model>": { …, billedAt? } } }`. It is refreshed when older than 24 h or when `opencode --version` changed; a failed fetch keeps the old cache and logs one warning; `billedAt` survives a refresh.
-  - `opencodeModelFree(cache, model)` = `free && billedAt === undefined`; a model missing from the cache is not free.
-
-**Files touched.**
-- Source: src/agent/opencode/opencode-catalog.ts (new), src/paths.ts.
-- Tests: test/opencode-catalog.test.ts (new), over the existing test/fixtures/opencode-captures/models-catalog-entries.json.
-
-**Acceptance criteria.**
-- **Parsing** that fixture gives `opencode/deepseek-v4.1-flash-free` with `free: true`, context 200000, images true and efforts `["low", "high", "max"]`; it gives `opencode-go/deepseek-v4.1-flash` as priced, but only when the config routes `opencode/opencode-go/…`.
-- **The cache:** a stale or version-changed cache refreshes; a failed fetch keeps the old one; `billedAt` survives a refresh.
-- **`opencodeModelFree`:** a cached free model with no `billedAt` is free; a priced one, an unknown one, and a free one with `billedAt` set are not.
-- `npm test` passes.
-
 ### OpenCode backend, part 6b/7: A free OpenCode model counts as free to the budget gate, the fallback view and the status badge (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-budget.ts and their tests)
 
 **Goal.** With every model job on `opencode/deepseek-v4.1-flash-free` the team reads "budget n/a"; a free OpenCode model is a valid budget `fallback`; and at the cap the opencode roles keep their primary instead of moving to their fallback.
@@ -1256,6 +1235,27 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 - `npm run test` passes.
 
 ## Done
+
+### OpenCode backend, part 6a/7: The models.dev catalog fetch, parse and cache answer whether an OpenCode model is free (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; split 2026-10-17 by the plan role from part 6/7 into parts 6a/7–6d/7; requires part 5b/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/paths.ts test/opencode-catalog.test.ts (new)) — done 2026-10-17 by the feature role
+
+**Goal.** The data half of OpenCode free-ness, with no seam wired yet: a bounded fetch of the catalog OpenCode itself caches, a parse that keeps only the models the config routes through OpenCode, a cache that survives a failed fetch, and `opencodeModelFree(cache, model)` as the one predicate part 6b/7's seam reads.
+
+**Approach.**
+- **src/agent/opencode/opencode-catalog.ts (new):**
+  - `fetchOpencodeCatalog()` GETs `https://models.dev/api.json`, bounded at 30 s (finding 10); V2's `opencode models` prints ids only.
+  - `parseOpencodeCatalog(body, providers)` keeps the `opencode` provider plus any provider the config routes through OpenCode (`opencode/<provider>/…`). For each model it records: `free` (input and output cost both 0); `inputPerM`, `outputPerM`; `context` (`limit.context`); `images` (`modalities.input` includes `"image"`); `efforts` (the `values` of the `reasoning_options` entry with `type: "effort"`).
+  - The cache is `.tumwater/state/opencode-models.json` (a new path helper in src/paths.ts): `{ fetchedAt, cliVersion, models: { "<provider>/<model>": { …, billedAt? } } }`. It is refreshed when older than 24 h or when `opencode --version` changed; a failed fetch keeps the old cache and logs one warning; `billedAt` survives a refresh.
+  - `opencodeModelFree(cache, model)` = `free && billedAt === undefined`; a model missing from the cache is not free.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-catalog.ts (new), src/paths.ts.
+- Tests: test/opencode-catalog.test.ts (new), over the existing test/fixtures/opencode-captures/models-catalog-entries.json.
+
+**Acceptance criteria.**
+- **Parsing** that fixture gives `opencode/deepseek-v4.1-flash-free` with `free: true`, context 200000, images true and efforts `["low", "high", "max"]`; it gives `opencode-go/deepseek-v4.1-flash` as priced, but only when the config routes `opencode/opencode-go/…`.
+- **The cache:** a stale or version-changed cache refreshes; a failed fetch keeps the old one; `billedAt` survives a refresh.
+- **`opencodeModelFree`:** a cached free model with no `billedAt` is free; a priced one, an unknown one, and a free one with `billedAt` set are not.
+- `npm test` passes.
 
 ### The day report and the dashboard Usage view tally each model's runs, so a team mixing providers, per-role overrides and fallbacks sees how much of its work ran on each model (planned 2026-10-17 by the plan role; design in this entry; independent of the two eligible Planned entries — OpenCode part 5b/7 touches src/agent/, src/prompt/ and src/paths.ts, and the run-history model plan touches src/events/event-read.ts, src/history/ and src/ui/tui/tui-history.ts — while this touches src/report/ and src/ui/gui/gui-client-report.ts; touches src/report/report-data.ts src/report/report-render.ts src/ui/gui/gui-client-report.ts docs/cli.md test/report-data.test.ts test/report.test.ts test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 
