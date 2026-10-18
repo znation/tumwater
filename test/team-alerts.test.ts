@@ -16,6 +16,7 @@ const base: Snap = {
   inQuietHours: false,
   imageProbeFailures: [],
   capPaused: [],
+  budgetPausedRoles: [],
   maintenanceQuota: { allowance: 0, used: 0, held: [] },
 };
 
@@ -71,6 +72,45 @@ test("a spent budget pauses the loops, or hands them to the free fallback", () =
   );
   assert.equal(tiered[0]?.key, "fallback");
   assert.match(tiered[0]?.detail ?? "", /^small: free\/qwen-free \(from default\), default: free\/qwen-free, strong: free\/llama-free carry them/);
+
+  // The budget banner names the roles whose tier has no usable free pair (gate-polls.ts's
+  // budgetPausedRoles): the roles that moved sit next to the ones that stopped, one sentence
+  // each, so a spent cap never reads as if every role kept working. Each held id renders
+  // through listRoleIds (a stale id still appears); with none held the detail is byte-identical
+  // to the tier sentence above.
+  const split = teamAlerts(
+    {
+      ...spent,
+      budget: {
+        ...spent.budget,
+        fallback: { provider: "free", model: "qwen-free" },
+        tiers: { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" },
+      },
+      budgetPausedRoles: ["coverage", "docs", "stale-role"],
+    },
+    [], [], Date.now(),
+  );
+  assert.equal(split[0]?.key, "fallback");
+  assert.match(
+    split[0]?.detail ?? "",
+    /coverage, docs, and stale-role have no free pair and stay paused until local midnight\.$/,
+  );
+  const noPaused = teamAlerts(
+    {
+      ...spent,
+      budget: {
+        ...spent.budget,
+        fallback: { provider: "free", model: "qwen-free" },
+        tiers: { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" },
+      },
+    },
+    [], [], Date.now(),
+  )[0];
+  assert.match(
+    noPaused?.detail ?? "",
+    /^small: free\/qwen-free \(from default\), default: free\/qwen-free, strong: free\/llama-free carry them at no cost until midnight\.$/,
+    "empty budgetPausedRoles keeps today's exact tier sentence",
+  );
 });
 
 // Quiet hours 2/2: the schedule holding the team informs rather than asks (blue, no

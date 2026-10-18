@@ -112,19 +112,6 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
   - A temp HOME with `.pi/agent/mcp.json` naming a server gets that server listed in the pi row.
 - `npm test` passes.
 
-### The budget banner names the roles whose tier has no free pair and stays paused (planned 2026-10-17 by the plan role; the snapshot field landed with the per-tier budget pause (gate-polls.ts's `budgetPausedRoles`) but no banner reads it, so a spent cap can look like every role is still working; it shares src/ui/team-alerts.ts and test/team-alerts.test.ts with the in-flight provider-hold banner plan — that one adds a `providerHolds` Pick key and a banner, this one adds a `budgetPausedRoles` Pick key and edits the existing budget alert's detail — so whichever lands second rebases over adjacent Pick lines and a different banner block; independent of the deferred-runs plan (src/report, src/ui/gui/gui-client-report.ts) and OpenCode 7/7 (src/doctor, src/agent/opencode), and it touches no src/status, src/gates or src/team file)
-
-**Goal.** When the daily cap is reached and some tiers have a usable free fallback while others do not, `teamAlerts` pushes the blue `fallback` alert whose title reads "Today's budget is spent — roles switched to the over-cap model". Its detail lists only the tiers that moved; the roles whose tier has no usable free pair sit idle reading `budget paused` on their own loop row while the banner implies every role is still running. The snapshot already computes exactly that set (`budgetPausedRoles`, always present, empty when none) and no banner reads it. Name those roles in the same sentence, so one banner covers both halves of the split — the roles that moved to a free pair and the roles that stopped.
-
-**Approach.**
-- **src/ui/team-alerts.ts:** add `"budgetPausedRoles"` to the `Pick<StatusSnapshot, …>` `teamAlerts` reads (the field is required and always present on the snapshot, so callers need no change). In the budget-reached `b.fallback` branch, append one sentence to `detail` when `snap.budgetPausedRoles.length > 0`: ` ${listRoleIds(snap.budgetPausedRoles)} ${agree(snap.budgetPausedRoles.length, "has", "have")} no free pair and ${agree(snap.budgetPausedRoles.length, "stays", "stay")} paused until local midnight.`, reusing the existing `listRoleIds` and `agree` helpers and the comma list. The no-fallback red branch is unchanged: it already says the roles are paused. With an empty `budgetPausedRoles`, the detail is byte-identical to today's tier sentence, so the existing anchored assertions keep passing.
-- **test/team-alerts.test.ts:** add `budgetPausedRoles: []` to the `base` fixture (the widened `Pick` makes the key required on the literal).
-
-**Files touched.** Source: src/ui/team-alerts.ts. Tests: test/team-alerts.test.ts.
-
-**Acceptance criteria.**
-- A new case in test/team-alerts.test.ts, extending the "a spent budget pauses the loops, or hands them to the free fallback" scenario: with the established tiered-fallback fixture plus `budgetPausedRoles: ["coverage", "docs"]`, the one blue `fallback` alert's `detail` still names the tiers and also names `coverage` and `docs` as having no free pair and staying paused until local midnight; each held role id renders through `listRoleIds` (so a stale id still appears); with `budgetPausedRoles: []` the detail equals today's exact string.
-- `npm test` passes.
 
 ### OpenCode backend, part 6f/7: OpenCode runs cap tool output at pi's window-scaled limits (planned 2026-10-17 by user; requires part 6e/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 2; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts and their tests)
 
@@ -1216,6 +1203,19 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
 
 
 ## Done
+### The budget banner names the roles whose tier has no free pair and stays paused (planned 2026-10-17 by the plan role; the snapshot field landed with the per-tier budget pause (gate-polls.ts's `budgetPausedRoles`) but no banner reads it, so a spent cap can look like every role is still working; it shares src/ui/team-alerts.ts and test/team-alerts.test.ts with the in-flight provider-hold banner plan — that one adds a `providerHolds` Pick key and a banner, this one adds a `budgetPausedRoles` Pick key and edits the existing budget alert's detail — so whichever lands second rebases over adjacent Pick lines and a different banner block; independent of the deferred-runs plan (src/report, src/ui/gui/gui-client-report.ts) and OpenCode 7/7 (src/doctor, src/agent/opencode), and it touches no src/status, src/gates or src/team file) — done 2026-10-17 by the feature role
+
+**Goal.** When the daily cap is reached and some tiers have a usable free fallback while others do not, `teamAlerts` pushes the blue `fallback` alert whose title reads "Today's budget is spent — roles switched to the over-cap model". Its detail lists only the tiers that moved; the roles whose tier has no usable free pair sit idle reading `budget paused` on their own loop row while the banner implies every role is still running. The snapshot already computes exactly that set (`budgetPausedRoles`, always present, empty when none) and no banner reads it. Name those roles in the same sentence, so one banner covers both halves of the split — the roles that moved to a free pair and the roles that stopped.
+
+**Approach.**
+- **src/ui/team-alerts.ts:** add `"budgetPausedRoles"` to the `Pick<StatusSnapshot, …>` `teamAlerts` reads (the field is required and always present on the snapshot, so callers need no change). In the budget-reached `b.fallback` branch, append one sentence to `detail` when `snap.budgetPausedRoles.length > 0`: ` ${listRoleIds(snap.budgetPausedRoles)} ${agree(snap.budgetPausedRoles.length, "has", "have")} no free pair and ${agree(snap.budgetPausedRoles.length, "stays", "stay")} paused until local midnight.`, reusing the existing `listRoleIds` and `agree` helpers and the comma list. The no-fallback red branch is unchanged: it already says the roles are paused. With an empty `budgetPausedRoles`, the detail is byte-identical to today's tier sentence, so the existing anchored assertions keep passing.
+- **test/team-alerts.test.ts:** add `budgetPausedRoles: []` to the `base` fixture (the widened `Pick` makes the key required on the literal).
+
+**Files touched.** Source: src/ui/team-alerts.ts. Tests: test/team-alerts.test.ts.
+
+**Acceptance criteria.**
+- A new case in test/team-alerts.test.ts, extending the "a spent budget pauses the loops, or hands them to the free fallback" scenario: with the established tiered-fallback fixture plus `budgetPausedRoles: ["coverage", "docs"]`, the one blue `fallback` alert's `detail` still names the tiers and also names `coverage` and `docs` as having no free pair and staying paused until local midnight; each held role id renders through `listRoleIds` (so a stale id still appears); with `budgetPausedRoles: []` the detail equals today's exact string.
+- `npm test` passes.
 ### Notes command, part 1/4: A `tumwater-notes` command writes a run's own role note, and every run finds it on its PATH (planned 2026-10-17 by user; design in plans/notes-command.md "The `tumwater-notes` command" and "Reaching it from a run"; touches src/notes-cli.ts (new) src/agent/notes-shim.ts (new) src/agent/run-agent.ts src/process/run-marker.ts src/paths.ts src/agent/opencode/opencode-backend.ts package.json and their tests) — done 2026-10-17 by the feature role
 
 **Goal.** Give every backend the same way to write a role's notes: a shell command, `tumwater-notes`, that acts only on the note `TUMWATER_NOTES_PATH` names. Today each backend has its own carrier: a pi extension, and an MCP server for Claude Code and for OpenCode.

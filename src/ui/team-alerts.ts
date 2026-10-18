@@ -117,6 +117,7 @@ export function teamAlerts(
     | "imageProbeFailures"
     | "chain"
     | "capPaused"
+    | "budgetPausedRoles"
     | "maintenanceQuota"
     | "providerHolds"
   >,
@@ -138,19 +139,27 @@ export function teamAlerts(
     });
   }
   if (!b.free && b.capUsd > 0 && b.spentUsd >= b.capUsd) {
+    // Tiered fallbacks (part 7b/8): the snapshot's tier map stands exactly when the
+    // tiers resolve to two or more distinct pairs, so list them and let the borrowed
+    // ones' `(from …)` suffixes mark the borrow; a tier-free snapshot keeps the
+    // single-pair sentence.
+    const fallbackDetail = b.tiers
+      ? `${fallbackTierEntries(b.tiers).join(", ")} carry them at no cost until midnight.`
+      : `${fallbackDisplayPair(b.fallback, "The fallback")} carries them at no cost until midnight.`;
     out.push(
       b.fallback
         ? {
             key: "fallback",
             tone: "blue",
             title: "Today's budget is spent — roles switched to the over-cap model",
-            // Tiered fallbacks (part 7b/8): the snapshot's tier map stands exactly when the
-            // tiers resolve to two or more distinct pairs, so list them and let the borrowed
-            // ones' `(from …)` suffixes mark the borrow; a tier-free snapshot keeps the
-            // single-pair sentence.
-            detail: b.tiers
-              ? `${fallbackTierEntries(b.tiers).join(", ")} carry them at no cost until midnight.`
-              : `${fallbackDisplayPair(b.fallback, "The fallback")} carries them at no cost until midnight.`,
+            // The roles whose tier has no usable free pair (gate-polls.ts's budgetPausedRoles)
+            // don't move: they sit on `budget paused` rows while the banner says everyone
+            // switched. One sentence names both halves of the split so the spent-cap banner
+            // doesn't read as if every role kept working.
+            detail:
+              snap.budgetPausedRoles.length > 0
+                ? `${fallbackDetail} ${listRoleIds(snap.budgetPausedRoles)} ${agree(snap.budgetPausedRoles.length, "has", "have")} no free pair and ${agree(snap.budgetPausedRoles.length, "stays", "stay")} paused until local midnight.`
+                : fallbackDetail,
             actions: [{ label: "Raise the cap", act: "budget" }],
           }
         : {
