@@ -442,6 +442,28 @@ test("prompt --top resolves a bad position and a list-wide miss/ambiguity exactl
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa first"]);
 });
 
+test("prompt --top --role reports a concurrently dequeued prompt as gone and exits clean", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt top role race");
+
+  // The same dangling-symlink stand-in as the flagless and role cancel race tests, planted
+  // as the higher-stamped entry so position 2 resolves to it: readdir lists it, the rename's
+  // read hits ENOENT — the role loop dequeued the prompt between the operator's listing and
+  // the move (movePromptToTop's gone outcome, which the top verb alone had never reported).
+  submitRolePrompt(repo, "qa", "qa task one");
+  const raced = path.join(roleInboxDir(repo, "qa"), `9999999999999-000001-${process.pid}.md`);
+  fs.symlinkSync(path.join(repo, "no-such-prompt.md"), raced);
+
+  const r = await cli(repo, "prompt", "--top", "2", "--role", "qa");
+  assert.equal(r.code, 0, `expected clean exit for a gone prompt:\n${r.stderr}`);
+  assert.match(r.stdout, /prompt 2 is no longer in the inbox/);
+  assert.match(r.stdout, /qa already took it/);
+
+  // The vanished file was left untouched and the real prompt is still queued, unmoved.
+  assert.ok(fs.lstatSync(raced).isSymbolicLink(), "the vanished file was left untouched");
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one"]);
+});
+
 // --- prompt --list --json: the machine-readable render of the same listing (PLANS.md
 // "prompt --list --json") — prose and JSON share one payload, so the positions --cancel
 // consumes can never disagree with what a script reads.
