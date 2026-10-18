@@ -1479,7 +1479,7 @@ test("Ctrl+O over a zero-row read keeps the pane's no-ticks note, not a filter-e
   assert.equal(keys.state().paneCache, "", "an empty log is not blamed on the outcome filter");
 });
 
-test("Ctrl+O cycles the Activity type on view 0, the History label elsewhere, and is inert in the prompt-line modes", () => {
+test("Ctrl+O cycles the Activity type on view 0, opens the quiet editor on a Transcript, and is inert in the prompt-line modes", () => {
   const root = makeRoot();
   writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]);
   const { keys } = makeKeys(root, () => 0);
@@ -1492,26 +1492,29 @@ test("Ctrl+O cycles the Activity type on view 0, the History label elsewhere, an
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().activityType, null, "the Activity type wraps");
 
-  // Off the Activity, History, and Health views, Ctrl+O advances the History class without
-  // computing a cache (its own pane holds the label; no pane is showing here).
+  // On a role's Transcript view, Ctrl+O opens the quiet-hours editor (the terminal twin of
+  // the dashboard drawer's `Quiet hours` row), not the History class cycle.
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript clean
   assert.equal(keys.state().view, 1);
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().historyResult, "merged");
-  assert.equal(keys.state().paneCache, null, "no History pane is showing");
+  assert.equal(keys.state().quietMode, true, "Ctrl+O on a role's Transcript opens the quiet editor");
+  assert.equal(keys.state().historyResult, "all", "the History class is untouched on a transcript");
+  keys.handleKey(undefined, { name: "escape" });
 
   // Budget mode holds the prompt line: Ctrl+O leaves the class alone.
   keys.handleKey(undefined, { ctrl: true, name: "b" });
   assert.equal(keys.state().budgetMode, true);
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().historyResult, "merged", "Ctrl+O does nothing in budget mode");
+  assert.equal(keys.state().quietMode, false, "the busy guard keeps quiet mode closed");
+  assert.equal(keys.state().historyResult, "all", "Ctrl+O does nothing in budget mode");
   keys.handleKey(undefined, { name: "escape" });
 
   // Role-prompt mode holds it too: open it on a transcript view and try Ctrl+O.
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(keys.state().rolePromptFor, "clean");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().historyResult, "merged", "Ctrl+O does nothing in role-prompt mode");
+  assert.equal(keys.state().quietMode, false, "the busy guard keeps quiet mode closed");
+  assert.equal(keys.state().historyResult, "all", "Ctrl+O does nothing in role-prompt mode");
   keys.handleKey(undefined, { name: "escape" });
 });
 
@@ -3093,13 +3096,95 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, deferMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true };
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, deferMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
   // exclusion every other mode enforces, or they would run over the retire modal.
   assert.equal(promptLineFree(es), false, "the retire editor blocks the Health pane's own arms");
   es.retireMode = false;
   assert.equal(promptLineFree(es), true, "the line frees once retire-edit mode leaves");
+  es.quietMode = true;
+  assert.equal(promptLineFree(es), false, "the quiet editor blocks the Transcript pane's own arms");
+  es.quietMode = false;
+});
+
+test("Ctrl+O on a role's Transcript edits that role's quiet-hours window, not another's or the team's", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "director", "clean"]); // roster {feature, director, clean}
+  // Seed one role's window through the dotted write the editor itself will use, so the
+  // pre-fill and the untouched-entry claim have something to check against.
+  const seed = setConfigKey(root, "quietHoursPerRole.clean", '"23:00-07:00"');
+  assert.equal(seed.ok, true);
+  const setWindow = (): Record<string, string> =>
+    (readJson(path.join(root, "tumwater.json")) as { quietHoursPerRole?: Record<string, string> })
+      .quietHoursPerRole ?? {};
+
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature's transcript
+  assert.equal(keys.state().view, 1);
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature");
+
+  // Open: the window-less role pre-fills an empty line (no draft saved), and Esc restores
+  // the saved draft byte-for-byte with nothing written.
+  for (const ch of "pending draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().quietMode, true);
+  assert.equal(keys.state().input, "", "a window-less role pre-fills an empty line");
+  assert.match(keys.state().flash!, /edit feature's quiet hours/);
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().quietMode, false);
+  assert.equal(keys.state().input, "pending draft", "Esc restores the saved draft");
+  assert.equal(setWindow().feature, undefined, "Esc writes nothing");
+
+  // Enter on a valid window writes the dotted key for the VIEWED role, leaving the other
+  // role's entry and the team-wide quietHours untouched.
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  for (const ch of "23:00-07:00") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().quietMode, false, "a saved window leaves edit mode");
+  assert.equal(keys.state().input, "pending draft", "Enter restores the saved draft");
+  assert.match(keys.state().flash!, /feature: quiet hours set to 23:00-07:00/);
+  assert.equal(setWindow().feature, "23:00-07:00");
+  assert.equal(setWindow().clean, "23:00-07:00", "the other role's window is untouched");
+
+  // Re-entering pre-fills the just-saved window; Esc cancels the re-edit with no further
+  // write (the invalid-window retry path is pinned in test/tui-quiet.test.ts).
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().input, "23:00-07:00", "re-entering pre-fills the saved window");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().quietMode, false);
+  assert.equal(keys.state().input, "pending draft");
+
+  // Ctrl+O on the director's Transcript refuses — its quietHoursPerRole.director entry is
+  // inert — and opens nothing, leaving the prompt line unchanged.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → director's transcript (view 2)
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "director");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.match(keys.state().flash!, /the director has no quiet hours/);
+  assert.equal(keys.state().quietMode, false, "the director opens nothing");
+});
+
+test("Ctrl+O on an instance's Transcript writes the base role's quiet-hours key", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "feature-2"]);
+
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature (view 1)
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature-2 (view 2)
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature-2");
+
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  for (const ch of "23:00-07:00") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  const setWindow = (): Record<string, string> =>
+    (readJson(path.join(root, "tumwater.json")) as { quietHoursPerRole?: Record<string, string> })
+      .quietHoursPerRole ?? {};
+  assert.equal(
+    setWindow().feature,
+    "23:00-07:00",
+    "an instance id writes its base role's key (quietHoursPerRole.feature, not feature-2)",
+  );
+  assert.equal(Object.keys(setWindow()).length, 1, "no per-instance entry is left behind");
 });
 
 test("Ctrl+X retire refuses a role the safety rails object to and removes nothing", async () => {

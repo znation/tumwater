@@ -64,6 +64,8 @@ interface TuiKeysState {
   briefEditMode: boolean;
   /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
   retireMode: boolean;
+  /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
+  quietMode: boolean;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
   /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */

@@ -47,6 +47,8 @@ interface TuiHeld {
   brief: boolean;
   /** The Health view's Ctrl+X retire editor holds the prompt line, editing a role id. */
   retire: boolean;
+  /** The Transcript view's Ctrl+O quiet-hours editor holds the prompt line. */
+  quiet: boolean;
 }
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
@@ -106,7 +108,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "defer" | "attach" | "notes" | "brief" | "retire"): string | null;
+  heldEditorFlash(entering: "budget" | "defer" | "attach" | "notes" | "brief" | "retire" | "quiet"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -134,6 +136,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       notes: null,
       brief: false,
       retire: false,
+      quiet: false,
     },
     root: deps.root,
     now: deps.now,
@@ -173,12 +176,14 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.notes && entering !== "notes") return session.busyFlash("notes edit");
       if (h.brief && entering !== "brief") return session.busyFlash("brief edit");
       if (h.retire && entering !== "retire") return session.busyFlash("retire role");
+      if (h.quiet && entering !== "quiet") return session.busyFlash("quiet hours");
       if (entering === "defer" && h.budget) return session.busyFlash("budget edit");
       if (entering === "budget" && h.defer) return session.busyFlash("send-later edit");
       if (entering === "attach" && (h.budget || h.defer)) return session.busyFlash(h.budget ? "budget edit" : "send-later edit");
       if (entering === "notes" && (h.attach || h.budget || h.defer)) return session.busyFlash(h.attach ? "image attach" : h.budget ? "budget edit" : "send-later edit");
       if (entering === "brief" && (h.budget || h.defer)) return session.busyFlash(h.budget ? "budget edit" : "send-later edit");
       if (entering === "retire" && (h.attach || h.notes || h.budget || h.defer)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : "send-later edit");
+      if (entering === "quiet" && (h.attach || h.notes || h.budget || h.defer || h.brief || h.retire)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.budget ? "budget edit" : "send-later edit");
       return null;
     },
   };

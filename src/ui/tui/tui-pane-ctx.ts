@@ -20,6 +20,8 @@ export interface TuiPaneEditorState {
   briefEditMode: boolean;
   /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
   retireMode: boolean;
+  /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
+  quietMode: boolean;
 }
 
 /** The per-keypress read `createTuiKeys` passes to every pane arm — the editor flags the
@@ -39,7 +41,7 @@ export function promptLineFree(es: TuiPaneEditorState): boolean {
   return (
     !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode &&
     !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
-    !es.notesEditFor && !es.briefEditMode && !es.retireMode
+    !es.notesEditFor && !es.briefEditMode && !es.retireMode && !es.quietMode
   );
 }
 

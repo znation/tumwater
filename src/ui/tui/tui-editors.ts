@@ -5,6 +5,7 @@ import { applyKey } from "./tui-input.js";
 import { pushPromptHistory, recallPromptHistory } from "./tui-prompt-history.js";
 import { createTuiEditorSession } from "./tui-editor-session.js";
 import { createBudgetEditor } from "./tui-editor-budget.js";
+import { createQuietEditor } from "./tui-editor-quiet.js";
 import { createDeferEditor } from "./tui-editor-defer.js";
 import { createAttachEditor } from "./tui-editor-attach.js";
 import { createNotesEditor } from "./tui-editor-notes.js";
@@ -99,6 +100,8 @@ interface TuiEditorState {
   briefEditMode: boolean;
   /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
   retireMode: boolean;
+  /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
+  quietMode: boolean;
 }
 
 /** The prompt-line editor subsystem `createTuiKeys` constructs: the aggregator that owns the
@@ -124,8 +127,9 @@ interface TuiEditors {
 
 /** The prompt-line editor half of the createTuiKeys closure: a thin aggregator that builds the
  * shared prompt-line session (tui-editor-session.ts) and the set of mutually-exclusive modal
- * editors on it — budget Ctrl+B, role-prompt Ctrl+R, defer Ctrl+L, pause Ctrl+F/Ctrl+Q, answer,
- * entry-edit, queued-edit, and the `/` search — each with its own saved-draft pair and exit
+ * editors on it — budget Ctrl+B, quiet-hours Ctrl+O, role-prompt Ctrl+R, defer Ctrl+L, pause
+ * Ctrl+F/Ctrl+Q, answer, entry-edit, queued-edit, and the `/` search — each with its own
+ * saved-draft pair and exit
  * helper in its own module beside the session. `handleKey` routes each key to the editors in
  * today's priority order (each module returns true when it consumed the key and false to fall
  * through, so the mutually-exclusive/busy-guard ordering is preserved exactly); the session's
@@ -137,6 +141,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const session = createTuiEditorSession(deps);
   const editors: TuiEditorModule[] = [
     createBudgetEditor(session),
+    createQuietEditor(session),
     createDeferEditor(session),
     createAttachEditor(session),
     createNotesEditor(session),
@@ -206,7 +211,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, defer, pause and search modes keep them out —
     // recalling a prompt into the cap/delay/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.defer && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire) {
+    if (!session.held.budget && !session.held.quiet && !session.held.defer && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -267,6 +272,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         notesEditFor: session.held.notes,
         briefEditMode: session.held.brief,
         retireMode: session.held.retire,
+        quietMode: session.held.quiet,
       };
     },
   };

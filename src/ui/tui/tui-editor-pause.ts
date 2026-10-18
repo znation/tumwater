@@ -81,7 +81,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       key.ctrl && key.name === "f" &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
       !session.held.defer && !session.held.queued && !session.held.answer && !session.held.entry &&
-      !session.held.attach && !session.held.notes && !session.held.retire
+      !session.held.attach && !session.held.notes && !session.held.retire && !session.held.quiet
     ) {
       // Ctrl+F toggles the whole-team pause (mnemonic: **F**leet) through the same
       // pauseTeam/resumeTeam marker writers `tumwater pause`/`resume` and the dashboard's
@@ -113,7 +113,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       key.ctrl && key.name === "q" &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
       !session.held.defer && !session.held.queued && !session.held.answer && !session.held.entry &&
-      !session.held.attach && !session.held.notes && !session.held.retire
+      !session.held.attach && !session.held.notes && !session.held.retire && !session.held.quiet
     ) {
       // Ctrl+Q (mnemonic: **q**uit later) schedules or cancels a graceful team stop through
       // the same requestScheduledStop/cancelScheduledStopMessage cores `tumwater stop --in` /
@@ -178,7 +178,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       !session.held.budget &&
       !session.held.defer && !session.held.pause &&
       !session.held.queued && !session.held.answer && !session.held.entry &&
-      !session.held.notes && !session.held.retire &&
+      !session.held.notes && !session.held.retire && !session.held.quiet &&
       ctx.roleIds.length > 0 &&
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
       key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w" || key.name === "v")
