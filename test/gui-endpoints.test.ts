@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -1235,6 +1235,68 @@ test("handleRoleEnable rejects a missing, blank, non-string, or unknown role wit
   writeJsonFile(configPath(root), { roles: { improve: { enabled: false } } });
   const before = fs.readFileSync(configPath(root), "utf8");
   const post = (body: unknown) => captureJson((res) => handleRoleEnable(fakeReq(JSON.stringify(body)), res, root));
+  // Missing, blank, and non-string roles each answer 400 and leave the file byte-identical.
+  for (const bad of [{}, { role: "  " }, { role: 5 }, { role: null }]) {
+    const rejected = await post(bad);
+    assert.equal(rejected.captured.status, 400);
+    assert.match((rejected.data as { error: string }).error, /role required/);
+    assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "a refused write never touches the file");
+  }
+  // An unknown id is refused through validateConfig's unknown-role answer, writing nothing.
+  const unknown = await post({ role: "bogus" });
+  assert.equal(unknown.captured.status, 400);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "a refused write never touches the file");
+});
+
+function serveRoleDisable(root: string, body: unknown) {
+  return captureJson((res) => handleRoleDisable(fakeReq(JSON.stringify(body)), res, root));
+}
+
+// POST /api/role-disable: the role drawer's two-click Disable action, the drawer half of the
+// enable/disable pair (the Settings card's Enable re-enables). Writes the role's enabled key
+// through the CLI's own setConfigKey (raw JSON literal "false", so the value lands as the
+// boolean checkBoolean expects); the director is refused (it cannot be disabled); an instance
+// id maps to its base role's key; an unknown id is refused through validateConfig.
+test("handleRoleDisable writes roles.<role>.enabled false and answers 200", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { improve: { enabled: true } } });
+  const { captured, data } = await serveRoleDisable(root, { role: "improve" });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, role: "improve", message: "improve: disabled" });
+  // The file on disk is what the running team polls — the write went through setConfigKey.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { improve: Record<string, unknown> }).improve.enabled, false);
+});
+
+test("handleRoleDisable maps an instance id to its base role's key and refuses the director", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { instances: 2, enabled: true } } });
+  // A bare feature-2 style instance id writes the base role's enabled key.
+  const inst = await serveRoleDisable(root, { role: "feature-2" });
+  assert.equal(inst.captured.status, 200);
+  assert.deepEqual(inst.data, { ok: true, role: "feature", message: "feature: disabled" });
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { feature: Record<string, unknown> }).feature.enabled, false);
+  // The director cannot be disabled — a disable is refused and leaves the file byte-identical.
+  const dir = tmpdir();
+  writeJsonFile(configPath(dir), { roles: { director: { enabled: true } } });
+  const before = fs.readFileSync(configPath(dir));
+  const refused = await serveRoleDisable(dir, { role: "director" });
+  assert.equal(refused.captured.status, 400);
+  assert.match((refused.data as { error: string }).error, /the director cannot be disabled/);
+  assert.equal(fs.readFileSync(configPath(dir)).equals(before), true, "a refused write never touches the file");
+  // Enabling the director still answers 200 (it stays harmless, and the Settings card's Enable
+  // is unchanged).
+  const reEnable = await serveRoleEnable(dir, { role: "director" });
+  assert.equal(reEnable.captured.status, 200);
+  assert.deepEqual(reEnable.data, { ok: true, role: "director", message: "director: enabled" });
+});
+
+test("handleRoleDisable rejects a missing, blank, non-string, or unknown role without writing", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { improve: { enabled: true } } });
+  const before = fs.readFileSync(configPath(root), "utf8");
+  const post = (body: unknown) => captureJson((res) => handleRoleDisable(fakeReq(JSON.stringify(body)), res, root));
   // Missing, blank, and non-string roles each answer 400 and leave the file byte-identical.
   for (const bad of [{}, { role: "  " }, { role: 5 }, { role: null }]) {
     const rejected = await post(bad);

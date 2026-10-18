@@ -1,7 +1,8 @@
 /**
  * The dashboard's POST config/budget command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
- * config-set, config-unset, budget, role-cap, role-enable, and notify-test — the
+ * config-set, config-unset, budget, role-cap, role-enable, role-disable, and
+ * notify-test — the
  * post-handler layer onto
  * the config-write domain module. Each handler adapts HTTP and touches no socket beyond its
  * own `res`.
@@ -261,27 +262,45 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
   );
 }
 
-/** Handle POST /api/role-enable: the Settings view's "Disabled roles" card Enable button —
- * re-enables one disabled role (the GUI half of the CLI's `tumwater role <id> --enable`). Same
- * body discipline as /api/role-cap (readPostBody → 400 malformed/non-object, 413 oversized); a
- * missing, non-string, or blank role is a 400 `role required`, and a bare `feature-2` loop id
- * maps to its base role's key (baseRoleOf), so an instance enables the role it belongs to. The
- * director is accepted: it cannot be disabled, so enabling it is harmless and mirrors the CLI's
- * --enable. The write goes through the CLI's own setConfigKey with the raw JSON literal "true"
- * (so JSON.parse yields the boolean checkBoolean expects), and validateConfig's unknown-role
- * check refuses an unknown id as configKeyError's 400 before anything is written. */
-export async function handleRoleEnable(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+/** The shared write behind POST /api/role-enable and POST /api/role-disable: the Settings
+ * card's Enable button and the role drawer's two-click Disable both write
+ * `roles.<base>.enabled` through the CLI's own setConfigKey (raw JSON literal, so JSON.parse
+ * yields the boolean checkBoolean expects), and validateConfig's unknown-role check refuses an
+ * unknown id as configKeyError's 400 before anything is written. Same body discipline as
+ * /api/role-cap (readPostBody → 400 malformed/non-object, 413 oversized); a missing,
+ * non-string, or blank role is a 400 `role required`, and a bare `feature-2` loop id maps to
+ * its base role's key (baseRoleOf), so an instance disables/enables the role it belongs to.
+ * The director cannot be disabled (with it disabled loopIds omits it and no loop dequeues the
+ * operator's inbox), so a disable is refused explicitly; enabling the director stays harmless
+ * and mirrors the CLI's --enable. */
+async function setRoleEnabled(req: http.IncomingMessage, res: http.ServerResponse, root: string, enabled: boolean): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "selfcheck"}');
   if (!body) return;
   const role = body.role;
   if (typeof role !== "string" || role.trim() === "") return badRequest(res, "role required");
   const base = baseRoleOf(role);
+  if (!enabled && base === DIRECTOR_ROLE) return badRequest(res, "the director cannot be disabled");
   const key = `roles.${base}.enabled`;
-  // setConfigKey takes raw CLI text; the JSON literal "true" round-trips to the boolean
+  // setConfigKey takes raw CLI text; the raw JSON literal round-trips to the boolean
   // checkBoolean expects, and validateConfig owns the unknown-role check in writeConfigMutation.
-  const result = setConfigKey(root, key, "true");
+  const result = setConfigKey(root, key, enabled ? "true" : "false");
   if (!result.ok) return configKeyError(res, key, result);
-  sendJson(res, 200, { ok: true, role: base, message: `${base}: enabled` });
+  sendJson(res, 200, { ok: true, role: base, message: `${base}: ${enabled ? "enabled" : "disabled"}` });
+}
+
+/** Handle POST /api/role-enable: the Settings view's "Disabled roles" card Enable button —
+ * re-enables one disabled role (the GUI half of the CLI's `tumwater role <id> --enable`). Body
+ * discipline, role/base mapping, refusal semantics, and the write live in setRoleEnabled. */
+export async function handleRoleEnable(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  await setRoleEnabled(req, res, root, true);
+}
+
+/** Handle POST /api/role-disable: the role drawer's two-click Disable action — disables one
+ * enabled role (the GUI half of the CLI's `tumwater role <id> --disable`, completing the pair
+ * the Settings card's Enable starts). Body discipline, role/base mapping, refusal semantics,
+ * and the write live in setRoleEnabled. */
+export async function handleRoleDisable(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  await setRoleEnabled(req, res, root, false);
 }
 
 /** Handle POST /api/role-quiet-hours: the role drawer's own-window editor sets or clears one

@@ -109,6 +109,7 @@ function drawerEnv(opts: { status?: object | null; responses?: Record<string, un
     pill: (info: { tone: string; label: string }) => `<pill ${info.tone}:${info.label}>`,
     icon: iconStub,
     abortConfirming: () => false,
+    disableConfirming: () => false,
     confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }),
     rolePauseMenuOpen: () => false,
     ROLE_PAUSE_CHOICES: [[3600, "1h"]],
@@ -307,6 +308,34 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(pre.innerHTML, /<span class='l-sep'>── tick 3<\/span>/);
   assert.match(pre.innerHTML, /<span class='l-tool'>→ npm test<\/span>/);
   assert.equal(pre.scrollTop, pre.scrollHeight);
+});
+
+test("the role drawer shows a two-click Disable on an enabled role and none on the director", async () => {
+  // An enabled non-director role carries a Disable button in its action row.
+  const enabled = openDrawer(["toggleLoop"], { status: workingStatus() });
+  enabled.scope.toggleLoop("clean");
+  await flush();
+  const actions = enabled.paintedFor("draweractions");
+  assert.match(actions, /data-action='disable'/);
+  assert.match(actions, /Disable/);
+  assert.match(actions, /btn-danger/);
+  // With the confirm armed, the first-clicked button reads the confirm label.
+  const armed = openDrawer(["toggleLoop"], {
+    status: workingStatus(),
+    overrides: { disableConfirming: () => true },
+  });
+  armed.scope.toggleLoop("clean");
+  await flush();
+  assert.match(armed.paintedFor("draweractions"), /Click again to disable/);
+  // The director cannot be disabled, so its drawer shows no Disable button.
+  const directorStatus = workingStatus();
+  directorStatus.roles[0]!.role = "director";
+  const dir = openDrawer(["toggleLoop"], { status: directorStatus });
+  dir.scope.toggleLoop("director");
+  await flush();
+  const dirActions = dir.paintedFor("draweractions");
+  assert.doesNotMatch(dirActions, /data-action='disable'/);
+  assert.doesNotMatch(dirActions, /Disable/);
 });
 
 test("loadLoopTicks throttles repeat polls to one fetch per 5 s unless forced, and skips when closed", async () => {

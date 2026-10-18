@@ -31,6 +31,10 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   // abort fires, while a first click on another loop's abort re-arms instead of posting.
   const confirmAbortSlot = confirmSlot(rerender);
   const abortConfirming = (role) => confirmAbortSlot.armed(role);
+  // The drawer's Disable slot: a second click on the same role's Disable fires, a first click
+  // on another role's re-arms — the same per-role keying as the abort slot it sits beside.
+  const confirmDisableSlot = confirmSlot(rerender);
+  const disableConfirming = (role) => confirmDisableSlot.armed(role);
   let roleChooser = null; // { role, action, until }: the one open duration chooser ("pause-for" or "wake-in")
   const roleChooserOpen = (role, action) => Boolean(roleChooser && roleChooser.role === role && roleChooser.action === action && roleChooser.until > Date.now());
   const rolePauseMenuOpen = (role) => roleChooserOpen(role, "pause-for");
@@ -50,19 +54,30 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       confirmAbortSlot.arm(role);
       return;
     }
+    if (action === "disable" && !disableConfirming(role)) {
+      confirmDisableSlot.arm(role);
+      return;
+    }
     if ((action === "pause-for" || action === "wake-in") && forSeconds === undefined) {
       roleChooser = { role, action, until: Date.now() + 10000 };
       rerender();
       return;
     }
     confirmAbortSlot.disarm();
+    confirmDisableSlot.disarm();
     roleChooser = null;
     const pausing = action === "pause" || action === "pause-for";
     const timed = action === "pause-for" && forSeconds > 0;
-    const path = action === "abort" ? "/api/abort" : action === "reset-counters" ? "/api/reset-counters" : action === "wake-cancel" ? "/api/wake-cancel" : pausing || action === "resume" ? "/api/pause-role" : "/api/wake";
+    const path = action === "abort" ? "/api/abort" : action === "disable" ? "/api/role-disable" : action === "reset-counters" ? "/api/reset-counters" : action === "wake-cancel" ? "/api/wake-cancel" : pausing || action === "resume" ? "/api/pause-role" : "/api/wake";
     const wakeIn = action === "wake-in";
     const body = pausing || action === "resume" ? { role, paused: pausing, ...(timed ? { forSeconds } : {}) } : wakeIn ? { role, inSeconds: forSeconds } : { role };
     await postAction(path, body, (d) => {
+      if (action === "disable") {
+        // The role drops out of d.roles on the next poll, so without closing it the open
+        // drawer would fall to its "no longer part of the team" head.
+        closeDrawer();
+        return d && typeof d.message === "string" ? d.message : role + ": done";
+      }
       let msg = d && typeof d.message === "string" ? d.message : action === "wake-cancel" ? role + ": scheduled wake cancelled" : role + ": done";
       if (wakeIn && !(d && typeof d.message === "string")) msg = role + " wakes in " + humanSeconds(forSeconds);
       else if (timed) msg = role + " paused for " + humanSeconds(forSeconds);

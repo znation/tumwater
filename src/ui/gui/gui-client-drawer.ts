@@ -137,6 +137,9 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         "' data-role='" + esc(l.role) + "'>" + esc(c[1]) + "</button>").join("");
     } else actions += btn("pause", "pause", "Pause") + btn("pause-for", "clock", "Pause for…");
     actions += btn("reset-counters", "refresh", "Reset counters");
+    // The two-click Disable, the drawer half of the enable/disable pair (the Settings card's
+    // Enable re-enables). The director cannot be disabled, so it shows no Disable button.
+    if (l.role !== "director") actions += disableConfirming(l.role) ? btn("disable", "x", "Click again to disable", "btn-danger confirming") : btn("disable", "x", "Disable", "btn-danger");
 
     const working = info.live || info.key === "vetted"; // vocabulary-ok: the persisted phase key
     const now = working

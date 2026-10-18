@@ -25,28 +25,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - docs/cli.md's `tumwater queue` clause names the revision note.
 - `npm test` passes.
 
-### The dashboard role drawer disables a role, completing the enable/disable pair (planned 2026-10-18 by the plan role; independent of the blocked plain-terms series and of the in-flight per-role drawer plans — it edits the same config-handler, drawer, boot and loops files as those, a rebase either way, and no plain-terms file; touches src/gui/gui-config-commands.ts src/gui/gui-endpoint-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-loops.ts src/ui/gui/gui-client-drawer.ts docs/cli.md test/gui-endpoints.test.ts test/gui-client-drawer.test.ts)
-
-**Goal.** `tumwater role <id> --disable` writes `roles.<base>.enabled: false` and its `--enable` twin writes `true`, and the dashboard Settings card lists every disabled role and re-enables one (`POST /api/role-enable` → `handleRoleEnable`). No dashboard control disables an enabled role: the role drawer's actions are Message/Abort/Wake/Pause/Reset only, and `roles.<base>.enabled` is the per-role write the drawer cannot make once the already-queued instances and model-triple editors land. Add a two-click `Disable` to the drawer, writing the same key through the same `setConfigKey` path, so the drawer disables and the Settings card re-enables.
-
-**Approach.**
-- **src/gui/gui-config-commands.ts** — factor the body of `handleRoleEnable` into one private `async function setRoleEnabled(req, res, root, enabled: boolean)` (same `readPostBody` discipline, same missing/blank/non-string role → 400 `role required`, same `base = baseRoleOf(role)`, same `setConfigKey(root, `roles.${base}.enabled`, enabled ? "true" : "false")` and `configKeyError`, same 200 `` { ok: true, role: base, message: `${base}: enabled` } ``). Add `enabled === false && base === DIRECTOR_ROLE` → 400 `the director cannot be disabled` (the CLI's rule; `true` stays accepted, so the Settings card's re-enable is unchanged). Export `handleRoleEnable` (calls `setRoleEnabled(..., true)`, keeping its `/api/role-enable` contract) and the new `handleRoleDisable` (calls `setRoleEnabled(..., false)`), and name both in the module doc's handler list.
-- **src/gui/gui-endpoint-commands.ts** — export `handleRoleDisable` on the barrel line beside `handleRoleEnable`.
-- **src/gui/gui-server.ts** — add `"POST /api/role-disable": (req, res) => handleRoleDisable(req, res, root),` beside the `role-enable` route; import `handleRoleDisable`.
-- **src/ui/gui/gui-client-loops.ts** — beside `confirmAbortSlot`, add `const confirmDisableSlot = confirmSlot(rerender); const disableConfirming = (role) => confirmDisableSlot.armed(role);`. In `rowAction`, mirror the abort arm: `if (action === "disable" && !disableConfirming(role)) { confirmDisableSlot.arm(role); return; }`, then add `action === "disable" ? "/api/role-disable"` to the path chain, `{ role }` to the body, and in the callback `closeDrawer()` (the role leaves `d.roles` on the next poll, so the open drawer would otherwise fall to its “no longer part of the team” head) and return `d.message`. `closeDrawer` is a function declaration in the later drawer splice, so it is in scope at click time.
-- **src/ui/gui/gui-client-drawer.ts** — in `renderLoopDrawer`'s action row, after `Reset counters`, append for a role other than the director: `disableConfirming(l.role) ? btn("disable", "x", "Click again to disable", "btn-danger confirming") : btn("disable", "x", "Disable", "btn-danger")`. The drawer’s `data-action` buttons already dispatch through `rowAction`, so no new listener is needed.
-- **docs/cli.md** — in the Control-the-roles row's drawer clause (which ends with the Settings card’s Enable sentence), add that the role drawer also disables an enabled role, writing `roles.<base>.enabled` (the director cannot be disabled), and that re-enabling stays on the Settings card.
-
-**Files touched.** Source: src/gui/gui-config-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts. Docs: docs/cli.md. Tests: test/gui-endpoints.test.ts, test/gui-client-drawer.test.ts.
-
-**Acceptance criteria.**
-- `POST /api/role-disable` `{ "role": "improve" }` answers 200 `{ ok: true, role: "improve", message: "improve: disabled" }` and the file holds `roles.improve.enabled === false`; with `roles.feature.instances: 2`, `{ "role": "feature-2" }` writes `roles.feature.enabled === false`.
-- `{ "role": "director" }` answers 400 with `the director cannot be disabled` and leaves the file byte-identical; the existing `handleRoleEnable` director case still answers 200 with `director: enabled`.
-- A missing, blank, or non-string role and an unknown id each answer 400 through the existing `role required` / `validateConfig` paths, writing nothing; `POST /api/role-enable` keeps its current behaviour and message words.
-- The drawer's action row for an enabled `feature` shows a `Disable` button and does not show it for `director`; with a `disableConfirming` stub returning true for that role, the button reads `Click again to disable` and carries `data-action='disable'`.
-- docs/cli.md's Control-the-roles row names the drawer's Disable control and says the director cannot be disabled.
-- `npm test` passes.
-
 ### Plain terms code runner, part 1/14: Move the loop modules to src/runner and their tests to runner names (planned 2026-10-16 by user; requires Plain terms code merge 11a/11, Plain terms code merge 11b/11, Plain terms code merge 11c/11, Plain terms code merge 11d/11, Plain terms code merge 11e/11 and Plain terms code merge 11f/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ + src/roles/loop-ids.ts + src/ui/gui/gui-client-loops.ts + test/loop*.test.ts + test/fixtures/loop-*.ts + every importer + docs/invariants.md + DEVELOPMENT.md)
 
 **Goal.** Mechanical. The per-instance worker's modules and their tests move to `runner` names, with every import path and path citation updated and no identifier changed, so later parts rename symbols inside files that already carry their final names.
@@ -1076,7 +1054,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-
 ## Done
 
 ### The TUI drops its Ctrl+L send later editor (planned 2026-10-18 by the director role; sibling of part 1/2, the dashboard box removal, and independent of it — the two land in either order and whichever is second rebases at docs/cli.md; the CLI's `tumwater prompt --at` stays, out of scope; touches src/ui/tui/tui-editors.ts src/ui/tui/tui-editor-session.ts src/ui/tui/tui-editor-prompt.ts src/ui/tui/tui-input.ts src/ui/tui/tui-frame.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-ctx.ts src/ui/tui/tui-pane-report.ts src/ui/tui/tui-pane-transcript.ts src/ui/tui/tui.tsx and the other tui-editor-*.ts guard clauses; docs/cli.md docs/glossary.md; test/tui-input.test.ts test/tui-keys.test.ts test/tui-frame.test.ts) — done 2026-10-18 by the feature role
@@ -1121,6 +1098,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `git grep -n 'review_error landing prices' -- docs test` prints nothing.
 - The diff changes test-title and assertion-message strings and that citation only, and the suite's test count is unchanged.
 - `npm run test` passes.
+
+### The dashboard role drawer disables a role, completing the enable/disable pair (planned 2026-10-18 by the plan role; independent of the blocked plain-terms series and of the in-flight per-role drawer plans — it edits the same config-handler, drawer, boot and loops files as those, a rebase either way, and no plain-terms file; touches src/gui/gui-config-commands.ts src/gui/gui-endpoint-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-loops.ts src/ui/gui/gui-client-drawer.ts docs/cli.md test/gui-endpoints.test.ts test/gui-client-drawer.test.ts — done 2026-10-18 by the feature role)
+
+**Goal.** `tumwater role <id> --disable` writes `roles.<base>.enabled: false` and its `--enable` twin writes `true`, and the dashboard Settings card lists every disabled role and re-enables one (`POST /api/role-enable` → `handleRoleEnable`). No dashboard control disables an enabled role: the role drawer's actions are Message/Abort/Wake/Pause/Reset only, and `roles.<base>.enabled` is the per-role write the drawer cannot make once the already-queued instances and model-triple editors land. Add a two-click `Disable` to the drawer, writing the same key through the same `setConfigKey` path, so the drawer disables and the Settings card re-enables.
+
+**Approach.**
+- **src/gui/gui-config-commands.ts** — factor the body of `handleRoleEnable` into one private `async function setRoleEnabled(req, res, root, enabled: boolean)` (same `readPostBody` discipline, same missing/blank/non-string role → 400 `role required`, same `base = baseRoleOf(role)`, same `setConfigKey(root, `roles.${base}.enabled`, enabled ? "true" : "false")` and `configKeyError`, same 200 `` { ok: true, role: base, message: `${base}: enabled` } ``). Add `enabled === false && base === DIRECTOR_ROLE` → 400 `the director cannot be disabled` (the CLI's rule; `true` stays accepted, so the Settings card's re-enable is unchanged). Export `handleRoleEnable` (calls `setRoleEnabled(..., true)`, keeping its `/api/role-enable` contract) and the new `handleRoleDisable` (calls `setRoleEnabled(..., false)`), and name both in the module doc's handler list.
+- **src/gui/gui-endpoint-commands.ts** — export `handleRoleDisable` on the barrel line beside `handleRoleEnable`.
+- **src/gui/gui-server.ts** — add `"POST /api/role-disable": (req, res) => handleRoleDisable(req, res, root),` beside the `role-enable` route; import `handleRoleDisable`.
+- **src/ui/gui/gui-client-loops.ts** — beside `confirmAbortSlot`, add `const confirmDisableSlot = confirmSlot(rerender); const disableConfirming = (role) => confirmDisableSlot.armed(role);`. In `rowAction`, mirror the abort arm: `if (action === "disable" && !disableConfirming(role)) { confirmDisableSlot.arm(role); return; }`, then add `action === "disable" ? "/api/role-disable"` to the path chain, `{ role }` to the body, and in the callback `closeDrawer()` (the role leaves `d.roles` on the next poll, so the open drawer would otherwise fall to its “no longer part of the team” head) and return `d.message`. `closeDrawer` is a function declaration in the later drawer splice, so it is in scope at click time.
+- **src/ui/gui/gui-client-drawer.ts** — in `renderLoopDrawer`'s action row, after `Reset counters`, append for a role other than the director: `disableConfirming(l.role) ? btn("disable", "x", "Click again to disable", "btn-danger confirming") : btn("disable", "x", "Disable", "btn-danger")`. The drawer’s `data-action` buttons already dispatch through `rowAction`, so no new listener is needed.
+- **docs/cli.md** — in the Control-the-roles row's drawer clause (which ends with the Settings card’s Enable sentence), add that the role drawer also disables an enabled role, writing `roles.<base>.enabled` (the director cannot be disabled), and that re-enabling stays on the Settings card.
+
+**Files touched.** Source: src/gui/gui-config-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts. Docs: docs/cli.md. Tests: test/gui-endpoints.test.ts, test/gui-client-drawer.test.ts.
+
+**Acceptance criteria.**
+- `POST /api/role-disable` `{ "role": "improve" }` answers 200 `{ ok: true, role: "improve", message: "improve: disabled" }` and the file holds `roles.improve.enabled === false`; with `roles.feature.instances: 2`, `{ "role": "feature-2" }` writes `roles.feature.enabled === false`.
+- `{ "role": "director" }` answers 400 with `the director cannot be disabled` and leaves the file byte-identical; the existing `handleRoleEnable` director case still answers 200 with `director: enabled`.
+- A missing, blank, or non-string role and an unknown id each answer 400 through the existing `role required` / `validateConfig` paths, writing nothing; `POST /api/role-enable` keeps its current behaviour and message words.
+- The drawer's action row for an enabled `feature` shows a `Disable` button and does not show it for `director`; with a `disableConfirming` stub returning true for that role, the button reads `Click again to disable` and carries `data-action='disable'`.
+- docs/cli.md's Control-the-roles row names the drawer's Disable control and says the director cannot be disabled.
+- `npm test` passes.
 
 ### The dashboard composer drops its "Send later…" box (planned 2026-10-18 by the director role; sibling of part 2/2, the TUI Ctrl+L removal, and independent of it — the two land in either order and whichever is second rebases at docs/cli.md; the CLI's `tumwater prompt --at` and the queues' `tumwater:not-before` mechanism stay, out of scope; touches src/ui/gui/gui-page.ts src/ui/gui/gui-styles.ts src/ui/gui/gui-client-composer.ts docs/cli.md test/gui-client-composer.test.ts test/gui-client.test.ts — done 2026-10-18 by the feature role)
 
@@ -1550,7 +1549,6 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
   - No `funes` on PATH gives no row.
   - A temp HOME with `.pi/agent/mcp.json` naming a server gets that server listed in the pi row.
 
-
 ### Notes command, part 3/4: Delete the retired notes carriers, the dialect's notes tool and their tests, and update the docs (planned 2026-10-17 by user; requires part 2/4 and OpenCode backend 7/7 landed; design in plans/notes-command.md "Retiring the old carriers"; touches the retired role-notes pi extension and MCP server, src/agent/role-notes-write.ts src/agent/claude/claude-args.ts src/agent/opencode/opencode-config.ts src/prompt/dialect.ts docs/how-it-works.md docs/backends.md scripts/smoke-opencode.mjs and their tests) — done 2026-10-17 by the feature role
 
 **Goal.** After part 2/4, nothing attaches the pi notes extension, the notes MCP server or OpenCode's notes server entry. This part deletes that dead code and its tests, and corrects the docs that still describe the old tools.
@@ -1748,7 +1746,6 @@ This part only adds the command and puts it on every run's PATH. Nothing tells a
 - **src/ui/gui/gui-client-report.ts:** add `reportDeferredOrder(data)` beside `reportModelOrder` (window totals per reason code, count desc then name asc, `Object.hasOwn` reads/seeds like `reportModelOrder`), `chartDeferredByReason(data)` calling `stackChart(data, reportDeferredOrder(data), "deferredByReason", (n) => plural(n, "deferral"), countAxis, true)` beside `chartRunsByModel`, and one block in the Usage render chain, gated like the model chart: `(!d.role && seriesHasAny(d, "deferredByReason") ? block("Deferred runs by reason", chartDeferredByReason(d), "per day · backlog, no-work, plans-full") : "")`. The reason codes are the legend labels, as raw provider keys and model selectors already are.
 - **docs/cli.md:** in the `tumwater report` row, after the `image reroutes (image_reroute hops to a tier that can read images)` clause, insert `, and deferred maintenance ticks tallied as ``Deferred runs by reason`` by the `run_deferred` event's reason (`backlog`, `no-work` or `plans-full`; team report only)` (wording may be tightened; keep it one clause in that row).
 
-
 **Files touched.** Source: src/report/report-data.ts, src/report/report-render.ts, src/ui/gui/gui-client-report.ts. Docs: docs/cli.md. Tests: test/report-data.test.ts, test/report.test.ts, test/gui-client-report.test.ts.
 
 **Acceptance criteria.**
@@ -1757,8 +1754,6 @@ This part only adds the command and puts it on every run's PATH. Nothing tells a
 - `renderReportMarkdown` matches `/^\*\*Deferred runs by reason:\*\* backlog — 2 · no-work — 2$/m` (count desc, then code asc) and `renderSinceReportMarkdown` the same; a role-scoped day report and a role-scoped `--since` report print no `Deferred runs by reason` line and carry no `deferredByReason`; a deferral-free team report prints no line.
 - A new `test/gui-client-report.test.ts` case mirroring "the Runs by model chart stacks per model and reportModelOrder lists each model once": `reportDeferredOrder` lists each code once, count desc then name asc; `chartDeferredByReason` draws one segment per (day, code) with the day's count; `seriesHasAny(d, "deferredByReason")` is false for a series with none and true for one with a code.
 - `npm test` passes. (planned 2026-10-17 by the plan role; independent of every eligible Planned entry — the provider-wait median plan touches src/report, src/ui/gui/gui-client-report.ts and the report tests, and OpenCode 6b/7 and 6d/7 touch src/pi, src/gates, src/status and src/agent/opencode, none of them src/doctor/doctor-checks.ts or its test (the blocked OpenCode 7/7 does edit src/doctor/doctor-checks.ts for its install/models/leaks checks, so whichever lands second rebases); touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts and docs/cli.md)
-
-
 
 ### The dashboards and `tumwater status` name a standing provider failure hold (planned 2026-10-17 by the plan role; the doctor `provider hold` row landed 2026-10-14 and the plan that added it said no status surface names the hold, so this closes that half — `grep -rn "rate_limit\|teamHold" src/status src/ui` is empty; independent of the eligible report plans (no src/report, src/ui/gui or src/ui/tui file) and of OpenCode 7/7 (src/doctor, src/agent/opencode); it shares src/gates/gate-polls.ts and src/status/status-data.ts with the in-flight OpenCode 6b/7, which touches src/gates and src/status, so whichever lands second rebases; the blocked plain-terms code run part 19/20 also reaches src/status, src/team, src/gates and src/orchestrator, far behind part 1/20; touches src/team/team-hold.ts, src/team/orchestrator-info.ts, src/gates/gate-polls.ts, src/status/status-data.ts, src/ui/team-alerts.ts, test/team-hold.test.ts, test/orchestrator-info.test.ts, test/status-data-team.test.ts and test/team-alerts.test.ts) — done 2026-10-17 by the feature role
 
@@ -1806,7 +1801,6 @@ This part only adds the command and puts it on every run's PATH. Nothing tells a
 - **src/report/report-render.ts:** in the day render's `if (data.role === undefined)` merge block (beside the `Merge failures by role` line), add `const mergeFailureReasons = rankedRoleMap(data.mergeFailedByReason ?? {}).filter(([, n]) => n > 0); if (mergeFailureReasons.length > 0) lines.push(rankedRoleLine("Merge failures by reason", mergeFailureReasons, String));`. In the `--since` render's matching block, the same line from `rankedRoleTotals(data.series, (d) => d.mergeFailedByReason ?? {})`. Both reuse `rankedRoleLine`/`rankedRoleMap`/`rankedRoleTotals` (rank count desc then name asc); a reason-free window prints no line, so its output is byte-for-byte unchanged.
 - **src/ui/gui/gui-client-report.ts:** add `reportMergeFailureOrder(data)` beside `reportModelOrder` (window totals per reason code, count desc then name asc, `Object.hasOwn` reads/seeds like `reportModelOrder`), `chartMergeFailuresByReason(data)` calling `stackChart(data, reportMergeFailureOrder(data), "mergeFailedByReason", (n) => plural(n, "merge failure"), countAxis, true)` beside `chartMergeFailuresByRole`, and one block in the Usage render chain after the "Merge failures by role" block: `(seriesHasAny(d, "mergeFailedByReason") ? block("Merge failures by reason", chartMergeFailuresByReason(d)) : "")`.
 - **docs/cli.md:** in the `tumwater report` row, after the `image reroutes (image_reroute hops to a tier that can read images)` clause, insert `, and merge failures tallied as `Merge failures by reason` by each `merge_failed`'s result (a review rejection, a conflict, a blocked fast-forward or a shutdown abort; team report only)` (wording may be tightened; keep it one clause in that row).
-
 
 **Files touched.** Source: src/report/report-data.ts, src/report/report-render.ts, src/ui/gui/gui-client-report.ts. Docs: docs/cli.md. Tests: test/report-data.test.ts, test/report.test.ts, test/gui-client-report.test.ts.
 
@@ -1897,7 +1891,6 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 - A new case with waits on two keyed providers under a warn (e.g. `maxConcurrentPerProvider: { omlx: 2, acme: 1 }`, totals over the threshold) asserts the detail ranks the busier bucket first and names both `raise maxConcurrentPerProvider.omlx above 2` and `raise maxConcurrentPerProvider.acme above 1`.
 - A waits-on-one-key case keeps the single-bucket wording `(the omlx slot)` (no `also`); a wait whose key has no configured cap contributes its bucket cell but no advice clause; the zero-wait case still reads `no provider waits`.
 - `npm test` passes.
-
 
 ### OpenCode backend, part 6d/7: OpenCode thinking variants and image input come from the catalog (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/agent/opencode/opencode-backend.ts src/agent/opencode/opencode-args.ts and their tests) — done 2026-10-17 by the feature role
 
@@ -1990,7 +1983,6 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 - **The budget gate:** with every tier on `opencode/deepseek-v4.1-flash-free`, the team reads as all-free. At the cap (spend from a priced pi role), the opencode roles keep their primary.
 - **Fallback:** a free OpenCode model works as the budget `fallback` for a priced pi primary.
 - `npm test` passes.
-
 
 ### OpenCode backend, part 6a/7: The models.dev catalog fetch, parse and cache answer whether an OpenCode model is free (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; split 2026-10-17 by the plan role from part 6/7 into parts 6a/7–6d/7; requires part 5b/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/paths.ts test/opencode-catalog.test.ts (new)) — done 2026-10-17 by the feature role
 
@@ -2334,8 +2326,6 @@ This part turns notes on. An OpenCode run that carries notes gets tumwater's rol
 - `test/tui-keys-doc.test.ts` passes (`Ctrl+N` is already a documented letter; the new row names it for Health, so the handled and documented key sets stay equal).
 - `npm run test` passes.
 
-
-
 ### The TUI's backlog entry editor replaces a plan or bug's title and body from a file with a second Ctrl+E, the terminal twin of `tumwater plan|bug --edit <n> --file <path>` (planned 2026-10-17 by the plan role; the Ctrl+E title editor (`createEntryEditor`, src/ui/tui/tui-editor-entry.ts) re-reads the selected entry's body (`entry.body`) and passes it to `tryEditEntry` unchanged on Enter, so the prompt line can change only the one-line title — `grep -rn "editPlanFromText\|editBugFromText\|splitEntryFile\|bodyStructureProblem" src/ui/tui` finds no caller, while the dashboard's entry drawer posts `newTitle`/`newBody` to `handleBacklogEdit` (src/gui/gui-backlog-commands.ts) and the CLI's `plan|bug --edit <n> --file <path>` rewrites title and body line for line through `editPlanFromText`/`editBugFromText` (src/backlog/backlog-write.ts), both already on main; so a multiline plan or bug body is editable from the browser and the CLI but never from the terminal, where the body only grows by filing a new entry. The prompt line is single-line (`applyKey` in src/ui/tui/tui-input.ts inserts only characters `>= " "`), so the body comes from a typed file path, read with `readTextIfExists` (src/files/files.ts) and split by the exported `splitEntryFile`, then written through the same title-checked `tryEditEntry` core the title edit uses. A second Ctrl+E toggles the editor into the file mode and a third back, the way Ctrl+N flips plan↔bug inside the new-entry editor, so no new key or held slot is needed. Independent of the eligible Planned entries: OpenCode part 5/7 touches no src/ui/tui file, the TUI Health reclaim Ctrl+E plan edits tui-pane-health.ts and tui-panes.ts, and the TUI notes Ctrl+E plan edits its own editor modules plus tui-panes.ts/tui-frame.ts; this plan does not touch tui-editor-session.ts, tui-editors.ts, tui-keys.ts, tui.tsx or tui-panes.ts at all, sharing only tui-frame.ts's one entry-edit hint line and docs/cli.md with the notes plan, which rebase. Touches src/ui/tui/tui-editor-entry.ts, src/ui/tui/tui-frame.ts, docs/cli.md, test/tui-keys.test.ts and test/tui-frame.test.ts — done 2026-10-17 by the feature role)
 
 **Goal.** With a plan or open bug selected in the Backlog pane, Ctrl+E opens the title editor as today; pressing Ctrl+E again switches the same editor to a file-path field whose file replaces the whole entry — first non-blank line as the heading, every later line as the body, `splitEntryFile`'s rule — through `tryEditEntry`, so the entry keeps its position and its `(planned …)`/`(found by …)` stamp. The change flashes `edited <kind> #<n>: <title>` and commits to main through `session.commitBacklogEdit`, the same path the title edit and Ctrl+N use. A missing file, an empty path, a file with no title line, and a body carrying a `## `/`### ` heading outside a code fence all flash and stay in the file mode with nothing written; Esc cancels the whole edit; a title edit is unchanged.
@@ -2360,7 +2350,6 @@ This part turns notes on. An OpenCode run that carries notes gets tumwater's rol
 - `test/tui-keys-doc.test.ts` passes (`Ctrl+E` is already named for Backlog).
 - `npm run test` passes.
 
-
 ### The TUI's Health view runs one manual reclaim pass with Ctrl+E, the terminal twin of the dashboard disk row's reclaim button (planned 2026-10-17 by the plan role; the dashboard's Team sidebar disk row is the only surface that can free space: its icon button posts `/api/reclaim` (`handleReclaim`, src/gui/gui-operator-commands.ts) onto `runManualReclaim` (src/operator/operator-intent.ts), the same core `cmdReclaim` (src/operator/operator-commands.ts) calls, while `grep -rn runManualReclaim src/ui/tui` finds no caller, so an operator watching the TUI's low-disk alert or its doctor `free-disk` row must leave for a terminal or the browser. The Health view (`createHealthPane`, src/ui/tui/tui-pane-health.ts) is the TUI's diagnosis surface and already re-runs the doctor with Ctrl+R, so the remedy lives beside it; Ctrl+E is free on Health — the router line `if (key.ctrl && key.name === "e") return report.handleKey?.(key, ctx) ?? false;` in src/ui/tui/tui-panes.ts sends Ctrl+E only to the report panes today, so it needs a Health check ahead of that. Independent of the eligible Planned entries: the TUI restart Ctrl+R plan edits tui-editor-pause.ts, the TUI notes Ctrl+E plan edits its own editor modules plus tui-panes.ts/tui-frame.ts, and OpenCode part 5/7 touches no src/ui/tui file; this shares only tui-panes.ts's Ctrl+E router line and tui-frame.ts's Health hint branch with them, and no editor file. Touches src/ui/tui/tui-pane-health.ts, src/ui/tui/tui-panes.ts, src/ui/tui/tui-frame.ts, docs/cli.md, test/tui-keys.test.ts and test/tui-frame.test.ts — done 2026-10-17 by the feature role)
 
 **Goal.** While the Health view is up, Ctrl+E runs one manual reclaim pass through `runManualReclaim` — the exact core `tumwater reclaim` (`cmdReclaim`, src/operator/operator-commands.ts) and the dashboard's `/api/reclaim` call — and flashes its confirmation verbatim: `reclaim requested — …` when a live team will consume the marker, or the in-process pass's `reclaimed … — freed …` / `nothing to reclaim` when nothing is running. The doctor checks re-run so the pane's free-disk row reflects what the pass freed. The key is inert on every other view (Usage and Failures keep their Ctrl+E trailing-window cycle, Backlog and Inbox their edit), and a disk-write failure flashes instead of killing the TUI.
@@ -2380,7 +2369,6 @@ This part turns notes on. An OpenCode run that carries notes gets tumwater's rol
 - `test/tui-frame.test.ts`: `assert.match(hint({ kind: "health" }), /Ctrl\+E reclaim disk/)`.
 - `test/tui-keys-doc.test.ts` passes unchanged (`Ctrl+E` is already named in the table).
 - `npm run test` passes.
-
 
 ### The TUI's Activity view applies the pending self-redeploy with Ctrl+R, the terminal twin of `tumwater restart` and the dashboard update alert's restart button (planned 2026-10-17 by the plan role; the update alert already renders in the TUI's attention lines (`teamAlerts`'s `build` alert, shown by `alertLines` in src/ui/tui/tui-frame.ts), but the terminal cannot act on it: `grep -rn requestRestart src/ui` finds no caller, while the CLI (`cmdRestart`, src/operator/operator-commands.ts), the dashboard (`handleRestart`, src/gui/gui-operator-commands.ts) and the alert's refresh button all write the marker through `requestRestart` (src/operator/operator-intent.ts). Ctrl+R is free on Activity — docs/cli.md gives it to Transcript, Backlog, Pending and Health — and `ctx.view === 0` is Activity, the guard the attach editor's Ctrl+V already uses; the key reaches `createPauseEditor` (src/ui/tui/tui-editor-pause.ts), the team-lifecycle editor that owns Ctrl+F pause and Ctrl+Q stop. Independent of every eligible Planned entry: the OpenCode part 5/7 plan touches no src/ui/tui file, and the TUI notes Ctrl+E plan's new code lives in its own editor modules and tui-editor-session/tui-editors/tui-panes, sharing only tui-frame.ts and docs/cli.md with this one. Touches src/ui/tui/tui-editor-pause.ts, src/ui/tui/tui-frame.ts, docs/cli.md, test/tui-operator-keys.test.ts and test/tui-frame.test.ts — done 2026-10-17 by the feature role)
 
@@ -2834,7 +2822,6 @@ This part names those capabilities per backend id and makes each of those places
 - None of the places listed in the design's table tests a backend id by its literal any more. The claude subscription places listed under Out of scope still do.
 - Every existing test passes unchanged, and `npm test` passes.
 
-
 ### `tumwater restart` applies a pending self-redeploy from the terminal, waiving the cooldown — the CLI twin of the dashboard update alert's refresh button (planned 2026-10-17 by the plan role; the only caller of `requestRestart` today is `handleRestart` (POST `/api/restart`) in src/gui/gui-operator-commands.ts, whose own doc comment says it is "the same marker-writing core a CLI surface would call", and `tumwater help` lists no `restart`; independent of every Planned entry — the in-flight `prompt --top`/image-attach plans and the pane split touch no src/operator or src/cli marker file, and only docs/cli.md is shared, a one-clause edit, so either lands first; touches src/operator/operator-commands.ts, src/cli/cli-marker-commands.ts, src/cli.ts, src/cli/help.ts, docs/cli.md, docs/how-it-works.md, test/help.test.ts and test/cli-operators.test.ts — done 2026-10-17 by the feature role)
 
 **Goal.** When tumwater is building itself, a stale running build shows `Update available`; `autoRestart` applies it at most once every 12 hours, and the dashboard's update alert has a refresh button that waives that cooldown and starts the pending update now (`docs/how-it-works.md` "Updates"). That button is `handleRestart` (`src/gui/gui-operator-commands.ts`), which calls `requestRestart(root)` (`src/operator/operator-intent.ts`) to write the `.tumwater` restart marker the orchestrator consumes through `consumeRestartRequest` (`src/operator/operator-requests.ts`), which calls `redeployer.forceRestart()`. No CLI command reaches that core: `tumwater help` has no `restart` stanza, `src/cli.ts`'s switch has no case, and `markerCommandCores` (`src/cli/cli-marker-commands.ts`) lists neither — so a terminal-only operator must open the dashboard or wait out the cooldown. Add `tumwater restart`: a marker command that calls `requestRestart` and prints its message verbatim (or fails with its error, `no update is waiting — tumwater is current with main`, when the running build is not stale), matching the dashboard button. It takes no flags (the body is ignored there too; `--role` is meaningless), and with no team running the marker is written harmlessly for the next run's first poll, exactly as the GUI handler's twin test pins.
@@ -2856,7 +2843,6 @@ This part names those capabilities per backend id and makes each of those places
   - `tumwater restart extra` and `tumwater restart --role feature` fail (unknown arg) and leave `restartRequestPath` absent.
 - `test/help.test.ts`'s `ALL_COMMANDS` oracle gains `"restart"` (its sync test then requires the help stanza), so `helpTopic("restart")` resolves. `test/cli-doc.test.ts` passes with the new `docs/cli.md` mention (no new long flag).
 - `npm run test` passes.
-
 
 ### The TUI's prompt line attaches an image path to the next director prompt with Ctrl+V, the terminal twin of `tumwater prompt --attach <path>` and the dashboard composer's drop/paste (planned 2026-10-17 by the plan role; the last prompt capability the TUI's prompt line lacks — `tumwater prompt --attach` and the dashboard composer both attach images, and the core `submitRolePrompt(root, role, text, images, notBeforeMs)` already takes a `PromptImageInput[]` — and independent of the in-flight "Split the TUI pane monolith" plan and of the two in-flight Ctrl+V plans, whose keys live in the Transcript and Backlog views while this editor is bound to the Activity view and lives in new src/ui/tui/tui-editor-attach.ts, which none of them touch; it shares the tui-frame.ts hint/prefix branches with the reset plan, a rebase either way; touches src/ui/tui/tui-editor-attach.ts (new), src/ui/tui/tui-editor-session.ts, src/ui/tui/tui-editors.ts, src/ui/tui/tui-frame.ts, src/ui/tui/tui.tsx, src/inbox/inbox-attachments.ts, src/inbox/prompt-commands.ts, docs/cli.md, test/tui-attach.test.ts (new), test/tui-frame.test.ts — done 2026-10-17 by the feature role)
 
@@ -2880,7 +2866,6 @@ This part names those capabilities per backend id and makes each of those places
 - `test/tui-frame.test.ts`: the Activity `hintLine` assertion matches `/Ctrl\+V attach image/`; a `promptPrefix` case with `images: 2` renders `2 images` after the target.
 - `test/tui-keys-doc.test.ts` passes: the new editor's `key.ctrl &&` / `key.name === "v"` line puts `V` in the handled set, and the new docs table row this plan adds puts `Ctrl+V` in the documented set, so the two sets still agree. (If the in-flight reset or move-to-top plan lands first, its `V` already puts `Ctrl+V` in the table — the sets are sets, so the check holds either way.)
 - `npm run test` passes.
-
 
 ### The TUI's Backlog pane moves the selected plan or bug to the head of its section with Ctrl+V, the terminal twin of `tumwater plan|bug --top <n>` and the dashboard's Move to top (planned 2026-10-17 by the plan role; the last backlog write the dashboard has and the TUI lacks, sibling of the in-flight Ctrl+R release; touches src/ui/tui/tui-panes.ts, src/ui/tui/tui-frame.ts, docs/cli.md, docs/invariants.md, test/tui-keys.test.ts, test/tui-frame.test.ts — done 2026-10-17 by the feature role)
 
@@ -3025,7 +3010,6 @@ This part names those capabilities per backend id and makes each of those places
 - `test/doctor.test.ts`'s pinned check-name list gains `"stale prompts"` immediately after `"stale merge-queue entries"`.
 - `npm run test` passes.
 
-
 ### `tumwater history --summary` tallies each role's run time beside its tokens and cost, and the GUI Summary table shows the column (planned 2026-10-17 by the plan role; independent of every Planned and blocked entry — it touches only src/history, src/ui/gui/gui-client-history.ts, one clause in docs/cli.md and one in src/cli/help.ts; the blocked plain-terms run series edits src/history only in its later parts, and no in-flight plan edits these files; touches src/history/history-data.ts, src/history/history-render.ts, src/ui/gui/gui-client-history.ts, src/cli/help.ts, docs/cli.md, test/history-data.test.ts, test/cli-history-filtering.test.ts and test/gui-client-history.test.ts) — done 2026-10-17 by the feature role
 
 **Goal.** `tumwater history --summary` and the dashboard History Summary table tally each role's runs by outcome class, output tokens, and cost — but not how much wall-clock those runs consumed. `TickRow.durationMs` already carries each completed run's span (paired from the tick's `run_start` by `tickSpanMs`, null only when rotation lost the start), and the failure digest already prices loss in agent-hours, so the number is on hand; the per-role summary is the one tally that omits it. Add a `time` column: the sum of each role's run spans among the summarized rows (and the total), so an operator reads how much agent wall-clock the team actually spent beside the tokens and cost it burned.
@@ -3051,7 +3035,6 @@ This part names those capabilities per backend id and makes each of those places
 - `test/gui-client-history.test.ts`'s `histSummaryHtml paints one row per loop plus the total…` header loop gains `"Time"`, and a fixture row with a timed span asserts its `fmtSpan` cell (`60m` for an hour — the page's formatter favors minutes under two hours, so the plan's `1h` expectation applies to the CLI's `humanSeconds`, not the GUI's `fmtSpan`) while one without the field asserts `—`.
 - `test/cli-run.test.ts`'s `windowSummary counts every tick once…` header regex gains `time` (an assert on the same summary column set the plan's file list omitted).
 - `npm run test` passes.
-
 
 ### Each day's newly filed plans and bugs are counted as `Backlog items opened` — window totals on the day report's totals line and a stacked GUI Usage chart beside `Backlog items done` (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight `Commits by role` GUI chart, which shares `src/ui/gui/gui-client-report.ts` but adds a different builder and render-chain slot; the in-flight plain-terms part 11f rewrites comments in `src/backlog/backlog.ts` while this adds one function there, so whichever lands second rebases; touches src/backlog/backlog.ts, src/report/report-data.ts, src/report/report-render.ts, src/ui/gui/gui-client-report.ts, docs/cli.md, test/report-data.test.ts, test/report.test.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 
@@ -3081,7 +3064,6 @@ This part names those capabilities per backend id and makes each of those places
 - New test in `test/gui-client-report.test.ts`, modelled on ``the Backlog items chart stacks features and bugs per day and seriesHasBacklogItems gates it``: through `clientScope` with regions `["format", "report-chart"]` and builders `["chartCommits", "chartBacklogItemsOpened", "seriesHasBacklogAdded"]`, day 1 with `plansAdded: 2, bugsFiled: 1` and day 3 with `bugsFiled: 3`; the `<rect>` titles of `chartBacklogItemsOpened(data)` are exactly `["2026-09-01: 2 plans added", "2026-09-01: 1 bug filed", "2026-09-03: 3 bugs filed"]` (zero segments draw no rect); `seriesHasBacklogAdded` is false for a series with neither field and true for the fixture; its x-axis label count equals `chartCommits(data)`'s.
 - The `usage` render chain carries the new block: reading the edited `usage` render closure shows the `block("Backlog items opened", …)` term immediately before the `Backlog items done` term (the chain has no view-render test, as the sibling chart blocks also have none).
 - `npm run test` passes.
-
 
 ### The GUI Usage view charts each day's `Commits by role` as a stacked per-role element, the per-role split of the `Merged commits` total (planned 2026-10-17 by the plan role; independent of the in-flight `Merged by role` chart and of the plain-terms comment parts 11b/11 and 11e/11 — a different builder, seed line and render-chain slot in the same file, so all three land in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 
@@ -3188,7 +3170,6 @@ view renders.
   chart blocks also have none).
 - `npm run test` passes.
 
-
 ### Plain terms code merge, part 11b/11: Rewrite the merge family in the operator surfaces' comments (planned 2026-10-17 by the plan role; re-scoped 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11e/11 and 11f/11; design in plans/terminology.md "Code names"; touches comments in src/ui/ src/gui/ src/cli/ src/orchestrator/ and src/roles/) — done 2026-10-17 by the feature role
 
 **Goal.** Same as part 11a for the operator surfaces: the merge family's identifiers and file names are already renamed and guarded (`RETIRED` in test/retired-names.test.ts carries the family; parts 10/11 and 11/11's identifier halves landed). What remains is comment prose. This part rewrites the merge family in the comments of the operator-surface modules so a reader sees `merge`, `merged` and `approved` where the code merges.
@@ -3220,7 +3201,6 @@ view renders.
 - `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/config src/pi src/redeploy src/pi-extension src/agent`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
 - The diff changes comment lines only.
 - `npm run test` passes.
-
 
 ### Plain terms code merge, part 11f/11: Rewrite the merge family in the backlog, prompt and support modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11b/11 and 11e/11; design in plans/terminology.md "Code names"; touches comments in src/prompt/ src/backlog/ src/doctor/ src/operator/ src/history/ src/text/ src/budget/ src/files/ src/inbox/ src/team/ src/init/ and src/paths.ts) — done 2026-10-17 by the feature role
 
@@ -3598,7 +3578,6 @@ docs/cli.md, test/tui-keys.test.ts, test/tui-frame.test.ts, test/gui-client-sett
   - `seriesHasMergeWaitMedian` is false for a series where only `checkMedianMs` is set, and true for the three-day series.
 - The existing tests in `test/gui-client-report.test.ts` pass unchanged.
 - `npm run test` passes.
-
 
 ### `tumwater doctor --problems` prints only the warn and fail rows (planned 2026-10-17 by the plan role) — done 2026-10-17
 
@@ -4034,7 +4013,6 @@ the listed directories, and adds a grep for leftover words to the acceptance cri
 - In every comment paragraph this part edits, only the last line is shorter than the wrap would allow
   (spot-check doctor-backlog.ts's two stale-queue doc comments and maintenance-quota.ts's header).
 - `npm run test` passes.
-
 
 ### The TUI backlog pane's up/down reach the "done recently" and "fixed recently" rows and open each finished entry's full body read-only (planned 2026-10-17 by the plan role; done 2026-10-17 by the feature role; independent of the waiting plain-terms rename series and of the in-flight GUI drawer and `--show <n> --done` plans — touches only src/ui/tui/tui-backlog.ts, tui-pane.ts, tui-keys.ts, tui-panes.ts, tui-editors.ts, src/ui/status-payload.ts, docs/cli.md and their tests)
 
@@ -4499,7 +4477,6 @@ The GUI report charts (`src/ui/gui/gui-client-report.ts`) are out of scope: the 
 - test/doctor-checks.test.ts: for a repo with a declared npm `test` script and two passed `merge`-scope `build_check` events written with `logEvent`, `checkBuildCheck(root)` returns level `ok` with a detail that starts `npm test · passing merge checks in the last 24h took` and ends `(2 runs)`. The existing "checkBuildCheck names the declared script and walks up from a worktree to the installed root" test passes unchanged; its repos log no events.
 - `npm run test` passes.
 
-
 ### A refused plan or bug raises a standing `refused` team alert on the dashboard, the TUI and `tumwater status`, the way an open question does (planned 2026-10-16 by plan; independent of every other Planned entry — touches src/backlog/backlog-eligibility.ts, src/ui/team-alerts.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx and their tests; no src/merge, src/tick, src/doctor or src/ui/gui edit) (done 2026-10-16)
 
 **Goal.** A **Refused** note holds an entry until a human decides ("The objection stands until a human or the director edits the entry"). Today the operator hears about it in three places: one notify page when the refusal lands (`entry_refused`), the `refused` row in `tumwater doctor` (`checkRefusedEntries`, src/doctor/doctor-backlog.ts), and a `[blocked: refused]` mark inside the backlog lists. Once the page has scrolled away, nothing on the surfaces an operator watches says a decision is waiting. The tui-panes split in PLANS.md has been held this way since 2026-10-14. An open question gets a standing indigo banner (the `questions` alert in `teamAlerts`, src/ui/team-alerts.ts) until it is answered. This plan gives refused entries the same kind of standing alert. It is amber, because the operator has to act, and it carries a button that opens the backlog card.
@@ -4958,8 +4935,6 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - Part 2/11's files no longer use the four early names.
 - `npm run test` passes.
 **Landed as.** Every caller of every renamed name moved in this change, so no `@deprecated` aliases were added; only the comments and test names in the two merge-slot files were reworded.
-
-
 
 ### A staged PLANS.md edit that breaks a requires clause gets a staging finding (planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, test/stage-check.test.ts and docs/invariants.md) — done 2026-10-16
 
@@ -5867,7 +5842,6 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - A non-local `baseUrl` never calls the probe: the injected probe counts zero calls.
 - `npm run test` passes.
 
-
 ### Plain terms role ids, part 1/5: Read legacy role ids as their new ids through one alias table (planned 2026-10-16 by user; requires Plain terms state 5/5 and Plain terms commands 6/6 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config-aliases.ts and src/cli/ and the event normalizer plus the persisted role readers) — done 2026-10-16
 
 **Goal.** One table of retired role ids, and every place a role id enters tumwater reads an old id as its new one: typed ids, config keys, old events, and persisted state. This part ships the table empty, so nothing changes yet. Parts 3/5 and 4/5 each add one row and get every alias for free.
@@ -6193,7 +6167,6 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - `tumwater help retire` output contains `accepted while its branch or merge ref remains`. Extend the "tumwater help retire shows the command's usage stanza" test with that match.
 - When the doctor follow-through applied, its updated test passes as described above.
 - `npm run test` passes.
-
 
 ### Plain terms state, part 3/5: Add the startup migration hook and move the land queue to merge-queue (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "State and git"; touches src/orchestrator/ src/paths.ts src/landing/ src/loop/leftover.ts src/tick/tick-stage.ts src/status/status-data.ts src/events/ test/) — done 2026-10-16
 
@@ -6554,7 +6527,6 @@ This is a behavior change for accounts that allow extra usage. Without a later C
 - An API-billed Claude step with $2 left on its cap gets `--max-budget-usd 2` or less.
 - Existing configs with only free fallbacks resolve exactly as before, and `npm test` passes.
 
-
 ### Plain terms event log, part 8/9: Switch the remaining event call sites to source (done 2026-10-16; planned 2026-10-16 by user; requires part 7/9 landed; design in plans/terminology.md "Event log"; touches src/gates/ src/orchestrator/ src/fleet/ src/redeploy/ src/operator/ src/config/ src/scheduling/ src/process/ src/gui/ src/cli/ test/)
 
 **Goal.** Mechanical. Stage 2 of "Widely used fields", second directory group. After this part, no src module passes `loop` or `"harness"` as an event source.
@@ -6606,7 +6578,6 @@ Today its prompt goes back to the inbox after each failed run and runs again on 
 - `npm test` passes.
 
 **Landed differently.** The BUGS.md director-hold bug was already fixed before this part, so no fix was made here. `pollBudgetGate` returns a `directorConfig` (the live config, or the tier-fallback view while the window move stands and the director's own model job is subscription Claude); `gateRoleConfig` takes it as an optional fourth argument and both callers pass it (the scheduler through `FleetGatePoll`, the landing author through `LandingPipelineContext`). `src/orchestrator/orchestrator-scheduling.ts` needed no change: the director's provider is read from its runner config, so a moved director is no longer on the `claude` hold. Tests are in test/budget-gates.test.ts and test/gate-polls.test.ts; no orchestrator test with a fake claude was added.
-
 
 ### `tumwater plan --top <n>` and `tumwater bug --top <n>` move an entry to the head of its section so feature or bugfix picks it next (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-write.ts, src/backlog/backlog-cli.ts, src/cli.ts, src/cli/help.ts, docs/cli.md and their tests; done 2026-10-16)
 
@@ -7784,7 +7755,6 @@ This part makes a used-up window a reason to move. While a window is rejected, e
 - Completion still offers every visible command and flag.
 - `npm run test` passes.
 
-
 ### Plain terms text, part 18/19: Role instructions and backlog hold marks (planned 2026-10-16 by user; requires part 9/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/roles/role-catalog.ts + src/roles/role-guidance.ts + holdMark in src/backlog/backlog-eligibility.ts + tests; done 2026-10-16)
 
 **Goal.** Each built-in role's instructions use the glossary. Models act on this text every run, so it speaks of roles, runs, merges, the team, the brief, notes and the user. The backlog index and `tumwater backlog` mark every held entry `[blocked: …]`, and the instructions that tell roles to skip held entries describe those marks.
@@ -8403,7 +8373,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The orchestrator's branch-moved warning says "your checkout".
 - `npm run test` passes.
 
-
 ### Plain terms text, part 3/19: The status table and header badges and alerts use the glossary (done 2026-10-16; planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/ui/status-render.ts + src/ui/badges.ts + src/ui/fleet-alerts.ts + src/ui/tone.ts + src/ui/tick-progress-model.ts + src/status/ + nextRunPhrase in src/text/datetime.ts + tests)
 
 **Goal.** `tumwater status`, the TUI's table and header, and the alerts that the dashboard banner and the TUI's attention lines share all read in plain terms:
@@ -8688,7 +8657,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - worktree-pool's warnings say "workspace". The restart hand-off warnings say "merge" and "restart".
 - The headed modules pass the guard.
 - `npm run test` passes.
-
 
 ### Plain terms text, part 14/19: Config validation and init and version messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/config/ + src/init/ + src/version.ts + tests) — done 2026-10-16
 
@@ -9289,7 +9257,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `grep -rn "tumwater run" src scripts` matches only comments.
 - `spawnRunChild` still passes `run`, with the comment above.
 - `npm run test` passes.
-
 
 ### Plain terms commands, part 1/6: Accept renamed config keys through one alias table starting with mergeBatchMax and maintenancePerWorkMerge (done 2026-10-16; planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/cli/config-commands.ts and src/doctor/ plus the two keys' readers and tumwater.example.json)
 
@@ -13471,5 +13438,4 @@ A refusal note on a blocked plan holds it for good. On 2026-10-12, `feature-2` t
 - Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04; commit 9e00d29)
 - `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30, done 2026-09-30; commit 0dee85db)
 - `tumwater prompt --list` shows how long each prompt has waited — part 1/2, the shared stamp and the CLI (planned 2026-10-01, done 2026-10-01; commit bbd9f5b6)
-
 
