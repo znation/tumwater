@@ -261,6 +261,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
     lines.push(`- Billing: ${p.billing === "api" ? "API" : p.billing}${window}`);
   }
   lines.push(`- Min run interval: ${p.minRunIntervalSeconds}s`);
+  if (p.instances !== undefined) lines.push(`- Instances: ${p.instances}`);
   lines.push(`- Inbox: ${p.inboxCount}`);
   // The loop's own spend over its retained event window (role-view.ts's usage, summed from the
   // same run_end events recentOutcomes reads): how much the loop burned on tokens and cost,

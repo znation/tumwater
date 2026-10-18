@@ -722,6 +722,84 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
   assert.equal(JSON.parse(afterRefusals).maxDailyCostUsdPerRole, undefined, "no cap write from the refused invocations");
 });
 
+test("role --instances/--clear-instances write the role's parallel-runner count", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role instances");
+  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+
+  // `--instances <n>` writes roles.feature.instances through the config core.
+  let r = await cli(repo, "role", "feature", "--instances", "3");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: instances set to 3/);
+  assert.equal(config().roles.feature.instances, 3);
+
+  // An instance id targets its base role: feature-2 writes the .feature key.
+  r = await cli(repo, "role", "feature-2", "--instances", "3");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.feature.instances, 3);
+
+  // The write is visible: `tumwater role feature` and feature-2 render an Instances line.
+  r = await cli(repo, "role", "feature");
+  assert.match(r.stdout, /- Instances: 3/);
+  r = await cli(repo, "role", "feature-2");
+  assert.match(r.stdout, /- Instances: 3/);
+  r = await cli(repo, "role", "feature-2", "--json");
+  assert.match(r.stdout, /"instances": 3/);
+
+  // A clear removes the key; `--instances ""` clears it too, and a clear writes nothing when
+  // the key is already unset.
+  r = await cli(repo, "role", "feature", "--clear-instances");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: instances cleared/);
+  assert.equal(config().roles.feature.instances, undefined);
+  const bytesAfterClear = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--clear-instances");
+  assert.equal(r.code, 0);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytesAfterClear, "clearing an unset key writes nothing");
+  r = await cli(repo, "role", "feature", "--instances", "2");
+  assert.equal(r.code, 0);
+  r = await cli(repo, "role", "feature", "--instances", "");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: instances cleared/);
+  assert.equal(config().roles.feature.instances, undefined);
+
+  // A malformed count fails with validateConfig's message naming the key, leaving the file
+  // unchanged.
+  const before = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  for (const bad of ["0", "9", "1.5", "abc"]) {
+    r = await cli(repo, "role", "feature", "--instances", bad);
+    assert.equal(r.code, 1, bad);
+    assert.match(r.stderr, /roles\.feature\.instances/);
+    assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, `file unchanged on ${bad}`);
+  }
+  // Only feature and bugfix may split: the director and every other role are refused.
+  r = await cli(repo, "role", "steward", "--instances", "2");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /only valid for feature and bugfix/);
+  r = await cli(repo, "role", "director", "--instances", "2");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /only valid for feature and bugfix/);
+  // An unknown id is refused, writing nothing.
+  r = await cli(repo, "role", "bogus", "--instances", "2");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus/);
+
+  // Mutually exclusive or inapplicable flags are refused and write nothing.
+  r = await cli(repo, "role", "feature", "--clear-instances", "--instances", "2");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /give --clear-instances or --instances, not both/);
+  r = await cli(repo, "role", "feature", "--instances", "2", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to an instances write/);
+  r = await cli(repo, "role", "feature", "--clear-instances", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to an instances write/);
+  r = await cli(repo, "role", "feature", "--instances", "2", "--cap", "5");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /instances and cap writes cannot share one invocation/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "no write from the refused invocations");
+});
+
 test("role --enable and --disable write the role's enabled state", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role enable disable");

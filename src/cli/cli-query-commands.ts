@@ -64,6 +64,11 @@ const CAP_SPEC = { names: ["--cap"], value: true, valueName: "<usd>" };
 const CLEAR_MIN_RUN_INTERVAL_SPEC = { names: ["--clear-min-run-interval"] };
 const MIN_RUN_INTERVAL_SPEC = { names: ["--min-run-interval"], value: true, valueName: "<seconds>" };
 
+/** `role`'s instances write flags: clear the count, or set it to a parallel-runner count
+ * (an integer from 1 to 8; only feature and bugfix split). */
+const CLEAR_INSTANCES_SPEC = { names: ["--clear-instances"] };
+const INSTANCES_SPEC = { names: ["--instances"], value: true, valueName: "<n>" };
+
 /** `role`'s enabled-state write flags: enable or disable the role, written to
  * roles.<base>.enabled. */
 const ENABLE_SPEC = { names: ["--enable"] };
@@ -81,16 +86,16 @@ const THINKING_SPEC = { names: ["--thinking"], value: true, valueName: "<level>"
 
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
  * neither a flag nor the value of a --role, --notes-file, --instructions-file,
- * --quiet-hours, --cap, --min-run-interval, --provider, --model or --thinking flag. Returns
- * the id (null when
- * absent) and the remaining arguments — flags only, ready for rejectUnknownArgs and
- * sayJsonOrRender. The id may also arrive as --role <id>, the flag spelling every other
- * role-targeting command shares; the collector's caller rejects both spellings at once
- * rather than silently picking one. Lives here because it exists only for this one
+ * --quiet-hours, --cap, --min-run-interval, --instances, --provider, --model or
+ * --thinking flag. Returns the id (null when absent) and the remaining arguments — flags
+ * only, ready for rejectUnknownArgs and sayJsonOrRender. The id may also arrive as
+ * --role <id>, the flag spelling every other role-targeting command shares; the
+ * collector's caller rejects both spellings at once rather than silently picking one.
+ * Lives here because it exists only for this one
  * command's mixed positional/flag vocabulary. */
 function peelRolePositional(args: string[]): { id: string | null; rest: string[] } {
   const valueIdx = new Set<number>();
-  for (const flag of ["--role", "--notes-file", "--instructions-file", "--quiet-hours", "--cap", "--min-run-interval", "--provider", "--model", "--thinking"]) {
+  for (const flag of ["--role", "--notes-file", "--instructions-file", "--quiet-hours", "--cap", "--min-run-interval", "--instances", "--provider", "--model", "--thinking"]) {
     const at = args.indexOf(flag);
     if (at >= 0) valueIdx.add(at + 1);
   }
@@ -412,7 +417,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
   // a repo the team never started in — and a torn one — instead of refusing.
   const { id: positional, rest } = peelRolePositional(args);
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC]);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
   // a silent pick of one.
@@ -429,6 +434,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const clearQuiet = rest.includes("--clear-quiet-hours");
   const clearCap = rest.includes("--clear-cap");
   const clearInterval = rest.includes("--clear-min-run-interval");
+  const clearInstances = rest.includes("--clear-instances");
   const clearProvider = rest.includes("--clear-provider");
   const clearModel = rest.includes("--clear-model");
   const clearThinking = rest.includes("--clear-thinking");
@@ -437,6 +443,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const quietWrite = clearQuiet || rest.includes("--quiet-hours");
   const capWrite = clearCap || rest.includes("--cap");
   const intervalWrite = clearInterval || rest.includes("--min-run-interval");
+  const instancesWrite = clearInstances || rest.includes("--instances");
   const providerWrite = clearProvider || rest.includes("--provider");
   const modelWrite = clearModel || rest.includes("--model");
   const thinkingWrite = clearThinking || rest.includes("--thinking");
@@ -446,6 +453,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (notesWrite) writes.push("notes");
   if (instructionsWrite) writes.push("instructions");
   if (quietWrite) writes.push("quiet-hours");
+  if (instancesWrite) writes.push("instances");
   if (capWrite) writes.push("cap");
   if (intervalWrite) writes.push("min-run-interval");
   if (providerWrite) writes.push("provider");
@@ -537,6 +545,23 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     const base = baseRoleOf(id);
     const secs = flagValue(rest, "--min-run-interval") ?? "";
     writeRoleConfigKey(root, base, clearInterval, secs, `roles.${base}.minRunIntervalSeconds`, "min run interval", (v) => v, (v) => `${v}s`);
+    return;
+  }
+  // The instances write: the terminal twin of `config set roles.<base>.instances <n>`, the
+  // last per-role hold's write. The count lands in roles.<base>.instances through the same
+  // setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig's
+  // roles.<id>.instances INSTANCE_COUNT check owns the bound and the write is atomic. As
+  // with min run interval there is no director (or non-instance-role) refusal of its own:
+  // validateConfig's `!INSTANCE_ROLES.has(id)` branch answers for the director and every
+  // custom role, and an unset/empty value clears the key.
+  if (instancesWrite) {
+    if (clearInstances && rest.includes("--instances")) fail("give --clear-instances or --instances, not both");
+    if (rest.includes("--json")) fail("--json does not apply to an instances write");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    const base = baseRoleOf(id);
+    const n = flagValue(rest, "--instances") ?? "";
+    writeRoleConfigKey(root, base, clearInstances, n, `roles.${base}.instances`, "instances", (v) => v, (v) => v);
     return;
   }
   // The model-triple writes: the terminal twins of `config set roles.<base>.provider|model|thinking

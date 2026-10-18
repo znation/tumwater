@@ -106,6 +106,28 @@ test("a seeded built-in role with no file override reports no min-run-interval o
   assert.equal(set.minRunIntervalOverride, 300);
 });
 
+test("the role view reports the configured instance count only when set", () => {
+  const dir = root();
+  writeConfig(dir, { roles: { feature: { instances: 3 } } });
+  const set = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(set.instances, 3);
+  // An instance id resolves through its base role, like instructions and the min-run
+  // override.
+  const inst = rolePayload(dir, "feature-2", NO_MODELS);
+  assert.equal(inst.instances, 3);
+  // A role with no count configured carries no instances field — the payload stays
+  // byte-identical to before.
+  const unset = rolePayload(dir, "bugfix", NO_MODELS);
+  assert.equal("instances" in unset, false);
+});
+
+test("renderRoleMarkdown prints the Instances line only when a count is configured", () => {
+  const dir = root();
+  writeConfig(dir, { roles: { feature: { instances: 3 } } });
+  assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Instances: 3/);
+  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Instances:/);
+});
+
 test("an instance id resolves the instructions override through its base role", () => {
   const dir = root();
   writeConfig(dir, { roles: { feature: { instructions: "Stay small.", instances: 2 } } });

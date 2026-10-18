@@ -117,6 +117,10 @@ export interface RoleViewPayload {
    * only when set — so a payload without one renders the team default and every existing
    * `role --json` golden stays byte-identical. */
   minRunIntervalOverride?: number;
+  /** The configured parallel-runner count (roles.<base>.instances), present only when set —
+   * so a payload without one stays byte-identical to before. Resolved through the base role
+   * like the min-run-interval override, so an instance id shows the count its runs carry. */
+  instances?: number;
   /** The roles.<id>.instructions override verbatim, or null when unset. */
   instructions: string | null;
   /** The role's own find-something-to-do text verbatim (a custom loop's `task`), or null
@@ -388,6 +392,11 @@ export function rolePayload(
     ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
     ...(minRunIntervalOverride !== undefined ? { minRunIntervalOverride } : {}),
+    // The configured parallel-runner count (roles.<base>.instances), present only when the
+    // config sets it — unlike minRunIntervalSeconds no catalog seed fills built-ins' counts,
+    // so the merged cfg tells presence exactly. Resolved through the base role like the
+    // instructions and min-run-interval override.
+    ...(cfg.roles[base]?.instances !== undefined ? { instances: cfg.roles[base].instances } : {}),
     // The roles.<base>.instructions override verbatim — resolved through the base role like
     // the cap and quiet hours, so an instance id shows (and can edit) the override its runs
     // carry (tick-prompt reads config.roles[base]); null when unset.
