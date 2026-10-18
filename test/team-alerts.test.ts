@@ -15,6 +15,8 @@ const base: Snap = {
   paused: false,
   inQuietHours: false,
   imageProbeFailures: [],
+  capPaused: [],
+  maintenanceQuota: { allowance: 0, used: 0, held: [] },
 };
 
 test("a healthy team raises nothing; a stopped one says how to start it", () => {
@@ -212,6 +214,57 @@ test("a fallback names its provider or nothing; a plain stale build asks for a m
 // The dashboard colors phases and results in its own tones; the TUI in the terminal's. Both
 // must tell the same story: what the page shows blue/violet/orange/indigo (work in progress)
 // the terminal shows blue, and so on down the families.
+// A role over its maxDailyCostUsdPerRole cap (status-model.ts "waiting: daily cap spent") and
+// the maintenance allowance ("waiting: maintenance allowance used <used>/<allowance>") each
+// stop whole roles and each get a team banner, so an operator sees why roles are idling without
+// reading every row. The cap hold is an amber ask (raise the cap); the maintenance hold informs
+// (gray, self-clearing — roles tick again as work merges).
+test("a role over its daily cap raises one amber role-cap alert; an empty hold raises none", () => {
+  const held = teamAlerts(
+    { ...base, capPaused: ["feature"] },
+    [],
+    [{ role: "feature", phase: "idle: daily cap spent", errorStreak: false, inFlight: false }],
+    Date.now(),
+  );
+  const [cap] = held.filter((a) => a.key === "role-cap");
+  assert.equal(cap?.tone, "amber");
+  assert.match(cap?.title ?? "", /feature/);
+  assert.match(cap?.detail ?? "", /maxDailyCostUsdPerRole/);
+  assert.match(cap?.detail ?? "", /midnight/);
+  assert.deepEqual(cap?.actions, [{ label: "Open feature", act: "role", arg: "feature" }]);
+  assert.equal(alertNeedsYou(cap!), true, "a raise is needed — it asks");
+  assert.deepEqual(
+    teamAlerts({ ...base, capPaused: [] }, [], [], Date.now()).filter((a) => a.key === "role-cap"),
+    [],
+  );
+  // A stale id no live loop matches still names the held role in the copy.
+  const stale = teamAlerts({ ...base, capPaused: ["gremlin"] }, [], [], Date.now()).filter((a) => a.key === "role-cap");
+  assert.equal(stale.length, 1);
+  assert.match(stale[0]?.detail ?? "", /gremlin/);
+});
+
+test("the maintenance allowance hold raises one gray maintenance alert; an empty hold raises none", () => {
+  const organize = { role: "organize", phase: "waiting: maintenance allowance used 3/3", errorStreak: false, inFlight: false };
+  const clean = { role: "clean", phase: "waiting: maintenance allowance used 3/3", errorStreak: false, inFlight: false };
+  const held = teamAlerts(
+    { ...base, maintenanceQuota: { allowance: 3, used: 3, held: ["organize", "clean"] } },
+    [],
+    [organize, clean],
+    Date.now(),
+  );
+  const [maintenance] = held.filter((a) => a.key === "maintenance");
+  assert.equal(maintenance?.tone, "gray");
+  assert.match(maintenance?.detail ?? "", /3 of 3/);
+  assert.match(maintenance?.detail ?? "", /organize/);
+  assert.match(maintenance?.detail ?? "", /clean/);
+  assert.deepEqual(maintenance?.actions, []);
+  assert.equal(alertNeedsYou(maintenance!), false, "self-clearing — it informs, not asks");
+  assert.deepEqual(
+    teamAlerts({ ...base, maintenanceQuota: { allowance: 3, used: 1, held: [] } }, [], [], Date.now()).filter((a) => a.key === "maintenance"),
+    [],
+  );
+});
+
 test("the terminal's tones and the dashboard's tell the same story", () => {
   const { phaseInfo, resultInfo } = clientScope<{
     phaseInfo(phase: string): { tone: string };

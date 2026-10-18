@@ -70,6 +70,15 @@ function listRoles(loops: readonly AlertLoop[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
+/** The `listRoles` rendering for a set of held role ids (status-data.ts's `capPaused` and
+ * `maintenanceQuota.held`, the scheduler's enabled-but-held sets rather than rendered loop
+ * rows): names every held id through roleLabel even when a stale id matches no live loop, so
+ * the role-cap and maintenance banners never drop a held role from their copy. */
+function listRoleIds(ids: readonly string[]): string {
+  const names = ids.map(roleLabel);
+  return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
 /** The stuck alert's per-loop detail: the stall phrase the phase rendered, plus — when that
  * phrase does not already carry one — the honest silence span from the live tail (stuckMs,
  * ms since the loop's last pi log write, capped to the tick by progressOfTick). A
@@ -107,6 +116,8 @@ export function teamAlerts(
     | "rootInstallDrift"
     | "imageProbeFailures"
     | "chain"
+    | "capPaused"
+    | "maintenanceQuota"
   >,
   questions: readonly string[],
   loops: readonly AlertLoop[],
@@ -149,6 +160,21 @@ export function teamAlerts(
             actions: [{ label: "Raise the cap", act: "budget" }],
           },
     );
+  }
+  // A role over its maxDailyCostUsdPerRole cap (status-model.ts "waiting: daily cap spent") is
+  // a per-role hold — one role sits idle while the rest of the team keeps working — so the team
+  // banner names it the way the budget, disk, and quiet banners name theirs, instead of leaving
+  // an operator to read every row. An amber ask (it needs a raise to resume); clears on its own
+  // at local midnight when the spend window rolls over.
+  const capPausedLoops = loops.filter((l) => snap.capPaused.includes(l.role));
+  if (snap.capPaused.length > 0) {
+    out.push({
+      key: "role-cap",
+      tone: "amber",
+      title: `${listRoleIds(snap.capPaused)} ${agree(snap.capPaused.length, "is over its daily cap", "are over their daily caps")}`,
+      detail: `The daily cap (maxDailyCostUsdPerRole) holds ${listRoleIds(snap.capPaused)}: no new runs until local midnight. Raise the cap to resume ${agree(snap.capPaused.length, "it", "them")}.`,
+      actions: openRoleActions(capPausedLoops),
+    });
   }
   // The disk floor holding new work (plans/disk-floor.md, part 4/4): the header badge and the
   // loop rows say what is happening, but the banner names the threshold and the way out, so an
@@ -272,6 +298,21 @@ export function teamAlerts(
       tone: "blue",
       title: `Quiet hours — roles start no new runs until ${end}`,
       detail: `The schedule (${snap.quietHours} local time, quietHours in tumwater.json) holds them. Runs in progress finish, and the director still runs your prompts.`,
+      actions: [],
+    });
+  }
+  // The maintenance allowance (plans/work-ratio.md, part 1b/4): by design and self-clearing —
+  // the scheduler holds maintenance loops at the rolling 24 h allowance until merges free room,
+  // then they tick again on their own — so it informs (gray, no actions), the quiet alert's
+  // tone, rather than amber like the failed/refused asks. An operator watching idle maintenance
+  // roles gets the same explanation the hold's own row carries, team-wide.
+  if (snap.maintenanceQuota.held.length > 0) {
+    const mq = snap.maintenanceQuota;
+    out.push({
+      key: "maintenance",
+      tone: "gray",
+      title: "Maintenance is held at its rolling allowance",
+      detail: `${mq.used} of ${mq.allowance} maintenance allowance used over the last 24 h; ${listRoleIds(mq.held)} ${agree(mq.held.length, "resumes", "resume")} as work merges.`,
       actions: [],
     });
   }
