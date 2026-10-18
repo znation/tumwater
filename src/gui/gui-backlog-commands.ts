@@ -52,6 +52,21 @@ function checkedEntryPositionAndTitle(
   return { position, title };
 }
 
+/** Run a backlog/QUESTIONS domain call, mapping a thrown filesystem/validation error onto the
+ * same 400 `{error}` reply the handlers' explicit validation arms send — so a thrown check and
+ * an explicit one answer identically and the try/catch no longer opens at every call site, one
+ * return each. Every try* outcome type is a union of object shapes (never null), so null is a
+ * safe "already answered" sentinel: the caller returns early on it, matching the `return` the
+ * inline try/catch used. */
+function outcomeOrBadRequest<T>(res: http.ServerResponse, run: () => T): T | null {
+  try {
+    return run();
+  } catch (err) {
+    badRequest(res, errorMessage(err));
+    return null;
+  }
+}
+
 /** Handle POST /api/question-answer: record the operator's answer to the Nth open question
  * exactly as `tumwater questions answer` does, through the non-exiting tryAnswerQuestion core.
  * The body carries the `title` the operator saw at `position`; a different title there, or no
@@ -78,13 +93,8 @@ export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.
     badRequest(res, problem);
     return;
   }
-  let outcome: AnswerOutcome;
-  try {
-    outcome = tryAnswerQuestion(root, position, keptDecision, title, true);
-  } catch (err) {
-    badRequest(res, errorMessage(err));
-    return;
-  }
+  const outcome = outcomeOrBadRequest<AnswerOutcome>(res, () => tryAnswerQuestion(root, position, keptDecision, title, true));
+  if (outcome === null) return;
   if (outcome.status === "answered") {
     const committed = await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
     const wake = wakeQuestionAsker(root, outcome.title);
@@ -148,13 +158,8 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
   const pair = checkedEntryPositionAndTitle(res, body);
   if (!pair) return;
   const { position, title } = pair;
-  let outcome: CancelEntryOutcome;
-  try {
-    outcome = tryCancelEntry(root, kind, position, title);
-  } catch (err) {
-    badRequest(res, errorMessage(err));
-    return;
-  }
+  const outcome = outcomeOrBadRequest<CancelEntryOutcome>(res, () => tryCancelEntry(root, kind, position, title));
+  if (outcome === null) return;
   if (outcome.status === "cancelled") {
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
     sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title, committed });
@@ -176,13 +181,8 @@ export async function handleBacklogRelease(req: http.IncomingMessage, res: http.
   const pair = checkedEntryPositionAndTitle(res, body);
   if (!pair) return;
   const { position, title } = pair;
-  let outcome: ReleaseEntryOutcome;
-  try {
-    outcome = tryReleaseEntry(root, kind, position, title);
-  } catch (err) {
-    badRequest(res, errorMessage(err));
-    return;
-  }
+  const outcome = outcomeOrBadRequest<ReleaseEntryOutcome>(res, () => tryReleaseEntry(root, kind, position, title));
+  if (outcome === null) return;
   if (outcome.status === "released") {
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Release ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
     requestWake(root, [OPERATOR_FILE_KINDS[kind].role]);
@@ -206,13 +206,8 @@ export async function handleBacklogTop(req: http.IncomingMessage, res: http.Serv
   const pair = checkedEntryPositionAndTitle(res, body);
   if (!pair) return;
   const { position, title } = pair;
-  let outcome: MoveEntryOutcome;
-  try {
-    outcome = tryMoveEntryToTop(root, kind, position, title);
-  } catch (err) {
-    badRequest(res, errorMessage(err));
-    return;
-  }
+  const outcome = outcomeOrBadRequest<MoveEntryOutcome>(res, () => tryMoveEntryToTop(root, kind, position, title));
+  if (outcome === null) return;
   if (outcome.status === "moved_to_top") {
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Prioritize ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
     sendJson(res, 200, { ok: true, status: "moved_to_top", file: outcome.file, title: outcome.title, committed });
@@ -250,13 +245,8 @@ export async function handleBacklogEdit(req: http.IncomingMessage, res: http.Ser
     badRequest(res, problem);
     return;
   }
-  let outcome: EditEntryOutcome;
-  try {
-    outcome = tryEditEntry(root, kind, position, title, newTitle, newBody);
-  } catch (err) {
-    badRequest(res, errorMessage(err));
-    return;
-  }
+  const outcome = outcomeOrBadRequest<EditEntryOutcome>(res, () => tryEditEntry(root, kind, position, title, newTitle, newBody));
+  if (outcome === null) return;
   if (outcome.status === "edited") {
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
     sendJson(res, 200, { ok: true, status: "edited", file: outcome.file, title: outcome.title, committed });
