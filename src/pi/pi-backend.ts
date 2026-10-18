@@ -68,7 +68,7 @@ export const piBackend: AgentBackend = {
       }),
       run.prompt,
     ];
-    const env = withNotesPath(agentBaseEnv(run.runMarker), run.notesPath);
+    const env = withNotesPath(agentBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
     return { args, env };
   },
 

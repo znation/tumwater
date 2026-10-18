@@ -17,7 +17,8 @@
     "pi"
   ],
   "bin": {
-    "tumwater": "dist/src/cli.js"
+    "tumwater": "dist/src/cli.js",
+    "tumwater-notes": "dist/src/notes-cli.js"
   },
   "files": [
     "dist/src",

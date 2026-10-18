@@ -598,3 +598,21 @@ test("a resumed claude run re-passes --mcp-config, since claude keeps no flags a
     assert.ok(second.includes("--mcp-config"), "the resume re-passes the notes MCP server");
   });
 });
+
+test("a claude run finds the notes shim dir first on its PATH", async () => {
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const pathFile = path.join(dir, "path.txt");
+  await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
+    extraScript: [`printf '%s\\n' "$PATH" >> "${pathFile}"`],
+  }, async () => {
+    const result = await runAgent(claudeRun(dir));
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    const p = fs.readFileSync(pathFile, "utf8").trim();
+    const binDir = path.join(dir, ".tumwater", "bin");
+    assert.ok(
+      p.startsWith(`${binDir}${path.delimiter}`),
+      `the notes shim dir is first on PATH: ${p}`,
+    );
+  });
+});

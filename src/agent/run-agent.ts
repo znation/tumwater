@@ -27,6 +27,8 @@ import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
 import { opencodeBackend } from "./opencode/opencode-backend.js";
 import { seamImageInput } from "./image-input.js";
+import { ensureNotesShim } from "./notes-shim.js";
+import { teamRootOf } from "../paths.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 
 /** How many trailing stderr characters are carried into the next chunk's warning match, so a
@@ -214,6 +216,16 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // carry it and the exit sweep can name it.
     const runMarker = makeRunMarker();
     const resolved = backend.resolveBin(opts.config);
+    // Install the notes shim under the team root's `.tumwater/bin` so every backend's run finds
+    // `tumwater-notes` first on PATH (notes-shim.ts). A failure to write it logs one warning and
+    // the run goes on without it — notes would then be unwritable by the command, but the run
+    // itself is not blocked.
+    let binDir: string | undefined;
+    try {
+      binDir = ensureNotesShim(teamRootOf(opts.sessionDir));
+    } catch {
+      opts.onAgentWarning?.("could not install the tumwater-notes shim; this run will not find tumwater-notes on PATH");
+    }
     const runSpec: AgentRunSpec = {
       cwd: opts.cwd,
       prompt: opts.prompt,
@@ -225,6 +237,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       agentBin: resolved.bin,
       runMarker,
       notesPath: opts.notesPath,
+      ...(binDir !== undefined ? { binDir } : {}),
       ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
     };
     const invocation = backend.invocation(runSpec);

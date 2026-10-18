@@ -275,3 +275,20 @@ test("an authoring run with a notebook carries the role-notes MCP server on ever
     assert.equal(tumwaterServer(fake), undefined, "no notes path means no tumwater MCP server");
   });
 });
+
+test("an opencode run finds the notes shim dir first on its PATH", async () => {
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  await withOpencodeReplay(opencodeCaptures.editRun, async (fake) => {
+    const result = await runAgent(opencodeRun(dir));
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    const env = fs.readFileSync(fake.envFile, "utf8");
+    const pathLine = env.split("\n").find((l) => l.startsWith("PATH="))?.slice("PATH=".length);
+    assert.ok(pathLine !== undefined, `the fake recorded a PATH: ${env}`);
+    const binDir = path.join(dir, ".tumwater", "bin");
+    assert.ok(
+      pathLine!.startsWith(`${binDir}${path.delimiter}`),
+      `the notes shim dir is first on PATH: ${pathLine}`,
+    );
+  });
+});

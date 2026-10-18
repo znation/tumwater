@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { DIRECTOR_ROLE } from "./roles/roles.js";
 
@@ -292,6 +293,39 @@ export function sessionsRootDir(root: string): string {
  * resume. */
 export function sessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), role);
+}
+
+/** The team root that owns `sessionDir`: the `.tumwater` directory that contains it. A run's
+ * session dir is always `<root>/.tumwater/sessions/…`, so the first ancestor holding a
+ * `.tumwater` directory is the root; opencodeDbPath reads back to that same `.tumwater` for
+ * the run's shared database, and notesShimDir keeps the notes shim under it. Moved here from
+ * the opencode adapter (plans/notes-command.md) so run-agent's shim install — which every
+ * backend's run needs — shares the one lookup instead of the opencode adapter keeping it
+ * private. */
+export function teamRootOf(sessionDir: string): string {
+  let dir = sessionDir;
+  for (let i = 0; i < 64; i += 1) {
+    let tumwater: fs.Stats | undefined;
+    try {
+      tumwater = fs.statSync(path.join(dir, ".tumwater"));
+    } catch {
+      tumwater = undefined;
+    }
+    if (tumwater?.isDirectory()) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Unreachable in a harness run; a sensible fallback for an odd session dir.
+  return path.dirname(path.dirname(sessionDir));
+}
+
+/** The directory the notes shim lands in, under a team root: `<root>/.tumwater/bin`.
+ * run-agent installs the `tumwater-notes` command there (src/agent/notes-shim.ts) and
+ * run-marker's agentBaseEnv prepends it to every run's PATH, so a run on any backend finds
+ * the command (plans/notes-command.md "Reaching it from a run"). */
+export function notesShimDir(root: string): string {
+  return path.join(tumwaterDir(root), "bin");
 }
 
 /** The shared OpenCode session database for a team root (plans/opencode-backend.md §4): one

@@ -5,57 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Notes command, part 1/4: A `tumwater-notes` command writes a run's own role note, and every run finds it on its PATH (planned 2026-10-17 by user; design in plans/notes-command.md "The `tumwater-notes` command" and "Reaching it from a run"; touches src/notes-cli.ts (new) src/agent/notes-shim.ts (new) src/agent/run-agent.ts src/process/run-marker.ts src/paths.ts src/agent/opencode/opencode-backend.ts package.json and their tests)
-
-**Goal.** Give every backend the same way to write a role's notes: a shell command, `tumwater-notes`, that acts only on the note `TUMWATER_NOTES_PATH` names. Today each backend has its own carrier: a pi extension, and an MCP server for Claude Code and for OpenCode.
-
-This part only adds the command and puts it on every run's PATH. Nothing tells a model to use it until part 2/4.
-
-**Approach.**
-- **src/notes-cli.ts** (new, `#!/usr/bin/env node` like src/cli.ts, `// vocabulary: plain`), with a second bin entry in package.json: `"tumwater-notes": "dist/src/notes-cli.js"`.
-  - `write` replaces the note with stdin (read to EOF); `write --file <path>` uses that file instead.
-  - `show` prints the current note; a missing note prints nothing.
-  - `clear` empties the note.
-  - It validates and writes through `validateRoleNote` / `writeRoleNote` (src/agent/role-notes-write.ts): the same 4 KB cap and atomic write as the existing carriers.
-  - Success prints `notes saved (<n> bytes)` or `notes cleared`, and exits 0.
-  - `write` with empty input exits 1: "nothing to write — use `tumwater-notes clear` to empty the note". A heredoc that lost its body must not wipe the note.
-  - An over-cap note exits 1 with `validateRoleNote`'s message.
-  - No `TUMWATER_NOTES_PATH` exits 1: "this run keeps no notes".
-  - Anything else exits 2 with a three-line usage.
-  - The note path comes only from the env, never from an argument.
-- **src/paths.ts:**
-  - Move `teamRootOf(sessionDir)` here from src/agent/opencode/opencode-backend.ts, exported, and make the adapter import it.
-  - Add `notesShimDir(root)` = `<tumwater dir>/bin`.
-- **src/agent/notes-shim.ts** (new): `ensureNotesShim(root)` writes `<tumwater dir>/bin/tumwater-notes`, the two-line `sh` script `exec "<process.execPath>" "<dist>/src/notes-cli.js" "$@"`.
-  - `<dist>` is resolved from this module's own URL, as src/pi/pi-args.ts resolves the bundled extensions, so a staged build points at its own copy.
-  - It is written atomically with mode 0755, only when the content differs.
-  - It returns the directory.
-- **src/process/run-marker.ts:** `agentBaseEnv(marker, base, binDir?)` prepends `binDir` to `PATH` when given.
-- **src/agent/run-agent.ts:** before building the invocation, call `ensureNotesShim(teamRootOf(sessionDir))`. Hand the dir to the backend through a new optional `AgentRunSpec.binDir`; the pi, Claude Code and OpenCode adapters pass it to `agentBaseEnv`.
-  - A failure to write the shim logs one warning, and the run goes on without it.
-
-**Files touched.**
-- Source: src/notes-cli.ts (new), src/agent/notes-shim.ts (new), src/agent/run-agent.ts, src/agent/agent-backend.ts, src/pi/pi-backend.ts, src/agent/claude/claude-backend.ts, src/agent/opencode/opencode-backend.ts, src/process/run-marker.ts, src/paths.ts, package.json.
-- Tests: test/notes-cli.test.ts (new), test/notes-shim.test.ts (new), test/run-marker.test.ts, test/opencode-run.test.ts, test/claude-run.test.ts.
-
-**Acceptance criteria.**
-- **`tumwater-notes`, run as a child process with a temp `TUMWATER_NOTES_PATH`:**
-  - `write` from stdin saves the note and prints its byte count.
-  - `write --file` saves the file's text.
-  - `show` prints it back.
-  - `clear` empties it.
-  - Empty stdin exits 1 and leaves the old note in place.
-  - A 4097-byte note exits 1 and leaves the old note in place.
-  - No `TUMWATER_NOTES_PATH` exits 1 with "this run keeps no notes".
-  - An unknown subcommand exits 2.
-- **`ensureNotesShim`:**
-  - It writes an executable script whose run of `show` prints the note.
-  - A second call with unchanged content leaves the file's mtime alone.
-  - A different dist path rewrites it.
-- **Runs:** a run through each backend's fake (pi, Claude Code, OpenCode) has `<tumwater dir>/bin` first on its env's `PATH`.
-- The OpenCode adapter's tests pass with `teamRootOf` imported from src/paths.ts.
-- `npm test` passes.
-
 ### Notes command, part 2/4: Every backend's prompt has roles save notes with `tumwater-notes`, and runs stop loading the pi notes extension and the notes MCP server (planned 2026-10-17 by user; requires part 1/4 landed; design in plans/notes-command.md "One prompt instruction" and "Retiring the old carriers"; touches src/prompt/prompt.ts src/prompt/dialect.ts src/tick/tick-prompt.ts src/pi/pi-args.ts src/agent/claude/claude-backend.ts src/agent/opencode/opencode-backend.ts scripts/smoke-claude.mjs and their tests)
 
 **Goal.** Switch every backend to the one notes carrier from part 1/4. Each prompt tells the role to save its note by running `tumwater-notes write` with a heredoc. The three old carriers stop being attached to runs: pi's `role_notes` extension, Claude Code's notes MCP server, and OpenCode's `mcp.servers.tumwater` entry. Their code is deleted in part 3/4, once this has run in the team.
@@ -1332,6 +1281,56 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 
 
 ## Done
+### Notes command, part 1/4: A `tumwater-notes` command writes a run's own role note, and every run finds it on its PATH (planned 2026-10-17 by user; design in plans/notes-command.md "The `tumwater-notes` command" and "Reaching it from a run"; touches src/notes-cli.ts (new) src/agent/notes-shim.ts (new) src/agent/run-agent.ts src/process/run-marker.ts src/paths.ts src/agent/opencode/opencode-backend.ts package.json and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** Give every backend the same way to write a role's notes: a shell command, `tumwater-notes`, that acts only on the note `TUMWATER_NOTES_PATH` names. Today each backend has its own carrier: a pi extension, and an MCP server for Claude Code and for OpenCode.
+This part only adds the command and puts it on every run's PATH. Nothing tells a model to use it until part 2/4.
+
+**Approach.**
+- **src/notes-cli.ts** (new, `#!/usr/bin/env node` like src/cli.ts, `// vocabulary: plain`), with a second bin entry in package.json: `"tumwater-notes": "dist/src/notes-cli.js"`.
+  - `write` replaces the note with stdin (read to EOF); `write --file <path>` uses that file instead.
+  - `show` prints the current note; a missing note prints nothing.
+  - `clear` empties the note.
+  - It validates and writes through `validateRoleNote` / `writeRoleNote` (src/agent/role-notes-write.ts): the same 4 KB cap and atomic write as the existing carriers.
+  - Success prints `notes saved (<n> bytes)` or `notes cleared`, and exits 0.
+  - `write` with empty input exits 1: "nothing to write — use `tumwater-notes clear` to empty the note". A heredoc that lost its body must not wipe the note.
+  - An over-cap note exits 1 with `validateRoleNote`'s message.
+  - No `TUMWATER_NOTES_PATH` exits 1: "this run keeps no notes".
+  - Anything else exits 2 with a three-line usage.
+  - The note path comes only from the env, never from an argument.
+- **src/paths.ts:**
+  - Move `teamRootOf(sessionDir)` here from src/agent/opencode/opencode-backend.ts, exported, and make the adapter import it.
+  - Add `notesShimDir(root)` = `<tumwater dir>/bin`.
+- **src/agent/notes-shim.ts** (new): `ensureNotesShim(root)` writes `<tumwater dir>/bin/tumwater-notes`, the two-line `sh` script `exec "<process.execPath>" "<dist>/src/notes-cli.js" "$@"`.
+  - `<dist>` is resolved from this module's own URL, as src/pi/pi-args.ts resolves the bundled extensions, so a staged build points at its own copy.
+  - It is written atomically with mode 0755, only when the content differs.
+  - It returns the directory.
+- **src/process/run-marker.ts:** `agentBaseEnv(marker, base, binDir?)` prepends `binDir` to `PATH` when given.
+- **src/agent/run-agent.ts:** before building the invocation, call `ensureNotesShim(teamRootOf(sessionDir))`. Hand the dir to the backend through a new optional `AgentRunSpec.binDir`; the pi, Claude Code and OpenCode adapters pass it to `agentBaseEnv`.
+  - A failure to write the shim logs one warning, and the run goes on without it.
+
+**Files touched.**
+- Source: src/notes-cli.ts (new), src/agent/notes-shim.ts (new), src/agent/run-agent.ts, src/agent/agent-backend.ts, src/pi/pi-backend.ts, src/agent/claude/claude-backend.ts, src/agent/opencode/opencode-backend.ts, src/process/run-marker.ts, src/paths.ts, package.json.
+- Tests: test/notes-cli.test.ts (new), test/notes-shim.test.ts (new), test/run-marker.test.ts, test/opencode-run.test.ts, test/claude-run.test.ts.
+
+**Acceptance criteria.**
+- **`tumwater-notes`, run as a child process with a temp `TUMWATER_NOTES_PATH`:**
+  - `write` from stdin saves the note and prints its byte count.
+  - `write --file` saves the file's text.
+  - `show` prints it back.
+  - `clear` empties it.
+  - Empty stdin exits 1 and leaves the old note in place.
+  - A 4097-byte note exits 1 and leaves the old note in place.
+  - No `TUMWATER_NOTES_PATH` exits 1 with "this run keeps no notes".
+  - An unknown subcommand exits 2.
+- **`ensureNotesShim`:**
+  - It writes an executable script whose run of `show` prints the note.
+  - A second call with unchanged content leaves the file's mtime alone.
+  - A different dist path rewrites it.
+- **Runs:** a run through each backend's fake (pi, Claude Code, OpenCode) has `<tumwater dir>/bin` first on its env's `PATH`.
+- The OpenCode adapter's tests pass with `teamRootOf` imported from src/paths.ts.
+- `npm test` passes.
+
 ### OpenCode backend, part 6e/7: An OpenCode model's context window comes from the catalog, so window-keyed prompt rules apply to OpenCode runs (planned 2026-10-17 by user; requires part 6a/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 3; touches src/pi/pi-models.ts and its tests) — done 2026-10-17 by the feature role
 
 **Goal.** `seamContextWindow` (src/pi/pi-models.ts) answers for an `opencode` seam too, from the context window the models.dev catalog declares. Then the compact run prompt (b1eb00a91, for a window of at most 128k) and any later window-keyed rule reach an OpenCode model with no further change. The free model is 200K, so its prompt does not change.

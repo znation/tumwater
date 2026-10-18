@@ -13,13 +13,18 @@ import { fileURLToPath } from "node:url";
 import { readJson } from "./helpers/json-read.js";
 
 // From dist/test/ this is dist/src/cli.js — the compiled file package.json's bin names.
-const bin = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 const pkg = readJson(fileURLToPath(new URL("../../package.json", import.meta.url))) as {
   bin: Record<string, string>;
 };
 
-test("the compiled package bin keeps its executable bit across builds", () => {
-  assert.deepEqual(pkg.bin, { tumwater: "dist/src/cli.js" });
-  assert.equal(fs.readFileSync(bin, "utf8").split("\n")[0], "#!/usr/bin/env node");
-  fs.accessSync(bin, fs.constants.X_OK); // Throws EACCES when the bit is missing.
+test("the compiled package bins keep their executable bits across builds", () => {
+  assert.deepEqual(pkg.bin, {
+    tumwater: "dist/src/cli.js",
+    "tumwater-notes": "dist/src/notes-cli.js",
+  });
+  for (const script of Object.entries(pkg.bin)) {
+    const file = fileURLToPath(new URL(`../src/${script[1].split("/src/")[1]}`, import.meta.url));
+    assert.equal(fs.readFileSync(file, "utf8").split("\n")[0], "#!/usr/bin/env node", script[0]);
+    fs.accessSync(file, fs.constants.X_OK); // Throws EACCES when the bit is missing.
+  }
 });

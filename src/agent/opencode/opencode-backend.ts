@@ -20,7 +20,6 @@
  * its environment, as the pi and claude adapters do. */
 
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +27,7 @@ import { loadConfigSafe } from "../../config/config.js";
 import { resolvedAgentConfig } from "../../config/config-views.js";
 import { agentBaseEnv } from "../../process/run-marker.js";
 import { resolveBackendBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
-import { opencodeDbPath } from "../../paths.js";
+import { opencodeDbPath, teamRootOf } from "../../paths.js";
 import type {
   AgentBackend,
   AgentBinConfig,
@@ -50,28 +49,6 @@ import { opencodeExportLines, opencodeTranslator, type OpencodeStreamTranslator 
  * export measured 0.18 s live, so 10 s is a generous bound on a slow or wedged CLI. Used for
  * both the resume-existence check and the reconciling export. */
 const EXPORT_TIMEOUT_MS = 10_000;
-
-/** The team root that owns `sessionDir`: the `.tumwater` directory that contains it. A run's
- * session dir is always `<root>/.tumwater/sessions/…`, so the first ancestor holding a
- * `.tumwater` directory is the root; opencodeDbPath reads back to that same `.tumwater` for
- * the run's shared database. */
-function teamRootOf(sessionDir: string): string {
-  let dir = sessionDir;
-  for (let i = 0; i < 64; i += 1) {
-    let tumwater: fs.Stats | undefined;
-    try {
-      tumwater = fs.statSync(path.join(dir, ".tumwater"));
-    } catch {
-      tumwater = undefined;
-    }
-    if (tumwater?.isDirectory()) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  // Unreachable in a harness run; a sensible fallback for an odd session dir.
-  return path.dirname(path.dirname(sessionDir));
-}
 
 /** The catalog cache key for a run's resolved model id (part 6d/7): a bare gateway id gets the
  * `opencode/` provider prefix, a provider-qualified id passes as is — the same rule
@@ -199,8 +176,8 @@ export const opencodeBackend: AgentBackend = {
     // this environment — reads the same notes file, as the pi and claude adapters' envs do.
     const base =
       run.notesPath === undefined
-        ? agentBaseEnv(run.runMarker)
-        : { ...agentBaseEnv(run.runMarker), TUMWATER_NOTES_PATH: run.notesPath };
+        ? agentBaseEnv(run.runMarker, undefined, run.binDir)
+        : { ...agentBaseEnv(run.runMarker, undefined, run.binDir), TUMWATER_NOTES_PATH: run.notesPath };
     const env = opencodeEnv(base, { dbPath, configContent });
     const { sessionId } = resolveOpencodeSession(run, env);
     // The thinking variant (part 6d/7): ride the catalog's effort levels for the resolved

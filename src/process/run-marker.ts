@@ -10,6 +10,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 
 import { execFileAsync, withoutLaunchServicesCheckIn } from "./process.js";
 
@@ -46,10 +47,22 @@ export function runMarkerEnv(base: NodeJS.ProcessEnv, marker: string): NodeJS.Pr
 
 /** The environment every agent backend starts from: `base` with the macOS LaunchServices
  * check-in preload removed (`withoutLaunchServicesCheckIn`) and this run's marker appended
- * (`runMarkerEnv`). Both adapters (pi and claude) layer their own settings on top, so the
- * composition lives here rather than being re-derived in each. */
-export function agentBaseEnv(marker: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return runMarkerEnv(withoutLaunchServicesCheckIn(base), marker);
+ * (`runMarkerEnv`). All three adapters (pi, claude, opencode) layer their own settings on
+ * top, so the composition lives here rather than being re-derived in each. `binDir`, when
+ * given, is prepended to PATH — run-agent passes the notes shim dir (notesShimDir) so every
+ * run finds the `tumwater-notes` command first (plans/notes-command.md "Reaching it from a
+ * run"). */
+export function agentBaseEnv(
+  marker: string,
+  base: NodeJS.ProcessEnv = process.env,
+  binDir?: string,
+): NodeJS.ProcessEnv {
+  const env = runMarkerEnv(withoutLaunchServicesCheckIn(base), marker);
+  if (binDir) {
+    const prev = env.PATH;
+    env.PATH = prev ? `${binDir}${path.delimiter}${prev}` : binDir;
+  }
+  return env;
 }
 
 /** True when a `TUMWATER_RUN=` value names `marker` as one of its comma-separated runs. */

@@ -795,3 +795,22 @@ test("a gate run that reads an image on a blind model is logged, not killed", as
     },
   );
 });
+
+test("a pi run finds the notes shim dir first on its PATH", async () => {
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const pathFile = path.join(dir, "path.txt");
+  await withPi(
+    `printf '%s\n' '${assistantLine("done", { tokens: 1 })}'\nprintf '%s\\n' "$PATH" >> "${pathFile}"`,
+    async () => {
+      const result = await runPi(runPiFixture(dir));
+      assert.equal(result.ok, true, `${result.errorMessage}`);
+      const p = fs.readFileSync(pathFile, "utf8").trim();
+      const binDir = path.join(dir, ".tumwater", "bin");
+      assert.ok(
+        p.startsWith(`${binDir}${path.delimiter}`),
+        `the notes shim dir is first on PATH: ${p}`,
+      );
+    },
+  );
+});

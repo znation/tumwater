@@ -38,6 +38,11 @@ export interface AgentRunSpec {
   runMarker: string;
   /** The role notebook to export as TUMWATER_NOTES_PATH, when this run carries one. */
   notesPath?: string;
+  /** The notes shim directory (notesShimDir under the team root) to prepend to this run's
+   * PATH, when run-agent could install it — how a run on any backend finds the
+   * `tumwater-notes` command (plans/notes-command.md "Reaching it from a run"). Undefined
+   * when the install failed or this run is not a harness run. */
+  binDir?: string;
   /** The remaining daily budget this run may spend, in USD, when the caller can cap it. The
    * claude adapter forwards it as `--max-budget-usd` (plans/agent-backends.md §7); backends
    * with no such flag ignore it. Undefined means no per-run cap. */

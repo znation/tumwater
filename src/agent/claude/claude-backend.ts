@@ -194,8 +194,8 @@ export const claudeBackend: AgentBackend = {
     // spawned MCP server — which inherits this environment — reads the same notes file.
     const base =
       run.notesPath === undefined
-        ? agentBaseEnv(run.runMarker)
-        : { ...agentBaseEnv(run.runMarker), TUMWATER_NOTES_PATH: run.notesPath };
+        ? agentBaseEnv(run.runMarker, undefined, run.binDir)
+        : { ...agentBaseEnv(run.runMarker, undefined, run.binDir), TUMWATER_NOTES_PATH: run.notesPath };
     const env = claudeEnv(base, {
       quietTimeoutSeconds: run.config.quietTimeoutSeconds,
     });
