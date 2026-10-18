@@ -40,7 +40,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "config key names", "brief", "bootstrap", "pause", "quiet hours", "budget", "claude window", "provider waits", "maintenance allowance", "provider concurrency", "provider contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "disk space", "check", "root install", "flaky checks", "claimed bugs", "plans stuck in Planned", "backlog headings", "refusals", "stalled plans", "plan dependencies", "stale questions", "stale bugs", "waiting bugs", "regressed fixes", "stale merge-queue entries", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
+    ["node", "git binary", "repo", "init", "config key names", "brief", "bootstrap", "pause", "quiet hours", "budget", "claude window", "provider waits", "maintenance allowance", "provider concurrency", "provider contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "disk space", "check", "root install", "flaky checks", "claimed bugs", "validation gaps", "plans stuck in Planned", "backlog headings", "refusals", "stalled plans", "plan dependencies", "stale questions", "stale bugs", "waiting bugs", "regressed fixes", "stale merge-queue entries", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.
@@ -204,6 +204,20 @@ test("runDoctor reports a phantom fix record as a warn that never fails the verd
   const claims = report.checks.find((c) => c.name === "claimed bugs");
   assert.equal(claims?.level, "warn");
   assert.match(claims?.detail ?? "", /runScriptGroup/);
+  assert.equal(report.verdict, "ready to run");
+});
+
+test("runDoctor composes a validation-gaps row that warns but never fails the verdict", async () => {
+  const root = readyRepo();
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "# Bugs\n\n## Open\n\n## Fixed\n\n### A typo (found by qa 2026-09-22, fixed 2026-09-22)\n\n**Symptom:** it broke.\n\n- **Validation gap:** no-reprod — could not reproduce it.\n",
+  );
+  const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
+  const gaps = report.checks.find((c) => c.name === "validation gaps");
+  assert.ok(gaps, "the validation-gaps check is part of the report");
+  assert.equal(gaps.level, "warn");
+  assert.match(gaps.detail ?? "", /no-reprod/);
   assert.equal(report.verdict, "ready to run");
 });
 

@@ -41,7 +41,7 @@ import {
 import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackChain, checkFallbackModel, checkImageInput, checkOpencode, checkTierModels } from "./doctor-model-checks.js";
 import { agentQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleQueuedMerges, checkStaleBugs, checkStalePrompts, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs } from "./doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleQueuedMerges, checkStaleBugs, checkStalePrompts, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkValidationGaps, checkWaitingBugs } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -149,6 +149,7 @@ export async function runDoctor(
     // excusing as flakes (ok/warn only, so a flaky suite never fails a scripted pre-flight).
     { name: "flaky checks", ...checkFlakyChecks(root) },
     { name: "claimed bugs", ...checkFixClaims(root) },
+    { name: "validation gaps", ...checkValidationGaps(root) },
     { name: "plans stuck in Planned", ...checkStrandedPlans(root) },
     { name: "backlog headings", ...checkBacklogHeadings(root) },
     { name: "refusals", ...checkRefusedEntries(root) },

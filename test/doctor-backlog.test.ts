@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStalePrompts, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, mergeWaitPhrase, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStalePrompts, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkValidationGaps, checkWaitingBugs, failureMentions, mergeWaitPhrase, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
@@ -102,6 +102,84 @@ test("checkFixClaims warns instead of throwing when BUGS.md vanishes between the
   } finally {
     undo();
   }
+});
+
+// checkValidationGaps — the closed-vocabulary twin of checkFixClaims: the newest Fixed entries
+// must each carry exactly one `**Validation gap:**` line whose tag is one of the closed
+// vocabulary, `none` written rather than omitted (plans/repair-traces.md invariant 2). A missing
+// line or an unrecognized tag warns the operator, bounded to the newest FIX_CLAIMS_CHECKED so
+// pre-convention history never warns forever. Reads through validationGapTag, which is
+// fence-aware.
+
+/** A fixture tree whose BUGS.md Fixed section holds one full-body `### Entry N` record per given
+ * tag (newest first, the template convention); a `null` item writes no **Validation gap:** line at
+ * all, a string writes its tag. */
+function validationGapsRepo(tags: (string | null)[]): string {
+  const root = tmpdir("doctor-validation-gaps-");
+  const entries = tags.map((tag, i) => {
+    const line = tag === null
+      ? ""
+      : `- **Validation gap:** ${tag} — ${tag === "none" ? "the suite covered it" : "hard to confirm it"}.\n`;
+    return `### Entry ${i}: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n${line}`;
+  });
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n### Still broken (found by qa 2026-09-22)\n\n**Fix:** someday.\n\n## Fixed\n\n${entries.join("\n")}`,
+  );
+  return root;
+}
+
+test("checkValidationGaps reads ok when the newest Fixed entries carry known tags", () => {
+  const r = checkValidationGaps(validationGapsRepo(["none", "no-fake"]));
+  assert.equal(r.level, "ok", r.detail);
+  assert.match(r.detail, /newest 2 Fixed record\(s\) carry a known Validation gap tag/);
+});
+
+test("checkValidationGaps warns naming the heading and an unrecognized tag", () => {
+  const r = checkValidationGaps(validationGapsRepo(["no-reprod", "no-fake"]));
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /"Entry 0: details/);
+  assert.match(r.detail, /unrecognized Validation gap tag "no-reprod"/);
+  assert.match(r.detail, /no-repro, no-fake/);
+  assert.match(r.detail, /plans\/repair-traces\.md/);
+});
+
+test("checkValidationGaps warns naming a newest record with no Validation gap line", () => {
+  const r = checkValidationGaps(validationGapsRepo([null, "no-fake"]));
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /"Entry 0: details/);
+  assert.match(r.detail, /has no \*\*Validation gap:\*\* line/);
+});
+
+test("checkValidationGaps treats a tag inside a fenced block as missing", () => {
+  // The body quotes a markdown template inside a fenced block: that **Validation gap:** line is
+  // an example, not this entry's own trace, and must not count (the case validationGapTag's
+  // fence-awareness exists for).
+  const root = tmpdir("doctor-validation-gaps-fence-");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n### Entry 0: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\nQuoting the template:\n\n\`\`\`\n**Validation gap:** no-fake — an example, not this entry's trace.\n\`\`\`\n`,
+  );
+  const r = checkValidationGaps(root);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /has no \*\*Validation gap:\*\* line/);
+});
+
+test("checkValidationGaps verifies only the newest 10 Fixed records", () => {
+  const tagged = Array.from({ length: 10 }, () => "no-fake");
+  const old = checkValidationGaps(validationGapsRepo([...tagged, null]));
+  assert.equal(old.level, "ok", "an untagged 11th record is outside the window");
+  assert.match(old.detail, /newest 10 Fixed record/);
+  const recent = checkValidationGaps(validationGapsRepo([null, ...tagged]));
+  assert.equal(recent.level, "warn", "the same untagged record as the newest is inside it");
+  assert.match(recent.detail, /has no \*\*Validation gap:\*\* line/);
+});
+
+test("checkValidationGaps reads ok with no BUGS.md", () => {
+  assert.deepEqual(checkValidationGaps(tmpdir("doctor-validation-gaps-none-")), {
+    level: "ok",
+    detail: "no BUGS.md — nothing to verify",
+  });
 });
 
 // checkStrandedPlans — the stranded-plan detector surfaced for the operator (plans part 3/4):

@@ -1,12 +1,13 @@
 // vocabulary: plain
 import { roleLabel } from "../roles/role-labels.js";
+import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { ageInDays, donePlans, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
 import { entryHold, planDependencyProblems, plannedPartKeys, plansWaitingOn, prerequisitesMerged, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
-import { BACKLOG_FILES, lastDate } from "../backlog/backlog-md.js";
+import { BACKLOG_FILES, lastDate, validationGapTag } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
 import { briefFile } from "../brief/brief.js";
@@ -35,10 +36,11 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * not a broken environment. doctor.ts composes them beside the environment checks; the shared
  * CheckOutcome shape is imported from outcome.ts. */
 
-/** How many Fixed records the fix-claims check verifies: the newest, since the section is
- * newest-first by template convention. Older records drift as the code evolves — a symbol
- * legitimately fixed long ago gets renamed later — so a whole-section scan would warn forever
- * on records nobody should rewrite. */
+/** How many Fixed records the two newest-first Fixed-record checks (fix claims and validation
+ * gaps) verify: the newest, since the section is newest-first by template convention. Older
+ * records drift as the code evolves — a symbol legitimately fixed long ago gets renamed later,
+ * and pre-convention Fixed entries predate the validation-gap line — so a whole-section scan
+ * would warn forever on records nobody should rewrite. */
 const FIX_CLAIMS_CHECKED = 10;
 
 /** A second or later suspect record's heading is trimmed to this many characters in the warn —
@@ -129,6 +131,39 @@ export function checkFixClaims(root: string): CheckOutcome {
   const more = andMore(rest, (p) => `"${truncate(p.heading, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
   return warnOutcome(`BUGS.md records "${heading}" as Fixed, but none of the symbols its Fix paragraph names ` +
       `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`);
+}
+
+/** The fixed-record validation-gap twin of checkFixClaims, standing in for plans/repair-traces.md's
+ * invariant 2 ("the vocabulary is closed and lives in one place"): the bugfix guidance tells every
+ * run to write exactly one `**Validation gap:**` line with a known tag, and `none` rather than no
+ * line at all so a tally's denominator stays honest. Nothing checks that a Fixed entry actually
+ * carries such a line or that its tag is one of the closed vocabulary — a typo like `no-reprod`
+ * lands as its own key on `tumwater report`'s `Validation gaps` line and matches no
+ * closed-vocabulary consumer that enumerates the six non-`none` tags, and an entry with no line at
+ * all is invisible to every one of them. Re-reads the newest Fixed records with the same
+ * FIX_CLAIMS_CHECKED bound (pre-convention history would otherwise warn forever) and warns on a
+ * missing or unrecognized tag. A warn, never a fail, like its sibling: a suspect record is
+ * operator signal, not a broken environment. */
+export function checkValidationGaps(root: string): CheckOutcome {
+  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  if (typeof doc !== "string") return doc;
+  const records = fixedEntries(doc).slice(0, FIX_CLAIMS_CHECKED);
+  const suspects: Array<{ title: string; problem: string; tag?: string }> = [];
+  for (const { title, body } of records) {
+    const tag = validationGapTag(body);
+    if (tag === null) suspects.push({ title, problem: "missing" });
+    else if (!VALIDATION_GAP_TAGS.includes(tag)) suspects.push({ title, problem: "unrecognized", tag });
+  }
+  const [first, ...rest] = suspects;
+  if (!first)
+    return okOutcome(`newest ${records.length} Fixed record(s) carry a known Validation gap tag`);
+  const more = andMore(rest, (s) => `"${truncate(s.title, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
+  const what = first.problem === "missing"
+    ? `BUGS.md record "${first.title}" has no **Validation gap:** line`
+    : `BUGS.md record "${first.title}" names unrecognized Validation gap tag "${first.tag}"`;
+  const valid = VALIDATION_GAP_TAGS.join(", ");
+  return warnOutcome(`${what}${more} — every Fixed entry writes exactly one of: ${valid}; ` +
+      `write \`none\` rather than omitting the line (the bugfix role records it; see plans/repair-traces.md)`);
 }
 
 /** Stranded plans — plan headings filed under the wrong PLANS.md section (the stranded-plan
