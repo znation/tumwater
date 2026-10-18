@@ -32,7 +32,7 @@ import {
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { enabledRoleIds } from "../config/config.js";
-import { formatModelSelector, isAgentId } from "../config/model-selector.js";
+import { formatModelSelector, seamAgent } from "../config/model-selector.js";
 import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrides } from "../config/config-views.js";
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
@@ -174,7 +174,7 @@ function claudeOverageRefused(account: ClaudeAccount): boolean {
 
 /** Does this model seam route to the claude backend? */
 function seamIsClaude(seam: { agent?: string; provider?: string }): boolean {
-  return (seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi")) === "claude";
+  return seamAgent(seam) === "claude";
 }
 
 /** Does an in-flight tick's captured model pair (LoopRunner.tickModel()) match the fallback

@@ -55,6 +55,17 @@ export function isAgentId(s: string | undefined): s is AgentId {
   return s !== undefined && (AGENT_IDS as readonly string[]).includes(s);
 }
 
+/** Resolve a seam's backend identity: its own `agent` when it carries one (configForRole,
+ * reviewConfig and resolverConfig all do), else `provider` when it names an agent backend (a
+ * `claude/<id>` selector runs on claude), else pi — the one backend with providers, the
+ * default a selector routes to when neither an agent nor a reserved provider prefix names one.
+ * The single home of the rule: the budget gate's claude check, pi's free-ness and
+ * context-window lookups, and the image-input seam all read a seam's backend through it, so
+ * no two sites can disagree on which backend a selector runs. */
+export function seamAgent(seam: { agent?: string; provider?: string }): string {
+  return seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi");
+}
+
 /** Each agent backend's per-tier default model, applied only when the config resolves no model
  * id for a seam (plans/agent-backends.md "Config" decision 5). pi has none — its own default
  * applies. It lives here, in the pure config layer, because `routeModel` runs at config-

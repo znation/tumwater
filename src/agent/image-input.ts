@@ -10,11 +10,11 @@ import type { ModelTier, FallbackModelConfig } from "../config/config-schema.js"
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { configForRole, roleSeamTier, withModelOverrides } from "../config/config-views.js";
 import { BORROW_ORDER, resolveTierFallbacks } from "../config/config-fallbacks.js";
-import { isAgentId } from "../config/model-selector.js";
+import { seamAgent } from "../config/model-selector.js";
 import { modelLabel } from "./backend-traits.js";
 import { piModelImageInput, piPairFree, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import type { ClaudeAccount } from "./claude/claude-account.js";
-import { agentBackend, DEFAULT_AGENT } from "./agent-backend.js";
+import { agentBackend } from "./agent-backend.js";
 import { imageProbeEntryFresh, imageProbeKey, type ImageProbeCache } from "../doctor/image-probe.js";
 
 /** The subset of a resolved seam the capability resolver reads: an `agent` when the config
@@ -42,7 +42,7 @@ export function seamImageInput(
   providers: Map<string, PiModelDef[]> | null,
   probes?: ImageProbeCache,
 ): boolean | null {
-  const agent = seam.agent ?? (isAgentId(seam.provider) ? seam.provider : DEFAULT_AGENT);
+  const agent = seamAgent(seam);
   const backend = agentBackend(agent);
   // A backend with an imageInput hook owns the answer outright (claude: true for every model).
   if (backend?.imageInput !== undefined) return backend.imageInput(seam.model);

@@ -5,7 +5,7 @@ import type { FallbackModelConfig, TumwaterConfig } from "../config/config-schem
 import { enabledRoleIds } from "../config/config.js";
 import { configForRole, resolverConfig, reviewConfig } from "../config/config-views.js";
 import { fallbackPair } from "../config/config-fallbacks.js";
-import { isAgentId } from "../config/model-selector.js";
+import { seamAgent } from "../config/model-selector.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
@@ -135,7 +135,7 @@ export function seamContextWindow(
   projectRoot: string,
   modelsPath: string = piModelsPath(),
 ): number | null {
-  const agent = seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi");
+  const agent = seamAgent(seam);
   switch (agent) {
     case "pi":
       let { provider, model } = seam;
@@ -220,9 +220,8 @@ export function cacheReadUnpriced(
   return inputPriced && cacheUnpriced;
 }
 
-/** A seam's backend identity: the resolved `agent` when a seam carries one (configForRole,
- * reviewConfig and resolverConfig all do), else the agent its provider namespace names, else
- * pi. The shared shape the free predicate below judges and the fallback view preserves. */
+/** The shared shape the free predicate below judges (its backend identity resolved by
+ * `seamAgent` in model-selector) and the fallback view preserves. */
 interface SeamModel {
   agent?: string;
   provider?: string;
@@ -257,7 +256,7 @@ export function seamFree(
   account: ClaudeAccount | null = null,
   catalog: OpencodeCatalogCache | null = null,
 ): boolean {
-  const agent = seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi");
+  const agent = seamAgent(seam);
   // One free-ness rule per backend: pi's pair price, claude's subscription, opencode's catalog,
   // and nothing for any other backend (its spend could still reach the cap, so the badge must
   // not read n/a). The opencode arm reads the gateway-qualified id (part 6b/7) and changes the
