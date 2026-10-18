@@ -17,6 +17,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { appendPassthroughArgs } from "../agent-args.js";
 
 /** Flags the harness passes itself. A passthrough arg equal to one of these is appended AFTER
  * the harness's own copy, and claude's argument parser is last-wins — so it would silently
@@ -127,13 +128,6 @@ export function claudeArgs(opts: ClaudeArgOptions): { args: string[]; stdin: str
   if (opts.maxBudgetUsd !== undefined && opts.maxBudgetUsd > 0) {
     args.push("--max-budget-usd", String(opts.maxBudgetUsd));
   }
-  for (const arg of opts.args ?? []) {
-    // Match the flag itself even when it carries its value as `--flag=value`.
-    const flag = arg.split("=", 1)[0] as string;
-    if (HARNESS_CLAUDE_FLAGS.has(flag)) {
-      throw new Error(`claudeArgs: passthrough arg ${JSON.stringify(arg)} repeats a flag tumwater sets`);
-    }
-    args.push(arg);
-  }
+  appendPassthroughArgs(args, opts.args, HARNESS_CLAUDE_FLAGS, "claudeArgs");
   return { args, stdin: opts.prompt };
 }

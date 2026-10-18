@@ -18,6 +18,8 @@
  * never silently override the resolved model, the session choice, or the isolation flags. This
  * is the reserved set from plans/opencode-backend.md "Config and routing"; part 3 adds
  * `--title`, which tumwater now sets (finding 6). */
+import { appendPassthroughArgs } from "../agent-args.js";
+
 export const HARNESS_OPENCODE_FLAGS: ReadonlySet<string> = new Set([
   "run",
   "--format",
@@ -80,13 +82,6 @@ export function opencodeQualifiedModel(model: string): string {
 export function opencodeArgs(opts: OpencodeArgOptions): { args: string[]; stdin: string } {
   const model = opencodeQualifiedModel(opts.model) + (opts.variant !== undefined ? `#${opts.variant}` : "");
   const args = ["run", "--standalone", "--format", "json", "--auto", "--model", model, "--session", opts.sessionId, "--title", opts.title];
-  for (const arg of opts.args ?? []) {
-    // Match the flag itself even when it carries its value as `--flag=value`.
-    const flag = arg.split("=", 1)[0] as string;
-    if (HARNESS_OPENCODE_FLAGS.has(flag)) {
-      throw new Error(`opencodeArgs: passthrough arg ${JSON.stringify(arg)} repeats a flag tumwater sets`);
-    }
-    args.push(arg);
-  }
+  appendPassthroughArgs(args, opts.args, HARNESS_OPENCODE_FLAGS, "opencodeArgs");
   return { args, stdin: opts.prompt };
 }
