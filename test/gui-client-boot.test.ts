@@ -389,6 +389,39 @@ test("cap-edit opens the cap editor, cap-save posts the parsed cap, cap-discard 
   assert.deepEqual(events, ["stop"]);
 });
 
+test("instructions-edit opens the editor, instructions-save posts the textarea, instructions-discard posts nothing", () => {
+  const posts: unknown[] = [];
+  const events: string[] = [];
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      drawerRole: { role: "clean", state: "ok", view: { instructions: "Stay small." } },
+      $: (id: string) => (id === "instructionsedittext" ? { value: "new text" } : null),
+      startInstructionsEdit: (r: string, t: string) => events.push(`edit ${r} ${t}`),
+      stopInstructionsEdit: () => events.push("stop"),
+      instructionsEditing: { current: null },
+      loadDrawerRole: (r: string) => events.push(`load ${r}`),
+      postAction: (path: string, body: unknown, done: (d: unknown) => string) => {
+        posts.push([path, body]);
+        // postAction toasts the callback's message — record it as an event.
+        events.push(done({ message: "clean: instructions saved (8 chars)" }));
+      },
+    },
+  );
+  // instructions-edit seeds the editor with the current override.
+  scope.runAct("instructions-edit", "clean");
+  assert.deepEqual(events, ["edit clean Stay small."]);
+  // instructions-save posts the textarea's text and refetches the role.
+  scope.runAct("instructions-save", "clean");
+  assert.deepEqual(posts, [["/api/role-instructions", { role: "clean", text: "new text" }]]);
+  assert.deepEqual(events.slice(-2), ["load clean", "clean: instructions saved (8 chars)"]);
+  // instructions-discard closes the editor, posting nothing.
+  events.length = 0;
+  scope.runAct("instructions-discard", "clean");
+  assert.deepEqual(posts, [["/api/role-instructions", { role: "clean", text: "new text" }]]);
+  assert.deepEqual(events, ["stop"]);
+});
+
 test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
   const log: string[] = [];
   const calls: string[] = [];

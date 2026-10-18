@@ -12,6 +12,7 @@ import { requireConfigKey } from "./gui-args.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { badRequest, sendJson } from "./http-body.js";
+import { gotSuffix } from "../text/text.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
@@ -84,6 +85,40 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
   const result = setConfigKey(root, "maxDailyCostUsdPerRole." + baseRole, JSON.stringify(value));
   if (!result.ok) return configKeyError(res, "maxDailyCostUsdPerRole." + baseRole, result);
   sendJson(res, 200, { ok: true, role: baseRole, maxDailyCostUsd: value as number });
+}
+
+/** Handle POST /api/role-instructions: the role drawer's standing-instructions editor — the
+ * `Instructions override` row's Edit/Save. Same body discipline as /api/role-cap (readPostBody
+ * → 400 malformed/non-object, 413 oversized); an empty role id is a 400, and a bare `feature-2`
+ * loop id maps to its base role's override (baseRoleOf), the key tick-prompt reads — so an
+ * instance edits the instructions its runs carry (readRoleBody's shared guard is not used
+ * because it rejects instance ids, and the unknown-role check is validateConfig's, below).
+ * The director is editable here (its override reaches its runs), unlike handleRoleNotes'
+ * director refusal. An empty/whitespace-only text clears the key (unsetConfigKey, like the
+ * CLI's --clear-instructions); otherwise the write goes through the CLI's own setConfigKey
+ * with the same JSON.stringify wrapper --instructions-file uses, so validateConfig owns the
+ * 4096-char cap and the unknown-role check, and a write failure is configKeyError's 400
+ * naming the dotted key. */
+export async function handleRoleInstructions(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"role": "feature", "text": "…"}');
+  if (!body) return;
+  const role = body.role;
+  if (typeof role !== "string" || role.trim() === "") return badRequest(res, "role required");
+  if (typeof body.text !== "string") return badRequest(res, `"text" must be a string — the full replacement instructions, or "" to clear it${gotSuffix(body.text)}`);
+  const base = baseRoleOf(role);
+  // An empty or whitespace-only buffer clears the override, like the CLI's --clear-instructions.
+  if (body.text.trim() === "") {
+    const result = unsetConfigKey(root, `roles.${base}.instructions`);
+    if (!result.ok) return configKeyError(res, `roles.${base}.instructions`, result);
+    sendJson(res, 200, { ok: true, role: base, message: `${base}: instructions cleared` });
+    return;
+  }
+  // The same JSON.stringify wrapper the CLI's --instructions-file uses: setConfigKey takes
+  // raw CLI text, so a body that parses as JSON is stored verbatim; validateConfig owns the
+  // 4096-char cap and the unknown-role check in writeConfigMutation.
+  const result = setConfigKey(root, `roles.${base}.instructions`, JSON.stringify(body.text));
+  if (!result.ok) return configKeyError(res, `roles.${base}.instructions`, result);
+  sendJson(res, 200, { ok: true, role: base, message: `${base}: instructions saved (${body.text.length} chars)` });
 }
 
 /** The shared 400 for a failed config mutation — the set and unset write paths both nest the

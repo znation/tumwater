@@ -83,6 +83,18 @@ test("the config file's role overrides resolve: instructions, model pair, interv
   assert.equal(bugfix.minRunIntervalSeconds, 20); // defaultConfig's global value
 });
 
+test("an instance id resolves the instructions override through its base role", () => {
+  const dir = root();
+  writeConfig(dir, { roles: { feature: { instructions: "Stay small.", instances: 2 } } });
+  // An instance id reads roles.feature.instructions (the key tick-prompt reads), so the
+  // drawer and `tumwater role feature-2` show — and can edit — the override its runs carry.
+  const inst = rolePayload(dir, "feature-2", NO_MODELS);
+  assert.equal(inst.instructions, "Stay small.");
+  // The base role's own case is unchanged.
+  const base = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(base.instructions, "Stay small.");
+});
+
 test("a configured fallback pair is reported, with its freeness verdict from pi's definitions", () => {
   const dir = root();
   writeConfig(dir, { fallbackModel: { provider: "free-prov", model: "free-model" } });

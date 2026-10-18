@@ -29,6 +29,8 @@ interface DrawerScope {
   stopNoteEdit(): void;
   startCapEdit(role: string, capUsd: number): void;
   stopCapEdit(): void;
+  startInstructionsEdit(role: string, text: string): void;
+  stopInstructionsEdit(): void;
   loadDrawerRole(role: string): Promise<void>;
   toggleLoop(role: string): void;
   toggleEntry(file: string, index: number): void;
@@ -656,8 +658,10 @@ test("the loop drawer renders the Configuration section from the role payload", 
   assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription \(five_hour window\)<\/dd>/);
   assert.match(role, /<dt>Min run interval<\/dt><dd[^>]*>30s<\/dd>/);
   assert.match(role, /<dt>Queued prompts<\/dt><dd[^>]*>4<\/dd>/);
-  // Instructions and find text clamp to one line with the verbatim text in the tooltip.
-  assert.match(role, /<dt>Instructions override<\/dt><dd title='say the version on every reply\nkeep it short'>say the version on every reply keep it short<\/dd>/);
+  // Instructions and find text clamp to one line with the verbatim text in the tooltip; the
+  // instructions row always renders an Edit button (the control below replaces the sentence).
+  assert.match(role, /<dt>Instructions override<\/dt><dd title='say the version on every reply\nkeep it short'>say the version on every reply keep it short/);
+  assert.match(role, /data-act='instructions-edit' data-arg='clean'>Edit<\/button>/);
   assert.match(role, /<dt>Find text<\/dt><dd title='look for redundant code'>look for redundant code<\/dd>/);
 });
 
@@ -725,7 +729,9 @@ test("the Configuration section omits absent fields (cap-less team, no fallback,
   assert.doesNotMatch(role, /<dt>Billing<\/dt>/);
   assert.doesNotMatch(role, /Min run interval/);
 
-  // A notes-only payload renders just the always-on Daily cap row — no other rows. The Daily
+  // A notes-only payload renders just the always-on Daily cap and Instructions rows — no
+
+  // The Daily
   // cap row always renders for a non-director role (cap or not), so a bare payload still
   // shows a Configuration section built from that one row.
   const minimal = openDrawer(["toggleLoop"], {
@@ -830,6 +836,49 @@ test("the loop drawer always renders a Daily cap row for a non-director role, an
   dir.scope.toggleLoop("director");
   await flush();
   assert.doesNotMatch(dir.paintedFor("drawerrole"), /Daily cap/);
+});
+
+// The standing-instructions row always renders for every role (override or not) because its
+// Edit/Save control is how the director-s and instance runs' instructions get written from
+// the dashboard — the same always-shown rationale as the Daily cap row. Its editor prefills
+// the current text, and a role with no override seeds an empty textarea so Save-with-empty
+// clears.
+test("the instructions row always renders and its editor prefills the override, seeded empty when none", async () => {
+  const withInst = openDrawer(["toggleLoop", "startInstructionsEdit", "stopInstructionsEdit"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0, instructions: "Stay small.\nBe terse." } },
+  });
+  withInst.scope.toggleLoop("clean");
+  await flush();
+  let role = withInst.paintedFor("drawerrole");
+  // The override text is clamped with the verbatim text in the tooltip, plus an Edit button.
+  assert.match(role, /<dt>Instructions override<\/dt><dd title='Stay small.\nBe terse.'>Stay small. Be terse./);
+  assert.match(role, /data-act='instructions-edit' data-arg='clean'>Edit<\/button>/);
+  // Editing swaps in a textarea prefilled with the override plus Save/Discard.
+  withInst.scope.startInstructionsEdit("clean", "Stay small.\nBe terse.");
+  role = withInst.paintedFor("drawerrole");
+  assert.match(role, /<textarea id='instructionsedittext' rows='10' class='mono'/);
+  assert.match(role, /data-act='instructions-save' data-arg='clean'/);
+  assert.match(role, /data-act='instructions-discard' data-arg='clean'/);
+  // Discarding restores the sentence and button.
+  withInst.scope.stopInstructionsEdit();
+  role = withInst.paintedFor("drawerrole");
+  assert.match(role, /data-act='instructions-edit' data-arg='clean'>Edit<\/button>/);
+  assert.doesNotMatch(role, /instructionsedittext/);
+
+  // A role with no override still shows the row, its Edit control, and — once editing — an
+  // empty textarea (so Save with an empty buffer clears).
+  const none = openDrawer(["toggleLoop", "startInstructionsEdit"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0 } },
+  });
+  none.scope.toggleLoop("clean");
+  await flush();
+  const noneRole = none.paintedFor("drawerrole");
+  assert.match(noneRole, /<dt>Instructions override<\/dt><dd title=''>No standing instructions\./);
+  assert.match(noneRole, /data-act='instructions-edit' data-arg='clean'>Edit<\/button>/);
+  none.scope.startInstructionsEdit("clean", "");
+  assert.match(none.paintedFor("drawerrole"), /<textarea id='instructionsedittext'[^>]*><\/textarea>/);
 });
 
 // A default pi team runs on pi's own saved default model: rolePayload sets `piDefault`

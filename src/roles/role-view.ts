@@ -359,7 +359,10 @@ export function rolePayload(
     chainStep,
     ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
-    instructions: cfg.roles[role]?.instructions ?? null,
+    // The roles.<base>.instructions override verbatim — resolved through the base role like
+    // the cap and quiet hours, so an instance id shows (and can edit) the override its runs
+    // carry (tick-prompt reads config.roles[base]); null when unset.
+    instructions: cfg.roles[baseRoleOf(role)]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,
     notes: note,
     inboxCount: queuedRolePromptCount(root, role),

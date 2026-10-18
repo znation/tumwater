@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleInstructions, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -36,6 +36,7 @@ import { summarizeTickRows } from "../src/history/history-data.js";
 import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
+import { ROLE_INSTRUCTIONS_MAX_CHARS } from "../src/config/config-schema.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -731,6 +732,72 @@ test("handleRoleCap rejects a bad value, the director, an unknown role, and a mi
   assert.equal(noRole.captured.status, 400);
   const noValue = await serveRoleCap(root, { role: "feature" });
   assert.equal(noValue.captured.status, 400);
+});
+
+function serveRoleInstructions(root: string, body: unknown) {
+  return captureJson((res) => handleRoleInstructions(fakeReq(JSON.stringify(body)), res, root));
+}
+
+// POST /api/role-instructions: the role drawer's standing-instructions editor. Writes through
+// the CLI's own setConfigKey/unsetConfigKey, so an empty text clears (like --clear-instructions)
+// and validateConfig owns the 4096-char cap; an instance id maps to its base role's override;
+// the director is editable here (its override reaches its runs), unlike handleRoleNotes.
+test("handleRoleInstructions writes the base role's override through setConfigKey and answers 200", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), {});
+  const { captured, data } = await serveRoleInstructions(root, { role: "feature", text: "Prefer small plans." });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, role: "feature", message: "feature: instructions saved (19 chars)" });
+  // The file on disk is what tick-prompt reads — the write went through setConfigKey.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  const rolesOnDisk = onDisk.roles as { feature: Record<string, unknown>; director: Record<string, unknown> };
+  assert.equal(rolesOnDisk.feature.instructions, "Prefer small plans.");
+});
+
+test("handleRoleInstructions maps an instance id to its base role's override and the director is editable", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), {});
+  const inst = await serveRoleInstructions(root, { role: "feature-2", text: "Say the version." });
+  assert.equal(inst.captured.status, 200);
+  // An instance id writes roles.feature.instructions (the key its runs carry).
+  assert.deepEqual(inst.data, { ok: true, role: "feature", message: "feature: instructions saved (16 chars)" });
+  // The director is editable here (its override reaches its runs), unlike handleRoleNotes.
+  const dir = await serveRoleInstructions(root, { role: "director", text: "Be terse." });
+  assert.equal(dir.captured.status, 200);
+  assert.deepEqual(dir.data, { ok: true, role: "director", message: "director: instructions saved (9 chars)" });
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  const roles = onDisk.roles as { feature: Record<string, unknown>; director: Record<string, unknown> };
+  assert.equal(roles.feature.instructions, "Say the version.");
+  assert.equal(roles.director.instructions, "Be terse.");
+});
+
+test("handleRoleInstructions clears on empty text and rejects bad input without writing", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { instructions: "x" } } });
+  const post = (body: unknown) => captureJson((res) => handleRoleInstructions(fakeReq(JSON.stringify(body)), res, root));
+  // An empty or whitespace-only buffer removes the key (unsetConfigKey), like --clear-instructions.
+  const cleared = await post({ role: "feature", text: "   " });
+  assert.equal(cleared.captured.status, 200);
+  assert.deepEqual(cleared.data, { ok: true, role: "feature", message: "feature: instructions cleared" });
+  let onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { feature?: Record<string, unknown> } | undefined)?.feature?.instructions, undefined);
+  // A non-string text is refused with the gotSuffix wording.
+  const nonString = await post({ role: "feature", text: 5 });
+  assert.equal(nonString.captured.status, 400);
+  assert.match((nonString.data as { error: string }).error, /"text" must be a string/);
+  // An over-cap text is refused 400 naming the dotted key, writing nothing.
+  const tooLong = await post({ role: "feature", text: "a".repeat(ROLE_INSTRUCTIONS_MAX_CHARS + 1) });
+  assert.equal(tooLong.captured.status, 400);
+  assert.match((tooLong.data as { error: string }).error, new RegExp("roles\\.feature\\.instructions"));
+  onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { feature?: Record<string, unknown> } | undefined)?.feature?.instructions, undefined, "a refused write never touches the file");
+});
+
+test("handleRoleInstructions refuses an unknown role id and creates no file", async () => {
+  const root = tmpdir();
+  const { captured } = await serveRoleInstructions(root, { role: "nope", text: "z" });
+  assert.equal(captured.status, 400);
+  assert.equal(fs.existsSync(configPath(root)), false, "a refused write never creates the file");
 });
 
 test("handleConfigSet refuses a key outside the curated set, naming it", async () => {

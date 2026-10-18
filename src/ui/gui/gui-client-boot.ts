@@ -243,6 +243,18 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         loadDrawerRole(arg);
         return value > 0 ? "Daily cap set to " + fmtCap(value) : "Daily cap removed";
       });
+    } else if (act === "instructions-edit") {
+      startInstructionsEdit(arg, drawerRole?.view?.instructions ?? "");
+    } else if (act === "instructions-discard") {
+      stopInstructionsEdit();
+    } else if (act === "instructions-save") {
+      const box = $("instructionsedittext");
+      const text = box ? box.value : "";
+      postAction("/api/role-instructions", { role: arg, text }, (d) => {
+        instructionsEditing = null;
+        loadDrawerRole(arg);
+        return d && typeof d.message === "string" ? d.message : "Instructions updated";
+      });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
       const title = entryTitleAt(file, index);

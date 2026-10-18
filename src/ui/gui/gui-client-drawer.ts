@@ -35,6 +35,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     entryEditing = null;
     noteEditing = null;
     capEditing = null;
+    instructionsEditing = null;
     disarmNoteClear();
     if (wasLoop && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
     drawerTicks = null;
@@ -377,7 +378,23 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         : "<button type='button' class='btn btn-sm' data-act='cap-edit' data-arg='" + esc(role) + "'>" + (dc ? "Edit cap" : "Set a cap") + "</button>";
       rows.push("<div><dt>Daily cap</dt><dd title='" + esc(capBody) + "'>" + esc(capBody) + capControl + "</dd></div>");
     }
-    if (typeof view.instructions === "string" && view.instructions.trim() !== "") rows.push(kvRow("Instructions override", clamp(view.instructions), view.instructions));
+    // The standing instructions (roles.<base>.instructions, resolved through the base role),
+    // worded like role-render.ts's Instructions override. Shown for every role — always,
+    // override or not — because the Edit/Save control is how the director's and instance
+    // runs' instructions get written from the dashboard: the same always-shown rationale as
+    // the Daily cap row above. While the editor is open for this role, a textarea prefilled
+    // with the current text and Save/Discard replace the sentence, mirroring the notebook
+    // editor's markup; a role with no override still seeds an empty textarea, so an empty
+    // buffer on Save clears.
+    const instEditing = instructionsEditing && instructionsEditing.role === role;
+    const instText = typeof view.instructions === "string" ? view.instructions : "";
+    const instBody = instText.trim() !== "" ? clamp(instText) : "No standing instructions.";
+    const instControl = instEditing
+      ? "<textarea id='instructionsedittext' rows='10' class='mono' style='width:100%'>" + esc(instructionsEditing.text) + "</textarea>" +
+        "<div><button type='button' class='btn btn-sm btn-primary' data-act='instructions-save' data-arg='" + esc(role) + "'>Save</button> " +
+        "<button type='button' class='btn btn-sm' data-act='instructions-discard' data-arg='" + esc(role) + "'>Discard</button></div>"
+      : "<button type='button' class='btn btn-sm' data-act='instructions-edit' data-arg='" + esc(role) + "'>Edit</button>";
+    rows.push("<div><dt>Instructions override</dt><dd title='" + esc(instText) + "'>" + esc(instBody) + instControl + "</dd></div>");
     if (typeof view.find === "string" && view.find.trim() !== "") rows.push(kvRow("Find text", clamp(view.find), view.find));
     return rows.length ? "<section><div class='sec-head'><h3>Configuration</h3></div><dl class='kv'>" + rows.join("") + "</dl></section>" : "";
   }
@@ -386,6 +403,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // confirming click like entry cancel: the first click arms it for 5 s, the second posts.
   let noteEditing = null; // { role, text }
   let capEditing = null; // { role, value }
+  let instructionsEditing = null; // { role, text }
   function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
   // The notebook clear and the backlog entry cancel each build a two-click confirm slot from
   // the shared confirmSlot factory (defined in the loops splice, an earlier one), so the arm,
@@ -398,6 +416,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function stopNoteEdit() { noteEditing = null; repaintDrawerRole(); }
   function startCapEdit(role, capUsd) { capEditing = { role, value: capUsd ? Number(capUsd) || 0 : 0 }; repaintDrawerRole(); }
   function stopCapEdit() { capEditing = null; repaintDrawerRole(); }
+  function startInstructionsEdit(role, text) { instructionsEditing = { role, text: String(text ?? "") }; repaintDrawerRole(); }
+  function stopInstructionsEdit() { instructionsEditing = null; repaintDrawerRole(); }
   // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so
   // reopening refetches.
   function loadDrawerRole(role) {
