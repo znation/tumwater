@@ -365,26 +365,32 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function seriesHasBacklogAdded(data) {
     return data.series.some((d) => Number(d.plansAdded) > 0 || Number(d.bugsFiled) > 0);
   }
+  // True when some day carries a positive value for the named scalar series field; the shared
+  // guard behind the per-scalar seriesHas* helpers below, so each chart's element renders only
+  // when its series has data. Backlog items/added take two fields and stay separate.
+  function seriesHasScalar(data, field) {
+    return data.series.some((d) => Number(d[field]) > 0);
+  }
   // True when some day carries a passing-check median; the element renders only then.
   function seriesHasCheckMedian(data) {
-    return data.series.some((d) => Number(d.checkMedianMs) > 0);
+    return seriesHasScalar(data, "checkMedianMs");
   }
   // True when some day carries a count of failed full-suite checks; the red sibling of
   // seriesHasCheckMedian, the element renders only then.
   function seriesHasCheckFailures(data) {
-    return data.series.some((d) => Number(d.checkFailures) > 0);
+    return seriesHasScalar(data, "checkFailures");
   }
   // True when some day carries a merge-wait median; the element renders only then.
   function seriesHasMergeWaitMedian(data) {
-    return data.series.some((d) => Number(d.mergeWaitMedianMs) > 0);
+    return seriesHasScalar(data, "mergeWaitMedianMs");
   }
   // True when some day carries a provider-wait median; the element renders only then.
   function seriesHasProviderWaitMedian(data) {
-    return data.series.some((d) => Number(d.providerWaitMedianMs) > 0);
+    return seriesHasScalar(data, "providerWaitMedianMs");
   }
   // True when some day carries a workspace-wait median; the element renders only then.
   function seriesHasSlotWaitMedian(data) {
-    return data.series.some((d) => Number(d.slotWaitMedianMs) > 0);
+    return seriesHasScalar(data, "slotWaitMedianMs");
   }
   // report-chart:end
 
