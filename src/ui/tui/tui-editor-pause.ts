@@ -127,16 +127,9 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
         if (scheduledStopAt(session.root) !== undefined) {
           session.flashMessage(cancelScheduledStopMessage(session.root));
         } else {
-          session.settleDraft((t) => (pauseSavedInput = t), (n) => (pauseSavedCursor = n));
-          pauseEditMode = true;
-          pauseEditRole = null;
-          pauseEditStop = true;
-          session.held.pause = true;
-          session.held.pauseEditRole = null;
-          session.held.pauseEditStop = true;
-          session.input = "";
-          session.cursor = 0;
-          session.flashMessage('stop the team later: a duration, e.g. "2h" — current runs finish, then the team stops — Enter to schedule, Esc to cancel');
+          // The same one-line entry state as the Ctrl+F and per-role editors, scoped to the
+          // stop intent (no role pinned, stop mode on): nothing is written until Enter.
+          openPauseEditor(null, false, true, 'stop the team later: a duration, e.g. "2h" — current runs finish, then the team stops — Enter to schedule, Esc to cancel');
         }
       } catch (err) {
         session.flashError(err);
