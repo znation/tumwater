@@ -106,19 +106,17 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
   if (typeof role !== "string" || role.trim() === "") return badRequest(res, "role required");
   if (typeof body.text !== "string") return badRequest(res, `"text" must be a string — the full replacement instructions, or "" to clear it${gotSuffix(body.text)}`);
   const base = baseRoleOf(role);
-  // An empty or whitespace-only buffer clears the override, like the CLI's --clear-instructions.
-  if (body.text.trim() === "") {
-    const result = unsetConfigKey(root, `roles.${base}.instructions`);
-    if (!result.ok) return configKeyError(res, `roles.${base}.instructions`, result);
-    sendJson(res, 200, { ok: true, role: base, message: `${base}: instructions cleared` });
-    return;
-  }
-  // The same JSON.stringify wrapper the CLI's --instructions-file uses: setConfigKey takes
-  // raw CLI text, so a body that parses as JSON is stored verbatim; validateConfig owns the
-  // 4096-char cap and the unknown-role check in writeConfigMutation.
-  const result = setConfigKey(root, `roles.${base}.instructions`, JSON.stringify(body.text));
-  if (!result.ok) return configKeyError(res, `roles.${base}.instructions`, result);
-  sendJson(res, 200, { ok: true, role: base, message: `${base}: instructions saved (${body.text.length} chars)` });
+  // An empty or whitespace-only buffer clears the override, like the CLI's --clear-instructions;
+  // otherwise the same JSON.stringify wrapper --instructions-file uses (setConfigKey takes raw
+  // CLI text, so a body that parses as JSON is stored verbatim), with validateConfig owning the
+  // 4096-char cap and the unknown-role check in writeConfigMutation. Unlike quiet hours the
+  // clear arm carries no role guard (the director may clear, and the unknown-role clear gap is
+  // pre-existing).
+  writeRoleJsonKey(
+    res, root, base, `roles.${base}.instructions`, "instructions", body.text,
+    (v) => JSON.stringify(v),
+    (v) => `${base}: instructions saved (${v.length} chars)`,
+  );
 }
 
 /** Handle POST /api/role-quiet-hours: the role drawer's own-window editor sets or clears one
@@ -142,25 +140,18 @@ export async function handleRoleQuietHours(req: http.IncomingMessage, res: http.
   if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no quiet hours");
   if (typeof body.window !== "string") return badRequest(res, `"window" must be a string — a window like 23:00-07:00, or "" to clear it${gotSuffix(body.window)}`);
   const base = baseRoleOf(role);
-  const key = `quietHoursPerRole.${base}`;
-  // An empty or whitespace-only window clears the hold, like the CLI's --clear-quiet-hours.
-  if (body.window.trim() === "") {
-    // unsetConfigKey's no-op map path (a role the file never holds, an unknown id included)
-    // skips validateConfig, so without this the set branch's unknown-role refusal would never
-    // fire on a clear and a bogus id would answer 200 "cleared" — the explicit check mirrors
-    // the CLI's knownRoleIds guard.
-    if (rejectBadRole(root, res, role)) return;
-    const result = unsetConfigKey(root, key);
-    if (!result.ok) return configKeyError(res, key, result);
-    sendJson(res, 200, { ok: true, role: base, message: `${base}: quiet hours cleared` });
-    return;
-  }
-  // setConfigKey takes raw CLI text; a JSON round-trip of the already-parsed string is exact,
-  // and its map branch runs checkQuietHours with the dotted key as the label, so a malformed
-  // window is refused before any write, and validateConfig owns the unknown-role check.
-  const result = setConfigKey(root, key, JSON.stringify(body.window));
-  if (!result.ok) return configKeyError(res, key, result);
-  sendJson(res, 200, { ok: true, role: base, message: `${base}: quiet hours set to ${body.window}` });
+  // An empty or whitespace-only window clears the hold, like the CLI's --clear-quiet-hours;
+  // the clear arm carries rejectBadRole because unsetConfigKey's no-op map path (a role the
+  // file never holds, an unknown id included) skips validateConfig, so without it the set
+  // branch's unknown-role refusal would never fire on a clear and a bogus id would answer 200
+  // "cleared" (mirrors the CLI's knownRoleIds guard). The set arm runs setConfigKey raw, its
+  // map branch checking the dotted key as the label and validateConfig owning the unknown role.
+  writeRoleJsonKey(
+    res, root, base, `quietHoursPerRole.${base}`, "quiet hours", body.window,
+    (v) => JSON.stringify(v),
+    (v) => `${base}: quiet hours set to ${v}`,
+    () => rejectBadRole(root, res, role),
+  );
 }
 
 /** The shared 400 for a failed config mutation — the set and unset write paths both nest the
@@ -169,6 +160,36 @@ export async function handleRoleQuietHours(req: http.IncomingMessage, res: http.
  * a one-liner: `if (!result.ok) return configKeyError(res, key, result);` */
 function configKeyError(res: http.ServerResponse, key: string, result: { error: string }): void {
   badRequest(res, `${key}: ${result.error}`);
+}
+
+/** The set-or-clear write the two per-role JSON-config-key handlers (quiet hours, standing
+ * instructions) share: an empty/whitespace `raw` unsets `key` (after `guardClear`, a per-call
+ * check the clear arm runs first — quiet hours' unknown-role guard; instructions has none),
+ * else sets it via setConfigKey (which JSON-encodes nothing, so `serialize` shapes the stored
+ * value). `noun` names the hold in the "cleared" 200 and `setMessage` is the exact set-arm 200
+ * message, threaded so each handler keeps its own wording. Always writes the response, so the
+ * caller never falls through to further output. */
+function writeRoleJsonKey(
+  res: http.ServerResponse,
+  root: string,
+  base: string,
+  key: string,
+  noun: string,
+  raw: string,
+  serialize: (value: string) => string,
+  setMessage: (value: string) => string,
+  guardClear?: () => boolean,
+): void {
+  if (raw.trim() === "") {
+    if (guardClear?.()) return;
+    const result = unsetConfigKey(root, key);
+    if (!result.ok) configKeyError(res, key, result);
+    else sendJson(res, 200, { ok: true, role: base, message: `${base}: ${noun} cleared` });
+    return;
+  }
+  const result = setConfigKey(root, key, serialize(raw));
+  if (!result.ok) configKeyError(res, key, result);
+  else sendJson(res, 200, { ok: true, role: base, message: setMessage(raw) });
 }
 /** Handle POST /api/config-set: the Settings view's per-key Save — one curated key set to
  * one JSON value, through setConfigKey so the browser cannot drift from the CLI's rules
