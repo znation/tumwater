@@ -178,7 +178,10 @@ export function observeOpencodeRun(
 /** Read the cached catalog, or an empty one (fetchedAt 0, no models) when the file is missing
  * or malformed — the harness's no-data policy, so a torn write reads as "needs a refresh".
  * Exported so the opencode backend's adapter (part 6d/7) and doctor can read the same cache
- * without triggering a network fetch. */
+ * without triggering a network fetch. The synchronous read the sync poll surfaces
+ * (pollBudgetGate, collectBudget) use to thread the catalog-cache into their free-ness reads
+ * (part 6b/7); the async refresh (which runs once per process at the startup gate) is what
+ * fills the file in. */
 export function readOpencodeCache(root: string): OpencodeCatalogCache {
   const existing = readJsonFile<Partial<OpencodeCatalogCache>>(opencodeModelsPath(root));
   if (existing !== null && typeof existing.fetchedAt === "number" && existing.models !== undefined && typeof existing.models === "object" && !Array.isArray(existing.models)) {
@@ -198,10 +201,12 @@ export function writeOpencodeCache(root: string, cache: OpencodeCatalogCache): v
 
 /** Read the installed opencode CLI's version, undefined when it cannot be read (no binary, a
  * timeout, or a spawn failure). A changed version forces a catalog refresh: OpenCode serves from
- * the same models.dev data, so a new CLI may route to providers the old cache does not know. */
-function readCliVersion(): string | undefined {
+ * the same models.dev data, so a new CLI may route to providers the old cache does not know.
+ * `bin` is the configured opencode binary (default `opencode` on PATH), so the seed probes the
+ * same binary the runs spawn. */
+function readCliVersion(bin = "opencode"): string | undefined {
   try {
-    const res = spawnSync("opencode", ["--version"], { stdio: "pipe", encoding: "utf8", timeout: 5_000 });
+    const res = spawnSync(bin, ["--version"], { stdio: "pipe", encoding: "utf8", timeout: 5_000 });
     const version = res.stdout?.trim();
     return version === undefined || version === "" ? undefined : version;
   } catch {
@@ -219,6 +224,9 @@ interface OpencodeRefreshOptions {
   fetch?: CatalogFetch;
   /** Overrides the `opencode --version` probe. */
   cliVersion?: string;
+  /** The configured opencode binary to probe for the version (default `opencode` on PATH), so
+   * the seed checks the same binary the runs spawn instead of a different one on PATH. */
+  cliBin?: string;
   /** Overrides Date.now, for a deterministic age check. */
   now?: () => number;
   /** Called once when a fetch fails but an old cache is kept (part 6a's "logs one warning"). */
@@ -231,7 +239,7 @@ interface OpencodeRefreshOptions {
  * data; `billedAt` from the old cache survives a successful refresh (part 6c/7). */
 export async function refreshOpencodeCatalog(root: string, opts: OpencodeRefreshOptions): Promise<OpencodeCatalogCache> {
   const now = opts.now !== undefined ? opts.now() : Date.now();
-  const version = opts.cliVersion !== undefined ? opts.cliVersion : readCliVersion();
+  const version = opts.cliVersion !== undefined ? opts.cliVersion : readCliVersion(opts.cliBin);
   const current = readOpencodeCache(root);
   const fresh =
     current.fetchedAt !== 0 &&

@@ -15,7 +15,8 @@ import {
 } from "../config/config-views.js";
 import { resolveTierFallbacks, tierFallbackLabels, tiersResolveDistinctPairs } from "../config/config-fallbacks.js";
 import { enabledRoleIds } from "../config/config.js";
-import { fallbackModelFree, teamModelsFree, piPairFree, readPiProviders } from "../pi/pi-models.js";
+import { fallbackModelFree, piPairFree, readPiProviders, seamFree, teamModelsFree } from "../pi/pi-models.js";
+import { readOpencodeCache, type OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { OrchestratorInfo } from "../team/orchestrator-info.js";
@@ -59,6 +60,7 @@ function claudeWindowBlock(
   cfg: TumwaterConfig,
   providers: PiProviders,
   account: ClaudeAccount | null,
+  catalog: OpencodeCatalogCache | null,
 ): BudgetSlice["claudeWindow"] {
   if (account?.billing !== "subscription") return undefined;
   const windows = claudeWindowEntries(account);
@@ -68,7 +70,10 @@ function claudeWindowBlock(
   if (seams.length > 0) seams.push(resolverConfig(cfg));
   if (!seams.some((s) => s.agent === "claude")) return undefined;
   const priced = seams.some((s) => {
-    if (s.agent === undefined || s.agent === "pi") return !piPairFree(providers, s.provider, s.model);
+    if (s.agent === undefined || s.agent === "pi") return !piPairFree(providers, s.provider, s.model, account, catalog);
+    // An opencode seam is subscription-paid only when the catalog prices it at zero (part
+    // 6b/7); any other agent the account cannot bill is never subscription-paid.
+    if (s.agent === "opencode") return !seamFree(providers, s, account, catalog);
     return s.agent !== "claude"; // a backend the account cannot bill is never subscription-paid
   });
   const heldUntil =
@@ -110,12 +115,15 @@ export function collectBudget(
   const account = readClaudeAccount(root, now);
   const budgetReachedNow = budgetReached({ spentUsd, capUsd: cfg.maxDailyCostUsd });
   const providers = readPiProviders(modelsPath);
+  // The cached opencode models catalog (part 6b/7), seeded at the startup gate and read once per
+  // poll so every free-ness verdict below prices opencode seams against the same snapshot.
+  const catalog = readOpencodeCache(root);
   const publishedDemotions = info?.fallbackDemotions ?? {};
   const usable = (p: { provider?: string; model?: string }) =>
-    piPairFree(providers, p.provider, p.model, account) && !(modelPairName(p) in publishedDemotions);
+    piPairFree(providers, p.provider, p.model, account, catalog) && !(modelPairName(p) in publishedDemotions);
   const servingResolved = resolveTierFallbacks(cfg, usable);
   // The subscription usage window (part 6d/7): one account read per poll serves the block.
-  const claudeWindow = claudeWindowBlock(cfg, providers, account);
+  const claudeWindow = claudeWindowBlock(cfg, providers, account, catalog);
   // The per-tier budget pause set (part 5c/8): the same resolution the scheduler's gate folds,
   // over the SAME usable predicate an observer can re-derive — the price check, and the pair
   // not among the running orchestrator's published per-pair demotions. Computed only while the
@@ -141,7 +149,7 @@ export function collectBudget(
       // One projection per poll, from the same spend the field above renders: null exactly
       // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
       capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
-      free: teamModelsFree(cfg, modelsPath, account),
+      free: teamModelsFree(cfg, modelsPath, account, catalog),
       backend: cfg.backend ?? "pi",
       // Null unless the gate could actually engage it (configured AND priced at zero AND not
       // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
@@ -150,7 +158,7 @@ export function collectBudget(
       // scheduler is (BUGS.md 2026-09-20). The pair is the price-aware default tier's
       // resolution, so a map with no `default` entry names the pair the gate actually runs.
       fallback:
-        fallbackModelFree(cfg, modelsPath, account) && !(running && info?.fallbackDemoted)
+        fallbackModelFree(cfg, modelsPath, account, catalog) && !(running && info?.fallbackDemoted)
           ? (servingResolved.default.pair ?? null)
           : null,
       tiers:

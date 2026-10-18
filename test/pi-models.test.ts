@@ -3,7 +3,8 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
-import { fallbackModelFree, teamModelsFree, piAgentDir, piModelsPath, seamContextWindow } from "../src/pi/pi-models.js";
+import { fallbackModelFree, seamFree, teamModelsFree, piAgentDir, piModelsPath, seamContextWindow } from "../src/pi/pi-models.js";
+import type { OpencodeCatalogCache } from "../src/agent/opencode/opencode-catalog.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
@@ -342,6 +343,74 @@ test("seamContextWindow reads the run model's declared window from pi's catalog"
   assert.equal(seamContextWindow({ provider: "claude", model: "sonnet" }, project, file), null);
   // No pair named and no saved default: pi's start-up model is unknown here.
   assert.equal(seamContextWindow({}, project, file), null);
+});
+
+// --- OpenCode free-ness (part 6b/7 of plans/opencode-backend.md) ---------------------------
+
+/** A catalog cache with a free gateway model, a priced sibling, a billed free model, and a
+ * free provider-route model — the shapes the seam/team/fallback free-ness reads judge. */
+const OPENCAT: OpencodeCatalogCache = {
+  fetchedAt: 1,
+  models: {
+    "opencode/deepseek-v4.1-flash-free": { free: true },
+    "opencode/deepseek-v4.1-flash": { free: false, inputPerM: 0.15, outputPerM: 0.6 },
+    "opencode/free-billed": { free: true, billedAt: 5 },
+    "anthropic/claude-haiku-5-5": { free: true },
+  },
+};
+
+/** A config whose every tier (roles, review, strong resolver) routes to one model selector. */
+function opencodeTeamAt(model: string | { default?: string; strong?: string }): TumwaterConfig {
+  const cfg: TumwaterConfig = defaultConfig();
+  cfg.model = model;
+  return cfg;
+}
+
+test("seamFree prices an opencode seam by its catalog entry (part 6b/7)", () => {
+  // A cached free, unbilled gateway model is free; a bare id is keyed `opencode/<id>`.
+  assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash-free" }, null, OPENCAT), true);
+  // The safe refusals: priced, unknown, billed, and a null catalog (nothing to read).
+  assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash" }, null, OPENCAT), false, "priced in catalog");
+  assert.equal(seamFree(null, { agent: "opencode", model: "no-such-model" }, null, OPENCAT), false, "unknown in catalog");
+  assert.equal(seamFree(null, { agent: "opencode", model: "free-billed" }, null, OPENCAT), false, "billed free model");
+  assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash-free" }, null, null), false, "no catalog read");
+  // A provider route keeps its slashed id verbatim — the key opencodeArgs runs it under.
+  assert.equal(seamFree(null, { provider: "opencode", model: "anthropic/claude-haiku-5-5" }, null, OPENCAT), true);
+  // The pi and claude arms are unchanged by the new catalog parameter.
+  assert.equal(seamFree(null, { agent: "claude", provider: "claude", model: "x" }, { billing: "subscription", observedAt: 1, windows: {} } as never, OPENCAT), true);
+});
+
+test("a pi seam keeps judging by models.json even when a catalog is passed (part 6b/7)", () => {
+  const file = writeModels();
+  // Passing a catalog must not change the pi arm: a free pi pair is still free, a paid one not.
+  assert.equal(teamModelsFree(teamAt("lm-studio", "qwen3.8-27b"), file, null, OPENCAT), true);
+  assert.equal(teamModelsFree(teamAt("paid", "gpt-x"), file, null, OPENCAT), false);
+});
+
+test("a team whose every tier is a catalog-free opencode model reads free (part 6b/7)", () => {
+  // All tiers (roles, review, strong resolver) on the free gateway model: free with the cache,
+  // and a null cache (nothing to read) is not free — the badge must not lie.
+  const cfg = opencodeTeamAt("opencode/deepseek-v4.1-flash-free");
+  assert.equal(teamModelsFree(cfg, path.join(tmpdir(), "absent.json"), null, OPENCAT), true);
+  assert.equal(teamModelsFree(cfg, path.join(tmpdir(), "absent.json"), null, null), false, "no cache: not free");
+  // One priced opencode tier anywhere keeps the dollar badge.
+  const onePriced = opencodeTeamAt({
+    default: "opencode/deepseek-v4.1-flash-free",
+    strong: "opencode/deepseek-v4.1-flash",
+  });
+  assert.equal(teamModelsFree(onePriced, path.join(tmpdir(), "absent.json"), null, OPENCAT), false, "priced strong tier");
+});
+
+test("fallbackModelFree accepts a catalog-free opencode fallback for a priced primary (part 6b/7)", () => {
+  const file = writeModels(); // priced provider `paid/gpt-x`
+  const paid = teamAt("paid", "gpt-x");
+  assert.equal(teamModelsFree(paid, file), false, "the primary itself is priced");
+  // The free gateway model is a valid fallback; a null cache and a priced model are refused.
+  const freeFallback = { ...paid, fallback: "opencode/deepseek-v4.1-flash-free" };
+  assert.equal(fallbackModelFree(freeFallback, file, null, OPENCAT), true, "catalog-free opencode fallback");
+  assert.equal(fallbackModelFree(freeFallback, file, null, null), false, "no cache: refused");
+  const pricedFallback = { ...paid, fallback: "opencode/deepseek-v4.1-flash" };
+  assert.equal(fallbackModelFree(pricedFallback, file, null, OPENCAT), false, "catalog-priced fallback refused");
 });
 
 test("seamContextWindow follows pi's saved default when the run names no model", () => {

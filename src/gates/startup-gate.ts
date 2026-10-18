@@ -15,6 +15,7 @@ import {
 } from "./readiness.js";
 import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
+import { refreshOpencodeCatalog, type CatalogFetch } from "../agent/opencode/opencode-catalog.js";
 import { agentBackend } from "../agent/agent-backend.js";
 // Register the built-in pi and claude adapters into the registry this module reads (see
 // unregisteredBackendInUse) — importing run-agent.ts is the one place they register.
@@ -35,6 +36,16 @@ import "../agent/run-agent.js";
  * gone by the time the successor boots. The gate is the ASKER's build's rule, so a redeploy checks
  * what the running build knows of startup; a precondition the new build adds is invisible to it
  * until that build runs. */
+
+/** The opencode-catalog seed's injectable parts, so the offline startup test can prove the
+ * seed fetches and persists without touching the network (part 6b/7). Absent, the seed uses
+ * the real models.dev fetch and the real clock. */
+export interface OpenCodeSeedOptions {
+  /** Overrides the seed's models.dev GET. */
+  fetch?: CatalogFetch;
+  /** Overrides Date.now, for a deterministic freshness check. */
+  now?: () => number;
+}
 
 /** The repo-level preconditions every repo-bound command shares (requireReadyRepo in
  * cli/cli-repo-gate.ts): git
@@ -66,6 +77,9 @@ export async function runStartupCheck(
   /** The `--branch` flag of the invocation (null when absent) — the supervisor forwards it to
    * every generation, so every asker must pass the same one. */
   branchArg: string | null,
+  /** The opencode-catalog seed's injectable parts — tests only; production callers omit it and
+   * the seed uses the real models.dev fetch (see OpenCodeSeedOptions). */
+  opencodeSeed: OpenCodeSeedOptions = {},
 ): Promise<RunStartupReady | { problem: string }> {
   const notReady = await repoNotReady(root);
   if (notReady !== null) return { problem: notReady };
@@ -101,6 +115,22 @@ export async function runStartupCheck(
     claudeSeedAttempted.add(root);
     seedClaudeAccount(root, config);
   }
+  // Seed the opencode models catalog (part 6b/7) before the first run: the poll surfaces price
+  // opencode seams from the cached `.tumwater/state/opencode-models.json`, and an absent cache
+  // reads every opencode seam NOT free (the safe direction for the budget gate). Mirroring the
+  // claude seed above, it runs once per root per process when a model job routes to opencode;
+  // a failed fetch keeps the last good cache (or an empty one) and never blocks startup.
+  if (!opencodeSeedAttempted.has(root) && agentsInUse(config).includes("opencode")) {
+    opencodeSeedAttempted.add(root);
+    await refreshOpencodeCatalog(root, {
+      providers: opencodeProviders(config),
+      // Probe the configured opencode binary (not a different one on PATH) for the version, so
+      // the freshness check compares against the binary the team actually runs.
+      cliBin: resolveAgentBin(config, "opencode").bin,
+      fetch: opencodeSeed.fetch,
+      now: opencodeSeed.now,
+    });
+  }
   const branch = await resolveMainBranch(root, config, branchArg);
   if ("problem" in branch) return branch;
   return { config, mainBranch: branch.mainBranch };
@@ -110,6 +140,27 @@ export async function runStartupCheck(
  * so the supervisor's and redeploy's repeated startup checks do not respawn `claude auth
  * status` on every poll when the probe fails. */
 const claudeSeedAttempted = new Set<string>();
+
+/** Roots this process has already attempted an opencode-catalog seed for (see runStartupCheck),
+ * so the supervisor's and redeploy's repeated startup checks do not respawn the models.dev
+ * fetch on every poll when it fails. */
+const opencodeSeedAttempted = new Set<string>();
+
+/** The models.dev providers the config routes through OpenCode beyond its own gateway, which
+ * the catalog parse (part 6a/7) keeps only when named here (finding 10's `opencode-go` and so
+ * on). A bare gateway seam (`opencode/<id>`) adds nothing — `opencode` is always kept. Each
+ * provider is the model id's segment before the first `/` — `opencode/anthropic/…` routes to
+ * models.dev's `anthropic` provider, so its catalog key is `anthropic/<id>` — read from the
+ * same seam enumeration the startup gate already sweeps for binaries. */
+export function opencodeProviders(config: TumwaterConfig): string[] {
+  const providers = new Set<string>();
+  for (const seam of seamsInUse(config)) {
+    if (seam.agent !== "opencode") continue;
+    const m = seam.model;
+    if (m?.includes("/")) providers.add(m.slice(0, m.indexOf("/")));
+  }
+  return [...providers];
+}
 
 /** Every agent backend an enabled seam resolves to — the distinct agents of the one
  * seamsInUse list (startup-gate's consumer of it), so a claude or pi clause that exists only

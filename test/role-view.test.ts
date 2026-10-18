@@ -18,7 +18,7 @@ import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
-import { writeModelsFile } from "./fixtures/models-fixtures.js";
+import { writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
@@ -93,6 +93,20 @@ test("a configured fallback pair is reported, with its freeness verdict from pi'
   const bare = rolePayload(root(), "bugfix", NO_MODELS);
   assert.equal(bare.fallback, null);
   assert.equal(bare.fallbackFree, false);
+});
+
+test("an opencode fallback pair reads free in the role view only when the cached catalog prices it free", () => {
+  // Part 6b/7: the fallback free-ness verdict reads the opencode catalog exactly as the budget
+  // gate does, so `tumwater role` cannot disagree with the gate about a fallback it would
+  // engage. A missing cache (no catalog read) leaves the pair NOT free — the safe direction.
+  const dir = root();
+  writeConfig(dir, { fallbackModel: { provider: "opencode", model: "deepseek-v4.1-flash-free" } });
+  const noCache = rolePayload(dir, "bugfix", NO_MODELS);
+  assert.equal(noCache.fallbackFree, false, "no cached catalog: an opencode fallback is not provably free");
+  writeOpencodeCache(dir); // the fixture prices the gateway free model free
+  const withCache = rolePayload(dir, "bugfix", NO_MODELS);
+  assert.equal(withCache.fallbackFree, true, "a catalog-free opencode fallback reads free to the view");
+  assert.deepEqual(withCache.fallback, { provider: "opencode", model: "deepseek-v4.1-flash-free" });
 });
 
 test("a subscription claude fallback reads free in the role view", () => {

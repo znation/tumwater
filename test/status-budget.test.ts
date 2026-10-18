@@ -8,7 +8,7 @@ import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { loadConfig } from "../src/config/config.js";
 import { spentLoopState } from "./fixtures/loop-fixtures.js";
 import { saveLoopState } from "../src/loop/loop-state.js";
-import { LOCAL_FREE_MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
+import { LOCAL_FREE_MODELS_JSON, writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 
 // The budget collector folds the spend/billing block from the shared reads (config, loops,
 // roles, running, info, models path) and one pinned now; this is the small per-domain test
@@ -36,6 +36,31 @@ test("collectBudget aggregates the daily spend and drives the pause sets", async
   assert.equal(got.budget.capUsd, 10);
   assert.deepEqual(got.capPaused, [], "spend is under every per-role cap");
   assert.deepEqual(got.budgetPausedRoles, [], "no tier resolved to pause under an open gate");
+});
+
+test("collectBudget prices an opencode-free team free (part 6b/7)", async () => {
+  // The status badge's free-ness read (budget.free) judges opencode seams by the cached
+  // models-dev catalog that collectBudget reads and threads into teamModelsFree: an
+  // all-opencode-free team (every tier routed to the catalog-free gateway model) reads free.
+  const repo = makeRepo();
+  await initProject(repo, "status opencode free");
+  writeOpencodeCache(repo);
+  writeConfig(repo, { model: "opencode/deepseek-v4.1-flash-free" });
+  const cfg = loadConfig(repo);
+  const modelsFile = writeModelsFile(tmpdir("status-opencode-"), LOCAL_FREE_MODELS_JSON);
+  const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
+  const snap = snapshot(repo, modelsFile, now);
+  const got = collectBudget(
+    repo,
+    cfg,
+    snap.loops,
+    snap.loops.map((l) => l.role),
+    false,
+    readOrchestratorInfo(repo),
+    modelsFile,
+    now,
+  );
+  assert.equal(got.budget.free, true, "every tier on a catalog-free opencode model");
 });
 
 test("snapshot carries the orchestrator's chain block only while it is alive", async () => {

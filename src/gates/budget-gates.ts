@@ -35,6 +35,7 @@ import { enabledRoleIds } from "../config/config.js";
 import { formatModelSelector, isAgentId } from "../config/model-selector.js";
 import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrides } from "../config/config-views.js";
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
+import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { claudeWindowUsedUp, readClaudeAccount, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
 import type { LoopState } from "../loop/loop-state.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
@@ -242,6 +243,11 @@ export function pollBudgetGate(
   // predicates below never move it to a fallback and accept a subscription claude pair as a
   // budget fallback. One read per poll; an absent file reads as "no subscription".
   const account = readClaudeAccount(root);
+  // The cached opencode models catalog (part 6b/7), seeded at the startup gate and read once
+  // per poll so every free-ness verdict below prices opencode seams against the same snapshot.
+  // Absent (no cache yet), an opencode seam reads NOT free — the safe direction until the
+  // startup seed fills the file in.
+  const catalog = readOpencodeCache(root);
   // The usable predicate's two halves (part 5b/8): pi prices the pair at zero — a pair
   // routed to a non-pi backend (e.g. `claude/<id>`) is never free, the same predicate the
   // badge uses — and its breaker entry holds no demotion, tiers sharing a pair share the
@@ -261,7 +267,7 @@ export function pollBudgetGate(
     if (account?.billing === "subscription" && pairIsClaude(p)) {
       // The first Claude model runs on the subscription only; a later one (extraUsage) may
       // spend extra usage within its cap while no window is rejected or refuses overage.
-      if (!p.extraUsage) return windowOut === null && piPairFree(providers, p.provider, p.model, account);
+      if (!p.extraUsage) return windowOut === null && piPairFree(providers, p.provider, p.model, account, catalog);
       // Past the reserve this step would spend the reserved quota before reaching extra usage:
       // it waits until a reading shows the account already spending overage.
       if (windowOut?.reserve === true && !Object.values(account.windows).some((w) => w.isUsingOverage === true))
@@ -272,7 +278,7 @@ export function pollBudgetGate(
         (p.maxDailyCostUsd === undefined || pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd)
       );
     }
-    if (piPairFree(providers, p.provider, p.model, account)) return !(windowOut !== null && pairIsClaude(p));
+    if (piPairFree(providers, p.provider, p.model, account, catalog)) return !(windowOut !== null && pairIsClaude(p));
     if (reached) return false;
     return (
       p.maxDailyCostUsd === undefined ||
@@ -413,7 +419,7 @@ export function pollBudgetGate(
     // A job keeps its own model while that model is available: below the cap every seam but a
     // subscription claude one during a used-up window; at the cap it must also be free.
     const available = (seam: { agent?: string; provider?: string; model?: string }) =>
-      !(windowOut !== null && seamIsClaude(seam)) && (!reached || seamFree(providers, seam, account));
+      !(windowOut !== null && seamIsClaude(seam)) && (!reached || seamFree(providers, seam, account, catalog));
     const view = applyFallbackModel(liveConfig, priceResolved, available);
     // A role pinned to subscription claude under a tier that is not claude has no tier pair to fall
     // onto — dropping its override would put it on the tier's priced primary — so it keeps its
@@ -476,7 +482,7 @@ export function pollBudgetGate(
   // The tiers `applyFallbackModel` moved: those whose own seam fails the `available` test above.
   for (const tier of MODEL_TIERS) {
     const seam = withModelOverrides(liveConfig, tier, {});
-    const out = (windowMove && seamIsClaude(seam)) || (reached && !seamFree(providers, seam, account));
+    const out = (windowMove && seamIsClaude(seam)) || (reached && !seamFree(providers, seam, account, catalog));
     if (out) movedTiers.add(tier);
   }
   const chain = chainInfo({
@@ -488,7 +494,7 @@ export function pollBudgetGate(
     now,
     windowOut,
     account,
-    isPriced: (p) => !piPairFree(providers, p.provider, p.model, account),
+    isPriced: (p) => !piPairFree(providers, p.provider, p.model, account, catalog),
   });
   return {
     gate,

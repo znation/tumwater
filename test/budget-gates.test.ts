@@ -14,7 +14,8 @@ import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { configForRole, reviewRunConfig } from "../src/config/config-views.js";
 import { reviewHoldKey } from "../src/orchestrator/orchestrator-scheduling.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
-import { MODELS_JSON, PAID_ONLY_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
+import { defaultConfig } from "../src/config/config.js";
+import { MODELS_JSON, PAID_ONLY_JSON, writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 /** A team at a paid top-level model, a free fallback configured, one role pinned to the
  * paid model, and a reviewer override — everything the fallback view must strip. */
 function configWith(capUsd: number): TumwaterConfig {
@@ -115,6 +116,34 @@ test("a tiered fallback with two distinct pairs carries the per-tier map on the 
     default: "free/qwen-free",
     strong: "free/llama-free",
   });
+});
+
+test("at the cap an opencode-free team keeps its primary; a priced pi role moves to the fallback (part 6b/7)", () => {
+  const root = tmpdir("budget-gates-opencode-");
+  writeOpencodeCache(root); // the catalog pollBudgetGate prices opencode seams against
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = defaultConfig();
+  // Every tier's own seam routes to the catalog-free opencode gateway model.
+  cfg.model = "opencode/deepseek-v4.1-flash-free";
+  // A free pi fallback pair, so the gate has a pair to engage when the cap is reached.
+  cfg.fallbackModel = { provider: "free", model: "qwen-free" };
+  cfg.maxDailyCostUsd = 10;
+  // One role pinned to a priced pi model — the spend that trips the cap.
+  cfg.roles.feature = { ...cfg.roles.feature, provider: "paid", model: "gpt-x", enabled: true };
+  const state = newBudgetGateState(cfg);
+  const over = [spentLoopState("feature", 10), spentLoopState("clean", 0)];
+  const p = poll(root, state, cfg, models, over);
+  assert.equal(p.gate, "fallback");
+  assert.equal(p.onFallback, true);
+  // The free opencode tiers keep their own primary selector in the derived view — they are
+  // free, so the cap must not move them to the pi fallback.
+  const modelView = p.roleConfig.model as Record<string, string>;
+  assert.equal(modelView.default, "opencode/deepseek-v4.1-flash-free");
+  assert.equal(modelView.strong, "opencode/deepseek-v4.1-flash-free");
+  // The priced pi role is the one moved: its override is stripped so it runs its tier's
+  // free fallback pair, and the opencode model map never sends it back to `paid/gpt-x`.
+  assert.equal(p.roleConfig.roles.feature?.provider, undefined);
+  assert.equal(p.roleConfig.roles.feature?.model, undefined);
 });
 
 test("raising the cap resumes the gate: one budget_resumed event and the live config again", () => {

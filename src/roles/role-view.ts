@@ -24,6 +24,7 @@ import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, seamContextWindow } from "../pi/pi-models.js";
+import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { compactPromptWindow } from "../pi-extension/context-window.js";
 import { formatModelSelector } from "../config/model-selector.js";
 import { roleImageInfo } from "../agent/image-input.js";
@@ -234,7 +235,18 @@ export function rolePayload(
   // freeness verdict from the same read. `fallbackFree` false keeps the declared pair visible
   // so a refused fallback is still named.
   const declaredFallback = fallbackPair(cfg);
-  const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath, readClaudeAccount(root)) : null;
+  // The opencode catalog answer (part 6b/7), read the way the budget gate reads it — always,
+  // from the same team-global cache the startup gate seeds — so the fallback free-ness verdict
+  // prices opencode pairs against the same snapshot as the gate. A conditional read cannot
+  // decide up front which pair the verdict will price: `fallbackModelPair` may resolve to a
+  // free pair BORROWED from another tier (a map whose `default` entry is priced borrows a
+  // free pair elsewhere), which routes to opencode even when the role's own seam, the declared
+  // default pair, and the review gate are not opencode. A null catalog would read that borrowed
+  // opencode pair NOT free, so this view and the gate would disagree; reading always (as the
+  // gate does) keeps them on one answer. OpenCode's `catalog` is threaded the way claude's
+  // `account` is: absent, an opencode pair reads NOT free.
+  const opencodeCatalog = readOpencodeCache(root);
+  const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath, readClaudeAccount(root), opencodeCatalog) : null;
   const fallback = freeFallback ?? declaredFallback;
   // One state read serves both the model-fallback episode and the next-tick preview below.
   const state = loadLoopState(root, role);

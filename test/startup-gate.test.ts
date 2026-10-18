@@ -11,12 +11,16 @@ import {
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
 } from "../src/gates/readiness.js";
-import { repoNotReady, runStartupCheck, runStartupProblem, unregisteredBackendInUse } from "../src/gates/startup-gate.js";
+import { opencodeProviders, repoNotReady, runStartupCheck, runStartupProblem, unregisteredBackendInUse, type OpenCodeSeedOptions } from "../src/gates/startup-gate.js";
 import { registerAgentBackend, type AgentBackend } from "../src/agent/agent-backend.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { loadConfig } from "../src/config/config.js";
+import { opencodeModelsPath } from "../src/paths.js";
+import { writeOpencodeCache } from "./fixtures/models-fixtures.js";
+import { readOpencodeCache, type CatalogFetch } from "../src/agent/opencode/opencode-catalog.js";
 
 // `tumwater run`'s startup gate (src/gates/startup-gate.ts) in-process: the one answer cmdRun fails
 // fast on, the self-redeploy refuses a swap on, and the supervisor names a dead generation with
@@ -239,8 +243,105 @@ test("a registered opencode adapter whose binary exists passes the gate", async 
     cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
     cfg.model = "opencode/deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
-    const check = await runStartupCheck(repo, null);
+    // The seed runs for an opencode boot, but this test is about the gate, not the catalog: a
+    // throwing fake fetch keeps the run offline (a failed seed never blocks startup).
+    const check = await runStartupCheck(repo, null, {
+      fetch: async () => {
+        throw new Error("offline test: no catalog fetch");
+      },
+    } satisfies OpenCodeSeedOptions);
     assert.ok(!("problem" in check), JSON.stringify(check));
     assert.ok(check.config.roles, "the loaded config");
+  });
+});
+
+test("opencodeProviders names every models.dev provider the config routes through OpenCode (part 6b/7)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "startup gate opencode providers");
+  const file = path.join(repo, "tumwater.json");
+  const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  // A bare gateway id (no provider) and a provider route on the strong tier; the gateway is
+  // always kept by the parse, so only the provider route adds a name.
+  cfg.model = { default: "opencode/deepseek-v4.1-flash-free", strong: "opencode/anthropic/claude-haiku-5-5" };
+  fs.writeFileSync(file, JSON.stringify(cfg));
+  assert.deepEqual(opencodeProviders(loadConfig(repo)), ["anthropic"]);
+});
+
+test("the startup gate seeds the catalog cache for an opencode boot, fetching on a missing cache", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "startup gate opencode seed");
+  const opencodeBin = tmpdir("startup-opencode-seed-");
+  writeScript(path.join(opencodeBin, "opencode"), "exit 0");
+  const fake: AgentBackend = {
+    id: "opencode",
+    label: "opencode",
+    defaultBin: "opencode",
+    binEnv: "TUMWATER_OPENCODE_BIN",
+    resolveBin: () => ({ bin: path.join(opencodeBin, "opencode"), source: "config" }),
+    invocation: () => ({ args: [], env: process.env }),
+    translator: () => ({ translate: (line) => [line] }),
+    classifyExit: () => ({}),
+  };
+  registerAgentBackend(fake);
+  await withPi("exit 0", async () => {
+    const file = path.join(repo, "tumwater.json");
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
+    cfg.model = "opencode/deepseek-v4.1-flash-free";
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    // No cache on disk yet: the seed must fetch (via the injected fake, offline) and persist
+    // the parsed catalog. Without the seed, no cache would ever be written.
+    const body = {
+      opencode: { models: { "deepseek-v4.1-flash-free": { cost: { input: 0, output: 0 }, limit: { context: 200000 } } } },
+    };
+    let calls = 0;
+    const fetch: CatalogFetch = async () => {
+      calls++;
+      return body;
+    };
+    const check = await runStartupCheck(repo, null, { fetch, now: () => 1_000 } satisfies OpenCodeSeedOptions);
+    assert.ok(!("problem" in check), JSON.stringify(check));
+    // The seed fetched once and persisted a fresh cache with the parsed free model.
+    assert.equal(calls, 1, "the seed fetched the catalog");
+    const cache = readOpencodeCache(repo);
+    assert.equal(cache.fetchedAt, 1_000, "the seed persisted the fetched cache");
+    assert.equal(cache.models["opencode/deepseek-v4.1-flash-free"]?.free, true);
+    // A second startup reuses that now-fresh cache: the seed never refetches over the network.
+    const again = await runStartupCheck(repo, null, { fetch, now: () => 2_000 } satisfies OpenCodeSeedOptions);
+    assert.ok(!("problem" in again), JSON.stringify(again));
+    assert.equal(calls, 1, "a fresh cache is reused, not refetched");
+  });
+});
+
+test("a fresh on-disk catalog cache is reused without fetching (offline boot)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "startup gate opencode reuse");
+  const opencodeBin = tmpdir("startup-opencode-reuse-");
+  writeScript(path.join(opencodeBin, "opencode"), "exit 0");
+  const fake: AgentBackend = {
+    id: "opencode",
+    label: "opencode",
+    defaultBin: "opencode",
+    binEnv: "TUMWATER_OPENCODE_BIN",
+    resolveBin: () => ({ bin: path.join(opencodeBin, "opencode"), source: "config" }),
+    invocation: () => ({ args: [], env: process.env }),
+    translator: () => ({ translate: (line) => [line] }),
+    classifyExit: () => ({}),
+  };
+  registerAgentBackend(fake);
+  await withPi("exit 0", async () => {
+    const file = path.join(repo, "tumwater.json");
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
+    cfg.model = "opencode/deepseek-v4.1-flash-free";
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    writeOpencodeCache(repo); // a fresh cache, so the seed reuses it instead of fetching
+    const before = fs.readFileSync(opencodeModelsPath(repo), "utf8");
+    const fetch: CatalogFetch = async () => {
+      throw new Error("should not fetch");
+    };
+    const check = await runStartupCheck(repo, null, { fetch, now: () => 1_000 } satisfies OpenCodeSeedOptions);
+    assert.ok(!("problem" in check), JSON.stringify(check));
+    assert.equal(fs.readFileSync(opencodeModelsPath(repo), "utf8"), before, "a fresh cache is reused, untouched");
   });
 });

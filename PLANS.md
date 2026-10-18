@@ -40,24 +40,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A waits-on-one-key case keeps the single-bucket wording `(the omlx slot)` (no `also`); a wait whose key has no configured cap contributes its bucket cell but no advice clause; the zero-wait case still reads `no provider waits`.
 - `npm test` passes.
 
-### OpenCode backend, part 6b/7: A free OpenCode model counts as free to the budget gate, the fallback view and the status badge (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-budget.ts and their tests)
-
-**Goal.** With every model job on `opencode/deepseek-v4.1-flash-free` the team reads "budget n/a"; a free OpenCode model is a valid budget `fallback`; and at the cap the opencode roles keep their primary instead of moving to their fallback.
-
-**Approach.**
-- **src/pi/pi-models.ts `seamFree`:** the opencode arm of the switch reads `opencodeModelFree` for the gateway-qualified id. `seamFree` and `piPairFree` take the catalog as an optional parameter, the way they take the claude account; the pi and claude arms are unchanged. Update the `seamFree` doc comment to name part 6b/7.
-- **src/gates/startup-gate.ts:** refresh the catalog once per root per process when a model job routes to opencode, as `seedClaudeAccount` does for claude (its `claudeSeedAttempted` guard is the pattern).
-- **src/gates/budget-gates.ts** and **src/status/status-budget.ts:** thread the catalog into the `seamFree`/`piPairFree`/`teamModelsFree`/`fallbackModelFree` free-ness reads; status-budget.ts's `collectBudget` is where the claude account is read and the usable fallback pair is judged.
-
-**Files touched.**
-- Source: src/pi/pi-models.ts, src/gates/startup-gate.ts, src/gates/budget-gates.ts, src/status/status-budget.ts.
-- Tests: test/pi-models.test.ts, test/startup-gate.test.ts, test/budget-gates.test.ts, test/status-budget.test.ts.
-
-**Acceptance criteria.**
-- **`seamFree`:** a cached free OpenCode model is free; a priced one, an unknown one, and a free one with `billedAt` set are not; the pi and claude arms are unchanged.
-- **The budget gate:** with every tier on `opencode/deepseek-v4.1-flash-free`, the team reads as all-free. At the cap (spend from a priced pi role), the opencode roles keep their primary.
-- **Fallback:** a free OpenCode model works as the budget `fallback` for a priced pi primary.
-- `npm test` passes.
 
 ### OpenCode backend, part 7/7: Doctor checks the OpenCode install, models and leaks; session retention; docs; and an opt-in `smoke:opencode` live check (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires parts 6b/7, 6c/7 and 6d/7 landed; design in plans/opencode-backend.md "Sessions", "Spend, free-ness, image input and doctor" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/agent/opencode/opencode-backend.ts src/agent/session-ledger.ts docs/backends.md docs/config.md scripts/smoke-opencode.mjs (new) package.json and their tests)
 
@@ -1264,6 +1246,26 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 - `npm run test` passes.
 
 **Notes.** The banner copy reads `no new runs until local midnight` and `resume as work merges` rather than the plan's `no new ticks …` / `tick again …`: team-alerts.ts is opted into the plain-terms vocabulary, whose check rejects the word `tick`.
+
+### OpenCode backend, part 6b/7: A free OpenCode model counts as free to the budget gate, the fallback view and the status badge (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-budget.ts and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** With every model job on `opencode/deepseek-v4.1-flash-free` the team reads "budget n/a"; a free OpenCode model is a valid budget `fallback`; and at the cap the opencode roles keep their primary instead of moving to their fallback.
+
+**Approach.**
+- **src/pi/pi-models.ts `seamFree`:** the opencode arm of the switch reads `opencodeModelFree` for the gateway-qualified id. `seamFree` and `piPairFree` take the catalog as an optional parameter, the way they take the claude account; the pi and claude arms are unchanged. Update the `seamFree` doc comment to name part 6b/7.
+- **src/gates/startup-gate.ts:** refresh the catalog once per root per process when a model job routes to opencode, as `seedClaudeAccount` does for claude (its `claudeSeedAttempted` guard is the pattern).
+- **src/gates/budget-gates.ts** and **src/status/status-budget.ts:** thread the catalog into the `seamFree`/`piPairFree`/`teamModelsFree`/`fallbackModelFree` free-ness reads; status-budget.ts's `collectBudget` is where the claude account is read and the usable fallback pair is judged.
+
+**Files touched.**
+- Source: src/pi/pi-models.ts, src/gates/startup-gate.ts, src/gates/budget-gates.ts, src/status/status-budget.ts.
+- Tests: test/pi-models.test.ts, test/startup-gate.test.ts, test/budget-gates.test.ts, test/status-budget.test.ts.
+
+**Acceptance criteria.**
+- **`seamFree`:** a cached free OpenCode model is free; a priced one, an unknown one, and a free one with `billedAt` set are not; the pi and claude arms are unchanged.
+- **The budget gate:** with every tier on `opencode/deepseek-v4.1-flash-free`, the team reads as all-free. At the cap (spend from a priced pi role), the opencode roles keep their primary.
+- **Fallback:** a free OpenCode model works as the budget `fallback` for a priced pi primary.
+- `npm test` passes.
+
 
 ### OpenCode backend, part 6a/7: The models.dev catalog fetch, parse and cache answer whether an OpenCode model is free (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; split 2026-10-17 by the plan role from part 6/7 into parts 6a/7–6d/7; requires part 5b/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/paths.ts test/opencode-catalog.test.ts (new)) — done 2026-10-17 by the feature role
 
@@ -13310,6 +13312,5 @@ sentence: add "and the maintenance allowance's rolling-24 h use").
 - Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04; commit 9e00d29)
 - `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30, done 2026-09-30; commit 0dee85db)
 - `tumwater prompt --list` shows how long each prompt has waited — part 1/2, the shared stamp and the CLI (planned 2026-10-01, done 2026-10-01; commit bbd9f5b6)
-
 
 

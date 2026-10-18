@@ -5,6 +5,8 @@
  * it here keeps the two tests' pricing fixtures from drifting. */
 import fs from "node:fs";
 import path from "node:path";
+import type { OpencodeCatalogCache } from "../../src/agent/opencode/opencode-catalog.js";
+import { opencodeModelsPath } from "../../src/paths.js";
 
 /** The one priced model both fixtures name — the exact cost the free/paid split turns on. */
 const PAID_MODEL = { id: "gpt-x", cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.4 } };
@@ -36,6 +38,33 @@ export const LOCAL_FREE_MODELS_JSON = JSON.stringify({
 export const PAID_ONLY_JSON = JSON.stringify({
   providers: { paid: { models: [PAID_MODEL] } },
 });
+
+// --- The opencode models-dev catalog cache (part 6b/7 of plans/opencode-backend.md) ---
+
+/** A catalog cache that prices the gateway free model free, its priced sibling priced, and a
+ * billed free model not free — the shapes the free-ness tests (pi/budget/status) judge.
+ * `fetchedAt` is `Date.now()` so the startup gate's freshness check treats it as fresh and
+ * never refetches over the network. */
+function opencodeCache(): OpencodeCatalogCache {
+  return {
+    fetchedAt: Date.now(),
+    models: {
+      "opencode/deepseek-v4.1-flash-free": { free: true, context: 200000, images: true },
+      "opencode/deepseek-v4.1-flash": { free: false, inputPerM: 0.15, outputPerM: 0.6 },
+      "opencode/free-billed": { free: true, billedAt: 5 },
+      "anthropic/claude-haiku-5-5": { free: true },
+    },
+  };
+}
+
+/** Write an opencode catalog cache into `root`'s runtime state dir (fresh, so the startup gate
+ * reuses it instead of fetching) and return it. */
+export function writeOpencodeCache(root: string): OpencodeCatalogCache {
+  const cache = opencodeCache();
+  fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
+  fs.writeFileSync(opencodeModelsPath(root), JSON.stringify(cache));
+  return cache;
+}
 
 /** Stage `content` as `<dir>/models.json` (creating `dir`) and return the file's path — the
  * write step budget-gates.test.ts, gate-polls.test.ts, and gate-event-best-effort.test.ts
