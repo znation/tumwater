@@ -39,6 +39,8 @@ import type {
 import { resumableSession } from "../session-ledger.js";
 import { opencodeArgs } from "./opencode-args.js";
 import { opencodeConfigContent, operatorMcpNames } from "./opencode-config.js";
+import { outputLimits } from "../../pi-extension/bounded-output.js";
+import { seamContextWindow } from "../../pi/pi-models.js";
 import { opencodeModelKey, readOpencodeCache } from "./opencode-catalog.js";
 import { opencodeEnv } from "./opencode-env.js";
 import { mintOpencodeSessionId } from "./opencode-session-id.js";
@@ -187,9 +189,18 @@ export const opencodeBackend: AgentBackend = {
     // this team so a resume's export check reads the same OPENCODE_DB the original run wrote.
     const root = teamRootOf(run.sessionDir);
     const dbPath = opencodeDbPath(root);
+    // Window-scaled tool-output caps (part 6f/7): OpenCode's `tool_output` default is about
+    // three times pi's tuned budgets, so every turn would re-send far more tool output than a
+    // pi run — critical on the 200K free model's window. Cap it at pi's `outputLimits(window)
+    // .bash` (16,000 at 128k and above, scaled down below), with the ~40 chars/line line cap
+    // pi's "12k chars ≈ 300 lines" read budget implies. An unknown window (no catalog entry)
+    // keeps the 128k values. The window is part 6e/7's `seamContextWindow` for this run's
+    // model.
+    const maxBytes = outputLimits(seamContextWindow({ agent: "opencode", model: run.config.model }, root)).bash;
     const configContent = opencodeConfigContent({
       cwd: run.cwd,
       operatorMcpNames: operatorMcpNames(process.env, os.homedir()),
+      toolOutput: { maxLines: Math.round(maxBytes / 40), maxBytes },
     });
     // The notebook path rides beside the run marker, as the pi and claude adapters' envs do;
     // from part 2/4 the run saves its note through the `tumwater-notes` command on PATH, so

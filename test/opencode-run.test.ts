@@ -236,6 +236,16 @@ interface NotesServer {
   codemode: boolean;
   environment: { TUMWATER_NOTES_PATH: string };
 }
+/** The `tool_output` caps from the last run's recorded OPENCODE_CONFIG_CONTENT, or undefined
+ * when the config names none (part 6f/7). */
+function toolOutputCaps(fake: FakeOpencodeReplay): { max_lines: number; max_bytes: number } | undefined {
+  const env = fs.readFileSync(fake.envFile, "utf8");
+  const line = env.split("\n").find((l) => l.startsWith("OPENCODE_CONFIG_CONTENT="));
+  if (line === undefined) return undefined;
+  const parsed = JSON.parse(line.slice("OPENCODE_CONFIG_CONTENT=".length)) as { tool_output?: { max_lines: number; max_bytes: number } };
+  return parsed.tool_output;
+}
+
 function tumwaterServer(fake: FakeOpencodeReplay): NotesServer | undefined {
   const env = fs.readFileSync(fake.envFile, "utf8");
   const line = env.split("\n").find((l) => l.startsWith("OPENCODE_CONFIG_CONTENT="));
@@ -268,6 +278,34 @@ test("an authoring run with a notebook carries the notes path but no tumwater MC
     const result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);
     assert.equal(tumwaterServer(fake), undefined, "no notes path means no tumwater MCP server");
+  });
+});
+
+test("the invocation caps tool output at pi's window-scaled limits (part 6f/7)", async () => {
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  // A fixture cache carrying the free model's catalog window (65,536) and a model the cache
+  // does not know, so both the scaled-down and the default 128k values are exercised.
+  writeOpencodeCache(dir, {
+    fetchedAt: Date.now(),
+    models: {
+      "opencode/deepseek-v4.1-flash-free": { free: true, context: 65536 },
+    },
+  });
+  await withOpencodeReplay(opencodeCaptures.editRun, async (fake) => {
+    // A 65,536-window model: outputLimits(65536).bash is 8000, and 8000/40 is 200 lines.
+    let run = opencodeRun(dir);
+    let result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.deepEqual(toolOutputCaps(fake), { max_lines: 200, max_bytes: 8000 });
+
+    // A model with no catalog entry keeps the 128k values: 16000 bytes / 400 lines.
+    run = opencodeRun(dir, {
+      config: { ...defaultConfig(), agent: "opencode", model: "opencode/not-in-cache" },
+    });
+    result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.deepEqual(toolOutputCaps(fake), { max_lines: 400, max_bytes: 16000 });
   });
 });
 

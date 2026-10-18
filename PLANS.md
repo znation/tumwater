@@ -110,29 +110,6 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
 - `npm test` passes.
 
 
-### OpenCode backend, part 6f/7: OpenCode runs cap tool output at pi's window-scaled limits (planned 2026-10-17 by user; requires part 6e/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 2; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts and their tests)
-
-**Goal.** OpenCode's tool results stop entering the context at up to 51,200 bytes (its `tool_output` default, finding 13) and come in at the same budget as a pi run's. The free model's window is 200K, against the 1M window it replaces, and every turn re-sends what a tool returned.
-
-**Approach.**
-- `opencodeConfigContent` takes an optional `toolOutput: { maxLines, maxBytes }` and, when given, writes `"tool_output": { "max_lines": …, "max_bytes": … }` into the injected config.
-  - The key and its shape were checked in the 2.0.32 binary. It bounds the shell tool's cut (which keeps the tail) and the `@opencode/ToolOutput` service, which cuts every other tool result (keeping the head and saving the full text to a file).
-- The adapter (`opencodeBackend.invocation`) passes:
-  - `maxBytes` = `outputLimits(window).bash` from src/pi-extension/bounded-output.ts, which is 16,000 at 128k and above and scales down below that;
-  - `maxLines` = `Math.round(maxBytes / 40)`, the ~40 characters a line that pi's "12k chars ≈ 300 lines" read cap implies (400 at 16,000 bytes).
-  - The window is part 6e/7's `seamContextWindow` for the run's model. An unknown window gives the 128k values, which is what the 200K free model gets.
-- Without `toolOutput`, the config is byte-identical to today's.
-- The dialect's `oversizedOutput` already tells the model that shell output keeps its last lines and to read the spill file in ranges. The other tools' cut keeps the head, so add that to the dialect text if a test or the smoke check shows the model misreading it.
-
-**Files touched.**
-- Source: src/agent/opencode/opencode-config.ts, src/agent/opencode/opencode-backend.ts.
-- Tests: test/opencode-config.test.ts, and the adapter's invocation test.
-
-**Acceptance criteria.**
-- `opencodeConfigContent({ ..., toolOutput: { maxLines: 400, maxBytes: 16000 } })` parses to a config whose `tool_output` is `{ "max_lines": 400, "max_bytes": 16000 }`, and the same call without `toolOutput` returns today's string unchanged.
-- An adapter invocation for a model whose catalog window is 65,536 injects `max_bytes` 8000 and `max_lines` 200. An unknown window injects 16000 and 400.
-- `npm test` passes.
-
 ### Plain terms code merge, part 11c/11: Rewrite the merge family in the first half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts a–m, plus test/helpers/ test/fakes/ and test/fixtures/)
 
 **Refused 2026-10-17 by feature: the acceptance grep cannot list only the four comment kept-kinds without touching string literals — its range also contains fabricated-data/test-name/role-name literals using merge terms (`summary: "land \u2026"`, `tmpdir("vet-permits-")`, role `"vetted-v"`, `"landed one"`, `"landing check red"`), which the same entry forbids changing and predecessor part 10/11's series convention keeps as expected-output/fabricated literals.**
@@ -1200,6 +1177,29 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
 
 
 ## Done
+### OpenCode backend, part 6f/7: OpenCode runs cap tool output at pi's window-scaled limits (planned 2026-10-17 by user; requires part 6e/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 2; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** OpenCode's tool results stop entering the context at up to 51,200 bytes (its `tool_output` default, finding 13) and come in at the same budget as a pi run's. The free model's window is 200K, against the 1M window it replaces, and every turn re-sends what a tool returned.
+
+**Approach.**
+- `opencodeConfigContent` takes an optional `toolOutput: { maxLines, maxBytes }` and, when given, writes `"tool_output": { "max_lines": …, "max_bytes": … }` into the injected config.
+  - The key and its shape were checked in the 2.0.32 binary. It bounds the shell tool's cut (which keeps the tail) and the `@opencode/ToolOutput` service, which cuts every other tool result (keeping the head and saving the full text to a file).
+- The adapter (`opencodeBackend.invocation`) passes:
+  - `maxBytes` = `outputLimits(window).bash` from src/pi-extension/bounded-output.ts, which is 16,000 at 128k and above and scales down below that;
+  - `maxLines` = `Math.round(maxBytes / 40)`, the ~40 characters a line that pi's "12k chars ≈ 300 lines" read cap implies (400 at 16,000 bytes).
+  - The window is part 6e/7's `seamContextWindow` for the run's model. An unknown window gives the 128k values, which is what the 200K free model gets.
+- Without `toolOutput`, the config is byte-identical to today's.
+- The dialect's `oversizedOutput` already tells the model that shell output keeps its last lines and to read the spill file in ranges. The other tools' cut keeps the head, so add that to the dialect text if a test or the smoke check shows the model misreading it.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-config.ts, src/agent/opencode/opencode-backend.ts.
+- Tests: test/opencode-config.test.ts, and the adapter's invocation test.
+
+**Acceptance criteria.**
+- `opencodeConfigContent({ ..., toolOutput: { maxLines: 400, maxBytes: 16000 } })` parses to a config whose `tool_output` is `{ "max_lines": 400, "max_bytes": 16000 }`, and the same call without `toolOutput` returns today's string unchanged.
+- An adapter invocation for a model whose catalog window is 65,536 injects `max_bytes` 8000 and `max_lines` 200. An unknown window injects 16000 and 400.
+- `npm test` passes.
+
 ### Notes command, part 2/4: Every backend's prompt has roles save notes with `tumwater-notes`, and runs stop loading the pi notes extension and the notes MCP server (planned 2026-10-17 by user; design in plans/notes-command.md "One prompt instruction" and "Retiring the old carriers"; touches src/prompt/prompt.ts src/pi/pi-args.ts src/agent/claude/claude-backend.ts src/agent/opencode/opencode-backend.ts scripts/smoke-claude.mjs scripts/smoke-opencode.mjs and their tests) — done 2026-10-17 by the feature role
 
 **Goal.** Switch every backend to the one notes carrier from part 1/4. Each prompt tells the role to save its note by running `tumwater-notes write` with a heredoc. The three old carriers stop being attached to runs: pi's `role_notes` extension, Claude Code's notes MCP server, and OpenCode's `mcp.servers.tumwater` entry. Their code is deleted in part 3/4, once this has run in the team.

@@ -32,6 +32,16 @@ test("opencodeConfigContent parses back with snapshots off, update disabled, the
   assert.ok(!("mcp" in parsed), "no mcp key without operator servers");
 });
 
+test("opencodeConfigContent writes tool_output only when toolOutput is given (part 6f/7)", () => {
+  const withCaps = JSON.parse(opencodeConfigContent(opts({ toolOutput: { maxLines: 400, maxBytes: 16000 } }))) as {
+    tool_output?: { max_lines: number; max_bytes: number };
+  };
+  assert.deepEqual(withCaps.tool_output, { max_lines: 400, max_bytes: 16000 });
+  // Without toolOutput the config carries no tool_output key at all.
+  const without = JSON.parse(opencodeConfigContent(opts())) as { tool_output?: unknown };
+  assert.ok(!("tool_output" in without), "no tool_output key without toolOutput");
+});
+
 test("opencodeConfigContent disables every operator server under mcp.servers", () => {
   const parsed = JSON.parse(opencodeConfigContent(opts({ operatorMcpNames: ["one", "two"] }))) as { mcp: { servers: Record<string, unknown> } };
   assert.deepEqual(parsed.mcp.servers.one, { disabled: true });

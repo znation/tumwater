@@ -186,6 +186,16 @@ export interface OpencodeConfigOptions {
   operatorMcpNames: string[];
   /** tumwater's bundled role-notes MCP server, added as `mcp.servers.tumwater` when given. */
   notesServer?: { command: string[]; notesPath: string };
+  /** The `tool_output` caps (plans/opencode-backend.md "Small-window parity with pi" item 2,
+   * part 6f/7): pi's window-scaled read/bash budgets for the run's model, so OpenCode's tool
+   * results stop entering the context at OpenCode's `tool_output` default (2,000 lines /
+   * 51,200 bytes, finding 13) and come in at the same budget as a pi run's. When given,
+   * `"tool_output": { "max_lines": …, "max_bytes": … }` is written into the injected config;
+   * without it the output is byte-identical to part 5/7's. `maxBytes` is
+   * `outputLimits(window).bash` (16,000 at 128k and above, scaled down below) and `maxLines`
+   * is `maxBytes / 40`, the ~40 characters a line that pi's "12k chars ≈ 300 lines" read cap
+   * implies (400 at 16,000 bytes). */
+  toolOutput?: { maxLines: number; maxBytes: number };
 }
 
 /** Build the injected opencode config JSON string. Never reads the worktree beyond the
@@ -197,11 +207,15 @@ export function opencodeConfigContent(opts: OpencodeConfigOptions): string {
     permissions: readonly { action: string; resource: string; effect: string }[];
     mcp?: { servers: Record<string, McpServer> };
     instructions?: string[];
+    tool_output?: { max_lines: number; max_bytes: number };
   } = {
     snapshots: false,
     update: "disable",
     permissions: DENIED_PERMISSIONS,
   };
+  if (opts.toolOutput !== undefined) {
+    config.tool_output = { max_lines: opts.toolOutput.maxLines, max_bytes: opts.toolOutput.maxBytes };
+  }
   const servers: Record<string, McpServer> = {};
   for (const name of opts.operatorMcpNames) {
     // An operator server named `tumwater` is replaced by our notes server below rather than
