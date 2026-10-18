@@ -37,6 +37,19 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
     lockedRole = null;
   };
 
+  // Enter budget-edit mode (the shared entry, whether the team cap or a role's own cap is
+  // being edited): save the prompt text and its cursor as the exit draft, claim the held slot,
+  // pre-fill the line from the cap (empty string when disabled — empty means "no cap"), and
+  // announce the mode. Only the cap source and the announcement differ between the two scopes.
+  const enterBudgetMode = (cap: number, message: string): void => {
+    session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
+    budgetMode = true;
+    session.held.budget = true;
+    session.input = cap > 0 ? String(cap) : "";
+    session.cursor = session.input.length;
+    session.flashMessage(message);
+  };
+
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
@@ -77,29 +90,22 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
         // Role scope: pre-fill from the file's own cap entry — the snapshot carries
         // capPaused but no cap values, so one fresh read per open is the smallest honest
         // source; a broken config degrades to no pre-fill and the write reports the error.
-        session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
-        budgetMode = true;
-        session.held.budget = true;
         lockedRole = role;
         const roleCap =
           loadConfigSafe(session.root).config?.maxDailyCostUsdPerRole?.[
             baseRoleOf(role)
           ] ?? 0;
-        session.input = roleCap > 0 ? String(roleCap) : "";
-        session.cursor = session.input.length;
-        session.flashMessage(`edit ${role}'s daily cost cap (USD): Enter to save, Esc to cancel`);
+        enterBudgetMode(
+          roleCap,
+          `edit ${role}'s daily cost cap (USD): Enter to save, Esc to cancel`,
+        );
       } else if (currentBudgetFree) {
         session.flashMessage("budget n/a — all models free");
       } else {
         // Mid-recall, hand the arrows' saved draft back before the cap editor takes the
         // line — the same settle the role editor does — so leaving budget mode restores
         // the draft, not a history entry, with no stale recall state riding along.
-        session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
-        budgetMode = true;
-        session.held.budget = true;
-        session.input = currentCapUsd > 0 ? String(currentCapUsd) : "";
-        session.cursor = session.input.length;
-        session.flashMessage("edit daily cost budget (USD): Enter to save, Esc to cancel");
+        enterBudgetMode(currentCapUsd, "edit daily cost budget (USD): Enter to save, Esc to cancel");
       }
       return true;
     }
