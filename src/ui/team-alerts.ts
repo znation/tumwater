@@ -65,9 +65,14 @@ function openRoleActions(loops: readonly AlertLoop[]): Array<{ label: string; ac
   return loops.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role }));
 }
 
-function listRoles(loops: readonly AlertLoop[]): string {
-  const names = loops.map((l) => roleLabel(l.role));
+/** Natural English list of the given names: “a and b” for one or two, “a, b, and c”
+ * beyond that. Shared by the loop-row and held-id banners so the wording cannot drift. */
+function andJoin(names: readonly string[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+function listRoles(loops: readonly AlertLoop[]): string {
+  return andJoin(loops.map((l) => roleLabel(l.role)));
 }
 
 /** The `listRoles` rendering for a set of held role ids (status-data.ts's `capPaused` and
@@ -75,8 +80,7 @@ function listRoles(loops: readonly AlertLoop[]): string {
  * rows): names every held id through roleLabel even when a stale id matches no live loop, so
  * the role-cap and maintenance banners never drop a held role from their copy. */
 function listRoleIds(ids: readonly string[]): string {
-  const names = ids.map(roleLabel);
-  return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+  return andJoin(ids.map(roleLabel));
 }
 
 /** The stuck alert's per-loop detail: the stall phrase the phase rendered, plus — when that
