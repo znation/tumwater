@@ -24,7 +24,10 @@ instead: `npm install && npm run build && npm link`.
 
 With `claude` installed and logged in, `npm run smoke:claude` is an opt-in live check of the
 claude backend: it drives the real CLI through a throwaway repo (a few cents of API-equivalent
-spend on a subscription) and is not part of `npm test`, which stays green without claude.
+spend on a subscription) and is not part of `npm test`, which stays green without claude. `npm run
+smoke:opencode` is the same live check for the opencode backend, driving the real `opencode` CLI
+against its free DeepSeek tier; it needs an OpenCode V2 install (`brew install opencode`) and is
+also outside `npm test`.
 
 ## Status
 
@@ -73,8 +76,10 @@ same list, and `tumwater completion bash|zsh|fish` prints shell completion. Sett
 
 **Backends:** any OpenAI-compatible model pi can reach works, chosen by `model` in `tumwater.json`
 with a `fallback` that a failing role switches to. `backend: "claude"` runs bare model ids on Claude
-Code instead. Requirements, the fallback and usage-window behavior, and how subscription runs are
-billed (as estimated spend, outside the daily cap) are in [docs/backends.md](docs/backends.md).
+Code instead, and a model id that starts with `opencode/` runs on the OpenCode CLI — its free
+DeepSeek tier needs no login or API key. Requirements, the fallback, free-ness, and usage-window
+behavior, and how subscription runs are billed (as estimated spend, outside the daily cap) are in
+[docs/backends.md](docs/backends.md).
 
 **Mixing providers:** a bare model id that starts with `claude-` runs on the claude CLI even
 under the default `backend: "pi"`, so one config can mix a Claude strong tier with pi providers:
@@ -92,7 +97,9 @@ under the default `backend: "pi"`, so one config can mix a Claude strong tier wi
 The default tier runs on pi through Hugging Face, the strong model jobs (the director, the plan
 role, the reviewer, and the conflict resolver) run on the claude CLI's included usage, and the fallback runs on pi through
 oMLX — all concurrently, under each provider's cap (set it with `maxConcurrentPerProvider`;
-`tumwater status` shows how many runs each key has going out of its cap). Prefix `anthropic/` (`anthropic/claude-…`)
+`tumwater status` shows how many runs each key has going out of its cap). A model id that starts
+with `opencode/` routes to the OpenCode CLI under any backend, so its free tier can sit beside pi
+and claude in one config. Prefix `anthropic/` (`anthropic/claude-…`)
 to keep a Claude model on pi instead (billed per token). See [plans/agent-backends.md §3](plans/agent-backends.md).
 
 For how the roles, review gate, scheduling, and updates work, see
