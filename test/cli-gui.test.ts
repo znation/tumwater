@@ -124,6 +124,31 @@ test("the served /api/status carries the merge queue's entries", async () => {
   }
 });
 
+test("the served /api/status carries a re-submitted entry's revision fields, and a fresh one's absent keys", async () => {
+  // The status payload's mergeQueue.entries must name a queued revision's round and prior
+  // objection count (the dashboard's Pending card renders them) while a fresh entry carries
+  // neither key, so a first submission's payload shape is unchanged.
+  const repo = makeRepo();
+  await initProject(repo, "cli gui queue revision");
+  enqueueMerge(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
+  enqueueMerge(repo, { role: "feature", sha: "def5678", run: 2, summary: "revise a thing", enqueuedAt: Date.now(), revisionRound: 2, priorReview: { sha: "deadbeef", reasons: ["x", "y"] } });
+
+  const port = await freeTcpPort();
+  const gui = spawnCli(repo, ["gui", "--port", String(port)]);
+  try {
+    await gui.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${port}`), "the gui banner");
+    const snap = await (await fetch(`http://127.0.0.1:${port}/api/status`)).json();
+    const first = snap.mergeQueue.entries[0];
+    const second = snap.mergeQueue.entries[1];
+    assert.equal("revisionRound" in first, false, "a fresh entry carries no revisionRound");
+    assert.equal("priorObjections" in first, false, "a fresh entry carries no priorObjections");
+    assert.equal(second.revisionRound, 2);
+    assert.equal(second.priorObjections, 2);
+  } finally {
+    gui.kill();
+  }
+});
+
 test("gui reports a friendly error when the port is already in use", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli gui busy port");

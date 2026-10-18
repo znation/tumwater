@@ -66,9 +66,11 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) => {
         const sec = Number.isFinite(e.enqueuedAt) ? Math.max(0, Math.round((now - e.enqueuedAt) / 1000)) : 0;
         const run = Number.isFinite(e.run) ? e.run : "?";
+        const note = Number.isFinite(e.revisionRound) ? " · revision " + e.revisionRound + (Number.isFinite(e.priorObjections) && e.priorObjections > 0 ? " · " + plural(e.priorObjections, "prior objection") : "") : "";
         return "<div class='mono clamp1' style='padding:3px 0'>" + (i + 1) + ". " + esc(e.role ? roleLabel(e.role) : "?") +
           " run #" + esc(run) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
           " ago" + (Array.isArray(labels) && labels[i] && typeof labels[i] === "string" ? " · [" + esc(labels[i]) + "]" : "") +
+          note +
           " · " + esc(e.summary || "—") + "</div>";
       }).join("") + "</div>";
     }

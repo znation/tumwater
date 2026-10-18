@@ -17,7 +17,7 @@ import {
   readMergeQueue,
   staleHeadFile,
 } from "../src/merge/merge-queue.js";
-import { queueEntryMergeLabel, renderMergeQueue } from "../src/merge/merge-queue-render.js";
+import { queueEntryMergeLabel, renderMergeQueue, revisionNote } from "../src/merge/merge-queue-render.js";
 import { mergeQueueDir } from "../src/paths.js";
 import type { MergeEntry } from "../src/merge/merge-queue.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
@@ -274,6 +274,28 @@ test("renderMergeQueue prints the unreadable skip count exactly once", () => {
     "merge queue (1):\n  (+1 unreadable queue file skipped)",
     "a depth held only by skipped files states the skip once",
   );
+});
+
+test("revisionNote names a re-submitted change's revision round and prior objections", () => {
+  assert.equal(revisionNote({}), "");
+  assert.equal(revisionNote({ revisionRound: 1 }), "revision 1");
+  assert.equal(revisionNote({ revisionRound: 2, priorReview: { sha: "a".repeat(40), reasons: ["x", "y"] } }), "revision 2 · 2 prior objections");
+  // A priorReview with an empty reasons appends no objection clause.
+  assert.equal(revisionNote({ revisionRound: 3, priorReview: { sha: "a".repeat(40), reasons: [] } }), "revision 3");
+});
+
+test("renderMergeQueue prints a re-submitted change's revision note before its summary", () => {
+  const now = 1_000_000;
+  const view = {
+    entries: [
+      { role: "improve", sha: "a".repeat(40), run: 3, summary: "tidy", enqueuedAt: now - 5_000 },
+      { role: "feature", sha: "b".repeat(40), run: 7, summary: "revise the thing", enqueuedAt: now - 4_000, revisionRound: 1, priorReview: { sha: "c".repeat(40), reasons: ["x", "y"] } },
+    ],
+    unreadable: 0,
+  };
+  const lines = renderMergeQueue(view, now).split("\n");
+  assert.equal(lines[1], "  1. improve run #3 · aaaaaaaa · 5s ago · tidy", "a fresh entry's line is unchanged");
+  assert.equal(lines[2], "  2. feature run #7 · bbbbbbbb · 4s ago · revision 1 · 2 prior objections · revise the thing");
 });
 
 test("readMergeQueue reads a missing queue dir as empty with no skips", () => {

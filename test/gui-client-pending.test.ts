@@ -111,6 +111,26 @@ test("pendingQueueHtml adds a merge label per row, escaped, and ignores absent l
   assert.doesNotMatch(pendingQueueHtml(q, now, ["", ""]), /\[/);
 });
 
+test("pendingQueueHtml names a re-submitted change's revision round and prior objections", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const q = { depth: 2, entries: [
+    { role: "feature", sha: "abcdef1234567890", run: 42, summary: "add the thing", enqueuedAt: now - 180_000 },
+    { role: "bugfix", sha: "0123456789abcdef", run: 7, summary: "revise the thing", enqueuedAt: now - 5_000, revisionRound: 1, priorObjections: 2 },
+  ] };
+  const html = pendingQueueHtml(q, now);
+  assert.match(html, /1\. feature run #42 · abcdef12 · 3m ago · add the thing/, "a fresh entry's line is unchanged");
+  assert.match(html, /2\. bugfix run #7 · 01234567 · 5s ago · revision 1 · 2 prior objections · revise the thing/);
+  // A malformed revisionRound or priorObjections renders no note and no undefined/NaN.
+  const bad = pendingQueueHtml({ depth: 1, entries: [
+    { role: "qa", sha: "abcdef12", run: 1, summary: "s", enqueuedAt: now, revisionRound: "2", priorObjections: NaN },
+  ] }, now);
+  assert.doesNotMatch(bad, /revision|undefined|NaN/);
+});
+
 test("pendingQueueHtml states an empty, unreadable-only, or malformed queue without undefined or NaN", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
     ["format", "labels", "pending-table"],

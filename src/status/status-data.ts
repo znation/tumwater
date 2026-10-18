@@ -317,7 +317,7 @@ export interface StatusSnapshot {
      * same filling discipline `roleInboxPrompts` follows: there is nothing to render, so the
      * common empty case carries no field. (`depth` can be positive with `entries` absent: it
      * also counts the unreadable files the reader skips.) */
-    entries?: Array<{ role: string; sha: string; run: number; summary: string; enqueuedAt: number }>;
+    entries?: Array<{ role: string; sha: string; run: number; summary: string; enqueuedAt: number; revisionRound?: number; priorObjections?: number }>;
     inFlight?: MergeInFlight;
   };
   /** Main's newest merge-scope build check:
@@ -421,6 +421,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       run: e.run,
       summary: e.summary,
       enqueuedAt: e.enqueuedAt,
+      ...(e.revisionRound !== undefined ? { revisionRound: e.revisionRound } : {}),
+      ...(Array.isArray(e.priorReview?.reasons) && e.priorReview.reasons.length > 0 ? { priorObjections: e.priorReview.reasons.length } : {}),
     }));
   }
   const inFlight = queueInFlight(root, merges, running);

@@ -9,7 +9,7 @@ import { humanSeconds, secondsSince } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { plural } from "../text/phrases.js";
-import type { MergeQueueView } from "./merge-queue.js";
+import type { MergeEntry, MergeQueueView } from "./merge-queue.js";
 import { mergeChanges, MERGE_STAGE_LABELS, type MergeInFlight } from "./merge-slot.js";
 
 /** The bracketed-label text for one queue entry, in the wording the loop rows use (status-model's
@@ -27,6 +27,18 @@ export function queueEntryMergeLabel(sha: string, inFlight: MergeInFlight | unde
   if (change.stage) label += ` · ${MERGE_STAGE_LABELS[change.stage]}`;
   if (change.stageSince !== undefined) label += ` ${humanSeconds(secondsSince(change.stageSince, now))}`;
   return label;
+}
+
+/** One re-submitted change's revision note (plans/revise-rejected.md): `revision <round>`,
+ * plus ` · <n> prior objection(s)` when the change answered any prior review objections
+ * (its `priorReview.reasons`). "" for a fresh change with no revision-round field, so a
+ * first submission's queue line is byte-identical to before. */
+export function revisionNote(entry: Pick<MergeEntry, "revisionRound" | "priorReview">): string {
+  if (entry.revisionRound === undefined) return "";
+  let note = "revision " + entry.revisionRound;
+  const reasons = entry.priorReview?.reasons;
+  if (Array.isArray(reasons) && reasons.length > 0) note += " · " + plural(reasons.length, "prior objection");
+  return note;
 }
 
 /** Render the queue as the text `tumwater queue` prints: a `merge queue (<depth>):` header then
@@ -47,7 +59,9 @@ export function renderMergeQueue(view: MergeQueueView, now: number, inFlight?: M
       const age = humanSeconds(secondsSince(e.enqueuedAt, now));
       const label = queueEntryMergeLabel(e.sha, inFlight, now);
       const tag = label ? ` · [${label}]` : "";
-      lines.push(`  ${i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age} ago${tag} · ${e.summary}`);
+      const note = revisionNote(e);
+      const noteTag = note ? ` · ${note}` : "";
+      lines.push(`  ${i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age} ago${tag}${noteTag} · ${e.summary}`);
     });
   }
   if (view.unreadable > 0) {
