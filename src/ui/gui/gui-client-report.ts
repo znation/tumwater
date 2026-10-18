@@ -24,27 +24,35 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   const REPORT_PALETTE = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#a855f7", "#f97316", "#14b8a6",
     "#ec4899", "#84cc16", "#06b6d4", "#eab308", "#64748b", "#d946ef"];
 
+  // One [key, total][] for a day series, ordered by total desc then name asc — the shared
+  // shape of the role/provider/model orderings. sumFields are the fields that contribute a
+  // running total (runsByRole, costByProvider, runsByModel); seedFields are fields whose
+  // PRESENCE alone earns a category a 0 row (a loop that only merged or only spent, a
+  // provider that only spent notionally) without adding to its total — the split that lets
+  // the real-spend charts read 0 for a notional-only provider while still listing it. Every
+  // field's keys also seed a 0 when absent, so a category some day carried keeps its row on
+  // days (and in fields) that lack it. Keys are dynamic (roles, providers, models), so reads
+  // and seeds use Object.hasOwn as each ordering did.
+  function tallyAcross(series, sumFields, seedFields) {
+    const by = {};
+    for (const d of series) {
+      for (const field of sumFields) {
+        for (const [k, n] of Object.entries(d[field] || {})) by[k] = (Object.hasOwn(by, k) ? by[k] : 0) + n;
+      }
+      for (const field of [...sumFields, ...seedFields]) {
+        for (const k of Object.keys(d[field] || {})) if (!Object.hasOwn(by, k)) by[k] = 0;
+      }
+    }
+    return Object.entries(by).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+
   // Window totals per role — ticks desc, then name — so the legend and the stack order match
   // the Markdown report's "Ticks by role" line. Roles that only spent (no ticks) still count.
   // Reads and seeds use Object.hasOwn: the custom-loop name charset admits "constructor", an
   // Object.prototype key whose inherited value would otherwise seed the counter and satisfy
   // the membership test (the browser twin of addTo's fix; BUGS.md 2026-10-10).
   function reportRoleOrder(data) {
-    const byRole = {};
-    for (const d of data.series) {
-      for (const [role, n] of Object.entries(d.runsByRole)) byRole[role] = (Object.hasOwn(byRole, role) ? byRole[role] : 0) + n;
-      for (const role of Object.keys(d.costByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-      for (const role of Object.keys(d.notionalByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-      for (const role of Object.keys(d.rejectionsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-      for (const role of Object.keys(d.revisionsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-      for (const role of Object.keys(d.fallbacksByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-      for (const role of Object.keys(d.imageReroutesByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-      for (const role of Object.keys(d.failedRunsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-      for (const role of Object.keys(d.mergeFailedByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-      for (const role of Object.keys(d.commitsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-      for (const role of Object.keys(d.mergedByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
-    }
-    return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return tallyAcross(data.series, ["runsByRole"], ["costByRole", "notionalByRole", "rejectionsByRole", "revisionsByRole", "fallbacksByRole", "imageReroutesByRole", "failedRunsByRole", "mergeFailedByRole", "commitsByRole", "mergedByRole"]);
   }
 
   // X-axis labels: MM-DD, thinned to at most seven, counted back from the newest day so today
@@ -171,13 +179,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // Provider keys are dynamic seams, so reads and seeds use Object.hasOwn as reportRoleOrder
   // does; a provider that only spent notionally still counts.
   function reportProviderOrder(data) {
-    const byProvider = {};
-    for (const d of data.series) {
-      for (const [provider, n] of Object.entries(d.costByProvider || {})) byProvider[provider] = (Object.hasOwn(byProvider, provider) ? byProvider[provider] : 0) + n;
-      for (const provider of Object.keys(d.costByProvider || {})) if (!Object.hasOwn(byProvider, provider)) byProvider[provider] = 0;
-      for (const provider of Object.keys(d.notionalByProvider || {})) if (!Object.hasOwn(byProvider, provider)) byProvider[provider] = 0;
-    }
-    return Object.entries(byProvider).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return tallyAcross(data.series, ["costByProvider"], ["notionalByProvider"]);
   }
 
   // Window tallies per model — run count desc, then name — so the "Runs by model" chart
@@ -185,12 +187,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // seeds use Object.hasOwn as reportProviderOrder does; a model a day series never started
   // on still gets a row only if some day carries it.
   function reportModelOrder(data) {
-    const byModel = {};
-    for (const d of data.series) {
-      for (const [model, n] of Object.entries(d.runsByModel || {})) byModel[model] = (Object.hasOwn(byModel, model) ? byModel[model] : 0) + n;
-      for (const model of Object.keys(d.runsByModel || {})) if (!Object.hasOwn(byModel, model)) byModel[model] = 0;
-    }
-    return Object.entries(byModel).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return tallyAcross(data.series, ["runsByModel"], []);
   }
 
   // Stacked bars, one color per entry in the caller's order (the first at the bottom), with a
