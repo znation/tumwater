@@ -560,6 +560,34 @@ test("prompt --edit --attach refuses an image the target loop cannot read, and n
   }
 });
 
+test("prompt --edit --attach with no --role resolves the gate's target list-wide and edits there", async () => {
+  const root = makeRoot();
+  const modelsDir = tmpdir("cli-edit-listed-img-");
+  writeModelsFile(
+    modelsDir,
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+  const img = path.join(root, "shot.png");
+  fs.writeFileSync(img, Buffer.from("not-a-real-png"));
+  const saved = process.env.PI_CODING_AGENT_DIR;
+  try {
+    process.env.PI_CODING_AGENT_DIR = modelsDir;
+    writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/vision" } });
+    // The director's inbox is empty and only `feature` holds a queue entry, so the no-`--role`
+    // position 1 resolves list-wide to `feature` — a non-director, the resolution the gate's
+    // `role ?? failQueueMiss(resolveListedQueue(...))` null-arm makes (not the DIRECTOR_ROLE
+    // fallback every --role-scoped branch uses) — and the edit lands there.
+    enqueueRolePrompt(root, "feature", "first");
+    const { stdout } = await expectOk(() => cmdPrompt(root, ["--edit", "1", "--attach", img, "edited"]));
+    assert.match(stdout, /feature's model can't read images; this prompt runs on strong \(local\/vision\)/);
+    assert.match(stdout, /^edited \(feature\): edited/m);
+    assert.equal(eventsOfType(root, "prompt_edited").length, 1);
+  } finally {
+    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = saved;
+  }
+});
+
 // --- bare --edit <n> opens $VISUAL/$EDITOR ---
 
 /** Run `fn` with VISUAL unset and EDITOR a node stub that records the buffer it got, then runs
