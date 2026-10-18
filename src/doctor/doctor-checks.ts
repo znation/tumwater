@@ -16,6 +16,7 @@ import { CUSTOM_NAME_RE, type CheckConfigSlice, type TumwaterConfig } from "../c
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
 import { envPath, findOnPath, subdirectoryNames } from "../files/files.js";
+import { readJsonFile } from "../files/json-files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
 import {
@@ -392,24 +393,16 @@ const PI_LIST_MAX_BYTES = 64 * 1024;
  * or `[]` for a missing/malformed file: the `mcpServers` keys, or `mcp.<name>`. Best-effort
  * naming so a server the operator meant for the team is surfaced even when the file is odd. */
 function piMcpServerNames(file: string): string[] {
-  let text: string;
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch {
-    return [];
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return [];
-  }
-  if (!parsed || typeof parsed !== "object") return [];
+  // The tolerant read-and-parse half (missing, torn, scalar, `null`, or array file is "no
+  // data", never an error) is src/files/json-files.ts's readJsonFile, the same shared
+  // convention every other state/marker/info file reader uses.
+  const parsed = readJsonFile<Record<string, unknown>>(file);
+  if (parsed === null) return [];
   const names = new Set<string>();
-  const serverMap = (parsed as Record<string, unknown>)["mcpServers"];
+  const serverMap = parsed["mcpServers"];
   if (serverMap && typeof serverMap === "object")
     for (const name of Object.keys(serverMap)) names.add(name);
-  const mcp = (parsed as Record<string, unknown>)["mcp"];
+  const mcp = parsed["mcp"];
   if (mcp && typeof mcp === "object")
     for (const [name, value] of Object.entries(mcp))
       if (name !== "servers" && value && typeof value === "object") names.add(name);
