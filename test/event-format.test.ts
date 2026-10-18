@@ -1006,6 +1006,26 @@ test("formatEvent renders slot_wait with the wait, purpose, and pool shape", () 
   assert.match(line, /4 workspaces, 1 pinned/);
 });
 
+test("formatEvent renders provider_wait naming the key and the run cap when none", () => {
+  const keyed = formatEvent({
+    ts: 0,
+    source: "feature",
+    type: "provider_wait",
+    role: "feature",
+    waitedMs: 120_000,
+    key: "omlx",
+  } as never);
+  assert.match(keyed, /waited 2m for a omlx slot \(feature\)/);
+  const keyless = formatEvent({
+    ts: 0,
+    source: "feature",
+    type: "provider_wait",
+    role: "feature",
+    waitedMs: 30_000,
+  } as never);
+  assert.match(keyless, /waited 30s for a run slot \(feature\)/);
+});
+
 test("formatEvent renders claim assignment and release lines", () => {
   const assigned = formatEvent({ ts: 0, source: "feature-2", type: "claim", action: "assigned", key: "plan a", title: "Plan A" } as never);
   assert.match(assigned, /feature #2\s+assigned "Plan A"/);

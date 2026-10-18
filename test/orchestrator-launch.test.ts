@@ -120,6 +120,39 @@ test("a role tick's semaphore lease is keyed by its authoring seam's provider", 
   assert.equal(c.semaphore.snapshot().byKey.omlx?.inUse, 0, "the omlx slot drains on release");
 });
 
+test("a role tick that waits for its provider slot logs a provider_wait event; an at-once admission and a director do not", async () => {
+  // The team's only omlx permit is held by another lease, so the role's admission waits.
+  // providerWaitMs: 0 is the test seam forcing even a sub-second wait to be named.
+  const semaphore = new Semaphore(1);
+  semaphore.setKeyCaps({ omlx: 1 });
+  const held = await semaphore.acquireLease(0, "omlx");
+  const runner = fakeRunner("feature", undefined, { provider: "omlx", model: "m", agent: "pi" });
+  const c = ctx({ reasons: new Map([[runner, "scheduled"]]), semaphore, providerWaitMs: 0 });
+  launchDueTicks(c);
+  held.release(); // free the permit so the role's admission completes
+  await settle(c);
+  const waits = eventsOfType(c.root, "provider_wait");
+  assert.equal(waits.length, 1, "one provider_wait event for the waiting admission");
+  assert.equal(waits[0]!.role, "feature");
+  assert.equal(waits[0]!.key, "omlx");
+  assert.ok(Number(waits[0]!.waitedMs) >= 0, "the wait is measured, never NaN");
+
+  // An unheld semaphore admits at once: at the default threshold nothing is logged.
+  const atOnce = ctx({
+    reasons: new Map([[fakeRunner("feature", undefined, { provider: "omlx", model: "m", agent: "pi" }), "scheduled"]]),
+  });
+  launchDueTicks(atOnce);
+  await settle(atOnce);
+  assert.equal(eventsOfType(atOnce.root, "provider_wait").length, 0);
+
+  // The director never queues and never holds an admission wait, so it logs nothing.
+  const director = fakeRunner(DIRECTOR_ROLE);
+  const dc = ctx({ reasons: new Map([[director, "prompt"]]) });
+  launchDueTicks(dc);
+  await settle(dc);
+  assert.equal(eventsOfType(dc.root, "provider_wait").length, 0);
+});
+
 test("the director never queues behind the semaphore and never samples the role drain window", async () => {
   // Capacity zero: a role tick parked behind it never gets a permit, so the director
   // finishing anyway proves the bypass.

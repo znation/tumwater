@@ -134,7 +134,9 @@ discards a role's in-flight merge.
   have headroom, and a full provider never holds back a run on another
   (plans/provider-concurrency.md §1). A role run's key is the provider its model job resolves to
   (a claude job's own id, else the pi provider, or pi's saved default for a job that names no
-  model).
+  model). A run whose admission waits 30 s or more for its provider/team slot logs a
+  `provider_wait` event, and `tumwater doctor`'s "provider contention" row sums the last 24 h
+  and warns at 10 minutes, naming the key to raise.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: pipeline, merge, batch, and main-baseline checks share it, the rest queue, and merges go
   first.

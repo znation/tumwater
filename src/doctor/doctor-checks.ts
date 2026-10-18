@@ -492,6 +492,9 @@ function leftoverWorktreeDirs(root: string): string[] {
 const SLOT_WAIT_CHECK_WINDOW_MS = 24 * 3600_000;
 const SLOT_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 
+const PROVIDER_WAIT_CHECK_WINDOW_MS = 24 * 3600_000;
+const PROVIDER_WAIT_WARN_TOTAL_MS = 10 * 60_000;
+
 /** Worktree pool (plans/worktree-pool.md, part 5/5): report the pooled slots and warn on the
  * states an operator should act on — a legacy `<role>` or `_land-*` checkout the pool migration
  * left behind, a pin older than PIN_STALE_MS (a paused role holding a checkout), and the last
@@ -545,6 +548,56 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
   }
   const warn = leftover.length > 0 || stale.length > 0 || contended;
   return (warn ? warnOutcome : okOutcome)(parts.join(" — "));
+}
+
+/** Provider-slot contention: sums the last 24 h of `provider_wait` events (each a role tick
+ * whose semaphore admission waited PROVIDER_WAIT_EVENT_MS or more, recorded in
+ * orchestrator-launch.ts) and warns when the total reaches PROVIDER_WAIT_WARN_TOTAL_MS — the
+ * provider cap is too small. Names the key of the largest per-key wait total (the key-less
+ * bucket reads "the run cap") and, on a warn, the maxConcurrentPerProvider cap to raise. A
+ * counterpoint to checkWorktreePool's slot-wait half; read-only, like every doctor check.
+ * `now` is a test seam for the window. */
+export function checkProviderContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
+  let count = 0;
+  let total = 0;
+  let longestMs = 0;
+  const perKey = new Map<string, number>();
+  try {
+    const waits = readEventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS).events.filter(
+      (ev) => ev.type === "provider_wait" && ev.ts >= now - PROVIDER_WAIT_CHECK_WINDOW_MS,
+    );
+    for (const ev of waits) {
+      count += 1;
+      const waited = finiteNumber(ev.waitedMs, 0);
+      total += waited;
+      if (waited > longestMs) longestMs = waited;
+      const key = typeof ev.key === "string" && ev.key.length > 0 ? ev.key : "";
+      perKey.set(key, (perKey.get(key) ?? 0) + waited);
+    }
+  } catch (err) {
+    // A read error leaves the level ok, exactly like the slot-wait branch's own read: the
+    // check cannot measure, so it says so rather than crying wolf.
+    return okOutcome(`could not read the event log for provider waits: ${errorMessage(err)}`);
+  }
+  if (count === 0) return okOutcome("no provider waits");
+  // The bucket with the largest wait total names the cap to raise (the key-less bucket reads
+  // "the run cap" — maxConcurrent, since no seam keys to a provider).
+  let bestKey = "";
+  let bestTotal = -1;
+  for (const [k, v] of perKey) {
+    if (v > bestTotal) {
+      bestTotal = v;
+      bestKey = k;
+    }
+  }
+  const keyLabel = bestKey === "" ? "the run cap" : `the ${bestKey} slot`;
+  let detail = `${plural(count, "wait")} for a provider slot in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(longestMs)} (${keyLabel})`;
+  const contended = total >= PROVIDER_WAIT_WARN_TOTAL_MS;
+  if (contended && bestKey !== "") {
+    const cap = config?.maxConcurrentPerProvider?.[bestKey];
+    if (cap !== undefined) detail += ` — raise maxConcurrentPerProvider.${bestKey} above ${cap}`;
+  }
+  return (contended ? warnOutcome : okOutcome)(detail);
 }
 
 /** The "leftover role branches" row: `tumwater/<id>` branches whose role is no longer enabled

@@ -19,6 +19,7 @@ import {
   checkMergeLock,
   checkNodeVersion,
   checkProviderConcurrency,
+  checkProviderContention,
   checkRepo,
   checkStateDir,
   checkLeftoverRoleBranches,
@@ -948,6 +949,27 @@ test("checkWorktreePool sums the last day of slot_wait events and warns at ten m
   const later = checkWorktreePool(root, Date.now() + 48 * 3_600_000);
   assert.equal(later.level, "ok");
   assert.doesNotMatch(later.detail, /wait to start/);
+});
+
+test("checkProviderContention sums the last day of provider_wait events and warns at ten minutes", () => {
+  const root = readyRepo();
+  const wait = (role: string, key: string | undefined, waitedMs: number) =>
+    logEvent(root, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, waitedMs });
+  wait("feature", "omlx", 240_000);
+  wait("clean", undefined, 60_000);
+  const quiet = checkProviderContention(root, undefined);
+  assert.equal(quiet.level, "ok");
+  assert.match(quiet.detail, /2 waits for a provider slot in the last 24h, 5m total, longest 4m \(the omlx slot\)/);
+
+  wait("feature", "omlx", 600_000);
+  const cfg = { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 2 } };
+  const busy = checkProviderContention(root, cfg);
+  assert.equal(busy.level, "warn");
+  assert.match(busy.detail, /raise maxConcurrentPerProvider\.omlx above 2/);
+
+  const later = checkProviderContention(root, cfg, Date.now() + 48 * 3_600_000);
+  assert.equal(later.level, "ok");
+  assert.equal(later.detail, "no provider waits");
 });
 
 test("checkFlakyChecks stays quiet for no flake and for a single one-off flake", () => {

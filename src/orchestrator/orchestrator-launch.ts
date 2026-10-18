@@ -20,7 +20,7 @@ import {
 } from "../budget/fallback-breaker.js";
 import { seamHoldKey } from "../config/config-views.js"
 import type { TeamGateStates } from "../gates/gate-polls.js";
-import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { fairOrder } from "../scheduling/scheduling.js";
@@ -36,6 +36,11 @@ import { runTimedRoleTick } from "../tick/tick-timing.js";
  * HANDOFF_MERGE_WINDOW_MS input): the drain window tracks recent tick pace, not all-time
  * pace, so the sample is a ring buffer. */
 export const ROLE_TICK_DURATION_SAMPLES = 50;
+
+/** The admission wait threshold below which a role tick's semaphore wait logs no event — a
+ * tick that starts at once stays silent. Mirrors SLOT_WAIT_EVENT_MS in src/git/worktree-pool.ts:
+ * the wait that signals maxConcurrentPerProvider (or maxConcurrent) caps the team. */
+export const PROVIDER_WAIT_EVENT_MS = 30_000;
 
 /** What the launch pass needs from the orchestrator: the poll's inputs and the team's
  * shared mutable state, passed by reference so updates arrive where the drain, the redeployer,
@@ -84,6 +89,11 @@ interface LaunchContext {
   directorInFlight: Set<Promise<void>>;
   /** The recent work-bearing role-tick duration ring buffer the drain window samples. */
   roleTickDurationsMs: number[];
+  /** The start gate a waiter meets at permit time: the restart hold plus the failure hold
+   * for role ticks (the director is exempt, as at scheduling). */
+  /** The tick semaphore's admission wait threshold (default PROVIDER_WAIT_EVENT_MS): a test
+   * seam mirroring breakerNow — providerWaitMs: 0 forces every admission's wait to be logged. */
+  providerWaitMs?: number;
   /** The start gate a waiter meets at permit time: the restart hold plus the failure hold
    * for role ticks (the director is exempt, as at scheduling). */
   startHeld: (role: string) => boolean;
@@ -170,7 +180,24 @@ export function launchDueTicks(ctx: LaunchContext): void {
               // The key is the authoring seam's concurrency key, computed here at admission
               // (runConfig applies any budget or model-failure fallback already in force).
               const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(Date.now());
-              lease = await semaphore.acquireLease(roleTier(runner.role), cfg ? seamConcurrencyKey(cfg, piDefault) : undefined);
+              const key = cfg ? seamConcurrencyKey(cfg, piDefault) : undefined;
+              const admittedAt = Date.now();
+              lease = await semaphore.acquireLease(roleTier(runner.role), key);
+              // A wait of PROVIDER_WAIT_EVENT_MS or more for the provider/team slot is
+              // provider contention worth surfacing: name it so `tumwater doctor`'s provider
+              // contention row can sum it and the operator can size maxConcurrentPerProvider
+              // (or maxConcurrent) from real waits. Best-effort like the launch pass's other
+              // events, so an unwritable log never blocks a start; a tick admitted at once
+              // stays silent.
+              if (Date.now() - admittedAt >= (ctx.providerWaitMs ?? PROVIDER_WAIT_EVENT_MS)) {
+                logEventBestEffort(ctx.root, {
+                  source: TUMWATER_SOURCE,
+                  type: "provider_wait",
+                  role: runner.role,
+                  waitedMs: Date.now() - admittedAt,
+                  ...(key !== undefined ? { key } : {}),
+                });
+              }
               // Permit granted: the tick is now an active, permit-holding state until the
               // release below. A tick the start gate turns away releases within the same
               // microtask chain, so no poll ever counts it as a permit holder.
