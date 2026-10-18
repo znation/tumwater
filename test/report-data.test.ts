@@ -1044,11 +1044,11 @@ test("collectReport and collectReportSince tally run_start per model, zero meani
     JSON.stringify({ ts, loop: "feature", type: "run_start", run: 1, ...(model === undefined ? {} : { model }) });
   const root = tmpdir();
   writeEvents(root, [
-    start(at(0), "acme/m1"),
-    start(at(0), "acme/m2"),
-    start(at(0), "acme/m1"),
-    start(at(0)), // no configured model: contributes no key
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 }),
+    start(todayTs(), "acme/m1"),
+    start(todayTs(), "acme/m2"),
+    start(todayTs(), "acme/m1"),
+    start(todayTs()), // no configured model: contributes no key
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 }),
   ]);
   const data = collectReport(root, 3);
   assert.deepEqual(data.series[2]?.runsByModel, { "acme/m1": 2, "acme/m2": 1 }, "counts modelled starts, skips the model-less one");
@@ -1069,7 +1069,7 @@ test("collectReport and collectReportSince tally run_start per model, zero meani
 
   // A log with no modelled start: the team day omits the field and --since returns an empty map.
   const plain = tmpdir();
-  writeEvents(plain, [start(at(0))]);
+  writeEvents(plain, [start(todayTs())]);
   assert.ok(!("runsByModel" in collectReport(plain, 2).series[0]!), "a model-less team day omits the field");
   assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).runsByModel, {});
   // Zero-means-absent at the render: no modelled start prints no Runs by model line.
@@ -1082,10 +1082,10 @@ test("collectReport and collectReportSince tally merge_failed by reason, zero me
     JSON.stringify({ ts, loop: "feature", type: "merge_failed", run: 1, ...(result === undefined ? {} : { result }) });
   const root = tmpdir();
   writeEvents(root, [
-    failed(at(0), "rejected"),
-    failed(at(0), "rejected"),
-    failed(at(0), "merge_conflict"),
-    failed(at(0)), // legacy event with no result: folds under unknown
+    failed(todayTs(), "rejected"),
+    failed(todayTs(), "rejected"),
+    failed(todayTs(), "merge_conflict"),
+    failed(todayTs()), // legacy event with no result: folds under unknown
     failed(at(1), "merge_blocked"),
   ]);
   const data = collectReport(root, 3);
@@ -1115,7 +1115,7 @@ test("collectReport and collectReportSince tally merge_failed by reason, zero me
 
   // A log with no merge_failed: the team day omits the field and --since returns an empty map.
   const plain = tmpdir();
-  writeEvents(plain, [JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed" })]);
+  writeEvents(plain, [JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed" })]);
   assert.ok(!("mergeFailedByReason" in collectReport(plain, 2).series[0]!), "a failure-free team day omits the field");
   assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).mergeFailedByReason, {});
 });

@@ -20,7 +20,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Waiting for the next failure 2026-10-16 by bugfix: the failure message will show signals sent, whether the loop broke on ESRCH, the expected ppid, and the ppid the grandchild saw on each poll (`gone.seen`).**
 
-### Four report tests fail near local midnight, the sweep the 2026-10-17 fix note skipped: `at(0)` noon timestamps sit in the future for `--since`, and an `ago(minutes)` fixture straddles the day boundary (found by the plan role 2026-10-17)
+## Fixed
+
+### Four report tests fail near local midnight, the sweep the 2026-10-17 fix note skipped: `at(0)` noon timestamps sit in the future for `--since`, and an `ago(minutes)` fixture straddles the day boundary (found by the plan role 2026-10-17) — fixed 2026-10-18 by the bugfix role
 
 - **Symptom:** `npm run test` at 00:02 local failed four tests while the only changed file was PLANS.md:
   - `test/report-data.test.ts`: "collectReport and collectReportSince tally run_start per model, zero meaning absent, team scope only" (`collectReportSince(...).runsByModel` was `{}`, expected `{ 'acme/m1': 2, 'acme/m2': 1 }`) and "collectReport and collectReportSince tally merge_failed by reason, zero meaning absent, team scope only" (`{ merge_blocked: 1 }`, expected `{ rejected: 2, merge_conflict: 1, unknown: 1, merge_blocked: 1 }`).
@@ -28,8 +30,8 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Reproduce:** run the suite between 00:00 and 12:00 local (the two `report-data` tests and the report merge-failure test), or within about five minutes after local midnight (the deferred test).
 - **Cause:** clock-dependent fixtures. The `report-data` pair and the report merge-failure test seed today's events with `at(0)` (`atLocalTs`, today at 12:00 local), which is in the future before noon; `collectReportSince` drops `ev.ts > now`, so the `--since` assertions lose today's events while the day-bucket assertions still pass. The deferred test seeds `ago(5..1 min)`, which straddles local midnight so its last day bucket holds only the newest event. The 2026-10-17 fix for the fallback/image-reroute tests added `todayTs()` (test/helpers/oracles.ts) but did not run the grep sweep its own note named.
 - **Expected / fix sketch:** make each "today" fixture land in the past and on one local day at any time of day. For the `--since` assertions use `todayTs()` (already in test/helpers/oracles.ts) for the seeded events; for the deferred fixture anchor the offsets so the whole set stays on one local day, or assert against the `dayKey(ts)` the events land in. Grep `test/report-data.test.ts` and `test/report.test.ts` for `at(0)` beside `collectReportSince` and for `ago(` beside a per-day assertion, and fix every case in one change.
-
-## Fixed
+- **Fixed 2026-10-18 by bugfix:** the four tests now seed their "today" events with `todayTs()` (test/helpers/oracles.ts) instead of `at(0)` (today at noon, in the future before noon) or a midnight-straddling `ago(5..1 min)`: the run_start and merge_failed `--since` assertions' events and the deferred test's five `ago(...)` fixtures all move to past, same-local-day stamps (the deferred ones use distinct `todayTs(5..1 min)` offsets). The merge-failure test's `at(1)` (yesterday, `merge_blocked`) event is unchanged. Verified at 00:08 local on 10-18, inside the vulnerable window.
+- **Validation gap:** none — the same four tests were the reproduction (they failed in the 00:02 run this entry records, and the sibling 00:06 run the 10-17 fallback entry records); nothing was missing, and the fixed fixtures hold at the vulnerable hour.
 
 ### `strandedPlanEntries` false-positives on a `## Planned` heading that merely mentions a done date in prose, turning the whole repo's check red and keeping merges on a red main for the rest of the day (found by the selfcheck role 2026-10-17 from `test/backlog-structure.test.ts`’s “this repo’s current PLANS.md yields nothing” failing across the 10-17 failure digest) — fixed 2026-10-17 by the bugfix role
 

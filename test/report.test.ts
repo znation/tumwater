@@ -930,10 +930,10 @@ test("team day report and --since break merge failures down by reason; scoped an
   // Two rejections and a conflict today, a result-less legacy event and a blocked ff
   // yesterday: the reason line ranks count desc then code asc.
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_failed", commit: "a1", summary: "x", result: "rejected" }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_failed", commit: "a2", summary: "x", result: "rejected" }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "merge_failed", commit: "b1", summary: "y", result: "merge_conflict" }),
-    JSON.stringify({ ts: at(0), loop: "docs", type: "merge_failed", commit: "c1", summary: "z" }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "merge_failed", commit: "a1", summary: "x", result: "rejected" }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "merge_failed", commit: "a2", summary: "x", result: "rejected" }),
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "merge_failed", commit: "b1", summary: "y", result: "merge_conflict" }),
+    JSON.stringify({ ts: todayTs(), loop: "docs", type: "merge_failed", commit: "c1", summary: "z" }),
     JSON.stringify({ ts: at(1), loop: "feature", type: "merge_failed", commit: "a3", summary: "x", result: "merge_blocked" }),
   ]);
   const md = await runCli(root, "report", "--days", "2");
@@ -1017,11 +1017,11 @@ test("team report --since breaks merge outcomes by role and the scoped --since o
 test("team report tallies deferred maintenance runs by reason; scoped and deferral-free reports omit them", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }),
-    JSON.stringify({ ts: ago(4 * 60_000), loop: "feature", type: "run_deferred", reason: "no-work" }),
-    JSON.stringify({ ts: ago(3 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }),
-    JSON.stringify({ ts: ago(2 * 60_000), loop: "feature", type: "run_deferred" }), // no reason: folds as no-work
-    JSON.stringify({ ts: ago(1 * 60_000), loop: "feature", type: "run_deferred", reason: "plans-full" }),
+    JSON.stringify({ ts: todayTs(5 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }),
+    JSON.stringify({ ts: todayTs(4 * 60_000), loop: "feature", type: "run_deferred", reason: "no-work" }),
+    JSON.stringify({ ts: todayTs(3 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }),
+    JSON.stringify({ ts: todayTs(2 * 60_000), loop: "feature", type: "run_deferred" }), // no reason: folds as no-work
+    JSON.stringify({ ts: todayTs(1 * 60_000), loop: "feature", type: "run_deferred", reason: "plans-full" }),
   ]);
   // The day report prints the tally beside the other per-role breakdowns (count desc, code
   // asc), and --since carries the same window map.
