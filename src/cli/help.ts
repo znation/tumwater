@@ -329,6 +329,12 @@ Usage:
   tumwater role <id> --instructions-file <path>
                                    Replace that role's instructions override from a file
                                    ("-" reads stdin; 4 KB cap), written to roles.<id>.instructions
+  tumwater role <id> --clear-quiet-hours
+                                   Clear that role's own quiet-hours window
+  tumwater role <id> --quiet-hours <window>
+                                   Set that role's own daily local-time quiet-hours
+                                   window (e.g. "23:00-07:00"; empty clears it),
+                                   written to quietHoursPerRole.<id> for the base id
   tumwater prompt <text...>        Send a message to the director's inbox
   tumwater prompt --file <path>    Send a message read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...>

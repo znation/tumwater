@@ -530,6 +530,83 @@ test("role --clear-instructions and --instructions-file write the role's instruc
   assert.match(r.stdout, /director: instructions cleared/);
 });
 
+test("role --quiet-hours and --clear-quiet-hours write the role's quiet hours", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role quiet hours");
+  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+
+  // `--quiet-hours <window>` writes quietHoursPerRole.feature through the config core.
+  let r = await cli(repo, "role", "feature", "--quiet-hours", "23:00-07:00");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: quiet hours set to 23:00-07:00/);
+  assert.equal(config().quietHoursPerRole.feature, "23:00-07:00");
+
+  // The rendered view and --json carry the resolved window.
+  r = await cli(repo, "role", "feature");
+  assert.match(r.stdout, /- Quiet hours: 23:00-07:00/);
+  r = await cli(repo, "role", "feature", "--json");
+  assert.match(r.stdout, /"23:00-07:00"/);
+
+  // An instance id targets its base role: feature-2 writes quietHoursPerRole.feature.
+  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
+  r = await cli(repo, "role", "feature-2", "--quiet-hours", "22:00-06:00");
+  assert.equal(r.code, 0);
+  assert.equal(config().quietHoursPerRole.feature, "22:00-06:00");
+
+  // A clear removes the key; `--quiet-hours ""` and a whitespace-only value clear it too
+  // (empty means off, the config's own reading), and a clear writes nothing when unset.
+  r = await cli(repo, "role", "feature", "--clear-quiet-hours");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: quiet hours cleared/);
+  assert.equal(config().quietHoursPerRole, undefined);
+  const bytesAfterClear = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--clear-quiet-hours");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: quiet hours cleared/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytesAfterClear, "clearing an unset key writes nothing");
+  r = await cli(repo, "role", "feature", "--quiet-hours", "");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: quiet hours cleared/);
+  assert.equal(config().quietHoursPerRole, undefined);
+  r = await cli(repo, "role", "feature", "--quiet-hours", "   ");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: quiet hours cleared/);
+  assert.equal(config().quietHoursPerRole, undefined);
+
+  // A malformed window fails with checkQuietHours's message naming the key, leaving the
+  // file unchanged; the director and an unknown id are refused.
+  const before = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  for (const bad of ["nope", "23:00", "23:00-23:00"]) {
+    r = await cli(repo, "role", "feature", "--quiet-hours", bad);
+    assert.equal(r.code, 1, bad);
+    assert.match(r.stderr, /quietHoursPerRole.feature/);
+    assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, `file unchanged on ${bad}`);
+  }
+  r = await cli(repo, "role", "director", "--quiet-hours", "23:00-07:00");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /the director has no quiet hours/);
+  r = await cli(repo, "role", "bogus", "--quiet-hours", "23:00-07:00");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus/);
+
+  // Mutually exclusive or inapplicable flags are refused and write nothing.
+  r = await cli(repo, "role", "feature", "--clear-quiet-hours", "--quiet-hours", "x");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /give --clear-quiet-hours or --quiet-hours, not both/);
+  r = await cli(repo, "role", "feature", "--quiet-hours", "x", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to a quiet-hours write/);
+  r = await cli(repo, "role", "feature", "--quiet-hours", "x", "--clear-notes");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /notes and quiet-hours writes cannot share one invocation/);
+  r = await cli(repo, "role", "feature", "--quiet-hours", "x", "--instructions-file", "y");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /instructions and quiet-hours writes cannot share one invocation/);
+  assert.equal(config().quietHoursPerRole, undefined, "no write from the refused invocations");
+});
+
 test("role validates its arguments like every other command", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role validation");

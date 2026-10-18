@@ -51,8 +51,13 @@ const NOTES_FILE_SPEC = { names: ["--notes-file"], value: true, valueName: "<pat
 const CLEAR_INSTRUCTIONS_SPEC = { names: ["--clear-instructions"] };
 const INSTRUCTIONS_FILE_SPEC = { names: ["--instructions-file"], value: true, valueName: "<path>" };
 
+/** `role`'s quiet-hours write flags: clear the window, or set it to a daily local-time window. */
+const CLEAR_QUIET_HOURS_SPEC = { names: ["--clear-quiet-hours"] };
+const QUIET_HOURS_SPEC = { names: ["--quiet-hours"], value: true, valueName: "<window>" };
+
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
- * neither a flag nor the value of a --role, --notes-file or --instructions-file flag. Returns
+ * neither a flag nor the value of a --role, --notes-file, --instructions-file or
+ * --quiet-hours flag. Returns
  * the id (null when
  * absent) and the remaining arguments — flags only, ready for rejectUnknownArgs and
  * sayJsonOrRender. The id may also arrive as --role <id>, the flag spelling every other
@@ -61,7 +66,7 @@ const INSTRUCTIONS_FILE_SPEC = { names: ["--instructions-file"], value: true, va
  * command's mixed positional/flag vocabulary. */
 function peelRolePositional(args: string[]): { id: string | null; rest: string[] } {
   const valueIdx = new Set<number>();
-  for (const flag of ["--role", "--notes-file", "--instructions-file"]) {
+  for (const flag of ["--role", "--notes-file", "--instructions-file", "--quiet-hours"]) {
     const at = args.indexOf(flag);
     if (at >= 0) valueIdx.add(at + 1);
   }
@@ -344,7 +349,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
   // a repo the team never started in — and a torn one — instead of refusing.
   const { id: positional, rest } = peelRolePositional(args);
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC]);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
   // a silent pick of one.
@@ -358,10 +363,16 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const notesFile = flagValue(rest, "--notes-file");
   const clearInst = rest.includes("--clear-instructions");
   const instFile = flagValue(rest, "--instructions-file");
+  const clearQuiet = rest.includes("--clear-quiet-hours");
   const notesWrite = clear || rest.includes("--notes-file");
   const instructionsWrite = clearInst || rest.includes("--instructions-file");
-  if (notesWrite && instructionsWrite)
-    fail("notes and instructions writes cannot share one invocation");
+  const quietWrite = clearQuiet || rest.includes("--quiet-hours");
+  const writes: string[] = [];
+  if (notesWrite) writes.push("notes");
+  if (instructionsWrite) writes.push("instructions");
+  if (quietWrite) writes.push("quiet-hours");
+  if (writes.length > 1)
+    fail(`${writes.join(" and ")} writes cannot share one invocation`);
   if (notesWrite) {
     if (clear && rest.includes("--notes-file")) fail("give --clear-notes or --notes-file, not both");
     if (rest.includes("--json")) fail("--json does not apply to a notes write");
@@ -396,6 +407,31 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
       const result = setConfigKey(root, `roles.${base}.instructions`, JSON.stringify(text));
       if (!result.ok) fail(result.error);
       say(`${base}: instructions saved (${text.length} chars)`);
+    }
+    return;
+  }
+  // The quiet-hours write: the third write kind, the terminal twin of `config set
+  // quietHoursPerRole.<base> <window>`. The window lands in quietHoursPerRole.<base> through
+  // the same setConfigKey/unsetConfigKey core config set/unset use, so checkQuietHours (with
+  // the typed key as its label) and validateConfig own validation and the write is atomic.
+  // The director is exempt — its quietHoursPerRole.director entry is inert (the gate and
+  // doctor both exempt it), like the notes branch's director refusal.
+  if (quietWrite) {
+    if (clearQuiet && rest.includes("--quiet-hours")) fail("give --clear-quiet-hours or --quiet-hours, not both");
+    if (rest.includes("--json")) fail("--json does not apply to a quiet-hours write");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    if (id === DIRECTOR_ROLE) fail("the director has no quiet hours");
+    const base = baseRoleOf(id);
+    const window = flagValue(rest, "--quiet-hours") ?? "";
+    if (clearQuiet || window.trim() === "") {
+      const result = unsetConfigKey(root, `quietHoursPerRole.${base}`);
+      if (!result.ok) fail(result.error);
+      say(`${base}: quiet hours cleared`);
+    } else {
+      const result = setConfigKey(root, `quietHoursPerRole.${base}`, JSON.stringify(window));
+      if (!result.ok) fail(result.error);
+      say(`${base}: quiet hours set to ${window}`);
     }
     return;
   }
