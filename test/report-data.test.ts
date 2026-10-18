@@ -440,7 +440,7 @@ test("an epitaph whose trailing parenthetical quotes a nested parenthetical stil
 
 test("a Fixed heading whose completion is recorded as re-merged counts on that date; an undated fixed mention counts nowhere", () => {
   // The bugfix prompt pins the completion DATE, not the verb: an entry whose first merge was
-  // rejected in review is completed by the re-land, and its epitaph says "re-merged <date>" —
+  // rejected in review is completed by the re-merge, and its epitaph says "re-merged <date>" —
   // the real BUGS.md entry this reproduces. Before the fix the collector's verb list
   // (fixed|closed|resolved) matched nothing in that heading and the day's bug count came up one
   // short, silently. A heading that mentions "was fixed" with no dated verb still counts

@@ -871,7 +871,7 @@ test("role schedule surfaces the yield multiplier a quiet scalable role is servi
   state.nextRunAt = now;
   saveLoopState(dir, state);
   assert.match(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS), now), /- Next run: due now ×2/);
-  // A landing inside the recent window resets the multiplier to 1, so no suffix rides.
+  // A merge inside the recent window resets the multiplier to 1, so no suffix rides.
   state.nextRunAt = now - 60_000;
   state.recentOutcomes = "L".repeat(2) + "n".repeat(8);
   saveLoopState(dir, state);

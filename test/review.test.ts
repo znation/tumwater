@@ -112,7 +112,7 @@ test("a fresh landing's review_start carries no revision marker", async () => {
 });
 
 test("the reviewer's pi run goes through the loop's runGatePi wiring, not bare runPi", async () => {
-  // BUGS.md 2026-10-01: the gate called runPi directly, so a 429 in the landing gate failed
+  // BUGS.md 2026-10-01: the gate called runPi directly, so a 429 in the merge gate failed
   // the review with no transient retry and no rate-limit hold stamp — the one surface the
   // shared retry's "EVERY pi run" doc promised and review.ts alone skipped. The pin: the
   // gate's reviewer run must arrive through the context's runGatePi seam.
@@ -377,7 +377,7 @@ test("gate does not discard the commit when the reviewer run itself fails", asyn
 });
 
 test("a reviewer that outruns review.timeoutSeconds fails in its own budget: commit kept, no strike", async () => {
-  // A wedged reviewer must not hold the land queue for a whole authoring tick: its own budget
+  // A wedged reviewer must not hold the merge queue for a whole authoring tick: its own budget
   // kills it long before runTimeoutSeconds, and the kill is a failed RUN (like a dead backend),
   // so the pin stays and the per-HEAD discard counter does not move.
   const { root, wt, head } = await gateFixture();
@@ -770,7 +770,7 @@ test("gate rejects a change that still holds conflict markers, with no pi run", 
   // A change handed back to its author with the markers left in place (PLANS.md "Robust
   // conflict landing, part 2/2") reaches the gate if the author's stage fix-up turn did not
   // clear them. An md-only diff skips the reviewer by design, so only a deterministic check
-  // can stop raw `<<<<<<<` lines from landing on main.
+  // can stop raw `<<<<<<<` lines from being merged to main.
   await assertRejectedWithoutReview(
     "notes.md",
     "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",

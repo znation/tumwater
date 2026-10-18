@@ -8,14 +8,14 @@ import { VALIDATION_GAP_TAGS } from "../src/roles/role-guidance.js";
  * bugfix prompt asks every Fixed entry to carry `**Validation gap:** <tag> — <one sentence>`,
  * but prose alone never made a dropped line visible — by 2026-09-20 the line existed nowhere in
  * BUGS.md and nothing could see its absence. This test is that observer: it runs in the suite
- * the landing gate already executes, so a commit that moves a bug to Fixed without the trace is
+ * the merge gate already executes, so a commit that moves a bug to Fixed without the trace is
  * rejected before it reaches main. Entries fixed before the guard shipped are grandfathered (the
  * filing bug says the legacy backlog must not fail the build); everything fixed since must carry
  * a well-formed line. An invented tag is as bad as a missing line, because the tally aggregates
  * the tag and a non-vocabulary value would silently vanish from it. */
 
 /** Fixed entries fixed on or after this date must carry the trace. 2026-09-21 is the day the
- * first bugfix entries wrote the line and this guard landed; earlier entries predate it. */
+ * first bugfix entries wrote the line and this guard merged; earlier entries predate it. */
 const GAP_ENFORCED_SINCE = "2026-09-21";
 
 /** The `fixed`/`closed`/`resolved` date in a Fixed entry's heading, or null when it carries none.

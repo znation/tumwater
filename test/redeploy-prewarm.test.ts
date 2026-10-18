@@ -42,7 +42,7 @@ test("within the cooldown a second stale episode is deferred: no hold, status ca
     "the deadline is published through the restartBlocked channel",
   );
   assert.equal(status.restartPending, undefined);
-  // One warning per episode, not one per poll and not one per head: a landing mid-cooldown
+  // One warning per episode, not one per poll and not one per head: a merge mid-cooldown
   // adds no new information, so a different head in the same episode stays silent
   // (BUGS.md 2026-09-19).
   assert.equal(

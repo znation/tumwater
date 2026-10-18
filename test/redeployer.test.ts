@@ -210,7 +210,7 @@ test("a red main blocks the restart for that head with one warning; a moved main
   // `stale: true` cannot be told apart from a restart that is seconds away (BUGS.md).
   assert.equal(r.status().restartBlocked, "main bbbbbbbb is red");
   assert.equal(r.status().restartPending, undefined, "blocked and pending are mutually exclusive");
-  // Main moves (a fix landed): the new head gets its own green check.
+  // Main moves (a fix merged): the new head gets its own green check.
   assert.equal(await r.poll(HEAD_C, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
   assert.equal(r.status().restartBlocked, undefined, "the new head starts clean");
   assert.equal(r.status().restartPending, true);

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { readJson } from "./helpers/json-read.js";
 
 /** Pin the packaging metadata that makes the npm package publishable and the two workflow
- * triggers, so the landing gate's `npm test` sees a broken allowlist or a missing `prepack`
+ * triggers, so the merge gate's `npm test` sees a broken allowlist or a missing `prepack`
  * on a metadata-only diff — a diff the suite would otherwise verify nothing about. */
 
 const pkg = readJson(new URL("../../package.json", import.meta.url)) as {

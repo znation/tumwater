@@ -293,7 +293,7 @@ test("the readme prompt names the state-only content: summary, backlog pointer �
   );
   // No freshness stamp: main's build/suite state
   // is volatile — it is reported live by `tumwater status`'s mainCheck, never committed, so a
-  // landing no longer forces a README sync.
+  // a merge no longer forces a README sync.
   assert.doesNotMatch(find, /[Ff]reshness stamp|Current main \(/);
   assert.match(find, /reported live by `tumwater status` \(its mainCheck\) — never stamped into the section/);
 });

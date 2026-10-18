@@ -307,7 +307,7 @@ test("every role prompt carries the ask-don't-guess rule", () => {
 // Prompt contract for the readme role (PLANS.md "Bound README's status section — state, not
 // log"):
 // the status section is a state-only snapshot rewritten wholesale on each sync, never appended to,
-// so it stays small by construction and cannot drift back into per-tick landing narrative. Every
+// so it stays small by construction and cannot drift back into per-tick merge narrative. Every
 // loop reads README.md first, so an unbounded log there would cost every tick's prefill forever;
 // these assertions pin the contract in the find text. Same whitespace-collapsed matching as above
 // —
@@ -330,7 +330,7 @@ test("every run carries the context-budget rule", () => {
 // Prompt contract for the local-model retune (2026-09-08, Qwen-class ~27B behind a ~258k window):
 // the team's transcripts showed roles with no backlog reading the codebase file by file (30+
 // whole-file reads, ~300 KB of tool output per tick, 277 whole-file reads against 6 ranged ones)
-// and landing nothing. The rules now carry numeric budgets and literal commands, the search roles
+// and merging nothing. The rules now carry numeric budgets and literal commands, the search roles
 // carry a shared candidate-hunt procedure, plans are sized to one run, and the reviewer gets a
 // checklist plus the harness's own pre-check verdict. These assertions pin that contract. Same
 // whitespace-collapsed matching as above.

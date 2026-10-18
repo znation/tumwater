@@ -208,7 +208,7 @@ test("a lone failing or stuck loop reads singular; three loops list as a, b, and
 });
 
 // A failing streak is the alert's tell, not the rendered phase: while a loop's own tick runs
-// the phase reads "working"/"landing", but the red "failing run after run" banner must stay
+// the phase reads "working"/"merging", but the red "failing run after run" banner must stay
 // up (it clears only when the streak resets) — BUGS.md 2026-10-14. A plain working loop with no
 // streak raises nothing.
 test("a streak behind a working label still raises the failing alert; a healthily working loop raises none", () => {

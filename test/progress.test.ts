@@ -199,7 +199,7 @@ test("readLiveProgress accumulates appended lines across polls", () => {
 // runs (reviewer, conflict resolver) in the role's pooled slot (legacy logs: its `_land-<role>`
 // merge slot worktree) — each with its own `session` event (cwd names the worktree). A gate session
 // must reset only the gate's
-// counts, never the working tick's (BUGS.md 2026-09-22: a landing's reviewer run reset the
+// counts, never the working tick's (BUGS.md 2026-09-22: a merge's reviewer run reset the
 // author's cell to turn 1 mid-tick and its turns/ctx/tool described the wrong run).
 
 test("a merge slot (gate) session mid-log does not reset the author run's counts", () => {

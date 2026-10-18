@@ -55,7 +55,7 @@ test("the steward prompt restricts writes to markdown", () => {
 
 // Prompt contract for PLANS.md Done-section curation: ## Done
 // is bounded by construction — a ten-entry verbatim window, older entries compressed to
-// one-line epitaphs carrying title, dates, and landing hashes. Every steward tick is a fresh
+// one-line epitaphs carrying title, dates, and merge hashes. Every steward tick is a fresh
 // session with no memory of earlier curation moves, so the find text must carry the whole
 // policy in prose; these assertions pin that contract. Same whitespace-collapsed matching as
 // above — the prose is hard-wrapped and formatting ticks reflow it, so assertions match
@@ -73,7 +73,7 @@ test("the steward prompt bounds PLANS.md's Done section to a ten-entry verbatim 
 test("the steward prompt compresses older Done entries to one-line epitaphs with title, dates, and hashes", () => {
   const find = oneLine(steward!.find);
   assert.match(find, /compress older ones to one line each/);
-  // The exact one-line form: title, planned/done dates, landing commit(s).
+  // The exact one-line form: title, planned/done dates, merge commit(s).
   assert.match(
     find,
     /`- <title> \(planned YYYY-MM-DD, done YYYY-MM-DD; commit\(s\) <sha>\[, <sha>\]\)`/,
@@ -87,7 +87,7 @@ test("the steward prompt sources epitaph hashes from merge citations or git log,
   assert.match(find, /an explicit merge citation in the entry body/);
   assert.match(find, /else git log on main/);
   // A Done note's "against main <sha>" is a base reference — never the record's hash; when no
-  // landing commit exists, omit the field rather than guess.
+  // merge commit exists, omit the field rather than guess.
   assert.match(
     find,
     /never use a verification or base reference \("Verified … against main `<sha>`", "at HEAD `<sha>`"\)/i,
@@ -111,7 +111,7 @@ test("the steward prompt treats Done compression as lossy with git history as th
 
 // Prompt contract for BUGS.md Fixed-section curation: ## Fixed is
 // bounded by construction — a ten-entry verbatim window, older entries compressed to one-line
-// records carrying the symptom headline, the heading's own date clause as-is, and the landing
+// records carrying the symptom headline, the heading's own date clause as-is, and the merge
 // commit where resolvable. Same whitespace-collapsed matching as above — the prose is
 // hard-wrapped and formatting ticks reflow it, so assertions match content, not layout.
 
@@ -131,7 +131,7 @@ test("the steward prompt bounds BUGS.md's Fixed section to a ten-entry verbatim 
 
 test("the steward prompt compresses older Fixed entries to one-line records with headline, date clause, and gap tag", () => {
   const find = oneLine(steward!.find);
-  // The exact one-line form: symptom headline, the heading's own date clause, landing commit,
+  // The exact one-line form: symptom headline, the heading's own date clause, merge commit,
   // and the entry's validation-gap tag.
   assert.match(
     find,
@@ -174,12 +174,12 @@ test("the steward prompt sources Fixed-record commits from merge citations or gi
     /never use a verification reference \("Verified … on main `<sha>`", "at HEAD `<sha>`"\) as the record's hash/,
   );
   assert.match(find, /bodies citing several shas need the one cited as having merged the fix/);
-  // Entries closed without code change have no landing commit — omit rather than guess.
+  // Entries closed without code change have no merge commit — omit rather than guess.
   assert.match(
     find,
     /when no merge commit exists \(an entry closed without code change says so in its \*\*Resolution:\*\* note\) omit the `commit` field rather than guess/i,
   );
-  // The gap tag survives even without a landing commit, and `none` still costs nothing.
+  // The gap tag survives even without a merge commit, and `none` still costs nothing.
   assert.match(
     find,
     /keeping the `gap: <tag>` suffix \(the no-commit variant reads `- <symptom headline> \(<date clause>; gap: <tag>\)`, and plain `\(<date clause>\)` when the tag is `none`\)/,

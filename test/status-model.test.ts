@@ -205,7 +205,7 @@ test("loopPhase shows the review gate label without a log to read from", () => {
 test("loopPhase shows the reviewer run's live detail while a tick is under review", () => {
   const root = tmpdir();
   // The reviewer writes to the same per-role raw log, starting a fresh session IN THE ROLE'S
-  // LANDER WORKTREE (its session event's cwd names it) — so the gate accumulator, not the
+  // MERGE WORKTREE (its session event's cwd names it) — so the gate accumulator, not the
   // author's, carries the reviewer's progress (BUGS.md 2026-09-22).
   writePiLog(root, "feature", [
     GATE_SESSION(root, "feature"),
@@ -554,7 +554,7 @@ test("loopPhase prefers paused over waiting: budget spent and main red", () => {
   assert.equal(loopPhase(s, true, undefined, true), "waiting: budget spent");
 });
 
-// The landing cell (BUGS.md 2026-09-22, re-opened 2026-09-23): the marker's stage scopes the
+// The merge cell (BUGS.md 2026-09-22, re-opened 2026-09-23): the marker's stage scopes the
 // cell to the phase the merge is in. This used to pin a bare `merge <elapsed>` as the
 // correct output for every merge — the featureless countdown the bug is about.
 test("loopPhase renders the merge cell ahead of every idle state, only when the record is passed", () => {
@@ -607,7 +607,7 @@ test("the build-check and merging merge stages render their label and never read
   }
 });
 
-// The per-stage elapsed (PLANS.md 2026-10-15): a landing cell carrying stageSince appends it
+// The per-stage elapsed (PLANS.md 2026-10-15): a merge cell carrying stageSince appends it
 // after the stage for every staged arm (build-check/merging and the reviewing/resolving tail),
 // and omits it when absent, so an older generation's cell keeps its current label.
 test("loopPhase appends the per-stage elapsed after a staged merge, when the cell carries stageSince", () => {
@@ -649,7 +649,7 @@ test("the reviewing merge stage carries the reviewer run's live detail, timed fr
     toolStart("bash", { command: "npm test" }),
   ]);
   const s = freshLoopState("clean");
-  // The authoring tick started an hour ago; the cell's elapsed is the LANDING's (90s), and
+  // The authoring tick started an hour ago; the cell's elapsed is the MERGE's (90s), and
   // the frame's `live` for a non-running loop is null — the branch reads the gate itself.
   s.lastRunStartedAt = Date.now() - 3_600_000;
   const phase = loopPhase(s, true, root, false, null, false, { status: "merging", startedAt: Date.now() - 90_000, stage: "reviewing" });

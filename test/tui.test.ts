@@ -643,7 +643,7 @@ test("a stale entry selection falls back to the empty list when entries disappea
     tui.key(undefined, "down"); // open the plan's body (selection now active)
     assert.match(tui.lastFrame(), /Machine-readable status output/);
 
-    // The entry is removed from PLANS.md while selected (a loop landed an edit).
+    // The entry is removed from PLANS.md while selected (a loop merged an edit).
     writeBacklogFile(repo, "PLANS.md", [{ heading: "## Planned" }, { heading: "## Done" }]);
 
     // A keypress in the stale state: PgDn takes the no-entries path of the page handler…

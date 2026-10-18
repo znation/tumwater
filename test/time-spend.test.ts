@@ -129,7 +129,7 @@ test("a queued tick with no visible merge outcome keeps the conservative queued�
 });
 
 test("a queued tick whose merge failed to merge owns a cause named by its result", () => {
-  // BUGS.md 2026-10-10: the queued→landing join repriced merge_conflict/merge_blocked authoring
+  // BUGS.md 2026-10-10: the queued→merging join repriced merge_conflict/merge_blocked authoring
   // spans into the error-class cell but gave them no loss cause, so those hours were owned by
   // no cause and were not counted by lossCausesHidden. Each now itemizes under its own result,
   // taking the shared no-text placeholder because merge_failed carries no message.

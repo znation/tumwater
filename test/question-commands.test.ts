@@ -360,7 +360,7 @@ test("answering still works when a fence inside ## Open is closed before the sec
 });
 
 // The same primary-worktree race as `tumwater bug`'s (test/backlog-write.test.ts), for the
-// QUESTIONS.md writer: `tumwater questions answer` rewrites the file while a landing
+// QUESTIONS.md writer: `tumwater questions answer` rewrites the file while a merge
 // fast-forwards it in the primary checkout. The child holds the shared lock, snapshots the
 // pre-answer file, and writes the stale snapshot back once it has seen the answer (an unlocked
 // writer's lands immediately; a locked one waits). The fix makes both live in the file.

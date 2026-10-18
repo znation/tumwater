@@ -36,7 +36,7 @@ test("runsFullSuite flags an unfiltered suite run or `npm ci`, however the line 
 
 test("runsFullSuite flags backgrounded suite runs and keeps &-redirects out of the filter check", () => {
   // A reviewer who backgrounds the run (`npm test &`) still loads the shared host while the
-  // landing slot is held — the & must split the segment like ; or &&, not vanish into it.
+  // merge slot is held — the & must split the segment like ; or &&, not vanish into it.
   for (const command of [
     "npm test &",
     "npm run test & tail -f /tmp/log",

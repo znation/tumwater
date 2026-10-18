@@ -21,7 +21,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 const SUMMARY = fileURLToPath(new URL("../../docs/code-metrics/summary.cjs", import.meta.url));
 
 /** Join fixture paths from parts so no path-shaped token appears as a literal on an added line.
- * The landing path scan reads such tokens as tree references; these names exist only as data in the
+ * The merge path scan reads such tokens as tree references; these names exist only as data in the
  * synthetic metrics JSON and are never read from disk. */
 const key = (...parts: string[]): string => parts.join("/");
 

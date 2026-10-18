@@ -60,7 +60,7 @@ test("a refusal with a markdown note commits only the note and merges it directl
   assert.ok(outcome.commit, "the note commit is reported");
 
   // The note commit sits on the branch with the refusal subject and the harness-stamped
-  // trailer (landing it on main is the merge wiring's job — recorded above, not faked here)…
+  // trailer (merging it to main is the merge wiring's job — recorded above, not faked here)…
   const log = sh(wt, "git", "log", "-1", "--format=%s%n%b");
   assert.match(log, /tumwater\(improve\): refuse — it would delete user data/);
   assert.match(log, /Run: improve #7 · turns 3/);
@@ -154,9 +154,9 @@ test("a failed note merge records lastError and still reports the commit", async
 });
 
 // The refusal-note merge bypasses applyMergeOutcome, so it must clear a stale rejection
-// itself — otherwise a role whose refused note landed is still told to address an objection
+// itself — otherwise a role whose refused note merged is still told to address an objection
 // main has moved past (BUGS.md 2026-10-07). A still-owed revision keeps it, exactly as the
-// landing fold does; a failed merge lands nothing and clears nothing.
+// merge fold does; a failed merge merges nothing and clears nothing.
 test("a landed refusal note clears a superseded rejection unless a revision is owed", async () => {
   const { root, wt } = await initializedWorktree();
   fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** it would delete user data\n");

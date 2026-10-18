@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 // Comments cite plans by quoted title, by quoted title (the file name, then the title in
 // double quotes). This test fails when such a citation matches no PLANS.md heading or
-// one-line Done record, so a steward compression that drops a record cannot land
+// one-line Done record, so a steward compression that drops a record cannot merge
 // silently. Only this exact quoted form is checked: unquoted citations (PLANS.md
 // 2026-09-30, part 1/3) are out of scope.
 

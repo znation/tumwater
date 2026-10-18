@@ -11,7 +11,7 @@ import { test } from "node:test";
  * checked that, so the review gate found the survivors one change at a time and rejected the sweep
  * for being incomplete, and the same cleanup was re-authored tick after tick (BUGS.md 2026-10-12,
  * "REVISION_LIMIT exhaustion …"): ~100 citations name entries PLANS.md no longer holds. This guard
- * makes the class deterministic — the author runs the suite before landing and sees exactly which
+ * makes the class deterministic — the author runs the suite before merging and sees exactly which
  * citations are stale — so completeness stops depending on a reviewer's sweep.
  *
  * Comment text only: a string literal that mentions PLANS.md is code, not a citation. And only the

@@ -116,7 +116,7 @@ test("a run that never emits a byte is quiet-killed at 30 minutes regardless of 
   );
 });
 
-// BUGS.md 2026-10-07: a gate run (the reviewer, the landing conflict resolver) runs a fresh
+// BUGS.md 2026-10-07: a gate run (the reviewer, the merge conflict resolver) runs a fresh
 // session every time, so a deadline that fires mid-verification throws away everything it
 // read and the next attempt re-reads a large diff from scratch. A gate run that is still
 // making progress at its deadline therefore gets one extension of the same length. These

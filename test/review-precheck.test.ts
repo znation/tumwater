@@ -2,7 +2,7 @@
  * deterministic build check (src/build/build-check.ts): a healthy build must reach the model
  * reviewer, a failing one rejects with zero reviewer runs, a red main blocks twice then
  * fails without a strike, a flake re-runs once, a timed-out check proceeds unverified, a
- * green check attests its head to the landing path and names itself in the reviewer's
+ * green check attests its head to the merge path and names itself in the reviewer's
  * prompt, and an approval reused across a moved main survives only while the patch and the
  * check stay green. The check's own unit tests live in build-check.test.ts. Extracted from
  * review.test.ts (2026-09-29); the shared gate scaffolding lives in fixtures/gate-fixtures.ts. */
@@ -167,7 +167,7 @@ function greenBuildFixture(scriptName = "build"): Promise<{ root: string; wt: st
 // unverdicted gives main a commit of its own (uniqueMain) instead of trusting whatever an
 // earlier test cached for the shared seed SHA.
 
-/** Seed main's baseline green at `root`'s tip — what every landing leaves behind for the SHA it
+/** Seed main's baseline green at `root`'s tip — what every merge leaves behind for the SHA it
  * moved main to (noteGreenBaseline), so the gate's attribution is a cache hit, no run. */
 function seedGreenMain(root: string): void {
   noteGreenBaseline(mainSha(root));
@@ -288,7 +288,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
 
 // A red MAIN must not reject every queued change for a failure none of their authors caused —
 // the goal the in-slot build-fix run served, now met by attribution: the change keeps its commit
-// (and the lander its pin), no strike is counted, and main-red.ts's gate and the bugfix handoff
+// (and the merger its pin), no strike is counted, and main-red.ts's gate and the bugfix handoff
 // own the repair.
 test("a pre-check that fails twice on a red main fails without a strike and keeps the commit", async () => {
   // The tool fails everywhere — on the change's tree AND on main's, which the attribution check
@@ -455,7 +455,7 @@ test("a repeat failure with no recorded flake re-runs main fresh instead of trus
     "buildcheck-tool --fail",
     "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
   );
-  seedGreenMain(root); // an earlier landing verified this SHA green; the test now fails on it
+  seedGreenMain(root); // an earlier merge verified this SHA green; the test now fails on it
   const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
     const state = freshLoopState(ROLE);
@@ -544,7 +544,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
     assert.ok(result.aborted);
     assert.ok(!fs.existsSync(marker), "no pi run");
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed"], "main's check never ran");
-    assert.equal(await aheadOfMain(wt, "main"), 1); // the work commit stays; re-landed next tick
+    assert.equal(await aheadOfMain(wt, "main"), 1); // the work commit stays; re-merged next tick
     assert.equal(state.lastReview, undefined); // no bookkeeping on abort
   });
 });
@@ -555,14 +555,14 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
   await withPi(reviewerStub(marker), async () => {
     const { result } = await reviewGate(root, wt, { buildCheckTimeoutMs: 400 });
     assert.equal(result.decision, "approved"); // a timeout is environmental — not fail-closed
-    assert.equal(result.verifiedHead, undefined); // no suite ran green — nothing to hand the landing path
+    assert.equal(result.verifiedHead, undefined); // no suite ran green — nothing to hand the merge path
     assert.ok(fs.existsSync(marker), "the reviewer still ran after the warning");
     const warning = readEvents(root).find((e) => e.type === "warning");
     assert.match(String(warning?.message), /check timed out after 0\.4s; proceeding to model review/);
   });
 });
 
-// The gate hands its green pre-check verdict to the landing path via GateResult.verifiedHead:
+// The gate hands its green pre-check verdict to the merge path via GateResult.verifiedHead:
 // src/merge/merge-to-main.ts seeds the red-main baseline with the SHA that actually becomes main
 // (the rebased head, which may differ from this one — merge-to-main-recheck.test.ts covers the
 // seeding and the post-rebase re-verify). A skipped pre-check makes no fresh observation:
@@ -577,12 +577,12 @@ test("a green pre-check hands its verified head to the landing path", async () =
   });
 });
 
-// Land-queue speed 2a: a review judges a diff, not a sha. A vet rebases the pin onto main
+// Land-queue speed 2a: a review judges a diff, not a sha. The merger rebases the pin onto main
 // before its gate, so an approved change re-drained after main moved arrives at a new sha with
 // the same patch — the approval is reused (no second reviewer run), the build pre-check is not.
 
 /** Move main past the fixture's worktree with a commit to a file the change never touches,
- * then rebase the worktree onto it — the clean rebase a vet's syncPinToMain does. Returns
+ * then rebase the worktree onto it — the clean rebase a merger's syncPinToMain does. Returns
  * the rebased head. Only other.txt is staged: the root's package.json and node_modules are the
  * fixture's untracked install. */
 async function moveMainAndRebase(root: string, wt: string): Promise<string> {
@@ -612,8 +612,8 @@ test("an approved change cleanly rebased onto a moved main reuses its approval: 
     // The model review is reused; the check that the new tree still builds is not.
     const checks = eventsOfType(root, "build_check").slice(checksBefore);
     assert.deepEqual(checks.map((e) => `${e.scope}:${e.status}`), ["gate:passed"]);
-    // The landing path trusts exactly this tree (its in-lock rebase is then a no-op), so the
-    // pre-check is the only check the re-landing pays.
+    // The merge path trusts exactly this tree (its in-lock rebase is then a no-op), so the
+    // pre-check is the only check the re-merge pays.
     assert.equal(result.verifiedHead, rebased);
     assert.equal(state.lastApprovedHead, rebased, "a retry of the rebased head is an exact-sha hit");
     assert.equal(
@@ -653,7 +653,7 @@ test("a reused approval still rejects a tree whose pre-check now fails", async (
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
     await moveMainAndRebase(root, wt);
     fs.writeFileSync(red, "");
-    // Main's own verdict at its new tip is green (what its landing left behind), so the
+    // Main's own verdict at its new tip is green (what its merge left behind), so the
     // repeat failure is the change's own and the gate rejects it.
     seedGreenMain(root);
     const result = await reviewAheadOfMain(gateCtx(root, wt, 2), state);
@@ -739,7 +739,7 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
 
 // BUGS.md 2026-10-02: the nudge turn's own tool calls are checked the same way as the review
 // run's. A reviewer that re-runs the suite even after the no-re-run nudge fails its review —
-// strike-free: the commit stays for the next landing's re-review and the discard counter never
+// strike-free: the commit stays for the next merge's re-review and the discard counter never
 // advances — instead of paying a third suite run for nothing but another warning.
 const rerunCallEvents = (id: string, command: string): string[] =>
   [
@@ -815,7 +815,7 @@ test("a no-re-run nudge that dies on the backend is strike-free and its error na
 
 // BUGS.md 2026-09-30: a pre-check whose every attempt spanned a host sleep made no verdict
 // about the tree. The gate attributes nothing — no main consultation, no strike, no
-// rejection — the commit stays for a re-land, and the warning names the sleep.
+// rejection — the commit stays for a re-merge, and the warning names the sleep.
 test("a pre-check that sleeps and fails on every attempt keeps the commit and reports the sleep", async () => {
   const { root, wt } = await gateBuildFixture(
     "buildcheck-tool --fail",

@@ -248,7 +248,7 @@ test("loopPhase shows failing for idle loops stuck on an error streak, not sleep
   assert.equal(loopPhase(deep, true), "failing");
 
   // A streak fed by leftover-recovery merge failures reads failing even though the tick's
-  // own result is healthy (BUGS.md 2026-09-21): the landing failure, not `lastResult`, is the
+  // own result is healthy (BUGS.md 2026-09-21): the merge failure, not `lastResult`, is the
   // tell. Before the fix this cell showed "sleeping" while a dead reviewer backend wedged the
   // pin forever.
   const recovered = freshLoopState("feature");
