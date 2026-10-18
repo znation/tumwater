@@ -572,8 +572,9 @@ pi runs got small-window measures on 2026-10-17:
 - A compact run prompt plus a trimmed pi system prompt at a window of at most 128k (b1eb00a91).
 
 Most of these are pi extensions, and OpenCode has no equivalent hook that this plan uses. The free
-model's window is 200K, so the compact prompt would not apply to it anyway. Four items carry
-over:
+model's window is 200K, so the compact prompt would not apply to it anyway. (Since 2026-10-18 the
+compact run prompt is every run's prompt, on every backend and window, so OpenCode runs get it
+too; item 3 still feeds the tool-output caps of item 2.) Four items carry over:
 
 1. **The compact rules carry OpenCode's backend rules. Done in part 5/7.**
    - `compactRules` in src/prompt/prompt.ts renders the dialect's `backendRules`, as the full
@@ -602,8 +603,9 @@ over:
    - `seamContextWindow` in src/pi/pi-models.ts returns null for any non-pi seam today.
    - For an `opencode` seam it reads the model's `context` from the catalog cache (part 6a's
      `limit.context`, through `readOpencodeCache` and `opencodeModelKey`).
-   - Then the compact prompt, and any later window-keyed rule, applies to an OpenCode model of
-     128k or less with no further change.
+   - Then any window-keyed rule applies to an OpenCode model of 128k or less with no further
+     change. (The compact prompt no longer keys on the window: every run has had it since
+     2026-10-18.)
    - The free model is 200K, so nothing changes for it today.
 4. **Measure before building anything bigger (hand step H3).** After the team's first day on
    OpenCode, read from the session exports:

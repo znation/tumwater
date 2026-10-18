@@ -46,8 +46,8 @@ export interface TickPromptInput {
    * authoring run gets, so a fallback seam's prompt cannot speak the primary's dialect.
    * Omitted: the role's primary `configForRole(config, role).agent`. */
   agent?: string;
-  /** The run's model declares a window of at most 128k (context-window.ts compactPromptWindow),
-   * so it gets the compact prompt (prompt.ts CompactPrompt). Omitted: the full prompt. */
+  /** The run gets the compact prompt (prompt.ts CompactPrompt), as every real run and the role
+   * view's preview do (loop-tick.ts). Omitted: the full prompt. */
   compact?: boolean;
 }
 

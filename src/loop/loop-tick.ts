@@ -30,8 +30,7 @@ import {
 } from "../config/config-views.js";
 import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { imageReroute, seamImageInput } from "../agent/image-input.js";
-import { piModelsPath, readPiProviders, seamContextWindow } from "../pi/pi-models.js";
-import { compactPromptWindow } from "../pi-extension/context-window.js";
+import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
 import { DEFAULT_AGENT } from "../agent/agent-backend.js";
@@ -343,9 +342,9 @@ export async function runTickPhase(
     // The team's configured claude config dir, so planTickStart's claude resume guard looks
     // under the same dir the run's env writes its transcript to (note 4/4). Unset → undefined.
     claudeConfigDir: resolvedAgentConfig(cfg, "claude").configDir,
-    // The window the tick's model declares in pi's catalog decides the compact prompt
-    // (context-window.ts compactPromptWindow); a non-pi or unknown model keeps the full one.
-    compact: compactPromptWindow(seamContextWindow(cfg, ctx.root)),
+    // Every run gets the compact prompt (prompt.ts CompactPrompt), whatever window its model
+    // declares: it re-sends ~3k fewer tokens on every turn (2026-10-18, to cut token spend).
+    compact: true,
   });
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {

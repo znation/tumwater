@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import trimSystemPrompt, { withoutDocsSection } from "../src/pi-extension/trim-system-prompt.js";
 
-// The bundled trim-system-prompt extension (src/pi-extension/trim-system-prompt.ts): on a model
-// that declares a window of at most 128k, pi's system prompt goes out without its docs section;
-// everything else in it is pi's own text.
+// The bundled trim-system-prompt extension (src/pi-extension/trim-system-prompt.ts): on every
+// model, pi's system prompt goes out without its docs section; everything else in it is pi's own
+// text.
 
 /** pi 1.2.0's default system prompt, as it renders its sections (shortened). */
 const SYSTEM = [
@@ -43,13 +43,13 @@ function loadHandler(): Handler {
   return handler;
 }
 
-test("the extension trims on a window of at most 128k and nowhere else", () => {
+test("the extension trims on every model, whatever window it declares", () => {
   const handler = loadHandler();
-  const small = handler({ systemPrompt: SYSTEM }, { model: { contextWindow: 65_536 } }) as { systemPrompt: string };
-  assert.equal(small.systemPrompt, withoutDocsSection(SYSTEM));
-  assert.ok(handler({ systemPrompt: SYSTEM }, { model: { contextWindow: 131_072 } }), "128k counts as small");
-  assert.equal(handler({ systemPrompt: SYSTEM }, { model: { contextWindow: 1_048_576 } }), undefined);
-  assert.equal(handler({ systemPrompt: SYSTEM }, undefined), undefined, "unknown model: untouched");
+  const trimmed = { systemPrompt: withoutDocsSection(SYSTEM) };
+  for (const window of [65_536, 131_072, 1_048_576]) {
+    assert.deepEqual(handler({ systemPrompt: SYSTEM }, { model: { contextWindow: window } }), trimmed, String(window));
+  }
+  assert.deepEqual(handler({ systemPrompt: SYSTEM }, undefined), trimmed, "an unknown model is trimmed too");
   assert.equal(handler({ systemPrompt: "custom" }, { model: { contextWindow: 65_536 } }), undefined);
   assert.equal(handler({}, { model: { contextWindow: 65_536 } }), undefined);
 });

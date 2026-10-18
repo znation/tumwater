@@ -458,7 +458,7 @@ function entryRangeLines(entries: readonly { title: string; start: number; end: 
  * five, then a count of the rest. A pure function so its shape is pinned in tests. */
 export function buildMergedPrerequisitesNote(
   entries: readonly { title: string; start: number; end: number }[],
-  /** A small-window run's compact prompt: each title cut to COMPACT_TITLE_CHARS. */
+  /** The compact prompt every run gets: each title cut to COMPACT_TITLE_CHARS. */
   compact = false,
 ): string {
   const lines = entryRangeLines(entries, compact);
@@ -551,7 +551,7 @@ ${tailBlock}</main-red>`;
  * not as a list line). A pure function so its shape is pinned in tests. */
 export function buildWaitingPartsNote(
   entries: readonly { title: string; start: number; end: number }[],
-  /** A small-window run's compact prompt: each title cut to COMPACT_TITLE_CHARS. */
+  /** The compact prompt every run gets: each title cut to COMPACT_TITLE_CHARS. */
   compact = false,
 ): string {
   const shown = entryRangeLines(entries, compact);

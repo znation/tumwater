@@ -13,7 +13,7 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
  * context-budget appends its context-usage note to the (already bounded) result that crosses a
  * threshold, strip-thinking drops the model's replayed thinking from each request on a
  * small-window chat-completions model, and trim-system-prompt drops pi's docs section from the
- * system prompt on a window of at most 128k. Notes ride the `tumwater-notes` command on
+ * system prompt. Notes ride the `tumwater-notes` command on
  * every backend from part 2/4 on, so the role-notes extension is no longer bundled. */
 export function bundledExtensionPaths(): string[] {
   return [

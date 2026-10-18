@@ -119,9 +119,9 @@ test("a fresh run hands the effective agent to the prompt assembly", () => {
   assert.equal(seen, "claude", "the effective agent reaches the fresh prompt assembly");
 });
 
-test("the tick's small-window decision reaches the fresh prompt assembly", () => {
-  // runTickPhase decides the compact prompt from the window the tick's model declares, and the
-  // fresh tick's assembly must receive that decision rather than default to the full prompt.
+test("the tick's compact-prompt choice reaches the fresh prompt assembly", () => {
+  // runTickPhase asks for the compact prompt on every run, and the fresh tick's assembly must
+  // receive that choice rather than default to the full prompt.
   for (const compact of [true, false, undefined]) {
     let seen: boolean | undefined | "unset" = "unset";
     const p = plan(tmpdir(), state(), {

@@ -38,7 +38,7 @@ change rejected; a small, correct change is welcome:
   green run is unverified, so verify again before you end. Order your work so the final
   verification comes after your last edit, backlog files included.`;
 
-/** CLAIMS_RULE in the compact prompt a small-window run gets (prompt.ts commonRules): the same
+/** CLAIMS_RULE in the compact prompt every run gets (prompt.ts commonRules): the same
  * four directives, without the reasons. */
 export const CLAIMS_RULE_COMPACT = `Claims — a reviewer checks your change against the code before it merges, and an inaccurate
 claim gets it rejected; a small, correct change is welcome:

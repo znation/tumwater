@@ -13,9 +13,9 @@ import { CLAUDE_DIALECT, OPENCODE_DIALECT, PI_DIALECT } from "../src/prompt/dial
 import { roleById } from "../src/roles/roles.js";
 import type { BuildCheck } from "../src/build/build-check-detect.js";
 
-// The compact prompt a run on a small-window model gets (prompt.ts CompactPrompt): the same rules
-// in fewer words. The full prompt is the default and stays as it was; these tests pin that the
-// compact one keeps every directive, still ends on the reply contract, and is materially shorter.
+// The compact prompt every run gets (prompt.ts CompactPrompt): the same rules in fewer words. The
+// full prompt is buildTickPrompt's default and stays as it was; these tests pin that the compact
+// one keeps every directive, still ends on the reply contract, and is materially shorter.
 
 const NPM_CHECK: BuildCheck = { kind: "npm", rootDir: ".", script: "test" };
 const PRINCIPLES = `# Principles
@@ -100,7 +100,7 @@ test("the full prompt carries none of the compact wording", () => {
   const full = feature();
   assert.ok(!full.includes(compactContextBudgetRule(PI_DIALECT)));
   assert.ok(!full.includes(CLAIMS_RULE_COMPACT));
-  assert.ok(!full.includes("Your context window is small"));
+  assert.ok(!full.includes("is re-sent on every turn"));
 });
 
 test("an assigned compact run reads its entry first, an unassigned one the brief", () => {

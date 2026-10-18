@@ -1,24 +1,21 @@
 // vocabulary: plain
 /**
- * Bundled pi extension: on a model that declares a context window of at most 128k, send pi's
- * system prompt without its `docs` section. Loaded on every pi run via `-e <this file>` from
- * src/pi/pi-args.ts.
+ * Bundled pi extension: send pi's system prompt without its `docs` section, on every model.
+ * Loaded on every pi run via `-e <this file>` from src/pi/pi-args.ts.
  *
  * Why: pi 1.2.0's default system prompt carries a `<docs>` section — the install paths of pi's own
  * README, docs and examples, to read "only when the user asks about pi itself". A tumwater run
- * never does, and the section is ~1,400 characters (~350 tokens) that every request re-sends. On a
- * small window that is a real share of the first request, which tumwater's own prompt shrinks for
- * the same model (prompt.ts CompactPrompt, chosen by the same compactPromptWindow rule). pi offers
- * no option to leave the section out short of replacing the whole prompt, so the
+ * never does, and the section is ~1,400 characters (~350 tokens) that every request re-sends,
+ * alongside tumwater's own run prompt, which is the compact one on every model too (prompt.ts
+ * CompactPrompt). Until 2026-10-18 both applied only at a declared window of at most 128k; they
+ * now apply everywhere to cut token spend (a 2026-10-18 audit of the team's 1M-window runs). pi
+ * offers no option to leave the section out short of replacing the whole prompt, so the
  * `before_agent_start` handler returns the rendered prompt with that one section cut — the
- * preamble, tool list, tool rules and working directory are pi's own text. On a larger or unknown
- * window the prompt is left alone.
+ * preamble, tool list, tool rules and working directory are pi's own text.
  *
  * The cut is a pure exported function so it is unit-testable without pi; the default export is
  * the thin adapter over pi's `before_agent_start` event and `ctx.model`.
  */
-
-import { compactPromptWindow } from "./context-window.js";
 
 /** pi's docs section as rendered, with the blank lines that separate it from the section before
  * it. pi wraps each named section in a tag of the same name. */
@@ -37,22 +34,18 @@ interface BeforeAgentStartLikeEvent {
   systemPrompt?: unknown;
 }
 
-interface ContextLike {
-  model?: { contextWindow?: unknown };
-}
-
 interface PiExtensionApi {
   on(
     event: "before_agent_start",
-    handler: (event: BeforeAgentStartLikeEvent, ctx?: ContextLike) => { systemPrompt: string } | undefined,
+    handler: (event: BeforeAgentStartLikeEvent) => { systemPrompt: string } | undefined,
   ): void;
 }
 
-/** The pi extension entry point: on a small declared window, replace the run's system prompt
- * with the same prompt minus its docs section. */
+/** The pi extension entry point: replace the run's system prompt with the same prompt minus its
+ * docs section. */
 export default function trimSystemPrompt(pi: PiExtensionApi): void {
-  pi.on("before_agent_start", (event, ctx) => {
-    if (!compactPromptWindow(ctx?.model?.contextWindow) || typeof event.systemPrompt !== "string") return undefined;
+  pi.on("before_agent_start", (event) => {
+    if (typeof event.systemPrompt !== "string") return undefined;
     const trimmed = withoutDocsSection(event.systemPrompt);
     return trimmed === null ? undefined : { systemPrompt: trimmed };
   });

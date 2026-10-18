@@ -340,11 +340,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         "<button type='button' class='btn btn-sm' data-act='model-discard' data-arg='" + esc(role) + "'>Discard</button></div>"
       : "<button type='button' class='btn btn-sm' data-act='model-edit' data-arg='" + esc(role) + "'>" + (rawTriple.length ? "Edit" : "Set model") + "</button>";
     rows.push("<div><dt>Model overrides</dt><dd title='" + esc(modelBody) + "'>" + esc(modelBody) + modelControl + "</dd></div>");
-    // Context window: the resolved primary seam's declared window and whether a run on it gets
-    // the compact prompt - the same seam '- Next run:' previews. Guard optional to keep an older
-    // payload that lacks the fields rendering as before.
+    // Context window: the resolved primary seam's declared window - the same seam '- Next run:'
+    // previews. Guard optional to keep an older payload that lacks the field rendering as before.
     if (view.contextWindow !== undefined) {
-      rows.push(kvRow("Context window", view.contextWindow === null ? "unknown (full prompt)" : fmtTokens(view.contextWindow) + " tokens (" + (view.compactPrompt ? "compact prompt" : "full prompt") + ")"));
+      rows.push(kvRow("Context window", view.contextWindow === null ? "unknown" : fmtTokens(view.contextWindow) + " tokens"));
     }
     if (view.providerKey !== undefined && view.providerCap !== undefined) {
       rows.push(kvRow("Provider", view.providerKey + " (cap " + view.providerCap + ")"));

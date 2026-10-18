@@ -25,7 +25,6 @@ import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, seam
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, seamContextWindow } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
-import { compactPromptWindow } from "../pi-extension/context-window.js";
 import { formatModelSelector } from "../config/model-selector.js";
 import { roleImageInfo } from "../agent/image-input.js";
 import { readImageProbeCache } from "../doctor/image-probe.js";
@@ -102,9 +101,6 @@ export interface RoleViewPayload {
    * be known (a non-pi seam, an unresolvable provider/model pair, or a model pi's
    * definitions declare no window). The seam `- Next run:` previews, not the fallback. */
   contextWindow: number | null;
-  /** Whether a run on that seam gets the compact prompt (compactPromptWindow): a known
-   * window of at most 128k. False when the window is unknown. */
-  compactPrompt: boolean;
   /** The primary subscription window's type (`five_hour`), present only for a subscription
    * reading that reported a window — the renderer's "(5h window)". */
   billingWindow?: string;
@@ -378,12 +374,9 @@ export function rolePayload(
     const team = quietHoursStatus(cfg.quietHours, now);
     if (team.window !== null) quietHours.push({ scope: "fleet", window: team.window, inWindow: team.inWindow }); // vocabulary-ok: persisted --json scope value
   }
-  // The resolved primary seam's declared context window and whether a run on it gets the
-  // compact prompt — the same call the `nextPrompt` preview below makes, so the window, the
-  // compact flag and the preview cannot disagree. A run currently on the model fallback may
-  // use a different window, which is the fallback's own documented state.
+  // The resolved primary seam's declared context window. A run currently on the model
+  // fallback may use a different window, which is the fallback's own documented state.
   const contextWindow = seamContextWindow(configForRole(cfg, role), root, modelsPath);
-  const compactPrompt = compactPromptWindow(contextWindow);
   return {
     id: role,
     title: resolved.title,
@@ -432,9 +425,6 @@ export function rolePayload(
     // be known (a non-pi seam, an unresolvable provider/model pair, or a model with no
     // declared window) — the same seam `- Next run:` previews. Independent of the fallback.
     contextWindow,
-    // Whether a run on that seam gets the compact prompt (compactPromptWindow): a known
-    // window of at most 128k. False when the window is unknown.
-    compactPrompt,
     // The preview seam: the queued prompt (if any) is read, not consumed, so an inspection
     // never costs the loop its queued work — the property the tick-prompt test pins.
     nextPrompt:
@@ -444,8 +434,8 @@ export function rolePayload(
         role,
         state,
         preview: true,
-        // The compact prompt a run on the role's own model would get (a small declared window).
-        compact: compactPrompt,
+        // The compact prompt every run gets (loop-tick.ts), so the preview is the real prompt.
+        compact: true,
       })?.prompt ?? null,
     // The loop's schedule — surfaced read-only from the same persisted state rolePayload
     // already loaded for the model-fallback episode and the next-tick preview, so no new

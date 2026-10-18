@@ -28,15 +28,15 @@ import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
  * — so the rules are grouped with one rule per bullet, budgets are numeric, role tasks are
  * numbered steps, claims carry the check that proves them, the three possible endings are a
  * mutually exclusive list, and that closing contract comes last, where a model attends to it most.
- * The one model-conditional part is the compact variant (`CompactPrompt`) a run on a model
- * that declares a window of at most 128k gets: the same rules in fewer words, and an assigned
- * run without the material its assignment makes redundant. Every larger or unknown window gets
- * the full prompt, unchanged. The PRINCIPLES.md reader the principles block is fed from lives in
- * principles.ts (readPrinciples, with its injection cap). */
+ * Every run gets the compact variant (`CompactPrompt`): the same rules in fewer words, and an
+ * assigned run without the material its assignment makes redundant. It was written for models
+ * with a window of at most 128k (2026-10-17) and has applied to every model since 2026-10-18, to
+ * cut the tokens each turn re-sends; the full prompt remains what a caller that passes no
+ * variant gets. The PRINCIPLES.md reader the principles block is fed from lives in principles.ts
+ * (readPrinciples, with its injection cap). */
 
-/** The compact variant of a run's prompt, for a model that declares a window of at most 128k
- * (context-window.ts compactPromptWindow): its first request is re-sent on every turn and is a
- * real share of the window, so the rules keep their directives without the reasons, the
+/** The compact variant of a run's prompt, which every run gets (loop-tick.ts): its first request
+ * is re-sent on every turn, so the rules keep their directives without the reasons, the
  * principles block keeps only its bullets, and an `assigned` run — one tumwater handed a single
  * backlog entry — drops the backlog index and reads its entry first instead of the whole brief.
  * The caller also leaves the brief block out (tick-prompt.ts): the brief file holds the same
@@ -78,10 +78,11 @@ export function contextBudgetRule(dialect: PromptDialect = PI_DIALECT): string {
 export const CONTEXT_BUDGET_RULE = contextBudgetRule(PI_DIALECT);
 
 /** contextBudgetRule for the compact prompt: the same habits, with the range-read threshold at
- * ~150 lines, which is what a 64k window's read cap holds (bounded-output.ts outputLimits). */
+ * ~150 lines, which is what a 64k window's read cap holds (bounded-output.ts outputLimits). Its
+ * first bullet names the cost rather than the window's size, since every model gets it. */
 export function compactContextBudgetRule(dialect: PromptDialect = PI_DIALECT): string {
-  return `- Your context window is small: everything you read stays in it until the run ends, and a run
-  that fills it merges nothing. A whole read of a 500-line file costs ~5k tokens.
+  return `- Everything you read stays in your context until the run ends and is re-sent on every turn;
+  a run that fills the window merges nothing. A whole read of a 500-line file costs ~5k tokens.
 - Check size first (\`wc -l\`) and read files over ~150 lines in ranges: find the lines with
   \`grep -n\`, then read them with ${dialect.readRange}.
 - Cap command output with \`head\`/\`tail\`; never dump a file, a log, or a test run. Do not
@@ -455,8 +456,8 @@ interface TickPromptInput {
   /** The agent backend this role resolves to (`configForRole(config, role).agent`), selecting
    * the prompt dialect (./dialect.ts). Omitted: pi's dialect. */
   agent?: string;
-  /** The compact variant for a small-window model (CompactPrompt). Omitted: the full prompt. The
-   * caller drops the brief and backlog index of an assigned run itself, since it supplies them. */
+  /** The compact variant every run gets (CompactPrompt). Omitted: the full prompt. The caller
+   * drops the brief and backlog index of an assigned run itself, since it supplies them. */
   compact?: CompactPrompt;
 }
 
@@ -537,8 +538,8 @@ export function buildDirectorPrompt(
   /** The agent backend the director resolves to, selecting the prompt dialect (./dialect.ts).
    * Omitted: pi's dialect. */
   agent?: string,
-  /** The compact variant for a small-window model; a director run is never assigned an entry.
-   * Omitted: the full prompt. */
+  /** The compact variant every run gets; a director run is never assigned an entry. Omitted:
+   * the full prompt. */
   compact?: boolean,
   /** The director's `roles.director.instructions` override — its run prompt is otherwise the
    * user's request. Omitted: no `Additional standing instructions` block, exactly as today. */

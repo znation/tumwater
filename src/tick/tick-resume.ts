@@ -68,8 +68,8 @@ export function planTickStart(opts: {
    * claude tick's resume guard looks under the same dir its run writes transcripts to.
    * Absent for a pi team or one that sets no config dir. */
   claudeConfigDir?: string;
-  /** The tick's model declares a window of at most 128k, so a fresh tick's prompt is the compact
-   * one (prompt.ts CompactPrompt). Omitted: the full prompt. */
+  /** A fresh tick's prompt is the compact one (prompt.ts CompactPrompt) — runTickPhase passes
+   * true for every run. Omitted: the full prompt. */
   compact?: boolean;
 }): TickStartPlan | null {
   const s = opts.state;

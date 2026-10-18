@@ -747,7 +747,7 @@ test("the steward's prompt carries the records-overflow block only when Done is 
   assert.ok(!(promptFor(dir, "steward")?.prompt ?? "").includes("<records-overflow>\n"));
 });
 
-// ---- compact prompt (a small-window model) ----------------------------------
+// ---- compact prompt (every run's, since 2026-10-18) ---------------------------
 
 test("a compact assigned run drops the brief block and backlog index and keeps its assignment", () => {
   const dir = root();
@@ -778,7 +778,7 @@ test("a compact run without an assignment reads the brief file and keeps the bac
   assert.doesNotMatch(compact.prompt, /<project-prompt>/);
   assert.match(compact.prompt, /^<backlog-index>$/m);
   assert.match(compact.prompt, /First read the project brief \(README\.md\) in full/);
-  assert.match(compact.prompt, /Your context window is small/);
+  assert.match(compact.prompt, /is re-sent on every turn/);
 });
 
 test("a compact run's queued request counts as unassigned, so it keeps the backlog index", () => {

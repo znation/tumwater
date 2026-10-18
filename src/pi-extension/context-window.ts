@@ -41,16 +41,3 @@ export function windowScale(window: unknown): number {
 export function compactionPercent(window: number): number {
   return Math.max(0, ((window - PI_COMPACTION_RESERVE_TOKENS) / window) * 100);
 }
-
-/** The largest declared window whose runs get the compact prompt: tumwater's shorter run prompt
- * (src/prompt/prompt.ts) and pi's system prompt without its docs section
- * (trim-system-prompt.ts). At 128k and below, the first request's several thousand tokens are a
- * real share of the window, and every turn re-sends them. */
-export const COMPACT_PROMPT_MAX_WINDOW = REFERENCE_WINDOW_TOKENS;
-
-/** Whether a run on a model declaring `window` gets the compact prompt: a known window of at
- * most COMPACT_PROMPT_MAX_WINDOW. An unknown window keeps the full prompt. */
-export function compactPromptWindow(window: unknown): boolean {
-  const tokens = declaredWindow(window);
-  return tokens !== null && tokens <= COMPACT_PROMPT_MAX_WINDOW;
-}
