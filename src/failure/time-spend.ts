@@ -118,6 +118,17 @@ function newestAttemptEvent(
     .at(-1);
 }
 
+/** The pooled cluster key and truncated example a failure-message source's span prices under:
+ * the shared placeholder when the source carries no message, the pooled render
+ * (poolTimeoutKey(normalizeClusterKey)) of the message's cluster — so a review timeout pools
+ * into the same `timed out after <dur>` cause the error-cluster section counts — and the
+ * truncated example the loss-rank cell shows. One copy of the placeholder/pool/truncate chain
+ * so the error-cluster and review-failure causes cannot drift on it (BUGS.md 2026-10-10). */
+function pooledClusterCause(source: unknown): { key: string; example: string } {
+  const text = errorTextOrPlaceholder(source);
+  return { key: poolTimeoutKey(normalizeClusterKey(text)), example: truncateExample(text) };
+}
+
 /** The time a `run_end` attests: its own `durationMs` when it carries one (every event
  * written since 2026-09-29 does), else the start→end pairing over `starts` — the same
  * fallback history-data.ts renders, so old events read their span the one way it can still be
@@ -241,9 +252,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // carries one (planTickStart clears s.lastError, tick-finalize logs error: undefined),
       // and a malformed error tick can lose it too, so both take the same placeholder cause the
       // error-clusters section already itemizes rather than dropping the span itemized nowhere.
-      const text = errorTextOrPlaceholder(ev.error);
-      key = poolTimeoutKey(normalizeClusterKey(text));
-      example = truncateExample(text);
+      ({ key, example } = pooledClusterCause(ev.error));
     } else if (ev.result === "queued" && resolvedOutcome?.result === "rejected") {
       key = `review-rejected\u0000${role}`;
       kind = "review-rejected";
@@ -268,9 +277,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // 2026-10-10). The review failure for this attempt is the one that falls inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
       const failed = newestAttemptEvent(reviewFailedByLoop, role, resolvedOutcome);
-      const text = errorTextOrPlaceholder(failed?.message);
-      key = poolTimeoutKey(normalizeClusterKey(text));
-      example = truncateExample(text);
+      ({ key, example } = pooledClusterCause(failed?.message));
     } else if (
       ev.result === "queued" &&
       (resolvedOutcome?.result === "merge_conflict" || resolvedOutcome?.result === "merge_blocked")
