@@ -56,6 +56,10 @@ interface UsageFold {
   checkFailures: number;
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
+  /** ms of each provider_wait event that carries a positive waitedMs (a role tick whose
+   * semaphore admission waited PROVIDER_WAIT_EVENT_MS or more for its provider/team slot),
+   * unsorted. */
+  providerWaitsMs: number[];
   /** run_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
    * ticks that burned agent time and merged nothing without going through review. Split by role,
    * a parallel tally to runsByRole (never subtracted from it). */
@@ -187,6 +191,12 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // (run_end has none), so a run that started with no configured model contributes no key.
     const model = typeof ev.model === "string" && ev.model.length > 0 ? ev.model : null;
     if (model !== null) addTo(target.runsByModel, model, 1);
+  } else if (ev.type === "provider_wait") {
+    // The day report's provider-slot wait median, mirroring the merge_wait push: a wait only
+    // event-logged at or above the 30 s threshold counts, so a 0 ms wait (a probe seam) adds
+    // nothing and the median reflects real blocked admissions only.
+    const waited = finiteNumber(ev.waitedMs, 0);
+    if (waited > 0) target.providerWaitsMs.push(waited);
   } else if (ev.type === "merge_done" || ev.type === "merge_failed") { 
     target.mergeRuns = (target.mergeRuns ?? 0) + 1;
     if (ev.type === "merge_failed") target.mergeFailed = (target.mergeFailed ?? 0) + 1;
@@ -235,6 +245,8 @@ interface DayFold {
   checkFailures: number;
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
+  /** ms of each that-day provider_wait event that carries positive waitedMs, unsorted. */
+  providerWaitsMs: number[];
   failedRunsByRole: Record<string, number>;
   fallbacksByRole: Record<string, number>;
   imageReroutesByRole: Record<string, number>;
@@ -353,6 +365,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       checkDurationsMs: [],
       checkFailures: 0,
       mergeWaitsMs: [],
+      providerWaitsMs: [],
       failedRunsByRole: {},
       fallbacksByRole: {},
       imageReroutesByRole: {},
@@ -486,6 +499,9 @@ export interface ReportDay {
   /** Lower median of the day's merge waits (enqueue to merged on main, ms); absent when the
    * day has no merge that carried queuedMs. */
   mergeWaitMedianMs?: number;
+  /** Lower median of the day's provider-slot waits (a role tick's semaphore admission wait,
+   * ms); absent when the day has no provider_wait that carried a positive waitedMs. */
+  providerWaitMedianMs?: number;
   /** error-class run_end events per loop id; absent when the day has none (zero means
    * absent, so a failure-free day keeps its exact pre-feature shape). */
   failedRunsByRole?: Record<string, number>;
@@ -655,6 +671,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     checkDurationsMs: [],
     checkFailures: 0,
     mergeWaitsMs: [],
+    providerWaitsMs: [],
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -790,6 +807,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       }
       if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;
       if (fold.mergeWaitsMs.length > 0) day.mergeWaitMedianMs = lowerMedian(fold.mergeWaitsMs);
+      if (fold.providerWaitsMs.length > 0)
+        day.providerWaitMedianMs = lowerMedian(fold.providerWaitsMs);
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.failedRunsByRole).length > 0)
         day.failedRunsByRole = fold.failedRunsByRole;

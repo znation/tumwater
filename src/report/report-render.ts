@@ -360,6 +360,8 @@ export function renderReportMarkdown(data: ReportData): string {
     if (reds.length > 0) lines.push(`**Red merge checks:** ${reds.join(" · ")}`);
     const waits = medianLine(data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
     if (waits !== undefined) lines.push(waits);
+    const providerWaits = medianLine(data.series, "Provider wait median", (d) => d.providerWaitMedianMs);
+    if (providerWaits !== undefined) lines.push(providerWaits);
   }
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
   // Subscription spend is notional: its own two lines, only when the window has any.

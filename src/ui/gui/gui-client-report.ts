@@ -159,6 +159,13 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       (v) => fmtSpan(v), false);
   }
 
+  // The lower median of the day's provider-slot waits, from providerWaitMedianMs; a day
+  // without one keeps its empty slot, as chartMergeWaitMedian does.
+  function chartProviderWaitMedian(data) {
+    return reportSvg(data.series, (d) => [{ value: Number(d.providerWaitMedianMs) || 0, color: "#a855f7", title: d.date + ": " + fmtSpan(Number(d.providerWaitMedianMs) || 0) + " median provider wait" }],
+      (v) => fmtSpan(v), false);
+  }
+
   // Window totals per provider — spend desc, then name — so both provider charts share one
   // color and one legend position, the dashboard twin of the day report's "Cost by provider".
   // Provider keys are dynamic seams, so reads and seeds use Object.hasOwn as reportRoleOrder
@@ -330,6 +337,10 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // True when some day carries a merge-wait median; the element renders only then.
   function seriesHasMergeWaitMedian(data) {
     return data.series.some((d) => Number(d.mergeWaitMedianMs) > 0);
+  }
+  // True when some day carries a provider-wait median; the element renders only then.
+  function seriesHasProviderWaitMedian(data) {
+    return data.series.some((d) => Number(d.providerWaitMedianMs) > 0);
   }
   // report-chart:end
 
@@ -594,6 +605,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +
         (seriesHasCheckFailures(d) ? block("Red merge checks", chartCheckFailures(d), "per day · failed full-suite checks") : "") +
         (seriesHasMergeWaitMedian(d) ? block("Merge wait median", chartMergeWaitMedian(d), "per day · enqueue to merged on main") : "") +
+        (seriesHasProviderWaitMedian(d) ? block("Provider wait median", chartProviderWaitMedian(d), "per day · waits of 30s or more for a provider slot") : "") +
         (d.totals.notionalCostUsd > 0
           ? block("Estimated spend by role", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") +
         (!d.role && seriesHasAny(d, "notionalByProvider") ? block("Estimated spend by provider", chartNotionalByProvider(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +

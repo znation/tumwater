@@ -1003,6 +1003,24 @@ test("collectReport gives each day the lower median of its merge_done queuedMs, 
   for (const d of collectReport(root, 3, "feature").series) assert.ok(!("mergeWaitMedianMs" in d));
 });
 
+test("collectReport gives each day the lower median of its provider_wait waitedMs, team scope only", () => {
+  const root = tmpdir();
+  const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra });
+  writeEvents(root, [
+    ev(at(0), "provider_wait", { waitedMs: 40_000 }),
+    ev(at(0), "provider_wait", { waitedMs: 200_000 }),
+    ev(at(0), "provider_wait", {}), // logged before waitedMs existed: skipped, not counted as zero
+    ev(at(1), "provider_wait", { waitedMs: 0 }), // a zero wait is not a provider-slot wait
+    ev(at(2), "merge_done", { queuedMs: 5_000 }), // a merge wait is not a provider wait
+  ]);
+  const data = collectReport(root, 3);
+  assert.equal(data.series[2]!.providerWaitMedianMs, 40_000);
+  assert.ok(!("providerWaitMedianMs" in data.series[1]!), "a day whose only wait is 0 ms has none");
+  assert.ok(!("providerWaitMedianMs" in data.series[0]!), "a day with no provider_wait has none");
+  for (const d of collectReport(root, 3, "feature").series) assert.ok(!("providerWaitMedianMs" in d));
+});
+
 test("collectReport and collectReportSince tally run_start per model, zero meaning absent, team scope only", () => {
   const start = (ts: number, model?: string) =>
     JSON.stringify({ ts, loop: "feature", type: "run_start", run: 1, ...(model === undefined ? {} : { model }) });
