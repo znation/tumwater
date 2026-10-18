@@ -11,11 +11,11 @@ import { ROLE_VALUE_ERROR } from "../src/cli/cli-flag-specs.js";
 import { NOT_A_REPO_MESSAGE, NOT_INITIALIZED_MESSAGE } from "../src/gates/readiness.js";
 import { allRoleIds } from "../src/roles/roles.js";
 
-// The `diff` command: the change a loop holds — its branch's unlanded commits (with the
+// The `diff` command: the change a loop holds — its branch's unmerged commits (with the
 // patch) and its worktree's uncommitted edits — via the CLI the way cli-history tests
 // `history`: seeded repos, child-process runs, output assertions.
 
-/** An initialized repo whose feature worktree holds one unlanded commit ("add widget.md"). */
+/** An initialized repo whose feature worktree holds one unmerged commit ("add widget.md"). */
 async function seededFeatureRepo(): Promise<{ repo: string; wt: string }> {
   const repo = makeRepo();
   await initProject(repo, "diff test");

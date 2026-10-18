@@ -23,7 +23,7 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
   writeConfig(repo, fastConfig(["clean", "dedupe"]));
 
   // fakePiIdle ends every tick as nothing-to-do, so the round exits on its own without
-  // landing anything — the round's own exit is the observable, not a merge.
+  // merging anything — the round's own exit is the observable, not a merge.
   await withIdlePi(async () => {
     const r = await cli(repo, "run", "--once", "--role", "clean");
     assert.equal(r.code, 0, `exit 0 on its own (stderr: ${r.stderr})`);

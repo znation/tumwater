@@ -48,7 +48,7 @@ import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
  * between the files. This slice carries the pipeline's end-to-end behaviors — torn-head
  * recovery, the merge stack, abort and shutdown, and the failure recoveries — while the dedupe
  * basics live in merge-drain.test.ts. */
-// Unit coverage for src/merge/merge-drain.ts — the scheduler seam between the durable land
+// Unit coverage for src/merge/merge-drain.ts — the scheduler seam between the durable merge
 // queue and the merge pipeline (land-queue speed 2c): the dedupe against main and torn-head
 // recovery, the verify stage (one verification per queued change, each on a shared maxConcurrent
 // permit), and the merge slot (every approved change, stacked), with the abort and shutdown rules
@@ -120,7 +120,7 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
 
 test("a settled merge detaches its shutdown listener: the long-lived stop signal keeps no per-merge wiring", async () => {
   // The team shutdown signal is one object for the whole run and abortOnShutdown wires every
-  // vet and merge to it. A task that settles while the signal is still live must detach its
+  // verify and merge to it. A task that settles while the signal is still live must detach its
   // listener; otherwise the signal accumulates one per merge — and the controller each
   // retains — unbounded until shutdown. The runners carry no signal here, so every abort
   // listener on the shutdown signal is a merge task's.
@@ -209,7 +209,7 @@ test("an approved change whose queue entry is gone is forgotten while its neighb
 });
 
 test("the merge's conflict resolver takes a shared permit, ahead of a verification parked for one", async () => {
-  // Landings count as active work: the one model run a merge makes, mergeToMain's conflict
+  // Merges count as active work: the one model run a merge makes, mergeToMain's conflict
   // resolver, holds a shared maxConcurrent permit for its length — outside the merge lock, so a
   // tick waiting on that lock can never be what the resolver waits for — at MERGE_TIER, ahead
   // of any verification parked for a permit, since every queued change waits on the merge.
@@ -250,8 +250,8 @@ test("the merge's conflict resolver takes a shared permit, ahead of a verificati
     pipeline.merge = null;
     await drainMergeQueue(ctx, pipeline);
     assert.deepEqual(mergeTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "alpha's merge is running");
-    // The merge reaches its resolver, which parks for the permit beside beta's vet — or, without
-    // one, runs at once and leaves its mark.
+    // The merge reaches its resolver, which parks for the permit beside beta's verify — or,
+    // without one, runs at once and leaves its mark.
     await waitFor(() => ctx.semaphore.waiting === 2 || fs.existsSync(order), "alpha's resolver to reach the permit");
     assert.equal(fs.existsSync(order), false, "the resolver waits for a permit like any pi run");
     // The merge cell names the parked resolver's wait — not "merging" (2026-10-12: a resolver
@@ -279,12 +279,12 @@ test("a change settled early in a batch writes back before a slower batch-mate's
   // BUGS.md 2026-10-09: a change whose merge is already final must not keep its stale error
   // streak (and with it the dashboard's red "failing tick after tick" banner) until every
   // later change in the batch settles — including a conflict-resolution model run that can
-  // take its whole timeout. alpha lands cleanly while beta's resolver blocks; alpha's streak
+  // take its whole timeout. alpha merges cleanly while beta's resolver blocks; alpha's streak
   // reset and `merged` event must already be on disk before the resolver returns.
   const root = makeRepo();
   await queueChanges(root, ["alpha", "beta"]);
-  // main edits beta's file after both pins: beta's vet rebases to a conflict (and reviews the
-  // bare pin), and its merge needs the resolver. alpha is untouched and lands cleanly.
+  // main edits beta's file after both pins: beta's verify rebases to a conflict (and reviews the
+  // bare pin), and its merge needs the resolver. alpha is untouched and merges cleanly.
   fs.writeFileSync(path.join(root, "beta.txt"), "main's beta\n");
   sh(root, "git", "add", "beta.txt");
   sh(root, "git", "commit", "-m", "main edits beta.txt");
@@ -347,10 +347,10 @@ test("a change settled early in a batch writes back before a slower batch-mate's
 
 test("a red stack lands its passing prefix, rejects the change red alone, and merges the one behind it next", async () => {
   // PLANS.md land-queue 3d through the pipeline: beta breaks the suite only on top of alpha (its
-  // own verification passed — an interaction the stack check exists to catch). The bisect lands
+  // own verification passed — an interaction the stack check exists to catch). The bisect merges
   // alpha on its own green check, attributes beta's red through main's baseline (a cache hit:
   // alpha's prefix seeded it) and rejects it with no pi run, and leaves gamma unattempted — back to
-  // approved, so the next merge lands it, re-checked on the main alpha moved.
+  // approved, so the next merge merges it, re-checked on the main alpha moved.
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
   const shas = await queueChanges(root, roles);
@@ -519,7 +519,7 @@ test("abort --role settles an approved change whose pin is already gone without 
   const shas = await queueChanges(root, ["alpha", "beta"]);
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"]));
-  pipeline.merge = busySlot(); // both changes vet and then wait for the merge slot
+  pipeline.merge = busySlot(); // both changes verify and then wait for the merge slot
   const bg = pump(ctx, pipeline);
   try {
     await waitFor(() => pipeline.approved.has("alpha") && pipeline.approved.has("beta"), "both changes to be approved", 30_000);
@@ -554,7 +554,7 @@ test("an aborted approved change settles despite an unwritable state file: no th
   const shas = await queueChanges(root, ["alpha", "beta"]);
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"]));
-  pipeline.merge = busySlot(); // both changes vet and then wait for the merge slot
+  pipeline.merge = busySlot(); // both changes verify and then wait for the merge slot
   const bg = pump(ctx, pipeline);
   try {
     await waitFor(() => pipeline.approved.has("alpha") && pipeline.approved.has("beta"), "both changes to be approved", 30_000);
@@ -688,7 +688,7 @@ test("abort --role stops that role's vet, or discards its approved change, pin a
     for (const role of ["alpha", "gamma"]) writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
     consumeAbortRequests(root, [], abortableMerges(pipeline));
     await settleAbortedApproved(root, pipeline); // the scheduler settles right after, every poll
-    // The aborted vet drops its entry before it discards its pin and leaves the pipeline, so
+    // The aborted verify drops its entry before it discards its pin and leaves the pipeline, so
     // wait for the task itself: its outcome, pin discard and exit are all done once it settles.
     await alphaVerify;
     await waitFor(() => queuedMergeFiles(root).length === 1, "both aborted entries to drop", 30_000);
@@ -717,7 +717,7 @@ test("abort --role stops that role's vet, or discards its approved change, pin a
 // The merge cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the pipeline: each
 // change's own record carries its stage, so a change's stage must leave `reviewing` the moment
 // its gate returns — otherwise its finished reviewer's last turns sit in the cell, accruing a
-// false `no pi output` flag, for as long as it waits for its merge — and one change's vet must
+// false `no pi output` flag, for as long as it waits for its merge — and one change's verify must
 // advance only its own record. The stage sequence below is a single timeline: one permit, so the
 // second verify parks (no record) until the first frees it, and a busy merge slot until both are
 // done verifying.
@@ -755,7 +755,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
 
       const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
       // The head's own verification: pre-check, then its reviewer, with beta parked and showing
-      // nothing. Then beta's vet runs with the head's record already off the gate's stages
+      // nothing. Then beta's verify runs with the head's record already off the gate's stages
       // (approved, or gone with its rejection) — beta's transitions advance only beta's own record.
       const alphaAfter = headVerdict === "reject" ? "" : "alpha=approved/merging,";
       const verifies = [

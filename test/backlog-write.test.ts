@@ -230,7 +230,7 @@ test("empty or missing arguments fail with the usage line and write nothing", as
   assert.equal(queuedRolePrompts(repo, "feature").length, 0);
 });
 
-// The cross-process primary-worktree race: `tumwater bug` rewrites BUGS.md while the lander
+// The cross-process primary-worktree race: `tumwater bug` rewrites BUGS.md while the merger
 // fast-forwards the same working tree in the primary checkout. Without a shared lock the later
 // whole-file write drops the other's change. The child holds the primary-worktree lock, snapshots
 // BUGS.md, and writes that stale snapshot back once it has seen the parent's write (an unlocked

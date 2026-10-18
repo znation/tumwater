@@ -410,7 +410,7 @@ test("a queued tick whose pin sits before the --since cutoff still resolves (BUG
   // and merge outcome after it. The row set (ts-filtered at the cutoff) keeps the run_end
   // and the outcome but cuts the pin — so the join reads wider evidence (TICK_ROW_JOIN_BACK
   // SLACK_MS) for the pins and claims them only while the row's tick block is whole there.
-  // Tick 2 sits fully inside the window; both changes land, so both rows must resolve.
+  // Tick 2 sits fully inside the window; both changes merge, so both rows must resolve.
   const cutoff = Date.now() - SINCE;
   const before = (mins: number) => cutoff - mins * MIN;
   const after = (mins: number) => cutoff + mins * MIN;

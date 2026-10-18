@@ -151,7 +151,7 @@ test("budgetGate: reached with a free, serving fallback keeps loops running; oth
   // Free is not usable on its own: this pin used to read a demoted default tier as
   // "fallback" with no way to say "free, but its backend cannot serve" — the 2026-09-19
   // hour of 33/33 failed ticks. A tier whose resolution pauses holds its own roles; with
-  // review on, an unresolvable strong tier pauses the whole team (nothing could land).
+  // review on, an unresolvable strong tier pauses the whole team (nothing could merge).
   assert.equal(budgetGate(true, { default: true, strong: false }, true), "paused");
   assert.equal(budgetGate(true, { default: true, strong: false }, false), "fallback");
   assert.equal(budgetGate(true, { default: false, strong: true }, true), "paused");

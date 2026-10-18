@@ -36,7 +36,7 @@ import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
 
 /** One pinned commit NOT contained in main, standing alone on main's tip — the queue shape
- * a changed tick leaves behind. Detach first: the commit must not land on main itself. */
+ * a changed tick leaves behind. Detach first: the commit must not merge on main itself. */
 export function pinnedCommit(root: string, role: string): string {
   return pinOffMain(
     root,

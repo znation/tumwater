@@ -177,7 +177,7 @@ test("formatEvent renders wake reasons and warning messages operators rely on", 
 });
 
 test("formatEvent carries the reason on non-changed tick outcomes", () => {
-  // The event feed is where operators see why a tick did not land its work. refused and
+  // The event feed is where operators see why a tick did not merge its work. refused and
   // rejected ticks log their reason in `summary`, merge failures log lastError in `error` —
   // showing only "changed"/"error" left those outcomes as bare result words.
   const refused = formatEvent({
@@ -272,7 +272,7 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   );
   assert.match(startWithModel, /reviewing 01234567 before merge on prov\/r1:high$/);
 
-  // A revision landing labels its round (plans/revise-rejected.md part 2/2); a fresh one has
+  // A revision merge labels its round (plans/revise-rejected.md part 2/2); a fresh one has
   // no revision field and renders exactly as before.
   const startRevision = formatEvent(
     { ts: 0, source: "feature", type: "review_start", head, revision: 2 } as never,
@@ -494,7 +494,7 @@ test("formatEvent renders run_aborted plainly under the role's loop", () => {
 
 // Need-based scheduling (src/scheduling/scheduling.ts): a maintenance tick held back because its
 // last
-// tick did nothing and no work has landed since. Routine state, not a warning — but the line
+// tick did nothing and no work has merged since. Routine state, not a warning — but the line
 // must name the loop and its cause, since it is the only signal that a role is being deferred.
 test("formatEvent renders run_deferred with the clause that deferred it", () => {
   const backlog = formatEvent({ ts: 0, source: "clean", type: "run_deferred", reason: "backlog" } as never);
@@ -638,8 +638,8 @@ test("formatEvent prices the gates: build_check lines and review durations", () 
   assert.match(rejected, /review rejected aaaaaaaa — dup \(in 61s\)$/);
 });
 
-// The land queue's events (merge queue 3/5): the feed shows the queue's state changes — the
-// tick's enqueue, the slot's completion (with the landing's own spend), and the slot's failure.
+// The merge queue's events (merge queue 3/5): the feed shows the queue's state changes — the
+// tick's enqueue, the slot's completion (with the merge's own spend), and the slot's failure.
 test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   // Every line starts with the wall-clock time and the padded loop name — assert the payload.
   const queued = formatEvent({ ts: 0, source: "clean", type: "merge_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
@@ -648,7 +648,7 @@ test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   // Spent nothing (review-exempt or zero-usage reviewer): renders bare, like run_end.
   const bare = formatEvent({ ts: 0, source: "clean", type: "merge_done", commit: "abcdef1234567890", result: "changed", durationMs: 1234 } as never);
   assert.match(bare, /clean\s+merge of abcdef12 done \(in 1s\)$/, `zero-usage landing renders bare: ${bare}`);
-  // The landing's own spend rides after the duration, "·"-separated like run_end (minutes
+  // The merge's own spend rides after the duration, "·"-separated like run_end (minutes
   // at two minutes and up, compact tokens at 10k and up — the shared text.ts rules).
   const withUsage = formatEvent({
     ts: 0,
@@ -662,7 +662,7 @@ test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   } as never);
   assert.match(withUsage, /merge of abcdef12 done \(in 2m\) · 12\.3k tok · \$0\.05$/, `usage must ride after the duration: ${withUsage}`);
 
-  // A failed landing names the outcome — the detail lives in the review/merge events themselves.
+  // A failed merge names the outcome — the detail lives in the review/merge events themselves.
   const failed = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500 } as never);
   assert.match(failed, /merge of abcdef12 failed \(merge conflict\) \(in 1s\)$/, `merge_failed must name the outcome: ${failed}`);
   const named = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500, summary: "tidy up" } as never);
@@ -740,7 +740,7 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
   assert.match(restartBare, /\(finished current work in 0m\)$/, `absent drain/abort counts must default to zero: ${restartBare}`);
 });
 
-// eventResult — the activity feeds' outcome key: a tick's result, else a landing's or build
+// eventResult — the activity feeds' outcome key: a tick's result, else a merge's or build
 // check's status, else undefined. Single-homes the extraction the status payload's eventItem
 // and the TUI's eventTone both render through, so the two surfaces cannot key differently.
 test("eventResult takes a tick's result, else a landing's or build check's status, else undefined", () => {

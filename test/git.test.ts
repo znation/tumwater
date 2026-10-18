@@ -31,7 +31,7 @@ import { runGit } from "../src/git/git-run.js";
 import { ensureWorktree, resetWorktreeToMain } from "../src/git/worktree.js";
 // The merge-flow git helpers live in merge-git.ts — moved there from merge-to-main.ts (which got
 // them from git.ts in the bugfix that completed the half-finished organize tick 78 move) once the
-// lander and the batch lander started calling them directly.
+// merger and the batch merger started calling them directly.
 import {
   conflictedFiles,
   continueRebase,

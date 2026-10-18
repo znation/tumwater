@@ -24,7 +24,7 @@ import { validationError } from "./fixtures/config-fixtures.js";
 import { patchFsMethod, withCountedReads } from "./helpers/fs-faults.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
-// The longest tick a hosted model legitimately took and still landed work (BUGS.md 2026-09-29:
+// The longest tick a hosted model legitimately took and still merged work (BUGS.md 2026-09-29:
 // selfcheck at 185 minutes). A shipped default at or below it re-kills every such tick and
 // restarts the same long task from scratch — the 2026-09-22 meltdown shape.
 const LONGEST_LEGITIMATE_TICK_S = 185 * 60;
@@ -55,12 +55,12 @@ test("defaultConfig enables every role including director, except the opt-in sel
 
 test("defaultConfig gives the slow-clock roles their clocks and no other role one", () => {
   // Regression: feature tick 49 set this via `roles.steward.minRunIntervalSeconds = …`,
-  // which does not compile under noUncheckedIndexedAccess — a broken build landed on main.
+  // which does not compile under noUncheckedIndexedAccess — a broken build merged on main.
   const config = defaultConfig();
   assert.equal(configForRole(config, "steward").minRunIntervalSeconds, 21600);
   assert.equal(configForRole(config, "qa").minRunIntervalSeconds, 7200);
   assert.equal(configForRole(config, "selfcheck").minRunIntervalSeconds, 7200);
-  // The bookkeeping roles: readme batches landings into one sync per half hour, plan re-audits
+  // The bookkeeping roles: readme batches merges into one sync per half hour, plan re-audits
   // at most hourly — in dogfood the two were 30% of all commits at the global 20 s clock.
   assert.equal(configForRole(config, "readme").minRunIntervalSeconds, 1800);
   assert.equal(configForRole(config, "plan").minRunIntervalSeconds, 3600);
@@ -297,7 +297,7 @@ test("a broken tumwater.json is not cached: every poll retries and a repair reco
 });
 
 test("a vanished tumwater.json is reported missing, never as defaults, and its return reloads fresh", () => {
-  // BUGS.md 2026-09-23: a landing's fast-forward deleted the live file and the hot-reload served
+  // BUGS.md 2026-09-23: a merge's fast-forward deleted the live file and the hot-reload served
   // defaultConfig(), silently resetting the team. Missing is its own answer — no config, no
   // error — so the orchestrator can keep its last-known-good exactly as for a broken file.
   const dir = tmpdir();

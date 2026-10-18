@@ -89,7 +89,7 @@ _None yet._`);
 
 test("a ## Planned heading that mentions a done date in its own stamp's prose is not stranded", () => {
   // Mirrors the real 4f9dfd1e heading: a `## Planned` entry whose own `(planned …)`
-  // parenthetical describes the prior landed key-handling series with a prose participle
+  // parenthetical describes the prior merged key-handling series with a prose participle
   // "both done 2026-10-16" — that is not this entry's completion.
   const md = plansDoc(`## Planned
 

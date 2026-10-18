@@ -22,7 +22,7 @@ const COMPARE = fileURLToPath(new URL("../../docs/code-metrics/compare.cjs", imp
 const REPOS_TSV = fileURLToPath(new URL("../../docs/code-metrics/oss-repos.tsv", import.meta.url));
 
 /** Join fixture paths from parts so no path-shaped token appears as a literal on an added line.
- * The landing path scan reads such tokens as tree references; these names exist only as data in
+ * The merge path scan reads such tokens as tree references; these names exist only as data in
  * the synthetic JSON and are never read from disk. */
 const key = (...parts: string[]): string => parts.join("/");
 

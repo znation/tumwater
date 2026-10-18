@@ -493,7 +493,7 @@ test("initProject rejects empty prompts", async () => {
 test("a bare init re-seeds a lost config from the README's prompt (portability 4a/7)", async () => {
   const repo = makeRepo();
   await initProject(repo, "the original prompt");
-  // The config is untracked since 4a/7: a fresh clone, or a checkout whose landing removed the
+  // The config is untracked since 4a/7: a fresh clone, or a checkout whose merge removed the
   // once-tracked file, has README.md with the prompt but no tumwater.json.
   fs.rmSync(path.join(repo, "tumwater.json"));
   const again = await initProject(repo, "");

@@ -92,7 +92,7 @@ export async function withIdlePi<T>(fn: () => Promise<T>): Promise<T> {
 
 /** Run one async block under the reviewers' approve pi (pi-events.ts's APPROVE_PI) — the withPi
  * form of `const restore = fakePi(APPROVE_PI); try { … } finally { restore(); }`, which the
- * lander tests (lander/lander-bisect/lander-restack/lander-errors) each hand-rolled at every
+ * merger tests (merger/merger-bisect/merger-restack/merger-errors) each hand-rolled at every
  * runBatch/verifyAndMerge site. A test writes only its body and the save/restore pairing cannot be
  * forgotten or double-restore; tests pinning a different reviewer reply keep withPi directly. */
 export async function withApprovePi<T>(fn: () => Promise<T>): Promise<T> {

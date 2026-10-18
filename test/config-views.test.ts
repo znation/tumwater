@@ -136,7 +136,7 @@ test("applyFallbackModel installs the free pair and drops every model override",
 
 test("applyFallbackModel raises the reviewer's time budget to the fallback floor", () => {
   // The budgeted model's 900 s review budget fit 4–7 local-model turns, so every fallback
-  // review timed out and no code change landed until midnight (BUGS.md 2026-09-30).
+  // review timed out and no code change merged until midnight (BUGS.md 2026-09-30).
   const config: TumwaterConfig = defaultConfig();
   config.runTimeoutSeconds = 54_000;
   config.fallbackModel = { provider: "omlx", model: "local-free" };

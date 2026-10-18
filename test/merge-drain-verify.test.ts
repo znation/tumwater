@@ -75,7 +75,7 @@ test("mergeBatchMax caps each merge's stack, read from the live config at each d
 test("every verification holds a shared permit: with one free, one reviews while the other parks, showing nothing, and no permit leaks", async () => {
   // A merge's pi runs take the same permit role ticks do (BUGS.md 2026-09-18), and merges
   // count as active work. At cap 3 (verifyLimit 2) with no role tick running, both reviews run at
-  // once; with two role ticks holding permits, one is free, so the second vet parks for it — no
+  // once; with two role ticks holding permits, one is free, so the second verify parks — no
   // marker record, its row plainly queued, out of reach of abort --role and of the shutdown
   // wait — until the first verification frees it. Each review records how many reviews were in
   // flight as it started. With both free, beta's review also holds (bounded) until alpha's has
@@ -140,7 +140,7 @@ test("every verification holds a shared permit: with one free, one reviews while
 });
 
 test("a parked verification starts nothing when a shutdown or a closed start gate meets it: entry and pin stay queued", async () => {
-  // A vet parked for its permit has started nothing, so it must end like a parked role tick —
+  // A verify parked for its permit has started nothing, so it must end like a parked role tick —
   // no outcome, no review, no marker record — whether the harness stops (its controller) or a
   // restart / 429 hold closes the start gate before its permit comes (the gate at its grant).
   for (const stop of ["gate", "shutdown"] as const) {
@@ -156,7 +156,7 @@ test("a parked verification starts nothing when a shutdown or a closed start gat
       signal: shutdown.signal,
       held: () => held,
     });
-    // Two role ticks hold two of the three permits: one is free, so beta's vet parks behind
+    // Two role ticks hold two of the three permits: one is free, so beta's verify parks behind
     // alpha's.
     await ctx.semaphore.acquire(0);
     await ctx.semaphore.acquire(0);

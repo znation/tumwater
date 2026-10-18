@@ -403,5 +403,5 @@ test("adapter bounds a 64k model's results to its scaled limits", () => {
 
 // The piArgs wiring tests (extension flag placement, non-pi agent skip) live in
 // test/pi-args.test.ts beside the rest of the piArgs suite — they were duplicated here
-// and in pi.test.ts since the feature landed (2026-09-23), and pi.test.ts's copies
+// and in pi.test.ts since the feature merged (2026-09-23), and pi.test.ts's copies
 // carry the stronger exact-dist-path assertion.

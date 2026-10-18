@@ -18,7 +18,7 @@ import { gitInit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 const ANALYZE = fileURLToPath(new URL("../../docs/code-metrics/analyze.cjs", import.meta.url));
 
 /** Join fixture paths from parts so no path-shaped token appears as a literal on an added line.
- * The landing path scan reads such tokens as tree references; these names exist only as data. */
+ * The merge path scan reads such tokens as tree references; these names exist only as data. */
 const key = (...parts: string[]): string => parts.join("/");
 
 const SAMPLE = key("src", "sample.ts");

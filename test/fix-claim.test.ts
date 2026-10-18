@@ -25,7 +25,7 @@ import { piRanMarker, withPi } from "./fakes/fake-pi.js";
 // md-only BUGS.md edit that moved a bug to Fixed with a Fix paragraph naming runScriptGroup
 // and signalTree — symbols that exist nowhere in main's history. The md-only exemption is a
 // fast path by design, so the gate itself now cross-checks a new Fixed entry's symbols
-// against the tree being landed; the pure functions below pin that parsing, and the
+// against the tree being merged; the pure functions below pin that parsing, and the
 // gate-orchestration section drives reviewAheadOfMain end-to-end over a real repo.
 
 const DOC = `# Bugs
@@ -283,7 +283,7 @@ test("sourceHaystack tolerates unreadable files and stays usable", () => {
 
 // Regression coverage for the 2026-10-06 record (BUGS.md): the haystack was hard-coded to
 // JS/TS extensions, so in a non-JS project (../nostalgia is Rust) it read nothing, every
-// symbol came back unbacked, and every md-only BUGS.md Fixed edit was blocked at landing.
+// symbol came back unbacked, and every md-only BUGS.md Fixed edit was blocked at merge.
 // The haystack is now language-neutral (markdown excluded, not a fixed source-extension
 // list), so a Rust tree backs its symbols and still rejects a phantom one.
 
@@ -436,7 +436,7 @@ test("falseFixReason tolerates a deleted BUGS.md instead of throwing out of the 
 test("falseFixReason checks an already-Fixed entry whose narrative the diff rewrites", async () => {
   // Hole 1: the old code skipped any heading already under ## Fixed in the base, so an
   // in-place rewrite of a phantom record's narrative — the exact shape a second phantom
-  // landing takes — evaded the symbol check.
+  // merge takes — evaded the symbol check.
   const root = makeRepo();
   fs.writeFileSync(
     path.join(root, "BUGS.md"),
@@ -457,7 +457,7 @@ test("falseFixReason checks an already-Fixed entry whose narrative the diff rewr
 
 test("falseFixReason leaves an already-Fixed entry with an untouched body alone", async () => {
   // The skip survives only for a body-identical entry: history prose (and a record whose
-  // symbols were since renamed) must keep landing md-only when the diff does not touch it.
+  // symbols were since renamed) must keep merging md-only when the diff does not touch it.
   const root = makeRepo();
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
   fs.writeFileSync(path.join(root, "src", "old.ts"), "const real = 1;\n");
@@ -486,7 +486,7 @@ test("falseFixReason measures an Open→Fixed restoration against the merge-base
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "seed: entry is Open");
   const wt = await ensureWorktree(root, ROLE, "main"); // branch cut while the entry is Open
-  // Main advances: a phantom landing put the record in Fixed (as b65df63 did).
+  // Main advances: a phantom merge put the record in Fixed (as b65df63 did).
   const fixedDoc =
     "## Fixed\n\n### A bug (found 2026-09-22, fixed 2026-09-23)\n\n**Fix:** `runScriptGroup` now signals the tree.\n";
   fs.writeFileSync(path.join(root, "BUGS.md"), fixedDoc);

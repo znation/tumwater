@@ -75,7 +75,7 @@ test("a review-rejected change's authoring hours price into error-class, not mer
   // queued run_end through its merge_queued pin to the same-sha merge_done/merge_failed outcome —
   // history-data's exact join — and prices a rejected merge's authoring span as the loss it
   // was. The fixture uses the live shape: merge_queued DURING the tick, review_rejected +
-  // merge_failed after it, the merge_failed carrying the LANDING's own duration, not the tick's.
+  // merge_failed after it, the merge_failed carrying the MERGE's own duration, not the tick's.
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
@@ -182,7 +182,7 @@ test("a cluster that outlived a config change labels itself with its newest mess
 });
 
 test("a review_error merge prices its authoring hours under the matching review_failed cause", () => {
-  // BUGS.md 2026-10-07: a queued tick whose landing ended `review_error` — the reviewer's own
+  // BUGS.md 2026-10-07: a queued tick whose merge ended `review_error` — the reviewer's own
   // process failed (a timeout, a dead backend, no parseable verdict) and the pin was re-queued —
   // was priced into the error-class cell but owned by no loss cause, because the rejected-only
   // branch and CLUSTERED_RESULTS both missed it. The matching `review_failed` event carries the

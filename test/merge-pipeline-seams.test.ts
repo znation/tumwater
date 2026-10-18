@@ -12,8 +12,8 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 // merge-verify.ts call them for every task), and both carry a documented edge a naive version
 // gets wrong — an already-aborted signal that addEventListener alone would never fire; a grant
 // that arrives after the abort and must be handed straight back ("a hop, never a leak") or
-// maxConcurrent starves by one permit per aborted vet. Until now both ran only under the e2e tier,
-// which the gating `npm test` never executes, so a wiring slip here would pass the gate.
+// maxConcurrent starves by one permit per aborted verify. Until now both ran only under the e2e
+// tier, which the gating `npm test` never executes, so a wiring slip here would pass the gate.
 
 /** Flush the microtasks (and the auto-release callback) a resolved waiter chain needs. */
 function settle(): Promise<void> {
@@ -66,7 +66,7 @@ test("acquireUnlessAborted grants a free permit and its release hands it back", 
 test("an abort while parked resolves null, and a grant that arrives later is handed straight back", async () => {
   // The race the seam exists for: a verification parks on a saturated maxConcurrent, the shutdown
   // fires while it waits, and the permit it was queued for is granted anyway the moment the
-  // holder finishes. Without the hand-back, that grant is lost — every aborted vet would
+  // holder finishes. Without the hand-back, that grant is lost — every aborted verify would
   // shrink the team's real concurrency by one.
   const semaphore = new Semaphore(1);
   await semaphore.acquire(0); // the permit a mid-tick author holds

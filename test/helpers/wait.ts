@@ -46,7 +46,7 @@ export const liveWaitClock: WaitClock = { now: () => performance.now(), sleep };
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the
  * condition is true, so a generous budget costs nothing on the success path and buys only
  * slower reporting of a genuine hang. The default was 20s until 2026-09-18, when it became the
- * proximate cause of landing rejections: the team runs this suite concurrently with its own
+ * proximate cause of merge rejections: the team runs this suite concurrently with its own
  * ticks, and waits that complete in ~2s idle took past 20s loaded (BUGS.md). */
 export async function waitFor(
   fn: () => boolean,
@@ -66,7 +66,7 @@ export async function waitFor(
 
 /** Poll until `file` exists (bounded), so a test can act only after the fake pi run has
  * done its work — a fixed sleep races process startup when the suite runs in parallel.
- * 30s: the landing gate runs the whole suite concurrently on a saturated machine, where
+ * 30s: the merge gate runs the whole suite concurrently on a saturated machine, where
  * worktree setup plus fake-pi startup can blow a 10s budget (BUGS.md load-sensitive tests). */
 export async function waitForFile(
   file: string,
@@ -82,7 +82,7 @@ export async function waitForFile(
 
 /** Resolve true when `p` settles within `ms`, false otherwise — an unref'd timer, so a
  * resolved race leaves nothing keeping the test process alive. The one home of the suite's
- * boolean settle-within-a-budget check, shared by the landing fixtures, the pipeline seams, and the
+ * boolean settle-within-a-budget check, shared by the merge fixtures, the pipeline seams, and the
  * drain slices; it uses the real timer captured above so it keeps its budget under a test
  * that mocks the timer APIs. */
 export function within(p: Promise<unknown>, ms = 1_000): Promise<boolean> {

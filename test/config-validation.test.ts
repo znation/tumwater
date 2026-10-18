@@ -200,7 +200,7 @@ test("mergeBatchMax is validated like maxConcurrent: a positive integer", () => 
 });
 
 test("maxConcurrentChecks is validated like maxConcurrent: a positive integer", () => {
-  // 0 would let no check ever start (every gate and landing would wait forever), a negative
+  // 0 would let no check ever start (every gate and merge would wait forever), a negative
   // or fractional cap means nothing, and a string is a typo — each fails naming the key.
   for (const [bad, shown] of [[0, "0"], [-1, "-1"], [1.5, "1\\.5"], ["2", '"2"']] as const) {
     assert.match(
