@@ -321,6 +321,20 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function chartMergeFailuresByReason(data) {
     return stackChart(data, reportMergeFailureOrder(data), "mergeFailedByReason", (n) => plural(n, "merge failure"), countAxis, true);
   }
+  // Window tallies per fixed-bug Validation gap tag, count desc then tag asc — the tag twin
+  // of reportMergeFailureOrder, so the "Validation gaps" chart matches the day report's
+  // line ordering. Tag keys are dynamic, so reads and seeds go through tallyAcross's
+  // Object.hasOwn checks as its siblings do; a tag no day recorded still gets a row only if
+  // some day carries it.
+  function reportValidationGapOrder(data) {
+    return tallyAcross(data.series, ["validationGapsByTag"], []);
+  }
+  // The team's fixed-bug Validation gap tags, per day, stacked by tag: each segment one
+  // (day, tag), the dashboard twin of the day report's "Validation gaps" line. Sparse like
+  // the model chart; tag names are the legend labels.
+  function chartValidationGaps(data) {
+    return stackChart(data, reportValidationGapOrder(data), "validationGapsByTag", (n) => plural(n, "validation gap"), countAxis, true);
+  }
   // The day's merged outcomes per loop, the success sibling of chartMergeFailuresByRole,
   // drawn exactly like it (same roleStackChart shape, palette, legend order and integer count
   // axis) so the two read as one pair.
@@ -649,6 +663,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (!d.role && seriesHasAny(d, "deferredByReason") ? block("Deferred runs by reason", chartDeferredByReason(d), "per day · backlog, no-work, plans-full") : "") +
         (seriesHasAny(d, "mergeFailedByRole") ? block("Merge failures by role", chartMergeFailuresByRole(d)) : "") +
         (seriesHasAny(d, "mergeFailedByReason") ? block("Merge failures by reason", chartMergeFailuresByReason(d)) : "") +
+        (!d.role && seriesHasAny(d, "validationGapsByTag") ? block("Validation gaps", chartValidationGaps(d), "per day · what made fixed bugs hard to confirm") : "") +
         (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +
         (seriesHasCheckFailures(d) ? block("Red merge checks", chartCheckFailures(d), "per day · failed full-suite checks") : "") +
         (seriesHasMergeWaitMedian(d) ? block("Merge wait median", chartMergeWaitMedian(d), "per day · enqueue to merged on main") : "") +

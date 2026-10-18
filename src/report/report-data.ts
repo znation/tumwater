@@ -601,6 +601,10 @@ export interface ReportDay {
    * why — "backlog", "no-work" or "plans-full"); team-only like runsByModel, because a
    * reason is not a role. Absent when the day had no deferral (zero means absent). */
   deferredByReason?: Record<string, number>;
+  /** fixed bugs' `Validation gap` tags recorded this day, from BUGS.md's ## Fixed entries;
+   * team-only like its window tally, because a tag has no role (absent when the day has
+   * none, zero means absent). */
+  validationGapsByTag?: Record<string, number>;
 }
 
 /** The window totals both reports surface — output tokens (the merge share included), the
@@ -1038,7 +1042,10 @@ export function collectReport(root: string, days: number, role?: string): Report
       const date = completionDate(e.title, FIXED_DATE_RE);
       if (date === null || !byDate.has(date)) continue;
       const tag = validationGapTag(e.body);
-      if (tag !== null) addTo(validationGaps, tag, 1);
+      if (tag !== null) {
+        addTo(validationGaps, tag, 1);
+        addTo((byDate.get(date)!.validationGapsByTag ??= {}), tag, 1);
+      }
     }
   }
 

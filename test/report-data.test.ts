@@ -347,9 +347,22 @@ test("collectReport tallies fixed bugs' Validation gap tags over the window, tea
   const team = collectReport(root, 3, undefined);
   assert.deepEqual(team.totals.validationGapsByTag, { "no-repro": 2, "no-fake": 1 });
 
-  // Role scope drops the tally: a tag has no role.
+  // The per-day series carries each day's tags: day d0 recorded one no-repro, day d1
+  // recorded a no-repro and a no-fake, the untagged and out-of-window entries reach no day,
+  // and the third (untagged) day omits the field (zero-means-absent).
+  const dayOf = (date: string) => team.series.find((d) => d.date === date);
+  assert.deepEqual(dayOf(d0)?.validationGapsByTag, { "no-repro": 1 });
+  assert.deepEqual(dayOf(d1)?.validationGapsByTag, { "no-repro": 1, "no-fake": 1 });
+  for (const d of team.series) {
+    if (d.date === d0 || d.date === d1) continue;
+    assert.ok(!("validationGapsByTag" in (d as object)), "an untagged day omits the field");
+  }
+  assert.ok(!dayOf(dOld), "the out-of-window entry reaches no day");
+
+  // Role scope drops the tally: a tag has no role — neither the window map nor any series day.
   const scoped = collectReport(root, 3, "bugfix");
   assert.ok(!("validationGapsByTag" in scoped.totals));
+  for (const d of scoped.series) assert.ok(!("validationGapsByTag" in (d as object)));
 
   // A window whose only fixed bug is untagged omits the key (zero-means-absent).
   const root2 = tmpdir();
@@ -358,6 +371,7 @@ test("collectReport tallies fixed bugs' Validation gap tags over the window, tea
   ]);
   const untagged = collectReport(root2, 3, undefined);
   assert.ok(!("validationGapsByTag" in untagged.totals));
+  for (const d of untagged.series) assert.ok(!("validationGapsByTag" in (d as object)));
 });
 
 // The per-day filing read folds the same entry detection as the completion read, so an

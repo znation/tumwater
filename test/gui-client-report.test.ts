@@ -799,6 +799,49 @@ test("the Usage render chain gates the Merge failures by reason chart right afte
   assert.equal((chain.match(/block\("Merge failures by reason", chartMergeFailuresByReason\(d\)\)/g) || []).length, 1);
 });
 
+test("reportValidationGapOrder lists each tag once and chartValidationGaps stacks per day, gated by seriesHasAny", () => {
+  interface Builders {
+    reportValidationGapOrder(data: ReportData): [string, number][];
+    chartValidationGaps(data: ReportData): string;
+    seriesHasAny(data: ReportData, field: string): boolean;
+  }
+  const { reportValidationGapOrder, chartValidationGaps, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportValidationGapOrder", "chartValidationGaps", "seriesHasAny"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { validationGapsByTag: { "no-repro": 2 } }),
+    mkDay("2026-09-02", { validationGapsByTag: { "no-repro": 1, "no-fake": 1 } }),
+    mkDay("2026-09-03"),
+  ]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  // Count desc, then tag asc: no-repro (3) ahead of no-fake (1).
+  assert.deepEqual(reportValidationGapOrder(data), [["no-repro", 3], ["no-fake", 1]]);
+  assert.deepEqual(titles(chartValidationGaps(data)), [
+    "2026-09-01 · no-repro: 2 validation gaps",
+    "2026-09-02 · no-repro: 1 validation gap",
+    "2026-09-02 · no-fake: 1 validation gap",
+  ]);
+  const empty = mk([mkDay("2026-09-01"), mkDay("2026-09-02"), mkDay("2026-09-03")]);
+  assert.equal(seriesHasAny(empty, "validationGapsByTag"), false);
+  assert.equal(seriesHasAny(data, "validationGapsByTag"), true);
+});
+
+test("the Usage render chain gates the Validation gaps chart right after Merge failures by reason", () => {
+  const chain = GUI_CLIENT_REPORT_JS;
+  const byReason = chain.indexOf('block("Merge failures by reason"');
+  const byGaps = chain.indexOf('block("Validation gaps", chartValidationGaps(d)');
+  assert.ok(byReason >= 0, "the Merge failures by reason term exists");
+  assert.ok(byGaps > byReason, "Validation gaps sits after Merge failures by reason in the chain");
+  assert.match(chain, /!d\.role && seriesHasAny\(d, "validationGapsByTag"\) \? block\("Validation gaps", chartValidationGaps\(d\), "per day · what made fixed bugs hard to confirm"\) : ""/);
+  assert.equal((chain.match(/block\("Validation gaps", chartValidationGaps\(d\)/g) || []).length, 1);
+});
+
 test("the Deferred runs by reason chart stacks per reason and reportDeferredOrder lists each code once", () => {
   // The Deferred runs by reason chart is the dashboard twin of the day report's "Deferred
   // runs by reason" line: one segment per (day, reason code) stacked in reportDeferredOrder's
