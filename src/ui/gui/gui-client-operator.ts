@@ -58,6 +58,14 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const pct = (b.spentUsd / b.capUsd) * 100;
     return pct >= 100 ? " t-red" : pct >= 85 ? " t-amber" : "";
   }
+  // The bar under a spend/window readout: a span class='meter{tone}' wrapping a fill whose
+  // width is the spent share. The one home of the markup both the claude-window line
+  // (windowLinesHtml) and the budget card (budgetCardHtml) render, so the class/nesting
+  // cannot drift between them; each call site shapes its own percent (an integer round for
+  // the window, one decimal for the card).
+  function meterBar(tone, pct) {
+    return "<span class='meter" + tone + "'><span style='width:" + pct + "%'></span></span>";
+  }
   // The subscription usage window (plans/agent-backends.md §8, PLANS.md part 6d/7): the
   // sidebar's spend card renders it beside the daily spend, or in its place for a
   // subscription-only team. The label/status/clock rules mirror badges.ts's
@@ -126,7 +134,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       const line = "<span class='side-card-value window-line" + windowLineTone(w) + "'>" + esc(windowLine(w, cw, chain)) + "</span>";
       if (typeof w.utilization !== "number") return line;
       const pct = Math.min(100, Math.round(w.utilization * 100));
-      return line + "<span class='meter" + windowLineTone(w) + "'><span style='width:" + pct + "%'></span></span>";
+      return line + meterBar(windowLineTone(w), pct);
     }).join("") + chainLinesHtml(chain);
   }
   // The sidebar's spend card for a payload's budget block: a plain card for an all-free team
@@ -150,7 +158,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       esc(capped ? "Today's spend against the daily cap — click to change the cap" : "No daily cap — click to set one") + "'>" +
       "<span class='side-card-label'>" + icon("dollar") + "Spent today<span class='edit'>" + (capped ? "Edit cap" : "Set a cap") + "</span></span>" +
       "<span class='side-card-value'>" + esc(fmtUsd(b.spentUsd)) + " <small>" + esc(capped ? "of " + fmtCap(b.capUsd) : "no daily cap") + "</small></span>" +
-      (capped ? "<span class='meter" + tone + "'><span style='width:" + pct.toFixed(1) + "%'></span></span>" : "") + windowLinesHtml(cw, chain) + "</button>";
+      (capped ? meterBar(tone, pct.toFixed(1)) : "") + windowLinesHtml(cw, chain) + "</button>";
   }
   function renderBudgetBadge(d) {
     if (budgetEditing) return; // the open editor owns the slot until save or cancel
