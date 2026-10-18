@@ -21,6 +21,11 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // Configuration section (drawerConfigHtml): identical markup, formerly copy-pasted into two
   // local consts (kv and row) so the row shape could drift between the two sections.
   const kvRow = (k, v, title) => "<div><dt>" + esc(k) + "</dt><dd title='" + esc(title || v) + "'>" + esc(v) + "</dd></div>";
+  // A diff block in the Change section (the committed change and the dirty-tree uncommitted
+  // diff, drawerChangeHtml's two arms): trim the trailing newline the diff carriage-returned,
+  // escape the rest, and wrap it in the shared .diff pre. Formerly copy-pasted into both arms
+  // so the trim/escape could drift between them.
+  const diffPre = (text) => "<pre class='mono diff'>" + esc(String(text).replace(/\n+$/, "")) + "</pre>";
 
   function showDrawer(bodyHtml) {
     for (const id of ["drawerhead", "draweractions", "drawermeta", "drawerrole", "transcript", "entrybody"]) delete lastPaint[id];
@@ -200,10 +205,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       " ahead of " + esc(view.mainBranch) +
       (dirty.length ? " · " + esc(plural(dirty.length, "uncommitted file")) : "") + "</p>";
     html += commitRowsHtml(commits);
-    if (view.diff) html += "<pre class='mono diff'>" + esc(String(view.diff).replace(/\n+$/, "")) + "</pre>";
+    if (view.diff) html += diffPre(view.diff);
     if (dirty.length) {
       html += "<p class='note'>Uncommitted: " + esc(dirty.join(", ")) + "</p>";
-      if (view.uncommittedDiff) html += "<pre class='mono diff'>" + esc(String(view.uncommittedDiff).replace(/\n+$/, "")) + "</pre>";
+      if (view.uncommittedDiff) html += diffPre(view.uncommittedDiff);
     }
     return html;
   }
