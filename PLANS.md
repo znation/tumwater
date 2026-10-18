@@ -242,26 +242,6 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 - `npm test` passes.
 
 
-### OpenCode backend, part 6e/7: An OpenCode model's context window comes from the catalog, so window-keyed prompt rules apply to OpenCode runs (planned 2026-10-17 by user; requires part 6a/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 3; touches src/pi/pi-models.ts and its tests)
-
-**Goal.** `seamContextWindow` (src/pi/pi-models.ts) answers for an `opencode` seam too, from the context window the models.dev catalog declares. Then the compact run prompt (b1eb00a91, for a window of at most 128k) and any later window-keyed rule reach an OpenCode model with no further change. The free model is 200K, so its prompt does not change.
-
-**Approach.**
-- In `seamContextWindow`, an `opencode` seam reads `readOpencodeCache(projectRoot).models[opencodeModelKey(seam.model)]?.context` through `declaredWindow`.
-  - That is the same catalog key part 6b/7's free-ness check uses, so the window and the price always come from one entry.
-- A missing cache, an unknown model, or an unusable `context` reads null, as an unknown pi model does. Null means the full prompt.
-- pi and claude seams are unchanged.
-
-**Files touched.**
-- Source: src/pi/pi-models.ts.
-- Tests: test/pi-models.test.ts.
-
-**Acceptance criteria.**
-- With a catalog cache whose `opencode/m` model has `context: 65536`, `seamContextWindow({ agent: "opencode", model: "opencode/m" }, root)` returns 65536.
-- A model missing from the cache, a cache with no file, and a `context` that is not a positive number all return null.
-- The pi and claude cases in test/pi-models.test.ts pass unchanged.
-- `npm test` passes.
-
 ### OpenCode backend, part 6f/7: OpenCode runs cap tool output at pi's window-scaled limits (planned 2026-10-17 by user; requires part 6e/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 2; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts and their tests)
 
 **Goal.** OpenCode's tool results stop entering the context at up to 51,200 bytes (its `tool_output` default, finding 13) and come in at the same budget as a pi run's. The free model's window is 200K, against the 1M window it replaces, and every turn re-sends what a tool returned.
@@ -1352,6 +1332,26 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 
 
 ## Done
+### OpenCode backend, part 6e/7: An OpenCode model's context window comes from the catalog, so window-keyed prompt rules apply to OpenCode runs (planned 2026-10-17 by user; requires part 6a/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 3; touches src/pi/pi-models.ts and its tests) — done 2026-10-17 by the feature role
+
+**Goal.** `seamContextWindow` (src/pi/pi-models.ts) answers for an `opencode` seam too, from the context window the models.dev catalog declares. Then the compact run prompt (b1eb00a91, for a window of at most 128k) and any later window-keyed rule reach an OpenCode model with no further change. The free model is 200K, so its prompt does not change.
+
+**Approach.**
+- In `seamContextWindow`, an `opencode` seam reads `readOpencodeCache(projectRoot).models[opencodeModelKey(seam.model)]?.context` through `declaredWindow`.
+  - That is the same catalog key part 6b/7's free-ness check uses, so the window and the price always come from one entry.
+- A missing cache, an unknown model, or an unusable `context` reads null, as an unknown pi model does. Null means the full prompt.
+- pi and claude seams are unchanged.
+
+**Files touched.**
+- Source: src/pi/pi-models.ts.
+- Tests: test/pi-models.test.ts.
+
+**Acceptance criteria.**
+- With a catalog cache whose `opencode/m` model has `context: 65536`, `seamContextWindow({ agent: "opencode", model: "opencode/m" }, root)` returns 65536.
+- A model missing from the cache, a cache with no file, and a `context` that is not a positive number all return null.
+- The pi and claude cases in test/pi-models.test.ts pass unchanged.
+- `npm test` passes.
+
 ### The day report and Usage view tally deferred runs by reason (planned 2026-10-17 by the plan role; independent of every eligible Planned entry — the "provider contention" row touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts and the `tumwater doctor` Audit row of docs/cli.md, and OpenCode 6b/7 and 6d/7 touch src/pi, src/gates, src/status and src/agent/opencode, none of them src/report/report-data.ts, src/report/report-render.ts or src/ui/gui/gui-client-report.ts (this plan's docs/cli.md edit is the `tumwater report` row, a different row from that plan's Audit row); touches src/report/report-data.ts, src/report/report-render.ts, src/ui/gui/gui-client-report.ts, test/report-data.test.ts, test/report.test.ts, test/gui-client-report.test.ts and docs/cli.md) — done 2026-10-17 by the feature role
 
 **Goal.** A due maintenance tick that stands down logs `run_deferred` with a reason (`DeferReason` in src/scheduling/scheduling.ts: `"backlog"`, `"no-work"`, `"plans-full"`), and the event feed, live status cell and failure digest each render that reason. No report tallies them, so an operator reading `tumwater report` or the dashboard Usage view sees a day's runs, tokens, cost, rejections and fallbacks but not how many maintenance ticks deferred, nor why — an idle day reads the same whether the backlog was open, nothing had merged, or the plan target was met. Tally each day's `run_deferred` events by reason and show them beside the other per-role breakdowns.

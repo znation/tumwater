@@ -12,7 +12,7 @@ import { readJsonFile } from "../files/json-files.js";
 import { expandHomeTilde } from "../files/files.js";
 import { declaredWindow } from "../pi-extension/context-window.js";
 import { piSettingsPath, readPiDefaultModel } from "./pi-settings.js";
-import { opencodeModelFree, opencodeModelKey, type OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
+import { opencodeModelFree, opencodeModelKey, readOpencodeCache, type OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
 
 /** pi's model definitions — the custom providers and models they serve, with each model's
  * declared cost. This is where a local (free) team differs from an API one: unpriced or
@@ -122,24 +122,39 @@ export function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> |
   );
 }
 
-/** The context window a run's model declares in pi's definitions, or null when it cannot be
- * known: a non-pi seam (its backend keeps its own catalog), an unresolvable pair, or a missing
- * or unusable `contextWindow`. A pi seam naming no provider/model runs on pi's saved default
- * (readPiDefaultModel), so that pair is looked up instead — exactly the model pi will start on. */
+/** The context window a run's model declares, or null when it cannot be known: an unresolvable
+ * pair, a missing or unusable window, or a backend that is neither pi nor opencode (its catalog
+ * is elsewhere). A pi seam names its window from pi's models.json, running on pi's saved default
+ * (readPiDefaultModel) when it names no provider/model — exactly the model pi will start on. An
+ * opencode seam names its window from the models.dev catalog (part 6e/7): the same cache entry
+ * and key the free-ness check reads, so the window and the price always come from one model.
+ * A missing cache, an unknown model, or an unusable `context` reads null, as an unknown pi
+ * model does. */
 export function seamContextWindow(
   seam: { agent?: string; provider?: string; model?: string },
   projectRoot: string,
   modelsPath: string = piModelsPath(),
 ): number | null {
   const agent = seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi");
-  if (agent !== "pi") return null;
-  let { provider, model } = seam;
-  if (!provider || !model) {
-    const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), projectRoot);
-    provider = piDefault?.provider;
-    model = piDefault?.model;
+  switch (agent) {
+    case "pi":
+      let { provider, model } = seam;
+      if (!provider || !model) {
+        const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), projectRoot);
+        provider = piDefault?.provider;
+        model = piDefault?.model;
+      }
+      return declaredWindow(resolveModelDef(readPiProviders(modelsPath), provider, model)?.contextWindow);
+    case "opencode":
+      // The models.dev cache (readOpencodeCache, an empty cache when the file is missing) holds
+      // the window part 6a/7 parsed from `limit.context`, keyed by the gateway-qualified id the
+      // run actually invokes (opencodeModelKey) — the same key and entry the free-ness check
+      // prices by, so a seam's window never disagrees with the model it runs.
+      if (seam.model === undefined) return null;
+      return declaredWindow(readOpencodeCache(projectRoot).models[opencodeModelKey(seam.model)]?.context);
+    default:
+      return null;
   }
-  return declaredWindow(resolveModelDef(readPiProviders(modelsPath), provider, model)?.contextWindow);
 }
 
 /** A provider's `baseUrl` from pi's models.json, or null when the file, the provider or the

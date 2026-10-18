@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
 import { fallbackModelFree, seamFree, teamModelsFree, piAgentDir, piModelsPath, seamContextWindow } from "../src/pi/pi-models.js";
 import type { OpencodeCatalogCache } from "../src/agent/opencode/opencode-catalog.js";
+import { writeOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
@@ -343,6 +344,40 @@ test("seamContextWindow reads the run model's declared window from pi's catalog"
   assert.equal(seamContextWindow({ provider: "claude", model: "sonnet" }, project, file), null);
   // No pair named and no saved default: pi's start-up model is unknown here.
   assert.equal(seamContextWindow({}, project, file), null);
+});
+
+test("seamContextWindow reads an opencode model's window from the catalog cache (part 6e/7)", () => {
+  // A catalog entry with a context declares the seam's window; an entry without one, an unknown
+  // model, a missing cache, and an unusable context all read null, exactly as an unknown pi
+  // model would.
+  const withWindow = tmpdir("opencode-window-");
+  writeOpencodeCache(withWindow, {
+    fetchedAt: 1,
+    models: { "opencode/m": { free: true, context: 65_536 } },
+  });
+  assert.equal(seamContextWindow({ agent: "opencode", model: "opencode/m" }, withWindow), 65_536);
+  // A bare id is keyed `opencode/<id>` (opencodeModelKey) — the same key the run is invoked by.
+  assert.equal(seamContextWindow({ agent: "opencode", model: "m" }, withWindow), 65_536);
+
+  // Unknown model: not in the cache.
+  assert.equal(seamContextWindow({ agent: "opencode", model: "no-such-model" }, withWindow), null);
+  // A catalog entry with no usable context: missing, and non-numeric.
+  const noContext = tmpdir("opencode-window-nocontext-");
+  writeOpencodeCache(noContext, {
+    fetchedAt: 1,
+    models: { "opencode/m": { free: true }, "opencode/bad": { free: true, context: 0 } },
+  });
+  assert.equal(seamContextWindow({ agent: "opencode", model: "m" }, noContext), null);
+  assert.equal(seamContextWindow({ agent: "opencode", model: "bad" }, noContext), null);
+  // A missing cache file reads an empty cache: null.
+  assert.equal(seamContextWindow({ agent: "opencode", model: "m" }, tmpdir("opencode-window-empty-")), null);
+  // An opencode seam naming no model is unknown.
+  assert.equal(seamContextWindow({ agent: "opencode" }, withWindow), null);
+
+  // The pi arm is unchanged by the new opencode branch: no model/pair still means pi's default.
+  const file = writeModels(JSON.stringify({ providers: { qwenrunner: { models: [{ id: "qwen3.8-27b", contextWindow: 131_072 }] } } }));
+  const project = tmpdir("pi-window-project-after-");
+  assert.equal(seamContextWindow({ provider: "qwenrunner", model: "qwen3.8-27b" }, project, file), 131_072);
 });
 
 // --- OpenCode free-ness (part 6b/7 of plans/opencode-backend.md) ---------------------------
