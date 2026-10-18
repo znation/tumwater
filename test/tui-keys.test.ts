@@ -102,6 +102,89 @@ test("budget mode opens pre-filled, saves the cap on Enter, and Esc cancels unch
   assert.match(keys.state().flash!, /must be a number/);
 });
 
+test("Ctrl+B on a role's Transcript edits that role's daily cap, not the team budget", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(50, false, ["feature", "director", "clean"]); // team cap $50, roster {feature, director, clean}
+  // Seed one role's cap through the dotted write the editor itself will use, so the
+  // pre-fill has something to read (and a non-feature entry to leave untouched).
+  const seed = setConfigKey(root, "maxDailyCostUsdPerRole.clean", "25");
+  assert.equal(seed.ok, true);
+  const setRoleCap = (): Record<string, number> =>
+    (readJson(path.join(root, "tumwater.json")) as { maxDailyCostUsdPerRole?: Record<string, number> })
+      .maxDailyCostUsdPerRole ?? {};
+
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature's transcript
+  assert.equal(keys.state().view, 1);
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature");
+
+  // Open: no pre-fill when the role has no cap yet (the team's $50 snapshot is out of
+  // scope), and the saved draft is restored on Esc with nothing written.
+  for (const ch of "pending draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  assert.equal(keys.state().input, "", "a cap-less role pre-fills an empty line");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().budgetMode, false);
+  assert.equal(keys.state().input, "pending draft", "Esc restores the saved draft");
+  assert.equal(setRoleCap().feature, undefined, "Esc writes nothing");
+
+  // Enter writes the dotted key, leaving the team maxDailyCostUsd and the other role's
+  // entry untouched, then flashes the role's own wording.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  for (const ch of "60") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().budgetMode, false, "a saved cap leaves edit mode");
+  assert.equal(keys.state().flash, "feature: cap set to $60");
+  const cfg = readJson(path.join(root, "tumwater.json")) as {
+    maxDailyCostUsd?: number;
+    maxDailyCostUsdPerRole?: Record<string, number>;
+  };
+  assert.equal(cfg.maxDailyCostUsdPerRole?.feature, 60, "the viewed role's cap is written");
+  assert.equal(cfg.maxDailyCostUsdPerRole?.clean, 25, "another role's entry is untouched");
+  assert.equal(cfg.maxDailyCostUsd, 50, "the team budget default is untouched");
+
+  // A re-open pre-fills the file's cap value (the snapshot's $50 team figure is not read).
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().input, "60", "the role's own cap pre-fills the line");
+  // An empty line removes the cap.
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().flash, "feature: cap removed");
+  assert.equal(
+    (readJson(path.join(root, "tumwater.json")) as { maxDailyCostUsdPerRole?: Record<string, number> })
+      .maxDailyCostUsdPerRole?.feature,
+    0,
+    "an empty line writes 0 (the cap-off value)",
+  );
+
+  // An invalid value flashes and STAYS open.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  for (const ch of "abc") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().budgetMode, true, "invalid input keeps edit mode open");
+  assert.match(keys.state().flash!, /must be a number/);
+  keys.handleKey(undefined, { name: "escape" });
+
+  // On the director's Transcript, Ctrl+B opens nothing and names the exemption.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → director's transcript
+  assert.equal(keys.state().view, 2);
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, false, "the director's cap editor never opens");
+  assert.equal(keys.state().flash, "the director has no daily cap");
+
+  // Ctrl+T (exitAll) leaves the role-cap editor and restores the draft, as the team editor does.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → clean's transcript (back to a role)
+  assert.equal(keys.state().view, 3);
+  keys.handleKey(undefined, { ctrl: true, name: "u" }); // clear the carried-over prompt line
+  for (const ch of "another draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().budgetMode, false, "Ctrl+T leaves the role-cap editor");
+  assert.equal(keys.state().input, "another draft", "Ctrl+T restores the saved draft");
+});
+
 test("role-prompt mode opens for the viewed loop, submits, and Esc restores the draft", () => {
   const root = makeRoot();
   const { keys } = makeKeys(root, () => 0);

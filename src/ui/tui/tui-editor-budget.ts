@@ -1,6 +1,9 @@
 // vocabulary: plain
-import { setDailyBudgetUsd } from "../../config/config-write.js";
+import { setConfigKey, setDailyBudgetUsd } from "../../config/config-write.js";
+import { loadConfigSafe } from "../../config/config.js";
 import { usdCap } from "../../text/format.js";
+import { DIRECTOR_ROLE } from "../../roles/roles.js";
+import { baseRoleOf } from "../../roles/loop-ids.js";
 import { parseBudgetInput } from "./tui-input.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
@@ -21,6 +24,9 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
   // so a cap could never bind — the Ctrl+B handler flashes a notice instead of opening
   // the editor (BUGS.md 2026-09-14), leaving the prompt line untouched.
   let currentBudgetFree = false;
+  // The role scope pinned when the editor opened, so Enter writes the same role's cap even if
+  // syncRoster shrinks or reorders the roster while the editor is open; null in team scope.
+  let lockedRole: string | null = null;
 
   // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
   const exitBudgetMode = (): void => {
@@ -28,27 +34,60 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
     budgetMode = false;
     session.held.budget = false;
     session.restorePromptFrom(savedInput, savedCursor);
+    lockedRole = null;
   };
 
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
-    _ctx: TuiEditorCtx,
+    ctx: TuiEditorCtx,
   ): boolean => {
     if (key.ctrl && key.name === "b") {
-      // Ctrl+B toggles budget-edit mode on the prompt line (mnemonic for *b*udget): entering
-      // pre-fills the current cap (empty when disabled — empty means "no cap" on save) and
-      // saves the prompt text; leaving restores it. Esc cancels the same way.
+      // Ctrl+B toggles budget-edit mode on the prompt line (mnemonic for *b*udget): on the
+      // Activity view it edits the team's cap as today, and on a role's Transcript (or notes)
+      // view it edits that role's own `maxDailyCostUsdPerRole.<role>` cap — the terminal
+      // control for the amber role-cap alert. Entering pre-fills the current cap (empty when
+      // disabled — empty means "no cap" on save) and saves the prompt text; leaving restores
+      // it. Esc cancels the same way. One budgetMode flag, one held slot and one saved-draft
+      // pair serve both scopes: only the pre-fill read and the write differ.
+      // The viewed role when a role's pane is up (the same in-range guard tui-editor-notes
+      // carries, which also keeps roleIds[ctx.view - 1] safe when syncRoster shrinks the
+      // roster); null on the Activity view, where the arm takes the team branch below.
+      const role =
+        ctx.view >= 1 && ctx.view <= ctx.roleIds.length
+          ? ctx.roleIds[ctx.view - 1]!
+          : null;
       const held = session.heldEditorFlash("budget");
       if (held) {
         // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out instead of silently dropping the
-        // held mode's saved draft (or parsing its text as a cap on Enter).
+        // not enter while another holds it. Flash the way out first — even on the director's
+        // pane — instead of the director wording or silently dropping the held mode's saved
+        // draft (or parsing its text as a cap on Enter).
         session.flashMessage(held);
+        return true;
+      }
+      if (role === DIRECTOR_ROLE) {
+        // The cap exempts the director (role-view.ts's rule), so there is nothing to edit.
+        session.flashMessage("the director has no daily cap");
         return true;
       }
       if (budgetMode) {
         exitBudgetMode();
+      } else if (role !== null) {
+        // Role scope: pre-fill from the file's own cap entry — the snapshot carries
+        // capPaused but no cap values, so one fresh read per open is the smallest honest
+        // source; a broken config degrades to no pre-fill and the write reports the error.
+        session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
+        budgetMode = true;
+        session.held.budget = true;
+        lockedRole = role;
+        const roleCap =
+          loadConfigSafe(session.root).config?.maxDailyCostUsdPerRole?.[
+            baseRoleOf(role)
+          ] ?? 0;
+        session.input = roleCap > 0 ? String(roleCap) : "";
+        session.cursor = session.input.length;
+        session.flashMessage(`edit ${role}'s daily cost cap (USD): Enter to save, Esc to cancel`);
       } else if (currentBudgetFree) {
         session.flashMessage("budget n/a — all models free");
       } else {
@@ -70,23 +109,46 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
       return true;
     }
     if (key.name === "return" && budgetMode) {
-      // Enter in budget mode parses + saves the cap through the shared setter (which
-      // writes tumwater.json atomically; the running orchestrator picks it up on its next
-      // ~2 s poll). An invalid value flashes and STAYS in edit mode so the operator can
-      // fix it; success restores the saved prompt text.
+      // Enter in budget mode parses + saves the cap through the shared setter family: the
+      // team's setDailyBudgetUsd, or a role's setConfigKey dotted `maxDailyCostUsdPerRole
+      // .<role>` write — the same write `tumwater config set` (and the dashboard's role
+      // drawer) make, whose checkDailyBudgetUsd screen and validateConfig role-id check the
+      // team arm shares. Both write tumwater.json atomically; the running orchestrator
+      // picks the change up on its next ~2 s poll. An invalid value flashes and STAYS in
+      // edit mode so the operator can fix it; success restores the saved prompt text.
       const parsed = parseBudgetInput(session.input);
       if (!parsed.ok) {
         session.flashMessage(parsed.error);
       } else {
-        const result = setDailyBudgetUsd(session.root, parsed.value);
+        // The role scope is the one pinned when the editor opened: syncRoster may shrink or
+        // reorder the roster while it is open, and Enter must still write the same role's cap.
+        const role = lockedRole;
+        const result =
+          role !== null
+            ? setConfigKey(
+                session.root,
+                `maxDailyCostUsdPerRole.${baseRoleOf(role)}`,
+                JSON.stringify(parsed.value),
+              )
+            : setDailyBudgetUsd(session.root, parsed.value);
         if (result.ok) {
           exitBudgetMode();
-          currentCapUsd = parsed.value; // the next render's snapshot agrees within ~2 s
-          session.flashMessage(
-            parsed.value === 0
-              ? "budget disabled"
-              : `budget set to ${usdCap(parsed.value)}`,
-          );
+          if (role !== null) {
+            // A role-cap write does not move the team cap the snapshot feeds, so the
+            // currentCapUsd next-render hint stays put.
+            session.flashMessage(
+              parsed.value === 0
+                ? `${role}: cap removed`
+                : `${role}: cap set to ${usdCap(parsed.value)}`,
+            );
+          } else {
+            currentCapUsd = parsed.value; // the next render's snapshot agrees within ~2 s
+            session.flashMessage(
+              parsed.value === 0
+                ? "budget disabled"
+                : `budget set to ${usdCap(parsed.value)}`,
+            );
+          }
         } else {
           session.flashMessage(result.error); // broken config or write failure — stay in edit mode
         }

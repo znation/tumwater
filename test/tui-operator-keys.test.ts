@@ -318,10 +318,10 @@ test("Ctrl+F is inert while the budget editor or the role-prompt editor holds th
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     tui.key(undefined, "b", { ctrl: true }); // enter budget mode
-    assert.match(tui.lastFrame(), /edit daily cost budget/);
+    assert.match(tui.lastFrame(), /edit clean's daily cost cap/);
     tui.key(undefined, "f", { ctrl: true });
     assert.equal(isTeamPaused(repo), false);
-    assert.equal(tui.lines().at(-1), "daily cap $ 50", "still editing the cap, Ctrl+F inert");
+    assert.equal(tui.lines().at(-1), "daily cap $", "still editing the cap, Ctrl+F inert");
 
     tui.key(undefined, "escape"); // leave budget mode
     tui.key(undefined, "r", { ctrl: true }); // enter role-prompt mode for the viewed loop
@@ -345,13 +345,13 @@ test("the per-loop keys are inert outside transcript views, in budget mode, and 
     // Budget-edit mode swallows them too — the prompt line keeps editing the cap.
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     tui.key(undefined, "b", { ctrl: true }); // enter budget mode
-    assert.match(tui.lastFrame(), /edit daily cost budget/);
+    assert.match(tui.lastFrame(), /edit clean's daily cost cap/);
     tui.key(undefined, "p", { ctrl: true });
     tui.key(undefined, "a", { ctrl: true });
     tui.key(undefined, "w", { ctrl: true });
     assert.deepEqual(pausedRoles(repo), []);
     assert.equal(fs.existsSync(wakeRequestPath(repo)), false);
-    assert.equal(tui.lines().at(-1), "daily cap $ 50", "still editing the cap, keys inert");
+    assert.equal(tui.lines().at(-1), "daily cap $", "still editing the cap, keys inert");
 
     // A failed marker write flashes the reason instead of killing the TUI: the paused-roles
     // path is a directory, so writeJsonAtomic's rename throws and the catch flashes it.
@@ -465,10 +465,10 @@ test("Ctrl+V is inert outside the transcript and while the budget editor is open
     // Budget-edit mode swallows it too — the prompt line keeps editing the cap.
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     tui.key(undefined, "b", { ctrl: true }); // enter budget mode
-    assert.match(tui.lastFrame(), /edit daily cost budget/);
+    assert.match(tui.lastFrame(), /edit clean's daily cost cap/);
     tui.key(undefined, "v", { ctrl: true });
     assert.equal(fs.existsSync(resetRequestPath(repo)), false);
-    assert.equal(tui.lines().at(-1), "daily cap $ 50", "still editing the cap, Ctrl+V inert");
+    assert.equal(tui.lines().at(-1), "daily cap $", "still editing the cap, Ctrl+V inert");
   });
 });
 

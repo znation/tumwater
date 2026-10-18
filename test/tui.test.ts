@@ -225,7 +225,7 @@ test("a mode switch settles the recall state: the draft survives, role text neve
     // Budget mode settles the same way: entering mid-recall saves the draft, Esc restores it.
     tui.key(undefined, "up");
     tui.key(undefined, "b", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "daily cap $ 50");
+    assert.equal(tui.lines().at(-1), "daily cap $");
     tui.key(undefined, "escape");
     assert.equal(tui.lines().at(-1), "director › director draft");
     tui.key(undefined, "down");

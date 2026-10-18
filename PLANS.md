@@ -31,33 +31,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `tumwater help role` names both flags and docs/cli.md names them (the cli-doc flag-parity test).
 - `npm test` passes.
 
-### The TUI's Ctrl+B edits the viewed role's daily cap on its Transcript pane, the terminal control for the amber role-cap alert (planned 2026-10-17 by the plan role; independent of the eligible Planned entries — the dashboard per-role-cap entry shares only docs/cli.md with this one, editing the `tumwater role <id>` row while this edits the TUI-keys `Ctrl+B` row, and neither Notes command 3/4, Notes command 4/4 nor the plain-terms series touches src/ui/tui; touches src/ui/tui/tui-editor-budget.ts src/ui/tui/tui-frame.ts docs/cli.md test/tui-keys.test.ts test/tui-frame.test.ts)
-
-**Goal.** `teamAlerts` (src/ui/team-alerts.ts) raises the amber `role-cap` alert with the detail "Raise the cap to resume it", and the TUI paints it as an attention line (src/ui/tui/tui.tsx calls `teamAlerts` and `alertLines`). The terminal has no control for it: `Ctrl+B` edits only the team cap (`tui-editor-budget.ts` writes through `setDailyBudgetUsd`, src/config/config-write.ts), so a role's own `maxDailyCostUsdPerRole.<role>` is settable only from `tumwater config set` — or from the dashboard's role drawer once the in-flight dashboard plan lands. Make `Ctrl+B` edit the cap in scope: the team cap on the Activity view as today, the viewed role's cap while a role's Transcript pane (or its notes view) is up, so the TUI's own alert path ends at a control.
-
-**Approach.**
-- **src/ui/tui/tui-editor-budget.ts** — rename the unused `_ctx` parameter to `ctx` and branch on the pane inside the existing `key.ctrl && key.name === "b"` arm, before the `heldEditorFlash("budget")` guard's effects. One `budgetMode` flag, one `session.held.budget` slot and one saved-draft pair serve both scopes: only where the editor reads its pre-fill and writes differ.
-  - A role view is `ctx.view >= 1 && ctx.view <= ctx.roleIds.length` (the same in-range guard `tui-editor-notes.ts` carries, which also keeps `roleIds[ctx.view - 1]` safe when `syncRoster` shrinks the roster). The role is `ctx.roleIds[ctx.view - 1]!`; otherwise the arm takes the team branch below unchanged.
-  - Refuse the director: `if (role === DIRECTOR_ROLE) { session.flashMessage("the director has no daily cap"); return true; }` (`DIRECTOR_ROLE` from src/roles/roles.ts; the cap exempts the director, the rule `role-view.ts` applies and the dashboard plan words).
-  - Pre-fill from the file at entry: `loadConfigSafe(session.root).config?.maxDailyCostUsdPerRole?.[baseRoleOf(role)] ?? 0` (`loadConfigSafe` from src/config/config.ts; src/roles/loop-ids.ts maps `feature-2` → `feature`, the map's key). Empty for none, exactly as the team branch blanks a disabled cap. The snapshot carries `capPaused` but no cap values, so one fresh read per open is the smallest honest source; a broken config degrades to no pre-fill and the write reports the real error.
-  - On `Enter`, parse through the team branch's own `parseBudgetInput` (src/ui/tui/tui-input.ts), then write `setConfigKey(session.root, `maxDailyCostUsdPerRole.${baseRoleOf(role)}`, JSON.stringify(parsed.value))` — the one dotted-key write `tumwater config set` uses, whose `checkDailyBudgetUsd` screen and `validateConfig` role-id check are the same the dashboard plan relies on. On `!result.ok` flash `result.error` and stay in edit mode (the team branch's broken-config contract); on success `exitBudgetMode()` and flash `` `${role}: cap set to ${usdCap(parsed.value)}` `` for a positive value or `` `${role}: cap removed` `` for `0`.
-  - Leave the team branch byte-for-byte as it is: the `currentCapUsd` snapshot pre-fill, the `currentBudgetFree` all-free guard, the `setDailyBudgetUsd` write, and the `budget set to …` / `budget disabled` wording. The all-free guard stays team-only: a team-wide free verdict is not a per-role fact.
-- **src/ui/tui/tui-frame.ts** — add `["Ctrl+B", "daily cap"]` to the `view.kind === "transcript"` hint row (beside the existing Ctrl+P/Ctrl+W/Ctrl+A/Ctrl+V entries); the Activity branch already names `Ctrl+B daily cap`, and the budget-mode hint wording stays generic ("save the daily cap"), since the shared `budget` mode flag does not carry the scope.
-- **docs/cli.md** — the TUI-keys `Ctrl+B` row becomes "edit the daily cost cap: the team's on Activity, the viewed role's (`maxDailyCostUsdPerRole.<role>`) on its Transcript; empty means no cap".
-
-**Files touched.**
-- Source: src/ui/tui/tui-editor-budget.ts, src/ui/tui/tui-frame.ts.
-- Docs: docs/cli.md.
-- Tests: test/tui-keys.test.ts, test/tui-frame.test.ts.
-
-**Acceptance criteria.**
-- On the Activity view (`ctx.view === 0`) `Ctrl+B` behaves exactly as today: pre-fills the snapshot cap, `Enter` writes `maxDailyCostUsd` through `setDailyBudgetUsd`, Esc restores the draft, and the all-free guard still flashes.
-- With `roleIds = ["feature", "director"]` and the Transcript showing `feature`, `Ctrl+B` pre-fills `maxDailyCostUsdPerRole.feature` when the config sets one and writes that dotted key on `Enter` (leaving `maxDailyCostUsd` and any other role's entry untouched); an empty line or `0` flashes `feature: cap removed`; an invalid value flashes and stays open; Esc restores the draft and writes nothing.
-- On the director's Transcript, `Ctrl+B` opens nothing and flashes `the director has no daily cap`.
-- `Ctrl+B` while another editor holds the prompt line still flashes the busy wording and opens nothing; `Ctrl+T` (`exitAll`) leaves the role-cap editor and restores the draft, as the team editor does.
-- The Transcript hint row the `hintLine` test pins gains `Ctrl+B daily cap`, and the Activity row is unchanged.
-- `npm test` passes.
-
 ### Notes command, part 3/4: Delete the retired notes carriers, the dialect's notes tool and their tests, and update the docs (planned 2026-10-17 by user; requires part 2/4 and OpenCode backend 7/7 landed; design in plans/notes-command.md "Retiring the old carriers"; touches src/pi-extension/role-notes.ts src/agent/mcp/role-notes-server.ts src/agent/role-notes-write.ts src/agent/claude/claude-backend.ts src/agent/claude/claude-args.ts src/agent/opencode/opencode-config.ts src/prompt/dialect.ts docs/how-it-works.md docs/backends.md scripts/smoke-opencode.mjs and their tests)
 
 **Goal.** After part 2/4, nothing attaches the pi notes extension, the notes MCP server or OpenCode's notes server entry. This part deletes that dead code and its tests, and corrects the docs that still describe the old tools.
@@ -1183,6 +1156,33 @@ It waits for OpenCode part 7/7: that part writes docs/backends.md's OpenCode sec
 - **Drawer client:** rendering a role with an instructions override shows its text and an Edit button; clicking Edit shows a textarea prefilled with the override and Discard closes it with no post; clicking Save posts `/api/role-instructions` with the textarea's text, refetches the role, and flashes the reply. A role with no override still shows the row and its Edit control, seeded with an empty textarea (so Save with an empty buffer clears).
 - `npm test` passes.
 
+### The TUI's Ctrl+B edits the viewed role's daily cap on its Transcript pane, the terminal control for the amber role-cap alert (planned 2026-10-17 by the plan role; independent of the eligible Planned entries — the dashboard per-role-cap entry shares only docs/cli.md with this one, editing the `tumwater role <id>` row while this edits the TUI-keys `Ctrl+B` row, and neither Notes command 3/4, Notes command 4/4 nor the plain-terms series touches src/ui/tui; touches src/ui/tui/tui-editor-budget.ts src/ui/tui/tui-frame.ts docs/cli.md test/tui-keys.test.ts test/tui-frame.test.ts) — done 2026-10-17 by the feature role
+
+**Goal.** `teamAlerts` (src/ui/team-alerts.ts) raises the amber `role-cap` alert with the detail "Raise the cap to resume it", and the TUI paints it as an attention line (src/ui/tui/tui.tsx calls `teamAlerts` and `alertLines`). The terminal has no control for it: `Ctrl+B` edits only the team cap (`tui-editor-budget.ts` writes through `setDailyBudgetUsd`, src/config/config-write.ts), so a role's own `maxDailyCostUsdPerRole.<role>` is settable only from `tumwater config set` — or from the dashboard's role drawer once the in-flight dashboard plan lands. Make `Ctrl+B` edit the cap in scope: the team cap on the Activity view as today, the viewed role's cap while a role's Transcript pane (or its notes view) is up, so the TUI's own alert path ends at a control.
+
+**Approach.**
+- **src/ui/tui/tui-editor-budget.ts** — rename the unused `_ctx` parameter to `ctx` and branch on the pane inside the existing `key.ctrl && key.name === "b"` arm, before the `heldEditorFlash("budget")` guard's effects. One `budgetMode` flag, one `session.held.budget` slot and one saved-draft pair serve both scopes: only where the editor reads its pre-fill and writes differ.
+  - A role view is `ctx.view >= 1 && ctx.view <= ctx.roleIds.length` (the same in-range guard `tui-editor-notes.ts` carries, which also keeps `roleIds[ctx.view - 1]` safe when `syncRoster` shrinks the roster). The role is `ctx.roleIds[ctx.view - 1]!`; otherwise the arm takes the team branch below unchanged.
+  - Refuse the director: `if (role === DIRECTOR_ROLE) { session.flashMessage("the director has no daily cap"); return true; }` (`DIRECTOR_ROLE` from src/roles/roles.ts; the cap exempts the director, the rule `role-view.ts` applies and the dashboard plan words).
+  - Pre-fill from the file at entry: `loadConfigSafe(session.root).config?.maxDailyCostUsdPerRole?.[baseRoleOf(role)] ?? 0` (`loadConfigSafe` from src/config/config.ts; src/roles/loop-ids.ts maps `feature-2` → `feature`, the map's key). Empty for none, exactly as the team branch blanks a disabled cap. The snapshot carries `capPaused` but no cap values, so one fresh read per open is the smallest honest source; a broken config degrades to no pre-fill and the write reports the real error.
+  - On `Enter`, parse through the team branch's own `parseBudgetInput` (src/ui/tui/tui-input.ts), then write `setConfigKey(session.root, `maxDailyCostUsdPerRole.${baseRoleOf(role)}`, JSON.stringify(parsed.value))` — the one dotted-key write `tumwater config set` uses, whose `checkDailyBudgetUsd` screen and `validateConfig` role-id check are the same the dashboard plan relies on. On `!result.ok` flash `result.error` and stay in edit mode (the team branch's broken-config contract); on success `exitBudgetMode()` and flash `` `${role}: cap set to ${usdCap(parsed.value)}` `` for a positive value or `` `${role}: cap removed` `` for `0`.
+  - Leave the team branch byte-for-byte as it is: the `currentCapUsd` snapshot pre-fill, the `currentBudgetFree` all-free guard, the `setDailyBudgetUsd` write, and the `budget set to …` / `budget disabled` wording. The all-free guard stays team-only: a team-wide free verdict is not a per-role fact.
+- **src/ui/tui/tui-frame.ts** — add `["Ctrl+B", "daily cap"]` to the `view.kind === "transcript"` hint row (beside the existing Ctrl+P/Ctrl+W/Ctrl+A/Ctrl+V entries); the Activity branch already names `Ctrl+B daily cap`, and the budget-mode hint wording stays generic ("save the daily cap"), since the shared `budget` mode flag does not carry the scope.
+- **docs/cli.md** — the TUI-keys `Ctrl+B` row becomes "edit the daily cost cap: the team's on Activity, the viewed role's (`maxDailyCostUsdPerRole.<role>`) on its Transcript; empty means no cap".
+
+**Files touched.**
+- Source: src/ui/tui/tui-editor-budget.ts, src/ui/tui/tui-frame.ts.
+- Docs: docs/cli.md.
+- Tests: test/tui-keys.test.ts, test/tui-frame.test.ts, test/tui-operator-keys.test.ts, test/tui.test.ts.
+
+**Acceptance criteria.**
+- On the Activity view (`ctx.view === 0`) `Ctrl+B` behaves exactly as today: pre-fills the snapshot cap, `Enter` writes `maxDailyCostUsd` through `setDailyBudgetUsd`, Esc restores the draft, and the all-free guard still flashes.
+- With `roleIds = ["feature", "director"]` and the Transcript showing `feature`, `Ctrl+B` pre-fills `maxDailyCostUsdPerRole.feature` when the config sets one and writes that dotted key on `Enter` (leaving `maxDailyCostUsd` and any other role's entry untouched); an empty line or `0` flashes `feature: cap removed`; an invalid value flashes and stays open; Esc restores the draft and writes nothing.
+- On the director's Transcript, `Ctrl+B` opens nothing and flashes `the director has no daily cap`.
+- `Ctrl+B` while another editor holds the prompt line still flashes the busy wording and opens nothing; `Ctrl+T` (`exitAll`) leaves the role-cap editor and restores the draft, as the team editor does.
+- The Transcript hint row the `hintLine` test pins gains `Ctrl+B daily cap`, and the Activity row is unchanged.
+- `npm test` passes.
+
 ### Notes command, part 4/4: Keep funes and other operator extensions out of team runs: pi skips discovered extensions, Claude Code can use a config dir of the team's own, and doctor says where funes could reach the team (planned 2026-10-17 by user; design in plans/notes-command.md "Keeping funes out of team runs"; touches src/pi/pi-args.ts src/config/config-schema.ts src/config/config-validation.ts src/agent/claude/claude-backend.ts src/agent/claude/claude-env.ts src/agent/claude/claude-account.ts src/doctor/doctor-checks.ts docs/backends.md docs/config.md and their tests) — done 2026-10-17 by the feature role
 
 **Goal.** funes, the transcript-recall tool you use for your own sessions, must never run in or index the team. Today it doesn't run inside team runs, but:
@@ -1230,8 +1230,6 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
   - It warns for a Claude Code team with no config dir, and is ok once one is set.
   - No `funes` on PATH gives no row.
   - A temp HOME with `.pi/agent/mcp.json` naming a server gets that server listed in the pi row.
-
-
 ### OpenCode backend, part 6f/7: OpenCode runs cap tool output at pi's window-scaled limits (planned 2026-10-17 by user; requires part 6e/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 2; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts and their tests) — done 2026-10-17 by the feature role
 
 **Goal.** OpenCode's tool results stop entering the context at up to 51,200 bytes (its `tool_output` default, finding 13) and come in at the same budget as a pi run's. The free model's window is 200K, against the 1M window it replaces, and every turn re-sends what a tool returned.
