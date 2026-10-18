@@ -2,8 +2,8 @@
 /** Building the claude command line for one tick (plans/agent-backends.md "The claude
  * invocation") — pure argv construction plus the prompt-on-stdin pairing, with no subprocess,
  * backend registration, or session ledger. Part 3c supplies the session decision (which
- * `--session-id` or `--resume` to pass) and the notes MCP config path; this module turns those
- * inputs into the invocation's argv.
+ * `--session-id` or `--resume` to pass); this module turns those inputs into the invocation's
+ * argv.
  *
  * The environment is built separately (claude-env.ts) so each concern has one module.
  *
@@ -78,9 +78,6 @@ export interface ClaudeArgOptions {
   resumeSessionId?: string;
   /** API-billing runs pass the remaining daily budget; subscription runs pass none. */
   maxBudgetUsd?: number;
-  /** The role-notes MCP config (part 5/7), as the JSON string claude's `--mcp-config`
-   * accepts. When present, it is passed verbatim. */
-  mcpConfig?: string;
   /** The configured `backends.claude.args` passthrough, appended last. */
   args?: string[];
   /** The tick prompt, returned as stdin rather than as an argv element. */
@@ -122,7 +119,6 @@ export function claudeArgs(opts: ClaudeArgOptions): { args: string[]; stdin: str
     "project",
     "--strict-mcp-config",
   );
-  if (opts.mcpConfig !== undefined) args.push("--mcp-config", opts.mcpConfig);
   args.push("--disable-slash-commands", "--exclude-dynamic-system-prompt-sections");
   if (shouldAppendAgents(opts.cwd)) args.push("--append-system-prompt-file", "AGENTS.md");
   if (opts.maxBudgetUsd !== undefined && opts.maxBudgetUsd > 0) {

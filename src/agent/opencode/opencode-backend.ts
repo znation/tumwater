@@ -16,8 +16,8 @@
  *
  * Registration lives in src/agent/run-agent.ts beside the pi and claude adapters; a test selects
  * opencode by setting `config.agent = "opencode"` on a run. A run carrying a notebook gets the
- * bundled role-notes MCP server under `mcp.servers.tumwater` (part 5b/7) and the notes path in
- * its environment, as the pi and claude adapters do. */
+ * notes path in its environment (the `tumwater-notes` command on PATH reads it), as the pi and
+ * claude adapters do. */
 
 import { spawnSync } from "node:child_process";
 import os from "node:os";

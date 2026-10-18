@@ -144,10 +144,10 @@ export interface PiRunOptions {
    * PiStreamParser) — the review gate collects its reviewer's calls through this to notice a
    * full-suite re-run the harness's green pre-check made redundant. */
   onToolCallStart?: (toolName: string, args: unknown) => void;
-  /** The role notebook this run may write through the bundled `role_notes` tool, exported to
-   * the child as TUMWATER_NOTES_PATH. Only authoring runs set it (LoopPi.runAuthoringPi);
-   * review, merge, and conflict-resolution runs leave it unset, so the tool never registers
-   * there (src/pi-extension/role-notes.ts). Undefined: no notebook. */
+  /** The role notebook this run may write through the `tumwater-notes` command on PATH,
+   * exported to the child as TUMWATER_NOTES_PATH. Only authoring runs set it (LoopPi.
+   * runAuthoringPi); review, merge, and conflict-resolution runs leave it unset, so the
+   * command refuses to write there. Undefined: no notebook. */
   notesPath?: string;
   /** Called at settle when this run read an image its model cannot see (plans/image-input.md
    * "Detecting a blind read") — the caller's hook to log the `image_blind` event with its own

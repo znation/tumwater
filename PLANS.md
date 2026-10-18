@@ -31,37 +31,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `tumwater help role` names both flags and docs/cli.md names them (the cli-doc flag-parity test).
 - `npm test` passes.
 
-### Notes command, part 3/4: Delete the retired notes carriers, the dialect's notes tool and their tests, and update the docs (planned 2026-10-17 by user; requires part 2/4 and OpenCode backend 7/7 landed; design in plans/notes-command.md "Retiring the old carriers"; touches src/pi-extension/role-notes.ts src/agent/mcp/role-notes-server.ts src/agent/role-notes-write.ts src/agent/claude/claude-backend.ts src/agent/claude/claude-args.ts src/agent/opencode/opencode-config.ts src/prompt/dialect.ts docs/how-it-works.md docs/backends.md scripts/smoke-opencode.mjs and their tests)
-
-**Goal.** After part 2/4, nothing attaches the pi notes extension, the notes MCP server or OpenCode's notes server entry. This part deletes that dead code and its tests, and corrects the docs that still describe the old tools.
-
-It waits for OpenCode part 7/7: that part writes docs/backends.md's OpenCode section and scripts/smoke-opencode.mjs, both of which mention the MCP notes path.
-
-**Approach.**
-- **Delete** src/pi-extension/role-notes.ts and src/agent/mcp/role-notes-server.ts, with test/role-notes-mcp.test.ts and the pi-extension half of test/role-notes.test.ts. Keep its `validateRoleNote` cases, moving them into test/notes-cli.test.ts if that reads better.
-- **src/agent/role-notes-write.ts:**
-  - Remove `ROLE_NOTES_PARAMETERS` and `ROLE_NOTES_DESCRIPTION`.
-  - `saveRoleNote`'s "role_notes requires a string…" message becomes command-neutral. It is still used by `tumwater role <id> --notes-file`.
-- **src/agent/claude/claude-backend.ts:** remove `roleNotesMcpConfig`.
-- **src/agent/claude/claude-args.ts:** remove the `mcpConfig` option. `--mcp-config` stays in `HARNESS_CLAUDE_FLAGS`, so a passthrough still cannot add one.
-- **src/agent/opencode/opencode-config.ts:** remove `notesServer` and the `tumwater` server entry, including the rule that an operator server named `tumwater` is replaced rather than disabled; it is disabled like any other now.
-- **src/prompt/dialect.ts:** remove `PromptDialect.notesTool` from the interface and the three dialects.
-- **Docs:**
-  - docs/how-it-works.md: notes are written with `tumwater-notes write` on every backend, not "the bundled `role_notes` tool".
-  - docs/backends.md's OpenCode section: notes use the command, not the MCP server.
-  - scripts/smoke-opencode.mjs: its notes check's comment no longer cites OpenCode's MCP timing.
-
-**Files touched.**
-- Source: src/pi-extension/role-notes.ts (deleted), src/agent/mcp/role-notes-server.ts (deleted), src/agent/role-notes-write.ts, src/agent/claude/claude-backend.ts, src/agent/claude/claude-args.ts, src/agent/opencode/opencode-config.ts, src/prompt/dialect.ts.
-- Docs and scripts: docs/how-it-works.md, docs/backends.md, scripts/smoke-opencode.mjs.
-- Tests: test/role-notes.test.ts, test/role-notes-mcp.test.ts (deleted), test/claude-args.test.ts, test/opencode-config.test.ts, test/prompt-dialect.test.ts.
-
-**Acceptance criteria.**
-- `grep -rn "role_notes\|role-notes-server\|notesServer\|notesTool" src docs scripts` finds nothing but the string tests that assert the old names are gone.
-- `tumwater role <id> --notes-file` and `--clear-notes` behave as before; their existing tests pass unchanged.
-- `--mcp-config` in `backends.claude.args` is still refused.
-- `npm test` passes.
-
 ### The dashboard role drawer sets a role's own quiet-hours window: the control for the `quietHoursPerRole.<role>` hold the drawer already shows (planned 2026-10-17 by the plan role; independent of every eligible Planned entry — the in-flight `--quiet-hours` CLI plan edits src/cli and the `tumwater role <id>` row of docs/cli.md, while this edits src/gui, src/ui/gui and that same docs row (docs/cli.md is the only shared file), the TUI Ctrl+B cap plan edits src/ui/tui plus the TUI-keys `Ctrl+B` row, and Notes command 3/4 edits src/agent, src/pi and src/prompt; the blocked plain-terms series touches none of it; touches src/gui/gui-config-commands.ts src/gui/gui-endpoint-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-drawer.ts src/ui/gui/gui-client-boot.ts docs/cli.md test/gui-endpoints.test.ts test/gui-client-drawer.test.ts test/gui-client-boot.test.ts)
 
 **Goal.** `quietHoursPerRole.<role>` — a role's own daily local-time window during which it starts no new runs (`roleQuietHold`, src/scheduling/quiet-hours.ts) — is the last per-role hold besides the min run interval that the dashboard role drawer renders but cannot change: `renderLoopDrawer` iterates `view.quietHours` and prints each window read-only (src/ui/gui/gui-client-drawer.ts, ~"Quiet hours" row), while the drawer's daily-cap and standing-instructions editors landed. An in-flight plan gives the window a CLI write (`tumwater role <id> --quiet-hours`); this gives it the drawer control the cap and instructions rows already have, so the operator can set or clear the hold where it is shown. The role page (`tumwater role <id>`, src/roles/role-render.ts) already reads the same resolved window, so the write reaches an existing read surface with no role-view change.
@@ -87,8 +56,6 @@ It waits for OpenCode part 7/7: that part writes docs/backends.md's OpenCode sec
 - The drawer renders an always-present `Quiet hours` own-window row with a `Set quiet hours`/`Edit` control for a non-director role even when its payload carries no role-scope entry, keeps the fleet window's read-only `(team window; …)` row, and the editor's input is prefilled with the current own window while open and survives a poll repaint; a director renders no own-window control.
 - `quiet-save` posts `/api/role-quiet-hours` `{ role, window }` and flashes the server's message; `quiet-discard` restores the view and posts nothing.
 - `npm test` passes.
-
-
 
 ### Plain terms code merge, part 11c/11: Rewrite the merge family in the first half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts a–m, plus test/helpers/ test/fakes/ and test/fixtures/)
 
@@ -960,7 +927,7 @@ It waits for OpenCode part 7/7: that part writes docs/backends.md's OpenCode sec
   - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, hidden-alias argv strings (`"tick"`, `"run"`), legacy readers' old names, and serialized names.
   - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
   - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
-- src/pi/ (pi-watchdogs.ts, pi-run-result.ts, pi-stream.ts, pi-args.ts, pi-event-line.ts, pi-bin.ts, pi-backend.ts, command-shape.ts), src/agent/ (run-agent.ts, session-ledger.ts, claude/claude-args.ts, claude/claude-account.ts) and src/pi-extension/ (role-notes.ts, full-output.ts, context-shake.ts, context-budget.ts, bounded-output.ts): the `PiWatchdogs`/run-agent member `tickTimeoutMs` → `runTimeoutMs`; "the tick deadline" → "the run deadline"; and the "agent run" rule, which matters most here because "run" in these modules almost always means one pi or claude process. "pi run" stays.
+- src/pi/ (pi-watchdogs.ts, pi-run-result.ts, pi-stream.ts, pi-args.ts, pi-event-line.ts, pi-bin.ts, pi-backend.ts, command-shape.ts), src/agent/ (run-agent.ts, session-ledger.ts, claude/claude-args.ts, claude/claude-account.ts) and src/pi-extension/ (full-output.ts, context-shake.ts, context-budget.ts, bounded-output.ts): the `PiWatchdogs`/run-agent member `tickTimeoutMs` → `runTimeoutMs`; "the tick deadline" → "the run deadline"; and the "agent run" rule, which matters most here because "run" in these modules almost always means one pi or claude process. "pi run" stays.
 - Sweep everything left: run `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_' src test` and `grep -rnwiE 'ticks?|ticked|ticking' src test`, and convert every run sense, including files a feature added during this series. Known stragglers: test/pi*.test.ts, test/fixtures/repo-fixtures.ts, test/test-runner.ts, test/agent-commit-fold.test.ts (`tickAndMerge` → `runAndMerge`), test/fakes-catalog.test.ts, test/fakes/fake-pi.ts, test/helpers/wait.ts and test/fixtures/pi-events.ts.
 - Delete every remaining `@deprecated` alias this series added (`grep -rn '@deprecated Use' src test`), after migrating their last users.
 - Append a `run` family to the guard in test/retired-names.test.ts, in the `{ family, words, fileWords, allow }` shape. Use `words: ["tick", "ticks", "ticked", "ticking"]`, `fileWords: ["tick", "ticks"]` and `allow: ["nextTick", "processTicksAndRejections"]` (Node's names, with that reason comment). The `tumwater run` command's old code names cannot be words, because "run" is the new word. List them exactly in an optional `identifiers` field: `cmdRun`, `RUN_FLAG_SPECS`, `superviseRun`, `superviseRunCommand`, `spawnRunChild`. Plain terms code team's design anticipates that field; if the guard has no `identifiers` yet, add it, with a guard test that an exact name fails. The node:test mock-clock calls (`t.mock.timers.tick(…)` and test/inbox.test.ts's clock helper) get `// retired-name-ok: node:test mock clock` lines. Legacy readers use the guard's existing exemptions: `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines, and `retired-name-ok:start`/`end` regions. Add no new mechanism.
@@ -988,7 +955,7 @@ It waits for OpenCode part 7/7: that part writes docs/backends.md's OpenCode sec
   - Exports used outside this part's files keep a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, only while another file still names the old name. This part migrates every user, so it should end with none (test/exports.test.ts).
 - src/brief/brief.ts: `readInitialPrompt` → `readBriefText`, `replaceInitialPrompt` → `replaceBriefText`, `INITIAL_PROMPT_MAX_CHARS` → `BRIEF_TEXT_MAX_CHARS`, and the `initialPrompt` parameters of `managedSections`, `readmeTemplate` and `briefTemplate` → `briefText`. src/brief/brief-edit.ts: `editInitialPrompt` → `editBriefText`. Migrate uses in src/init/init.ts, src/inbox/inbox-submit.ts (`DIRECTOR_PROMPT_MAX_CHARS = BRIEF_TEXT_MAX_CHARS`), src/cli/brief-command.ts and src/run/run-prompt.ts.
 - src/prompt/prompt.ts: the `initialPrompt` member of the prompt-input interface, `sharedPreamble(initialPrompt, …)` and `buildDirectorPrompt`'s `initialPrompt` parameter → `briefText`, with every use, including src/run/run-prompt.ts's local `initialPrompt` → `briefText`.
-- notebook: test/role-view.test.ts's local `notebookAt` → `notesAt`. `git mv test/tui-notebook.test.ts test/tui-notes.test.ts`, then check `docs/invariants.md` and DEVELOPMENT.md for a citation of the old name. Convert "notebook" in comments and test titles across src/ and test/ ("the role's notebook" → "the role's notes"; "the notebook view" → "the notes view"): src/ui/tui/tui-keys.ts, tui-pane.ts, src/paths.ts, src/roles/role-view.ts, src/agent/role-notes-write.ts, src/agent/run-agent.ts, src/agent/agent-backend.ts, src/agent/mcp/role-notes-server.ts, src/cli/cli-query-commands.ts and the rest that `grep -rniw 'notebook' src test` lists.
+- notebook: test/role-view.test.ts's local `notebookAt` → `notesAt`. `git mv test/tui-notebook.test.ts test/tui-notes.test.ts`, then check `docs/invariants.md` and DEVELOPMENT.md for a citation of the old name. Convert "notebook" in comments and test titles across src/ and test/ ("the role's notebook" → "the role's notes"; "the notebook view" → "the notes view"): src/ui/tui/tui-keys.ts, tui-pane.ts, src/paths.ts, src/roles/role-view.ts, src/agent/role-notes-write.ts, src/agent/run-agent.ts, src/agent/agent-backend.ts, src/cli/cli-query-commands.ts and the rest that `grep -rniw 'notebook' src test` lists.
 - Finish with `grep -rniE 'notebook|initial[- ]?prompt|INITIAL_PROMPT' src test`, which may list only string literals Plain terms text deliberately kept, quoted titles and commit subjects, and legacy readers.
 
 **Files touched.** src/brief/brief.ts, src/brief/brief-edit.ts, src/init/init.ts, src/inbox/inbox-submit.ts, src/cli/brief-command.ts, src/prompt/prompt.ts, src/run/run-prompt.ts, comment-only files the notebook grep lists (src/ui/tui/, src/agent/, src/paths.ts, src/roles/role-view.ts, src/cli/cli-query-commands.ts, …), test/tui-notes.test.ts (renamed), test/role-view.test.ts, test/brief*.test.ts, test/init*.test.ts, test/prompt*.test.ts.
@@ -1256,6 +1223,38 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
   - It warns for a Claude Code team with no config dir, and is ok once one is set.
   - No `funes` on PATH gives no row.
   - A temp HOME with `.pi/agent/mcp.json` naming a server gets that server listed in the pi row.
+
+
+### Notes command, part 3/4: Delete the retired notes carriers, the dialect's notes tool and their tests, and update the docs (planned 2026-10-17 by user; requires part 2/4 and OpenCode backend 7/7 landed; design in plans/notes-command.md "Retiring the old carriers"; touches the retired role-notes pi extension and MCP server, src/agent/role-notes-write.ts src/agent/claude/claude-args.ts src/agent/opencode/opencode-config.ts src/prompt/dialect.ts docs/how-it-works.md docs/backends.md scripts/smoke-opencode.mjs and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** After part 2/4, nothing attaches the pi notes extension, the notes MCP server or OpenCode's notes server entry. This part deletes that dead code and its tests, and corrects the docs that still describe the old tools.
+
+It waits for OpenCode part 7/7: that part writes docs/backends.md's OpenCode section and scripts/smoke-opencode.mjs, both of which mention the MCP notes path.
+
+**Approach.**
+- **Delete** the retired role-notes pi extension and role-notes MCP server, with the MCP server's tests and the pi-extension half of the role-notes extension's tests. Keep its `validateRoleNote` cases, moving them into test/notes-cli.test.ts if that reads better.
+- **src/agent/role-notes-write.ts:**
+  - Remove `ROLE_NOTES_PARAMETERS` and `ROLE_NOTES_DESCRIPTION`.
+  - `saveRoleNote`'s "role_notes requires a string…" message becomes command-neutral. It is still used by `tumwater role <id> --notes-file`.
+- **src/agent/claude/claude-args.ts:** remove the `mcpConfig` option. `--mcp-config` stays in `HARNESS_CLAUDE_FLAGS`, so a passthrough still cannot add one.
+- **src/agent/opencode/opencode-config.ts:** remove `notesServer` and the `tumwater` server entry, including the rule that an operator server named `tumwater` is replaced rather than disabled; it is disabled like any other now.
+- **src/prompt/dialect.ts:** remove `PromptDialect.notesTool` from the interface and the three dialects.
+- **Docs:**
+  - docs/how-it-works.md: notes are written with `tumwater-notes write` on every backend, not "the bundled `role_notes` tool".
+  - docs/backends.md's OpenCode section: notes use the command, not the MCP server.
+  - scripts/smoke-opencode.mjs: its notes check's comment no longer cites OpenCode's MCP timing.
+
+**Files touched.**
+- Source: the retired role-notes pi extension (deleted), the retired role-notes MCP server (deleted), src/agent/role-notes-write.ts, src/agent/claude/claude-args.ts, src/agent/opencode/opencode-config.ts, src/prompt/dialect.ts.
+- Docs and scripts: docs/how-it-works.md, docs/backends.md, scripts/smoke-opencode.mjs.
+- Tests: the retired role-notes extension and MCP-server tests (deleted), test/claude-args.test.ts, test/opencode-config.test.ts, test/prompt-dialect.test.ts.
+
+**Acceptance criteria.**
+- `grep -rn "role_notes\|role-notes-server\|notesServer\|notesTool" src docs scripts` finds nothing but the string tests that assert the old names are gone.
+- `tumwater role <id> --notes-file` and `--clear-notes` behave as before; their existing tests pass unchanged.
+- `--mcp-config` in `backends.claude.args` is still refused.
+- `npm test` passes.
+
 ### OpenCode backend, part 6f/7: OpenCode runs cap tool output at pi's window-scaled limits (planned 2026-10-17 by user; requires part 6e/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 2; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts and their tests) — done 2026-10-17 by the feature role
 
 **Goal.** OpenCode's tool results stop entering the context at up to 51,200 bytes (its `tool_output` default, finding 13) and come in at the same budget as a pi run's. The free model's window is 200K, against the 1M window it replaces, and every turn re-sends what a tool returned.
@@ -1764,6 +1763,8 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 A follow-up probe found they are missing only from a run's **first** model request (finding 21). OpenCode connects MCP servers in the background and rebuilds the tool list on every request. A note saved at the end of a multi-step run, which is how roles use notes, was written 6 times out of 6.
 
 This part turns notes on. An OpenCode run that carries notes gets tumwater's role-notes MCP server, and its prompt asks for the note the way pi's and claude's prompts do.
+
+**Superseded 2026-10-17 by Notes command part 3/4:** this part's carrier — the `notesServer` option, the `mcp.servers.tumwater` entry, and `notesTool: "tumwater_role_notes"` — was deleted once every backend wrote its note through the `tumwater-notes write` command. The approach and acceptance below record the interim mechanism only.
 
 **Approach.**
 - **src/agent/opencode/opencode-config.ts:**
@@ -7266,16 +7267,16 @@ This part makes a used-up window a reason to move. While a window is rejected, e
 - src/verdict/reply-contract.ts: "When the merge gate runs the project's check, tumwater attests the numbers itself", and "or tumwater treats the whole run as a refusal".
 - Agent-facing tool text. Tool names stay.
   - src/agent/role-notes-write.ts: "Replace this role's notes: the short note the role's own earlier runs left for the next run …", "notes cleared", and "notes saved".
-  - src/agent/mcp/role-notes-server.ts: "no notes path is configured for this run".
-  - src/pi-extension/role-notes.ts: "role notes".
+  - the retired role-notes MCP server: "no notes path is configured for this run".
+  - the retired role-notes pi extension: "role notes".
 - Kept machine strings inside these templates (trailer greps, commit prefixes) come from constants with `// vocabulary-ok:`.
 
 **Files touched.**
-- src: src/prompt/prompt.ts, prompt-followup.ts, gate-prompts.ts, dialect.ts, principles.ts; src/tick/tick-prompt.ts, src/tick/qa-coverage.ts; src/verdict/reply-contract.ts; src/agent/role-notes-write.ts, src/agent/mcp/role-notes-server.ts, src/pi-extension/role-notes.ts.
+- src: src/prompt/prompt.ts, prompt-followup.ts, gate-prompts.ts, dialect.ts, principles.ts; src/tick/tick-prompt.ts, src/tick/qa-coverage.ts; src/verdict/reply-contract.ts; src/agent/role-notes-write.ts, the retired role-notes MCP server, the retired role-notes pi extension.
 - Tests:
   - test/prompt.test.ts, test/prompt-roles.test.ts, test/prompt-followup.test.ts, test/prompt-resume.test.ts, test/prompt-dialect.test.ts.
   - test/gate-prompts.test.ts, test/review-verdict.test.ts, test/reply-contract.test.ts.
-  - test/tick-prompt.test.ts, test/qa-coverage.test.ts, test/role-notes.test.ts, test/role-notes-mcp.test.ts.
+  - test/tick-prompt.test.ts, test/qa-coverage.test.ts, and the retired role-notes tests.
   - test/loop-pi-followups.test.ts, test/revision.test.ts, test/tick-stage.test.ts.
 
 **Acceptance criteria.**
@@ -8346,7 +8347,7 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
   - run-agent.ts: "stopped by tumwater shutdown", "killed as hung: no agent progress for over …", and "the agent exited N".
   - claude/claude-args.ts: "repeats a flag tumwater sets".
   - The backend ids (`"pi"`) in agent-backend.ts and image-input.ts are values and stay.
-  - role-notes-write.ts and mcp/role-notes-server.ts are agent-facing; part 19/19 converts them.
+  - role-notes-write.ts is agent-facing; part 19/19 converts it.
 - Add the header to each module whose prose changed, and to modules that have no flagged literal at all. A module whose only hits are event sources or state values that later series rename stays unheaded.
 
 **Files touched.**

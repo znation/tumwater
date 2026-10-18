@@ -13,8 +13,6 @@
  */
 
 export interface PromptDialect {
-  /** The name of the notebook tool as the model must call it. */
-  notesTool: string;
   /** The phrase naming the read tool's range parameters in the reading-budget rule. */
   readRange: string;
   /** The oversized-output rule's bullet body (the text after "- "). */
@@ -25,34 +23,29 @@ export interface PromptDialect {
   backendRules?: string[];
 }
 
-/** pi's dialect: the identity of the prompts before agent backends — its `role_notes` tool,
- * its `read` tool's `offset`/`limit`, and its bundled head+tail marker. */
+/** pi's dialect: the identity of the prompts before agent backends — its `read` tool's
+ * `offset`/`limit`, and its bundled head+tail marker. */
 export const PI_DIALECT: PromptDialect = {
-  notesTool: "role_notes",
   readRange: "the read tool's offset/limit (or `sed -n 'A,Bp'`)",
   oversizedOutput: `Oversized tool results come back as head+tail around a marker that names the omitted amount
   and where the full output lives — follow the pointer (re-read with \`offset\`/\`limit\`, or open
   the full-output file path) instead of retrying the same read.`,
 };
 
-/** claude's dialect: the `role_notes` MCP server registers as `mcp__tumwater__role_notes`, the
- * Read tool takes `offset`/`limit`, and Claude Code truncates oversized Bash output and spills
- * large results to a file it names (so it needs no head+tail marker). */
+/** claude's dialect: the Read tool takes `offset`/`limit`, and Claude Code truncates
+ * oversized Bash output and spills large results to a file it names (so it needs no head+tail
+ * marker). */
 export const CLAUDE_DIALECT: PromptDialect = {
-  notesTool: "mcp__tumwater__role_notes",
   readRange: "the Read tool's offset/limit (or `sed -n 'A,Bp'`)",
   oversizedOutput: `Oversized tool results are truncated and saved to a file the tool names — read that file
   in ranges (the Read tool's offset/limit) instead of retrying the same read.`,
 };
 
-/** opencode's dialect (plans/opencode-backend.md §5): role notes ride the role-notes MCP
- * server, which registers as `tumwater_role_notes` (part 5b/7); its read tool takes
- * `offset`/`limit`, its oversized shell output spills to a named file (finding 17), and two
- * backend rules tell the model how OpenCode's shell tool works: a 2-minute default timeout
- * that `timeout` overrides, and no `background` (a backgrounded command dies when the run
- * ends, finding 18). */
+/** opencode's dialect (plans/opencode-backend.md §5): its read tool takes `offset`/`limit`,
+ * its oversized shell output spills to a named file (finding 17), and two backend rules tell
+ * the model how OpenCode's shell tool works: a 2-minute default timeout that `timeout`
+ * overrides, and no `background` (a backgrounded command dies when the run ends, finding 18). */
 export const OPENCODE_DIALECT: PromptDialect = {
-  notesTool: "tumwater_role_notes",
   readRange: "the read tool's offset/limit (or `sed -n 'A,Bp'`)",
   oversizedOutput: `Oversized shell output keeps only its last lines, followed by a note naming the file with
   the full output — read that file in ranges (the read tool's offset/limit) instead of

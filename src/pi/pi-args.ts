@@ -14,8 +14,7 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
  * threshold, strip-thinking drops the model's replayed thinking from each request on a
  * small-window chat-completions model, and trim-system-prompt drops pi's docs section from the
  * system prompt on a window of at most 128k. Notes ride the `tumwater-notes` command on
- * every backend from part 2/4 on, so the role-notes extension is no longer bundled (part 3/4
- * deletes src/pi-extension/role-notes.ts). */
+ * every backend from part 2/4 on, so the role-notes extension is no longer bundled. */
 export function bundledExtensionPaths(): string[] {
   return [
     "bounded-output.js",

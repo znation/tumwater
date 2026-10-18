@@ -409,7 +409,7 @@ export class LoopPi {
   /** Run pi for this loop's authoring run in worktree `wt`: the shared per-loop wiring and
    * the transient-failure retry, with usage folded into the tick's counters. It is the ONE
    * entry point that carries the role notebook (PLANS.md "Role notebook": TUMWATER_NOTES_PATH,
-   * read by the bundled role-notes extension): every other run (runRolePi's merge/conflict path,
+   * read by the `tumwater-notes` command): every other run (runRolePi's merge/conflict path,
    * runMergePi, runGatePi) leaves it unset, and the director is excluded because its work is
    * the operator's prompt, not a recurring search.
    *
@@ -432,9 +432,8 @@ export class LoopPi {
 
   /** The notebook path an authoring run carries: the role's note file, or undefined for the
    * director, which has no notebook. The SUMMARY/stage-fix follow-ups share the authoring
-   * tick's session and must carry the same notes wiring — claude re-passes `--mcp-config` on
-   * every invocation because it keeps no flags across `--continue`, and pi reads
-   * TUMWATER_NOTES_PATH from the environment. */
+   * tick's session and must carry the same notes wiring — every invocation reads the path
+   * from TUMWATER_NOTES_PATH in the environment, so the follow-up re-passes the same path. */
   private authorNotesPath(): string | undefined {
     return this.host.role === DIRECTOR_ROLE
       ? undefined

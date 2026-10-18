@@ -21,7 +21,6 @@ test("claudeArgs builds the design's argv in order and pairs the prompt with std
     thinking: "off",
     sessionId: "11111111-1111-4111-8111-111111111111",
     maxBudgetUsd: 3.5,
-    mcpConfig: JSON.stringify({ mcpServers: { tumwater: { command: "node", args: ["/x/role-notes-server.js"] } } }),
     args: ["--no-session-persistence"],
     prompt: "do the thing",
   });
@@ -43,8 +42,6 @@ test("claudeArgs builds the design's argv in order and pairs the prompt with std
     "--setting-sources",
     "project",
     "--strict-mcp-config",
-    "--mcp-config",
-    '{"mcpServers":{"tumwater":{"command":"node","args":["/x/role-notes-server.js"]}}}',
     "--disable-slash-commands",
     "--exclude-dynamic-system-prompt-sections",
     "--append-system-prompt-file",
@@ -81,9 +78,8 @@ test("claudeArgs appends AGENTS.md only when present and CLAUDE.md is not", () =
   assert.ok(!claudeArgs(opts({ cwd: tmpdir() })).args.includes("--append-system-prompt-file"));
 });
 
-test("claudeArgs passes no --mcp-config and no --max-budget-usd by default", () => {
+test("claudeArgs passes no --max-budget-usd by default", () => {
   const { args } = claudeArgs(opts());
-  assert.ok(!args.includes("--mcp-config"));
   assert.ok(!args.includes("--max-budget-usd"));
   assert.ok(!claudeArgs(opts({ maxBudgetUsd: 0 })).args.includes("--max-budget-usd"));
 });
@@ -111,4 +107,7 @@ test("claudeArgs rejects a passthrough arg that repeats a flag tumwater sets", (
   // and claude is last-wins, so it would silently replace the harness's AGENTS.md.
   assert.throws(() => claudeArgs(opts({ args: ["--append-system-prompt-file", "/evil"] })), /repeats a flag tumwater sets/);
   assert.throws(() => claudeArgs(opts({ args: ["--exclude-dynamic-system-prompt-sections"] })), /repeats a flag tumwater sets/);
+  // `--mcp-config` stays reserved even though claudeArgs no longer emits it (part 3/4): a
+  // passthrough must not smuggle an MCP server into a run that --strict-mcp-config keeps out.
+  assert.throws(() => claudeArgs(opts({ args: ["--mcp-config", "/evil"] })), /repeats a flag tumwater sets/);
 });

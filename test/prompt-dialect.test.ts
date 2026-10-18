@@ -66,21 +66,16 @@ test("every backend's run prompt names the tumwater-notes command, and none name
 
 test("the notes instruction is backend-independent and names only the command", () => {
   // Part 2/4: the one carrier is the tumwater-notes command, so roleNotesInstruction takes no
-  // dialect and never names a per-backend tool. The dialect's notesTool field survives until
-  // part 3/4 deletes it.
+  // dialect and never names a per-backend tool.
   const instruction = roleNotesInstruction();
   assert.match(instruction, /save the full replacement\nnote \(at most 4 KB\) by running:/);
   assert.match(instruction, /tumwater-notes write <<'TUMWATER_NOTES'/);
   assert.match(instruction, /^TUMWATER_NOTES$/m, "the heredoc delimiter closes the instruction");
   assert.ok(!instruction.includes("role_notes"));
-  assert.equal(CLAUDE_DIALECT.notesTool, "mcp__tumwater__role_notes");
 });
 
-test("opencode's dialect names the MCP notes tool and carries both backend rules", () => {
+test("opencode's dialect carries both backend rules", () => {
   assert.equal(dialectFor("opencode"), OPENCODE_DIALECT);
-  // Part 5b/7 turned the role-notes MCP server on; the notesTool field survives until part 3/4
-  // deletes it. The prompt, though, names the tumwater-notes command (part 2/4).
-  assert.equal(OPENCODE_DIALECT.notesTool, "tumwater_role_notes");
   assert.match(roleNotesInstruction(), /tumwater-notes write <<'TUMWATER_NOTES'/, "the instruction names the command");
 
   const role = roleById("feature")!;

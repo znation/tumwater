@@ -283,9 +283,9 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  *   supervisor half. test/helpers/cli-harness.ts also drops it from every CLI child it starts.
  * - SUPERVISOR_PID_ENV carries the supervisor pid a supervised run was handed, so an inherited
  *   mark would make a spawned run's watch compare against a stale pid and stop early.
- * - TUMWATER_NOTES_PATH makes the bundled role-notes extension register the `role_notes` tool,
- *   so a non-authoring run that inherited a tick's notebook path would carry a tool the run's
- *   own contract says it must not have (test/loop-pi.test.ts pins the empty env line).
+ * - TUMWATER_NOTES_PATH names the role's notes file the `tumwater-notes` command reads, so a
+ *   non-authoring run that inherited a tick's notebook path would point that command at a file
+ *   the run's own contract says it must not touch (test/loop-pi.test.ts pins the empty env line).
  * - TUMWATER_RUN names the outer run a nested run's stamp is appended to (run-marker.ts), so an
  *   inherited mark made a spawned run's sweep read the suite's own process tree.
  * - DASHBOARD_CHILD_ENV makes reexecSelf exit its restart code instead of supervising, so an

@@ -25,7 +25,7 @@ import { pathTokens } from "./stage-check.js";
 import { readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote } from "../text/format.js";
-import { ROLE_NOTES_MAX_BYTES } from "../pi-extension/role-notes.js";
+import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
 import { renderBacklogIndexBlock, renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 import { renderRecordsOverflowBlock } from "../backlog/records-overflow.js";
@@ -69,7 +69,7 @@ function missingEntryPaths(root: string, file: string, range: { start: number; e
  * left for buildTickPrompt to omit). The degradation is deliberate: a torn or absent
  * runtime-state file must never fail a tick.
  *
- * The note is bounded on read as well as on write: the role_notes tool rejects text over
+ * The note is bounded on read as well as on write: the write path rejects text over
  * ROLE_NOTES_MAX_BYTES, but the file lives in hand-editable runtime state, so an oversized
  * note (an old build, a manual edit) would otherwise ride into every one of this role's
  * prefill-heavy tick prompts uncapped. The same defensive backstop readPrinciples and the

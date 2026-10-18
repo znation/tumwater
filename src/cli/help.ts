@@ -323,7 +323,7 @@ Usage:
   tumwater role <id> --notes-file <path>
                                    Replace that role's notes from a file ("-" reads stdin;
                                    4 KB cap); a run in progress at that moment may still
-                                   overwrite it through its own role_notes call
+                                   overwrite it through its own tumwater-notes call
   tumwater role <id> --clear-instructions
                                    Clear that role's instructions override
   tumwater role <id> --instructions-file <path>

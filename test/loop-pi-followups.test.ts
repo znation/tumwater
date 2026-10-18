@@ -82,10 +82,10 @@ test("requestSummary resumes the tick's session and folds its usage", async () =
 });
 
 test("requestSummary carries the role notebook path, like the authoring run", async () => {
-  // plans/agent-backends.md, part 5/7: claude keeps no flags across --continue, so the
-  // SUMMARY/stage-fix follow-ups must re-pass --mcp-config; the shared wiring does that from
-  // PiRunOptions.notesPath, which the follow-up now fills exactly as runAuthoringPi does (pi
-  // reaches the same file through TUMWATER_NOTES_PATH). The director keeps no notebook.
+  // The SUMMARY/stage-fix follow-ups continue the authoring session, so they must run with
+  // the same notes wiring: the shared wiring fills PiRunOptions.notesPath exactly as
+  // runAuthoringPi does, and the `tumwater-notes` command reaches the same file through
+  // TUMWATER_NOTES_PATH. The director keeps no notebook.
   const root = tmpdir();
   const envFile = path.join(root, "notes-env");
   await withPi(

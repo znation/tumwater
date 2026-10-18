@@ -305,7 +305,7 @@ claude -p --output-format stream-json --verbose
   --permission-mode bypassPermissions          # parity with pi, which has no permission system
   --tools Bash,Read,Edit,Write,Glob,Grep       # no Task (sub-agents), Web*, Cron, Monitor, Workflow…
   --setting-sources project                    # repo CLAUDE.md + .claude/settings.json; never ~/.claude
-  --strict-mcp-config [--mcp-config <tumwater MCP json>]   # §6: role_notes
+  --strict-mcp-config                          # §6: old role-notes MCP server is gone; no MCP server reaches a claude run
   --disable-slash-commands                     # no skills
   --exclude-dynamic-system-prompt-sections     # cwd/git status move out of the system prompt → one cache prefix across pool slots
   [--append-system-prompt-file AGENTS.md]      # only when the worktree has AGENTS.md and no CLAUDE.md (finding 1)
@@ -343,7 +343,7 @@ Environment, layered on today's (`TUMWATER_RUN`, `NODE_OPTIONS` preload, noteboo
 | context-budget (50/70/85% notes) | Dropped for claude in this series. Possible later via a `--settings` PostToolUse hook |
 | strip-thinking (no replayed thinking at a window of at most 256k; added 2026-10-17) | Not needed: Claude Code manages its own thinking blocks, and the Anthropic API requires them back during tool use |
 | trim-system-prompt (pi's docs section dropped at a window of at most 128k; added 2026-10-17) | Not needed: it edits pi's own system prompt, and a claude seam never gets the compact run prompt |
-| role-notes (`role_notes` tool) | **A tiny stdio MCP server shipped in dist** (`src/agent/mcp/role-notes-server.ts`) passed via `--mcp-config` only when `TUMWATER_NOTES_PATH` is set; same 4 KB cap and atomic write, sharing `writeRoleNote` (src/agent/role-notes-write.ts). Tool name `mcp__tumwater__role_notes`. MCP rather than "edit this file": the notebook lives under `.tumwater/`, which the prompts forbid touching, and every future agent CLI speaks MCP. **Superseded 2026-10-17** by one `tumwater-notes` shell command for every backend (plans/notes-command.md) |
+| role-notes (`role_notes` tool) | **A tiny stdio MCP server shipped in dist** passed via `--mcp-config` only when `TUMWATER_NOTES_PATH` is set; same 4 KB cap and atomic write, sharing `writeRoleNote` (src/agent/role-notes-write.ts). Tool name `mcp__tumwater__role_notes`. MCP rather than "edit this file": the notebook lives under `.tumwater/`, which the prompts forbid touching, and every future agent CLI speaks MCP. **Superseded 2026-10-17** by one `tumwater-notes` shell command for every backend (plans/notes-command.md) |
 
 `PromptDialect` (src/prompt/dialect.ts) carries the only backend-specific prompt text:
 

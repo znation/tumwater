@@ -255,16 +255,14 @@ as free until an observed bill marks it priced.
 as `opencode-go/models` with `OPENCODE_API_KEY`, so Go needs no tumwater change.
 
 **What tumwater turns off, and why `read` must stay allowed.** The injected config disables every
-operator MCP server (team runs carry only tumwater's own role-notes server) and denies `execute`,
+operator MCP server (team runs ship no MCP server of tumwater's own) and denies `execute`,
 `subagent`, `webfetch`, `websearch`, `question` and `skill`. It never denies `read` — denying it
 trips the free-tier gate — and `shell`, `glob`, `grep` and `edit` stay allowed for the work.
 tumwater never sets `OPENCODE_CLIENT` (no impersonation).
 
-**Role notes ride the role-notes MCP server**, as on claude; the tool is `role_notes`. A run's
-first model request cannot see MCP tools (upstream issues [51812](https://github.com/sst/opencode/issues/51812)
-and [56240](https://github.com/sst/opencode/issues/56240)), but notes are written at a run's end,
-by which time the tool is listed — 6 of 6 end-of-run notes were saved live. A run that ends after
-a single model request (a role that finds nothing to do) loses its note.
+**Role notes ride the `tumwater-notes` command on PATH**, as on every backend, not the MCP server.
+The injected config adds no MCP server for notes; a run writes its note by running
+`tumwater-notes write` in its shell before it ends.
 
 **XDG is left alone.** `XDG_CONFIG_HOME` and its siblings are not redirected: OpenCode's shell-tool
 children inherit the environment, and pointing XDG at a private copy would strip the shell's own

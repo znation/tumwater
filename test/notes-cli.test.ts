@@ -10,6 +10,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { withThrowingFs } from "./helpers/fs-faults.js";
+import { ROLE_NOTES_MAX_BYTES, saveRoleNote, validateRoleNote, writeRoleNote } from "../src/agent/role-notes-write.js";
 
 // From dist/test/ this is dist/src/notes-cli.js — the compiled file package.json's second bin.
 const cli = fileURLToPath(new URL("../src/notes-cli.js", import.meta.url));
@@ -109,4 +111,87 @@ test("an unknown subcommand exits 2 with usage", () => {
   const res = run(["frobnicate"], path.join(tmpdir(), "feature.md"));
   assert.equal(res.status, 2);
   assert.match(res.stderr, /usage: tumwater-notes/);
+});
+
+// The shared validate-and-atomic-write helpers (src/agent/role-notes-write.ts) are the same
+// code the command runs, so their pure contracts are pinned here beside the CLI tests.
+
+test("validateRoleNote accepts the 4,096-byte boundary and rejects one byte past it", () => {
+  assert.equal(validateRoleNote(""), null, "empty text is valid — it clears the note");
+  assert.equal(validateRoleNote("a".repeat(ROLE_NOTES_MAX_BYTES)), null, "exactly at the limit");
+  const error = validateRoleNote("a".repeat(ROLE_NOTES_MAX_BYTES + 1));
+  assert.ok(error, "one byte past the limit is rejected");
+  assert.match(error, /shorten it to at most 4096 bytes/);
+});
+
+test("validateRoleNote counts UTF-8 bytes, not characters", () => {
+  // 2,048 characters of "é" are 4,096 bytes: valid. 2,049 are 4,098: rejected.
+  assert.equal(validateRoleNote("é".repeat(2048)), null);
+  assert.match(validateRoleNote("é".repeat(2049)) ?? "", /shorten it to at most 4096 bytes/);
+});
+
+test("saveRoleNote rejects a non-string note with a command-neutral message", () => {
+  const dir = tmpdir();
+  const notes = path.join(dir, "state", "notes", "feature.md");
+  assert.throws(
+    () => saveRoleNote(notes, 42),
+    /a note must be a string, not number/,
+    "a malformed value is refused rather than coerced to ''",
+  );
+  assert.equal(fs.existsSync(notes), false, "the refusal writes nothing");
+});
+
+test("writeRoleNote writes the text and empty text clears the file", () => {
+  const dir = tmpdir();
+  const notes = path.join(dir, "state", "notes", "feature.md");
+  writeRoleNote(notes, "fact one\nfact two");
+  assert.equal(fs.readFileSync(notes, "utf8"), "fact one\nfact two");
+  writeRoleNote(notes, "");
+  assert.equal(fs.readFileSync(notes, "utf8"), "");
+});
+
+test("writeRoleNote removes its temp file when the write cannot complete", () => {
+  // A failed write must not litter the notes directory: the temp is written beside the target,
+  // and the rename fails when the target path is occupied by a directory (ENOTDIR/EISDIR).
+  // Nothing prunes .tumwater/state/notes/, so a leaked temp would survive every tick.
+  const dir = tmpdir();
+  const notesDir = path.join(dir, "notes");
+  const notes = path.join(notesDir, "feature.md");
+  fs.mkdirSync(notes, { recursive: true }); // the target path is a directory, so the rename fails
+  assert.throws(() => writeRoleNote(notes, "cannot land"), "the failure is rethrown, not swallowed");
+  assert.deepEqual(
+    fs.readdirSync(notesDir).filter((f) => f.includes(".tmp-")),
+    [],
+    "a failed write leaves no temp remnant behind",
+  );
+});
+
+test("writeRoleNote rethrows the original failure when the temp cleanup itself fails", () => {
+  // The best-effort rmSync can itself fail (a vanished or unremovable temp). That must not mask
+  // the write/rename failure the caller needs, so the original error — with its errno code —
+  // propagates instead of the cleanup error.
+  const dir = tmpdir();
+  const notesDir = path.join(dir, "notes");
+  const notes = path.join(notesDir, "feature.md");
+  fs.mkdirSync(notes, { recursive: true }); // the target path is a directory, so the rename fails
+  let original: NodeJS.ErrnoException | undefined;
+  try {
+    writeRoleNote(notes, "cannot land");
+  } catch (err) {
+    original = err as NodeJS.ErrnoException;
+  }
+  assert.ok(original?.code, "precondition: the rename onto a directory fails with an errno code");
+
+  withThrowingFs("rmSync", new Error("cleanup unavailable"), () => {
+    assert.throws(
+      () => writeRoleNote(notes, "cannot land"),
+      (err: unknown) => {
+        const e = err as NodeJS.ErrnoException;
+        assert.equal(e.code, original!.code, "the original fs error propagates, not the cleanup one");
+        assert.notEqual(e.message, "cleanup unavailable");
+        return true;
+      },
+      "a failing temp cleanup must not mask the write failure",
+    );
+  });
 });

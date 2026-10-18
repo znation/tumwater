@@ -249,9 +249,8 @@ test/fixtures/opencode-captures/ (README.md there maps each file to its finding)
       - OpenCode listed its tools about 0.4 s after launch.
       - The model's first request still lacked them, 3 of 3.
       - After a first step of `sleep 3`, the second request had them, 3 of 3.
-    - **The role-notes pattern works.** With tumwater's real role-notes server, a run that reads
-      and runs a command and then saves a note before ending wrote its note 6 of 6 times
-      (`tumwater_role_notes`, "notes saved").
+    - **End-of-run notes work.** A run that reads and runs a command and then saves its note
+      before ending wrote it 6 of 6 times ("notes saved").
     - **The earlier 5-of-6 miss was the worst case:** those probes asked for the note in the run's
       first step.
     - **Upstream workarounds, not used here:** hold the first prompt with a plugin until the
@@ -350,9 +349,9 @@ files; only managed config wins over it.
   ],
   "instructions": ["CLAUDE.md"],   // only when the worktree has CLAUDE.md and no AGENTS.md (finding 14)
   "mcp": { "servers": {
-    "tumwater": {                  // only when the run carries notes (§5)
+    "tumwater": {                  // only when the run carried notes (§5); retired in Notes part 3/4
       "type": "local",
-      "command": ["<node running tumwater>", "<dist>/src/agent/mcp/role-notes-server.js"],
+      "command": [node, "<dist role-notes-server.js>"],   // deleted in Notes command part 3/4
       "codemode": false,           // a direct tool: Code Mode (`execute`) is denied
       "environment": { "TUMWATER_NOTES_PATH": "<the role's notes file>" }
     },
@@ -423,9 +422,10 @@ claude's is.
 - **Superseded 2026-10-17 by plans/notes-command.md:** every backend, OpenCode included, is moving
   to one `tumwater-notes` shell command ("Notes command, part i/4" in PLANS.md). Once its part 2
   lands, OpenCode runs carry no notes MCP server, and its part 3 deletes the MCP notes code below.
-  The rest of this section records the MCP path as it landed in part 5b.
-- **Notes ride the role-notes MCP server, as on claude** (the `mcp.servers.tumwater` entry in
-  §3). The tool is `tumwater_role_notes`.
+  Notes command part 3/4 has since deleted that code; the rest of this section records the
+  retired MCP path as it landed in part 5b.
+- **Notes rode the role-notes MCP server, as on claude** (the `mcp.servers.tumwater` entry in
+  §3). The tool was `tumwater_role_notes`.
   - **The first-request gap is harmless here.** A run's first model request lacks MCP tools
     (finding 21), but the notes instruction asks for the note "before you end". By then the run
     has taken several steps and the tool is listed: 6 of 6 end-of-run notes were saved.
@@ -438,7 +438,7 @@ claude's is.
   - **The smoke check tests the real pattern:** a multi-step run that saves a note at the end
     (part 7).
 - **The `OPENCODE_DIALECT`:**
-  - `notesTool`: `tumwater_role_notes`.
+  - `notesTool` (deleted in Notes command part 3/4): `tumwater_role_notes`.
   - `readRange`: "the read tool's offset/limit (or `sed -n 'A,Bp'`)".
   - `oversizedOutput`: "Oversized shell output keeps only its last lines, followed by a note
     naming the file with the full output — read that file in ranges (the read tool's

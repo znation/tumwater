@@ -206,10 +206,8 @@ try {
   }
   check("no marked process survives the SIGTERM", !alive, `pid ${pid} still alive`);
 
-  // 4. The real usage pattern (finding 21): a run that reads a file, runs a command, and then
-  //    saves a role note before it ends — end-of-run notes are written after OpenCode's
-  //    first-request MCP gap has passed, so the note must land in the notes file. From part
-  //    2/4 the run writes it through the `tumwater-notes` command on PATH (no MCP server).
+  // 4. The real usage pattern: a run that reads a file, runs a command, and then saves a role
+  //    note before it ends, through the `tumwater-notes` command on PATH (no MCP server).
   const notesPath = path.join(ROOT, "role-notes.md");
   fs.writeFileSync(path.join(CWD, "file.txt"), "x\n");
   const noted = await runOpencode({

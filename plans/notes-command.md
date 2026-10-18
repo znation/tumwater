@@ -22,8 +22,8 @@ TUMWATER_NOTES
 
 | Backend | Carrier today | Where |
 | --- | --- | --- |
-| pi | the `role_notes` tool from a bundled pi extension | src/pi-extension/role-notes.ts, loaded by src/pi/pi-args.ts |
-| Claude Code | the `mcp__tumwater__role_notes` tool from tumwater's stdio MCP server | src/agent/mcp/role-notes-server.ts, attached by src/agent/claude/claude-backend.ts (`--mcp-config`) |
+| pi | the `role_notes` tool from a bundled pi extension | the bundled role-notes pi extension, loaded by src/pi/pi-args.ts |
+| Claude Code | the `mcp__tumwater__role_notes` tool from tumwater's stdio MCP server | the role-notes MCP server, attached by src/agent/claude/claude-backend.ts (`--mcp-config`) |
 | OpenCode | `tumwater_role_notes` from the same MCP server (OpenCode part 5b/7) | src/agent/opencode/opencode-config.ts (`mcp.servers.tumwater`) |
 
 - All three share one validator and writer (src/agent/role-notes-write.ts).
@@ -164,8 +164,8 @@ opencode-backend.ts).
 
 Once every backend's prompt uses the command (part 2), remove:
 
-- src/pi-extension/role-notes.ts, and its entry in `bundledExtensionPaths`;
-- src/agent/mcp/role-notes-server.ts, and claude-backend.ts's `roleNotesMcpConfig` /
+- the bundled role-notes pi extension, and its entry in `bundledExtensionPaths`;
+- the role-notes MCP server, and claude-backend.ts's `roleNotesMcpConfig` /
   `--mcp-config` for notes. `--strict-mcp-config` stays, so no MCP server reaches a Claude Code
   run, and `--mcp-config` stays reserved in `HARNESS_CLAUDE_FLAGS`;
 - opencode-config.ts's `notesServer` and its `mcp.servers.tumwater` entry. Disabling the
@@ -173,7 +173,7 @@ Once every backend's prompt uses the command (part 2), remove:
 - `PromptDialect.notesTool`, and the tool-schema constants in role-notes-write.ts
   (`ROLE_NOTES_PARAMETERS`, `ROLE_NOTES_DESCRIPTION`). `saveRoleNote`'s "role_notes requires…"
   wording becomes command-neutral;
-- their tests: test/role-notes.test.ts (the pi extension half) and test/role-notes-mcp.test.ts.
+- their tests: the role-notes extension test (the pi extension half) and the role-notes MCP-server test.
 
 Docs to update:
 
