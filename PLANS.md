@@ -5,6 +5,34 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### `tumwater revert <sha>` undoes one merged change on main, under the primary-worktree lock (planned 2026-10-18 by the plan role; independent of every eligible Planned entry — the merge-queue entry edits src/merge, src/status and src/ui/gui/gui-client-pending.ts, the drawer entry edits src/gui, src/ui/gui and src/ui/gui/gui-client-loops.ts, and the blocked plain-terms series reaches src/operator and src/cli only in far-behind parts; meeting docs/cli.md's Steer-the-project row, a rebase; touches src/operator/revert.ts src/operator/operator-commands.ts src/cli.ts src/cli/help.ts docs/cli.md test/operator-revert.test.ts test/cli-operators.test.ts)
+
+**Goal.** When a merged change turns out bad — most visibly by reddening main, where the red-main gate holds every code loop but `bugfix` and pages the operator through `main_red_hold` — recovery is either the `bugfix` healer patching forward or running `git revert` by hand in the primary checkout. The harness owns every git operation (PRINCIPLES.md) and already commits operator edits on main under the primary-worktree lock (`commitOperatorBacklogEdit`, src/backlog/backlog-commit.ts). Add the matching operator command: `tumwater revert <sha>` reverts one commit already on the base branch and commits the inverse on main as `tumwater(operator): Revert <short sha>`, fail-closed — off the base branch, an unknown ref, a ref not on main, or a revert that conflicts writes no commit and restores the checkout.
+
+**Approach.**
+- **src/operator/revert.ts** (new, beside retire.ts) — `export async function revertMergedCommit(root: string, ref: string): Promise<{ ok: true; headSha: string } | { ok: false; error: string }>`, mirroring `commitOperatorBacklogEdit`'s lock-and-branch discipline: yield once (`setImmediate`) then run the body inside `withStateLockAsync(primaryWorktreeLockPath(root), …)` (src/concurrency/lock.ts, src/paths.ts). Under the lock:
+  - `const primary = await currentBranch(root)`; when it is null or `targetBranch(loadConfigSafe(root).config?.baseBranch, primary) !== primary`, return `{ ok: false, error: "the primary checkout is not on " + <base> + " — run from a checkout of it" }`, writing nothing.
+  - `const full = await gitTry(root, "rev-parse", "--verify", ref + "^{commit}")`; null → `{ ok: false, error: "no such commit: " + ref }`.
+  - `const head = await headOf(root, "HEAD")`; `!(await isMergedInto(root, full, primary))` → `{ ok: false, error: shortSha(full) + " is not on " + primary }` (src/git/git.ts, src/text/format.ts).
+  - `await gitTry(root, "revert", "--no-commit", full)`; null → best-effort `await gitTry(root, "revert", "--abort")`, then `{ ok: false, error: "the revert did not apply (a conflict or local changes); nothing was committed" }`.
+  - `await gitTry(root, ...COMMIT_IDENT, "commit", "-m", "tumwater(operator): Revert " + shortSha(full))` (src/git/git-run.ts); null → `revert --abort`, then the same "nothing was committed" error.
+  - `{ ok: true, headSha: await headOf(root, "HEAD") }`. `head` is captured before the revert so a future caller can compare, and the resolved full sha is what the commit message shortens.
+- **src/operator/operator-commands.ts** — add `export async function cmdRevert(root, args)`: no flags; require exactly one positional (none → `fail("revert needs a commit (e.g. run tumwater revert 1a2b3c4)")`, more than one → the same usage error); `const r = await revertMergedCommit(root, ref)`; `!r.ok` → `fail(r.error)`; else `say(...)` naming the new main head and one line that the role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not.
+- **src/cli.ts** — add `case "revert":` beside `"retire"`, routing to `cmdRevert`.
+- **src/cli/help.ts** — add a `tumwater revert <sha>` stanza beside `tumwater abort`/`tumwater retire` (completion.ts derives its command list from HELP's stanzas, so it needs no edit).
+- **docs/cli.md** — in the "Steer the project" row, beside `tumwater abort`/`tumwater retire`, add that `tumwater revert <sha>` reverts one merged change on main, committing `tumwater(operator): Revert <short sha>` under the primary-worktree lock, and that it refuses off the base branch, on an unknown or unmerged ref, and on a conflict.
+
+**Files touched.** Source: src/operator/revert.ts (new), src/operator/operator-commands.ts, src/cli.ts, src/cli/help.ts. Docs: docs/cli.md. Tests: test/operator-revert.test.ts (new), test/cli-operators.test.ts.
+
+**Acceptance criteria.**
+- `revertMergedCommit(repo, "HEAD")` on a clean repo checked out on its base branch returns `ok: true`, moves HEAD to the inverse commit, leaves `git status --porcelain` empty, and `git log -1 --format=%s` reads `tumwater(operator): Revert <short sha>` for the reverted head.
+- Reverting a non-tip commit whose paths no later commit touched succeeds and leaves the tree clean; reverting a commit a later commit edited in the same region returns `ok: false`, leaves HEAD exactly where it was, leaves `git status --porcelain` empty, and the error names the conflict.
+- An unknown ref and a ref that exists but is not on the base branch each return `ok: false`, name the ref or say it is not on the base branch, and change neither HEAD nor the worktree.
+- Checked out on a non-base branch, `revertMergedCommit` returns `ok: false` naming the base branch even when the ref resolves, and commits nothing (mirroring `commitOperatorBacklogEdit`'s branch guard).
+- `cli(repo, "revert", <sha>)` exits 0 and prints the new main sha; `cli(repo, "revert")` and `cli(repo, "revert", <a>, <b>)` each exit nonzero with the usage error, writing no commit.
+- docs/cli.md's Steer-the-project row names `tumwater revert <sha>`.
+- `npm test` passes.
+
 ### Plain terms code runner, part 1/14: Move the loop modules to src/runner and their tests to runner names (planned 2026-10-16 by user; requires Plain terms code merge 11a/11, Plain terms code merge 11b/11, Plain terms code merge 11c/11, Plain terms code merge 11d/11, Plain terms code merge 11e/11 and Plain terms code merge 11f/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ + src/roles/loop-ids.ts + src/ui/gui/gui-client-loops.ts + test/loop*.test.ts + test/fixtures/loop-*.ts + every importer + docs/invariants.md + DEVELOPMENT.md)
 
 **Goal.** Mechanical. The per-instance worker's modules and their tests move to `runner` names, with every import path and path citation updated and no identifier changed, so later parts rename symbols inside files that already carry their final names.
