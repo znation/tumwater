@@ -85,7 +85,7 @@ export async function bugfixMainRedNote(root: string, role: string, wt: string):
   const red = baseline.baseline;
   if (red?.status !== "red") return undefined;
   warnMainRedOnce(root, red);
-  return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail));
+  return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail), red.outputTail);
 }
 
 /** Gate one fresh tick on main's baseline. Returns null when authoring may proceed — role not

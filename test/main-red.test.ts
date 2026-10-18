@@ -203,9 +203,9 @@ test("mainRedGate's timeout warning names the bound the baseline check actually 
   );
 });
 
-test("bugfixMainRedNote hands the healer the failing script and headline, warning once", async () => {
+test("bugfixMainRedNote hands the healer the failing script, headline, and output tail, warning once", async () => {
   const counter = path.join(tmpdir(), "runs");
-  const script = `echo healer-failure-line; echo run >> ${counter}; exit 1`;
+  const script = `echo healer-failure-line; echo a-second-tail-line; echo run >> ${counter}; exit 1`;
   const { root, wt } = baselineFixture(ROLE, script);
   const restore = fakeNpm(script);
   try {
@@ -215,6 +215,8 @@ test("bugfixMainRedNote hands the healer the failing script and headline, warnin
     assert.match(note, /<\/main-red>$/);
     assert.ok(note.includes("test"), "names the failing script");
     assert.ok(note.includes("healer-failure-line"), "carries the failureHeadline line");
+    assert.ok(note.includes("a-second-tail-line"), "carries the second output line in the tail block");
+    assert.match(note, /Failing check output \(2 lines\)/);
 
     // The check ran once, priced under the healer; the team warning fired under "harness".
     assert.equal(runsOf(counter), 1);

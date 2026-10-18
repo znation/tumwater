@@ -242,6 +242,31 @@ test("buildMainRedNote degrades when the script or headline is absent", () => {
   assert.ok(neither.includes("the project's declared check"), "falls back to a readable phrase");
 });
 
+test("buildMainRedNote folds a bounded failing-check tail into the block before </main-red>", () => {
+  const note = buildMainRedNote("abcdef1234567890", "test", "1) foo fails", [
+    "1) foo fails",
+    "AssertionError: x",
+    "at Object.<anonymous>",
+  ]);
+  assert.match(note, /^<main-red>/);
+  assert.match(note, /<\/main-red>$/);
+  assert.ok(note.includes("1) foo fails"), "carries the failing test's name");
+  assert.ok(note.includes("AssertionError: x"), "carries the assertion message");
+  assert.ok(note.includes("at Object.<anonymous>"), "carries the stack line verbatim");
+  assert.match(note, /Failing check output \(3 lines\)/);
+  // The tail sits inside the block and below the directive lines, so the failure's own text
+  // cannot be misread as instructions — and never leaks past the closing fence.
+  assert.ok(note.indexOf("</main-red>") > note.indexOf("AssertionError: x"));
+  assert.ok(note.indexOf("at Object.<anonymous>") < note.indexOf("</main-red>"));
+});
+
+test("buildMainRedNote renders the exact plain note for an absent, empty, or all-blank tail", () => {
+  const plain = buildMainRedNote("abcdef1234567890", "test", "1) foo fails");
+  for (const tail of [undefined, [], ["  "]]) {
+    assert.equal(buildMainRedNote("abcdef1234567890", "test", "1) foo fails", tail), plain);
+  }
+});
+
 // Prompt contract for the review gate (src/review/review.ts): the reviewer is told to end with
 // exactly one VERDICT line, and a reply without a parseable line fails the review closed —
 // three such failures discard the commit. If the form the prompt advertises ever drifts from

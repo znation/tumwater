@@ -521,16 +521,28 @@ ${conflictIntentBlocks(intent)}
  * the suite red, so authoring anything else first is waste. A pure function so its shape is
  * pinned in tests; script/headline are optional because a red carries a failing script, but the
  * note must still read sensibly if it is ever absent. */
-export function buildMainRedNote(sha: string, script?: string, headline?: string): string {
+export function buildMainRedNote(sha: string, script?: string, headline?: string, tail?: readonly string[]): string {
   const what = script
     ? `${script}${headline ? `: ${headline}` : ""}`
     : (headline ?? "the project's declared check");
+  // A red baseline already carries the check's bounded clipped tail (clipBuildTail, ≤12 lines:
+  // the failing test's name, the error-message line, then the stack). Hoist it into the note so
+  // the healer starts from the actual assertion and stack instead of the one-line headline —
+  // often just the test name — and must burn its run reproducing the failure first. The tail is
+  // fenced and labeled, and never touches the directive lines above, so the failure's own text
+  // cannot read as instructions to the role. An absent, empty, or all-blank tail renders today's
+  // exact note. */
+  const output = (tail ?? []).map((l) => l.trim()).filter((l) => l !== "");
+  const tailBlock =
+    output.length > 0
+      ? `\nFailing check output (${output.length} lines):\n\`\`\`\n${output.join("\n")}\n\`\`\`\n`
+      : "";
   return `<main-red>
 main's own suite is red at ${shortSha(sha)} (${what}). Every code-producing role is skipping authoring and no change merges until main is green.
 This run your job is to make main green: reproduce that failure, fix it (add a regression test where one is feasible), and merge the fix.
 The review gate's deterministic pre-check runs main + your change, so a change that leaves the suite red is rejected — do not author anything else first.
 If the failure is environmental — flaky, load-sensitive, or a broken local toolchain — say so plainly in your reply rather than editing unrelated code.
-</main-red>`;
+${tailBlock}</main-red>`;
 }
 
 /** The note appended to an assigned series part's prompt naming the later planned parts that
