@@ -24,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedAgentConfig } from "../../config/config-views.js";
-import { agentBaseEnv } from "../../process/run-marker.js";
+import { agentBaseEnv, withNotesPath } from "../../process/run-marker.js";
 import { resolveBackendBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
 import { opencodeDbPath, teamRootOf } from "../../paths.js";
 import type {
@@ -202,13 +202,10 @@ export const opencodeBackend: AgentBackend = {
       operatorMcpNames: operatorMcpNames(process.env, os.homedir()),
       toolOutput: { maxLines: Math.round(maxBytes / 40), maxBytes },
     });
-    // The notebook path rides beside the run marker, as the pi and claude adapters' envs do;
-    // from part 2/4 the run saves its note through the `tumwater-notes` command on PATH, so
-    // OpenCode configures no tumwater MCP server for notes.
-    const base =
-      run.notesPath === undefined
-        ? agentBaseEnv(run.runMarker, undefined, run.binDir)
-        : { ...agentBaseEnv(run.runMarker, undefined, run.binDir), TUMWATER_NOTES_PATH: run.notesPath };
+    // The notebook path rides beside the run marker, as the pi and claude adapters' envs do
+    // (withNotesPath); from part 2/4 the run saves its note through the `tumwater-notes` command
+    // on PATH, so OpenCode configures no tumwater MCP server for notes.
+    const base = withNotesPath(agentBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
     const env = opencodeEnv(base, { dbPath, configContent });
     const { sessionId } = resolveOpencodeSession(run, env);
     // The thinking variant (part 6d/7): ride the catalog's effort levels for the resolved

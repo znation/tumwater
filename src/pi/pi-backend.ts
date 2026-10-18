@@ -6,7 +6,7 @@
 
 import { piArgs } from "./pi-args.js";
 import { resolveBackendBin, type ResolvedAgentBin } from "./pi-bin.js";
-import { agentBaseEnv } from "../process/run-marker.js";
+import { agentBaseEnv, withNotesPath } from "../process/run-marker.js";
 import { isPermanentConfigError, matchBackendFailure } from "./pi-failure.js";
 import { hasResumableSession, sessionResumable } from "../agent/session-ledger.js";
 import type {
@@ -32,12 +32,6 @@ export const TRANSIENT_PI_CRASH =
  * tests. */
 export const MODEL_FALLBACK_CLONE = /not found for provider[^\n]*Using custom model id/i;
 
-/** `base` plus TUMWATER_NOTES_PATH when this run carries a notebook. Kept out of runMarkerEnv so
- * the two environment concerns — cross-group attribution and the notebook — stay separate. */
-function withNotesPath(base: NodeJS.ProcessEnv, notesPath?: string): NodeJS.ProcessEnv {
-  if (!notesPath) return base;
-  return { ...base, TUMWATER_NOTES_PATH: notesPath };
-}
 
 /** pi's identity translator: every native line is already a canonical line. */
 const identityTranslator: StreamTranslator = {

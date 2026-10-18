@@ -1,8 +1,7 @@
 /** Building the environment for one claude run (plans/agent-backends.md "The claude
  * invocation", "Findings" 2 and 4) — pure scrub-and-set over a base environment, with no
  * subprocess. The caller layers the run-marker, the macOS LaunchServices preload, and the
- * notebook on first (src/pi/pi-backend.ts's `withNotesPath` shows the pi adapter doing the
- * same), then hands the result here.
+ * notebook on first (src/process/run-marker.ts's `withNotesPath`), then hands the result here.
  *
  * Inherited Claude Code session variables break auth: spawned from inside a Claude Code
  * session, a child that keeps `CLAUDECODE`, `CLAUDE_CODE_*`, `CLAUDE_AGENT_SDK_*` or the host's
