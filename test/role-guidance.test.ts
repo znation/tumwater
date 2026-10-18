@@ -34,7 +34,7 @@ test("guidance is a single shared constant, not drifting copies", () => {
 });
 
 test("director routing includes the shared decomposition guidance", () => {
-  const prompt = buildDirectorPrompt("add import and export features", "a project");
+  const prompt = buildDirectorPrompt("add import and export features");
   assert.ok(prompt.includes(DECOMPOSITION_GUIDANCE));
   assert.match(prompt, /independent subparts/);
   assert.match(prompt, /keep a single entry/);
@@ -44,7 +44,7 @@ test("plan and bugfix role prompts include the shared decomposition guidance", (
   for (const id of ["plan", "bugfix"]) {
     const role = roleById(id);
     assert.ok(role, `role ${id} exists`);
-    const prompt = buildTickPrompt({ role, initialPrompt: "" });
+    const prompt = buildTickPrompt({ role });
     assert.ok(prompt.includes(DECOMPOSITION_GUIDANCE), `${id} prompt carries the guidance`);
   }
 });
@@ -67,7 +67,7 @@ test("the validation-gap guidance renders every tag in the closed vocabulary", (
 test("the bugfix prompt requires the validation-gap trace line for every fixed entry", () => {
   const role = roleById("bugfix");
   assert.ok(role);
-  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  const prompt = buildTickPrompt({ role });
   assert.ok(prompt.includes(VALIDATION_GAP_GUIDANCE), "embeds the shared constant verbatim");
   assert.match(prompt, /write the required validation-gap trace line/);
 });
@@ -171,18 +171,18 @@ test("the backlog-free roles carry the shared search guidance with a role-specif
 test("the Needs review marker is embedded in the feature, plan, and director prompts", () => {
   assert.ok(oneLine(roleById("feature")!.find).includes(NEEDS_REVIEW_NOTE));
   assert.ok(oneLine(roleById("plan")!.find).includes(NEEDS_REVIEW_NOTE));
-  assert.ok(oneLine(buildDirectorPrompt("split plan X", "a project")).includes(NEEDS_REVIEW_NOTE));
+  assert.ok(oneLine(buildDirectorPrompt("split plan X")).includes(NEEDS_REVIEW_NOTE));
 });
 
 test("the Needs replan marker is embedded in the feature, plan, and director prompts", () => {
   assert.ok(oneLine(roleById("feature")!.find).includes(NEEDS_REPLAN_NOTE));
   assert.ok(oneLine(roleById("plan")!.find).includes(NEEDS_REPLAN_NOTE));
-  assert.ok(oneLine(buildDirectorPrompt("replan plan X", "a project")).includes(NEEDS_REPLAN_NOTE));
+  assert.ok(oneLine(buildDirectorPrompt("replan plan X")).includes(NEEDS_REPLAN_NOTE));
 });
 
 test("the plan role and the director size plans to one implementation run via the shared constant", () => {
   assert.ok(roleById("plan")!.find.includes(PLAN_SIZING), "plan role embeds PLAN_SIZING");
-  assert.ok(buildDirectorPrompt("add dark mode", "a project").includes(PLAN_SIZING), "director embeds PLAN_SIZING");
+  assert.ok(buildDirectorPrompt("add dark mode").includes(PLAN_SIZING), "director embeds PLAN_SIZING");
   const sizing = oneLine(PLAN_SIZING);
   assert.match(sizing, /Size every plan to ONE implementation run by a mid-sized model working alone/);
   assert.match(sizing, /at most a few hundred lines of change including tests/);

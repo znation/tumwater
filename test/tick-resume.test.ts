@@ -69,7 +69,6 @@ function plan(
     tickPrompt?: (agent?: string, compact?: boolean) => string | null;
     pending?: PendingPrompt;
     agent?: string;
-    compact?: boolean;
   } = {},
 ) {
   return planTickStart({
@@ -79,7 +78,6 @@ function plan(
     pending: opts.pending ?? new PendingPrompt(root, s.role),
     tickPrompt: opts.tickPrompt ?? (() => "assembled run prompt"),
     agent: opts.agent,
-    compact: opts.compact,
   });
 }
 
@@ -117,23 +115,6 @@ test("a fresh run hands the effective agent to the prompt assembly", () => {
   });
   assert.ok(p);
   assert.equal(seen, "claude", "the effective agent reaches the fresh prompt assembly");
-});
-
-test("the tick's compact-prompt choice reaches the fresh prompt assembly", () => {
-  // runTickPhase asks for the compact prompt on every run, and the fresh tick's assembly must
-  // receive that choice rather than default to the full prompt.
-  for (const compact of [true, false, undefined]) {
-    let seen: boolean | undefined | "unset" = "unset";
-    const p = plan(tmpdir(), state(), {
-      compact,
-      tickPrompt: (_agent, c) => {
-        seen = c;
-        return "assembled";
-      },
-    });
-    assert.ok(p);
-    assert.equal(seen, compact);
-  }
 });
 
 test("a resumable session resumes with the restart bridge and skips the assembled prompt", () => {

@@ -12,7 +12,8 @@
  * harness root and writes the file.
  *
  * Limits are constants on purpose (opinionated defaults over configuration). The read
- * limit (~12k chars ≈ 300 lines) mirrors the prompt's CONTEXT_BUDGET_RULE; the bash limit
+ * limit (~12k chars ≈ 300 lines) backs the prompt's contextBudgetRule, which asks for ranged
+ * reads past ~150 lines, the share a 64k window's scaled limit holds; the bash limit
  * is looser because test logs and build output legitimately need more tail. Both were tuned on
  * the 128k local fallback, so a model that declares a smaller window gets them scaled down in
  * proportion (`outputLimits`): a 12k-char result is twice the share of a 64k window.
@@ -21,7 +22,8 @@
 import { windowScale } from "./context-window.js";
 import { writeFullOutput } from "./full-output.js";
 
-/** Char budget for a `read` tool result (~300 lines, matching CONTEXT_BUDGET_RULE). */
+/** Char budget for a `read` tool result (~300 lines; contextBudgetRule asks for ranges past
+ * ~150). */
 export const READ_LIMIT_CHARS = 12_000;
 /** Char budget for a `bash` tool result — looser, so test/build tails survive. */
 export const BASH_LIMIT_CHARS = 16_000;

@@ -572,16 +572,15 @@ test("buildWaitingPartsNote lists each part's title and range and caps at five",
   assert.ok(!seven.includes('"t5"'));
 });
 
-test("a compact prompt's prerequisite and waiting-part lists cut long titles at 100 characters", () => {
+test("the prerequisite and waiting-part lists cut long titles at 100 characters", () => {
   const long = `S, part 2/3: b (planned 2026-10-17 by the plan role; touches ${"src/x.ts ".repeat(20).trim()})`;
   const entries = [{ title: long, start: 10, end: 20 }];
   for (const build of [buildMergedPrerequisitesNote, buildWaitingPartsNote]) {
-    assert.ok(build(entries).includes(`"${long}"`), "the full prompt quotes the whole title");
-    const compact = build(entries, true);
-    assert.ok(!compact.includes(long));
-    const quoted = /- "([^"]*)" \(PLANS\.md lines 10-20\)/.exec(compact)?.[1];
+    const note = build(entries);
+    assert.ok(!note.includes(long));
+    const quoted = /- "([^"]*)" \(PLANS\.md lines 10-20\)/.exec(note)?.[1];
     assert.ok(quoted?.endsWith("…"), String(quoted));
     assert.equal(Array.from(quoted!).length, 101, "100 characters, then the ellipsis");
-    assert.ok(build([{ title: "Short title", start: 1, end: 2 }], true).includes('"Short title"'));
+    assert.ok(build([{ title: "Short title", start: 1, end: 2 }]).includes('"Short title"'));
   }
 });

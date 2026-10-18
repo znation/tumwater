@@ -11,7 +11,7 @@ import { oneLine } from "./helpers/oracles.js";
 // routing text — the wording a specific loop carries. How prompts are assembled and the rules
 // every prompt shares stay in prompt.test.ts.
 test("buildDirectorPrompt routes work to the specialist roles instead of implementing", () => {
-  const prompt = buildDirectorPrompt("add dark mode", "Make a CLI.");
+  const prompt = buildDirectorPrompt("add dark mode");
   assert.match(prompt, /project-level command/);
   assert.match(prompt, /do NOT implement substantial\nwork yourself/);
   assert.match(prompt, /plan for it in PLANS\.md/);
@@ -20,13 +20,13 @@ test("buildDirectorPrompt routes work to the specialist roles instead of impleme
   assert.match(prompt, /Do not fix it now/);
 });
 test("director routing records standing guidance in PRINCIPLES.md first", () => {
-  const prompt = buildDirectorPrompt("prefer no third-party deps", "a project");
+  const prompt = buildDirectorPrompt("prefer no third-party deps");
   assert.match(prompt, /PRINCIPLES\.md first for standing design guidance and taste/);
 });
 test("a director's instructions override is appended identically to a role's; unset stays byte-identical", () => {
-  const withInstructions = buildDirectorPrompt("add dark mode", "a project", undefined, undefined, undefined, undefined, undefined, undefined, undefined, "Prefer small plans.");
+  const withInstructions = buildDirectorPrompt("add dark mode", undefined, undefined, undefined, undefined, undefined, undefined, "Prefer small plans.");
   assert.match(withInstructions, /Additional standing instructions from the user:\nPrefer small plans\./);
-  const without = buildDirectorPrompt("add dark mode", "a project");
+  const without = buildDirectorPrompt("add dark mode");
   assert.ok(!without.includes("Additional standing instructions"));
 });
 test("the readme role leaves PRINCIPLES.md to the director and steward", () => {
@@ -39,7 +39,7 @@ test("the perf role hunts measured wins and refuses speculative micro-optimizati
   const role = roleById("perf");
   assert.ok(role, "perf role exists");
   assert.equal(role.title, "performance optimizer");
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  const prompt = oneLine(buildTickPrompt({ role }));
   assert.match(prompt, /"perf" role/);
   assert.match(prompt, /CLEAR performance win/);
   assert.match(prompt, /measure or reason from actual data/);
@@ -50,7 +50,7 @@ test("the security role traces a reachable source-to-sink path and proves it wit
   const role = roleById("security");
   assert.ok(role, "security role exists");
   assert.equal(role.title, "security reviewer");
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  const prompt = oneLine(buildTickPrompt({ role }));
   assert.match(prompt, /"security" role/);
   assert.match(prompt, /Find ONE real, reachable security weakness/);
   assert.match(prompt, /Start from the trust boundaries, not from a file listing/);
@@ -67,7 +67,7 @@ test("the robustness role injects a concrete fault and refuses to silence errors
   const role = roleById("robustness");
   assert.ok(role, "robustness role exists");
   assert.equal(role.title, "robustness hardener");
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  const prompt = oneLine(buildTickPrompt({ role }));
   assert.match(prompt, /"robustness" role/);
   assert.match(prompt, /fails halfway, returns garbage, or never returns/);
   assert.match(prompt, /write-to-temp-then-rename/);
@@ -91,7 +91,7 @@ test("security and robustness sit between the observers and improve in catalog o
 test("the feature find text refuses rather than forces and skips refused plans", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  const prompt = oneLine(buildTickPrompt({ role }));
   assert.match(prompt, /A plan that resists implementation is a finding/);
   assert.match(prompt, /refuse it with the objection recorded rather than forcing it/);
   assert.match(prompt, /Skip plans whose entry carries a Refused note/);
@@ -99,19 +99,19 @@ test("the feature find text refuses rather than forces and skips refused plans",
 test("the bugfix find text refuses harmful fixes and skips refused bugs", () => {
   const role = roleById("bugfix");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  const prompt = oneLine(buildTickPrompt({ role }));
   assert.match(prompt, /A "bug" whose fix would harm the project is refused, not force-fixed/);
   assert.match(prompt, /Skip BUGS\.md entries the index block marks/);
 });
 test("the director routes refusal decisions by clearing the Refused note", () => {
-  const prompt = oneLine(buildDirectorPrompt("clear the refusal on plan X", "a project"));
+  const prompt = oneLine(buildDirectorPrompt("clear the refusal on plan X"));
   assert.match(prompt, /A decision about a refused entry/);
   assert.match(prompt, /clear its \*\*Refused …\*\* note from PLANS\.md\/BUGS\.md/);
   assert.match(prompt, /so roles can pick it up again/);
 });
 test("the director routes role-management requests to the config request file", () => {
   const prompt = oneLine(
-    buildDirectorPrompt("add a role named docs-sync that keeps the README examples current", "a project"),
+    buildDirectorPrompt("add a role named docs-sync that keeps the README examples current"),
   );
   assert.match(prompt, /A request to manage custom roles/);
   assert.match(prompt, /\.tumwater-config-request\.json/);
@@ -124,10 +124,10 @@ test("the director routes role-management requests to the config request file", 
   assert.match(prompt, /"name": "docs"/);
 });
 test("the director's request-file contract replaces the tumwater.json edit exception; role prompts keep the blanket ban", () => {
-  const d = oneLine(buildDirectorPrompt("add a role named x that does y", "a project"));
+  const d = oneLine(buildDirectorPrompt("add a role named x that does y"));
   assert.match(d, /Note on one boundary in the rules below, director only/);
   // The note precedes the shared rules so the reply contract still closes the prompt.
-  assert.ok(buildDirectorPrompt("x", "y").trimEnd().endsWith("write none when nothing was run>"));
+  assert.ok(buildDirectorPrompt("x").trimEnd().endsWith("write none when nothing was run>"));
   assert.match(d, /applies only its customRoles array/);
   assert.match(d, /discarded with a warning/);
   // No edit exception remains: the director is told the config stays off-limits to it too.
@@ -137,13 +137,13 @@ test("the director's request-file contract replaces the tumwater.json edit excep
   // worktree root, so the boundary is untouched.
   assert.match(d, /Never touch the \.tumwater directory or tumwater\.json/);
   for (const role of ROLES) {
-    const p = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+    const p = oneLine(buildTickPrompt({ role }));
     assert.match(p, /Never touch the \.tumwater directory or tumwater\.json/, `${role.id} keeps the ban`);
     assert.ok(!p.includes("config-request"), `${role.id} carries no request-file contract`);
   }
 });
 test("the director routes answers back by moving the entry to Answered verbatim", () => {
-  const prompt = oneLine(buildDirectorPrompt("answer Q3: choose SQLite", "a project"));
+  const prompt = oneLine(buildDirectorPrompt("answer Q3: choose SQLite"));
   assert.match(prompt, /An answer to an open question/);
   assert.match(prompt, /to ## Answered verbatim with the decision recorded/);
 });
@@ -221,7 +221,7 @@ test("the qa prompt guards the expensive real run: constrained, capped, once per
   assert.match(find, /- 2026-08-28 run \(real\): init \+ one run merged; status\/logs confirm/);
 });
 test("buildTickPrompt for qa carries the find text plus the shared rules", () => {
-  const prompt = buildTickPrompt({ role: qa!, initialPrompt: "" });
+  const prompt = buildTickPrompt({ role: qa! });
   assert.match(prompt, /"qa" role \(product QA\)/);
   assert.ok(prompt.includes(qa!.find.trim()), "the full find text is embedded");
   assert.match(prompt, /TUMWATER_NOTHING_TO_DO/);
@@ -229,15 +229,14 @@ test("buildTickPrompt for qa carries the find text plus the shared rules", () =>
 test("buildTickPrompt renders the coverage block only when one is passed", () => {
   const withCoverage = buildTickPrompt({
     role: qa!,
-    initialPrompt: "",
     coverage: "Flow coverage (from this team's own record; least recently exercised first):\n  init — never exercised",
   });
   assert.ok(withCoverage.includes("Flow coverage (from this team's own record"));
   assert.match(withCoverage, /init — never exercised/);
-  const without = buildTickPrompt({ role: qa!, initialPrompt: "" });
+  const without = buildTickPrompt({ role: qa! });
   assert.ok(!without.includes("least recently exercised first"), "no coverage block when none is supplied");
   // The injection is qa-scoped by the caller, so a non-qa prompt must not carry it either.
-  const improve = buildTickPrompt({ role: roleById("improve")!, initialPrompt: "" });
+  const improve = buildTickPrompt({ role: roleById("improve")! });
   assert.ok(!improve.includes("least recently exercised first"));
 });
 test("the selfcheck role exists after qa in catalog order", () => {
@@ -259,7 +258,6 @@ test("the selfcheck find text carries tumwater-response rule, one bug, and the d
 test("a selfcheck prompt renders the injected digest in a <failure-digest> block", () => {
   const prompt = buildTickPrompt({
     role: selfcheck!,
-    initialPrompt: "",
     digest: "# Failure digest\n- cluster",
   });
   assert.ok(prompt.includes("<failure-digest>\n# Failure digest\n- cluster\n</failure-digest>"));
@@ -271,7 +269,7 @@ test("prompts omit the <failure-digest> block when no digest is injected", () =>
   for (const id of ["qa", "feature"]) {
     const role = roleById(id);
     assert.ok(role);
-    assert.ok(!buildTickPrompt({ role, initialPrompt: "" }).includes("<failure-digest>"));
+    assert.ok(!buildTickPrompt({ role }).includes("<failure-digest>"));
   }
 });
 test("the readme prompt rewrites the status section wholesale instead of appending", () => {
@@ -329,7 +327,7 @@ test("the readme prompt keeps the brief short and moves detail into linked docs"
   assert.match(find, /move detail there instead of growing the brief/);
 });
 test("buildTickPrompt for readme carries the find text plus the shared rules", () => {
-  const prompt = buildTickPrompt({ role: readme!, initialPrompt: "" });
+  const prompt = buildTickPrompt({ role: readme! });
   assert.match(prompt, /"readme" role \(brief and README keeper\)/);
   assert.ok(prompt.includes(readme!.find.trim()), "the full find text is embedded");
 });
@@ -438,7 +436,7 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.match(find, /refined by the feature run that picks it up/);
 });
 test("the director routes a user ruling on a marked plan", () => {
-  const prompt = oneLine(buildDirectorPrompt("split plan X", "a project"));
+  const prompt = oneLine(buildDirectorPrompt("split plan X"));
   assert.match(prompt, /A decision about a marked plan/);
   assert.match(prompt, /split it into independently landable sub-plans per PLAN_SIZING/);
   assert.match(prompt, /or clear the \*\*Needs review <YYYY-MM-DD> by feature: too large for one run\*\* note/);
@@ -452,7 +450,7 @@ test("the bugfix role bounds its latent-bug hunt and demands a reproduction", ()
   assert.match(find, /if nothing concrete surfaces within that budget, there is nothing to do/);
 });
 test("the director investigates only enough to route", () => {
-  const prompt = oneLine(buildDirectorPrompt("the tui flickers", "a project"));
+  const prompt = oneLine(buildDirectorPrompt("the tui flickers"));
   assert.match(prompt, /Investigate only as much as routing precisely needs/);
   assert.match(prompt, /never a survey of the codebase, and never the implementation itself/);
 });
@@ -521,6 +519,6 @@ test("the steward's tally query stands as its own sentence, not inside a parenth
 });
 
 test("the common rules send scratch files to $TMPDIR, not a fixed /tmp path", () => {
-  const prompt = oneLine(buildTickPrompt({ role: roleById("bugfix")!, initialPrompt: "" }));
-  assert.match(prompt, /put scratch files under `\$TMPDIR`/);
+  const prompt = oneLine(buildTickPrompt({ role: roleById("bugfix")! }));
+  assert.match(prompt, /Put scratch files under `\$TMPDIR` \(made with `mktemp`\), never at a fixed `\/tmp` path/);
 });

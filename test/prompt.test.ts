@@ -13,6 +13,7 @@ import {
   KILL_BY_PID_RULE,
   buildDirectorPrompt,
   buildTickPrompt,
+  contextBudgetRule,
 } from "../src/prompt/prompt.js";
 import {
   PRINCIPLES_MAX_CHARS,
@@ -28,12 +29,11 @@ import { searchGuidance } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-test("buildTickPrompt includes role, project prompt, rules, and extras", () => {
+test("buildTickPrompt includes role, rules, and extras", () => {
   const role = roleById("coverage");
   assert.ok(role);
-  const prompt = buildTickPrompt({ role, initialPrompt: "Make a CLI.", extraInstructions: "Prefer vitest." });
+  const prompt = buildTickPrompt({ role, extraInstructions: "Prefer vitest." });
   assert.match(prompt, /"coverage" role/);
-  assert.match(prompt, /Make a CLI\./);
   assert.match(prompt, /Prefer vitest\./);
   assert.match(prompt, new RegExp(NOTHING_TO_DO));
   assert.match(prompt, /SUMMARY:/);
@@ -42,7 +42,7 @@ test("buildTickPrompt includes role, project prompt, rules, and extras", () => {
 
 test("every catalog role produces a prompt mentioning its id", () => {
   for (const role of ROLES) {
-    const prompt = buildTickPrompt({ role, initialPrompt: "" });
+    const prompt = buildTickPrompt({ role });
     assert.match(prompt, new RegExp(`"${role.id}" role`));
   }
 });
@@ -52,11 +52,11 @@ test("every catalog role produces a prompt mentioning its id", () => {
 // note yet, so an instruction that lived only in the content block would never seed it.
 test("a role's run prompt carries the role-notes block only when a note exists", () => {
   const role = roleById("feature")!;
-  const withNote = buildTickPrompt({ role, initialPrompt: "", notes: "the scheduler lives in team.ts" });
+  const withNote = buildTickPrompt({ role, notes: "the scheduler lives in team.ts" });
   assert.match(withNote, /<role-notes>\nthe scheduler lives in team\.ts\n<\/role-notes>/);
   assert.match(withNote, /yours, unverified/);
   for (const empty of [undefined, "", "   \n"]) {
-    const prompt = buildTickPrompt({ role, initialPrompt: "", notes: empty });
+    const prompt = buildTickPrompt({ role, notes: empty });
     assert.ok(!prompt.includes("<role-notes>"), `no block for ${JSON.stringify(empty)}`);
   }
 });
@@ -64,7 +64,7 @@ test("a role's run prompt carries the role-notes block only when a note exists",
 test("the role-notes heading says when the notes were last saved", () => {
   const role = roleById("feature")!;
   const render = (notesSavedDay?: string) =>
-    buildTickPrompt({ role, initialPrompt: "", notes: "n", notesSavedDay, today: "2026-10-16" });
+    buildTickPrompt({ role, notes: "n", notesSavedDay, today: "2026-10-16" });
   assert.match(render("2026-10-16"), /\(last saved today; yours, unverified/);
   assert.match(render("2026-10-15"), /last saved 2026-10-15, 1 day ago; yours, unverified/);
   assert.match(render("2026-09-30"), /last saved 2026-09-30, 16 days ago; yours, unverified/);
@@ -79,14 +79,14 @@ test("the role-notes heading says when the notes were last saved", () => {
 
 test("every role run is told to write a note, even the first one with none", () => {
   const role = roleById("feature")!;
-  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  const prompt = buildTickPrompt({ role });
   assert.match(prompt, /tumwater-notes write <<'TUMWATER_NOTES'/);
   assert.match(prompt, /at most 4 KB/);
   assert.ok(!prompt.includes("<role-notes>"), "no note content block when there is no note");
 });
 
 test("the director prompt never carries the role-notes block or instruction", () => {
-  const prompt = buildDirectorPrompt("do a thing", "a project");
+  const prompt = buildDirectorPrompt("do a thing");
   assert.ok(!prompt.includes("role-notes"), "no role-notes block");
   assert.ok(!prompt.includes("role_notes"), "no role_notes tool instruction");
 });
@@ -104,15 +104,14 @@ test("every run prompt keeps its commands inside the worktree and out of the pri
   // names the remedy's location (the install at the repo root).
   const prompt = buildTickPrompt({
     role,
-    initialPrompt: "",
     check: { kind: "npm", rootDir: ".", script: "test" },
   });
-  assert.match(prompt, /Stay inside your worktree: run commands from it/);
+  assert.match(oneLine(prompt), /Run commands from your worktree \(where you start; `git log` and `git show` work there\)/);
   // Scratch directories stay allowed (qa follows the README in one, bugfix reproduces there).
-  assert.match(oneLine(prompt), /or from a scratch directory under the system temp\. - Other agents run concurrently[^-]*- Never cd to the repo root \(`\.\.\/\.\.\/\.\.`\)/);
-  assert.match(oneLine(prompt), /its dist\/ is the code the running team executes — never build, test, or edit files in that checkout/);
+  assert.match(oneLine(prompt), /or a scratch directory\. Put scratch files under `\$TMPDIR`[^-]*other agents run concurrently on this machine\. - Never cd to the repo root \(`\.\.\/\.\.\/\.\.`\)/);
+  assert.match(oneLine(prompt), /it is the primary checkout tumwater merges into — never build, test, or edit files there/);
   assert.match(prompt, /find \/\`/);
-  assert.ok(prompt.includes("(`../../../node_modules`)"), "the install's path from the worktree");
+  assert.ok(prompt.includes("borrows `../../../node_modules`"), "the install's path from the worktree");
   assert.ok(!prompt.includes("`../../node_modules`"), "not the old path, which named .tumwater/");
   const root = "/home/op/project";
   assert.equal(path.resolve(worktreePath(root, "bugfix"), ROOT_FROM_WORKTREE), root, "the relative root is the repo root");
@@ -121,30 +120,29 @@ test("every run prompt keeps its commands inside the worktree and out of the pri
   // in a repo with no node_modules anywhere it is false and actively misleading.
   const configured = buildTickPrompt({
     role,
-    initialPrompt: "",
     check: { kind: "command", command: "pytest -q", cwd: "/tmp/repo", timeoutMs: 300_000 },
   });
   assert.match(configured, /verify with `pytest -q`/);
   assert.ok(!configured.includes("node_modules"), "no npm assertion in a non-npm repo's prompt");
 
   // No check at all: the generic wording stays, and the npm-only sentence still disappears.
-  const none = buildTickPrompt({ role, initialPrompt: "" });
+  const none = buildTickPrompt({ role });
   assert.match(none, /if it has a build or test command/);
   assert.ok(!none.includes("node_modules"));
 });
 
-test("run and director prompts share one worktree + initial-prompt preamble", () => {
+test("run and director prompts share one worktree + date preamble", () => {
   const role = roleById("coverage");
   assert.ok(role);
-  // Both builders spread sharedPreamble(initialPrompt); a reworded copy in either would
-  // fail these includes() checks.
+  // Both builders spread sharedPreamble(); a reworded copy in either would fail these
+  // includes() checks.
   const shared = [
     "You work in a dedicated git worktree of this project; your changes will be committed and merged to main by tumwater after you finish.",
-    "<project-prompt>\nMake a CLI.\n</project-prompt>",
+    "Stamp it on anything you record now",
   ];
   const prompts = [
-    buildTickPrompt({ role, initialPrompt: "Make a CLI." }),
-    buildDirectorPrompt("add dark mode", "Make a CLI."),
+    buildTickPrompt({ role }),
+    buildDirectorPrompt("add dark mode"),
   ];
   for (const prompt of prompts) {
     for (const piece of shared) {
@@ -154,14 +152,15 @@ test("run and director prompts share one worktree + initial-prompt preamble", ()
 });
 
 test("buildDirectorPrompt embeds the user request", () => {
-  const prompt = buildDirectorPrompt("add dark mode", "Make a CLI.");
+  const prompt = buildDirectorPrompt("add dark mode");
   assert.match(prompt, /<user-request>\nadd dark mode\n<\/user-request>/);
   assert.match(prompt, /SUMMARY:/);
 });
 
 // PRINCIPLES.md is the project's codified taste: seeded at init, injected into every tick and
-// director prompt so all loops share one standard. The injection must be verbatim (the file IS
-// the standard) and bounded (a runaway file cannot blow up every prefill).
+// director prompt so all loops share one standard. The injection must be verbatim from the first
+// bullet on (the file IS the standard; its own introduction restates the block's heading) and
+// bounded (a runaway file cannot blow up every prefill).
 
 test("readPrinciples reads PRINCIPLES.md; empty when missing", () => {
   const dir = tmpdir();
@@ -188,15 +187,15 @@ test("readPrinciples clips a runaway file at the cap with a note", () => {
   assert.match(text, new RegExp(`truncated at ${PRINCIPLES_MAX_CHARS} chars`));
 });
 
-test("run and director prompts inject principles verbatim in a <principles> block", () => {
+test("run and director prompts inject the principles' bullets verbatim in a <principles> block", () => {
   const role = roleById("coverage");
   assert.ok(role);
   const principles = "# Principles\n- prefer small changes";
   for (const prompt of [
-    buildTickPrompt({ role, initialPrompt: "Make a CLI.", principles }),
-    buildDirectorPrompt("add dark mode", "Make a CLI.", principles),
+    buildTickPrompt({ role, principles }),
+    buildDirectorPrompt("add dark mode", principles),
   ]) {
-    assert.ok(prompt.includes(`<principles>\n${principles}\n</principles>`));
+    assert.ok(prompt.includes("<principles>\n- prefer small changes\n</principles>"));
     assert.match(prompt, /uphold them in everything you produce/);
   }
 });
@@ -205,8 +204,8 @@ test("prompts omit the <principles> block when the project has none", () => {
   const role = roleById("coverage");
   assert.ok(role);
   for (const prompt of [
-    buildTickPrompt({ role, initialPrompt: "Make a CLI." }),
-    buildDirectorPrompt("add dark mode", "Make a CLI."),
+    buildTickPrompt({ role }),
+    buildDirectorPrompt("add dark mode"),
   ]) {
     assert.ok(!prompt.includes("<principles>"));
   }
@@ -215,9 +214,9 @@ test("prompts omit the <principles> block when the project has none", () => {
 test("every role prompt keeps PRINCIPLES.md read-only for non-director/steward roles", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = buildTickPrompt({ role, initialPrompt: "" });
-  assert.match(prompt, /only the director and steward/);
-  assert.match(prompt, /Treat it as read-only/);
+  const prompt = oneLine(buildTickPrompt({ role }));
+  assert.match(prompt, /PRINCIPLES\.md is read-only to every role but the director and steward/);
+  assert.match(prompt, /record an objection to a principle in PLANS\.md/);
 });
 
 // Prompt contract for the refusal design (plans/refusal-and-thrash.md): a fresh-session tick
@@ -227,8 +226,8 @@ test("every role prompt keeps PRINCIPLES.md read-only for non-director/steward r
 test("COMMON_RULES carries the Refused-note skip rule for every role", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /skip entries carrying a Refused note — do not pick them and do not re-refuse them/);
+  const prompt = oneLine(buildTickPrompt({ role }));
+  assert.match(prompt, /Skip entries carrying a Refused note: never pick or re-refuse them/);
 });
 
 // The director is the only loop that can change customRoles — through the harness-mediated
@@ -249,33 +248,35 @@ test("COMMON_RULES carries the Refused-note skip rule for every role", () => {
 test("every role prompt carries the section-aware read-first rule", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  const prompt = oneLine(buildTickPrompt({ role }));
   // The brief file is named; with no briefFile given it is the README.md compatibility default.
   assert.match(prompt, /First read the project brief \(README\.md\) in full/);
   assert.match(prompt, /plus QUESTIONS\.md when present/);
   // PLANS.md and BUGS.md hold open work, read by the index's ranges.
-  assert.match(prompt, /PLANS\.md and BUGS\.md hold open work: the prompt's <backlog-index> block lists/);
-  assert.match(prompt, /so read only the entries you need by those ranges/);
+  assert.match(
+    prompt,
+    /PLANS\.md and BUGS\.md hold open work: the <backlog-index> block gives each actionable entry with its 1-based line range, so read only the entries you need, by range/,
+  );
   // Finished entries live in the archive files, which are never read whole.
   assert.match(prompt, /Finished entries live in PLANS-DONE\.md and BUGS-FIXED\.md, newest first/);
-  assert.match(prompt, /never read them whole: search them with grep, or read one entry by its range/);
+  assert.match(prompt, /Never read those archives whole: grep them, or read one entry by its range/);
   assert.doesNotMatch(prompt, /must see them whole/, "no role reads the archive whole, the steward included");
 });
 
 test("both prompt builders name the resolved brief file instead of a hardcoded README.md", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const tick = oneLine(buildTickPrompt({ role, initialPrompt: "", briefFile: "TUMWATER.md" }));
+  const tick = oneLine(buildTickPrompt({ role, briefFile: "TUMWATER.md" }));
   assert.match(tick, /First read the project brief \(TUMWATER\.md\) in full/);
   assert.match(tick, /Never edit the brief block in TUMWATER\.md/);
   assert.ok(!tick.includes("in README.md"), `no README.md left in the rules: ${tick.includes("README.md")}`);
 
-  const director = oneLine(buildDirectorPrompt("add x", "a project", undefined, undefined, "TUMWATER.md"));
+  const director = oneLine(buildDirectorPrompt("add x", undefined, undefined, "TUMWATER.md"));
   assert.match(director, /First read the project brief \(TUMWATER\.md\) in full/);
   assert.match(director, /Never edit the brief block in TUMWATER\.md/);
 
   // Omitted briefFile keeps the README.md compatibility default in both builders.
-  const directorDefault = oneLine(buildDirectorPrompt("add x", "a project"));
+  const directorDefault = oneLine(buildDirectorPrompt("add x"));
   assert.match(directorDefault, /First read the project brief \(README\.md\) in full/);
   assert.match(directorDefault, /Never edit the brief block in README\.md/);
 });
@@ -283,9 +284,9 @@ test("both prompt builders name the resolved brief file instead of a hardcoded R
 test("every role prompt carries the ask-don't-guess rule", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /do not guess: append a question to QUESTIONS\.md under ## Open with context/);
-  assert.match(prompt, /Never block on an unanswered question/);
+  const prompt = oneLine(buildTickPrompt({ role }));
+  assert.match(prompt, /do not guess\. Append a question to QUESTIONS\.md under ## Open with context/);
+  assert.match(prompt, /Never block on a question/);
 });
 
 // Prompt contract for the qa role (plans/qa-role.md): a first-time-user exerciser that never
@@ -316,11 +317,12 @@ test("every role prompt carries the ask-don't-guess rule", () => {
 // every run; the resume bridge names the real cause; a fresh tick after cut-offs carries a note.
 
 test("every run carries the context-budget rule", () => {
-  const tick = buildTickPrompt({ role: ROLES[0]!, initialPrompt: "x" });
-  assert.match(tick, /context window is finite/);
-  assert.match(tick, /check size before reading \(`wc -l`\) and read\s+files over ~300 lines in ranges/i);
-  assert.match(buildDirectorPrompt("do x", "x"), /context window is finite/);
-  assert.match(buildResumePrompt("clean"), /context window is finite/);
+  const tick = buildTickPrompt({ role: ROLES[0]! });
+  assert.match(tick, /Everything you read stays in your context until the run ends/);
+  assert.match(tick, /Check size first \(`wc -l`\) and read files over ~150 lines in ranges/);
+  assert.match(buildDirectorPrompt("do x"), /Everything you read stays in your context until the run ends/);
+  // The resume bridge restates the same rule the session's first prompt carried.
+  assert.ok(buildResumePrompt("clean").includes(contextBudgetRule()));
 });
 
 // Prompt contract for the local-model retune (2026-09-08, Qwen-class ~27B behind a ~258k window):
@@ -331,13 +333,13 @@ test("every run carries the context-budget rule", () => {
 // checklist plus the harness's own pre-check verdict. These assertions pin that contract. Same
 // whitespace-collapsed matching as above.
 
-test("every role prompt states the reading budget in numbers: size check, ranges over ~300 lines, no re-reads", () => {
+test("every role prompt states the reading budget in numbers: size check, ranges over ~150 lines, no re-reads", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /check size before reading \(`wc -l`\)/i);
-  assert.match(prompt, /read files over ~300 lines in ranges/);
-  assert.match(prompt, /re-read only a region you edited/);
+  const prompt = oneLine(buildTickPrompt({ role }));
+  assert.match(prompt, /Check size first \(`wc -l`\)/);
+  assert.match(prompt, /read files over ~150 lines in ranges/);
+  assert.match(prompt, /Do not re-read what you already saw/);
   // The rule names the cost so the model can budget, and never uses the loop tests' cut-off marker.
   assert.match(prompt, /costs ~5k tokens/);
   assert.doesNotMatch(prompt, /ran out of context/);
@@ -351,10 +353,9 @@ test("every role prompt states the reading budget in numbers: size check, ranges
 test("every role prompt carries the fan-out rule: independent calls share a turn, dependent ones stay sequential", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /Each turn re-sends everything read so far/);
-  assert.match(prompt, /lookups that do not depend on each other .* as separate tool calls in the same turn/);
-  assert.match(prompt, /do not batch an edit with the test that checks it/);
+  const prompt = oneLine(buildTickPrompt({ role }));
+  assert.match(prompt, /stays in your context until the run ends and is re-sent on every turn/);
+  assert.match(prompt, /Issue lookups that do not depend on each other as separate tool calls in the same turn; keep dependent steps sequential/);
   // Oversized tool results are bounded head+tail by the bundled pi extension; the rule tells
   // the model to follow the marker's pointer instead of retrying the same read.
   assert.match(prompt, /Oversized tool results come back as head\+tail around a marker/);
@@ -371,7 +372,7 @@ test("every role prompt carries the fan-out rule: independent calls share a turn
 test("every role prompt sets a decision deadline and a task-size ceiling", () => {
   const role = roleById("clean");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  const prompt = oneLine(buildTickPrompt({ role }));
   assert.match(prompt, /Choose the task within your first ~15 tool calls/);
   assert.match(prompt, /more than roughly 60 tool calls, or most of the codebase in view, is too big for one run/);
 });
@@ -379,7 +380,7 @@ test("every role prompt sets a decision deadline and a task-size ceiling", () =>
 test("organize states its own scope in place of the shared small-task rules; every other role keeps them", () => {
   const organize = roleById("organize");
   assert.ok(organize?.scope, "organize carries a scope override");
-  const prompt = oneLine(buildTickPrompt({ role: organize, initialPrompt: "" }));
+  const prompt = oneLine(buildTickPrompt({ role: organize }));
   assert.match(prompt, /yours need not be small or self-contained/);
   assert.match(prompt, /more than roughly 150 tool calls/);
   // Its own Scope section replaces the shared one rather than sitting beside it: the two
@@ -396,17 +397,17 @@ test("organize states its own scope in place of the shared small-task rules; eve
   for (const role of ROLES) {
     if (role.id === "organize") continue;
     assert.equal(role.scope, undefined, `${role.id} uses the shared scope`);
-    const p = buildTickPrompt({ role, initialPrompt: "" });
+    const p = buildTickPrompt({ role });
     assert.ok(p.includes(DEFAULT_SCOPE), `${role.id} carries DEFAULT_SCOPE verbatim`);
   }
-  assert.ok(buildDirectorPrompt("Do a thing.", "").includes(DEFAULT_SCOPE), "the director keeps the shared scope");
+  assert.ok(buildDirectorPrompt("Do a thing.").includes(DEFAULT_SCOPE), "the director keeps the shared scope");
 });
 
 test("every role prompt skips the baseline suite run and verifies after the change", () => {
   const role = roleById("dedupe");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /do not run the build or test suite just to establish a baseline/);
+  const prompt = oneLine(buildTickPrompt({ role }));
+  assert.match(prompt, /do not run the build or test suite for a baseline/);
   assert.match(prompt, /run it after your change and fix what you broke/);
   assert.match(prompt, /check.log 2>&1/);
   assert.match(prompt, /re-run the check only after an edit changes the tree/);
@@ -415,7 +416,7 @@ test("every role prompt skips the baseline suite run and verifies after the chan
 test("every role prompt ends with the reply contract: plain text last, no announced next step, no repeated reads", () => {
   const role = roleById("improve");
   assert.ok(role);
-  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  const prompt = buildTickPrompt({ role });
   const flat = oneLine(prompt);
   assert.match(flat, /Your last message is plain text: never a tool call, and never an announcement of what you would do next/);
   assert.match(flat, /If a tool result only repeats what you already have, do not call it again/);
@@ -445,8 +446,8 @@ test("every run, director, conflict, and review prompt states the given date exa
   const role = roleById("bugfix");
   assert.ok(role);
   const loopPrompts = [
-    buildTickPrompt({ role, initialPrompt: "Make a CLI.", today }),
-    buildDirectorPrompt("the tui flickers", "Make a CLI.", undefined, undefined, undefined, today),
+    buildTickPrompt({ role, today }),
+    buildDirectorPrompt("the tui flickers", undefined, undefined, undefined, today),
   ];
   const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, undefined, today);
   const gatePrompts = [buildConflictPrompt("bugfix", ["a.txt"], undefined, undefined, today), review];
@@ -472,8 +473,8 @@ test("every run, director, conflict, and review prompt states the given date exa
 // reviewer, with or without a verified pre-check — one shared bullet, stated once in each.
 test("every run, director, conflict, and review prompt carries the test-runner rule exactly once", () => {
   const prompts = [
-    ...ROLES.map((role) => buildTickPrompt({ role, initialPrompt: "" })),
-    buildDirectorPrompt("add x", "a project"),
+    ...ROLES.map((role) => buildTickPrompt({ role })),
+    buildDirectorPrompt("add x"),
     buildConflictPrompt("feature", ["a.txt"]),
     buildReviewPrompt("diff body"),
     buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, "`npm run test` passed"),
@@ -485,19 +486,19 @@ test("every run, director, conflict, and review prompt carries the test-runner r
   // ecosystem, and its one runner example is framed as a mismatch, not a recommendation.
   assert.match(oneLine(TEST_RUNNER_RULE), /only through the project's declared check or the test framework it already uses/);
   assert.match(oneLine(TEST_RUNNER_RULE), /never a runner you guessed \(say, `npx vitest` in a suite written for node:test\)/);
-  const tick = buildTickPrompt({ role: roleById("bugfix")!, initialPrompt: "" });
+  const tick = buildTickPrompt({ role: roleById("bugfix")! });
   assert.match(tick, /re-run the check only after an edit changes the tree\.\n- Run tests only through the project's declared check/, "it follows the verify bullet");
 });
 
 // BUGS.md 2026-10-18: agents' `pkill -f "npm run test"` and `pkill -f "dist/test/test-runner.js"`
 // killed sibling roles' runs and reviews on the shared host. Every prompt whose run may run
-// commands says to kill only its own processes by PID: the tick rules (full and compact), the
+// commands says to kill only its own processes by PID: the run rules (assigned or not), the
 // director, the conflict resolver, and the reviewer — one shared sentence, stated once in each.
 test("every run, director, conflict, and review prompt carries the kill-by-PID rule exactly once", () => {
   const prompts = [
-    ...ROLES.map((role) => buildTickPrompt({ role, initialPrompt: "" })),
-    ...ROLES.map((role) => buildTickPrompt({ role, initialPrompt: "", compact: { assigned: false } })),
-    buildDirectorPrompt("add x", "a project"),
+    ...ROLES.map((role) => buildTickPrompt({ role })),
+    ...ROLES.map((role) => buildTickPrompt({ role, assigned: true })),
+    buildDirectorPrompt("add x"),
     buildConflictPrompt("feature", ["a.txt"]),
     buildReviewPrompt("diff body"),
   ];
@@ -514,8 +515,8 @@ test("an omitted date defaults to todayStamp's local day — the daily budget wi
   // Stamps read on both sides of the builds, so a run straddling local midnight still passes.
   const before = todayStamp();
   const prompts = [
-    buildTickPrompt({ role, initialPrompt: "" }),
-    buildDirectorPrompt("add x", "a project"),
+    buildTickPrompt({ role }),
+    buildDirectorPrompt("add x"),
     buildConflictPrompt("feature", ["a.txt"]),
     buildReviewPrompt("diff body"),
   ];
@@ -532,7 +533,7 @@ test("an omitted date defaults to todayStamp's local day — the daily budget wi
 
 test("a user-defined role's run prompt identifies it and carries its task as the run task", () => {
   const role = customRole("docs-auditor", "Keep the docs current.");
-  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  const prompt = oneLine(buildTickPrompt({ role }));
   // The title is what identifies the loop inside its own prompt and commit context.
   assert.match(prompt, /"docs-auditor" role \(custom role\)/);
   // The task IS the role-specific find-something-to-do text — no catalog prose around it.
@@ -555,7 +556,7 @@ test("customRole yields the pinned shape while built-in prompts keep their catal
   // on a catalog miss, so a built-in's prompt is exactly what the catalog role renders.
   const feature = roleById("feature");
   assert.ok(feature);
-  const p = oneLine(buildTickPrompt({ role: feature, initialPrompt: "" }));
+  const p = oneLine(buildTickPrompt({ role: feature }));
   assert.match(p, /"feature" role \(feature implementer\)/);
 });
 
@@ -564,11 +565,11 @@ test("customRole yields the pinned shape while built-in prompts keep their catal
 test("buildTickPrompt renders a per-role user request as a labeled block", () => {
   const role = roleById("qa");
   assert.ok(role);
-  const withRequest = buildTickPrompt({ role, initialPrompt: "", userRequest: "check the flow\nend to end" });
+  const withRequest = buildTickPrompt({ role, userRequest: "check the flow\nend to end" });
   assert.match(withRequest, /An explicit request from the user, aimed at this role/);
   assert.match(withRequest, /<user-request>\ncheck the flow\nend to end\n<\/user-request>/);
   // With nothing queued the block is absent entirely — no empty scaffolding.
-  const without = buildTickPrompt({ role, initialPrompt: "" });
+  const without = buildTickPrompt({ role });
   assert.ok(!without.includes("<user-request>"));
 });
 
@@ -579,27 +580,26 @@ test("buildTickPrompt renders a per-role user request as a labeled block", () =>
 // carries the rules, right before the reply contract they govern.
 test("every authoring prompt carries the claim-discipline rules ahead of the reply contract", () => {
   for (const role of ROLES) {
-    const prompt = buildTickPrompt({ role, initialPrompt: "" });
+    const prompt = buildTickPrompt({ role });
     const flat = oneLine(prompt);
     assert.ok(prompt.includes(CLAIMS_RULE), `${role.id} carries the rules`);
-    assert.match(flat, /keep what your change says about itself accurate\. Code changes are checked against the code by an adversarial reviewer/);
+    assert.match(flat, /Claims — a reviewer checks your change against the code before it merges, and an inaccurate claim gets it rejected/);
     assert.match(flat, /a small, correct change is welcome/);
-    assert.match(flat, /Back each universal word — "all", "every", "only", "none remain", "untested", "byte-identical"/);
+    assert.match(flat, /Back each universal word \("all", "every", "only", "none remain", "untested", "byte-identical", "unchanged"\) with the check that proves it/);
     assert.match(flat, /Never state test or suite counts: say what you ran and what you saw/);
-    // No presumption that a check or a reviewer exists: verification points at the check-aware
-    // "Leave the project working" bullet, and a doc-only diff skips the review gate.
-    assert.match(flat, /Verify after your LAST edit, per "Leave the project working" above/);
+    // No presumption that a check always runs: the run verifies after its last edit itself.
+    assert.match(flat, /Verify after your LAST edit, backlog files included: an edit after the last green run is unverified/);
     assert.ok(!flat.includes("tumwater runs the check and attests"), "no claim that a check always runs");
     assert.ok(prompt.indexOf(CLAIMS_RULE) < prompt.indexOf("How to end your reply"), `${role.id}: rules precede the ending`);
   }
-  assert.ok(buildDirectorPrompt("add x", "a project").includes(CLAIMS_RULE), "the director carries them too");
+  assert.ok(buildDirectorPrompt("add x").includes(CLAIMS_RULE), "the director carries them too");
   assert.ok(!CLAIMS_RULE.includes("VERDICT"), "no review-verdict form outside the review prompt");
 });
 
 test("the three endings are one shared list, used by fresh and resumed runs alike", () => {
-  const tick = buildTickPrompt({ role: roleById("bugfix")!, initialPrompt: "" });
+  const tick = buildTickPrompt({ role: roleById("bugfix")! });
   assert.ok(tick.includes(REPLY_ENDINGS), "run prompt carries the shared list");
-  assert.ok(buildDirectorPrompt("x", "y").includes(REPLY_ENDINGS), "director prompt carries it");
+  assert.ok(buildDirectorPrompt("x").includes(REPLY_ENDINGS), "director prompt carries it");
   for (const cause of ["restart", "cut-off", "hung-tool", "timeout", "budget-resumed"] as const) {
     const resume = buildResumePrompt("clean", cause);
     assert.ok(resume.trimEnd().endsWith(REPLY_ENDINGS.trimEnd()), `${cause} bridge ends with the shared list`);
@@ -610,7 +610,8 @@ test("the three endings are one shared list, used by fresh and resumed runs alik
   assert.match(flat, /make no changes, and end your reply with the line TUMWATER_NOTHING_TO_DO — anything your task asks you to report \(an answer, a FLOW line\) goes above it/);
   assert.ok(!flat.includes("reply with the single line"));
 });
-test("the ask rule tells every role to check QUESTIONS.md for answers at the start of each run", () => {
-  const flat = oneLine(buildTickPrompt({ role: roleById("feature")!, initialPrompt: "" }));
-  assert.match(flat, /check QUESTIONS\.md for answers at the start of each run and act on one that unblocks your work/);
+test("the ask rule has every unassigned role read QUESTIONS.md first and act on an answer", () => {
+  const flat = oneLine(buildTickPrompt({ role: roleById("feature")! }));
+  assert.match(flat, /First read the project brief \(README\.md\) in full, plus QUESTIONS\.md when present/);
+  assert.match(flat, /act on an answer that unblocks your work/);
 });

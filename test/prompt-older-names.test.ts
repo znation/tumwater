@@ -24,20 +24,20 @@ function assertPlain(name: string, prompt: string, mapped: boolean, scan = true)
 
 test("every catalog role, custom role and the director open plainly and map the older names once", () => {
   for (const role of [...ROLES, customRole("docs", "Keep the docs current.")]) {
-    const prompt = buildTickPrompt({ role, initialPrompt: "A project." });
+    const prompt = buildTickPrompt({ role });
     assert.ok(prompt.startsWith(`You are the "${role.id}" role (${role.title}) on this project's tumwater team`), role.id);
     // Catalog role text is the roles series' to convert (it still quotes machine trailers such
     // as `Tick: readme #N`); the custom role's prompt scans the shared opener, preamble and rules.
     assertPlain(role.id, prompt, true, !ROLES.includes(role));
   }
-  const director = buildDirectorPrompt("do a thing", "A project.");
+  const director = buildDirectorPrompt("do a thing");
   assert.ok(director.startsWith('You are the "director" role'));
   assert.match(director, /customRoles/);
   assertPlain("director", director, true);
 });
 
 test("the shared preamble spells the attribution stamps", () => {
-  const prompt = buildTickPrompt({ role: ROLES[0]!, initialPrompt: "" });
+  const prompt = buildTickPrompt({ role: ROLES[0]! });
   assert.match(prompt, /\(found by the <role> role YYYY-MM-DD\)/);
   assert.match(prompt, /fixed YYYY-MM-DD by the <role> role/);
   assert.match(prompt, /\(planned YYYY-MM-DD by the <role> role/);

@@ -348,7 +348,7 @@ Environment, layered on today's (`TUMWATER_RUN`, `NODE_OPTIONS` preload, noteboo
 `PromptDialect` (src/prompt/dialect.ts) carries the only backend-specific prompt text:
 
 - the notes tool's name (`roleNotesInstruction`, src/prompt/prompt.ts)
-- the read tool's range parameters (`CONTEXT_BUDGET_RULE`, src/prompt/prompt.ts; claude's Read
+- the read tool's range parameters (`contextBudgetRule`, src/prompt/prompt.ts; claude's Read
   also takes `offset`/`limit`)
 - the oversized-output bullet (`PI_DIALECT` / `CLAUDE_DIALECT`, src/prompt/dialect.ts)
 

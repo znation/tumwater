@@ -8,7 +8,7 @@ import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { entryKey } from "../src/backlog/backlog-eligibility.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
-import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/brief/brief.js";
+import { briefTemplate, readmeTemplate } from "../src/brief/brief.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
@@ -57,16 +57,17 @@ function promptFor(
   });
 }
 
-test("a role run prompt embeds the brief, principles, and the role's task — with no user prompt", () => {
+test("a role run prompt names the brief file and embeds the principles and the role's task — with no user prompt", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "Small beats big.\n");
   const result = promptFor(dir, "coverage");
   assert.ok(result);
   assert.equal(result.userPrompt, null);
   assert.match(result.prompt, /You are the "coverage" role/);
-  assert.match(result.prompt, /<project-prompt>\nBuild a tiny thing\.\nWith care\.\n<\/project-prompt>/);
   assert.match(result.prompt, /<principles>\nSmall beats big\.\n<\/principles>/);
-  // The brief rule names the resolved file, the README compatibility default here.
+  // The brief is not inlined: the rule names the resolved file, the README compatibility
+  // default here, and the run reads it.
+  assert.doesNotMatch(result.prompt, /<project-prompt>|Build a tiny thing/);
   assert.match(result.prompt, /read the project brief \(README\.md\) in full/);
 });
 
@@ -97,7 +98,6 @@ test("a repo whose brief markers are gone still assembles a prompt naming README
   fs.writeFileSync(path.join(dir, "README.md"), "# My project\n\nNo markers here.\n");
   const result = promptFor(dir, "coverage");
   assert.ok(result);
-  assert.doesNotMatch(result.prompt, /<project-prompt>/, "no brief content to embed");
   assert.match(result.prompt, /read the project brief \(README\.md\) in full/);
 });
 
@@ -528,22 +528,8 @@ test("notes compose in order — review rejection, then discard, then cut-off �
 test("a clean state appends none of the cross-run notes", () => {
   const result = promptFor(root(), "feature");
   assert.ok(result);
-  // The only place the note texts appear is the appended tail; a clean tick must carry none.
-  const marker = result.prompt.lastIndexOf("</project-prompt>");
-  const tail = result.prompt.slice(marker);
-  assert.doesNotMatch(tail, /ran out of context/);
-});
-
-test("the brief's brief survives an over-long hand edit via the truncation backstop", () => {
-  const dir = tmpdir();
-  const long = "x".repeat(5_000);
-  fs.writeFileSync(
-    path.join(dir, "README.md"),
-    `# proj\n\n${PROMPT_START}\n${long}\n${PROMPT_END}\n\n${STATUS_START}\n${STATUS_END}\n`,
-  );
-  const result = promptFor(dir, "coverage");
-  assert.ok(result);
-  assert.match(result.prompt, /\[brief truncated at 4096 chars\]/);
+  // The note texts appear only in the appended tail; a clean run's prompt carries none.
+  assert.doesNotMatch(result.prompt, /ran out of context/);
 });
 
 // `tumwater prompt --role <id>` queues a prompt only that
@@ -734,63 +720,50 @@ test("the bugfix prompt omits the flake tally over an empty log and caps it at f
   assert.equal(prompt.match(/" ×1/g)?.length, 5);
 });
 
-// ---- compact prompt (every run's, since 2026-10-18) ---------------------------
+// ---- assigned and unassigned runs -------------------------------------------
 
-test("a compact assigned run drops the brief block and backlog index and keeps its assignment", () => {
+test("an assigned run drops the backlog index and keeps its assignment", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n");
   const claim = { file: "BUGS.md" as const, key: "real bug", title: "Real bug", at: 1, source: "assigned" as const };
-  const input = { root: dir, config: defaultConfig(), role: "bugfix-2", state: state({ role: "bugfix-2", claim }) };
-  const full = assembleTickPrompt(input);
-  const compact = assembleTickPrompt({ ...input, compact: true });
-  assert.ok(full && compact);
-  assert.match(full.prompt, /<project-prompt>/);
-  assert.match(full.prompt, /^<backlog-index>$/m);
-  assert.doesNotMatch(compact.prompt, /<project-prompt>/);
+  const result = promptFor(dir, "bugfix-2", { state: { claim } });
+  assert.ok(result);
   // The block itself; the charter's choosing steps still name it, and the orientation says why
   // an assigned run has none.
-  assert.doesNotMatch(compact.prompt, /^<backlog-index>$/m);
-  assert.match(compact.prompt, /this prompt carries no backlog index/);
-  assert.match(compact.prompt, /<assigned-entry>[\s\S]*BUGS\.md lines 3-4/);
-  assert.match(compact.prompt, /Read your assigned entry \(at the end of this prompt\)/);
-  assert.ok(compact.prompt.length < full.prompt.length);
+  assert.doesNotMatch(result.prompt, /^<backlog-index>$/m);
+  assert.match(result.prompt, /this prompt carries no backlog index/);
+  assert.match(result.prompt, /<assigned-entry>[\s\S]*BUGS\.md lines 3-4/);
+  assert.match(result.prompt, /Read your assigned entry \(at the end of this prompt\)/);
 });
 
-test("a compact run without an assignment reads the brief file and keeps the backlog index", () => {
+test("a run without an assignment reads the brief file and keeps the backlog index", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n");
-  const compact = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "bugfix", state: state({ role: "bugfix" }), compact: true });
-  assert.ok(compact);
-  // The brief block is the brief file's own text, which the run reads in full.
-  assert.doesNotMatch(compact.prompt, /<project-prompt>/);
-  assert.match(compact.prompt, /^<backlog-index>$/m);
-  assert.match(compact.prompt, /First read the project brief \(README\.md\) in full/);
-  assert.match(compact.prompt, /is re-sent on every turn/);
+  const result = promptFor(dir, "bugfix");
+  assert.ok(result);
+  assert.match(result.prompt, /^<backlog-index>$/m);
+  assert.match(result.prompt, /First read the project brief \(README\.md\) in full/);
+  assert.match(result.prompt, /is re-sent on every turn/);
 });
 
-test("a compact run's queued request counts as unassigned, so it keeps the backlog index", () => {
+test("a run's queued request counts as unassigned, so it keeps the backlog index", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n");
   enqueueRolePrompt(dir, "bugfix-2", "look at the flaky test");
   const claim = { file: "BUGS.md" as const, key: "real bug", title: "Real bug", at: 1, source: "assigned" as const };
-  const compact = assembleTickPrompt({
-    root: dir, config: defaultConfig(), role: "bugfix-2", state: state({ role: "bugfix-2", claim }), compact: true,
-  });
-  assert.ok(compact);
-  assert.match(compact.prompt, /<user-request>/);
-  assert.match(compact.prompt, /<backlog-index>/);
-  assert.doesNotMatch(compact.prompt, /<assigned-entry>/);
+  const result = promptFor(dir, "bugfix-2", { state: { claim } });
+  assert.ok(result);
+  assert.match(result.prompt, /<user-request>/);
+  assert.match(result.prompt, /<backlog-index>/);
+  assert.doesNotMatch(result.prompt, /<assigned-entry>/);
 });
 
-test("a compact director run reads the brief file instead of carrying the brief block", () => {
+test("a director run reads the brief file instead of carrying the brief", () => {
   const dir = root();
   enqueuePrompt(dir, "what should we build next");
-  const input = { root: dir, config: defaultConfig(), role: DIRECTOR_ROLE, state: state({ role: DIRECTOR_ROLE }), preview: true };
-  const full = assembleTickPrompt(input);
-  const compact = assembleTickPrompt({ ...input, compact: true });
-  assert.ok(full && compact);
-  assert.match(full.prompt, /<project-prompt>\nBuild a tiny thing\./);
-  assert.doesNotMatch(compact.prompt, /<project-prompt>/);
-  assert.match(compact.prompt, /First read the project brief \(README\.md\) in full/);
-  assert.match(compact.prompt, /<user-request>\nwhat should we build next/);
+  const result = assembleTickPrompt({ root: dir, config: defaultConfig(), role: DIRECTOR_ROLE, state: state({ role: DIRECTOR_ROLE }), preview: true });
+  assert.ok(result);
+  assert.doesNotMatch(result.prompt, /<project-prompt>|Build a tiny thing/);
+  assert.match(result.prompt, /First read the project brief \(README\.md\) in full/);
+  assert.match(result.prompt, /<user-request>\nwhat should we build next/);
 });

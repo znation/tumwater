@@ -1,11 +1,10 @@
 // The prompt dialect (plans/agent-backends.md "What the pi extensions did, per backend",
 // PLANS.md "Agent backends, part 5/7"): the only backend-specific prompt text — the notebook
-// tool's name and the oversized-output rule. pi's text must stay byte-identical to the
-// pre-dialect prompts; claude's names its MCP tool and its own output-spill behavior.
+// tool's name and the oversized-output rule. pi's reading-budget text is pinned byte for byte;
+// claude's names its own read tool and output-spill behavior.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  CONTEXT_BUDGET_RULE,
   buildDirectorPrompt,
   buildTickPrompt,
   contextBudgetRule,
@@ -15,24 +14,22 @@ import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
 import { CLAUDE_DIALECT, OPENCODE_DIALECT, PI_DIALECT, dialectFor } from "../src/prompt/dialect.js";
 import { roleById } from "../src/roles/roles.js";
 
-test("pi's reading-budget rule is the historical text, byte for byte", () => {
-  // The exact text before the dialect split (the pre-2026-10-10 CONTEXT_BUDGET_RULE): pinned
-  // verbatim so any drift in the pi dialect is a test failure, not a silent prompt change.
-  const historical = `- Your context window is finite: everything you read stays in it until the run ends, and a
-  run that fills the window lands nothing. A whole-file read of a 500-line module costs ~5k tokens.
-- Check size before reading (\`wc -l\`) and read files over ~300 lines in ranges: find the lines
-  with \`grep -n\`, then read them with the read tool's offset/limit (or \`sed -n 'A,Bp'\`).
-- Cap command output with \`head\`/\`tail\`. Never dump a file, a log, or a test run wholesale.
-- Do not re-read what you already saw — re-read only a region you edited.
-- Each turn re-sends everything read so far, so issue lookups that do not depend on each other
-  (a \`wc -l\` over several files, the ranges a \`grep -n\` found, a typecheck and a targeted
-  test) as separate tool calls in the same turn. Keep anything that depends on a prior result
-  sequential — do not batch an edit with the test that checks it.
+test("pi's reading-budget rule is pinned byte for byte", () => {
+  // The rule every run carries, verbatim, so any drift in the pi dialect is a test failure, not
+  // a silent prompt change.
+  const pinned = `- Everything you read stays in your context until the run ends and is re-sent on every turn;
+  a run that fills the window merges nothing. A whole read of a 500-line file costs ~5k tokens.
+- Check size first (\`wc -l\`) and read files over ~150 lines in ranges: find the lines with
+  \`grep -n\`, then read them with the read tool's offset/limit (or \`sed -n 'A,Bp'\`).
+- Cap command output with \`head\`/\`tail\`; never dump a file, a log, or a test run. Do not
+  re-read what you already saw.
+- Issue lookups that do not depend on each other as separate tool calls in the same turn; keep
+  dependent steps sequential.
 - Oversized tool results come back as head+tail around a marker that names the omitted amount
   and where the full output lives — follow the pointer (re-read with \`offset\`/\`limit\`, or open
   the full-output file path) instead of retrying the same read.`;
-  assert.equal(CONTEXT_BUDGET_RULE, historical);
-  assert.equal(contextBudgetRule(PI_DIALECT), historical);
+  assert.equal(contextBudgetRule(PI_DIALECT), pinned);
+  assert.equal(contextBudgetRule(), pinned, "pi's dialect is the default");
   // The notebook instruction is the same on every backend (part 2/4): it names the
   // tumwater-notes command, never a per-backend tool.
   const instruction = roleNotesInstruction();
@@ -42,7 +39,7 @@ test("pi's reading-budget rule is the historical text, byte for byte", () => {
 
 test("claude's dialect differs only in the tool name and output-spill wording", () => {
   const claude = contextBudgetRule(CLAUDE_DIALECT);
-  assert.notEqual(claude, CONTEXT_BUDGET_RULE);
+  assert.notEqual(claude, contextBudgetRule(PI_DIALECT));
   assert.match(claude, /saved to a file the tool names/);
   assert.match(claude, /the Read tool's offset\/limit/);
   assert.ok(!claude.includes("head+tail"), "claude's spill is a named file, not a marker");
@@ -54,13 +51,13 @@ test("claude's dialect differs only in the tool name and output-spill wording", 
 test("every backend's run prompt names the tumwater-notes command, and none names the old tools", () => {
   const role = roleById("feature")!;
   for (const agent of ["pi", "claude", "opencode"] as const) {
-    const prompt = buildTickPrompt({ role, initialPrompt: "", agent });
+    const prompt = buildTickPrompt({ role, agent });
     assert.match(prompt, /tumwater-notes write <<'TUMWATER_NOTES'/, `${agent} names the notes command`);
     assert.ok(!prompt.includes("role_notes"), `${agent} never names the pi tool`);
     assert.ok(!prompt.includes("mcp__tumwater__role_notes"), `${agent} never names claude's MCP tool`);
     assert.ok(!prompt.includes("tumwater_role_notes"), `${agent} never names opencode's MCP tool`);
   }
-  const claude = buildTickPrompt({ role, initialPrompt: "", agent: "claude" });
+  const claude = buildTickPrompt({ role, agent: "claude" });
   assert.match(claude, /saved to a file the tool names/);
 });
 
@@ -79,7 +76,7 @@ test("opencode's dialect carries both backend rules", () => {
   assert.match(roleNotesInstruction(), /tumwater-notes write <<'TUMWATER_NOTES'/, "the instruction names the command");
 
   const role = roleById("feature")!;
-  const opencode = buildTickPrompt({ role, initialPrompt: "", agent: "opencode" });
+  const opencode = buildTickPrompt({ role, agent: "opencode" });
   assert.match(opencode, /tumwater-notes write <<'TUMWATER_NOTES'/, "the opencode prompt names the notes command");
   assert.ok(!opencode.includes("call role_notes with"), "opencode never sees the pi tool name");
   assert.ok(!opencode.includes("mcp__tumwater__role_notes"), "opencode never sees claude's MCP name");
@@ -100,7 +97,7 @@ test("pi and claude prompts stay byte-identical: no backend blank line in the re
     ["pi", PI_DIALECT],
     ["claude", CLAUDE_DIALECT],
   ] as const) {
-    const prompt = buildTickPrompt({ role: roleById("feature")!, initialPrompt: "", agent });
+    const prompt = buildTickPrompt({ role: roleById("feature")!, agent });
     const marker = "Reading budget:";
     const block = prompt.slice(
       prompt.indexOf(marker) + marker.length,
@@ -113,11 +110,11 @@ test("pi and claude prompts stay byte-identical: no backend blank line in the re
 });
 
 test("a claude director prompt carries claude's oversized-output wording", () => {
-  const pi = buildDirectorPrompt("do a thing", "");
+  const pi = buildDirectorPrompt("do a thing");
   assert.match(pi, /head\+tail around a marker/);
   assert.ok(!pi.includes("mcp__tumwater__role_notes"), "the director never gets the notes tool");
 
-  const claude = buildDirectorPrompt("do a thing", "", undefined, undefined, undefined, undefined, undefined, "claude");
+  const claude = buildDirectorPrompt("do a thing", undefined, undefined, undefined, undefined, undefined, "claude");
   assert.match(claude, /saved to a file the tool names/);
   assert.ok(!claude.includes("head+tail"), "claude's director prompt uses claude's wording");
 });

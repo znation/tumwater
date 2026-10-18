@@ -6,8 +6,8 @@
  * Why: pi 1.2.0's default system prompt carries a `<docs>` section — the install paths of pi's own
  * README, docs and examples, to read "only when the user asks about pi itself". A tumwater run
  * never does, and the section is ~1,400 characters (~350 tokens) that every request re-sends,
- * alongside tumwater's own run prompt, which is the compact one on every model too (prompt.ts
- * CompactPrompt). Until 2026-10-18 both applied only at a declared window of at most 128k; they
+ * alongside tumwater's own run prompt, which is compact on every model too (prompt.ts). Until
+ * 2026-10-18 both applied only at a declared window of at most 128k; they
  * now apply everywhere to cut token spend (a 2026-10-18 audit of the team's 1M-window runs). pi
  * offers no option to leave the section out short of replacing the whole prompt, so the
  * `before_agent_start` handler returns the rendered prompt with that one section cut — the

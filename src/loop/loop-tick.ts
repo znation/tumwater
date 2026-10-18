@@ -82,7 +82,7 @@ export interface LoopTickContext {
   warn(message: string): void;
   /** The signal a tick's pi runs watch: harness shutdown OR this tick's abort controller. */
   runSignal(): AbortSignal;
-  tickPrompt(agent?: string, compact?: boolean): string | null;
+  tickPrompt(agent?: string): string | null;
   /** Which pair set an image reroute may look among (plans/image-input.md "Reroute target"
    * "Regime"): the free fallback pairs while the budget gate is on fallback or the role is
    * in a model-fallback episode, else the primary tiers. Delegates to the runner's rule. */
@@ -346,14 +346,11 @@ export async function runTickPhase(
     role: ctx.role,
     state: s,
     pending: ctx.pending,
-    tickPrompt: (agent, compact) => ctx.tickPrompt(agent, compact),
+    tickPrompt: (agent) => ctx.tickPrompt(agent),
     agent: cfg.agent ?? DEFAULT_AGENT,
     // The team's configured claude config dir, so planTickStart's claude resume guard looks
     // under the same dir the run's env writes its transcript to (note 4/4). Unset → undefined.
     claudeConfigDir: resolvedAgentConfig(cfg, "claude").configDir,
-    // Every run gets the compact prompt (prompt.ts CompactPrompt), whatever window its model
-    // declares: it re-sends ~3k fewer tokens on every turn (2026-10-18, to cut token spend).
-    compact: true,
   });
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {

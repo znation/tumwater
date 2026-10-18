@@ -12,7 +12,7 @@ import { dayKey } from "../src/text/datetime.js";
 import { rolePayload } from "../src/roles/role-view.js";
 import { inspectMarkdownLines, renderRoleMarkdown } from "../src/roles/role-render.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
-import { compactContextBudgetRule } from "../src/prompt/prompt.js";
+import { contextBudgetRule } from "../src/prompt/prompt.js";
 import { PI_DIALECT } from "../src/prompt/dialect.js";
 import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
@@ -541,9 +541,9 @@ test("a claude model job's role view names its billing and subscription window",
 });
 
 // Context-window visibility: the role view names the resolved primary seam's declared window,
-// which sizes the bundled extensions' read caps. Every run gets the compact prompt whatever the
-// window (loop-tick.ts), and the `nextPrompt` preview shows that same prompt.
-test("the role view names the resolved seam's context window and previews the compact prompt on any window", () => {
+// which sizes the bundled extensions' read caps. The run prompt is the same whatever the window,
+// and the `nextPrompt` preview shows it.
+test("the role view names the resolved seam's context window and previews the same prompt on any window", () => {
   const dir = root();
   const modelsPath = writeModelsFile(
     dir,
@@ -563,20 +563,19 @@ test("the role view names the resolved seam's context window and previews the co
   const small = rolePayload(dir, "feature", modelsPath);
   assert.equal(small.contextWindow, 65536);
   assert.match(renderRoleMarkdown(small), /^- Context window: 65\.5k tokens$/m);
-  assert.equal(small.nextPrompt?.includes(compactContextBudgetRule(PI_DIALECT)), true);
+  assert.equal(small.nextPrompt?.includes(contextBudgetRule(PI_DIALECT)), true);
 
   writeConfig(dir, { provider: "local", model: "big" });
   const big = rolePayload(dir, "feature", modelsPath);
   assert.equal(big.contextWindow, 262144);
   assert.match(renderRoleMarkdown(big), /^- Context window: 262\.1k tokens$/m);
-  assert.equal(big.nextPrompt?.includes(compactContextBudgetRule(PI_DIALECT)), true);
+  assert.equal(big.nextPrompt?.includes(contextBudgetRule(PI_DIALECT)), true);
 
-  // An unresolvable seam (NO_MODELS): the window is unknown; the run still gets the compact
-  // prompt.
+  // An unresolvable seam (NO_MODELS): the window is unknown; the prompt is the same one.
   const unk = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(unk.contextWindow, null);
   assert.match(renderRoleMarkdown(unk), /^- Context window: unknown$/m);
-  assert.equal(unk.nextPrompt?.includes(compactContextBudgetRule(PI_DIALECT)), true);
+  assert.equal(unk.nextPrompt?.includes(contextBudgetRule(PI_DIALECT)), true);
 });
 
 test("the role view names the fallback step a live orchestrator moved the role's tier to", () => {

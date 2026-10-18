@@ -22,25 +22,10 @@
  * commonRules. Backlog files are included because this repo's own suite reads them
  * (backlog-structure and validation-gap tests). The header says small changes are welcome on
  * purpose: a first wording ("one false claim rejects the whole change") made the improve role
- * decline real, small improvements in lab A/B runs, citing the reviewer. Must not mention the
- * reviewer's VERDICT form (prompt tests count it in the review prompt only). */
-export const CLAIMS_RULE = `Claims — keep what your change says about itself accurate. Code changes are checked against
-the code by an adversarial reviewer before they merge, and an inaccurate claim is what gets a
-change rejected; a small, correct change is welcome:
-- State only what you verified. SUMMARY, WHY, RISK, VERIFIED, and every doc comment or
-  PLANS.md/BUGS.md line you write are claims about the code.
-- Back each universal word — "all", "every", "only", "none remain", "untested", "byte-identical",
-  "unchanged" — with the check that proves it (a grep over the source, the tests, and the docs;
-  a diff), or drop the word.
-- Never state test or suite counts: say what you ran and what you saw. When the merge gate runs
-  the project's check, tumwater attests the numbers itself.
-- Verify after your LAST edit, per "Leave the project working" above: an edit made after the last
-  green run is unverified, so verify again before you end. Order your work so the final
-  verification comes after your last edit, backlog files included.`;
-
-/** CLAIMS_RULE in the compact prompt every run gets (prompt.ts commonRules): the same
- * four directives, without the reasons. */
-export const CLAIMS_RULE_COMPACT = `Claims — a reviewer checks your change against the code before it merges, and an inaccurate
+ * decline real, small improvements in lab A/B runs, citing the reviewer. The rules state the
+ * directives without these reasons, since every turn re-sends them (prompt.ts). Must not mention
+ * the reviewer's VERDICT form (prompt tests count it in the review prompt only). */
+export const CLAIMS_RULE = `Claims — a reviewer checks your change against the code before it merges, and an inaccurate
 claim gets it rejected; a small, correct change is welcome:
 - State only what you verified: SUMMARY, WHY, RISK, VERIFIED, and every doc comment or
   PLANS.md/BUGS.md line you write are claims about the code.

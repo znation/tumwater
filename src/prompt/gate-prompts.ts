@@ -467,22 +467,20 @@ ${titles.map((t) => `- "${t}"`).join("\n")}
 </held-entries>`;
 }
 
-/** The capped series-part range list shared by the merged-prerequisites and waiting-parts
- * notes: at most five `- "title"` lines, each naming the entry's heading line range, then one
- * `- …and N more` line for the rest, so the two notes list a part's neighbors identically. A
- * pure function so its shape is pinned in tests (test/gate-prompts.test.ts). */
-/** The longest title a compact prompt quotes in an entry list: a PLANS.md heading's tail names
- * the plan's dates and every file it touches, which its range already leads to. */
-const COMPACT_TITLE_CHARS = 100;
+/** The longest title an entry list quotes: a PLANS.md heading's tail names the plan's dates and
+ * every file it touches, which its range already leads to. */
+const LISTED_TITLE_CHARS = 100;
 
-function entryRangeLines(
-  entries: readonly { title: string; start: number; end: number; file?: string }[],
-  compact = false,
-): string[] {
+/** The capped series-part range list shared by the merged-prerequisites and waiting-parts
+ * notes: at most five `- "title"` lines, each naming the entry's heading line range in its
+ * `file` (default: the plans file) with the title cut to LISTED_TITLE_CHARS, then one
+ * `- …and N more` line for the rest, so the two notes list a part's neighbors identically. A pure
+ * function so its shape is pinned in tests (test/gate-prompts.test.ts). */
+function entryRangeLines(entries: readonly { title: string; start: number; end: number; file?: string }[]): string[] {
   // Cut by code point, so an astral character is never split in half.
   const title = (t: string): string => {
     const cps = Array.from(t);
-    return compact && cps.length > COMPACT_TITLE_CHARS ? `${cps.slice(0, COMPACT_TITLE_CHARS).join("").trimEnd()}…` : t;
+    return cps.length > LISTED_TITLE_CHARS ? `${cps.slice(0, LISTED_TITLE_CHARS).join("").trimEnd()}…` : t;
   };
   const lines = entries.slice(0, 5).map((e) => `- "${title(e.title)}" (${e.file ?? "PLANS.md"} lines ${e.start}-${e.end})`);
   if (entries.length > 5) lines.push(`- …and ${entries.length - 5} more`);
@@ -493,12 +491,8 @@ function entryRangeLines(
  * one's Done heading, file (PLANS-DONE.md once archived) and line range, so the implementer reads
  * exactly what that part changed instead of searching a history that runs to thousands of lines.
  * Lists at most five, then a count of the rest. A pure function so its shape is pinned in tests. */
-export function buildMergedPrerequisitesNote(
-  entries: readonly { title: string; start: number; end: number; file?: string }[],
-  /** The compact prompt every run gets: each title cut to COMPACT_TITLE_CHARS. */
-  compact = false,
-): string {
-  const lines = entryRangeLines(entries, compact);
+export function buildMergedPrerequisitesNote(entries: readonly { title: string; start: number; end: number; file?: string }[]): string {
+  const lines = entryRangeLines(entries);
   return `<merged-prerequisites>
 Your assigned entry builds on parts that are already merged. Each one's Done entry records what it actually changed; read one by its range when your entry depends on its details, rather than searching the backlog files:
 ${lines.join("\n")}
@@ -591,12 +585,8 @@ ${tailBlock}</main-red>`;
  * wait on it, so the implementer sees where its part ends and leaves their share alone. At most
  * five are listed, then a literal `- …and N more` line (the `moreSuffix` phrase renders inline,
  * not as a list line). A pure function so its shape is pinned in tests. */
-export function buildWaitingPartsNote(
-  entries: readonly { title: string; start: number; end: number }[],
-  /** The compact prompt every run gets: each title cut to COMPACT_TITLE_CHARS. */
-  compact = false,
-): string {
-  const shown = entryRangeLines(entries, compact);
+export function buildWaitingPartsNote(entries: readonly { title: string; start: number; end: number }[]): string {
+  const shown = entryRangeLines(entries);
   return `<waiting-parts>
 Later parts of your series wait for yours to land, and each one plans its own share of the work: do none of it here, and keep in place the names and files they say your part leaves behind. Read one by its range when you need to know what it expects:
 ${shown.join("\n")}

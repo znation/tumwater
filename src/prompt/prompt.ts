@@ -4,7 +4,7 @@ import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { Role } from "../roles/roles.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "../roles/role-guidance.js";
-import { CLAIMS_RULE, CLAIMS_RULE_COMPACT, REPLY_ENDINGS } from "../verdict/reply-contract.js";
+import { CLAIMS_RULE, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";
 import { daysBetween } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
@@ -28,22 +28,14 @@ import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
  * — so the rules are grouped with one rule per bullet, budgets are numeric, role tasks are
  * numbered steps, claims carry the check that proves them, the three possible endings are a
  * mutually exclusive list, and that closing contract comes last, where a model attends to it most.
- * Every run gets the compact variant (`CompactPrompt`): the same rules in fewer words, and an
- * assigned run without the material its assignment makes redundant. It was written for models
- * with a window of at most 128k (2026-10-17) and has applied to every model since 2026-10-18, to
- * cut the tokens each turn re-sends; the full prompt remains what a caller that passes no
- * variant gets. The PRINCIPLES.md reader the principles block is fed from lives in principles.ts
- * (readPrinciples, with its injection cap). */
-
-/** The compact variant of a run's prompt, which every run gets (loop-tick.ts): its first request
- * is re-sent on every turn, so the rules keep their directives without the reasons, the
- * principles block keeps only its bullets, and an `assigned` run — one tumwater handed a single
- * backlog entry — drops the backlog index and reads its entry first instead of the whole brief.
- * The caller also leaves the brief block out (tick-prompt.ts): the brief file holds the same
- * text. Absent: the full prompt. */
-export interface CompactPrompt {
-  assigned: boolean;
-}
+ * The prompt is compact: its first request is re-sent on every turn, so the rules keep their
+ * directives without the reasons, the principles block keeps only its bullets, the brief file is
+ * read rather than inlined, and an assigned run goes without the material its assignment makes
+ * redundant. It was written for models with a window of at most 128k (2026-10-17) and became
+ * every model's prompt on 2026-10-18 to cut the tokens each turn re-sends; the longer full
+ * variant was deleted after a day of the team's runs on it (2026-10-19). The PRINCIPLES.md reader
+ * the principles block is fed from lives in principles.ts (readPrinciples, with its injection
+ * cap). */
 
 /** The context-budget rule every run carries. Under the old 87k window half of all ticks ended
  * at the ceiling merging nothing (308 of 733 in the autonomous fortnight; 216 of 245 no-change
@@ -51,36 +43,16 @@ export interface CompactPrompt {
  * to "work economically", read the codebase file by file (277 whole-file reads against 6 ranged
  * ones in the bugfix/improve/clean logs). Every token read is prefill and dilutes the model's
  * attention, so the rule states the cost in numbers and the one habit that prevents it: check
- * size, then read in ranges. One rule per bullet (2026-10-01), so a small model can follow each
- * on its own. (Reasoning length is not addressed here: a "think briefly" bullet measured no drop in
- * the fallback model's thinking — the oMLX thinking-budget cap is the lever.) The bundled
- * context-budget extension
- * (src/pi-extension/context-budget.ts) complements this rule with the live fill level. Stated
- * once so the tick rules and prompt-followup.ts's resume bridge cannot drift. Must not contain
- * the phrase "ran out of context" — the loop tests use it to tell a fresh tick from a cut-off
- * resume. */
+ * size, then read in ranges. The range-read threshold is ~150 lines, what a 64k window's read cap
+ * holds (bounded-output.ts outputLimits), and the first bullet names the cost rather than the
+ * window's size, since every model gets it. One rule per bullet (2026-10-01), so a small model can
+ * follow each on its own. (Reasoning length is not addressed here: a "think briefly" bullet
+ * measured no drop in the fallback model's thinking — the oMLX thinking-budget cap is the lever.)
+ * The bundled context-budget extension (src/pi-extension/context-budget.ts) complements this rule
+ * with the live fill level. Stated once so the run rules and prompt-followup.ts's resume bridge
+ * cannot drift. Must not contain the phrase "ran out of context" — the loop tests use it to tell
+ * a fresh tick from a cut-off resume. */
 export function contextBudgetRule(dialect: PromptDialect = PI_DIALECT): string {
-  return `- Your context window is finite: everything you read stays in it until the run ends, and a
-  run that fills the window lands nothing. A whole-file read of a 500-line module costs ~5k tokens.
-- Check size before reading (\`wc -l\`) and read files over ~300 lines in ranges: find the lines
-  with \`grep -n\`, then read them with ${dialect.readRange}.
-- Cap command output with \`head\`/\`tail\`. Never dump a file, a log, or a test run wholesale.
-- Do not re-read what you already saw — re-read only a region you edited.
-- Each turn re-sends everything read so far, so issue lookups that do not depend on each other
-  (a \`wc -l\` over several files, the ranges a \`grep -n\` found, a typecheck and a targeted
-  test) as separate tool calls in the same turn. Keep anything that depends on a prior result
-  sequential — do not batch an edit with the test that checks it.
-- ${dialect.oversizedOutput}`;
-}
-
-/** The pi-dialect reading-budget rule, byte-identical to the rule before the dialect split, for
- * the callers and tests that want the default text. */
-export const CONTEXT_BUDGET_RULE = contextBudgetRule(PI_DIALECT);
-
-/** contextBudgetRule for the compact prompt: the same habits, with the range-read threshold at
- * ~150 lines, which is what a 64k window's read cap holds (bounded-output.ts outputLimits). Its
- * first bullet names the cost rather than the window's size, since every model gets it. */
-export function compactContextBudgetRule(dialect: PromptDialect = PI_DIALECT): string {
   return `- Everything you read stays in your context until the run ends and is re-sent on every turn;
   a run that fills the window merges nothing. A whole read of a 500-line file costs ~5k tokens.
 - Check size first (\`wc -l\`) and read files over ~150 lines in ranges: find the lines with
@@ -120,8 +92,7 @@ export const TEST_RUNNER_RULE = `- Run tests only through the project's declared
 
 /** Render a dialect's `backendRules` as one bullet each, or nothing when the dialect has none
  * (pi and claude) — so a backend's extra shell/reasoning guidance rides the reading-budget
- * section right after the oversized-output rule and is present in both the full and compact
- * prompts. */
+ * section right after the oversized-output rule. */
 function backendRuleLines(rules: readonly string[] | undefined): string {
   if (!rules || rules.length === 0) return "";
   return "\n" + rules.map((rule) => `- ${rule}`).join("\n");
@@ -163,114 +134,16 @@ export const DEFAULT_SCOPE = `- Do exactly ONE focused task, then stop. Small, c
  * in a repo with no node_modules anywhere (a Python, Rust, or Go repo, or one with no check
  * at all). Undefined keeps the generic wording, exactly as prompts read before a check could
  * be configured. `scope` is the Scope section's rules: DEFAULT_SCOPE unless the tick's role
- * states its own (Role.scope). A rule added here goes in compactRules too, and its directive in
- * test/compact-prompt.test.ts's DIRECTIVES list, which checks that both forms state it. */
+ * states its own (Role.scope). Orientation differs for an `assigned` run, which reads its entry
+ * first and the brief only when the entry needs it — reading the brief in full cost a median
+ * ~2.5k tokens of every run before its first edit (2026-10-17 audit). */
 function commonRules(
   check?: BuildCheck,
   briefFile = "README.md",
   scope: string = DEFAULT_SCOPE,
   dialect: PromptDialect = PI_DIALECT,
-  compact?: CompactPrompt,
+  assigned = false,
 ): string {
-  if (compact) return compactRules(check, briefFile, scope, dialect, compact.assigned);
-  const verify = check
-    ? `verify with ${describeCheck(check)} (the project's declared check) — run it after your
-  change and fix what you broke.`
-    : `if it has a build or test command, run it after your change and fix what you broke.`;
-  const modules =
-    check?.kind === "npm"
-      ? `
-- Your worktree has no node_modules of its own; it borrows the install at the repo root
-  (\`${ROOT_FROM_WORKTREE}/node_modules\`). To inspect a dependency's types or source, read that
-  directory directly instead of widening the search outward.`
-      : "";
-  return `
-Rules for this run:
-
-Orientation — read this much before choosing your task, and no more:
-- First read the project brief (${briefFile}) in full, plus QUESTIONS.md when present.
-- PLANS.md and BUGS.md hold open work: the prompt's <backlog-index> block lists their actionable
-  entries (PLANS.md ## Planned, BUGS.md ## Open, QUESTIONS.md ## Open), each with its 1-based line
-  range, so read only the entries you need by those ranges. Finished entries live in
-  PLANS-DONE.md and BUGS-FIXED.md, newest first; the index lists the newest few with their
-  ranges. Those archive files only grow — never read them whole: search them with grep, or read
-  one entry by its range, and only when a specific finished entry matters to your task.
-- Your worktree starts clean at main, and tumwater checks main's build before code roles
-  start: do not run the build or test suite just to establish a baseline. Run it after your
-  change, or when the task itself needs its output (reproducing a failure, counting the suite).
-
-Scope:
-${scope}
-
-Reading budget:
-${contextBudgetRule(dialect)}${backendRuleLines(dialect.backendRules)}
-
-Where you work:
-- Stay inside your worktree: run commands from it — the directory you start in, where
-  \`git log\` and \`git show\` work just the same — or from a scratch directory under the system
-  temp.
-- Other agents run concurrently on this machine: put scratch files under \`$TMPDIR\` (made with
-  \`mktemp\`), never at a fixed \`/tmp\` path such as \`/tmp/check.log\`, so no other run overwrites
-  or reads yours.
-- Never cd to the repo root (\`${ROOT_FROM_WORKTREE}\`): it is the primary checkout, which tumwater
-  merges main into while you work, and when this project is tumwater itself its dist/ is the
-  code the running team executes — never build, test, or edit files in that checkout.${modules}
-- Never run an unbounded scan (\`find /\`, \`grep -r /\`, any recursive search rooted outside the
-  repo): it runs for tens of minutes with no output until tumwater kills your run as hung.
-- Never run a command that can wait forever — interactive programs (TUIs, REPLs, editors,
-  anything reading stdin), servers, or watch modes. To test such a program, background it with
-  a hard time limit (kill it after at most 30 minutes) and never give it a real TTY.
-- ${KILL_BY_PID_RULE} A pattern naming your check or test runner also matches other
-  agents' runs and tumwater's own checks on this machine, and kills them too.
-- Leave the project working: ${verify} One run answers every question about the check: write
-  its full output to a file in a scratch dir once (\`<check> > <scratch-dir>/check.log 2>&1\`),
-  then pipe that file through \`tail\` — only the failures matter. To see any other part of the
-  output, grep or read the same file; re-run the check only after an edit changes the tree.
-${TEST_RUNNER_RULE}
-
-Boundaries:
-- Never create, amend, or revert git commits, branches, or merges — tumwater handles all git
-  operations. Reading git history is fine.
-- Never touch the .tumwater directory or tumwater.json.
-- Never edit the brief block in ${briefFile} (between the tumwater:prompt markers).
-- PRINCIPLES.md holds this project's design principles; only the director and steward roles may
-  edit it. Treat it as read-only — to object to a principle, record the objection in PLANS.md.
-- docs/invariants.md states each subsystem's guarantees, pinned to the test that enforces them.
-  Read the matching section before you reconstruct what the code you are changing is supposed
-  to guarantee; when a merge adds or changes a guarantee, update the register in the same
-  commit.
-
-When to ask, when to refuse:
-- When a fork in the road is genuinely the user's call (product direction, an irreversible
-  choice, taste), do not guess: append a question to QUESTIONS.md under ## Open with context,
-  the options, and your own recommendation. Then continue with the parts that don't depend on
-  it, or end the run. Never block on an unanswered question; check QUESTIONS.md for answers at
-  the start of each run and act on one that unblocks your work. Do not re-ask an open question.
-- If partway in you conclude the task would harm the project — it violates PRINCIPLES.md, grows
-  complexity without justification, or keeps fighting back — refuse it. Revert nothing; append
-  this note directly under the entry's heading in PLANS.md (a planned feature) or BUGS.md:
-  **Refused <YYYY-MM-DD> by <role>: <one-line reason>**
-  That note is the only change a refusing run leaves.
-- When choosing work, skip entries carrying a Refused note — do not pick them and do not
-  re-refuse them. The objection stands until a human or the director edits the entry, so a
-  fully blocked backlog is a legitimate nothing-to-do state.
-
-${CLAIMS_RULE}
-
-How to end your reply — tumwater parses it, so the form matters:
-- Your last message is plain text: never a tool call, and never an announcement of what you would
-  do next ("Let me check…") — either make the call or finish. If a tool result only repeats what
-  you already have, do not call it again.
-${REPLY_ENDINGS}`;
-}
-
-/** commonRules for the compact prompt (CompactPrompt): every directive of the full rules, in
- * fewer words. Orientation differs for an assigned run, which reads its entry first and the
- * brief only when the entry needs it — reading the brief in full cost a median ~2.5k tokens of
- * every run before its first edit (2026-10-17 audit). Scope, Boundaries' first three bullets,
- * TEST_RUNNER_RULE and the reply contract are the full prompt's own text. Keep it in step with
- * commonRules: test/compact-prompt.test.ts checks every directive both must state. */
-function compactRules(check: BuildCheck | undefined, briefFile: string, scope: string, dialect: PromptDialect, assigned: boolean): string {
   const verify = check
     ? `verify with ${describeCheck(check)} (the project's declared check) — run it after your
   change and fix what you broke.`
@@ -286,14 +159,15 @@ function compactRules(check: BuildCheck | undefined, briefFile: string, scope: s
 - Read your assigned entry (at the end of this prompt) by its line range first. It replaces your
   task's choosing steps, so this prompt carries no backlog index. Read the project brief
   (${briefFile}) or QUESTIONS.md only when the entry needs them.
-- PLANS.md and BUGS.md grow without bound — never read them wholesale. Read another entry only
-  by a range this prompt gives, or find it with \`grep -n\` first.`
+- Never read PLANS.md, BUGS.md or their archives (PLANS-DONE.md, BUGS-FIXED.md) whole. Read
+  another entry only by a range this prompt gives, or find it with \`grep -n\` first.`
     : `Orientation — read this much before choosing your task, and no more:
 - First read the project brief (${briefFile}) in full, plus QUESTIONS.md when present.
-- PLANS.md and BUGS.md grow without bound — never read them wholesale. The <backlog-index> block
-  gives each actionable entry and the newest closed ones with its 1-based line range: read only
-  the entries you need, by range. The steward role is the exception: it curates those files and
-  must see them whole.`;
+- PLANS.md and BUGS.md hold open work: the <backlog-index> block gives each actionable entry
+  with its 1-based line range, so read only the entries you need, by range. Finished entries live
+  in PLANS-DONE.md and BUGS-FIXED.md, newest first (the index lists the newest few). Never read
+  those archives whole: grep them, or read one entry by its range, only when a finished entry
+  matters to your task.`;
   return `
 Rules for this run:
 
@@ -305,7 +179,7 @@ Scope:
 ${scope}
 
 Reading budget:
-${compactContextBudgetRule(dialect)}${backendRuleLines(dialect.backendRules)}
+${contextBudgetRule(dialect)}${backendRuleLines(dialect.backendRules)}
 
 Where you work:
 - Run commands from your worktree (where you start; \`git log\` and \`git show\` work there) or a
@@ -346,7 +220,7 @@ When to ask, when to refuse:
 - Skip entries carrying a Refused note: never pick or re-refuse them. A fully blocked backlog is
   a legitimate nothing-to-do state.
 
-${CLAIMS_RULE_COMPACT}
+${CLAIMS_RULE}
 
 How to end your reply — tumwater parses it, so the form matters:
 - Your last message is plain text: never a tool call, and never an announcement of what you would
@@ -355,9 +229,9 @@ How to end your reply — tumwater parses it, so the form matters:
 ${REPLY_ENDINGS}`;
 }
 
-/** The principles block's compact form: PRINCIPLES.md from its first list item on, dropping the
- * file's own introduction (which restates the block's heading). A file with no list item is
- * kept whole. */
+/** What the principles block carries of PRINCIPLES.md: the file from its first list item on,
+ * dropping its own introduction (which restates the block's heading). A file with no list item
+ * is kept whole. */
 export function principleBullets(principles: string): string {
   const lines = principles.split("\n");
   const first = lines.findIndex((line) => /^[-*] /.test(line));
@@ -365,10 +239,10 @@ export function principleBullets(principles: string): string {
 }
 
 /** The <principles> block injected into every tick and director prompt: the project's codified
- * taste, phrased positively so loops follow it rather than merely avoid violations. The file
- * itself is read by principles.ts's readPrinciples. */
+ * taste, phrased positively so loops follow it rather than merely avoid violations — its bullets
+ * only (principleBullets). The file itself is read by principles.ts's readPrinciples. */
 function principlesBlock(principles: string): string {
-  return `Design principles this project holds — uphold them in everything you produce:\n<principles>\n${principles}\n</principles>`;
+  return `Design principles this project holds — uphold them in everything you produce:\n<principles>\n${principleBullets(principles)}\n</principles>`;
 }
 
 /** The <failure-digest> block injected into the telemetry role's prompt (plans/telemetry-role.md):
@@ -416,7 +290,6 @@ Do not copy backlog entries into it — PLANS.md and BUGS.md hold the work itsel
 
 interface TickPromptInput {
   role: Role;
-  initialPrompt: string;
   /** PRINCIPLES.md content (see readPrinciples); omitted from the prompt when empty. */
   principles?: string;
   /** Rendered failure digest (see src/failure/failure-render.ts); telemetry only, omitted when
@@ -465,9 +338,10 @@ interface TickPromptInput {
   /** The agent backend this role resolves to (`configForRole(config, role).agent`), selecting
    * the prompt dialect (./dialect.ts). Omitted: pi's dialect. */
   agent?: string;
-  /** The compact variant every run gets (CompactPrompt). Omitted: the full prompt. The caller
-   * drops the brief and backlog index of an assigned run itself, since it supplies them. */
-  compact?: CompactPrompt;
+  /** True when tumwater handed this run a single backlog entry (its claim, with no queued
+   * request): the run reads that entry first instead of the whole brief. The caller leaves an
+   * assigned run's backlog index out itself, since it supplies it. Omitted: unassigned. */
+  assigned?: boolean;
 }
 
 /** The retired names a model still meets in code, git history and logs, mapped to today's terms
@@ -478,12 +352,13 @@ const OLDER_NAMES_MAP = "loop = role, tick = run, fleet = team, landing/landed =
  * listed. Interpolated into the shared preamble and the reviewer and resolver openers. */
 export const OLDER_NAMES_SENTENCE = `Older tumwater names still appear in code, git history and logs: ${OLDER_NAMES_MAP}; docs/glossary.md in tumwater's repository lists them all.`;
 
-/** Shared opening of every loop prompt: where the run happens, what day it is, and why the
- * project exists. Defined once so the tick and director prompts cannot drift — and so the one
- * sentence telling every role to date its records from dateLine, not from the repo, reaches
- * each of them without editing any role text. */
-function sharedPreamble(initialPrompt: string, today?: string): string[] {
-  const parts = [
+/** Shared opening of every loop prompt: where the run happens and what day it is. The brief is
+ * not inlined: the rules send each run to the brief file, which holds the same text. Defined
+ * once so the tick and director prompts cannot drift — and so the one sentence telling every
+ * role to date its records from dateLine, not from the repo, reaches each of them without
+ * editing any role text. */
+function sharedPreamble(today?: string): string[] {
+  return [
     `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by tumwater after you finish.`,
     `${dateLine(today)} Stamp it on anything you record now — a new BUGS.md heading ends
 "(found by the <role> role YYYY-MM-DD)", a closing date reads "— fixed YYYY-MM-DD by the <role> role",
@@ -492,22 +367,18 @@ Needs-review note carries the date too — and count plan deadlines from it; nev
 from the repo.`,
     OLDER_NAMES_SENTENCE,
   ];
-  if (initialPrompt) {
-    parts.push(`The project's brief — its reason to exist — is:\n<project-prompt>\n${initialPrompt}\n</project-prompt>`);
-  }
-  return parts;
 }
 
-/** The full prompt for one role run. */
+/** The prompt for one role run. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, briefFile, today, userRequest, agent, compact } = input;
+  const { role, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, briefFile, today, userRequest, agent, assigned } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
   const parts = [
     `You are the "${role.id}" role (${role.title}) on this project's tumwater team — tumwater runs a team of AI roles that develop the project.`,
-    ...sharedPreamble(initialPrompt, day),
+    ...sharedPreamble(day),
   ];
-  if (principles) parts.push(principlesBlock(compact ? principleBullets(principles) : principles));
+  if (principles) parts.push(principlesBlock(principles));
   if (userRequest)
     parts.push(
       `An explicit request from the user, aimed at this role. Treat it as this run's steering;
@@ -524,14 +395,13 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (flakyChecks) parts.push(flakyChecks.trim());
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   parts.push(roleNotesInstruction());
-  parts.push(commonRules(check, briefFile, role.scope, dialect, compact).trim());
+  parts.push(commonRules(check, briefFile, role.scope, dialect, assigned).trim());
   return parts.join("\n\n");
 }
 
 /** The prompt for a director tick, which routes a user request into the project. */
 export function buildDirectorPrompt(
   userPrompt: string,
-  initialPrompt: string,
   principles?: string,
   /** The project's resolved check (plans/portability.md §6/7) — same threading as the tick
    * prompt, since commonRules is shared by both builders. */
@@ -546,21 +416,17 @@ export function buildDirectorPrompt(
   /** The agent backend the director resolves to, selecting the prompt dialect (./dialect.ts).
    * Omitted: pi's dialect. */
   agent?: string,
-  /** The compact variant every run gets; a director run is never assigned an entry. Omitted:
-   * the full prompt. */
-  compact?: boolean,
   /** The director's `roles.director.instructions` override — its run prompt is otherwise the
    * user's request. Omitted: no `Additional standing instructions` block, exactly as today. */
   extraInstructions?: string,
 ): string {
-  const variant: CompactPrompt | undefined = compact ? { assigned: false } : undefined;
   const parts = [
     `You are the "director" role on this project's tumwater team — tumwater runs a team of AI roles that develop the project. The user steers
 the project by sending it requests; one has just arrived. Other specialist roles continuously
 implement planned features from PLANS.md and fix bugs from BUGS.md.`,
-    ...sharedPreamble(initialPrompt, today),
+    ...sharedPreamble(today),
   ];
-  if (principles) parts.push(principlesBlock(variant ? principleBullets(principles) : principles));
+  if (principles) parts.push(principlesBlock(principles));
   if (backlogIndex) parts.push(backlogIndex);
   parts.push(`The user's request:\n<user-request>\n${userPrompt.trim()}\n</user-request>`);
   parts.push(
@@ -617,6 +483,7 @@ any other setting (timeouts, budgets, role enablement, review settings) has that
 with a warning, so such a request is guidance to record per the routing rules, not an edit you
 can make.`,
   );
-  parts.push(commonRules(check, briefFile, undefined, dialectFor(agent), variant).trim());
+  // A director run is never assigned an entry.
+  parts.push(commonRules(check, briefFile, undefined, dialectFor(agent)).trim());
   return parts.join("\n\n");
 }

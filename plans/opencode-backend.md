@@ -577,11 +577,10 @@ compact run prompt is every run's prompt, on every backend and window, so OpenCo
 too; item 3 still feeds the tool-output caps of item 2.) Four items carry over:
 
 1. **The compact rules carry OpenCode's backend rules. Done in part 5/7.**
-   - `compactRules` in src/prompt/prompt.ts renders the dialect's `backendRules`, as the full
-     rules do.
-   - A test pins each OpenCode backend rule in the compact prompt, beside the full prompt's
-     directive check in test/compact-prompt.test.ts (added by hand 2026-10-17).
-   - A rule added to `commonRules` later goes in `compactRules` too.
+   - `commonRules` in src/prompt/prompt.ts renders the dialect's `backendRules`. (Until
+     2026-10-19 a separate `compactRules` did, beside the full rules; the full variant is gone.)
+   - A test pins each OpenCode backend rule in the run prompt, in test/prompt-rules.test.ts
+     (added by hand 2026-10-17, then in test/compact-prompt.test.ts).
 2. **OpenCode's tool output is capped at pi's limits (part 6f).**
    - OpenCode's `tool_output` default is 2,000 lines / 51,200 bytes (finding 13), about three
      times pi's tuned 16,000-character bash cap. Every turn re-sends what a tool returned, and

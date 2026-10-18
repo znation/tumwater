@@ -76,7 +76,7 @@ test("the steward's epitaph keeps the entry's title for the citation guard and l
 });
 
 test("buildTickPrompt for steward carries the find text plus the shared rules", () => {
-  const prompt = buildTickPrompt({ role: steward!, initialPrompt: "" });
+  const prompt = buildTickPrompt({ role: steward! });
   assert.match(prompt, /"steward" role \(backlog curator\)/);
   assert.ok(prompt.includes(steward!.find.trim()), "the full find text is embedded");
 });

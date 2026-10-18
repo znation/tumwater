@@ -434,8 +434,6 @@ export function rolePayload(
         role,
         state,
         preview: true,
-        // The compact prompt every run gets (loop-tick.ts), so the preview is the real prompt.
-        compact: true,
       })?.prompt ?? null,
     // The loop's schedule — surfaced read-only from the same persisted state rolePayload
     // already loaded for the model-fallback episode and the next-tick preview, so no new
