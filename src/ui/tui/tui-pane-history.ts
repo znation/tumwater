@@ -148,17 +148,38 @@ export function createHistoryPane(
     );
   };
 
-  const refreshTrail = (): void => {
+  /** Re-read the pane-scoped newest completed tick (the loop Ctrl+G scoped to, else the team's)
+   * into trailCache, appending the tick commit's per-file stat once it resolves — the reader
+   * both the initial Ctrl+N toggle and the scope-change refreshes share, so the trail cannot
+   * keep showing a retired loop's tick after Ctrl+G or a roster change drops the History scope.
+   * Returns true when a tick actually rendered (the caller turns the trail on); a scope holding
+   * none leaves trailCache null and, when `onEmpty` is given, runs it (the Ctrl+N toggle's
+   * "no completed runs to inspect" flash) so the user learns why nothing changed. The reader
+   * throw is caught and flashed rather than escaping a key or sync path — the guard the two
+   * original readers each carried. */
+  const loadTrail = (onEmpty: (() => void) | null): boolean => {
     trailGen++;
     try {
       const row = readTickRows(session.root, 1, historyRole)[0];
-      const detail = row === undefined ? null : readTickDetail(session.root, row.role, row.run);
+      if (row === undefined) {
+        if (onEmpty !== null) onEmpty();
+        return false;
+      }
+      const detail = readTickDetail(session.root, row.role, row.run);
       trailCache = detail === null ? null : renderTickDetail(detail);
       if (detail !== null) loadTrailStat(detail);
+      return true;
     } catch (err) {
       trailCache = null;
       session.flashError(err);
+      return false;
     }
+  };
+
+  /** Re-read the trail after a scope change (Ctrl+G advances, a roster drop prunes the role):
+   * refresh the cache from the new scope, or clear it when the scope now holds no tick. */
+  const refreshTrail = (): void => {
+    if (!loadTrail(null)) trailCache = null;
   };
 
   /** Recompute the History pane's cached body if it is the current view, re-entering at its
@@ -194,30 +215,17 @@ export function createHistoryPane(
         session.requestRender();
         return true;
       }
-      trailGen++;
       if (trailMode) {
+        // Toggle the trail off (Ctrl+N on the trail view): drop the trail snapshot. The
+        // trailGen bump keeps an in-flight stat from the old trail from repainting.
+        trailGen++;
         trailMode = false;
         trailCache = null;
       } else {
-        // The newest completed tick in the pane's scope: the loop's when Ctrl+G set
-        // historyRole, else the team's. A log holding none flashes and leaves the rows.
-        const row = readTickRows(session.root, 1, historyRole)[0];
-        if (row === undefined) {
-          session.flashMessage("no completed runs to inspect");
-        } else {
-          // readTickDetail reads the log and renderTickDetail renders it; a throw (an
-          // injected seam or an unexpected failure) flashes the reason and leaves the rows
-          // shown rather than escaping the handler and killing the TUI.
-          try {
-            const detail = readTickDetail(session.root, row.role, row.run);
-            trailCache = detail === null ? null : renderTickDetail(detail);
-            trailMode = true;
-            if (detail !== null) loadTrailStat(detail);
-          } catch (err) {
-            trailCache = null;
-            session.flashError(err);
-          }
-        }
+        // Toggle the trail on: read the pane-scoped newest completed tick. A scope holding
+        // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a tick turns
+        // the trail on (a log holding none is the only path that does not).
+        if (loadTrail(() => session.flashMessage("no completed runs to inspect"))) trailMode = true;
       }
       session.paneScroll = 0; // either way the pane starts at its head
       session.requestRender();
