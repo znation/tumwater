@@ -9,7 +9,7 @@ import {
   compactContextBudgetRule,
   principleBullets,
 } from "../src/prompt/prompt.js";
-import { CLAUDE_DIALECT, PI_DIALECT } from "../src/prompt/dialect.js";
+import { CLAUDE_DIALECT, OPENCODE_DIALECT, PI_DIALECT } from "../src/prompt/dialect.js";
 import { roleById } from "../src/roles/roles.js";
 import type { BuildCheck } from "../src/build/build-check-detect.js";
 
@@ -147,4 +147,18 @@ test("the compact director prompt shortens its rules and principles too", () => 
   assert.ok(compact.endsWith(REPLY_ENDINGS));
   assert.match(compact, /First read the project brief/);
   assert.ok(!compact.includes("codified answer"));
+});
+
+test("a backend's own rules ride the compact prompt as they ride the full one", () => {
+  // OpenCode's shell rules (a 2-minute default timeout, background commands killed at run end)
+  // are a dialect's backendRules; the compact rules must state each, so an OpenCode run on a
+  // small window keeps them (plans/opencode-backend.md §9 item 1).
+  const role = roleById("feature");
+  assert.ok(role);
+  const rules = OPENCODE_DIALECT.backendRules ?? [];
+  assert.ok(rules.length > 0);
+  for (const compact of [undefined, { assigned: false }, { assigned: true }]) {
+    const prompt = buildTickPrompt({ role, initialPrompt: "", agent: "opencode", ...(compact ? { compact } : {}) });
+    for (const rule of rules) assert.ok(prompt.includes(`- ${rule}`), `${compact ? "compact" : "full"} prompt states: ${rule}`);
+  }
 });

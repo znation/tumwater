@@ -90,6 +90,49 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 - `npm test` passes.
 
 
+### OpenCode backend, part 6e/7: An OpenCode model's context window comes from the catalog, so window-keyed prompt rules apply to OpenCode runs (planned 2026-10-17 by user; requires part 6a/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 3; touches src/pi/pi-models.ts and its tests)
+
+**Goal.** `seamContextWindow` (src/pi/pi-models.ts) answers for an `opencode` seam too, from the context window the models.dev catalog declares. Then the compact run prompt (b1eb00a91, for a window of at most 128k) and any later window-keyed rule reach an OpenCode model with no further change. The free model is 200K, so its prompt does not change.
+
+**Approach.**
+- In `seamContextWindow`, an `opencode` seam reads `readOpencodeCache(projectRoot).models[opencodeModelKey(seam.model)]?.context` through `declaredWindow`.
+  - That is the same catalog key part 6b/7's free-ness check uses, so the window and the price always come from one entry.
+- A missing cache, an unknown model, or an unusable `context` reads null, as an unknown pi model does. Null means the full prompt.
+- pi and claude seams are unchanged.
+
+**Files touched.**
+- Source: src/pi/pi-models.ts.
+- Tests: test/pi-models.test.ts.
+
+**Acceptance criteria.**
+- With a catalog cache whose `opencode/m` model has `context: 65536`, `seamContextWindow({ agent: "opencode", model: "opencode/m" }, root)` returns 65536.
+- A model missing from the cache, a cache with no file, and a `context` that is not a positive number all return null.
+- The pi and claude cases in test/pi-models.test.ts pass unchanged.
+- `npm test` passes.
+
+### OpenCode backend, part 6f/7: OpenCode runs cap tool output at pi's window-scaled limits (planned 2026-10-17 by user; requires part 6e/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 2; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts and their tests)
+
+**Goal.** OpenCode's tool results stop entering the context at up to 51,200 bytes (its `tool_output` default, finding 13) and come in at the same budget as a pi run's. The free model's window is 200K, against the 1M window it replaces, and every turn re-sends what a tool returned.
+
+**Approach.**
+- `opencodeConfigContent` takes an optional `toolOutput: { maxLines, maxBytes }` and, when given, writes `"tool_output": { "max_lines": …, "max_bytes": … }` into the injected config.
+  - The key and its shape were checked in the 2.0.32 binary. It bounds the shell tool's cut (which keeps the tail) and the `@opencode/ToolOutput` service, which cuts every other tool result (keeping the head and saving the full text to a file).
+- The adapter (`opencodeBackend.invocation`) passes:
+  - `maxBytes` = `outputLimits(window).bash` from src/pi-extension/bounded-output.ts, which is 16,000 at 128k and above and scales down below that;
+  - `maxLines` = `Math.round(maxBytes / 40)`, the ~40 characters a line that pi's "12k chars ≈ 300 lines" read cap implies (400 at 16,000 bytes).
+  - The window is part 6e/7's `seamContextWindow` for the run's model. An unknown window gives the 128k values, which is what the 200K free model gets.
+- Without `toolOutput`, the config is byte-identical to today's.
+- The dialect's `oversizedOutput` already tells the model that shell output keeps its last lines and to read the spill file in ranges. The other tools' cut keeps the head, so add that to the dialect text if a test or the smoke check shows the model misreading it.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-config.ts, src/agent/opencode/opencode-backend.ts.
+- Tests: test/opencode-config.test.ts, and the adapter's invocation test.
+
+**Acceptance criteria.**
+- `opencodeConfigContent({ ..., toolOutput: { maxLines: 400, maxBytes: 16000 } })` parses to a config whose `tool_output` is `{ "max_lines": 400, "max_bytes": 16000 }`, and the same call without `toolOutput` returns today's string unchanged.
+- An adapter invocation for a model whose catalog window is 65,536 injects `max_bytes` 8000 and `max_lines` 200. An unknown window injects 16000 and 400.
+- `npm test` passes.
+
 ### Plain terms code merge, part 11c/11: Rewrite the merge family in the first half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts a–m, plus test/helpers/ test/fakes/ and test/fixtures/)
 
 **Refused 2026-10-17 by feature: the acceptance grep cannot list only the four comment kept-kinds without touching string literals — its range also contains fabricated-data/test-name/role-name literals using merge terms (`summary: "land \u2026"`, `tmpdir("vet-permits-")`, role `"vetted-v"`, `"landed one"`, `"landing check red"`), which the same entry forbids changing and predecessor part 10/11's series convention keeps as expected-output/fabricated literals.**

@@ -559,6 +559,61 @@ Only what differs from plans/agent-backends.md §10:
 | Budget handback, model fallback | `handoff`, unchanged |
 | Fallback chain (plans/fallback-chain.md) | a free OpenCode step is "available when its breaker is serving", the free-pi row |
 
+### 9. Small-window parity with pi (added 2026-10-17)
+
+pi runs got small-window measures on 2026-10-17:
+
+- strip-thinking (5c519508f): no earlier thinking is sent back at a window of at most 256k.
+- Window-scaled tool-output caps and context-shake (b2720875c).
+- A compact run prompt plus a trimmed pi system prompt at a window of at most 128k (b1eb00a91).
+
+Most of these are pi extensions, and OpenCode has no equivalent hook that this plan uses. The free
+model's window is 200K, so the compact prompt would not apply to it anyway. Four items carry
+over:
+
+1. **The compact rules carry OpenCode's backend rules. Done in part 5/7.**
+   - `compactRules` in src/prompt/prompt.ts renders the dialect's `backendRules`, as the full
+     rules do.
+   - A test pins each OpenCode backend rule in the compact prompt, beside the full prompt's
+     directive check in test/compact-prompt.test.ts (added by hand 2026-10-17).
+   - A rule added to `commonRules` later goes in `compactRules` too.
+2. **OpenCode's tool output is capped at pi's limits (part 6f).**
+   - OpenCode's `tool_output` default is 2,000 lines / 51,200 bytes (finding 13), about three
+     times pi's tuned 16,000-character bash cap. Every turn re-sends what a tool returned, and
+     the 200K window compacts sooner than the 1M one it replaces.
+   - The key is `tool_output: { max_lines, max_bytes }` ("Tool output truncation thresholds").
+     This was checked in the 2.0.32 binary, where it bounds two things:
+     - the shell tool's cut, which keeps the tail;
+     - the `@opencode/ToolOutput` service, which cuts any other tool result that did not cut
+       itself (read, grep, glob), keeps the head, and saves the full text to a file.
+   - The injected config sets:
+     - `max_bytes`: `outputLimits(window).bash` from src/pi-extension/bounded-output.ts, which is
+       16,000 at 128k and above and scales down below that.
+     - `max_lines`: `max_bytes / 40`, the ~40 characters a line that pi's "12k chars ≈ 300 lines"
+       read cap implies.
+   - The window comes from item 3. An unknown window keeps the 128k values.
+   - OpenCode keeps the **last** lines of shell output, not head and tail (finding 17). The
+     dialect already tells the model to read the spill file in ranges.
+3. **The catalog's context window reaches the window lookup (part 6e).**
+   - `seamContextWindow` in src/pi/pi-models.ts returns null for any non-pi seam today.
+   - For an `opencode` seam it reads the model's `context` from the catalog cache (part 6a's
+     `limit.context`, through `readOpencodeCache` and `opencodeModelKey`).
+   - Then the compact prompt, and any later window-keyed rule, applies to an OpenCode model of
+     128k or less with no further change.
+   - The free model is 200K, so nothing changes for it today.
+4. **Measure before building anything bigger (hand step H3).** After the team's first day on
+   OpenCode, read from the session exports:
+   - whether OpenCode sends DeepSeek's earlier thinking back. On pi via deepinfra it does: about
+     a fifth of peak context. Fit prompt growth against tool output and reasoning-part sizes,
+     the method behind 5c519508f.
+   - how many runs compact, and at what context.
+   - how large tool results are under the item-2 caps.
+
+   Only if old thinking is a large share and compaction is common does an OpenCode equivalent of
+   strip-thinking earn a plan. That would be a plugin, which this plan otherwise treats as a leak.
+   OpenCode's `compaction: { auto, keep: { tokens }, buffer }` settings (in the 2.0.32 binary) are
+   the cheaper lever to try first.
+
 ## Rollout
 
 - **The config is the one under "Goal".**
@@ -571,7 +626,8 @@ Only what differs from plans/agent-backends.md §10:
   concurrent runs add about 2 GB.
 - **Watch the smaller window.** It is 200K, against the Hugging Face model's 1M. A 2026-10-17
   measurement found 34% of runs past 64K, so a long tail of runs will compact. Watch the
-  `compacted` counts and the context-exceeded failures on the first day.
+  `compacted` counts and the context-exceeded failures on the first day. Parts 6e and 6f cap tool
+  output at pi's limits first (§9), and hand step H3 measures what is left.
 - **Spend on the fallback** is the measure of how often the free tier refused: `tumwater report`
   "Cost by provider".
 
@@ -590,6 +646,11 @@ Only what differs from plans/agent-backends.md §10:
   - Check whether `OPENCODE_MODELS_PATH` makes OpenCode skip its own catalog fetch (§7).
   - Then edit tumwater.json (the untracked live file in the primary checkout) as shown under
     "Goal".
+- **H3: measure the window, after a day on OpenCode** (§9 item 4).
+  - From the session exports: the share of each run's context that is replayed thinking, how
+    many runs compact and at what context, and tool result sizes.
+  - Decide from those numbers whether an OpenCode strip-thinking plugin or `compaction` tuning
+    is worth a plan.
 
 ## Parts (PLANS.md "OpenCode backend, part i/7")
 
@@ -613,6 +674,10 @@ Only what differs from plans/agent-backends.md §10:
    - **6c:** an observed price on a catalog-free model demotes it to priced and logs an event.
      Requires part 6a.
    - **6d:** thinking variants and image input from the catalog. Requires part 6a.
+   - **6e** (added 2026-10-17, §9): the catalog's context window reaches `seamContextWindow`.
+     Requires part 6a.
+   - **6f** (added 2026-10-17, §9): the injected config caps `tool_output` at pi's
+     window-scaled limits. Requires part 6e.
 7. Doctor, docs and the `smoke:opencode` live check, including an end-of-run note. Requires
    parts 6b–6d.
 
@@ -666,6 +731,8 @@ Only what differs from plans/agent-backends.md §10:
 - **A lossy stream.** The stream drops the final step's usage (finding 5). The export fixes the
   numbers after the run, but live progress (tokens so far) undercounts by the step in flight.
 - **A smaller window.** 200K against 1M means more compaction, and its quality is OpenCode's.
+  Parts 6e and 6f bring OpenCode's tool output down to pi's caps; hand step H3 decides whether
+  more is needed (§9).
 - **Disk outside `.tumwater/`.** Shell spill files accumulate under
   `~/.local/share/opencode/shell/` (finding 17) until pruning deletes them (§4).
 - **Load.** About 600 MB and eleven `git` spawns per run (finding 22).
