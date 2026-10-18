@@ -173,6 +173,19 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return Object.entries(byProvider).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
 
+  // Window tallies per model — run count desc, then name — so the "Runs by model" chart
+  // matches the day report's line ordering. Model keys are dynamic selectors, so reads and
+  // seeds use Object.hasOwn as reportProviderOrder does; a model a day series never started
+  // on still gets a row only if some day carries it.
+  function reportModelOrder(data) {
+    const byModel = {};
+    for (const d of data.series) {
+      for (const [model, n] of Object.entries(d.runsByModel || {})) byModel[model] = (Object.hasOwn(byModel, model) ? byModel[model] : 0) + n;
+      for (const model of Object.keys(d.runsByModel || {})) if (!Object.hasOwn(byModel, model)) byModel[model] = 0;
+    }
+    return Object.entries(byModel).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+
   // Stacked bars, one color per entry in the caller's order (the first at the bottom), with a
   // legend in the same order. entries is the ordered [key, total][] list that drives the
   // colors, stack order, and legend; keys are dynamic (roles, providers): escaped everywhere.
@@ -226,6 +239,12 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // its empty slot, as the role charts do.
   function chartCostByProvider(data) {
     return stackChart(data, reportProviderOrder(data), "costByProvider", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+  }
+
+  // The team's run starts, per day, stacked by model: each segment one (day, model), the
+  // dashboard twin of the day report's "Runs by model" line. Sparse like the provider charts.
+  function chartRunsByModel(data) {
+    return stackChart(data, reportModelOrder(data), "runsByModel", (n) => plural(n, "run"), countAxis, true);
   }
 
   // The API-equivalent (notional) spend of subscription runs, per provider, on the same axis
@@ -570,6 +589,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (seriesHasAny(d, "imageReroutesByRole") ? block("Image reroutes by role", chartImageReroutesByRole(d)) : "") +
         (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +
         (seriesHasAny(d, "mergedByRole") ? block("Merged by role", chartMergedByRole(d)) : "") +
+        (!d.role && seriesHasAny(d, "runsByModel") ? block("Runs by model", chartRunsByModel(d)) : "") +
         (seriesHasAny(d, "mergeFailedByRole") ? block("Merge failures by role", chartMergeFailuresByRole(d)) : "") +
         (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +
         (seriesHasCheckFailures(d) ? block("Red merge checks", chartCheckFailures(d), "per day · failed full-suite checks") : "") +

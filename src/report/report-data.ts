@@ -100,6 +100,11 @@ interface UsageFold {
   /** The notional share per provider (a subscription seam's API-equivalent spend), the same
    * parallel age as costByProvider but on the notional line. */
   notionalByProvider: Record<string, number>;
+  /** run_start events per model selector (the agent-qualified name every run starts on —
+   * `run #N started on <model>`), a parallel tally to runsByRole keyed by model instead of
+   * role. A run_start whose `model` is absent or empty contributes no key. Team-only: a
+   * model is not a role, so a role-scoped report carries an empty map. */
+  runsByModel: Record<string, number>;
 }
 
 /** Fold one event's `providerCost` map (`Record<provider, {costUsd, notionalCostUsd}>` — the
@@ -176,6 +181,12 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     const tier = commitTier(role);
     if (tier === "work") target.workCommits++;
     else if (tier === "maintenance") target.maintenanceCommits++;
+  } else if (ev.type === "run_start") {
+    // One tally per run start on a configured model: the same `model` field the CLI's
+    // `run #N started on <model>` line prints, and the only event that carries a model
+    // (run_end has none), so a run that started with no configured model contributes no key.
+    const model = typeof ev.model === "string" && ev.model.length > 0 ? ev.model : null;
+    if (model !== null) addTo(target.runsByModel, model, 1);
   } else if (ev.type === "merge_done" || ev.type === "merge_failed") { 
     target.mergeRuns = (target.mergeRuns ?? 0) + 1;
     if (ev.type === "merge_failed") target.mergeFailed = (target.mergeFailed ?? 0) + 1;
@@ -238,6 +249,7 @@ interface DayFold {
   mergeFailedByRole: Record<string, number>;
   costByProvider: Record<string, number>;
   notionalByProvider: Record<string, number>;
+  runsByModel: Record<string, number>;
 }
 
 /** The event-log half of a windowed report, memoized per (root, fromKey). `offset` is how
@@ -352,6 +364,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       mergeFailedByRole: {},
       costByProvider: {},
       notionalByProvider: {},
+      runsByModel: {},
     };
     entry.days.set(dayKey, fold);
   }
@@ -507,6 +520,10 @@ export interface ReportDay {
   costByProvider?: Record<string, number>;
   /** Per-provider notional spend, parallel to notionalByRole; absent when the day had none. */
   notionalByProvider?: Record<string, number>;
+  /** run_start events per model selector, parallel to costByProvider's team-only rule: a
+   * model is not a role, so only the team series carries it (absent when the day had no
+   * modelled start, zero means absent). */
+  runsByModel?: Record<string, number>;
 }
 
 /** The window totals both reports surface — output tokens (the merge share included), the
@@ -600,6 +617,10 @@ export interface SinceReport {
   costByProvider: Record<string, number>;
   /** Per-provider notional spend; always present (empty map when none). */
   notionalByProvider: Record<string, number>;
+  /** run_start events per model selector; always present (empty map when none, like
+   * costByProvider), so the --since render can gate its `Runs by model` line on the
+   * window's own events. A model is not a role, so a scoped report carries an empty map. */
+  runsByModel: Record<string, number>;
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the cutoff's day, the log's oldest
    * retained event predates the cutoff instant (the same-day case a day key cannot decide),
@@ -649,6 +670,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
+    runsByModel: {},
   };
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
@@ -717,6 +739,10 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     // gates the provider lines to the team report anyway. Always present, empty when none.
     costByProvider: scopedByRole(acc.costByProvider, base),
     notionalByProvider: scopedByRole(acc.notionalByProvider, base),
+    // Model attribution is team-only (a model is not a role, so no model folds to the
+    // scoped role), the same full-map-for-team / empty-for-scoped rule costByProvider
+    // follows. Always present so the render can gate on the window's own events.
+    runsByModel: scopedByRole(acc.runsByModel, base),
     coversFullWindow,
   };
 }
@@ -784,6 +810,10 @@ export function collectReport(root: string, days: number, role?: string): Report
       if (Object.keys(fold.costByProvider).length > 0) day.costByProvider = fold.costByProvider;
       if (Object.keys(fold.notionalByProvider).length > 0)
         day.notionalByProvider = fold.notionalByProvider;
+      // Models are a team attribution (a model is not a role), so only the team series
+      // carries the map; only set when a modelled start happened (zero means absent), so a
+      // model-less day keeps its exact pre-feature shape.
+      if (Object.keys(fold.runsByModel).length > 0) day.runsByModel = fold.runsByModel;
       day.mergeRuns = fold.mergeRuns;
       day.mergeTokens = fold.mergeTokens;
       day.mergeCostUsd = fold.mergeCostUsd;

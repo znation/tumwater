@@ -1002,3 +1002,41 @@ test("collectReport gives each day the lower median of its merge_done queuedMs, 
   assert.ok(!("mergeWaitMedianMs" in data.series[0]!), "a day with only a merge_failed has none");
   for (const d of collectReport(root, 3, "feature").series) assert.ok(!("mergeWaitMedianMs" in d));
 });
+
+test("collectReport and collectReportSince tally run_start per model, zero meaning absent, team scope only", () => {
+  const start = (ts: number, model?: string) =>
+    JSON.stringify({ ts, loop: "feature", type: "run_start", run: 1, ...(model === undefined ? {} : { model }) });
+  const root = tmpdir();
+  writeEvents(root, [
+    start(at(0), "acme/m1"),
+    start(at(0), "acme/m2"),
+    start(at(0), "acme/m1"),
+    start(at(0)), // no configured model: contributes no key
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 }),
+  ]);
+  const data = collectReport(root, 3);
+  assert.deepEqual(data.series[2]?.runsByModel, { "acme/m1": 2, "acme/m2": 1 }, "counts modelled starts, skips the model-less one");
+  assert.ok(!("runsByModel" in (data.series[0] ?? {})), "a day with no modelled start omits the field");
+
+  const since = collectReportSince(root, 3 * 24 * HOUR);
+  assert.deepEqual(since.runsByModel, { "acme/m1": 2, "acme/m2": 1 }, "--since carries the same map");
+  // Renders name the tally, count desc then name asc, team report only.
+  assert.match(renderReportMarkdown(data), /\*\*Runs by model:\*\* acme\/m1 — 2 · acme\/m2 — 1/);
+  assert.match(renderSinceReportMarkdown(since), /\*\*Runs by model:\*\* acme\/m1 — 2 · acme\/m2 — 1/);
+  assert.doesNotMatch(renderReportMarkdown(collectReport(root, 3, "feature")), /\*\*Runs by model:/, "a scoped day report omits it");
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(root, 3 * 24 * HOUR, "feature")), /\*\*Runs by model:/, "a scoped --since report omits it");
+
+  // Team-only: a model is not a role, so a role-scoped report carries no runsByModel.
+  assert.deepEqual(collectReportSince(root, 3 * 24 * HOUR, "feature").runsByModel, {}, "scoped window carries an empty map");
+  const scoped = collectReport(root, 3, "feature");
+  assert.ok(!("runsByModel" in (scoped.series[2] ?? {})), "scoped day omits the field");
+
+  // A log with no modelled start: the team day omits the field and --since returns an empty map.
+  const plain = tmpdir();
+  writeEvents(plain, [start(at(0))]);
+  assert.ok(!("runsByModel" in collectReport(plain, 2).series[0]!), "a model-less team day omits the field");
+  assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).runsByModel, {});
+  // Zero-means-absent at the render: no modelled start prints no Runs by model line.
+  assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*Runs by model:/);
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*Runs by model:/);
+});

@@ -465,6 +465,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
+    runsByModel: {},
     coversFullWindow: true,
   });
   assert.match(zero, /^# tumwater usage report/);
@@ -495,6 +496,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
+    runsByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /window: last 90m \(since /);
@@ -525,6 +527,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
+    runsByModel: {},
     coversFullWindow: true,
   });
   assert.ok(!zero.includes("merge runs"), "zero merge runs omit the line entirely");
@@ -546,6 +549,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
+    runsByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which merge runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
@@ -569,6 +573,7 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
     mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
+    runsByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which merge runs: 2 runs \(1 failed\) · 1200 tokens · \$0\.50 \(reviewer \+ conflict resolution\)/);
@@ -595,6 +600,7 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     costByProvider: {},
     notionalByProvider: {},
     notionalByRole: { feature: 0.4, plan: 0.5 },
+    runsByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /\*\*Commits by role:\*\* feature — 3 · clean — 1/);
@@ -619,6 +625,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
+    runsByModel: {},
     coversFullWindow: true,
   });
   // The now-required commitsByRole renders "-" when empty; a window with no notional spend

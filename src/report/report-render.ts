@@ -145,6 +145,14 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // the zero-means-absent gate prints no line for a window with no provider spend.
   if (data.role === undefined) {
     pushProviderCostLines(lines, () => rankedRoleMap(data.costByProvider), () => rankedRoleMap(data.notionalByProvider));
+    // The same breakdown per MODEL (each run_start's agent-qualified selector — the model a
+    // team mixing providers, per-role overrides and fallbacks actually ran on), gated to the
+    // team report like the provider lines: a model is not a role, so a role-scoped window
+    // omits it. SinceReport.runsByModel is always present, so a window with no modelled
+    // start prints no line (keeping a model-less day's output unchanged), exactly as the
+    // provider lines stay absent when no provider spent.
+    const modelPairs = rankedRoleMap(data.runsByModel).filter(([, n]) => n > 0);
+    if (modelPairs.length > 0) lines.push(rankedRoleLine("Runs by model", modelPairs, String));
   }
   // The same breakdown for review friction: rejections per role from review_rejected events;
   // a window with none renders "-" like the other lines.
@@ -287,6 +295,14 @@ export function renderReportMarkdown(data: ReportData): string {
       () => rankedRoleTotals(data.series, (d) => d.costByProvider ?? {}),
       () => rankedRoleTotals(data.series, (d) => d.notionalByProvider ?? {}),
     );
+    // The same breakdown per MODEL (each run_start's agent-qualified selector — the model a
+    // team mixing providers, per-role overrides and fallbacks actually ran on), gated to the
+    // team report like the provider lines: a model is not a role, so a role-scoped report
+    // omits it (ROLE_SCOPE_NOTE covers the omission), and a window with no modelled start
+    // prints no line (keeping a model-less day's output unchanged), exactly as the provider
+    // lines stay absent when no provider spent. Ranked and formatted like Cost by role.
+    const modelPairs = rankedRoleTotals(data.series, (d) => d.runsByModel ?? {}).filter(([, n]) => n > 0);
+    if (modelPairs.length > 0) lines.push(rankedRoleLine("Runs by model", modelPairs, String));
   }
   // The same breakdown for review friction: window rejections per role from review_rejected
   // events, ranked like the ticks line; a window with none renders "-".

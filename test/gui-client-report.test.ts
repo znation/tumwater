@@ -650,3 +650,49 @@ test("the Work vs maintenance chart stacks work and maintenance per day and matc
   const labels = (s: string) => (s.match(/<text [^>]*text-anchor='middle'/g) || []).length;
   assert.equal(labels(svg), labels(chartCommits(data)));
 });
+
+test("the Runs by model chart stacks per model and reportModelOrder lists each model once", () => {
+  // The Runs by model chart is the dashboard twin of the day report's "Runs by model" line:
+  // one segment per (day, model) stacked in reportModelOrder's order, from each run_start's
+  // agent-qualified selector. The map is sparse, so a day with none keeps its empty slot.
+  interface Builders {
+    reportModelOrder(d: ReportData): Array<[string, number]>;
+    chartRunsByModel(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportModelOrder, chartRunsByModel, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportModelOrder", "chartRunsByModel", "seriesHasAny"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { runsByModel: { "acme/m2": 1, "acme/m1": 2 } }),
+    mkDay("2026-09-02", { runsByModel: { "acme/m1": 1 } }),
+    mkDay("2026-09-03"),
+  ]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  // Count desc, then name asc: m1 (3) ahead of m2 (1).
+  assert.deepEqual(reportModelOrder(data), [["acme/m1", 3], ["acme/m2", 1]]);
+  assert.deepEqual(titles(chartRunsByModel(data)), ["2026-09-01 · acme/m1: 2 runs", "2026-09-01 · acme/m2: 1 run", "2026-09-02 · acme/m1: 1 run"]);
+  const empty = mk([mkDay("2026-09-01"), mkDay("2026-09-02"), mkDay("2026-09-03")]);
+  assert.equal(seriesHasAny(empty, "runsByModel"), false);
+  assert.equal(seriesHasAny(data, "runsByModel"), true);
+});
+
+test("the Usage render chain gates the Runs by model chart right after Merged by role", () => {
+  // The usage view's render chain must name the Runs by model chart once, team-only and
+  // gated on the series really carrying a model, sitting right after the Merged by role term
+  // the same team-only rule orders it after.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const merged = chain.indexOf('block("Merged by role"');
+  const runs = chain.indexOf('block("Runs by model"');
+  assert.ok(merged >= 0, "the Merged by role term exists");
+  assert.ok(runs > merged, "Runs by model sits after Merged by role in the chain");
+  assert.match(chain, /!d\.role && seriesHasAny\(d, "runsByModel"\) \? block\("Runs by model", chartRunsByModel\(d\)\) : ""/);
+  // Exactly one such gated term.
+  assert.equal((chain.match(/block\("Runs by model", chartRunsByModel\(d\)\)/g) || []).length, 1);
+});
