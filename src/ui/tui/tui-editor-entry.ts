@@ -136,6 +136,35 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
       // index and title; a mismatch is treated as moved without writing. A blank title and a
       // throw flash and STAY in the editor so the text survives.
       const target = entryEditFor;
+      // Shared tail of the title and file edit arms: re-read the entry by flat index and
+      // title, guard against a concurrent move (so a mismatch is treated as moved, not
+      // written), then settle the editor and commit through tryEditEntry. The only thing
+      // the two arms pass differently is the (title, body) pair taking the entry's place;
+      // an omitted body preserves the matched entry's own body (the title edit arm).
+      const applyEntryEdit = (newTitle: string, newBody?: string): void => {
+        try {
+          // Both call sites (the file arm's and the title arm's Entry-save paths) run only
+          // when `target.position` is non-null, so the position math never sees a null.
+          const position = target.position!;
+          const entries = session.flat();
+          const plans = entries.filter((e) => e.label === "plan").length;
+          const entry = entries[target.kind === "plan" ? position - 1 : plans + position - 1];
+          const outcome =
+            entry?.label === target.kind && entry.title === target.title
+              ? tryEditEntry(session.root, target.kind, position, target.title, newTitle, newBody ?? entry.body)
+              : ({ status: "moved", title: "" } as const);
+          exitEntryEdit();
+          if (outcome.status === "edited") {
+            session.commitBacklogEdit(outcome.file, `Edit ${target.kind}: ${outcome.title}`);
+            session.flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}`);
+          } else {
+            session.clearBacklogSelection();
+            session.flashMessage(`that ${target.kind} was already removed or moved — nothing edited`);
+          }
+        } catch (err) {
+          session.flashError(err);
+        }
+      };
       if (entryBodyFile && target.position !== null) {
         // File mode: the line holds a path whose contents replace title and body through the
         // same title-checked tryEditEntry core the title edit uses, keeping the entry's
@@ -168,25 +197,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
           session.flashMessage(problem);
           return true;
         }
-        try {
-          const entries = session.flat();
-          const plans = entries.filter((e) => e.label === "plan").length;
-          const entry = entries[target.kind === "plan" ? target.position - 1 : plans + target.position - 1];
-          const outcome =
-            entry?.label === target.kind && entry.title === target.title
-              ? tryEditEntry(session.root, target.kind, target.position, target.title, newTitle, body)
-              : ({ status: "moved", title: "" } as const);
-          exitEntryEdit();
-          if (outcome.status === "edited") {
-            session.commitBacklogEdit(outcome.file, `Edit ${target.kind}: ${outcome.title}`);
-            session.flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}`);
-          } else {
-            session.clearBacklogSelection();
-            session.flashMessage(`that ${target.kind} was already removed or moved — nothing edited`);
-          }
-        } catch (err) {
-          session.flashError(err);
-        }
+        applyEntryEdit(newTitle, body);
         return true;
       }
       if (!session.input.trim()) {
@@ -210,25 +221,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
           session.flashError(err);
         }
       } else {
-        try {
-          const entries = session.flat();
-          const plans = entries.filter((e) => e.label === "plan").length;
-          const entry = entries[target.kind === "plan" ? target.position - 1 : plans + target.position - 1];
-          const outcome =
-            entry?.label === target.kind && entry.title === target.title
-              ? tryEditEntry(session.root, target.kind, target.position, target.title, session.input, entry.body)
-              : ({ status: "moved", title: "" } as const);
-          exitEntryEdit();
-          if (outcome.status === "edited") {
-            session.commitBacklogEdit(outcome.file, `Edit ${target.kind}: ${outcome.title}`);
-            session.flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}`);
-          } else {
-            session.clearBacklogSelection();
-            session.flashMessage(`that ${target.kind} was already removed or moved — nothing edited`);
-          }
-        } catch (err) {
-          session.flashError(err);
-        }
+        applyEntryEdit(session.input);
       }
       return true;
     }
