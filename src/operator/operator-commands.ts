@@ -5,8 +5,10 @@ import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from
 import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
+import { revertMergedCommit } from "./revert.js";
 import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
+import { shortSha } from "../text/format.js";
 import { INSTANCE_ROLES } from "../roles/loop-ids.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import {
@@ -414,4 +416,24 @@ export async function cmdRetire(root: string, args: string[]): Promise<void> {
   for (const name of result.skipped) say(`nothing to remove: ${artifactPhrase(name, role)}`);
   if (result.removed.length === 0 && result.skipped.length === 0)
     say(`nothing to remove for role ${role}`);
+}
+
+/** `tumwater revert <sha>`: undo one merged change on main, committing the inverse as
+ * `tumwater(operator): Revert <short sha>` under the primary-worktree lock. The lock, branch
+ * guard, and fail-closed ref/conflict handling live in src/operator/revert.ts; this renderer
+ * names the new main head and reminds the caller the reverted role may redo the work. */
+export async function cmdRevert(root: string, args: string[]): Promise<void> {
+  // No flags; exactly one positional names the commit to undo. A flag or extra positional
+  // fails before anything is looked up or written.
+  if (args.length !== 1) fail("revert needs a commit (e.g. run tumwater revert 1a2b3c4)");
+  // A flag-shaped token is a dropped flag, not a commit: refuse it before rev-parse turns a
+  // lone `--json` into the misleading "no such commit". Mirrors `config set`'s
+  // flag-looking-value gate and gui-command.ts's --token gate, and a real sha never starts
+  // with `-`.
+  if (args[0]!.startsWith("-"))
+    fail(`revert takes no flags (got ${args[0]}); pass the commit to undo as the only argument`);
+  const result = await revertMergedCommit(root, args[0]!);
+  if (!result.ok) fail(result.error);
+  say(`main is now ${shortSha(result.headSha)}`);
+  say("the reverted role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not");
 }

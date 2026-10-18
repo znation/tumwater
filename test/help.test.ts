@@ -32,6 +32,7 @@ const ALL_COMMANDS = [
   "reclaim",
   "restart",
   "retire",
+  "revert",
   "stop",
   "completion",
   "help",

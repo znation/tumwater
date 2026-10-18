@@ -420,6 +420,9 @@ Usage:
   tumwater reclaim [--dry-run]     Reclaim gitignored build outputs from every
                                    workspace; --dry-run lists each candidate with its idle age
                                    and ignored-path count and cleans nothing
+  tumwater revert <sha>          Undo one merged change on main, committing the inverse
+                                   under the primary-worktree lock; refuses off the base
+                                   branch, on an unknown or unmerged ref, and on a conflict
   tumwater abort --role <id>       Stop that role's run in progress (work discarded; the role
                                    keeps going)
   tumwater restart                Apply a pending self-redeploy now, waiving the restart

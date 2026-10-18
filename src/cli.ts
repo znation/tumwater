@@ -379,6 +379,13 @@ async function main(): Promise<void> {
       await (await import("./operator/operator-commands.js")).cmdRetire(root, args);
       break;
     }
+    case "revert": {
+      // Acts immediately on the primary checkout under the primary-worktree lock; the single
+      // positional (the commit to undo) is validated inside cmdRevert.
+      await requireReadyRepo(root);
+      await (await import("./operator/operator-commands.js")).cmdRevert(root, args);
+      break;
+    }
     case "stop": {
       // Bare stop signals the recorded orchestrator pid; `--in`/`--cancel` schedule or drop a
       // deferred stop. Anything else is a mistake and fails before a signal is ever sent.

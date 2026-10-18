@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { abortRequestPath, orchestratorStatePath, restartRequestPath, roleNotesPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
-import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { commitIn, headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { cli, CLI } from "./helpers/cli-harness.js";
 import { spawnSync } from "node:child_process";
@@ -1153,4 +1153,54 @@ test("wake --in is capped at 90d like pause --for", async () => {
   assert.equal(r.code, 1);
   assert.match(r.stderr, /wake --in is capped at 90d \(got 91d\)/);
   assert.ok(!fs.existsSync(wakeRequestPath(repo)), "no marker on a refused --in");
+});
+
+// --- revert: undo one merged change on main ---
+// The CLI renderer for src/operator/revert.ts (its fail-closed unit surface lives in
+// test/operator-revert.test.ts). Here we pin the arity gate, the exit code and printed head on
+// success, and that the usage errors write no commit.
+
+test("revert succeeds on main, prints the new head, and revers to a clean tree", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli revert success");
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "work\n");
+  commitIn(repo, "work to undo");
+  const before = headSha(repo);
+
+  const r = await cli(repo, "revert", before);
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /main is now [0-9a-f]{8}/);
+  assert.match(r.stdout, /may redo the work/);
+  assert.notEqual(headSha(repo), before, "the revert committed the inverse");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "", "tree is clean after the revert");
+  assert.equal(sh(repo, "git", "log", "-1", "--format=%s"), `tumwater(operator): Revert ${before.slice(0, 8)}`);
+});
+
+test("revert rejects a flag-shaped token as a flag, before a lookup or a write", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli revert flag");
+  const before = headSha(repo);
+
+  const r = await cli(repo, "revert", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /revert takes no flags \(got --json\)/);
+  assert.equal(headSha(repo), before, "no commit was written");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "", "the tree is clean");
+});
+
+test("revert with zero or multiple positionals fails with usage and writes no commit", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli revert arity");
+  const before = headSha(repo);
+
+  let r = await cli(repo, "revert");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /revert needs a commit \(e.g. run tumwater revert 1a2b3c4\)/);
+
+  r = await cli(repo, "revert", before, "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /revert needs a commit \(e.g. run tumwater revert 1a2b3c4\)/);
+
+  assert.equal(headSha(repo), before, "neither usage error moved HEAD");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "", "no commit was written");
 });

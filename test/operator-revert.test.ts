@@ -1,0 +1,126 @@
+// --- tumwater revert <sha>: undo one merged change on main, under the primary-worktree lock ---
+// The unit surface of src/operator/revert.ts: fail-closed ref/conflict/branch handling, pinned
+// against real git repos. The CLI wiring (usage errors, exit codes, the printed head) is pinned
+// in test/cli-operators.test.ts; here we exercise revertMergedCommit directly.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { headSha, makeRepo, seedCommit, sh, writeConfig } from "./fixtures/repo-fixtures.js";
+import { revertMergedCommit } from "../src/operator/revert.js";
+
+test("reverting a rename commit commits both halves and leaves the tree clean", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "old.txt", "keep\n", "add old name");
+  seededRename(repo, "old.txt", "new.txt", "rename to new name");
+  const renameSha = headSha(repo);
+
+  const r = await revertMergedCommit(repo, renameSha);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(statusPorcelain(repo), "", "a rename revert leaves no half staged");
+  assert.ok(fs.existsSync(path.join(repo, "old.txt")), "the old name is restored");
+  assert.ok(!fs.existsSync(path.join(repo, "new.txt")), "the new name is undone");
+});
+
+function seededRename(repo: string, from: string, to: string, message: string): void {
+  sh(repo, "git", "mv", from, to);
+  sh(repo, "git", "commit", "-qm", message);
+}
+
+function statusPorcelain(repo: string): string {
+  return sh(repo, "git", "status", "--porcelain");
+}
+
+test("reverting HEAD on a clean base-branch checkout moves main, stays clean, and names its message", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "file.txt", "content\n", "first work commit");
+  const reverted = headSha(repo);
+
+  const r = await revertMergedCommit(repo, "HEAD");
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(headSha(repo), r.headSha, "returned head is the new HEAD");
+  assert.equal(statusPorcelain(repo), "", "worktree is clean after the revert");
+  const short = reverted.slice(0, 8);
+  assert.equal(sh(repo, "git", "log", "-1", "--format=%s"), `tumwater(operator): Revert ${short}`);
+  assert.ok(!fs.existsSync(path.join(repo, "file.txt")), "the added file is undone by the revert");
+});
+
+test("a non-tip commit whose paths no later commit touched reverts cleanly", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "a.txt", "a\n", "add a");
+  const aSha = headSha(repo);
+  seedCommit(repo, "b.txt", "b\n", "add b");
+
+  const r = await revertMergedCommit(repo, aSha);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(statusPorcelain(repo), "", "worktree is clean after the revert");
+  assert.equal(fs.readFileSync(path.join(repo, "b.txt"), "utf8"), "b\n", "b.txt survives the revert of a.txt");
+  assert.ok(!fs.existsSync(path.join(repo, "a.txt")), "a.txt is undone");
+});
+
+test("reverting a commit a later commit edited in the same region fails closed and leaves HEAD alone", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "x.txt", "one\n", "add x");
+  const xSha = headSha(repo);
+  seedCommit(repo, "x.txt", "two\n", "edit x");
+  const before = headSha(repo);
+
+  const r = await revertMergedCommit(repo, xSha);
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.match(r.error, /conflicted/, `error names the conflict: ${r.error}`);
+  assert.equal(headSha(repo), before, "HEAD did not move on a conflicted revert");
+  assert.equal(statusPorcelain(repo), "", "worktree is clean after the failed revert");
+  assert.equal(fs.readFileSync(path.join(repo, "x.txt"), "utf8"), "two\n", "the later edit survives");
+});
+
+test("an unknown ref writes nothing and names the ref", async () => {
+  const repo = makeRepo();
+  const before = headSha(repo);
+
+  const r = await revertMergedCommit(repo, "deadbeef");
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.match(r.error, /no such commit: deadbeef/);
+  assert.equal(headSha(repo), before, "HEAD did not move");
+  assert.equal(statusPorcelain(repo), "", "worktree is unchanged");
+});
+
+test("a ref that exists but is not on the base branch writes nothing and says so", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "m.txt", "m\n", "on main");
+  const before = headSha(repo);
+  // A branch with one extra commit that never reached main.
+  sh(repo, "git", "checkout", "-b", "other");
+  seedCommit(repo, "off.txt", "off\n", "off main");
+  const offSha = headSha(repo);
+  sh(repo, "git", "checkout", "main");
+
+  const r = await revertMergedCommit(repo, "other");
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.match(r.error, new RegExp(`${offSha.slice(0, 8)} is not on main`));
+  assert.equal(headSha(repo), before, "HEAD did not move");
+  assert.equal(statusPorcelain(repo), "", "worktree is unchanged");
+});
+
+test("checked out on a non-base branch, revert refuses even when the ref resolves", async () => {
+  const repo = makeRepo();
+  // Configure a base branch the checkout is not on, so the branch guard fires.
+  sh(repo, "git", "branch", "base");
+  sh(repo, "git", "checkout", "-b", "other");
+  writeConfig(repo, { baseBranch: "base" });
+  const before = headSha(repo);
+
+  const r = await revertMergedCommit(repo, "HEAD");
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.match(r.error, /not on base/, `error names the base branch: ${r.error}`);
+  assert.equal(headSha(repo), before, "HEAD did not move");
+  // The revert wrote nothing: the only change in the tree is the config file the test wrote.
+  assert.equal(statusPorcelain(repo), "?? tumwater.json");
+});
