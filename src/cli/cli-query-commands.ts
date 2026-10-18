@@ -328,9 +328,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   if (file !== undefined) {
     if (words.length > 2) fail(`unexpected argument ${JSON.stringify(words[2])} — with --file the decision comes from the file`);
     const answered = answerQuestionFromText(root, n, readPromptFileArg(file));
-    warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
-    sayAnswered(n, answered.title, jsonFlag, answered.decision);
-    if (!jsonFlag) sayAskerWake(root, answered.title);
+    await commitAndReportAnswer(root, n, jsonFlag, answered.title, answered.decision);
     return;
   }
   const decision = words.slice(2).join(" ").trim();
@@ -346,9 +344,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     );
     if (edited.trim() === "") fail("questions answer needs a decision: the editor left it blank; nothing changed");
     const answered = answerQuestionFromText(root, n, edited, question.title);
-    warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
-    sayAnswered(n, answered.title, jsonFlag, answered.decision);
-    if (!jsonFlag) sayAskerWake(root, answered.title);
+    await commitAndReportAnswer(root, n, jsonFlag, answered.title, answered.decision);
     return;
   }
   if (decision === "")
@@ -356,8 +352,14 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   // answerQuestion collapses the free-form decision to one line before writing it; report
   // that written text in the --json payload so it matches the file, not the caller's spacing.
   const { title, decision: writtenDecision } = answerQuestion(root, n, decision);
+  await commitAndReportAnswer(root, n, jsonFlag, title, writtenDecision);
+}
+
+/** Commit the answered question, report it in the requested output mode, and wake the
+ * asking role in prose mode — the tail every `questions answer` branch ends with. */
+async function commitAndReportAnswer(root: string, n: number, jsonFlag: boolean, title: string, decision: string): Promise<void> {
   warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
-  sayAnswered(n, title, jsonFlag, writtenDecision);
+  sayAnswered(n, title, jsonFlag, decision);
   if (!jsonFlag) sayAskerWake(root, title);
 }
 
