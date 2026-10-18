@@ -48,7 +48,7 @@ import { errorMessage, textOr } from "../text/text.js";
 import { lowerMedian } from "../collections.js";
 import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
-import { eventLogState, readEventsSince, type EventLogState } from "../events/event-window.js";
+import { eventLogState, eventsSince, readEventsSince, type EventLogState } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
@@ -717,9 +717,7 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
   }
   let contended = false;
   try {
-    const waits = readEventsSince(root, SLOT_WAIT_CHECK_WINDOW_MS).events.filter(
-      (ev) => ev.type === "slot_wait" && ev.ts >= now - SLOT_WAIT_CHECK_WINDOW_MS,
-    );
+    const waits = eventsSince(root, SLOT_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "slot_wait");
     if (waits.length > 0) {
       let total = 0;
       let longest = waits[0]!;
@@ -756,9 +754,7 @@ export function checkProviderContention(root: string, config: TumwaterConfig | u
   let longestMs = 0;
   const perKey = new Map<string, number>();
   try {
-    const waits = readEventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS).events.filter(
-      (ev) => ev.type === "provider_wait" && ev.ts >= now - PROVIDER_WAIT_CHECK_WINDOW_MS,
-    );
+    const waits = eventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "provider_wait");
     for (const ev of waits) {
       count += 1;
       const waited = finiteNumber(ev.waitedMs, 0);

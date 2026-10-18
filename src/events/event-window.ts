@@ -359,3 +359,23 @@ export function readEventsSince(
   const events = window.events.filter((e) => typeof e.ts === "number" && e.ts >= cutoff);
   return { cutoff, events, covered: eventWindowCovers(window, cutoff) };
 }
+
+/** The "recent events of a kind" read every doctor wait/failure check shares: events since the
+ * trailing `sinceMs` window, kept only when they clear `now − sinceMs` (the caller's seam for the
+ * window's far edge) and pass `keep`. One home of the read-and-recheck shape the slot/provider
+ * wait checks (doctor-checks.ts), the notify-failure check, and the queued-merge wait check each
+ * spelled beside readEventsSince's cutoff — the kind + recency rule cannot drift per caller. `keep`
+ * defaults to every event, so the ts-only reader passes nothing; `now` is explicit so every call in
+ * one window derives from the same instant (readEventsSince's own cutoff still uses the real
+ * clock, so this recheck is what a test seam can pin). `ts` is already number-typed by
+ * readEventsSince's filter, so the recheck never compares against a NaN. */
+export function eventsSince(
+  root: string,
+  sinceMs: number,
+  now: number,
+  keep: (ev: HarnessEvent) => boolean = () => true,
+): HarnessEvent[] {
+  return readEventsSince(root, sinceMs).events.filter(
+    (ev) => keep(ev) && ev.ts >= now - sinceMs,
+  );
+}

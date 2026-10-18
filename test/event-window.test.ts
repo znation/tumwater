@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { readEventsSince, readWindowEvents } from "../src/events/event-window.js";
+import { eventsSince, readEventsSince, readWindowEvents } from "../src/events/event-window.js";
 import { eventsLogPath } from "../src/paths.js";
 import { collectReport } from "../src/report/report-data.js";
 import { renderReportMarkdown } from "../src/report/report-render.js";
@@ -353,6 +353,28 @@ test("readEventsSince filters the day-keyed over-read by the cutoff instant", ()
   // drops it from the returned events. Coverage is judged on the window's oldest retained
   // event, not on the filtered result's.
   assert.equal(covered, true);
+});
+
+test("eventsSince keeps only the kind that clears the now seam", () => {
+  const root = tmpdir();
+  const t0 = Date.now();
+  writeEvents(root, [
+    eventLine(t0 - 120_000, { type: "slot_wait" }), // before now − window: dropped
+    eventLine(t0 - 30_000, { type: "provider_wait" }), // inside, wrong kind: dropped
+    eventLine(t0 - 30_000, { type: "slot_wait" }), // inside and a match: kept
+    eventLine(t0, { type: "slot_wait" }),
+  ]);
+  const kept = eventsSince(root, 60_000, t0, (e) => e.type === "slot_wait");
+  assert.deepEqual(
+    kept.map((e) => e.type),
+    ["slot_wait", "slot_wait"],
+  );
+  // The default keep-all arm: the ts-only reader keeps the in-window events of any kind.
+  const all = eventsSince(root, 60_000, t0);
+  assert.deepEqual(
+    all.map((e) => e.type),
+    ["provider_wait", "slot_wait", "slot_wait"],
+  );
 });
 
 test("an empty window reads as covered — an idle team prints no rotation note", () => {

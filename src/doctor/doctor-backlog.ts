@@ -18,7 +18,7 @@ import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
 import { listWideScope, queuedListRows } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { formatTimestamp, humanSeconds, secondsSince } from "../text/datetime.js";
-import { readEventsSince } from "../events/event-window.js";
+import { eventsSince, readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import { lowerMedian } from "../collections.js";
@@ -282,7 +282,7 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
   const withWait = (out: CheckOutcome): CheckOutcome => {
     let phrase: string | undefined;
     try {
-      phrase = mergeWaitPhrase(readEventsSince(root, MERGE_WAIT_WINDOW_MS).events.filter((ev) => ev.ts >= now - MERGE_WAIT_WINDOW_MS));
+      phrase = mergeWaitPhrase(eventsSince(root, MERGE_WAIT_WINDOW_MS, now));
     } catch {
       return out; // an unreadable event log never changes this row's level
     }

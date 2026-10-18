@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { readEventsSince } from "../events/event-window.js";
+import { eventsSince } from "../events/event-window.js";
 import { isNotifyFailure } from "../events/notify.js";
 import { humanSeconds } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
@@ -16,8 +16,7 @@ const NOTIFY_CHECK_WINDOW_MS = 24 * 3600_000;
 export function checkNotify(root: string, config: TumwaterConfig | undefined, now: number = Date.now()): CheckOutcome {
   if (!config?.notify) return okOutcome("no notify command configured — pages are off");
   try {
-    const failures = readEventsSince(root, NOTIFY_CHECK_WINDOW_MS)
-      .events.filter((ev) => isNotifyFailure(ev) && ev.ts >= now - NOTIFY_CHECK_WINDOW_MS);
+    const failures = eventsSince(root, NOTIFY_CHECK_WINDOW_MS, now, isNotifyFailure);
     if (failures.length === 0) return okOutcome("configured — no failed pages in the last 24h");
     const latest = failures[failures.length - 1]!;
     const age = humanSeconds(Math.max(0, Math.round((now - latest.ts) / 1000)));
