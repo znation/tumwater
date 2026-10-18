@@ -606,9 +606,15 @@ Only what differs from plans/agent-backends.md §10:
    says notes are off.
    - **Part 5b:** role notes on OpenCode — the `mcp.servers.tumwater` entry, the adapter passing
      it, and the dialect's notes tool. Requires part 5.
-6. Free-ness, the catalog cache and spend. Requires part 5b, which edits the same adapter.
+6. Free-ness, the catalog cache and spend. **Split 2026-10-17 into parts 6a–6d:**
+   - **6a:** the models.dev catalog fetch, parse and cache. Requires part 5b.
+   - **6b:** a free OpenCode model counts as free to the budget gate, the fallback view and the
+     status badge. Requires part 6a.
+   - **6c:** an observed price on a catalog-free model demotes it to priced and logs an event.
+     Requires part 6a.
+   - **6d:** thinking variants and image input from the catalog. Requires part 6a.
 7. Doctor, docs and the `smoke:opencode` live check, including an end-of-run note. Requires
-   part 6.
+   parts 6b–6d.
 
 ## Decisions (proposed 2026-10-17; confirm or change)
 

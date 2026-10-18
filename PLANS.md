@@ -5,59 +5,83 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### OpenCode backend, part 6/7: The models.dev catalog decides OpenCode free-ness, variants and image input, and an observed price overrides it (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 5b/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/agent/opencode/opencode-backend.ts src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-data.ts src/tick/tick-finalize.ts src/merge/merge-slot.ts src/paths.ts src/events/events.ts src/events/event-format.ts and their tests)
+### OpenCode backend, part 6a/7: The models.dev catalog fetch, parse and cache answer whether an OpenCode model is free (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; split 2026-10-17 by the plan role from part 6/7 into parts 6a/7–6d/7; requires part 5b/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/paths.ts test/opencode-catalog.test.ts (new))
 
-**Needs review 2026-10-17 by feature: too large for one run**
-
-**Goal.** A model job on OpenCode's free model counts as free:
-
-- an all-free team shows "budget n/a";
-- a free OpenCode model is a valid budget fallback;
-- at the cap it keeps running.
-
-If OpenCode ever bills that model, tumwater notices on the first priced run and treats it as priced from then on. The same catalog supplies the thinking variants and the image-input answer.
+**Goal.** The data half of OpenCode free-ness, with no seam wired yet: a bounded fetch of the catalog OpenCode itself caches, a parse that keeps only the models the config routes through OpenCode, a cache that survives a failed fetch, and `opencodeModelFree(cache, model)` as the one predicate part 6b/7's seam reads.
 
 **Approach.**
-- **src/agent/opencode/opencode-catalog.ts:**
-  - `fetchOpencodeCatalog()` GETs `https://models.dev/api.json`, bounded at 30 s. This is the data OpenCode itself caches (finding 10); V2's `opencode models` prints ids only.
-  - `parseOpencodeCatalog(body, providers)` keeps the `opencode` provider plus any provider the config routes through OpenCode (`opencode/<provider>/…`). For each model it records:
-    - `free`: input and output cost are both 0;
-    - `inputPerM`, `outputPerM`;
-    - `context` (`limit.context`);
-    - `images` (`modalities.input` includes `"image"`);
-    - `efforts` (the `values` of the `reasoning_options` entry with `type: "effort"`).
-  - The cache is `.tumwater/state/opencode-models.json` (a new path helper in src/paths.ts): `{ fetchedAt, cliVersion, models: { "<provider>/<model>": { …, billedAt? } } }`.
-    - It is refreshed when older than 24 h or when `opencode --version` changed.
-    - A failed fetch keeps the old cache and logs one warning.
-    - `billedAt` survives a refresh.
-  - `observeOpencodeRun(root, { model, costUsd })`: a run with `costUsd > 0` on a model the cache calls free sets `billedAt` and logs `opencode_free_model_billed` {model, costUsd} once. That is a new event in src/events/events.ts, rendered in src/events/event-format.ts. Call it next to `observeClaudeAccount` in src/tick/tick-finalize.ts and src/merge/merge-slot.ts.
-  - `opencodeModelFree(cache, model)` = `free && billedAt === undefined`.
-- **src/pi/pi-models.ts `seamFree`:** the opencode arm of part 1/7's switch reads `opencodeModelFree` for the gateway-qualified id. A model missing from the cache is not free.
-  - `seamFree` and `piPairFree` take the cache as an optional parameter, the way they take the claude account.
-  - The budget gate (src/gates/budget-gates.ts), the status free-ness read (src/status/status-data.ts) and doctor pass it.
-- **src/gates/startup-gate.ts:** refresh the cache once per root per process when a model job routes to opencode, as `seedClaudeAccount` does.
-- **src/agent/opencode/opencode-backend.ts:**
-  - `invocation` passes `#<level>` only when the cache lists the thinking level among the model's `efforts`.
-  - The new `imageInput(model)` hook answers from `images`.
+- **src/agent/opencode/opencode-catalog.ts (new):**
+  - `fetchOpencodeCatalog()` GETs `https://models.dev/api.json`, bounded at 30 s (finding 10); V2's `opencode models` prints ids only.
+  - `parseOpencodeCatalog(body, providers)` keeps the `opencode` provider plus any provider the config routes through OpenCode (`opencode/<provider>/…`). For each model it records: `free` (input and output cost both 0); `inputPerM`, `outputPerM`; `context` (`limit.context`); `images` (`modalities.input` includes `"image"`); `efforts` (the `values` of the `reasoning_options` entry with `type: "effort"`).
+  - The cache is `.tumwater/state/opencode-models.json` (a new path helper in src/paths.ts): `{ fetchedAt, cliVersion, models: { "<provider>/<model>": { …, billedAt? } } }`. It is refreshed when older than 24 h or when `opencode --version` changed; a failed fetch keeps the old cache and logs one warning; `billedAt` survives a refresh.
+  - `opencodeModelFree(cache, model)` = `free && billedAt === undefined`; a model missing from the cache is not free.
 
 **Files touched.**
-- Source: src/agent/opencode/opencode-catalog.ts (new), src/agent/opencode/opencode-backend.ts, src/pi/pi-models.ts, src/gates/startup-gate.ts, src/gates/budget-gates.ts, src/status/status-data.ts, src/tick/tick-finalize.ts, src/merge/merge-slot.ts, src/paths.ts, src/events/events.ts, src/events/event-format.ts.
-- Tests: test/opencode-catalog.test.ts (new), test/pi-models.test.ts, test/budget-gates.test.ts, test/startup-gate.test.ts, test/opencode-run.test.ts, test/event-format.test.ts.
+- Source: src/agent/opencode/opencode-catalog.ts (new), src/paths.ts.
+- Tests: test/opencode-catalog.test.ts (new), over the existing test/fixtures/opencode-captures/models-catalog-entries.json.
 
 **Acceptance criteria.**
-- **Parsing** the `body` of test/fixtures/opencode-captures/models-catalog-entries.json gives `opencode/deepseek-v4.1-flash-free` with `free: true`, context 200000, images true and efforts `["low", "high", "max"]`. It gives `opencode-go/deepseek-v4.1-flash` as priced, but only when the config routes `opencode/opencode-go/…`.
+- **Parsing** that fixture gives `opencode/deepseek-v4.1-flash-free` with `free: true`, context 200000, images true and efforts `["low", "high", "max"]`; it gives `opencode-go/deepseek-v4.1-flash` as priced, but only when the config routes `opencode/opencode-go/…`.
 - **The cache:** a stale or version-changed cache refreshes; a failed fetch keeps the old one; `billedAt` survives a refresh.
-- **`seamFree`:**
-  - A cached free model is free.
-  - A priced one, an unknown one, and a free one with `billedAt` set are not.
-  - The pi and claude arms are unchanged.
-- **The budget gate:** with every tier on `opencode/deepseek-v4.1-flash-free`, the team reads as all-free. At the cap (spend from a priced pi role), the opencode roles keep their primary.
-- **Fallback:** a free OpenCode model works as the budget `fallback` for a priced pi primary.
-- **Observed price:** a fake run reporting a cost on a cached free model sets `billedAt` and logs `opencode_free_model_billed` once. The next `seamFree` answer is false.
-- **Variants:** thinking `high` on the free model passes `#high`; `medium` passes no variant.
+- **`opencodeModelFree`:** a cached free model with no `billedAt` is free; a priced one, an unknown one, and a free one with `billedAt` set are not.
 - `npm test` passes.
 
-### OpenCode backend, part 7/7: Doctor checks the OpenCode install, models and leaks; session retention; docs; and an opt-in `smoke:opencode` live check (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 6/7 landed; design in plans/opencode-backend.md "Sessions", "Spend, free-ness, image input and doctor" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/agent/opencode/opencode-backend.ts src/agent/session-ledger.ts docs/backends.md docs/config.md scripts/smoke-opencode.mjs (new) package.json and their tests)
+### OpenCode backend, part 6b/7: A free OpenCode model counts as free to the budget gate, the fallback view and the status badge (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-budget.ts and their tests)
+
+**Goal.** With every model job on `opencode/deepseek-v4.1-flash-free` the team reads "budget n/a"; a free OpenCode model is a valid budget `fallback`; and at the cap the opencode roles keep their primary instead of moving to their fallback.
+
+**Approach.**
+- **src/pi/pi-models.ts `seamFree`:** the opencode arm of the switch reads `opencodeModelFree` for the gateway-qualified id. `seamFree` and `piPairFree` take the catalog as an optional parameter, the way they take the claude account; the pi and claude arms are unchanged. Update the `seamFree` doc comment to name part 6b/7.
+- **src/gates/startup-gate.ts:** refresh the catalog once per root per process when a model job routes to opencode, as `seedClaudeAccount` does for claude (its `claudeSeedAttempted` guard is the pattern).
+- **src/gates/budget-gates.ts** and **src/status/status-budget.ts:** thread the catalog into the `seamFree`/`piPairFree`/`teamModelsFree`/`fallbackModelFree` free-ness reads; status-budget.ts's `collectBudget` is where the claude account is read and the usable fallback pair is judged.
+
+**Files touched.**
+- Source: src/pi/pi-models.ts, src/gates/startup-gate.ts, src/gates/budget-gates.ts, src/status/status-budget.ts.
+- Tests: test/pi-models.test.ts, test/startup-gate.test.ts, test/budget-gates.test.ts, test/status-budget.test.ts.
+
+**Acceptance criteria.**
+- **`seamFree`:** a cached free OpenCode model is free; a priced one, an unknown one, and a free one with `billedAt` set are not; the pi and claude arms are unchanged.
+- **The budget gate:** with every tier on `opencode/deepseek-v4.1-flash-free`, the team reads as all-free. At the cap (spend from a priced pi role), the opencode roles keep their primary.
+- **Fallback:** a free OpenCode model works as the budget `fallback` for a priced pi primary.
+- `npm test` passes.
+
+### OpenCode backend, part 6c/7: An observed price on a catalog-free OpenCode model demotes it to priced and logs an event (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/agent/opencode/opencode-catalog.ts src/events/events.ts src/events/event-format.ts src/tick/tick-finalize.ts src/merge/merge-slot.ts and their tests)
+
+**Goal.** If the promotion ends and OpenCode bills a model the cache calls free, tumwater notices on the first priced run and treats that model as priced from then on.
+
+**Approach.**
+- **src/agent/opencode/opencode-catalog.ts:** `observeOpencodeRun(root, { model, costUsd })` — a run with `costUsd > 0` on a model the cache calls free sets `billedAt` on that entry and logs `opencode_free_model_billed` {model, costUsd} once.
+- **src/events/events.ts:** the new `opencode_free_model_billed` event; render it in src/events/event-format.ts.
+- **src/tick/tick-finalize.ts** and **src/merge/merge-slot.ts:** call `observeOpencodeRun` next to `observeClaudeAccount`, with the run's resolved model and its `costUsd`.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-catalog.ts, src/events/events.ts, src/events/event-format.ts, src/tick/tick-finalize.ts, src/merge/merge-slot.ts.
+- Tests: test/opencode-catalog.test.ts, test/event-format.test.ts, test/tick-finalize.test.ts, test/merge-slot.test.ts.
+
+**Acceptance criteria.**
+- A fake run reporting a cost on a cached free model sets `billedAt` and logs `opencode_free_model_billed` once; a second priced run does not log it again; the next `opencodeModelFree` answer is false.
+- A run reporting cost 0 leaves the entry free and logs nothing.
+- `npm test` passes.
+
+### OpenCode backend, part 6d/7: OpenCode thinking variants and image input come from the catalog (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/agent/opencode/opencode-backend.ts src/agent/opencode/opencode-args.ts and their tests)
+
+**Goal.** A thinking level OpenCode's catalog lists for the model rides the invocation as `#<level>`; a level it does not list is dropped; and the backend answers whether its model reads images from the same catalog.
+
+**Approach.**
+- **src/agent/opencode/opencode-backend.ts `invocation`:** when the catalog's `efforts` for the resolved model lists the run's resolved thinking level, pass it as `variant`; otherwise pass none.
+- **src/agent/opencode/opencode-backend.ts:** add the `imageInput(model)` hook, answering `images` from the model's catalog entry (a model missing from the cache answers false).
+- Update the doc comment in src/agent/opencode/opencode-args.ts (`OpencodeArgOptions`: "part 6/7 supplies that list") to name part 6d/7.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-backend.ts, src/agent/opencode/opencode-args.ts.
+- Tests: test/opencode-run.test.ts, test/opencode-args.test.ts.
+
+**Acceptance criteria.**
+- Thinking `high` on the free model passes `#high`; `medium` (not among the fixture's efforts) passes no variant.
+- `imageInput` on the free model is true; an unknown model is false.
+- `npm test` passes.
+
+### OpenCode backend, part 7/7: Doctor checks the OpenCode install, models and leaks; session retention; docs; and an opt-in `smoke:opencode` live check (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires parts 6b/7, 6c/7 and 6d/7 landed; design in plans/opencode-backend.md "Sessions", "Spend, free-ness, image input and doctor" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/agent/opencode/opencode-backend.ts src/agent/session-ledger.ts docs/backends.md docs/config.md scripts/smoke-opencode.mjs (new) package.json and their tests)
 
 **Goal.** Before any OpenCode run starts, `tumwater doctor` says everything that would make one fail or leak:
 
