@@ -295,14 +295,12 @@ export function sessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), role);
 }
 
-/** The team root that owns `sessionDir`: the `.tumwater` directory that contains it. A run's
- * session dir is always `<root>/.tumwater/sessions/…`, so the first ancestor holding a
- * `.tumwater` directory is the root; opencodeDbPath reads back to that same `.tumwater` for
- * the run's shared database, and notesShimDir keeps the notes shim under it. Moved here from
- * the opencode adapter (plans/notes-command.md) so run-agent's shim install — which every
- * backend's run needs — shares the one lookup instead of the opencode adapter keeping it
- * private. */
-export function teamRootOf(sessionDir: string): string {
+/** `sessionDir`'s real team root — the nearest ancestor holding a `.tumwater` directory — or
+ * undefined when none does. run-agent installs the notes shim from THIS (never from teamRootOf,
+ * whose no-ancestor fallback can be a shared directory): writing `.tumwater` at the fallback
+ * would mint a phantom harness root every other suite on the host then found — BUGS.md
+ * 2026-10-18's `$TMPDIR/.tumwater/bin/tumwater-notes`. */
+export function nearestTumwaterRoot(sessionDir: string): string | undefined {
   let dir = sessionDir;
   for (let i = 0; i < 64; i += 1) {
     let tumwater: fs.Stats | undefined;
@@ -316,8 +314,22 @@ export function teamRootOf(sessionDir: string): string {
     if (parent === dir) break;
     dir = parent;
   }
-  // Unreachable in a harness run; a sensible fallback for an odd session dir.
-  return path.dirname(path.dirname(sessionDir));
+  return undefined;
+}
+
+/** The team root that owns `sessionDir`: the `.tumwater` directory that contains it. A run's
+ * session dir is always `<root>/.tumwater/sessions/…`, so the first ancestor holding a
+ * `.tumwater` directory is the root; opencodeDbPath reads back to that same `.tumwater` for
+ * the run's shared database. The no-ancestor fallback — a directory two levels up — is
+ * unreachable in a harness run and used only by OpenCode's harness-only read-back lookups
+ * (opencodeDbPath, loadConfigSafe), which always see a real root. Never use this to decide
+ * where to WRITE a `.tumwater`: the fallback can be a shared directory, and creating `.tumwater`
+ * there mints a phantom root (BUGS.md 2026-10-18); run-agent's shim install uses
+ * nearestTumwaterRoot instead. Moved here from the opencode adapter (plans/notes-command.md) so
+ * run-agent's shim install — which every backend's run needs — shares the one lookup instead of
+ * the opencode adapter keeping it private. */
+export function teamRootOf(sessionDir: string): string {
+  return nearestTumwaterRoot(sessionDir) ?? path.dirname(path.dirname(sessionDir));
 }
 
 /** The directory the notes shim lands in, under a team root: `<root>/.tumwater/bin`.

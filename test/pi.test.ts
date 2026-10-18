@@ -24,7 +24,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { gitOnlyBinDir, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { logFlagsTo, readRunLines, withPi } from "./fakes/fake-pi.js";
+import { logFlagsTo, readRunLines, withIdlePi, withPi } from "./fakes/fake-pi.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -841,4 +841,32 @@ test("a pi run finds the notes shim dir first on its PATH", async () => {
       );
     },
   );
+});
+
+// BUGS.md 2026-10-18: a session dir with no `.tumwater` ancestor (a lab script, a smoke run, a
+// prompt-lab replay) must not mint one. Pre-fix, runAgent installed the notes shim under
+// `teamRootOf(sessionDir)`, whose no-ancestor fallback — dirname(dirname(sessionDir)) — landed on
+// the shared $TMPDIR, writing `$TMPDIR/.tumwater/bin/tumwater-notes` and breaking every other
+// suite on the host (findTumwaterRoot/writeFullOutput).
+test("a run with no .tumwater ancestor mints none above its session dir (regression)", async () => {
+  // The run owns a fresh temporary subtree, so the walk from its session dir has no `.tumwater`
+  // ancestor (the fix guarantees no run mints `$TMPDIR/.tumwater`, so the suite's per-run root
+  // stays clean). Pre-fix, teamRootOf's no-ancestor fallback — dirname(dirname(sessionDir)) —
+  // landed INSIDE `top` and wrote `<top>/.tumwater/bin/tumwater-notes` here (BUGS.md 2026-10-18).
+  const top = tmpdir();
+  const sessions = path.join(top, "a", "sessions");
+  fs.mkdirSync(path.join(top, "a"));
+  await withIdlePi(async () => {
+    const result = await runPi(runPiFixture(top, { sessionDir: sessions }));
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+  });
+  // No `.tumwater` appears anywhere in the tree the run owned above its session dir.
+  for (let dir = sessions; ; dir = path.dirname(dir)) {
+    assert.equal(
+      fs.existsSync(path.join(dir, ".tumwater")),
+      false,
+      `no .tumwater minted at ${path.join(dir, ".tumwater")}`,
+    );
+    if (dir === top) break;
+  }
 });

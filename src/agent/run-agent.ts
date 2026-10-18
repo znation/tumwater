@@ -28,7 +28,7 @@ import { claudeBackend } from "./claude/claude-backend.js";
 import { opencodeBackend } from "./opencode/opencode-backend.js";
 import { seamImageInput } from "./image-input.js";
 import { ensureNotesShim } from "./notes-shim.js";
-import { teamRootOf } from "../paths.js";
+import { nearestTumwaterRoot } from "../paths.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 
 /** How many trailing stderr characters are carried into the next chunk's warning match, so a
@@ -222,7 +222,14 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // itself is not blocked.
     let binDir: string | undefined;
     try {
-      binDir = ensureNotesShim(teamRootOf(opts.sessionDir));
+      // Install the shim only under a real team root — the nearest ancestor holding a
+      // `.tumwater`. A session dir with no such ancestor (a lab script, a smoke run, a
+      // prompt-lab replay) must never mint one: nearestTumwaterRoot is undefined then, and the
+      // run goes on without the shim, exactly as if the install had failed — writing
+      // `<fallback>/.tumwater` from a run created a phantom harness root in a shared directory
+      // and broke every other suite on the host (BUGS.md 2026-10-18).
+      const root = nearestTumwaterRoot(opts.sessionDir);
+      if (root !== undefined) binDir = ensureNotesShim(root);
     } catch {
       opts.onAgentWarning?.("could not install the tumwater-notes shim; this run will not find tumwater-notes on PATH");
     }
