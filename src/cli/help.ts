@@ -344,6 +344,10 @@ Usage:
                                    for the base id; clearing falls back to the team-wide interval
   tumwater role <id> --clear-min-run-interval
                                    Clear that role's own minimum-run interval
+  tumwater role <id> --enable      Enable the role, written to roles.<id>.enabled
+                                   (the base id for an instance)
+  tumwater role <id> --disable     Disable it (refused for the director); clean up
+                                   leftovers with tumwater retire --role <id>
   tumwater prompt <text...>        Send a message to the director's inbox
   tumwater prompt --file <path>    Send a message read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...>

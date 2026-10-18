@@ -64,6 +64,11 @@ const CAP_SPEC = { names: ["--cap"], value: true, valueName: "<usd>" };
 const CLEAR_MIN_RUN_INTERVAL_SPEC = { names: ["--clear-min-run-interval"] };
 const MIN_RUN_INTERVAL_SPEC = { names: ["--min-run-interval"], value: true, valueName: "<seconds>" };
 
+/** `role`'s enabled-state write flags: enable or disable the role, written to
+ * roles.<base>.enabled. */
+const ENABLE_SPEC = { names: ["--enable"] };
+const DISABLE_SPEC = { names: ["--disable"] };
+
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
  * neither a flag nor the value of a --role, --notes-file, --instructions-file,
  * --quiet-hours, --cap or --min-run-interval flag. Returns
@@ -358,7 +363,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
   // a repo the team never started in — and a torn one — instead of refusing.
   const { id: positional, rest } = peelRolePositional(args);
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC]);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
   // a silent pick of one.
@@ -380,12 +385,16 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const quietWrite = clearQuiet || rest.includes("--quiet-hours");
   const capWrite = clearCap || rest.includes("--cap");
   const intervalWrite = clearInterval || rest.includes("--min-run-interval");
+  const enable = rest.includes("--enable");
+  const disable = rest.includes("--disable");
   const writes: string[] = [];
   if (notesWrite) writes.push("notes");
   if (instructionsWrite) writes.push("instructions");
   if (quietWrite) writes.push("quiet-hours");
   if (capWrite) writes.push("cap");
   if (intervalWrite) writes.push("min-run-interval");
+  if (enable) writes.push("enable");
+  if (disable) writes.push("disable");
   if (writes.length > 1)
     fail(`${writes.join(" and ")} writes cannot share one invocation`);
   if (notesWrite) {
@@ -499,6 +508,25 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
       if (!result.ok) fail(result.error);
       say(`${base}: min run interval set to ${secs}s`);
     }
+    return;
+  }
+  // The enable/disable write: the scoped write for the enabled state `tumwater role <id>`
+  // already renders, the terminal twin of `config set roles.<base>.enabled true|false`. The
+  // value lands in roles.<base>.enabled through the same setConfigKey core config set uses, so
+  // validateConfig's checkBoolean (the roles.<id>. prefix) owns the type and the write stays
+  // atomic and applies live. The director cannot be disabled: with it disabled loopIds omits
+  // it and no loop dequeues the operator's inbox, so that refusal is explicit (enabling stays
+  // allowed). knownRoleIds holds every catalog and custom role whether or not it is enabled, so
+  // a currently-disabled id resolves; an instance id writes its base role's key.
+  if (enable || disable) {
+    if (rest.includes("--json")) fail("--json does not apply to an enable/disable write");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    if (disable && id === DIRECTOR_ROLE) fail("the director cannot be disabled");
+    const base = baseRoleOf(id);
+    const result = setConfigKey(root, `roles.${base}.enabled`, enable ? "true" : "false");
+    if (!result.ok) fail(result.error);
+    say(`${base}: ${enable ? "enabled" : "disabled"}`);
     return;
   }
   // The unknown-role answer (exit 1, unknownRoleMessage's wording) lives in the

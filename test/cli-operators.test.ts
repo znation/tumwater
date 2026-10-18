@@ -722,6 +722,71 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
   assert.equal(JSON.parse(afterRefusals).maxDailyCostUsdPerRole, undefined, "no cap write from the refused invocations");
 });
 
+test("role --enable and --disable write the role's enabled state", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role enable disable");
+  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+
+  // `--disable` writes roles.feature.enabled === false and the view renders it disabled.
+  let r = await cli(repo, "role", "feature", "--disable");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: disabled/);
+  assert.equal(config().roles.feature.enabled, false);
+  r = await cli(repo, "role", "feature");
+  assert.match(r.stdout, /- State: disabled, not paused/);
+  r = await cli(repo, "role", "feature", "--json");
+  assert.match(r.stdout, /"enabled": false/);
+
+  // `--enable` restores it; a disabled role's base id still resolves and enables.
+  r = await cli(repo, "role", "feature", "--enable");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: enabled/);
+  assert.equal(config().roles.feature.enabled, true);
+
+  // An instance id targets its base role: feature-2 disables feature.
+  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
+  r = await cli(repo, "role", "feature-2", "--disable");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: disabled/);
+  assert.equal(config().roles.feature.enabled, false);
+
+  // The director cannot be disabled, and an unknown id is refused for both flags.
+  const before = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "director", "--disable");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /the director cannot be disabled/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "file unchanged on director disable");
+  r = await cli(repo, "role", "director", "--enable");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.director.enabled, true);
+  const beforeBogus = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  for (const flag of ["--enable", "--disable"]) {
+    r = await cli(repo, "role", "bogus", flag);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /unknown role: bogus/);
+  }
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeBogus, "file unchanged on unknown id");
+
+  // --enable --disable and combining either with another role write are refused, name the kinds.
+  r = await cli(repo, "role", "feature", "--enable", "--disable");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /enable and disable writes cannot share one invocation/);
+  r = await cli(repo, "role", "feature", "--disable", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to an enable\/disable write/);
+  r = await cli(repo, "role", "feature", "--disable", "--clear-notes");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /notes and disable writes cannot share one invocation/);
+  r = await cli(repo, "role", "feature", "--disable", "--clear-quiet-hours");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /quiet-hours and disable writes cannot share one invocation/);
+  r = await cli(repo, "role", "feature", "--enable", "--instructions-file", "y");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /instructions and enable writes cannot share one invocation/);
+});
+
 test("role validates its arguments like every other command", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role validation");
