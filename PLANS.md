@@ -50,40 +50,54 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - docs/cli.md's role row names the drawer's instance control.
 - `npm test` passes.
 
-### Plain terms code merge, part 11c/11: Rewrite the merge family in the first half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts a–m, plus test/helpers/ test/fakes/ and test/fixtures/)
-
-**Refused 2026-10-17 by feature: the acceptance grep cannot list only the four comment kept-kinds without touching string literals — its range also contains fabricated-data/test-name/role-name literals using merge terms (`summary: "land \u2026"`, `tmpdir("vet-permits-")`, role `"vetted-v"`, `"landed one"`, `"landing check red"`), which the same entry forbids changing and predecessor part 10/11's series convention keeps as expected-output/fabricated literals.**
+### Plain terms code merge, part 11c/11: Rewrite the merge family in the first half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11, 11d/11 and 11g/11; revised 2026-10-18 by user so the acceptance grep counts comment matches only, answering the 2026-10-17 refusal that string literals it forbids touching kept the grep from ever passing; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts a–m, plus test/helpers/ test/fakes/ and test/fixtures/)
 
 **Goal.** Same as part 11a for the tests that cover the pipeline, review, merge, backlog, prompt and role modules (basenames a–m), plus the shared helpers, fakes and fixtures.
 
 **Approach.**
 - Work only in the listed files, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names").
 - Test comments carry more intentional matches than src comments: a quoted PLANS.md/BUGS.md title (test/backlog-structure.test.ts and test/backlog-write-list.test.ts quote parts' titles); the `requires … landed` grammar in scenario prose; a fixture or setup comment that names an old event type, old state key or the `_land-<role>` worktree on purpose (test/fixtures/merge-fixtures.ts); and the ordinary English verb `land` meaning "arrive" (e.g. "the write landed"). Keep all four, and rewrite only prose that describes the merge pipeline.
-- Do not rename identifiers or touch string literals.
+- Do not rename identifiers or touch string literals; non-comment matches (test titles, assertion messages, fabricated data such as `"vetted-v"` or `tmpdir("vet-permits-")`, expected-output literals) are outside this comment-only part and stay exactly as they are. Part 11g/11 rewrites the merge-meaning test titles and assertion messages afterwards.
 
 **Files touched.** Comments in test/*.test.ts whose basename sorts a–m, test/helpers/, test/fakes/ and test/fixtures/. plans/terminology.md is read, not edited.
 
 **Acceptance criteria.**
-- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- 'test/[a-m]*.test.ts' test/helpers test/fakes test/fixtures` lists only the four kept kinds above, and the run's summary names each remaining match and its kept kind.
+- `git grep -nE '[Ll]and(ings?|es|ed|ers?|s)?[^a-z]|[Ll]and(ings?|s|ed|ers?)?$|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- 'test/[a-m]*.test.ts' test/helpers test/fakes test/fixtures`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
 - The diff changes comment lines only.
 - `npm run test` passes.
 
-### Plain terms code merge, part 11d/11: Rewrite the merge family in the second half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11c/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts n–z)
-
-**Refused 2026-10-17 by feature: the acceptance grep cannot list only the four comment kept-kinds without touching string literals and test names, which the entry forbids — its range still carries fabricated-data, expected-output and test-name matches using merge terms, e.g. status-render.test.ts `freshLoopState("landing-r")` and `role: "landing-r"` (fabricated role id held by `rowOf` assertions), status-data-team.test.ts `loop: "lander"` (fabricated event line), pi-parser.test.ts `"too risky to land"` (merge meaning, not "arrive"), question-commands.test.ts's test name "a landing that fast-forwards the same file" and its assertion message "the lander's stale write-back", and tui-history.test.ts's trail literal `14:01 landed`; part 11c/11 records the same objection for the a–m range.**
+### Plain terms code merge, part 11d/11: Rewrite the merge family in the second half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11, 11c/11 and 11g/11; revised 2026-10-18 by user so the acceptance grep counts comment matches only, answering the 2026-10-17 refusal that string literals and test names it forbids touching kept the grep from ever passing; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts n–z)
 
 **Goal.** Same as part 11a for the tests whose basename sorts n–z (the remaining review, status, report, TUI, worktree and team tests).
 
 **Approach.**
 - Work only in the listed files, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names").
 - Keep the same four kinds of match as part 11c: a quoted PLANS.md/BUGS.md title; the `requires … landed` grammar; a legacy name kept on purpose; and the ordinary English verb `land` meaning "arrive". Rewrite only prose that describes the merge pipeline.
-- Do not rename identifiers or touch string literals.
+- Do not rename identifiers or touch string literals; non-comment matches (test titles, assertion messages, fabricated data such as status-render.test.ts's role `"landing-r"` or status-data-team.test.ts's `loop: "lander"`, expected-output literals such as tui-history.test.ts's `14:01 landed`) are outside this comment-only part and stay exactly as they are. Part 11g/11 rewrites the merge-meaning test titles and assertion messages afterwards.
 
 **Files touched.** Comments in test/*.test.ts whose basename sorts n–z. plans/terminology.md is read, not edited.
 
 **Acceptance criteria.**
-- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- 'test/[n-z]*.test.ts'` lists only the four kept kinds above, and the run's summary names each remaining match and its kept kind.
+- `git grep -nE '[Ll]and(ings?|es|ed|ers?|s)?[^a-z]|[Ll]and(ings?|s|ed|ers?)?$|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- 'test/[n-z]*.test.ts'`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
 - The diff changes comment lines only.
+- `npm run test` passes.
+
+### Plain terms code merge, part 11g/11: Rewrite the merge family in test titles and assertion messages (planned 2026-10-18 by user; requires parts 11c/11 and 11d/11 landed; no runner series part waits on it; design in plans/terminology.md "Code names"; touches test titles and assertion messages in test/*.test.ts test/helpers/ test/fakes/ and test/fixtures/, plus one stale test-name citation in docs/invariants.md)
+
+**Goal.** plans/terminology.md "Code names" says test names adopt the glossary. Parts 6/11–10/11 converted the test names and assertion messages of the directories they renamed, and parts 11c/11 and 11d/11 rewrite the test comments, but about 40 test titles and a smaller set of assertion messages across the suite still describe the merge pipeline with retired words — e.g. test/merge-pipeline.test.ts "a single queued pinned entry lands through the pipeline: …" and "a merge whose role has no live runner verifies and lands through a throwaway author", test/review.test.ts "a fresh landing's review_start carries no revision marker", test/cli-diff.test.ts "diff shows the unlanded commit and its patch, …", test/startup-migrations.test.ts "runStartupMigrations moves the land queue once …", and test/question-commands.test.ts "… a landing that fast-forwards the same file" with its message "the lander's stale write-back". This part rewrites those strings so a failing test names the merge in today's words.
+
+**Approach.**
+- Rewrite only two kinds of string literal: a test title (the first argument of `test(…)`, `it(…)`, `describe(…)` and their `.skip`/`.only`/`.todo` forms) and an assertion message (the trailing message argument of an `assert.*` call). Apply the part 11a rename rule (plans/terminology.md "Code names"), editing each as a sentence, not as a word swap.
+- Keep these title and message matches: the `requires … landed` grammar and a quoted PLANS.md/BUGS.md title; a legacy name the test exercises on purpose (an old event type such as `landed`, an old state key such as `lastLandedAt`, `_land-<role>`, `removeLegacyLandWorktrees`, the legacy lease purpose `vet`, `landing.json`, the legacy land-queue path); and the ordinary English verb `land` meaning "arrive" (e.g. "until its newline lands", "every tier lands on it").
+- Leave every other literal exactly as it is: fabricated data (role ids such as `"landing-r"` and `"vetted-v"`, an event's `loop: "lander"`, tmpdir prefixes), expected-output literals and regexes that match what src prints, identifiers, and comments (parts 11c/11 and 11d/11).
+- docs/invariants.md's "Pinned by" paragraph for the failure time-spend invariant still quotes "a review_error landing prices its authoring hours under the matching review_failed cause"; the test in test/failure-time-spend.test.ts is already named "a review_error merge prices …", so fix that citation. Update any other doc or test that quotes a title this part renames in the same change.
+
+**Files touched.** Test titles and assertion messages in test/*.test.ts, test/helpers/, test/fakes/ and test/fixtures/; docs/invariants.md (the one citation). plans/terminology.md is read, not edited.
+
+**Acceptance criteria.**
+- `git grep -nE '[Ll]and(ings?|es|ed|ers?|s)?[^a-z]|[Ll]and(ings?|s|ed|ers?)?$|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- 'test/*.test.ts' test/helpers test/fakes test/fixtures`, kept to the matches inside a test title or an assertion message, lists only the kept kinds above, and the run's summary names each remaining title or message match and its kept kind. Every other match is untouched.
+- `git grep -n 'review_error landing prices' -- docs test` prints nothing.
+- The diff changes test-title and assertion-message strings and that citation only, and the suite's test count is unchanged.
 - `npm run test` passes.
 
 ### Plain terms code runner, part 1/14: Move the loop modules to src/runner and their tests to runner names (planned 2026-10-16 by user; requires Plain terms code merge 11a/11, Plain terms code merge 11b/11, Plain terms code merge 11c/11, Plain terms code merge 11d/11, Plain terms code merge 11e/11 and Plain terms code merge 11f/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ + src/roles/loop-ids.ts + src/ui/gui/gui-client-loops.ts + test/loop*.test.ts + test/fixtures/loop-*.ts + every importer + docs/invariants.md + DEVELOPMENT.md)
