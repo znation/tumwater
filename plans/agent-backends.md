@@ -36,7 +36,7 @@ agent-CLI abstraction. Every pi assumption below the spawn is still in place:
 | Concern | pi today | claude |
 | --- | --- | --- |
 | Non-interactive mode | `--print --mode json` | `-p --output-format stream-json --verbose` |
-| Prompt delivery | last argv | stdin (argv works, but stdin avoids ARG_MAX, `ps` exposure and a prompt starting with `-`) |
+| Prompt delivery | last argv (stdin since 2026-10-18: an argv prompt let one agent's `pkill -f` kill every pi run, BUGS.md) | stdin (argv works, but stdin avoids ARG_MAX, `ps` exposure and a prompt starting with `-`) |
 | Model / thinking | `--provider P --model M --thinking L` | `--model M --effort L` (low, medium, high, xhigh, max). No provider flag |
 | Sessions | `--session-dir D`, `-n name`, `--continue` = newest file in D | stored under `~/.claude/projects/<slug(cwd)>/<uuid>.jsonl`. `--session-id <uuid>` for a fresh run, `--resume <uuid>` to continue. **Resume is cwd-scoped**: from another directory it fails "No conversation found with session ID" (verified) |
 | Event stream | `message_end`, `tool_execution_start/update/end`, `auto_retry_start`, `compaction_start`, `agent_start`, `session` | `system/init`, `assistant` (**one event per content block, with the same `message.id` and usage repeated on each**), `user` (`tool_result` blocks), `system/api_retry`, `system/compact_boundary`, `system/task_*`, `rate_limit_event`, and a final `result` |

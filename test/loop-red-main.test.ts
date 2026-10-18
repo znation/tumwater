@@ -12,10 +12,10 @@ import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType, mainRedHolds } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
-import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
+import { pathReplace, projManifest } from "./fakes/fake-commands.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi, logPromptsTo, withPi } from "./fakes/fake-pi.js";
+import { fakePi, logPromptsTo, withPi, writePiScript } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 
 // --- Red-main baseline check (PLANS.md): while main's own suite is known red, code-producing
@@ -220,7 +220,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
   // it and git — but nothing else: execFile/spawn resolve bare commands via PATH, so npm is
   // unresolvable no matter where this machine keeps it.
   const piDir = tmpdir("fake-pi-");
-  writeScript(
+  writePiScript(
     path.join(piDir, "pi"),
     [
       APPROVE_PI,

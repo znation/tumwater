@@ -33,12 +33,39 @@ export function logFlagsTo(file: string): string {
   return `flags=""; for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done; echo "run:$flags" >> "${file}"`;
 }
 
-/** A shell fragment for fake-pi scripts: append the run's full argv (the prompt is pi's last
- * argument) to `file` as one `RUN_MARKER`-delimited block per run. The loop, requeue, and
- * review-precheck tests repeated this fragment verbatim — with two drifting spellings of the
- * printf newline — so the prompt-capture technique is shared here, like logFlagsTo, and a
- * change to how prompts are observed cannot drift between the copies. Pair with readRunBlocks
- * to read the log back. */
+/** The shell fragment every fake pi starts with: a `--print` run reads its piped stdin — the
+ * prompt, which the pi backend delivers there and never in argv (BUGS.md 2026-10-18) — and
+ * appends it to the positional args, so a fake matches or records the prompt as its last
+ * argument (`for a in "$@"; do case "$a" in *"VERDICT:"*)`, logPromptsTo) exactly as it did
+ * when the prompt rode argv. Real pi trims the piped text; `$(cat)` drops trailing newlines.
+ * `cat` when PATH has it (one spawn; a builtin read loop spends ~25 ms of CPU on a 37 KB
+ * prompt, measured 2026-10-18), else the read loop, so a fake under a restricted PATH still
+ * sees its prompt. An empty stdin (the image probe's `ignore`) adds no argument. */
+export const PROMPT_FROM_STDIN = [
+  `for __pi_a in "$@"; do`,
+  `  if [ "$__pi_a" = --print ] && [ ! -t 0 ]; then`,
+  `    if command -v cat >/dev/null 2>&1; then __pi_prompt=$(cat); else`,
+  `      __pi_prompt=""; __pi_nl="$(printf '\\n_')"; __pi_nl="\${__pi_nl%_}"`,
+  `      while IFS= read -r __pi_l || [ -n "$__pi_l" ]; do __pi_prompt="$__pi_prompt\${__pi_prompt:+$__pi_nl}$__pi_l"; done`,
+  `    fi`,
+  `    if [ -n "$__pi_prompt" ]; then set -- "$@" "$__pi_prompt"; fi`,
+  `    break`,
+  `  fi`,
+  `done`,
+].join("\n");
+
+/** Install a fake pi at `file` (writeScript) whose body runs after PROMPT_FROM_STDIN — the
+ * one way a test writes a pi script, so every fake sees its prompt the same way. */
+export function writePiScript(file: string, body: string): void {
+  writeScript(file, `${PROMPT_FROM_STDIN}\n${body}`);
+}
+
+/** A shell fragment for fake-pi scripts: append the run's full argv (the prompt is its last
+ * argument once PROMPT_FROM_STDIN has run) to `file` as one `RUN_MARKER`-delimited block per
+ * run. The loop, requeue, and review-precheck tests repeated this fragment verbatim — with two
+ * drifting spellings of the printf newline — so the prompt-capture technique is shared here,
+ * like logFlagsTo, and a change to how prompts are observed cannot drift between the copies.
+ * Pair with readRunBlocks to read the log back. */
 export function logPromptsTo(file: string): string {
   return `{ printf '%s\\n' "$@"; echo "${RUN_MARKER}"; } >> "${file}"`;
 }
@@ -52,7 +79,7 @@ export { readRunBlocks };
  * The script runs with the worktree as cwd. Returns a restore function. */
 export function fakePi(script: string): () => void {
   const dir = tmpdir("fake-pi-");
-  writeScript(path.join(dir, "pi"), script);
+  writePiScript(path.join(dir, "pi"), script);
   return pathPrepend(dir);
 }
 

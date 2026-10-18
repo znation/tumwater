@@ -93,8 +93,8 @@ test("the gate's green pre-check attests the runner's counts in the event and th
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
   commitIn(wt, "wip change");
 
-  // The fake pi dumps its prompt (pi's last argv) to a file so the attested line is asserted,
-  // not merely assumed.
+  // The fake pi dumps its prompt (its stdin, appended to argv by PROMPT_FROM_STDIN) to a file
+  // so the attested line is asserted, not merely assumed.
   const promptFile = path.join(tmpdir(), "review-prompt");
   await withPi(
     `for a in "$@"; do printf '%s' "$a" >> '${promptFile}'; done\n` +
@@ -669,7 +669,7 @@ test("a reused approval still rejects a tree whose pre-check now fails", async (
 test("a green pre-check is named in the reviewer's prompt; no check means no such claim", async () => {
   const { root, wt } = await greenBuildFixture("test");
   const prompts = path.join(tmpdir(), "prompts.log");
-  // The fake pi records its argv (the prompt is the last argument) before answering.
+  // The fake pi records its argv (the stdin prompt appended last) before answering.
   await withPi(
     `${logPromptsTo(prompts)}\n${reviewerStub()}`,
     async () => {

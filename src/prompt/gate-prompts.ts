@@ -1,6 +1,6 @@
 // vocabulary: plain
 import { shortSha } from "../text/format.js";
-import { OLDER_NAMES_SENTENCE, TEST_RUNNER_RULE, dateLine } from "./prompt.js";
+import { KILL_BY_PID_RULE, OLDER_NAMES_SENTENCE, TEST_RUNNER_RULE, dateLine } from "./prompt.js";
 import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../roles/role-guidance.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
@@ -105,6 +105,7 @@ Rules for this run:
   the branch's version back in over main's deliberate removal${removalCitation}.
 - Never touch the .tumwater directory or tumwater.json.
 ${TEST_RUNNER_RULE}${noCheckRunRule}
+- ${KILL_BY_PID_RULE}
 - When a conflicted file is a markdown backlog file (PLANS.md, BUGS.md, QUESTIONS.md), its
   \`## \` section headings are structure, not text: the result keeps exactly one of each
   \`## \` heading, and every \`### \` entry sits under the section its own side put it in —
@@ -258,6 +259,7 @@ Rules for this run:
   verdict below. Reading files and git history is fine; a scratch copy under the system temp
   directory is fine when you need to run something.${noRerunRule}
 ${TEST_RUNNER_RULE}
+- ${KILL_BY_PID_RULE}
 - Weigh the change against its stated purpose; do not approve work you did not actually check.
 - End your reply with exactly one line in this form:
   ${VERDICT_ENDING.replace(/\n/g, "\n  ")}`,

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { CLAIMS_RULE_COMPACT, REPLY_ENDINGS } from "../src/verdict/reply-contract.js";
 import {
+  KILL_BY_PID_RULE,
   ROOT_FROM_WORKTREE,
   TEST_RUNNER_RULE,
   buildDirectorPrompt,
@@ -52,6 +53,7 @@ const DIRECTIVES: readonly string[] = [
   "at most 30 minutes",
   "check.log 2>&1",
   TEST_RUNNER_RULE,
+  KILL_BY_PID_RULE,
   "Never create, amend, or revert git commits, branches, or merges",
   "Never touch the .tumwater directory or tumwater.json.",
   "between the tumwater:prompt markers",

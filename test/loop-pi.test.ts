@@ -30,7 +30,7 @@ test("runRolePi runs a fresh named session and folds one usage into the tick", a
     const line = runArgs(args)[0]!;
     assert.match(line, /-n tumwater-feature-1-author/, "fresh session is named, not resumed");
     assert.ok(!line.includes("--continue"), "a fresh session must not pass --continue");
-    assert.ok(line.endsWith("work the backlog"), "the prompt is pi's last argument");
+    assert.ok(line.endsWith("work the backlog"), "the prompt reaches pi (stdin, appended last by the fake)");
     assert.equal(usage.length, 1, "one run, one foldUsage");
     assert.equal(usage[0], result, "the foldUsage'd run IS the returned run");
   } finally {

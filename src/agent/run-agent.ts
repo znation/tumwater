@@ -283,8 +283,8 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     const runTmp = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-run-"));
     const child = spawn(resolved.bin, invocation.args, {
       cwd: opts.cwd,
-      // The prompt-argv backends (pi) deliver no stdin and keep stdio[0] "ignore"; a backend
-      // that feeds the prompt on stdin gets a pipe the runner writes and ends below.
+      // A backend that feeds the prompt on stdin (every registered one) gets a pipe the runner
+      // writes and ends below; one that returns no stdin keeps stdio[0] "ignore".
       stdio: [invocation.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
       // pi sets its process title at startup, and so does every npm its tool calls run: on
       // macOS each would register with LaunchServices and leak a launchservicesd port.

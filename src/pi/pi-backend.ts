@@ -50,20 +50,19 @@ export const piBackend: AgentBackend = {
   },
 
   invocation(run: AgentRunSpec): AgentInvocation {
-    // The prompt rides as the last argv element (pi's own reading of a bare trailing arg), so
-    // pi delivers no stdin — the runner leaves stdio[0] "ignore" exactly as before.
-    const args = [
-      ...piArgs({
-        config: run.config,
-        sessionDir: run.sessionDir,
-        sessionName: run.sessionName,
-        continueSession: run.continueSession,
-        agentBin: run.agentBin,
-      }),
-      run.prompt,
-    ];
+    // The prompt rides on stdin, never argv: pi --print reads a piped stdin to EOF as the first
+    // message (trimmed), and the runner writes and closes it. As the last argv element it sat
+    // in every pi's `ps` command line, so one agent's `pkill -f "npm run test"` matched — and
+    // SIGTERMed — every pi run on the host whose prompt mentions the check (BUGS.md 2026-10-18).
+    const args = piArgs({
+      config: run.config,
+      sessionDir: run.sessionDir,
+      sessionName: run.sessionName,
+      continueSession: run.continueSession,
+      agentBin: run.agentBin,
+    });
     const env = withNotesPath(agentBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
-    return { args, env };
+    return { args, stdin: run.prompt, env };
   },
 
   translator(): StreamTranslator {

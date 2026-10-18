@@ -10,6 +10,7 @@ import {
   DEFAULT_SCOPE,
   ROOT_FROM_WORKTREE,
   TEST_RUNNER_RULE,
+  KILL_BY_PID_RULE,
   buildDirectorPrompt,
   buildTickPrompt,
 } from "../src/prompt/prompt.js";
@@ -491,6 +492,25 @@ test("every run, director, conflict, and review prompt carries the test-runner r
   assert.match(oneLine(TEST_RUNNER_RULE), /never a runner you guessed \(say, `npx vitest` in a suite written for node:test\)/);
   const tick = buildTickPrompt({ role: roleById("bugfix")!, initialPrompt: "" });
   assert.match(tick, /re-run the check only after an edit changes the tree\.\n- Run tests only through the project's declared check/, "it follows the verify bullet");
+});
+
+// BUGS.md 2026-10-18: agents' `pkill -f "npm run test"` and `pkill -f "dist/test/test-runner.js"`
+// killed sibling roles' runs and reviews on the shared host. Every prompt whose run may run
+// commands says to kill only its own processes by PID: the tick rules (full and compact), the
+// director, the conflict resolver, and the reviewer — one shared sentence, stated once in each.
+test("every run, director, conflict, and review prompt carries the kill-by-PID rule exactly once", () => {
+  const prompts = [
+    ...ROLES.map((role) => buildTickPrompt({ role, initialPrompt: "" })),
+    ...ROLES.map((role) => buildTickPrompt({ role, initialPrompt: "", compact: { assigned: false } })),
+    buildDirectorPrompt("add x", "a project"),
+    buildConflictPrompt("feature", ["a.txt"]),
+    buildReviewPrompt("diff body"),
+  ];
+  for (const p of prompts) {
+    assert.equal(p.split(KILL_BY_PID_RULE).length - 1, 1, `the rule once, verbatim: ${p.slice(0, 60)}…`);
+  }
+  assert.match(oneLine(KILL_BY_PID_RULE), /Never kill processes by name or pattern \(`pkill`, `killall`, `pgrep … \| xargs kill`\)/);
+  assert.match(oneLine(KILL_BY_PID_RULE), /stop only a process you started, by its PID/);
 });
 
 test("an omitted date defaults to todayStamp's local day — the daily budget window's own day", () => {

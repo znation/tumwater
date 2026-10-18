@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { bundledExtensionPaths, PI_KEPT_BUILTINS, piArgs } from "../src/pi/pi-args.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { configForRole } from "../src/config/config-views.js";
+import { piBackend } from "../src/pi/pi-backend.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The pi argv builder's tests, split out of pi.test.ts: how config (provider, model,
@@ -120,6 +121,29 @@ test("piArgs starts fresh sessions with a name and resumes with --continue", () 
   const resumed = piArgs({ ...base, continueSession: true });
   assert.ok(resumed.includes("--continue"), "the within-tick retry resumes the session");
   assert.ok(!resumed.includes("-n"), "resumed runs keep their existing name");
+});
+
+// BUGS.md 2026-10-18: the prompt was pi's last argv element, so it sat in every pi's `ps` line
+// and one agent's `pkill -f "npm run test"` SIGTERMed every pi run on the host whose prompt
+// mentions the check. The pi backend now hands the prompt to the runner as stdin.
+test("the pi invocation carries the prompt on stdin, never in argv, fresh or resumed", () => {
+  const prompt = "run `npm run test` before replying\nSUMMARY: …";
+  for (const continueSession of [false, true]) {
+    const inv = piBackend.invocation({
+      cwd: "/tmp/w",
+      prompt,
+      config: defaultConfig(),
+      sessionDir: "/tmp/s",
+      sessionName: "n1",
+      continueSession,
+      kind: "author",
+      agentBin: "pi",
+      runMarker: "m",
+    });
+    assert.equal(inv.stdin, prompt, "the runner writes the prompt to pi's stdin");
+    assert.ok(!inv.args.some((a) => a.includes("npm run test")), `no argv element carries prompt text: ${inv.args.join(" ")}`);
+    assert.deepEqual(inv.args, piArgs({ config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n1", continueSession, agentBin: "pi" }));
+  }
 });
 
 test("a selector-string model alone yields --provider <provider> --model <id>", () => {

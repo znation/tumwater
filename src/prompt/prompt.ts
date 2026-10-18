@@ -92,6 +92,17 @@ export function compactContextBudgetRule(dialect: PromptDialect = PI_DIALECT): s
 - ${dialect.oversizedOutput}`;
 }
 
+/** The process-kill rule every run that may run commands carries, word for word: the tick and
+ * director rules (full and compact, each adding its own reason), the conflict resolver, and the
+ * reviewer. The team's runs and tumwater's own checks share one host, so a kill by pattern
+ * reaches them all. On 2026-10-18 a feature run's `pkill -f "dist/test/test-runner.js"; pkill -f
+ * "npm run test"` killed two sibling review runs, and a plan run's `pkill -f "npm run test"`
+ * killed the coverage run and four lab pi runs (BUGS.md 2026-10-18). Moving pi's prompt from argv
+ * to stdin keeps prompt text out of pi's command line; check runs and test runners still match. */
+export const KILL_BY_PID_RULE = `Never kill processes by name or pattern (\`pkill\`, \`killall\`,
+  \`pgrep … | xargs kill\`): stop only a process you started, by its PID (\`kill $!\` right after
+  backgrounding it).`;
+
 /** The test-runner rule every run that may run tests carries: the tick and director rules, the
  * conflict resolver, and the reviewer. Project-neutral on purpose — a team works on any codebase
  * (npm, cargo, pytest, a configured check.command), so the rule names no ecosystem's runner as THE
@@ -211,6 +222,8 @@ Where you work:
 - Never run a command that can wait forever — interactive programs (TUIs, REPLs, editors,
   anything reading stdin), servers, or watch modes. To test such a program, background it with
   a hard time limit (kill it after at most 30 minutes) and never give it a real TTY.
+- ${KILL_BY_PID_RULE} A pattern naming your check or test runner also matches other
+  agents' runs and tumwater's own checks on this machine, and kills them too.
 - Leave the project working: ${verify} One run answers every question about the check: write
   its full output to a file in a scratch dir once (\`<check> > <scratch-dir>/check.log 2>&1\`),
   then pipe that file through \`tail\` — only the failures matter. To see any other part of the
@@ -306,6 +319,7 @@ Where you work:
   repo) or a command that can wait forever (TUIs, REPLs, editors, anything reading stdin,
   servers, watch modes). To test such a program, background it with a hard time limit (at most
   30 minutes) and never give it a real TTY.
+- ${KILL_BY_PID_RULE} A pattern also kills other agents' runs and checks.
 - Leave the project working: ${verify} Write the check's full output to a scratch file once
   (\`<check> > <scratch-dir>/check.log 2>&1\`) and \`tail\` it; grep that file for anything else, and
   re-run the check only after an edit changes the tree.

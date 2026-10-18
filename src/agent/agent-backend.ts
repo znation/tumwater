@@ -50,8 +50,9 @@ export interface AgentRunSpec {
 }
 
 /** One run's command line: argv, optional stdin whose bytes the runner writes and closes, and
- * the process environment. A backend that carries its prompt as the last argv element returns
- * no stdin (today's pi); one that feeds the prompt on stdin returns it here. */
+ * the process environment. Every registered backend feeds its prompt on stdin and returns it
+ * here: a prompt in argv shows in every `ps` line, where another run's `pkill -f` pattern can
+ * match it (BUGS.md 2026-10-18). A backend that needs no stdin returns none. */
 export interface AgentInvocation {
   args: string[];
   stdin?: string;

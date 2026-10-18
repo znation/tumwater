@@ -25,7 +25,7 @@ import { initProject } from "../src/init/init.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { gitOnlyBinDir, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logFlagsTo, readRunLines, withPi } from "./fakes/fake-pi.js";
-import { pathReplace } from "./fakes/fake-commands.js";
+import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { claudeAssistant, claudeToolUse } from "./fixtures/claude-events.js";
@@ -66,6 +66,34 @@ test("runPi spawns the configured agentBin — a wrapper script behaves like the
   } finally {
     restorePath();
   }
+});
+
+test("runPi writes the prompt to pi's stdin and keeps it out of pi's argv, fresh and on --continue", async () => {
+  // BUGS.md 2026-10-18: as the last argv element the prompt showed in every pi's `ps` line, so
+  // one agent's `pkill -f "npm run test"` killed every pi run on the host. A raw writeScript
+  // fake (not fakePi, whose PROMPT_FROM_STDIN shim appends stdin to the args) records argv
+  // and stdin apart, the way real pi 1.2.0 reads a piped stdin as its first message.
+  const dir = tmpdir();
+  const bin = path.join(dir, "pi");
+  const argv = path.join(dir, "argv.log");
+  const stdin = path.join(dir, "stdin.log");
+  writeScript(
+    bin,
+    `{ printf '%s\\n' "$@"; echo ---; } >> '${argv}'\n{ cat; echo; echo ---; } >> '${stdin}'\n` +
+      `printf '%s\\n' '${assistantLine("ok")}'`,
+  );
+  const config = defaultConfig();
+  config.agentBin = bin;
+  const prompt = "Run `npm run test` before you reply.\nEnd with SUMMARY:";
+  for (const continueSession of [false, true]) {
+    const result = await runPi(runPiFixture(dir, { config, prompt, continueSession }));
+    assert.equal(result.ok, true, `expected the fake pi to succeed: ${result.errorMessage}`);
+  }
+  const runs = fs.readFileSync(argv, "utf8").split("---\n").filter(Boolean);
+  assert.equal(runs.length, 2);
+  for (const run of runs) assert.ok(!run.includes("npm run test"), `the prompt leaked into argv:\n${run}`);
+  assert.ok(runs[1]!.includes("--continue"), "the second run resumes");
+  assert.equal(fs.readFileSync(stdin, "utf8"), `${prompt}\n---\n${prompt}\n---\n`);
 });
 
 test("runPi starts pi with the LaunchServices preload in NODE_OPTIONS on macOS, so neither pi nor its tool calls check in", async () => {

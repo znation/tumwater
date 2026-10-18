@@ -20,8 +20,9 @@ import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 test("a rejected change is re-applied on the role's next tick and its reasons ride along", async () => {
   const repo = await initializedRepo();
   // The reviewer (any run whose prompt asks for a VERDICT) rejects with two numbered
-  // reasons. Author runs record their full argv — the prompt is pi's last argument — so
-  // the test can assert what each tick was actually told, not just that state changed.
+  // reasons. Author runs record their full argv — the fake appends the stdin prompt as the
+  // last argument (PROMPT_FROM_STDIN) — so the test can assert what each tick was actually
+  // told, not just that state changed.
   const promptsFile = path.join(tmpdir(), "prompts.log");
   const marker = path.join(tmpdir(), "changed-once");
   const script = [
