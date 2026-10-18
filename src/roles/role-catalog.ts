@@ -14,6 +14,7 @@ import {
   PLAN_SIZING,
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
+  VALIDATION_GAP_QUERY,
   VALIDATION_GAP_TALLY,
   WAITING_FOR_FAILURE_NOTE,
   WAITING_FOR_FAILURE_PREFIX,
@@ -247,10 +248,14 @@ and the markdown docs (doc comments, PLANS.md, BUGS.md) — finds no stale refer
     title: "test coverage improver",
     find: `Find ONE meaningful gap in unit test coverage — an untested module, branch, or edge case
 that could plausibly break — and close it with focused tests.
-   1. Locate it from evidence rather than by reading every module: compare the source module list
-      against the test files (a module with no test is the first candidate), or run the
-      project's coverage command — for an npm project that is \`npm run test:coverage\`, piped
-      through \`tail\` — and pick the file with the most uncovered
+   1. The team's own record of what made past bugs hard to confirm is the first evidence: run
+      \`${VALIDATION_GAP_QUERY}\` and read the entry above each hit and its free-text sentence;
+      when it names a module, branch or behavior (or the entry's fix touched one), that is the
+      first candidate — a \`no-fake\` or \`no-repro\` trace names test infrastructure to build.
+      Only when no recent trace names a candidate: Locate it from evidence rather than by reading
+      every module — compare the source module list against the test files (a module with no test
+      is the first candidate), or run the project's coverage command — for an npm project that is
+      \`npm run test:coverage\`, piped through \`tail\` — and pick the file with the most uncovered
       lines from the deterministic-coverage table at the end of its output — node's own table above
       it can flip between runs on the same tree, so quote the deterministic numbers.
    2. Then read only that file and its existing tests — every test that imports it, not just the

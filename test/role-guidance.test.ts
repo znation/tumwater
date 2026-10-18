@@ -11,6 +11,7 @@ import {
   PLAN_SIZING,
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
+  VALIDATION_GAP_QUERY,
   VALIDATION_GAP_TAGS,
   VALIDATION_GAP_TALLY,
   WAITING_FOR_FAILURE_NOTE,
@@ -98,6 +99,40 @@ test("the documented gap tally counts the verbatim line and the compressed suffi
   assert.match(out, /1 no-repro/);
   assert.match(out, /1 none/);
   assert.ok(!out.includes("def5678"), "no tag invented for an entry without a trace");
+});
+
+test("the validation-gap query names every non-none tag for a consumer, and only the coverage role embeds it", () => {
+  // Every non-`none` tag appears in the query's alternation, and `none` (which names nothing to
+  // build) does not — same define-once-from-the-closed-vocabulary shape as the tally test above.
+  for (const tag of VALIDATION_GAP_TAGS) {
+    if (tag === "none") {
+      assert.ok(!VALIDATION_GAP_QUERY.includes(tag), "`none` never appears in the query");
+    } else {
+      assert.ok(VALIDATION_GAP_QUERY.includes(tag), `query names ${tag}`);
+    }
+  }
+  // Only the coverage role — the consumer that picks its target from the traces — embeds the
+  // query; the bugfix role writes one line and the steward aggregates the count, neither lists
+  // entries.
+  assert.ok(oneLine(roleById("coverage")!.find).includes(VALIDATION_GAP_QUERY), "coverage embeds the query");
+  assert.ok(!roleById("bugfix")!.find.includes(VALIDATION_GAP_QUERY), "bugfix writes one line, not a query");
+  assert.ok(!roleById("steward")!.find.includes(VALIDATION_GAP_QUERY), "the steward tallies, not lists");
+  // Run the query for real on a temp BUGS.md: it must surface the no-fake hit and neither the
+  // `none` line nor the steward's compressed `gap: no-repro` suffix.
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    [
+      "**Validation gap:** no-fake — had to write a shim.",
+      "**Validation gap:** none — the existing suite confirmed it.",
+      "- Old headline (fixed 2026-09-01; commit abc1234; gap: no-repro)",
+      "",
+    ].join("\n"),
+  );
+  const out = sh(dir, "sh", "-c", VALIDATION_GAP_QUERY);
+  assert.ok(out.includes("no-fake"), "query prints the no-fake hit");
+  assert.ok(!out.includes("none"), "query does not print the none line");
+  assert.ok(!out.includes("no-repro"), "query does not print the compressed gap: no-repro line");
 });
 
 test("the steward prompt embeds the validation-gap guidance verbatim", () => {

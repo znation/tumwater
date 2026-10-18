@@ -98,6 +98,17 @@ tag. \`none\` is written, never omitted, so a tally has an honest denominator.`;
 export const VALIDATION_GAP_TALLY = `One query counts both the verbatim line and the compressed
 \`gap: <tag>\` suffix: \`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c\`.`;
 
+/** The one query a *consumer* of the validation-gap traces — a role like coverage that picks its
+ * next target from BUGS.md's record of what made past bugs hard to confirm — runs to pull the
+ * recent, still-full-body entries. Split from VALIDATION_GAP_TALLY (the steward's aggregate
+ * count) because this one lists the *entries*, newest-first: \`head\` not \`tail\`, since
+ * \`## Fixed\` is newest-first, so the recent full-body entries sit at the top, for a role to
+ * read each hit's free text. Built from the closed vocabulary (minus \`none\`, which names
+ * nothing to build) so it cannot drift. */
+export const VALIDATION_GAP_QUERY = `grep -nE '\\*\\*Validation gap:\\*\\* (${VALIDATION_GAP_TAGS.filter(
+  (t) => t !== "none",
+).join("|")})' BUGS.md | head -20`;
+
 /** The literal prefix every Needs-review note starts with. Exported so a reader that only has
  * to recognize one (the backlog index's ` [blocked: needs review]` mark) can match on it instead of
  * parsing the date or the wording out of the full template — the same split as

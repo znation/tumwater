@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
 import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/verdict/reply-contract.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
-import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../src/roles/role-guidance.js";
+import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 
 // What each role's own prompt says: the per-role find text and content contracts (qa,
@@ -355,6 +355,19 @@ test("the coverage role locates gaps from evidence, not by reading every module"
   // The fallback model's longest coverage tick (2026-10-01, 97 turns) wrote its own V8
   // instrumentation scripts instead of reading the project's coverage table.
   assert.match(find, /do not write your own coverage instrumentation/);
+});
+
+test("the coverage role consults the validation-gap traces before the structural fallback", () => {
+  const find = oneLine(roleById("coverage")!.find);
+  // The trace query is the first evidence, embedded verbatim.
+  assert.ok(find.includes(VALIDATION_GAP_QUERY), "coverage embeds the trace query");
+  // The trace step must precede the structural fallback, so a coverage run consults the team's
+  // own record first and falls back to comparing module lists only when no trace names a candidate.
+  assert.ok(
+    find.indexOf(VALIDATION_GAP_QUERY) <
+      find.indexOf("compare the source module list against the test files"),
+    "the trace step comes before the structural fallback",
+  );
 });
 test("role prompts and the reply contract name npm only inside a generic instruction (non-Node projects get no npm commands)", () => {
   // BUGS.md 2026-10-04: the coverage find prescribed `npm run test:coverage` and the
