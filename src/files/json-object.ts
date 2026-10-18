@@ -96,3 +96,25 @@ export function parseJsonObject(text: string): Record<string, unknown> | null {
 export function objectOrEmpty(value: unknown): Record<string, unknown> {
   return isJsonObject(value) ? value : {};
 }
+
+/** Assemble a stream translator's canonical usage block from the four already-validated non-
+ * negative counts and the USD cost — the one home of the shape both the claude and opencode
+ * translators (agent/claude/claude-stream.ts, agent/opencode/opencode-stream.ts) build, so the
+ * `totalTokens` sum and the `cost.total` envelope cannot drift between backends. The wire-
+ * specific field-name reads stay in each translator; this owns only the identical assembly. */
+export function canonicalUsageBlock(
+  input: number,
+  cacheRead: number,
+  cacheWrite: number,
+  output: number,
+  costTotal: number,
+): Record<string, unknown> {
+  return {
+    input,
+    cacheRead,
+    cacheWrite,
+    output,
+    totalTokens: input + cacheRead + cacheWrite + output,
+    cost: { total: costTotal },
+  };
+}

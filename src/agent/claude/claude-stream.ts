@@ -15,7 +15,7 @@
  * `agent_unknown_event` warning after the run. `cost_unknown` is recorded the same way when a
  * run produced no authoritative `run_cost`. */
 
-import { isJsonObject, objectOrEmpty, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
+import { canonicalUsageBlock, isJsonObject, objectOrEmpty, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
@@ -62,20 +62,16 @@ function str(value: unknown): string | undefined {
 
 /** claude's usage block → pi's canonical usage block, with `cost.total` 0 because the run's
  * authoritative cost rides the final `run_cost` event (a split-block message repeats its usage
- * on every event, so summing per event would double-count — the fold takes it once). */
+ * on every event, so summing per event would double-count — the fold takes it once). The
+ * wire-field reads stay here; the block's assembly is the shared canonicalUsageBlock. */
 function canonicalUsage(usage: Json | undefined): Json {
-  const input = nonNegativeNumber(usage?.input_tokens, 0);
-  const cacheRead = nonNegativeNumber(usage?.cache_read_input_tokens, 0);
-  const cacheWrite = nonNegativeNumber(usage?.cache_creation_input_tokens, 0);
-  const output = nonNegativeNumber(usage?.output_tokens, 0);
-  return {
-    input,
-    cacheRead,
-    cacheWrite,
-    output,
-    totalTokens: input + cacheRead + cacheWrite + output,
-    cost: { total: 0 },
-  };
+  return canonicalUsageBlock(
+    nonNegativeNumber(usage?.input_tokens, 0),
+    nonNegativeNumber(usage?.cache_read_input_tokens, 0),
+    nonNegativeNumber(usage?.cache_creation_input_tokens, 0),
+    nonNegativeNumber(usage?.output_tokens, 0),
+    0,
+  );
 }
 
 /** One claude content block → one pi content block, or undefined for a block pi has no

@@ -17,7 +17,7 @@
  * never passed, so no `reasoning` event appears; the mapping below still recognizes one so a
  * future `--thinking` run degrades gracefully. */
 
-import { isJsonObject, nonNegativeNumber, objectOrEmpty, parseJsonObject } from "../../files/json-object.js";
+import { canonicalUsageBlock, isJsonObject, nonNegativeNumber, objectOrEmpty, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
@@ -106,18 +106,13 @@ function classifyError(err: Json): {
  * `totalTokens` feeds `peakContextTokens`; `cost.total` accumulates into `costUsd`. */
 function canonicalUsage(tokens: Json, cost: number): Json {
   const cache = objectOrEmpty(tokens.cache);
-  const input = nonNegativeNumber(tokens.input, 0);
-  const cacheRead = nonNegativeNumber(cache.read, 0);
-  const cacheWrite = nonNegativeNumber(cache.write, 0);
-  const output = nonNegativeNumber(tokens.output, 0);
-  return {
-    input,
-    cacheRead,
-    cacheWrite,
-    output,
-    totalTokens: input + cacheRead + cacheWrite + output,
-    cost: { total: cost },
-  };
+  return canonicalUsageBlock(
+    nonNegativeNumber(tokens.input, 0),
+    nonNegativeNumber(cache.read, 0),
+    nonNegativeNumber(cache.write, 0),
+    nonNegativeNumber(tokens.output, 0),
+    cost,
+  );
 }
 
 /** Build a fresh per-run opencode translator. */
