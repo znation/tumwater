@@ -104,16 +104,21 @@ export function agentBinSourceLabelFor(agent: string, source: AgentBinSource): s
  * the startup gate should refuse to boot and doctor should fail its check. This is the whole
  * executability rule in one place so the two askers cannot drift: a path-shaped value (already
  * normalized against the process cwd by resolveAgentBin) is tested directly with
- * accessSync(X_OK); a bare name resolves through PATH. `pathEnv` is injectable so tests need
- * no PATH mutation — the gate and doctor both default it to the process PATH. */
+ * accessSync(X_OK) and required to be a regular file — a directory passes X_OK, but can never
+ * be spawned, so it is rejected here with exactly the file requirement findOnPath's bare-name
+ * branch applies (a bin pointed at a directory would otherwise pass the preflight and die
+ * mid-run at the spawn instead of failing the gate with the "not an executable" message). A
+ * bare name resolves through PATH. `pathEnv` is injectable so tests need no PATH mutation —
+ * the gate and doctor both default it to the process PATH. */
 export function findAgentBinary(
   resolved: ResolvedAgentBin,
   pathEnv: string = envPath(),
 ): string | null {
   if (resolved.bin.includes("/")) {
     try {
-      fs.accessSync(resolved.bin, fs.constants.X_OK);
-      return resolved.bin;
+      fs.accessSync(resolved.bin, fs.constants.X_OK); // Directories pass X_OK; require a file.
+      if (fs.statSync(resolved.bin).isFile()) return resolved.bin;
+      return null;
     } catch {
       return null;
     }

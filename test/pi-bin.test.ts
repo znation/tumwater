@@ -1,12 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import {
   agentBinSourceLabel,
   agentMissingMessage,
+  findAgentBinary,
   piMissingMessage,
   resolveAgentBin,
 } from "../src/pi/pi-bin.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/pi/pi-bin.ts's agent-binary resolution messages. The module exists so
 // that cli.ts's fail-fast, doctor.ts's report, and src/agent/run-agent.ts's spawn errors describe
@@ -141,4 +144,21 @@ test("agentMissingMessage names the agent and its own source, not pi's", () => {
     agentMissingMessage({ bin: "pi", source: "default" }, "pi"),
     piMissingMessage({ bin: "pi", source: "default" }),
   );
+});
+
+test("findAgentBinary rejects a path-shaped bin that is a directory, which X_OK alone passes", () => {
+  // A directory is X_OK (traversable) but can never be spawned. Without the regular-file
+  // requirement a directory bin passes the preflight gate and doctor, then dies at the spawn
+  // with no clear message — the very case findOnPath's bare-name branch already guards. A real
+  // +x file must still resolve, so the file requirement cannot reject legitimate bins.
+  const dir = tmpdir("pi-bin-dir-");
+  try {
+    assert.equal(findAgentBinary({ bin: dir, source: "config" }), null);
+    const exe = path.join(dir, "pibin");
+    fs.writeFileSync(exe, "#!/bin/sh\nexit 0\n");
+    fs.chmodSync(exe, 0o755);
+    assert.equal(findAgentBinary({ bin: exe, source: "config" }), exe);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
