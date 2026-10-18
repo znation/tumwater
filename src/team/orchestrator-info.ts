@@ -244,16 +244,22 @@ function isLastReclaim(v: unknown): boolean {
   );
 }
 
+/** Parse one nested field through a field parser and either assign its parsed shape or, when
+ * the parser rejects the value as foreign, delete the field so a degraded value never reaches
+ * a render that reads it as valid. The only fields with a dedicated parser (build,
+ * fallbackDemoted, permits) keep their values unchanged when well-formed. */
+function parseOrDelete(rec: Record<string, unknown>, key: string, parse: (v: unknown) => unknown): void {
+  const parsed = parse(rec[key]);
+  if (parsed === undefined) delete rec[key];
+  else rec[key] = parsed;
+}
+
 /** Degrade each known nested field to a usable shape or drop it, mutating the freshly parsed
  * object in place so a well-formed file keeps its values unchanged. */
 function normalizeInfoFields(rec: Record<string, unknown>): void {
-  const build = parseBuild(rec.build);
-  if (build === undefined) delete rec.build;
-  else rec.build = build;
-
-  const demoted = parseDemotion(rec.fallbackDemoted);
-  if (demoted === undefined) delete rec.fallbackDemoted;
-  else rec.fallbackDemoted = demoted;
+  parseOrDelete(rec, "build", parseBuild);
+  parseOrDelete(rec, "fallbackDemoted", parseDemotion);
+  parseOrDelete(rec, "permits", parsePermits);
 
   const demotions = rec.fallbackDemotions;
   if (!isJsonObject(demotions)) delete rec.fallbackDemotions;
@@ -271,10 +277,6 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
   if (rec.chain !== undefined && !isJsonObject(rec.chain)) delete rec.chain;
 
   if (rec.stopsAt !== undefined && !isFiniteNumber(rec.stopsAt)) delete rec.stopsAt;
-
-  const permits = parsePermits(rec.permits);
-  if (permits === undefined) delete rec.permits;
-  else rec.permits = permits;
 
   const providerHolds = rec.providerHolds;
   if (!Array.isArray(providerHolds)) delete rec.providerHolds;
