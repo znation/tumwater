@@ -163,8 +163,17 @@ test("thinking values are checked against pi's accepted levels", () => {
   assert.match(validationError({ roles: { feature: { thinking: bad } } }), message("roles\\.feature\\."));
   assert.match(validationError({ review: { thinking: bad } }), message("review\\."));
   assert.match(validationError({ fallbackModel: { model: "m", thinking: bad } }), message("fallbackModel\\."));
+  // The near miss is named across every triple section the one validator builds.
+  const hint = /did you mean `high`\?$/;
+  assert.match(validationError({ thinking: bad }), hint);
+  assert.match(validationError({ roles: { feature: { thinking: bad } } }), hint);
+  assert.match(validationError({ review: { thinking: bad } }), hint);
+  assert.match(validationError({ fallbackModel: { model: "m", thinking: bad } }), hint);
   // Whitespace padding is not the same value to pi, so it is not the same value here either.
   assert.match(validationError({ thinking: " high " }), /got " high "/);
+  assert.doesNotMatch(validationError({ thinking: " high " }), /did you mean/);
+  assert.match(validationError({ thinking: "bogus" }), /got "bogus"/);
+  assert.doesNotMatch(validationError({ thinking: "bogus" }), /did you mean/);
   // Every accepted level passes, everywhere a triple is validated.
   for (const level of ["off", "minimal", "low", "medium", "high", "xhigh", "max"]) {
     assert.doesNotThrow(() => validateConfig({ thinking: level }), level);
@@ -335,6 +344,11 @@ test("validateConfig accepts a reserved agent id and rejects an unknown or blank
   assert.match(
     validationError({ ...defaultConfig(), backend: "codex" }),
     /backend must name a backend \(pi, claude, opencode; got "codex"\)/,
+  );
+  assert.doesNotMatch(validationError({ ...defaultConfig(), backend: "codex" }), /did you mean/);
+  assert.match(
+    validationError({ ...defaultConfig(), backend: "claue" }),
+    /backend must name a backend \(pi, claude, opencode; got "claue"\) — did you mean `claude`\?$/,
   );
   assert.match(validationError({ ...defaultConfig(), backend: "" }), /backend must not be empty/);
 });

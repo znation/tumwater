@@ -25,6 +25,7 @@ import { expandHomeTilde } from "../files/files.js";
 import os from "node:os";
 import path from "node:path";
 import { isNonBlankString, tooLongMessage } from "../text/text.js";
+import { typoSuffix } from "../text/suggest.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { isAgentId, parseModelSelector } from "./model-selector.js";
@@ -180,7 +181,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // time (src/agent/run-agent.ts), silently running the wrong backend against a named one.
   checkString(r, "", "backend", false);
   if (typeof r.backend === "string" && !isAgentId(r.backend))
-    problems.push(`backend must name a backend (${AGENT_IDS.join(", ")}; got ${show(r.backend)})`);
+    problems.push(`backend must name a backend (${AGENT_IDS.join(", ")}; got ${show(r.backend)})${typoSuffix(r.backend, AGENT_IDS)}`);
   checkStringArray(r, "", "piArgs");
   // A piArgs entry that repeats a harness-managed flag is appended after the harness's own and
   // pi's parser is last-wins, so it silently overrides it (see HARNESS_PI_FLAGS). Name the

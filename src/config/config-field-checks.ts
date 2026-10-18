@@ -194,7 +194,7 @@ export function checkModelTripleField(
   const t = obj.thinking;
   if (isNonBlankString(t) && !THINKING_LEVELS.has(t))
     problems.push(
-      `${prefix}thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})`,
+      `${prefix}thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})${typoSuffix(t, [...THINKING_LEVELS])}`,
     );
   const m = obj.model;
   if (m === undefined) return;
