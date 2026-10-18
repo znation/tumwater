@@ -63,54 +63,6 @@ It waits for OpenCode part 7/7: that part writes docs/backends.md's OpenCode sec
 - `--mcp-config` in `backends.claude.args` is still refused.
 - `npm test` passes.
 
-### Notes command, part 4/4: Keep funes and other operator extensions out of team runs: pi skips discovered extensions, Claude Code can use a config dir of the team's own, and doctor says where funes could reach the team (planned 2026-10-17 by user; design in plans/notes-command.md "Keeping funes out of team runs"; touches src/pi/pi-args.ts src/config/config-schema.ts src/config/config-validation.ts src/agent/claude/claude-backend.ts src/agent/claude/claude-env.ts src/agent/claude/claude-account.ts src/doctor/doctor-checks.ts docs/backends.md docs/config.md and their tests)
-
-**Goal.** funes, the transcript-recall tool you use for your own sessions, must never run in or index the team. Today it doesn't run inside team runs, but:
-
-- **It indexes team transcripts from outside.** funes's Claude Code hook sweeps every changed session under `~/.claude/projects`, so team Claude Code runs make up 59% of the sessions in your personal funes memory.
-- **pi would load it.** Team pi runs load anything pi discovers: installed packages, `~/.pi/agent/extensions`, and pi's built-in MCP extension reading `~/.pi/agent/mcp.json`. A `funes add pi` would put funes in every team pi run.
-
-This part closes the pi path, offers an opt-in fix for the Claude Code path, and has doctor report all three backends.
-
-**Approach.**
-- **src/pi/pi-args.ts:** pass `--no-extensions`, then `-e builtin:llama.cpp -e builtin:codemode -e builtin:tool-search`.
-  - Those are pi 1.2.0's built-ins other than `mcp`, kept so behavior is otherwise unchanged. tumwater's own `-e` extensions still load.
-  - Keep the three names in one exported constant with a comment naming the pi version they were read from (pi's `dist/extensions/index.js`).
-  - Add `--no-extensions` to `HARNESS_PI_FLAGS`, so `piArgs` passthrough cannot repeat it.
-- **Config:** `backends.claude.configDir` (string, optional), in src/config/config-schema.ts and config-validation.ts.
-  - A leading `~` expands; the value must be an absolute path after expansion.
-  - When set, src/agent/claude/claude-env.ts sets `CLAUDE_CONFIG_DIR` to it for every claude process tumwater spawns: runs, the `claude auth status` seed in src/agent/claude/claude-account.ts, and doctor.
-  - `claudeConfigDir()` in src/agent/claude/claude-backend.ts reads the configured dir before the env, so the resume check and doctor's transcript sizes follow it.
-  - Unset, behavior is exactly today's.
-- **Doctor** (src/doctor/doctor-checks.ts):
-  - A `pi extensions` row, shown when a model job runs on pi, lists what team runs now skip: installed packages (`pi list`, bounded), files in `~/.pi/agent/extensions`, and servers in `~/.pi/agent/mcp.json`. Each is named, so a package meant for the team does not vanish silently.
-  - A `funes` row, shown when `funes` is on PATH:
-    - It warns when a Claude Code model job runs with no `backends.claude.configDir` while `~/.funes/integrations/claude-plugin` exists: "team Claude Code transcripts are indexed into your personal funes memory — set backends.claude.configDir and log in there once (`CLAUDE_CONFIG_DIR=<dir> claude auth login`)".
-    - It notes an OpenCode global config `plugin` entry that names funes.
-    - Otherwise it is ok.
-  - With `backends.claude.configDir` set, the existing claude login check runs against that dir.
-- **docs/backends.md and docs/config.md:**
-  - `backends.claude.configDir`, and its one-time login (a fresh config dir reports `loggedIn: false`, verified 2026-10-17);
-  - `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` as the alternative;
-  - pi runs skipping discovered extensions, including a target repo's own `.pi/extensions` (design decision 5).
-
-**Files touched.**
-- Source: src/pi/pi-args.ts, src/config/config-schema.ts, src/config/config-validation.ts, src/agent/claude/claude-backend.ts, src/agent/claude/claude-env.ts, src/agent/claude/claude-account.ts, src/doctor/doctor-checks.ts.
-- Docs: docs/backends.md, docs/config.md.
-- Tests: test/pi-args.test.ts, test/config-validation.test.ts, test/claude-env.test.ts, test/claude-run.test.ts, test/doctor-checks.test.ts.
-
-**Acceptance criteria.**
-- **pi argv** has `--no-extensions` and the three `-e builtin:` flags before tumwater's own `-e` extensions; a `piArgs` entry `--no-extensions` is refused.
-- **`backends.claude.configDir`:**
-  - With it set, a Claude Code run's env and the account seed's env both carry `CLAUDE_CONFIG_DIR` = the expanded path.
-  - `claudeTranscriptPath` resolves under it.
-  - A relative path is refused at load.
-  - Unset, the env is byte-identical to before.
-- **Doctor with a fake `funes` on PATH and a temp HOME holding `.funes/integrations/claude-plugin`:**
-  - It warns for a Claude Code team with no config dir, and is ok once one is set.
-  - No `funes` on PATH gives no row.
-  - A temp HOME with `.pi/agent/mcp.json` naming a server gets that server listed in the pi row.
-- `npm test` passes.
 
 
 ### Plain terms code merge, part 11c/11: Rewrite the merge family in the first half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts a–m, plus test/helpers/ test/fakes/ and test/fixtures/)
@@ -1180,6 +1132,55 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
 
 
 ## Done
+### Notes command, part 4/4: Keep funes and other operator extensions out of team runs: pi skips discovered extensions, Claude Code can use a config dir of the team's own, and doctor says where funes could reach the team (planned 2026-10-17 by user; design in plans/notes-command.md "Keeping funes out of team runs"; touches src/pi/pi-args.ts src/config/config-schema.ts src/config/config-validation.ts src/agent/claude/claude-backend.ts src/agent/claude/claude-env.ts src/agent/claude/claude-account.ts src/doctor/doctor-checks.ts docs/backends.md docs/config.md and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** funes, the transcript-recall tool you use for your own sessions, must never run in or index the team. Today it doesn't run inside team runs, but:
+
+- **It indexes team transcripts from outside.** funes's Claude Code hook sweeps every changed session under `~/.claude/projects`, so team Claude Code runs make up 59% of the sessions in your personal funes memory.
+- **pi would load it.** Team pi runs load anything pi discovers: installed packages, `~/.pi/agent/extensions`, and pi's built-in MCP extension reading `~/.pi/agent/mcp.json`. A `funes add pi` would put funes in every team pi run.
+
+This part closes the pi path, offers an opt-in fix for the Claude Code path, and has doctor report all three backends.
+
+**Approach.**
+- **src/pi/pi-args.ts:** pass `--no-extensions`, then `-e builtin:llama.cpp -e builtin:codemode -e builtin:tool-search`.
+  - Those are pi 1.2.0's built-ins other than `mcp`, kept so behavior is otherwise unchanged. tumwater's own `-e` extensions still load.
+  - Keep the three names in one exported constant with a comment naming the pi version they were read from (pi's `dist/extensions/index.js`).
+  - Add `--no-extensions` to `HARNESS_PI_FLAGS`, so `piArgs` passthrough cannot repeat it.
+- **Config:** `backends.claude.configDir` (string, optional), in src/config/config-schema.ts and config-validation.ts.
+  - A leading `~` expands; the value must be an absolute path after expansion.
+  - When set, src/agent/claude/claude-env.ts sets `CLAUDE_CONFIG_DIR` to it for every claude process tumwater spawns: runs, the `claude auth status` seed in src/agent/claude/claude-account.ts, and doctor.
+  - `claudeConfigDir()` in src/agent/claude/claude-backend.ts reads the configured dir before the env, so the resume check and doctor's transcript sizes follow it.
+  - Unset, behavior is exactly today's.
+- **Doctor** (src/doctor/doctor-checks.ts):
+  - A `pi extensions` row, shown when a model job runs on pi, lists what team runs now skip: installed packages (`pi list`, bounded), files in `~/.pi/agent/extensions`, and servers in `~/.pi/agent/mcp.json`. Each is named, so a package meant for the team does not vanish silently.
+  - A `funes` row, shown when `funes` is on PATH:
+    - It warns when a Claude Code model job runs with no `backends.claude.configDir` while `~/.funes/integrations/claude-plugin` exists: "team Claude Code transcripts are indexed into your personal funes memory — set backends.claude.configDir and log in there once (`CLAUDE_CONFIG_DIR=<dir> claude auth login`)".
+    - It notes an OpenCode global config `plugin` entry that names funes.
+    - Otherwise it is ok.
+  - With `backends.claude.configDir` set, the existing claude login check runs against that dir.
+- **docs/backends.md and docs/config.md:**
+  - `backends.claude.configDir`, and its one-time login (a fresh config dir reports `loggedIn: false`, verified 2026-10-17);
+  - `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` as the alternative;
+  - pi runs skipping discovered extensions, including a target repo's own `.pi/extensions` (design decision 5).
+
+**Files touched.**
+- Source: src/pi/pi-args.ts, src/config/config-schema.ts, src/config/config-validation.ts, src/agent/claude/claude-backend.ts, src/agent/claude/claude-env.ts, src/agent/claude/claude-account.ts, src/doctor/doctor-checks.ts.
+- Docs: docs/backends.md, docs/config.md.
+- Tests: test/pi-args.test.ts, test/config-validation.test.ts, test/claude-env.test.ts, test/claude-run.test.ts, test/doctor-checks.test.ts.
+
+**Acceptance criteria.**
+- **pi argv** has `--no-extensions` and the three `-e builtin:` flags before tumwater's own `-e` extensions; a `piArgs` entry `--no-extensions` is refused.
+- **`backends.claude.configDir`:**
+  - With it set, a Claude Code run's env and the account seed's env both carry `CLAUDE_CONFIG_DIR` = the expanded path.
+  - `claudeTranscriptPath` resolves under it.
+  - A relative path is refused at load.
+  - Unset, the env is byte-identical to before.
+- **Doctor with a fake `funes` on PATH and a temp HOME holding `.funes/integrations/claude-plugin`:**
+  - It warns for a Claude Code team with no config dir, and is ok once one is set.
+  - No `funes` on PATH gives no row.
+  - A temp HOME with `.pi/agent/mcp.json` naming a server gets that server listed in the pi row.
+
+
 ### OpenCode backend, part 6f/7: OpenCode runs cap tool output at pi's window-scaled limits (planned 2026-10-17 by user; requires part 6e/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 2; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts and their tests) — done 2026-10-17 by the feature role
 
 **Goal.** OpenCode's tool results stop entering the context at up to 51,200 bytes (its `tool_output` default, finding 13) and come in at the same budget as a pi run's. The free model's window is 200K, against the 1M window it replaces, and every turn re-sends what a tool returned.

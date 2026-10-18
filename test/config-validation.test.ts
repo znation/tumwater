@@ -368,6 +368,12 @@ test("validateConfig rejects piArgs entries that repeat a harness-managed flag",
     validationError({ piArgs: ["--provider=other"] }),
     /piArgs\[0\] "--provider=other" duplicates a flag tumwater sets/,
   );
+  // --no-extensions is harness-owned (pi-args.ts), so a piArgs entry cannot re-enable pi's
+  // discovered extensions and smuggle an operator MCP server back into a team run.
+  assert.match(
+    validationError({ piArgs: ["--no-extensions"] }),
+    /piArgs\[0\] "--no-extensions" duplicates a flag tumwater sets — tumwater skips pi's discovered extensions itself/,
+  );
   // Non-conflicting extras still pass, including pi's own append-system-prompt and tool flags.
   assert.doesNotThrow(() =>
     validateConfig({ piArgs: ["--append-system-prompt", "be terse", "--no-skills"] }),
@@ -394,10 +400,31 @@ test("validateConfig validates the backends section: entry shapes and reserved f
     validationError({ backends: { opencode: { args: ["--model", "x"] } } }),
     /backends\.opencode\.args\[0\] "--model" duplicates a flag tumwater sets/,
   );
+  assert.doesNotThrow(() => validateConfig({ backends: { claude: { configDir: "/team/claude" } } }));
+  assert.doesNotThrow(() => validateConfig({ backends: { claude: { configDir: "~/.claude-team" } } }));
+  // A relative config dir is refused: claude would resolve it against the tick's cwd.
+  assert.match(
+    validationError({ backends: { claude: { configDir: "rel/claude" } } }),
+    /backends\.claude\.configDir must be an absolute path after ~ expansion \(got "rel\/claude"\)/,
+  );
+  assert.match(
+    validationError({ backends: { claude: { configDir: "" } } }),
+    /backends\.claude\.configDir must not be empty/,
+  );
 
   // Shape errors, each naming where the problem is.
   assert.match(validationError({ backends: "pi" }), /backends must be an object/);
   assert.match(validationError({ backends: { pi: "pi" } }), /backends\.pi must be an object with optional bin and args/);
+  // configDir is claude-only: on pi or opencode it would be a silently inert key, so it is
+  // refused and the valid set shown is the shared one (bin, args).
+  assert.match(
+    validationError({ backends: { pi: { configDir: "/team/pi" } } }),
+    /unknown key "configDir" in backends\.pi \(valid keys: bin, args\)/,
+  );
+  assert.match(
+    validationError({ backends: { opencode: { configDir: "/team/opencode" } } }),
+    /unknown key "configDir" in backends\.opencode \(valid keys: bin, args\)/,
+  );
   assert.match(
     validationError({ backends: { pi: { binary: "pi" } } }),
     /unknown key "binary" in backends\.pi \(valid keys: bin, args\)/,

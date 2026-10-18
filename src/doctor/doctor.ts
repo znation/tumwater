@@ -10,6 +10,7 @@ import { checkNotify } from "./doctor-notify.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
+import type { CheckOutcome } from "./outcome.js";
 import {
   checkAgentBinary,
   checkBrief,
@@ -17,6 +18,7 @@ import {
   checkBuild,
   checkBuildCheck,
   checkClaudeTranscripts,
+  checkFunes,
   checkGitBinary,
   checkConfigKeyNames,
   checkInit,
@@ -26,6 +28,7 @@ import {
   checkOpencodeVersion,
   checkMergeLock,
   checkNodeVersion,
+  checkPiExtensions,
   checkProviderConcurrency,
   checkProviderContention,
   checkRepo,
@@ -51,6 +54,16 @@ import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefus
  * without a running harness) and none runs the project's build/test: that can take minutes and
  * belongs in the review gate / red-main check, not a pre-flight. The individual checks live in
  * doctor-checks.ts and doctor-model-checks.ts; this module composes them into the report. */
+
+/** Wrap a possibly-absent doctor check into the report's `checks` spread: null omits the row
+ * entirely (the pi-extensions row for a team with no pi seam; the funes row when funes is not
+ * on PATH); an outcome contributes `{ name, ...outcome }`. */
+function appendNamedOutcome(
+  name: string,
+  outcome: CheckOutcome | null,
+): Array<{ name: string } & CheckOutcome> {
+  return outcome === null ? [] : [{ name, ...outcome }];
+}
 
 /** Run every check in order and compose the report. Read-only against .tumwater/ by
  * construction — no check removes or repairs anything (the state-dir probe writes a temp file
@@ -114,6 +127,12 @@ export async function runDoctor(
     { name: "backend binary", ...checkAgentBinary(root, pathEnv) },
     // The transcript total is informational and only read when a seam routes to claude.
     { name: "claude transcripts", ...checkClaudeTranscripts(config) },
+    // The receive-side guards name what a running team skips, so an operator tool meant for the
+    // team (a pi package, an extension file, an mcp.json server, or funes) does not vanish
+    // silently. Each check returns null to omit its row: the pi row for a team with no pi seam,
+    // the funes row when funes is not on PATH.
+    ...(appendNamedOutcome("pi extensions", checkPiExtensions(config, undefined, pathEnv))),
+    ...(appendNamedOutcome("funes", checkFunes(config, pathEnv))),
     { name: "state dir", ...checkStateDir(root) },
     { name: "event log", ...checkEventLog(root) },
     { name: "notify", ...checkNotify(root, config) },

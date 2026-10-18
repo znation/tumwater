@@ -465,6 +465,23 @@ test("checkClaudeAuth fails a logged-out claude and names the billing it implies
   assert.match(unreadable.detail, /could not check/);
 });
 
+// The auth probe must run under the configured team config dir, or it would check claude's
+// default dir while a run with backends.claude.configDir writes and auths elsewhere — the very
+// mismatch doctor exists to surface. The fake claude records the CLAUDE_CONFIG_DIR it saw.
+test("checkClaudeAuth probes under the configured team config dir", async () => {
+  const root = readyRepo();
+  const seen = path.join(tmpdir("doctor-claude-auth-cfg-"), "seen");
+  writeConfig(root, { agent: "claude", backends: { claude: { configDir: "/team/claude" } } });
+  const bin = tmpdir("doctor-claude-auth-cfg-bin-");
+  writeScript(
+    path.join(bin, "claude"),
+    `echo "$CLAUDE_CONFIG_DIR" > "${seen}"; echo '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"team"}'`,
+  );
+  const out = await checkClaudeAuth(root, bin);
+  assert.equal(out.level, "ok");
+  assert.equal(fs.readFileSync(seen, "utf8").trim(), "/team/claude");
+});
+
 // A pi-only config stands the claude checks down, so a team that never runs claude spawns no
 // claude and reads no claude state.
 test("checkClaudeAuth and checkClaudeVersion stand down without a claude seam", async () => {

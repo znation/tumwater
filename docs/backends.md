@@ -132,9 +132,20 @@ when the role reroutes, the prompt is accepted and the command says where it wil
 
 `backends.claude.bin` overrides the binary (`TUMWATER_CLAUDE_BIN` overrides it for one run), and
 `backends.claude.args` appends extra argv after tumwater's own flags; a flag tumwater sets
-itself is a load error rather than a silent override. With `CLAUDE_CONFIG_DIR` set, claude's
-transcripts live under that dir (`<config>/projects/…`) and tumwater's resume check and doctor's
-"claude transcripts" row follow it; unset, they stay at `~/.claude`.
+itself is a load error rather than a silent override. An optional `backends.claude.configDir`
+points claude's own config — transcripts and login — at a directory of the team's own; it
+becomes `CLAUDE_CONFIG_DIR` for every claude process tumwater spawns (runs, the `auth status`
+seed, and doctor), and the resume check and the "claude transcripts" row follow it. A leading
+`~` expands, and the value must be an absolute path after expansion; unset, behavior is exactly
+today's (`$CLAUDE_CONFIG_DIR` else `~/.claude`). This keeps transcripts out of `~/.claude` so the
+`funes` transcript-recall hook (if you use it for your own sessions) never indexes team runs —
+`tumwater doctor`'s `funes` row warns when a Claude Code team runs without one while that hook
+is installed.
+
+A fresh config dir reports `loggedIn: false`, so it needs a one-time login in that dir:
+`CLAUDE_CONFIG_DIR=<dir> claude auth login`, or alternatively `claude setup-token` exporting
+`CLAUDE_CODE_OAUTH_TOKEN` (which tumwater already passes through). The configured dir wins over
+an inherited `CLAUDE_CONFIG_DIR`, never the other way.
 A model id whose provider names a backend
 id always routes there regardless of the top-level `backend`: `claude/claude-opus-5-5` runs on
 claude, `huggingface/…` on pi. Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5

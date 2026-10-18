@@ -8,7 +8,7 @@
  * validate → atomic-write idiom, the cross-process lock) live in src/config/config-write.ts;
  * the per-key validators and key-shape parsing here are the one home of the wording both the
  * writers and the read side show. */
-import { AGENT_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
+import { AGENT_KEYS, CLAUDE_AGENT_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
 import { typoSuffix } from "../text/suggest.js";
 import { POSITIVE_INTEGER, show } from "./config-field-checks.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
@@ -110,11 +110,14 @@ export function parseConfigKey(key: string): ParsedConfigKey {
   // `roles.<id>.<field>` names one role field). The id is shape-checked only — routing owns
   // which agent ids exist (part 4b); a typo'd field is refused here with the valid ones named.
   if (parts.length === 3 && first === "backends" && second !== undefined && second !== "" && third !== undefined) {
-    if ((AGENT_KEYS as readonly string[]).includes(third))
+    // configDir is claude-only (CLAUDE_AGENT_KEYS): a config set backends.pi.configDir would
+    // write a key nothing reads, so it is refused everywhere but claude.
+    const validKeys = second === "claude" ? CLAUDE_AGENT_KEYS : AGENT_KEYS;
+    if ((validKeys as readonly string[]).includes(third))
       return { kind: "agent", id: second, field: third as "bin" | "args" };
     return {
       kind: "error",
-      error: `unknown backend field "${third}" for backends.${second} (valid fields: ${AGENT_KEYS.join(", ")})${typoSuffix(third, AGENT_KEYS)}`,
+      error: `unknown backend field "${third}" for backends.${second} (valid fields: ${validKeys.join(", ")})${typoSuffix(third, validKeys)}`,
     };
   }
   // `model.<tier>` names one entry of the tier model map — the way `roles.<id>.model`

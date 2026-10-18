@@ -93,6 +93,18 @@ test("claudeEnv leaves BASH_MAX_TIMEOUT_MS unset when the quiet kill is disabled
   assert.equal(out.BASH_DEFAULT_TIMEOUT_MS, "600000");
 });
 
+test("claudeEnv sets CLAUDE_CONFIG_DIR from a team config dir and leaves it unset otherwise", () => {
+  // A configured team config dir (plans/notes-command.md "Keeping funes out of team runs") is
+  // forced for every claude process, even overriding an inherited host dir.
+  const withDir = env({ CLAUDE_CONFIG_DIR: "/host/host-dir" }, { configDir: "/team/claude" });
+  assert.equal(withDir.CLAUDE_CONFIG_DIR, "/team/claude");
+  // Unset, claude keeps whatever the base carried (byte-identical to before this feature).
+  const untouched = env({ CLAUDE_CONFIG_DIR: "/host/host-dir" });
+  assert.equal(untouched.CLAUDE_CONFIG_DIR, "/host/host-dir");
+  const absent = env({});
+  assert.equal(absent.CLAUDE_CONFIG_DIR, undefined);
+});
+
 test("claudeEnv never mutates its base", () => {
   const base: NodeJS.ProcessEnv = { CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "sid", PATH: "/usr/bin" };
   env(base);

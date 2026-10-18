@@ -60,9 +60,13 @@ const MIN_BASH_MAX_TIMEOUT_MS = 1_000;
 
 /** One run's claude isolation environment. `quietTimeoutSeconds` is the resolved config value;
  * 0 disables tumwater's quiet kill, and then no `BASH_MAX_TIMEOUT_MS` is set, leaving claude's
- * own ceiling. */
+ * own ceiling. `configDir` (the expanded `backends.claude.configDir`) directs claude's own config
+ * and transcripts to a directory of the team's own when configured; absent, claude keeps today's
+ * lookup (`$CLAUDE_CONFIG_DIR` else `~/.claude`). */
 export interface ClaudeEnvOptions {
   quietTimeoutSeconds: number;
+  /** The expanded team config dir, set as `CLAUDE_CONFIG_DIR`. */
+  configDir?: string;
 }
 
 /** Build the claude process environment from `base`. Never mutates `base`. */
@@ -89,5 +93,9 @@ export function claudeEnv(base: NodeJS.ProcessEnv, opts: ClaudeEnvOptions): Node
   env.DISABLE_AUTOUPDATER = "1";
   env.DISABLE_TELEMETRY = "1";
   env.DISABLE_ERROR_REPORTING = "1";
+  // A team config dir (plans/notes-command.md "Keeping funes out of team runs"): force claude's
+  // own config and transcripts under it, so a funes hook on ~/.claude/projects never indexes
+  // team runs. Unset leaves any inherited CLAUDE_CONFIG_DIR (or claude's default) untouched.
+  if (opts.configDir) env.CLAUDE_CONFIG_DIR = opts.configDir;
   return env;
 }

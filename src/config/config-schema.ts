@@ -462,18 +462,29 @@ export const TOP_LEVEL_KEYS = [
 export const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
 
 /** One agent backend's tumwater.json entry (plans/agent-backends.md "Config"): the binary
- * to spawn and the extra argv appended after the harness's own flags. Every field is
- * optional, so an entry may override only one of them. */
+ * to spawn, the extra argv appended after the harness's own flags, and (claude only) the config
+ * directory to force. Every field is optional, so an entry may override only one of them.
+ * `configDir` becomes `CLAUDE_CONFIG_DIR` for every claude process tumwater spawns; only the
+ * claude adapter reads it (plans/notes-command.md "Keeping funes out of team runs"). */
 export interface AgentConfig {
   /** The backend binary; absent leaves the backend's own default. */
   bin?: string;
   /** Extra argv appended last, like piArgs; absent means none. */
   args?: string[];
+  /** (claude only) The config dir set as `CLAUDE_CONFIG_DIR`, so team transcripts and claude's
+   * own auth land in a directory of the team's own (a leading `~` expands; must be absolute after
+   * expansion — validateConfig checks). Unset uses claude's default lookup. */
+  configDir?: string;
 }
 
 /** The keys an `backends.<id>` entry may hold; validation feeds checkKnownKeys so a typo'd
- * field (`backends.claude.binary`) is a load error rather than a silently inert entry. */
+ * field (`backends.claude.binary`) is a load error rather than a silently inert entry.
+ * `configDir` is claude-only (CLAUDE_AGENT_KEYS), so it is not silently inert on pi/opencode. */
 export const AGENT_KEYS = ["bin", "args"];
+
+/** The keys a claude `backends.claude` entry may hold — the shared agent keys plus `configDir`,
+ * the one per-backend field only the claude adapter reads. */
+export const CLAUDE_AGENT_KEYS = [...AGENT_KEYS, "configDir"];
 
 /** The keys tumwater.json's `bootstrap` section may hold. */
 export const BOOTSTRAP_KEYS = ["untilPlansDone"];
@@ -525,6 +536,9 @@ export const HARNESS_PI_FLAGS = new Map<string, string>([
   ["--provider", "set the top-level or per-role `provider` instead"],
   ["--model", "set the top-level or per-role `model` instead"],
   ["--thinking", "set the top-level or per-role `thinking` instead"],
+  // The harness passes --no-extensions itself (pi-args.ts's piArgs) so pi cannot load discovered
+  // extensions; a piArgs entry that re-enabled them would put operator MCP servers back in.
+  ["--no-extensions", "tumwater skips pi's discovered extensions itself"],
 ]);
 
 export const CUSTOM_LOOP_KEYS = ["name", "task"];

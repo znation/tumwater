@@ -11,6 +11,8 @@ import {
   checkDurationPhrase,
   checkClaudeTranscripts,
   checkDiskSpace,
+  checkFunes,
+  checkPiExtensions,
   diskReclaimPhrase,
   checkEventLog,
   checkFlakyChecks,
@@ -34,6 +36,7 @@ import { envPath } from "../src/files/files.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { writeScript } from "./fakes/fake-commands.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { TUMWATER_SOURCE, logEvent, type HarnessEvent } from "../src/events/events.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
@@ -42,7 +45,6 @@ import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { backdate } from "./helpers/backdate.js";
 import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
-import { writeScript } from "./fakes/fake-commands.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 
 // Unit coverage for the pre-flight environment and repo checks
@@ -878,6 +880,81 @@ test("checkClaudeTranscripts follows CLAUDE_CONFIG_DIR when it is set", () => {
 
   // Without the env var the default `~/.claude` tree is read (empty here).
   assert.match(checkClaudeTranscripts(loadConfig(root), home).detail, /0 B across 0 projects in /);
+});
+
+test("checkPiExtensions names what a team run skips and stands down without a pi seam", () => {
+  const home = tmpdir("doctor-pi-home-");
+  fs.mkdirSync(path.join(home, ".pi", "agent", "extensions"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".pi", "agent", "extensions", "my-tool.js"), "");
+  fs.writeFileSync(
+    path.join(home, ".pi", "agent", "mcp.json"),
+    JSON.stringify({ mcpServers: { funes: { command: "funes" }, aux: { command: "aux" } } }),
+  );
+  const root = readyRepo();
+  // A model on pi makes the row appear.
+  writeConfig(root, { model: "local/free-model" });
+  const piCfg = loadConfig(root);
+  const outcome = checkPiExtensions(piCfg, home, ""); // empty PATH: no `pi list` subprocess
+  assert.equal(outcome?.level, "ok");
+  assert.match(outcome!.detail, /mcp\.json servers: funes, aux/);
+  assert.match(outcome!.detail, /\.pi\/agent\/extensions: my-tool\.js/);
+
+  // No pi seam: the row is omitted entirely (doctor would not reach this host ~/.pi).
+  writeConfig(root, { agent: "claude" });
+  assert.equal(checkPiExtensions(loadConfig(root), home, ""), null);
+});
+
+test("checkPiExtensions keeps only source lines from `pi list` and shows for a default pi team", () => {
+  const home = tmpdir("doctor-pi-home2-");
+  // A `pi list` that is NOT line-per-package: each package is a two-space source line ("(filtered)"
+  // marks a filtered source) optionally followed by its installed path at four spaces, under the
+  // bold `User packages:` / `Project packages:` headers.
+  const bins = tmpdir("doctor-pi-list-bins-");
+  writeScript(path.join(bins, "pi"),
+    [
+      "echo 'User packages:'",
+      "echo '  @goose/one (filtered)'",
+      "echo '    /Users/zach/.pi/packages/@goose/one'",
+      "echo '  locals'",
+      "echo ''",
+      "echo 'Project packages:'",
+      "echo '  ops-tool'",
+      "echo '    /work/.pi/agent/packages/ops-tool'",
+      "exit 0",
+    ].join("\n"),
+  );
+  const root = readyRepo();
+  // A default pi team — no explicit model — is the feature's main scenario: the run routes to
+  // pi and installs pi's own default model, so the row must appear rather than be silently
+  // omitted because no model was declared in the config.
+  const outcome = checkPiExtensions(loadConfig(root), home, bins);
+  assert.equal(outcome?.level, "ok");
+  assert.match(outcome!.detail, /packages: @goose\/one \(filtered\), locals, ops-tool/);
+  // The headers and the installed paths are never mistaken for packages.
+  assert.doesNotMatch(outcome!.detail, /User packages|Project packages|\.pi\/packages|agent\/packages/);
+});
+
+test("checkFunes warns for a Claude Code team without a config dir and is ok once one is set", () => {
+  const home = tmpdir("doctor-funes-home-");
+  fs.mkdirSync(path.join(home, ".funes", "integrations", "claude-plugin"), { recursive: true });
+  const funesBin = fakeBins("funes");
+  const root = readyRepo();
+
+  // A Claude Code team with no backends.claude.configDir while funes's hook is installed.
+  writeConfig(root, { agent: "claude" });
+  const claudeCfg = loadConfig(root);
+  const warn = checkFunes(claudeCfg, funesBin, home);
+  assert.equal(warn?.level, "warn");
+  assert.match(warn!.detail, /set backends\.claude\.configDir and log in there once/);
+
+  // Once a team config dir is set, the row is ok (the hook can no longer index team runs).
+  writeConfig(root, { agent: "claude", backends: { claude: { configDir: "/team/claude" } } });
+  const ok = checkFunes(loadConfig(root), funesBin, home);
+  assert.equal(ok?.level, "ok");
+  assert.match(ok!.detail, /no team reach/);
+
+  // No funes on PATH: the row is omitted entirely.
+  assert.equal(checkFunes(claudeCfg, "", home), null);
 });
 
 test("checkClaudeTranscripts reports a sub-KB tree in plain bytes", () => {

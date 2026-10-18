@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { bundledExtensionPaths, piArgs } from "../src/pi/pi-args.js";
+import { bundledExtensionPaths, PI_KEPT_BUILTINS, piArgs } from "../src/pi/pi-args.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { configForRole } from "../src/config/config-views.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -32,30 +32,46 @@ test("piArgs loads the bundled bounded-output extension before user piArgs", () 
   const config = defaultConfig();
   config.piArgs = ["--no-skills"];
   const args = piArgs({ config, sessionDir: "/tmp/s", sessionName: "n" });
-  const eIndex = args.indexOf("-e");
-  assert.ok(eIndex !== -1, "-e flag present");
-  const extPath = args[eIndex + 1]!;
+  // The first -e is a kept pi built-in (builtin:…), so find the first bundled path instead.
+  const extPath = bundledExtensionPaths()[0]!;
+  const extOffset = args.indexOf(extPath);
+  assert.ok(extOffset !== -1, "extension flag present");
+  assert.equal(args[extOffset - 1], "-e");
   // Tests run compiled from dist/test/, so resolving the same relative URL the code uses
   // points at dist/src/pi-extension/bounded-output.js — existing after npm run build.
   const expected = fileURLToPath(new URL("../src/pi-extension/bounded-output.js", import.meta.url));
   assert.equal(extPath, expected);
   assert.ok(path.isAbsolute(extPath), "extension path is absolute");
   assert.ok(fs.existsSync(extPath), `extension exists in dist: ${extPath}`);
-  assert.ok(eIndex < args.indexOf("--no-skills"), "user piArgs still come after the extension");
+  assert.ok(extOffset < args.indexOf("--no-skills"), "user piArgs still come after the extension");
 });
 
 test("piArgs loads the context-shake extension right after bounded-output", () => {
   const args = piArgs({ config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" });
   const exts = args.flatMap((a, i) => (a === "-e" ? [args[i + 1]!] : []));
-  assert.deepEqual(exts, bundledExtensionPaths());
-  assert.deepEqual(exts.map((e) => path.basename(e)), [
+  const bundledExts = [...PI_KEPT_BUILTINS.map((b) => `builtin:${b}`), ...bundledExtensionPaths()];
+  assert.deepEqual(exts, bundledExts);
+  assert.deepEqual(exts.slice(PI_KEPT_BUILTINS.length).map((e) => path.basename(e)), [
     "bounded-output.js",
     "context-shake.js",
     "context-budget.js",
     "strip-thinking.js",
     "trim-system-prompt.js",
   ]);
-  for (const e of exts) assert.ok(fs.existsSync(e), `extension exists in dist: ${e}`);
+  for (const e of exts.slice(PI_KEPT_BUILTINS.length)) assert.ok(fs.existsSync(e), `extension exists in dist: ${e}`);
+});
+
+test("piArgs skips discovered extensions and re-enables only the kept pi built-ins", () => {
+  const args = piArgs({ config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" });
+  assert.ok(args.includes("--no-extensions"), "--no-extensions present");
+  const noExt = args.indexOf("--no-extensions");
+  const firstBundled = args.indexOf(bundledExtensionPaths()[0]!);
+  assert.ok(noExt < firstBundled, "--no-extensions precedes tumwater's own -e extensions");
+  for (const builtin of PI_KEPT_BUILTINS) {
+    const i = args.indexOf(`builtin:${builtin}`);
+    assert.ok(i !== -1, `builtin:${builtin} present`);
+    assert.ok(i > noExt && i < firstBundled, `builtin:${builtin} sits after --no-extensions and before the bundled -e paths`);
+  }
 });
 
 test("piArgs no longer loads the role-notes extension (notes ride tumwater-notes)", () => {
@@ -69,7 +85,9 @@ test("piArgs no longer loads the role-notes extension (notes ride tumwater-notes
 test("piArgs skips the extension for non-pi agents, keeps it for a configured pi path", () => {
   const base = { config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" };
   assert.ok(!piArgs({ ...base, agentBin: "/usr/local/bin/other-agent" }).includes("-e"));
+  assert.ok(!piArgs({ ...base, agentBin: "/usr/local/bin/other-agent" }).includes("--no-extensions"));
   assert.ok(piArgs({ ...base, agentBin: "/opt/tools/pi" }).includes("-e"));
+  assert.ok(piArgs({ ...base, agentBin: "/opt/tools/pi" }).includes("--no-extensions"));
 });
 
 test("piArgs omits unset options", () => {

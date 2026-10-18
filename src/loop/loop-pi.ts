@@ -5,7 +5,7 @@ import { runPi, type PiRunKind, type PiRunOptions } from "../pi/pi.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { HOLD_BASE_MS } from "../team/team-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
-import { configForRole, seamHoldKey, seamPairName, type ResolvedModelConfig } from "../config/config-views.js";
+import { configForRole, resolvedAgentConfig, seamHoldKey, seamPairName, type ResolvedModelConfig } from "../config/config-views.js";
 import { ensureProviderLease } from "../concurrency/provider-lease.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
@@ -501,8 +501,15 @@ export class LoopPi {
     const dir = sessionDir(this.host.root, this.host.role);
     // The follow-up continues THIS tick's author session. The backend's own resumable rule
     // keeps it honest: pi would reach the newest file, claude its recorded id, so a conflict
-    // resolver's gate run in the same dir cannot be mistaken for this tick's session.
-    if (!agentSessionResumable(dir, { kind: "author", agent: cfg.agent ?? "pi" })) {
+    // resolver's gate run in the same dir cannot be mistaken for this tick's session. The
+    // claude config dir rides along so a claude team's resume looks under its own dir.
+    if (
+      !agentSessionResumable(
+        dir,
+        { kind: "author", agent: cfg.agent ?? "pi" },
+        resolvedAgentConfig(cfg, "claude").configDir,
+      )
+    ) {
       return null;
     }
     return this.runWithTransientRetry({

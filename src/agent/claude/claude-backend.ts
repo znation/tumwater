@@ -47,12 +47,16 @@ export function claudeProjectSlug(cwd: string): string {
 }
 
 /** claude's config directory: `$CLAUDE_CONFIG_DIR` when non-empty (a leading `~` expands
- * against the home dir), else `~/.claude`. This mirrors claude's own lookup and pi's
+ * against the home dir), else `~/.claude`. A configured team `configDir` (the expanded
+ * `backends.claude.configDir`) wins over any inherited env var — the team's own directory is
+ * never overridden by the operator's shell. This mirrors claude's own lookup and pi's
  * `piAgentDir`; exported so doctor reads the same dir the adapter writes transcripts into. */
 export function claudeConfigDir(
   env: NodeJS.ProcessEnv = process.env,
   homeDir: string = os.homedir(),
+  configured?: string,
 ): string {
+  if (configured) return expandHomeTilde(configured, homeDir);
   const dir = env.CLAUDE_CONFIG_DIR;
   if (!dir) return path.join(homeDir, ".claude");
   return expandHomeTilde(dir, homeDir);
@@ -61,15 +65,17 @@ export function claudeConfigDir(
 /** The transcript file claude writes for a session started in `cwd`: its resume check must find
  * a real file before passing `--resume`. claude's own layout is
  * `<config>/projects/<slug>/<sessionId>.jsonl`; exported so the fake and the resume logic
- * cannot drift. */
+ * cannot drift. `configDir` is the configured team dir, threaded through so the resume check
+ * looks where the run's own env will write. */
 export function claudeTranscriptPath(
   cwd: string,
   id: string,
   env: NodeJS.ProcessEnv = process.env,
   homeDir: string = os.homedir(),
+  configDir?: string,
 ): string {
   return path.join(
-    claudeConfigDir(env, homeDir),
+    claudeConfigDir(env, homeDir, configDir),
     "projects",
     claudeProjectSlug(cwd),
     `${id}.jsonl`,
@@ -117,24 +123,30 @@ function classifyClaudeExit(info: AgentExitInfo): AgentExitClassification {
 function claudeResumableRecord(
   dir: string,
   opts: { kind: string; agent: string; cwd?: string },
+  configDir?: string,
 ): SessionRecord | null {
   const record = resumableSession(dir, opts);
   if (record === null) return null;
   if (opts.cwd !== undefined && record.cwd !== opts.cwd) return null;
-  if (!fs.existsSync(claudeTranscriptPath(record.cwd, record.id))) return null;
+  if (!fs.existsSync(claudeTranscriptPath(record.cwd, record.id, process.env, os.homedir(), configDir)))
+    return null;
   return record;
 }
 
 /** The session id this run uses: for a continue, the ledger's newest record of this kind when
  * it is claude's, this cwd's, and its transcript file exists; otherwise a fresh UUID. Returns
- * the id and the `--resume` id when resuming. */
-function resolveClaudeSession(run: AgentRunSpec): { sessionId: string; resumeSessionId?: string } {
+ * the id and the `--resume` id when resuming. `configDir` is the configured team dir, so the
+ * resume check looks where the run's own env will write transcripts. */
+function resolveClaudeSession(
+  run: AgentRunSpec,
+  configDir?: string,
+): { sessionId: string; resumeSessionId?: string } {
   if (run.continueSession) {
-    const record = claudeResumableRecord(run.sessionDir, {
-      kind: run.kind,
-      agent: "claude",
-      cwd: run.cwd,
-    });
+    const record = claudeResumableRecord(
+      run.sessionDir,
+      { kind: run.kind, agent: "claude", cwd: run.cwd },
+      configDir,
+    );
     if (record !== null) return { sessionId: record.id, resumeSessionId: record.id };
   }
   return { sessionId: randomUUID() };
@@ -159,7 +171,13 @@ export const claudeBackend: AgentBackend = {
     if (run.config.model === undefined) {
       throw new Error("claude backend: no model resolved for this run");
     }
-    const { sessionId, resumeSessionId } = resolveClaudeSession(run);
+    // The configured team config dir (plans/notes-command.md "Keeping funes out of team runs"):
+    // the run's env, its resume lookup, and the account seed all follow it; unset, nothing changes.
+    const claudeCfg = resolvedAgentConfig(run.config, "claude");
+    const configDir = claudeCfg.configDir;
+    const expandedConfigDir =
+      configDir !== undefined ? claudeConfigDir(process.env, os.homedir(), configDir) : undefined;
+    const { sessionId, resumeSessionId } = resolveClaudeSession(run, configDir);
     const { args, stdin } = claudeArgs({
       cwd: run.cwd,
       model: run.config.model,
@@ -168,7 +186,7 @@ export const claudeBackend: AgentBackend = {
       // The operator's `backends.claude.args` passthrough, appended after the harness flags (the
       // builder rejects any entry that repeats a harness-managed flag). resolvedAgentConfig
       // owns the view so a caller cannot mutate the loaded config through the returned array.
-      args: resolvedAgentConfig(run.config, "claude").args,
+      args: claudeCfg.args,
       prompt: run.prompt,
       // The caller computes the remaining daily budget for an API-billed claude run and the
       // adapter forwards it; a subscription run or the director passes none (part 7a/7).
@@ -185,6 +203,7 @@ export const claudeBackend: AgentBackend = {
         : { ...agentBaseEnv(run.runMarker, undefined, run.binDir), TUMWATER_NOTES_PATH: run.notesPath };
     const env = claudeEnv(base, {
       quietTimeoutSeconds: run.config.quietTimeoutSeconds,
+      ...(expandedConfigDir !== undefined ? { configDir: expandedConfigDir } : {}),
     });
     return { args, stdin, env, sessionId };
   },
@@ -196,8 +215,8 @@ export const claudeBackend: AgentBackend = {
     return claudeTranslator({ thirdPartyProvider: claudeThirdPartyProvider(process.env) });
   },
 
-  resumable(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean {
-    return claudeResumableRecord(dir, opts) !== null;
+  resumable(dir: string, opts: { kind: string; agent: string; cwd?: string }, configDir?: string): boolean {
+    return claudeResumableRecord(dir, opts, configDir) !== null;
   },
 
   // Every Claude model reads images (Claude Code's Read tool returns them as image blocks), so

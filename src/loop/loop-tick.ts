@@ -21,6 +21,7 @@ import {
 import type { LoopPi } from "./loop-pi.js";
 import {
   modelSelectorField,
+  resolvedAgentConfig,
   reviewRunConfig,
   scheduleConfigForRole,
   seamHoldKey,
@@ -322,6 +323,9 @@ export async function runTickPhase(
     pending: ctx.pending,
     tickPrompt: (agent, compact) => ctx.tickPrompt(agent, compact),
     agent: cfg.agent ?? DEFAULT_AGENT,
+    // The team's configured claude config dir, so planTickStart's claude resume guard looks
+    // under the same dir the run's env writes its transcript to (note 4/4). Unset → undefined.
+    claudeConfigDir: resolvedAgentConfig(cfg, "claude").configDir,
     // The window the tick's model declares in pi's catalog decides the compact prompt
     // (context-window.ts compactPromptWindow); a non-pi or unknown model keeps the full one.
     compact: compactPromptWindow(seamContextWindow(cfg, ctx.root)),

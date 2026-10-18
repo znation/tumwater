@@ -64,6 +64,10 @@ export function planTickStart(opts: {
    * naming another agent hands off instead of resuming. Defaults to pi, the historical
    * backend. */
   agent?: string;
+  /** The team's configured claude config dir (`backends.claude.configDir`, unexpanded), so a
+   * claude tick's resume guard looks under the same dir its run writes transcripts to.
+   * Absent for a pi team or one that sets no config dir. */
+  claudeConfigDir?: string;
   /** The tick's model declares a window of at most 128k, so a fresh tick's prompt is the compact
    * one (prompt.ts CompactPrompt). Omitted: the full prompt. */
   compact?: boolean;
@@ -103,7 +107,7 @@ export function planTickStart(opts: {
   // claude resumes an id (safe across a newer gate line). A backend with no `resumable` hook
   // falls back to the backend-neutral session-file check.
   const resumable = resumePending && !resumeMissing
-    ? agentSessionResumable(dir, { kind: "author", agent })
+    ? agentSessionResumable(dir, { kind: "author", agent }, opts.claudeConfigDir)
     : false;
   const resumableSession = resumable;
   // A newest line our backend cannot resume is not ours to continue: another kind's or

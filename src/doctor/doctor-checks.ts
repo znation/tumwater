@@ -38,6 +38,7 @@ import { agentBinSourceLabelFor, agentMissingMessage, findAgentBinary, resolveAg
 import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
+import { resolvedAgentConfig } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
@@ -53,12 +54,13 @@ import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { agentsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
-import { claudeSeamsInUse, opencodeSeamsInUse, AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS } from "./doctor-model-checks.js";
+import { claudeSeamsInUse, opencodeSeamsInUse, piSeamsInUse, AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { boundedProbe } from "./probe.js";
 import { childEnv } from "../process/process.js";
 import { opencodeBackend, OPENCODE_MIN_VERSION } from "../agent/opencode/opencode-backend.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { spawnSync } from "node:child_process";
 import { loadLoopState } from "../loop/loop-state.js";
 import { INSTANCE_ROLES, loopEnabled, loopIds } from "../roles/loop-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
@@ -364,7 +366,8 @@ export function checkClaudeTranscripts(
 ): CheckOutcome {
   if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
   if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
-  const dir = path.join(claudeConfigDir(env, homeDir), "projects");
+  const configDir = resolvedAgentConfig(config, "claude").configDir;
+  const dir = path.join(claudeConfigDir(env, homeDir, configDir), "projects");
   let slugs: string[];
   try {
     slugs = fs
@@ -378,6 +381,166 @@ export function checkClaudeTranscripts(
   for (const slug of slugs) bytes += treeBytes(path.join(dir, slug));
   const projects = plural(slugs.length, "project");
   return okOutcome(`${formatBytes(bytes)} across ${projects} in ${dir}`);
+}
+
+/** Bounding for the `pi list` probe below: the packages a team run now skips are names, so a
+ * short deadline and a small output cap keep an unlucky host from stalling doctor. */
+const PI_LIST_TIMEOUT_MS = 5_000;
+const PI_LIST_MAX_BYTES = 64 * 1024;
+
+/** MCP server names in `~/.pi/agent/mcp.json` (the file pi's built-in MCP extension reads),
+ * or `[]` for a missing/malformed file: the `mcpServers` keys, or `mcp.<name>`. Best-effort
+ * naming so a server the operator meant for the team is surfaced even when the file is odd. */
+function piMcpServerNames(file: string): string[] {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return [];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!parsed || typeof parsed !== "object") return [];
+  const names = new Set<string>();
+  const serverMap = (parsed as Record<string, unknown>)["mcpServers"];
+  if (serverMap && typeof serverMap === "object")
+    for (const name of Object.keys(serverMap)) names.add(name);
+  const mcp = (parsed as Record<string, unknown>)["mcp"];
+  if (mcp && typeof mcp === "object")
+    for (const [name, value] of Object.entries(mcp))
+      if (name !== "servers" && value && typeof value === "object") names.add(name);
+  return [...names];
+}
+
+/** The operator pi state a team run now skips (plans/notes-command.md "Keeping funes out of
+ * team runs"): installed packages (`pi list`, bounded), files in `~/.pi/agent/extensions`, and
+ * MCP servers in `~/.pi/agent/mcp.json`. Each is named, so a package, extension file, or server
+ * the operator meant for the team does not vanish silently when pi loads none of it. Shown only
+ * when a model job runs on pi; returns null otherwise so doctor omits the row and never reads
+ * a host `~/.pi` a pi-only-install team does not use. `homeDir` and `pathEnv` are test seams. */
+export function checkPiExtensions(
+  config: TumwaterConfig | undefined,
+  homeDir: string = os.homedir(),
+  pathEnv: string = envPath(),
+): CheckOutcome | null {
+  if (!config) return null;
+  if (!piSeamsInUse(config)) return null;
+  const parts: string[] = [];
+  // Installed pi packages (pi list, bounded): each stdout line a package name. A probe that
+  // cannot run or produces nothing contributes nothing; the rest still name what team runs skip.
+  const resolved = resolveAgentBin(config, "pi");
+  const piBin = findAgentBinary(resolved, pathEnv);
+  if (piBin !== null) {
+    try {
+      const stdout = spawnSync(piBin, ["list"], {
+        encoding: "utf8",
+        timeout: PI_LIST_TIMEOUT_MS,
+        maxBuffer: PI_LIST_MAX_BYTES,
+        killSignal: "SIGKILL",
+      }).stdout;
+      // `pi list` is not line-per-package: each package is a two-space-indented source line
+      // (optionally followed by its installed path at four spaces), under the bold `User
+      // packages:` / `Project packages:` headers. Keep only the two-space source lines so the
+      // headers and installed paths are not mistaken for packages.
+      const packages = String(stdout)
+        .split(/\r?\n/)
+        .map((line) => line.replace(/\r$/, ""))
+        .map((line) => /^  (\S.*)$/.exec(line)?.[1]?.trim())
+        .filter((name): name is string => name !== undefined && name.length > 0);
+      if (packages.length > 0) parts.push(`packages: ${packages.join(", ")}`);
+    } catch {
+      // A `pi list` that could not be read just names nothing; extensions/servers below still show.
+    }
+  }
+  // Files in ~/.pi/agent/extensions.
+  try {
+    const files = fs
+      .readdirSync(path.join(homeDir, ".pi", "agent", "extensions"), { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
+    if (files.length > 0) parts.push(`~/.pi/agent/extensions: ${files.join(", ")}`);
+  } catch {
+    // Absent or unreadable; nothing to name.
+  }
+  // MCP servers named in ~/.pi/agent/mcp.json (the file pi's MCP built-in reads).
+  const mcpNames = piMcpServerNames(path.join(homeDir, ".pi", "agent", "mcp.json"));
+  if (mcpNames.length > 0) parts.push(`mcp.json servers: ${mcpNames.join(", ")}`);
+  if (parts.length === 0)
+    return okOutcome("team pi runs skip discovered extensions; none found on this host");
+  return okOutcome(`team pi runs skip discovered extensions: ${parts.join("; ")}`);
+}
+
+/** The operator's global opencode config files, in XDG order — the same home `opencode-config.ts`
+ * reads for MCP names. Home is the operator's home; `$XDG_CONFIG_HOME`, when set, wins. */
+function opencodeGlobalConfigPaths(homeDir: string): string[] {
+  const configHome = process.env.XDG_CONFIG_HOME ?? path.join(homeDir, ".config");
+  return ["config.json", "opencode.json", "opencode.jsonc"].map((file) =>
+    path.join(configHome, "opencode", file),
+  );
+}
+
+/** Report the operator's global opencode config file that mentions funes, or null.
+ * A best-effort note (the design's doctor `funes` row) so an operator who installed funes's
+ * OpenCode integration is told it could reach an OpenCode team; a malformed file reads nothing. */
+function opencodePluginNamesFunes(
+  homeDir: string,
+  readPath: (file: string) => string | null,
+): string | null {
+  for (const file of opencodeGlobalConfigPaths(homeDir)) {
+    const text = readPath(file);
+    if (text === null) continue;
+    // A global config that mentions funes in or near a plugin reference is worth naming; the
+    // exact JSON shape varies by version (array or object), so a substring scan over the text is
+    // the honest check.
+    if (/"plugin(s)?"\s*[:\[\{]/.test(text) && /funes/i.test(text)) return file;
+  }
+  return null;
+}
+
+/** The `funes` row (plans/notes-command.md "Keeping funes out of team runs"): whether the
+ * transcript-recall tool you use for your own sessions can reach the team. Shows only when
+ * `funes` is on PATH (else no row at all) and warns when a Claude Code team runs without a
+ * `backends.claude.configDir` while funes's Claude Code hook is installed (`~/.funes/
+ * integrations/claude-plugin`) — that hook indexes every session under `~/.claude/projects`,
+ * which is exactly what a team config dir moves out from under. It also notes a global
+ * OpenCode plugin naming funes. `pathEnv`, `homeDir`, and `readPath` are test seams. */
+export function checkFunes(
+  config: TumwaterConfig | undefined,
+  pathEnv: string = envPath(),
+  homeDir: string = os.homedir(),
+  readPath: (file: string) => string | null = (file) => {
+    try {
+      return fs.readFileSync(file, "utf8");
+    } catch {
+      return null;
+    }
+  },
+): CheckOutcome | null {
+  if (!config) return null;
+  if (findOnPath("funes", pathEnv) === null) return null;
+  const notes: string[] = [];
+  if (claudeSeamsInUse(config)) {
+    const configDir = resolvedAgentConfig(config, "claude").configDir;
+    const plugin = path.join(homeDir, ".funes", "integrations", "claude-plugin");
+    if (configDir === undefined && fs.existsSync(plugin)) {
+      return warnOutcome(
+        "funes's Claude Code hook indexes team transcripts into your personal memory — set backends.claude.configDir and log in there once (`CLAUDE_CONFIG_DIR=<dir> claude auth login`)",
+      );
+    }
+    notes.push(
+      configDir === undefined
+        ? "Claude Code runs use the default config dir (no funes Claude Code hook installed)"
+        : "Claude Code runs use their own config dir",
+    );
+  }
+  const opencodePlugin = opencodePluginNamesFunes(homeDir, readPath);
+  if (opencodePlugin !== null) notes.push(`global OpenCode config mentions funes (${opencodePlugin})`);
+  const detail = notes.length > 0 ? `funes on PATH, no team reach: ${notes.join("; ")}` : "funes on PATH, no team reach";
+  return okOutcome(detail);
 }
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing

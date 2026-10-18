@@ -5,8 +5,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { runAgent } from "../src/agent/run-agent.js";
+import type { AgentRunSpec } from "../src/agent/agent-backend.js";
 import { claudeBackend, claudeConfigDir, claudeProjectSlug, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { readSessions, recordSession } from "../src/agent/session-ledger.js";
 import { agentBinSourceLabel } from "../src/pi/pi-bin.js";
@@ -269,6 +271,36 @@ test("claudeTranscriptPath follows CLAUDE_CONFIG_DIR and expands a leading ~", (
     "/home/x/.claude/projects/-w-a-b/r1.jsonl",
   );
   assert.equal(claudeConfigDir({ CLAUDE_CONFIG_DIR: "~" }, "/home/x"), "/home/x");
+});
+
+test("a team config dir wins over the env in claudeConfigDir and the run env carries it", () => {
+  // claudeConfigDir reads the configured dir before the env (plans/notes-command.md "Keeping
+  // funes out of team runs"): the team's own dir is never overridden by an inherited var.
+  assert.equal(claudeConfigDir({ CLAUDE_CONFIG_DIR: "/host/app" }, "/home/x", "~/team"), "/home/x/team");
+  assert.equal(claudeConfigDir({ CLAUDE_CONFIG_DIR: "/host/app" }, "/home/x", "/abs/team"), "/abs/team");
+  assert.equal(
+    claudeTranscriptPath("/w", "id", { CLAUDE_CONFIG_DIR: "/host/app" }, "/home/x", "/home/x/team"),
+    "/home/x/team/projects/-w/id.jsonl",
+    "the transcript resolves under the configured dir",
+  );
+  // A run with backends.claude.configDir spawns claude with that dir as CLAUDE_CONFIG_DIR.
+  const spec: AgentRunSpec = {
+    cwd: fs.realpathSync(tmpdir()),
+    prompt: "p",
+    config: {
+      ...defaultConfig(),
+      agent: "claude",
+      model: "claude-sonnet-5-5",
+      backends: { claude: { configDir: "~/team-claude" } },
+    },
+    sessionDir: path.join(tmpdir(), "sessions"),
+    sessionName: "t",
+    kind: "author",
+    agentBin: "claude",
+    runMarker: "m",
+  };
+  const inv = claudeBackend.invocation(spec);
+  assert.equal(inv.env.CLAUDE_CONFIG_DIR, path.join(os.homedir(), "team-claude"));
 });
 
 test("the resume check finds a transcript at a relocated CLAUDE_CONFIG_DIR", async () => {

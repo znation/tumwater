@@ -150,7 +150,10 @@ export interface AgentBackend {
    * backend-aware resume guard (plans/agent-backends.md "Sessions"). pi continues the newest
    * session file in the dir, claude resumes a ledger id from its recorded cwd. Optional — a
    * backend with no hook falls back to the session-file check. */
-  resumable?(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean;
+  /** Whether a session of `opts.kind` is resumable in `dir` for this backend. `configDir` is
+   * the team's configured claude config dir (threaded so a claude resume guard and the run's
+   * own env can never drift); the pi and opencode hooks ignore it. */
+  resumable?(dir: string, opts: { kind: string; agent: string; cwd?: string }, configDir?: string): boolean;
   /** Whether a model this backend runs reads images (plans/image-input.md "Capability"). The
    * claude adapter answers true (every Claude model reads images, and Claude Code's Read tool
    * returns them as image blocks); a backend without the hook leaves the answer to its own
@@ -182,8 +185,9 @@ export function agentBackend(id: string): AgentBackend | undefined {
 export function agentSessionResumable(
   dir: string,
   opts: { kind: string; agent: string; cwd?: string },
+  configDir?: string,
 ): boolean {
   const backend = agentBackend(opts.agent);
-  if (backend?.resumable) return backend.resumable(dir, opts);
+  if (backend?.resumable) return backend.resumable(dir, opts, configDir);
   return hasResumableSession(dir);
 }

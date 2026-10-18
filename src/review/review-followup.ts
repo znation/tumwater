@@ -6,7 +6,7 @@
  * spend; null means there was no session to continue. */
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
-import { reviewRunConfig } from "../config/config-views.js";
+import { reviewRunConfig, resolvedAgentConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { nativeLogPath, piLogPath } from "../paths.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../prompt/gate-prompts.js";
@@ -36,8 +36,11 @@ async function runFollowupTurn(
   const cfg = reviewRunConfig(ctx.config);
   // The verdict/re-run follow-up continues the review session the gate just wrote. The
   // backend's own resumable rule keeps a newer line of another kind from being the session a
-  // pi continue would actually reach; claude resumes its recorded id.
-  if (!agentSessionResumable(dir, { kind: "gate", agent: cfg.agent ?? "pi" })) {
+  // pi continue would actually reach; claude resumes its recorded id (looked up under the
+  // team's config dir, so a team that set one continues under it).
+  if (
+    !agentSessionResumable(dir, { kind: "gate", agent: cfg.agent ?? "pi" }, resolvedAgentConfig(ctx.config, "claude").configDir)
+  ) {
     return null;
   }
   return ctx.runGatePi({

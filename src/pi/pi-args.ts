@@ -26,6 +26,15 @@ export function bundledExtensionPaths(): string[] {
   ].map((file) => fileURLToPath(new URL(`../pi-extension/${file}`, import.meta.url)));
 }
 
+/** pi 1.2.0's built-in extensions other than `mcp`, read from pi's own `dist/extensions/index.js`.
+ * Team runs skip pi's auto-discovery with `--no-extensions`, then re-enable exactly these with an
+ * explicit `-e builtin:` — so an installed pi package, a `~/.pi/agent/extensions` file, a target
+ * repo's own `.pi/extensions`, and pi's built-in MCP extension (which reads `~/.pi/agent/mcp.json`)
+ * can never smuggle an operator MCP server (e.g. funes) into a team run, while behavior is
+ * otherwise unchanged. A pi bump that renames or adds a built-in is a visible diff here; doctor
+ * prints the same names so a package meant for the team does not vanish silently. */
+export const PI_KEPT_BUILTINS = ["llama.cpp", "codemode", "tool-search"] as const;
+
 /** The fields of PiRunOptions (src/agent/run-agent.ts) that piArgs reads, plus the resolved
  * agent binary. Declared standalone rather than as a Pick of PiRunOptions so this module stays
  * cycle-free from pi-backend.ts, which imports piArgs back for the command line. */
@@ -57,6 +66,12 @@ export function piArgs(opts: PiArgOptions): string[] {
   // tumwater pi extension") and tell the model how full its window is at fixed thresholds.
   // Loaded before config.piArgs so a user flag still wins.
   if (path.basename(opts.agentBin ?? "pi") === "pi") {
+    // Disable pi's discovered extensions (packages, ~/.pi/agent/extensions, a repo's own
+    // .pi/extensions, and the built-in MCP reader for ~/.pi/agent/mcp.json), then re-enable only
+    // the named built-ins so operator MCP servers stay out of team runs. Kept before tumwater's
+    // own `-e` extensions; config.piArgs still wins (appended last).
+    args.push("--no-extensions");
+    for (const builtin of PI_KEPT_BUILTINS) args.push("-e", `builtin:${builtin}`);
     for (const ext of bundledExtensionPaths()) args.push("-e", ext);
   }
   args.push(...config.piArgs);

@@ -9,14 +9,16 @@
  * milliseconds (the run parser reports unix seconds; observeClaudeAccount converts once here),
  * so consumers compare it to `Date.now()` directly. */
 import { spawnSync } from "node:child_process";
+import os from "node:os";
 import type { TumwaterConfig } from "../../config/config-schema.js";
+import { resolvedAgentConfig } from "../../config/config-views.js";
 
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
 import { finiteNumber, isJsonObject, parseJsonObject } from "../../files/json-object.js";
 import { claudeAccountPath } from "../../paths.js";
 import type { PiRunResult } from "../../pi/pi-run-result.js";
 import type { RateWindow } from "../../pi/pi-stream.js";
-import { claudeBackend } from "./claude-backend.js";
+import { claudeBackend, claudeConfigDir } from "./claude-backend.js";
 import { claudeEnv, claudeThirdPartyProvider } from "./claude-env.js";
 
 /** How a claude run is paid for: a claude.ai subscription, or API credit (an API key or a
@@ -333,7 +335,15 @@ export function claudeAuthUsesSubscription(auth: ClaudeAuthStatus): boolean {
  * short deadline. Null when the probe could not run or its reply was unreadable. */
 function probeAuthStatus(config: TumwaterConfig): ClaudeAuthStatus | null {
   const resolved = claudeBackend.resolveBin(config);
-  const env = claudeEnv(process.env, { quietTimeoutSeconds: 0 });
+  const configDir = resolvedAgentConfig(config, "claude").configDir;
+  const env = claudeEnv(process.env, {
+    quietTimeoutSeconds: 0,
+    // The seed probes auth under the same env a real run gets, so a team config dir's login
+    // is what it reports (plans/notes-command.md "Keeping funes out of team runs").
+    ...(configDir !== undefined
+      ? { configDir: claudeConfigDir(process.env, os.homedir(), configDir) }
+      : {}),
+  });
   try {
     const result = spawnSync(resolved.bin, ["auth", "status"], {
       env,

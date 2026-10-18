@@ -1,7 +1,7 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { REVIEW_RESUME_LIMIT, saveLoopState, type LoopState } from "../loop/loop-state.js";
-import { modelSelectorField, reviewRunConfig } from "../config/config-views.js";
+import { modelSelectorField, resolvedAgentConfig, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
 import { changeBaseRev, headOf, patchId } from "../git/git.js";
@@ -284,6 +284,10 @@ export async function reviewAheadOfMain(
   // same config the run below gets, so the event names what the reviewer actually runs on —
   // the budget fallback included. Omitted when no model is configured (pi's own default).
   const reviewCfg = reviewRunConfig(config);
+  // The team claude config dir (plans/notes-command.md "Keeping funes out of team runs"), so
+  // a claude review's resume guard looks under the same dir the review run writes its transcript
+  // to — a team that set one must resume under it, not the default ~/.claude.
+  const claudeConfigDir = resolvedAgentConfig(config, "claude").configDir;
   // A progressing timeout left this run's session for the next attempt (LoopState.reviewResume):
   // resume it only while the patch is unchanged (the same diff), the resume budget lasts, and
   // the directory still holds a gate session to `--continue`. Otherwise the stale marker is
@@ -296,7 +300,7 @@ export async function reviewAheadOfMain(
     agentSessionResumable(priorResume.sessionDir, {
       kind: "gate",
       agent: reviewCfg.agent ?? "pi",
-    });
+    }, claudeConfigDir);
   if (resuming) {
     // Count the resume before the run: a crash must not let the same session be resumed
     // forever without ever spending the budget.
@@ -527,7 +531,7 @@ export async function reviewAheadOfMain(
       agentSessionResumable(reviewSessionDir, {
         kind: "gate",
         agent: reviewCfg.agent ?? "pi",
-      });
+      }, claudeConfigDir);
     const reviewTimeoutRewrite = (message: string): string =>
       message.replace(
         " — session and worktree edits preserved for resume",

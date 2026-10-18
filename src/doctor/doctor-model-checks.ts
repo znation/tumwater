@@ -9,7 +9,7 @@ import { opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-
 import { opencodeDbPath } from "../paths.js";
 import { readTextOrNull, statOrNull } from "../files/files.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
-import { configForRole } from "../config/config-views.js";
+import { configForRole, resolvedAgentConfig } from "../config/config-views.js";
 import { fallbackPair, resolveTierFallbacks, seamsInUse, tierChainSteps } from "../config/config-fallbacks.js";
 import { cacheReadUnpriced, fallbackModelPair, piModelsPath, piPairFree, piProviderBaseUrl, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
@@ -25,7 +25,7 @@ import {
   writeImageProbeCache,
   type ImageProbeResult,
 } from "./image-probe.js";
-import { claudeBackend } from "../agent/claude/claude-backend.js";
+import { claudeBackend, claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { claudeAuthUsesSubscription, parseClaudeAuthStatus, readClaudeAccount, type ClaudeAccount, type ClaudeAuthStatus } from "../agent/claude/claude-account.js";
 import { claudeEnv } from "../agent/claude/claude-env.js";
 import { parseJsonObject } from "../files/json-object.js";
@@ -226,6 +226,15 @@ export function opencodeSeamsInUse(config: TumwaterConfig): boolean {
   return seamPairs(config).some((pair) => pair.agent === "opencode");
 }
 
+/** Whether any seam routes to the pi backend — the doctor's pi-extension row stands down when
+ * none does (an all-claude or all-opencode team reads no `~/.pi` state). Unlike the model-based
+ * seam consult, this scans the routed seams directly (not seamPairs' model-filtered view) so a
+ * default pi team — whose seams route to pi with pi's own default model and no explicit
+ * selector — still gets the row: that is the feature's main scenario. */
+export function piSeamsInUse(config: TumwaterConfig): boolean {
+  return seamsInUse(config).some((s) => s.agent === "pi");
+}
+
 /** The default credential probe: run the resolved agent binary's own auth check for one provider
  * and read `ready` out of its JSON. The binary resolves exactly as the spawn does (resolveAgentBin
  * — the same source a real tick would launch), so doctor tests the auth of the pi it would actually
@@ -267,7 +276,18 @@ function claudeProbe(
   timeoutMs: number,
 ): Promise<{ code: number | null; stdout: string } | null> {
   const resolved = claudeBackend.resolveBin(config);
-  const env = claudeEnv(childEnv({ PATH: pathEnv }), { quietTimeoutSeconds: 0 });
+  // The configured team config dir must reach the probe's env the way a real run's does, or
+  // the auth/version rows would look in claude's default dir (usually ~/.claude) while a run
+  // with backends.claude.configDir writes and reads elsewhere — the very mismatch doctor exists
+  // to surface. Mirror backends.run's expansion: only claude accepts configDir, and unset leaves
+  // today's env byte-identical.
+  const configDir = resolvedAgentConfig(config, "claude").configDir;
+  const expandedConfigDir =
+    configDir !== undefined ? claudeConfigDir(process.env, os.homedir(), configDir) : undefined;
+  const env = claudeEnv(childEnv({ PATH: pathEnv }), {
+    quietTimeoutSeconds: 0,
+    ...(expandedConfigDir !== undefined ? { configDir: expandedConfigDir } : {}),
+  });
   return boundedProbe(resolved.bin, args, env, timeoutMs, AUTH_CHECK_MAX_OUTPUT_BYTES);
 }
 

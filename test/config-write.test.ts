@@ -574,7 +574,7 @@ test("parseConfigKey names model.<tier> and rejects a bogus tier", () => {
   const badField = parseConfigKey("backends.claude.binary");
   assert.equal(badField.kind, "error");
   if (badField.kind === "error")
-    assert.match(badField.error, /unknown backend field "binary" for backends\.claude \(valid fields: bin, args\)/);
+    assert.match(badField.error, /unknown backend field "binary" for backends\.claude \(valid fields: bin, args, configDir\)/);
 });
 
 // The cross-process read-modify-write race (BUGS.md 2026-10-07): `tumwater config set` (CLI),

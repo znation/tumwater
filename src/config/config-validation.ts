@@ -2,6 +2,7 @@
 import {
   AGENT_IDS,
   AGENT_KEYS,
+  CLAUDE_AGENT_KEYS,
   BACKOFF_KEYS,
   BOOTSTRAP_KEYS,
   CHECK_KEYS,
@@ -20,6 +21,9 @@ import {
 import { allRoleIds } from "../roles/roles.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/loop-ids.js";
 import { isJsonObject } from "../files/json-object.js";
+import { expandHomeTilde } from "../files/files.js";
+import os from "node:os";
+import path from "node:path";
 import { isNonBlankString, tooLongMessage } from "../text/text.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
@@ -202,9 +206,21 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         problems.push(`${prefix} must be an object with optional bin and args (got ${show(entry)})`);
         continue;
       }
-      checkKnownKeys(entry, AGENT_KEYS, prefix, problems);
+      checkKnownKeys(entry, id === "claude" ? CLAUDE_AGENT_KEYS : AGENT_KEYS, prefix, problems);
       checkString(entry, `${prefix}.`, "bin", false);
       checkStringArray(entry, `${prefix}.`, "args");
+      // claude's per-backend config dir (plans/notes-command.md "Keeping funes out of team runs"):
+      // a leading `~` expands; the value must be an absolute path after expansion, or claude would
+      // resolve a relative CLAUDE_CONFIG_DIR from the tick's cwd and write transcripts somewhere
+      // unexpected. Only claude accepts the key (CLAUDE_AGENT_KEYS), so it is inert nowhere.
+      if (id === "claude") {
+        checkString(entry, `${prefix}.`, "configDir", false);
+        if (typeof entry.configDir === "string" && entry.configDir !== "")
+          if (!path.isAbsolute(expandHomeTilde(entry.configDir, os.homedir())))
+            problems.push(
+              `${prefix}.configDir must be an absolute path after ~ expansion (got ${show(entry.configDir)})`,
+            );
+      }
       if (!Array.isArray(entry.args)) continue; // Already reported by checkStringArray.
       checkReservedArgs(problems, entry.args as unknown[], `${prefix}.args`, (flag) =>
         reservedPassthroughFlag(id, flag),

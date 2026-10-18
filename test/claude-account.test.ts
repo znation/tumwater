@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   claudeWindowEntries,
@@ -262,6 +263,33 @@ test("seedClaudeAccount: a claude.ai login seeds subscription billing", () => {
     assert.equal(seeded?.billing, "subscription");
     assert.equal(seeded?.subscriptionType, "team");
     assert.equal(readClaudeAccount(root, 321)?.billing, "subscription");
+  });
+});
+
+test("seedClaudeAccount probes auth under a team config dir's CLAUDE_CONFIG_DIR", () => {
+  // A configured backends.claude.configDir (plans/notes-command.md "Keeping funes out of team
+  // runs") must reach the account seed's probe env: the login it reports is the one in that
+  // dir, not the operator's default ~/.claude. The fake records the env it was spawned with.
+  withoutBillingEnv(() => {
+    const root = tmpdir();
+    const capture = path.join(root, "env-capture");
+    const bin = path.join(root, "fake-claude");
+    fs.writeFileSync(
+      bin,
+      `#!/bin/sh\nprintf '%s' "$CLAUDE_CONFIG_DIR" > "${capture}"\nprintf '%s' '{"loggedIn":true,"authMethod":"claude.ai"}'\n`,
+    );
+    fs.chmodSync(bin, 0o755);
+    const config = defaultConfig() as TumwaterConfig;
+    config.backend = "claude";
+    config.backends = { claude: { bin, configDir: "~/team-claude" } };
+
+    const seeded = seedClaudeAccount(root, config, 321);
+    assert.equal(seeded?.billing, "subscription", "the in-dir login seeds a subscription");
+    assert.equal(
+      fs.readFileSync(capture, "utf8"),
+      path.join(os.homedir(), "team-claude"),
+      "the seed probed auth under the expanded team config dir",
+    );
   });
 });
 
