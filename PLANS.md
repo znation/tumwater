@@ -5,6 +5,51 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### The dashboard composer drops its "Send later…" box (planned 2026-10-18 by the director role; sibling of part 2/2, the TUI Ctrl+L removal, and independent of it — the two land in either order and whichever is second rebases at docs/cli.md; the CLI's `tumwater prompt --at` and the queues' `tumwater:not-before` mechanism stay, out of scope; touches src/ui/gui/gui-page.ts src/ui/gui/gui-styles.ts src/ui/gui/gui-client-composer.ts docs/cli.md test/gui-client-composer.test.ts)
+
+**Goal.** The user sees no need to send a role a message that is not for right now, so the dashboard composer should offer only the text field, attachments, and Send. Remove the composer's `Send later…` input (`id="promptdefer"`) and the client code that reads and submits it. The CLI's `tumwater prompt --at` and the queue's `tumwater:not-before` marker stay untouched, and the two HTTP prompt endpoints keep accepting their optional `defer` body field (still pinned by `test/gui.test.ts`) even though no dashboard client sends it.
+
+**Approach.**
+- **src/ui/gui/gui-page.ts** — delete the `<label class="composer-defer">…<input id="promptdefer"…></label>` line from the composer form.
+- **src/ui/gui/gui-styles.ts** — delete the `.composer-defer` and `.composer-defer input` rules.
+- **src/ui/gui/gui-client-composer.ts** — delete `const promptDefer = $("promptdefer");`; drop the `defer` parameter from `sendPrompt`, its `if (defer) body.defer = defer;`, and the defer ternary arms of the two confirmation strings; in the `promptform` submit handler drop `const defer = promptDefer.value.trim();`, pass no defer to `sendPrompt`, and drop `promptDefer.value = "";`.
+- **docs/cli.md** — in the `tumwater prompt` row, remove the clause “— and the dashboard composer's Send later box schedules a prompt the same way, writing the same `tumwater:not-before` marker —” while leaving the `--at` description and the rest of the sentence intact.
+- **test/gui-client-composer.test.ts** — delete the deferred-prompt test that sets `s.el("promptdefer").value` and the defer-survives-refusal assertions, keeping the text-only and image submit cases.
+
+**Files touched.** Source: src/ui/gui/gui-page.ts, src/ui/gui/gui-styles.ts, src/ui/gui/gui-client-composer.ts. Docs: docs/cli.md. Tests: test/gui-client-composer.test.ts.
+
+**Acceptance criteria.**
+- `grep -rn "promptdefer\|composer-defer\|Send later" src/ui/gui` returns no matches.
+- A composer submit POSTs `/api/prompt` `{ text }` (or `{ text, images }`) with no `defer` key, and flashes “Added to the director's inbox — it runs next” (or “…for its next run — it wakes now” for a role target).
+- `tumwater prompt --at 45m "later"` still queues a deferred prompt, and `POST /api/prompt` with a `defer` body still works as `test/gui.test.ts` pins.
+- docs/cli.md documents `--at` and names no dashboard Send later box.
+- `npm test` passes.
+
+### The TUI drops its Ctrl+L send later editor (planned 2026-10-18 by the director role; sibling of part 1/2, the dashboard box removal, and independent of it — the two land in either order and whichever is second rebases at docs/cli.md; the CLI's `tumwater prompt --at` stays, out of scope; touches src/ui/tui/tui-editor-defer.ts src/ui/tui/tui-editors.ts src/ui/tui/tui-editor-session.ts src/ui/tui/tui-editor-prompt.ts src/ui/tui/tui-input.ts src/ui/tui/tui-frame.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-ctx.ts src/ui/tui/tui-pane-report.ts src/ui/tui/tui-pane-transcript.ts src/ui/tui/tui.tsx and the other tui-editor-*.ts guard clauses; docs/cli.md docs/glossary.md; test/tui-input.test.ts test/tui-keys.test.ts test/tui-frame.test.ts)
+
+**Goal.** The TUI's prompt line still carries a send-later mode (`Ctrl+L`, the per-editor module `createDeferEditor`), which exists for the same purpose the user is dropping from the GUI. Remove it and every trace of the session's pending-delay state, so the prompt line only ever sends now. `tumwater prompt --at` and the queues' `tumwater:not-before` marker stay untouched.
+
+**Approach.**
+- Delete **src/ui/tui/tui-editor-defer.ts**; in **src/ui/tui/tui-editors.ts** remove its import and the `createDeferEditor(session)` entry from the `editors` array.
+- **src/ui/tui/tui-editor-session.ts** — remove `defer` from `TuiHeld` and the `held` initializer, `deferMs` from `TuiEditorSession` and its initializer, “defer” from `heldEditorFlash`'s entering union, and every `h.defer` clause (the `send-later edit` busyFlash arms).
+- **src/ui/tui/tui-editor-prompt.ts** and **src/ui/tui/tui-editors.ts** — remove the `pending = session.deferMs` reads, the `session.now() + pending` notBeforeMs argument to `submitRolePromptAndWake`/`submitPrompt`, the `session.deferMs = null` resets, and the deferred branches of the success flashes; remove `!session.held.defer` from the Ctrl+R guard and from `onArrow`'s guard.
+- **src/ui/tui/tui-editor-answer.ts, tui-editor-entry.ts, tui-editor-pause.ts, tui-editor-queued.ts, tui-editor-search.ts, tui-editor-attach.ts, tui-editor-notes.ts, tui-editor-retire.ts** — remove `!session.held.defer` from their guard conditions and the “defer” mention in the shared settle-draft comments.
+- **src/ui/tui/tui-input.ts** — delete `parseDeferInput`.
+- **src/ui/tui/tui-keys.ts** and **src/ui/tui/tui-editors.ts** — remove `deferMode` and `defer` from `TuiEditorState` and from `state()`, and drop the now-unused `durationLabel` import where it becomes unused.
+- **src/ui/tui/tui-frame.ts** — remove `deferMode`/`defer` from the `hintLine` and `promptPrefix` mode types, the `mode.deferMode` key and prefix branches, the `Ctrl+L` hint push and its comment, and the `mode.defer` target suffix.
+- **src/ui/tui/tui-pane-ctx.ts, tui-pane-report.ts, tui-pane-transcript.ts** — remove `deferMode` from their editor-state guards.
+- **src/ui/tui/tui.tsx** — remove `deferMode` and `defer` from the mode object built for `hintLine`/`promptPrefix`.
+- **docs/cli.md** — delete the `| Ctrl+L | prompt line | send later: set a delay for the next prompt |` table row and any TUI Ctrl+L mention in the prompt row. **docs/glossary.md** — drop “TUI Ctrl+L” from the `send later` line and remove the `defer (TUI Ctrl+L)` row.
+- Tests: delete the Ctrl+L cases from **test/tui-keys.test.ts** (the “send later cleared” and duration-error flashes) and **test/tui-frame.test.ts** (the Ctrl+L hint assertions and the `deferMode`/`defer` hint and prefix cases), and the `parseDeferInput` cases from **test/tui-input.test.ts**; drop `deferMode`/`defer` from any test helper objects.
+
+**Files touched.** Source: src/ui/tui/ as listed above. Docs: docs/cli.md, docs/glossary.md. Tests: test/tui-input.test.ts, test/tui-keys.test.ts, test/tui-frame.test.ts.
+
+**Acceptance criteria.**
+- `grep -rn "deferMs\|deferMode\|held.defer\|parseDeferInput\|createDeferEditor\|send later\|send-later" src/ui/tui` returns no matches, and `grep -rn "Ctrl+L" src/ui/tui docs/cli.md docs/glossary.md` returns no matches.
+- Pressing Ctrl+L opens no editor; every send-capable view's footer hint omits `send later`; the prompt prefix reads `director › ` (or `<role> › `) with no `(in …)` suffix.
+- `tumwater prompt --at` and the queue's `tumwater:not-before` marker are unchanged; `test/inbox.test.ts` and the prompt CLI tests still pass.
+- `npm test` passes.
+
 ### The dashboard role drawer edits a role's model triple (`provider`/`model`/`thinking`), the per-role write it still renders read-only (planned 2026-10-18 by the plan role; independent of the blocked plain-terms series; overlaps the in-flight dashboard instances plan in src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, src/gui/gui-config-commands.ts, src/gui/gui-endpoint-commands.ts and src/gui/gui-server.ts — each adds one route, one handler and one editor — and shares src/roles/role-view.ts with it and docs/cli.md's role row with the TUI/CLI plans, a rebase either way; touches src/config/config-write.ts src/roles/role-view.ts src/gui/gui-config-commands.ts src/gui/gui-endpoint-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-drawer.ts src/ui/gui/gui-client-boot.ts docs/cli.md test/config-write.test.ts test/role-view.test.ts test/gui-endpoints.test.ts test/gui-client-drawer.test.ts test/gui-client-boot.test.ts)
 
 **Goal.** `tumwater role <id>` now writes the role's model triple (`--provider`/`--model`/`--thinking`, with `--clear-*`), each field going to `roles.<base>.provider`/`.model`/`.thinking` through `setConfigKey`, and `checkModelTripleField` (src/config/config-field-checks.ts, `modelShape: "tier-name"` for role fields) owns the value shapes. The dashboard role drawer still renders the resolved `Model` row read-only (`kvRow("Model", …)` in `drawerConfigHtml`, src/ui/gui/gui-client-drawer.ts), so the knob the README's "Mixing providers" section tells an operator to set per role is the only per-role write the drawer cannot make. Add a `Model overrides` row that edits all three keys in one atomic write, prefilled with the role's own configured overrides (empty when unset).
