@@ -49,6 +49,23 @@ function rankedRoleLine(label: string, pairs: [string, number][], fmt: (n: numbe
   return `**${label}:** ${pairs.length === 0 ? "-" : pairs.map(([r, n]) => `${r} — ${fmt(n)}`).join(" · ")}`;
 }
 
+/** The per-day-median line of the team day report — "MMM D <span>" cells for each day that
+ * carries a value, joined under a bold title, or undefined when no day has one (zero means
+ * absent). The one home of that cameo rendering, shared by the merge check-time and merge-wait
+ * medians so their date+span cells and title line cannot drift; the planned provider-slot wait
+ * median is a third caller of the same rule. */
+function medianLine(
+  series: ReportDay[],
+  title: string,
+  pick: (d: ReportDay) => number | undefined,
+): string | undefined {
+  const cells = series.flatMap((d) => {
+    const v = pick(d);
+    return v === undefined ? [] : [`${monthDay(d.date)} ${shortSpanPhrase(v)}`];
+  });
+  return cells.length > 0 ? `**${title}:** ${cells.join(" · ")}` : undefined;
+}
+
 /** Push the `Cost by provider` and `Estimated by provider` lines of the per-provider spend
  * breakdown (plans: per-provider spend), from the caller's already-ranked real- and notional-
  * spend pairs. Role scoping is the caller's `role === undefined` gate — this helper only
@@ -333,20 +350,16 @@ export function renderReportMarkdown(data: ReportData): string {
       lines.push(rankedRoleLine("Merge failures by role", mergeFailures, String));
     // Per-day median passing check time, so a suite slowing over days shows; days without a
     // check are left out, and no line prints when no day has one (zero means absent).
-    const medians = data.series.flatMap((d) =>
-      d.checkMedianMs === undefined ? [] : [`${monthDay(d.date)} ${shortSpanPhrase(d.checkMedianMs)}`],
-    );
-    if (medians.length > 0) lines.push(`**Merge check median:** ${medians.join(" · ")}`);
+    const medians = medianLine(data.series, "Merge check median", (d) => d.checkMedianMs);
+    if (medians !== undefined) lines.push(medians);
     // Per-day count of red full-suite checks, beside the passing medians above; a day whose
     // suite went red before passing shows here. Zero-absent: no line when no day fails.
     const reds = data.series.flatMap((d) =>
       d.checkFailures === undefined ? [] : [`${monthDay(d.date)} ×${d.checkFailures}`],
     );
     if (reds.length > 0) lines.push(`**Red merge checks:** ${reds.join(" · ")}`);
-    const waits = data.series.flatMap((d) =>
-      d.mergeWaitMedianMs === undefined ? [] : [`${monthDay(d.date)} ${shortSpanPhrase(d.mergeWaitMedianMs)}`],
-    );
-    if (waits.length > 0) lines.push(`**Merge wait median:** ${waits.join(" · ")}`);
+    const waits = medianLine(data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
+    if (waits !== undefined) lines.push(waits);
   }
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
   // Subscription spend is notional: its own two lines, only when the window has any.
