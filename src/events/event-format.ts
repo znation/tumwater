@@ -69,6 +69,14 @@ function windowResetPhrase(e: HarnessEvent): string {
   return at === null ? "" : `, resets ${formatTime(new Date(at))}`;
 }
 
+/** The parenthesized ` (<window>)` a quiet-hours event names when it carries one, or "" when
+ * the field is absent or blank (pollQuietHoursGate may send no window, so a routine hold must
+ * not fabricate a pair). Shared by the started and ended lines so the two cannot drift on the
+ * window's presence or format. */
+function windowSuffix(e: HarnessEvent): string {
+  return typeof e.window === "string" && e.window.trim() ? ` (${textOr(e.window)})` : "";
+}
+
 /** The backend a hold event names, rendered as " at <provider>" when one is configured
  * (pollTeamHold omits it for pi's default) and "" otherwise, so a multi-provider team can
  * tell WHICH backend the storm was at. Shared by the hold and resumed lines. */
@@ -380,12 +388,10 @@ export function eventMessage(e: HarnessEvent): string {
     case "quiet_hours_started": {
       // Routine hold, like disk_low — no warning prefix: the window is configured, and the line
       // says what stops and what keeps running. pollQuietHoursGate may send no window.
-      const window = typeof e.window === "string" && e.window.trim() ? ` (${textOr(e.window)})` : "";
-      return `waiting: quiet hours${window} — roles start no new runs until the window ends; the director still runs`;
+      return `waiting: quiet hours${windowSuffix(e)} — roles start no new runs until the window ends; the director still runs`;
     }
     case "quiet_hours_ended": {
-      const window = typeof e.window === "string" && e.window.trim() ? ` (${textOr(e.window)})` : "";
-      return `quiet hours ended${window} — roles start runs again`;
+      return `quiet hours ended${windowSuffix(e)} — roles start runs again`;
     }
     case "disk_ok":
       return `disk recovered — ${gigabytes(e.freeGB)} free on the workspaces volume; new work starts again`;
