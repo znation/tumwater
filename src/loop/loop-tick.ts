@@ -124,6 +124,23 @@ async function handbackIntent(
   return { change, main: commits, ...(omitted > 0 ? { mainOmitted: omitted } : {}) };
 }
 
+/** Build the conflict-handback note for a change re-applied over current main: derive the
+ * author intent from the change's own commit and the main commits touching its conflicted
+ * files, then append the handback note built from that intent and the same reason. All three
+ * handback-note sites (merge apply, revision apply, handoff resume) share this so the intent
+ * and the note never drift apart. */
+async function appendHandbackNote(
+  prompt: string,
+  wt: string,
+  mainBranch: string,
+  sha: string,
+  reason: "merge" | "revision",
+  conflicted: string[],
+): Promise<string> {
+  const intent = await handbackIntent(wt, mainBranch, sha, conflicted);
+  return appendPromptNote(prompt, buildConflictHandbackNote(reason, conflicted, intent));
+}
+
 /** The repo-relative paths in `wt` that currently carry conflict markers. The apply path knows
  * its conflicted set because applyWithConflicts reads the unmerged index; a handoff resumes that
  * already-applied worktree, where the mixed reset dropped the unmerged index entries and the
@@ -543,8 +560,7 @@ async function tickWithWorktreePhase(
         reason: hb.reason,
         conflicted: applied.conflicted,
       });
-      const intent = await handbackIntent(wt, ctx.mainBranch, hb.sha, applied.conflicted);
-      prompt = appendPromptNote(prompt, buildConflictHandbackNote(hb.reason, applied.conflicted, intent));
+      prompt = await appendHandbackNote(prompt, wt, ctx.mainBranch, hb.sha, hb.reason, applied.conflicted);
     } else {
       // The object is gone or the apply failed for a non-conflict reason: drop the hand-back
       // so the author starts fresh rather than retrying it every tick.
@@ -613,8 +629,7 @@ async function tickWithWorktreePhase(
           conflicted: withConflicts.conflicted,
         });
         prompt = appendPromptNote(prompt, revisionNote);
-        const intent = await handbackIntent(wt, ctx.mainBranch, sha, withConflicts.conflicted);
-        prompt = appendPromptNote(prompt, buildConflictHandbackNote("revision", withConflicts.conflicted, intent));
+        prompt = await appendHandbackNote(prompt, wt, ctx.mainBranch, sha, "revision", withConflicts.conflicted);
       } else {
         s.revision = undefined;
         await deleteRef(ctx.root, rejectedRefName(ctx.role));
@@ -634,8 +649,7 @@ async function tickWithWorktreePhase(
   if (handoff && s.conflictHandback?.applied) {
     const hb = s.conflictHandback;
     const conflicted = await markerBearingFiles(wt);
-    const intent = await handbackIntent(wt, ctx.mainBranch, hb.sha, conflicted);
-    prompt = appendPromptNote(prompt, buildConflictHandbackNote(hb.reason, conflicted, intent));
+    prompt = await appendHandbackNote(prompt, wt, ctx.mainBranch, hb.sha, hb.reason, conflicted);
   }
 
   const tickBase = await headOf(wt, "HEAD");
