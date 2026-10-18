@@ -11,8 +11,9 @@ import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
 import { canonicalEventType } from "../events/event-legacy.js";
-import { eventTypeLabel } from "../events/event-labels.js";
+import { EVENT_TYPE_LABELS, eventTypeLabel } from "../events/event-labels.js";
 import { followFile } from "../files/tail.js";
+import { typoSuffix } from "../text/suggest.js";
 import { createTranscriptRenderer } from "../ui/transcript.js";
 import { readTranscriptTail } from "../ui/transcript-tail.js";
 import { eventsLogPath, piLogPath } from "../paths.js";
@@ -75,9 +76,18 @@ export const GREP_VALUE_ERROR = "logs --grep needs a pattern";
 export const TYPE_VALUE_ERROR = "logs --type needs an event type";
 
 /** The exact-type empty-match prose: the same no-match shape `--grep` uses, naming the type
- * whose value matched nothing, so the two filters' empty replies cannot drift in form. */
+ * whose value matched nothing, so the two filters' empty replies cannot drift in form. Past the
+ * names, a value that is not itself a real event type picks up a did-you-mean hint (the shell
+ * completion already offers the valid codes, so a bare no-match for a near-miss reads as a silent
+ * mystery) — while a VALID type that merely has no matching events stays hint-free, a legitimate
+ * empty result rather than a typo. A valid type or a legacy alias (canonicalEventType maps the
+ * alias onto the current code, which is a label key) never hints. */
 function typeEmpty(type: string): string {
-  return `no events matching "${type}"`;
+  const canonical = canonicalEventType(type);
+  const hint = Object.hasOwn(EVENT_TYPE_LABELS, canonical)
+    ? ""
+    : typoSuffix(type, Object.keys(EVENT_TYPE_LABELS));
+  return `no events matching "${type}"${hint}`;
 }
 
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
@@ -206,7 +216,9 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     else if (!json && (grepPattern !== null || type !== null)) {
       if (grepPattern !== null && type !== null)
         say(`no events matching "${grepPattern}" or ${typeEmpty(type)}`);
-      else say(typeEmpty(type ?? grepPattern ?? ""));
+      // Type-empty gets the hint (only the type branch); a grep-only empty stays the bare
+      // no-match line, because a free-text pattern is not an event type to suggest against.
+      else say(type !== null ? typeEmpty(type) : `no events matching "${grepPattern ?? ""}"`);
     }
     return;
   }
@@ -218,7 +230,9 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     if (shown.length === 0 && !json && (grepPattern !== null || type !== null)) {
       if (grepPattern !== null && type !== null)
         say(`no events matching "${grepPattern}" or ${typeEmpty(type)}`);
-      else say(typeEmpty(type ?? grepPattern ?? ""));
+      // Type-empty gets the hint (only the type branch); a grep-only empty stays the bare
+      // no-match line, because a free-text pattern is not an event type to suggest against.
+      else say(type !== null ? typeEmpty(type) : `no events matching "${grepPattern ?? ""}"`);
     }
     return;
   }

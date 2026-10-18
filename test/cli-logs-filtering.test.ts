@@ -446,6 +446,32 @@ test("logs --since --type filters the window, and an empty match is gentle prose
   assert.equal(j.stdout, "", j.stdout);
 });
 
+test("logs --type hints at a typo, but a valid-but-empty type stays hint-free", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs type hint");
+  const now = Date.now();
+  const file = eventsLogPath(repo);
+  writeLogLines(file, [
+    { ts: now - 10 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 },
+  ]);
+
+  // A near-miss of a real code gets the did-you-mean, so a typo isn't a silent empty result.
+  let r = await cli(repo, "logs", "--since", "1h", "--type", "merge_faild");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no events matching "merge_faild".*did you mean `merge_failed`\?/);
+
+  // The same hint rides the -n view's type-empty prose.
+  r = await cli(repo, "logs", "--type", "merge_faild", "-n", "200");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /did you mean `merge_failed`\?/);
+
+  // A VALID type with no matching events is a legitimate empty result, not a typo: no hint.
+  r = await cli(repo, "logs", "--since", "1h", "--type", "run_end");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no events matching "run_end"/);
+  assert.ok(!r.stdout.includes("did you mean"), r.stdout);
+});
+
 test("logs --type -n composes with --grep (type AND text) and with --json", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs type compose");
