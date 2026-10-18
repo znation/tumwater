@@ -59,11 +59,11 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 | `backend` | `"pi"` | The agent backend for bare model ids and the no-model default: `"pi"`, `"claude"` or `"opencode"`; see [backends.md](backends.md). |
 | `baseBranch` | none | The branch the team merges into and bases every role's worktree on; unset targets whichever branch the primary checkout has checked out, and an explicit value must exist. |
 | `agentBin` | none | The agent binary to spawn (`TUMWATER_PI_BIN` overrides it for one invocation); unset means `pi`, and a value with a path separator is resolved to an absolute path. |
-| `backends` | `{}` | Per-backend overrides of the binary (`bin`) and extra arguments (`args`), keyed by `pi`, `claude` or `opencode`; see [backends.md](backends.md). An opencode passthrough arg is appended last and a positional value would be joined into OpenCode's message, so pass flag values as `--flag=value`. |
+| `backends` | `{}` | Per-backend overrides of the binary (`bin`) and extra arguments (`args`), keyed by `pi`, `claude` or `opencode`; see [backends.md](backends.md). `backends.opencode.bin` names the OpenCode CLI (`TUMWATER_OPENCODE_BIN` overrides it for one invocation), and `backends.opencode.args` appends extra argv. An opencode passthrough arg is appended last and a positional value would be joined into OpenCode's message, so pass flag values as `--flag=value`. |
 | `check` | none | The project's own verification command (`command`, optional cheaper `gateCommand`, `cwd`, `timeoutSeconds`); unset detects an npm script at the nearest installed root. |
 | `piArgs` | `[]` | Extra arguments passed straight to pi; a flag the team sets itself is rejected. |
 | `maxConcurrent` | `6` | The most model runs in flight at once across all roles, merges included; the director's own runs sit outside it. |
-| `maxConcurrentPerProvider` | none | Per-provider caps on concurrent runs, beside `maxConcurrent`; an absent provider is uncapped. |
+| `maxConcurrentPerProvider` | none | Per-provider caps on concurrent runs, beside `maxConcurrent`; an absent provider is uncapped. `maxConcurrentPerProvider.opencode` caps concurrent OpenCode runs (the rollout starts at 3). |
 | `claudeWindowReserve` | none | Per-window-type fraction (0–1] of the claude.ai subscription window left for you: at or past it the team counts the window as used up until it resets. The director is exempt. See [backends](backends.md). |
 | `mergeBatchMax` | `3` | The most vetted changes stacked into one merge and one shared check; 1 merges every change on its own. |
 | `maxConcurrentChecks` | `2` | The most runs of the project's check in flight at once across the whole team. |

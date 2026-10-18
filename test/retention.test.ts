@@ -4,9 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
 import { sessionsRootDir, toolOutputDir, eventsLogPath } from "../src/paths.js";
+import { recordSession, sessionLedgerPath, type SessionRecord } from "../src/agent/session-ledger.js";
 import { backdate } from "./helpers/backdate.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { writeScript } from "./fakes/fake-commands.js";
 
 /** Unit tests for src/orchestrator/retention.ts — the session-retention prune gate (moved here
  * from
@@ -82,4 +84,46 @@ test("RetentionPruner: a window change and a prune survive an unwritable events 
   // the throw must not skip the prune itself.
   assert.doesNotThrow(() => pruner.poll(root, 7));
   assert.equal(fs.existsSync(toolOut), false);
+});
+
+function record(overrides: Partial<SessionRecord> = {}): SessionRecord {
+  return {
+    agent: "pi",
+    id: "id",
+    kind: "author",
+    name: "tumwater-feature-1",
+    cwd: "/wt",
+    at: Date.now(),
+    ...overrides,
+  };
+}
+
+test("RetentionPruner: an idle role's expired opencode session is purged before its ledger ages out", () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  // A stale ledger: both the record and the file's own mtime are past the window, so
+  // pruneOldFiles would delete the whole file — an idle role's ledger (its role not running,
+  // so never re-touched) ages exactly like that. Its expired opencode session must STILL be
+  // deleted from the shared OpenCode DB, which is only possible if the opencode purge reads
+  // the ledger before the file pass removes it.
+  recordSession(dir, record({ agent: "opencode", id: "ses-idle", at: now - 30 * day }));
+  const ledger = sessionLedgerPath(dir);
+  const oldTime = new Date(now - 30 * day);
+  fs.utimesSync(ledger, oldTime, oldTime);
+
+  const bin = tmpdir("opencode-retention-bin-");
+  const capture = path.join(tmpdir("opencode-retention-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "opencode"), `printf '%s\\n' "$*" >> ${capture}`);
+  process.env.TUMWATER_OPENCODE_BIN = path.join(bin, "opencode");
+  try {
+    new RetentionPruner(root, 7);
+  } finally {
+    delete process.env.TUMWATER_OPENCODE_BIN;
+  }
+  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  assert.ok(log.includes("session delete ses-idle --standalone"), `idle opencode session purged: ${log}`);
+  assert.equal(fs.existsSync(ledger), false, "the stale ledger itself is still aged out by the file pass");
 });

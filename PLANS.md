@@ -126,71 +126,6 @@ This part closes the pi path, offers an opt-in fix for the Claude Code path, and
 - A new case in test/team-alerts.test.ts, extending the "a spent budget pauses the loops, or hands them to the free fallback" scenario: with the established tiered-fallback fixture plus `budgetPausedRoles: ["coverage", "docs"]`, the one blue `fallback` alert's `detail` still names the tiers and also names `coverage` and `docs` as having no free pair and staying paused until local midnight; each held role id renders through `listRoleIds` (so a stale id still appears); with `budgetPausedRoles: []` the detail equals today's exact string.
 - `npm test` passes.
 
-### OpenCode backend, part 7/7: Doctor checks the OpenCode install, models and leaks; session retention; docs; and an opt-in `smoke:opencode` live check (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires parts 6b/7, 6c/7 and 6d/7 landed; design in plans/opencode-backend.md "Sessions", "Spend, free-ness, image input and doctor" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/agent/opencode/opencode-backend.ts src/agent/session-ledger.ts docs/backends.md docs/config.md scripts/smoke-opencode.mjs (new) package.json and their tests)
-
-**Goal.** Before any OpenCode run starts, `tumwater doctor` says everything that would make one fail or leak:
-
-- an OpenCode that is missing, V1, or too old;
-- a model OpenCode does not know;
-- a provider with no credential;
-- the operator's global opencode config, which still loads into team runs.
-
-The team's OpenCode sessions and spill files are pruned like its other session files. docs/backends.md explains the backend and the free model's catch. `npm run smoke:opencode` re-verifies the exact production invocation against the real CLI.
-
-**Approach.**
-- **Doctor**, when any model job routes to opencode:
-  - **Version** (src/doctor/doctor-checks.ts): parse `opencode --version` (`opencode v2.0.32`).
-    - A 1.x version fails, naming `brew install opencode`.
-    - Below `OPENCODE_MIN_VERSION` = `2.0.32` (a constant in src/agent/opencode/opencode-backend.ts, the H1-verified version) fails.
-  - **Models:** each model is in the catalog cache, with "free" or its per-M prices and its context window.
-    - An unknown model fails.
-    - A thinking level the model has no effort for is noted as dropped.
-    - A non-gateway provider (`opencode/anthropic/…`) warns unless `opencode auth list --format json` (bounded) lists it.
-  - **Leaks:** the operator's global opencode config files and `~/.config/opencode/AGENTS.md`. Each of these warns, naming the file and key:
-    - an MCP server (disabled for team runs);
-    - a `plugin`, `agent` or `instructions` entry;
-    - the AGENTS.md file.
-  - **Sizes:** `.tumwater/opencode/opencode.db`, and the shell spill dir for this repo's root commit (`~/.local/share/opencode/shell/<root commit>/`, finding 17).
-- **Retention:** the session pruning that applies `sessionRetentionDays`:
-  - also runs `opencode session delete <id> --standalone` (bounded) for each OpenCode ledger record older than the window;
-  - deletes spill files older than the window in this repo's spill dir.
-- **docs/backends.md:** a new "OpenCode (`opencode/…` model ids)" section:
-  - the config from plans/opencode-backend.md "Goal";
-  - the free model's catch: OpenCode's own client only, no login, time-limited, intermittent refusals that move work to the fallback;
-  - Go, which pi already reaches as `opencode-go/…`;
-  - what tumwater turns off and denies, and why `read` must stay allowed;
-  - role notes ride the role-notes MCP server; a run's first model request cannot see MCP tools (upstream issues 51812 and 56240), and notes are written at a run's end, after that;
-  - XDG left alone, and why;
-  - where sessions and spill files live.
-- **docs/config.md:** `backends.opencode`, `TUMWATER_OPENCODE_BIN` and `maxConcurrentPerProvider.opencode`.
-- **scripts/smoke-opencode.mjs** (`npm run smoke:opencode`, **not in `npm test`**), the twin of scripts/smoke-claude.mjs. It drives the real `opencode` through the compiled `runAgent`, in a throwaway git repo:
-  - a three-step run on `opencode/deepseek-v4.1-flash-free` that reads, edits and checks a file;
-  - a resume of that session that recalls something from the first run;
-  - a SIGTERM during a long `node` shell command, then a check that no marked process survives;
-  - a run carrying a notes file that reads a file and runs a command, then saves a role note before it ends; the notes file must then hold the note. This is the real usage pattern, and it is the guard on OpenCode's MCP timing (finding 21);
-  - checks that the run's tokens came from `run_usage` (the export) and its cost is 0, and that the catalog cache calls the model free.
-
-  It prints a named PASS or FAIL for each check and exits nonzero on the first failure. A free-tier 403 gets its own FAIL line saying the gate refused the exact production invocation, so a stricter gate is seen here before the team sees it.
-
-**Files touched.**
-- Source: src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts, src/agent/opencode/opencode-backend.ts, src/agent/session-ledger.ts.
-- Scripts: scripts/smoke-opencode.mjs (new), package.json.
-- Docs: docs/backends.md, docs/config.md.
-- Tests: test/doctor-model-checks.test.ts, test/doctor-checks.test.ts, test/session-ledger.test.ts.
-
-**Acceptance criteria.**
-- **Doctor with a fake `opencode`:**
-  - `opencode v1.19.3` fails, naming the install command.
-  - `opencode v2.0.31` fails; `opencode v2.0.32` passes.
-  - A model missing from the catalog fails, and the free model reads "free".
-  - A non-gateway model with no listed credential warns.
-  - A temp HOME whose `.config/opencode/opencode.jsonc` has an MCP server and an `instructions` entry gets one warning naming both.
-  - A pi-only config shows no opencode rows.
-- **Pruning:** with an OpenCode ledger record older than the window, pruning calls the fake's `session delete` with its id, and leaves a fresh one alone.
-- `npm run smoke:opencode` exists, includes the end-of-run note check, and is not reachable from `npm test`.
-- `npm test` passes.
-
-
 ### OpenCode backend, part 6f/7: OpenCode runs cap tool output at pi's window-scaled limits (planned 2026-10-17 by user; requires part 6e/7 landed; design in plans/opencode-backend.md "Small-window parity with pi" item 2; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts and their tests)
 
 **Goal.** OpenCode's tool results stop entering the context at up to 51,200 bytes (its `tool_output` default, finding 13) and come in at the same budget as a pi run's. The free model's window is 200K, against the 1M window it replaces, and every turn re-sends what a tool returned.
@@ -1428,6 +1363,68 @@ This part only adds the command and puts it on every run's PATH. Nothing tells a
 - A new `test/report-data.test.ts` case mirroring "collectReport and collectReportSince tally run_start per model, zero meaning absent, team scope only": write `merge_failed` events on one day with `result: "rejected"` twice, `result: "merge_conflict"` once, and no `result` once, and `result: "merge_blocked"` on another day; assert `collectReport(...).series` gives the first day `{ rejected: 2, merge_conflict: 1, unknown: 1 }` and the second `{ merge_blocked: 1 }`, a third day omits `mergeFailedByReason`, and each day's buckets sum to its `mergeFailed`; `collectReportSince(...).mergeFailedByReason` carries the same window map, and a role-scoped `--since` carries `{}` while a role-scoped day series omits the field.
 - `test/report.test.ts`: the day report prints `**Merge failures by reason:** rejected — 2 · merge_conflict — 1` (count desc, then code asc) beside `**Merge failures by role:**`; the `--since` report prints the same; a role-scoped day or `--since` report prints neither merge line; a merge-free window prints no `Merge failures by reason` line; a `merge_failed` event with no `result` renders `unknown — 1`.
 - A new `test/gui-client-report.test.ts` case mirroring "the Runs by model chart stacks per model and reportModelOrder lists each model once": `reportMergeFailureOrder` lists each code once, count desc then name asc; `chartMergeFailuresByReason` draws one segment per (day, code) with the day's count; `seriesHasAny(d, "mergeFailedByReason")` is false for a series with none and true for one with a code.
+### OpenCode backend, part 7/7: Doctor checks the OpenCode install, models and leaks; session retention; docs; and an opt-in `smoke:opencode` live check (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires parts 6b/7, 6c/7 and 6d/7 landed; design in plans/opencode-backend.md "Sessions", "Spend, free-ness, image input and doctor" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/agent/opencode/opencode-backend.ts src/agent/session-ledger.ts src/orchestrator/retention.ts docs/backends.md docs/config.md scripts/smoke-opencode.mjs (new) package.json and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** Before any OpenCode run starts, `tumwater doctor` says everything that would make one fail or leak:
+
+- an OpenCode that is missing, V1, or too old;
+- a model OpenCode does not know;
+- a provider with no credential;
+- the operator's global opencode config, which still loads into team runs.
+
+The team's OpenCode sessions and spill files are pruned like its other session files. docs/backends.md explains the backend and the free model's catch. `npm run smoke:opencode` re-verifies the exact production invocation against the real CLI.
+
+**Approach.**
+- **Doctor**, when any model job routes to opencode:
+  - **Version** (src/doctor/doctor-checks.ts): parse `opencode --version` (`opencode v2.0.32`).
+    - A 1.x version fails, naming `brew install opencode`.
+    - Below `OPENCODE_MIN_VERSION` = `2.0.32` (a constant in src/agent/opencode/opencode-backend.ts, the H1-verified version) fails.
+  - **Models:** each model is in the catalog cache, with "free" or its per-M prices and its context window.
+    - An unknown model fails.
+    - A thinking level the model has no effort for is noted as dropped.
+    - A non-gateway provider (`opencode/anthropic/…`) warns unless `opencode auth list --format json` (bounded) lists it.
+  - **Leaks:** the operator's global opencode config files and `~/.config/opencode/AGENTS.md`. Each of these warns, naming the file and key:
+    - an MCP server (disabled for team runs);
+    - a `plugin`, `agent` or `instructions` entry;
+    - the AGENTS.md file.
+  - **Sizes:** `.tumwater/opencode/opencode.db`, and the shell spill dir for this repo's root commit (`~/.local/share/opencode/shell/<root commit>/`, finding 17).
+- **Retention:** the session pruning that applies `sessionRetentionDays`:
+  - also runs `opencode session delete <id> --standalone` (bounded) for each OpenCode ledger record older than the window;
+  - deletes spill files older than the window in this repo's spill dir.
+- **docs/backends.md:** a new "OpenCode (`opencode/…` model ids)" section:
+  - the config from plans/opencode-backend.md "Goal";
+  - the free model's catch: OpenCode's own client only, no login, time-limited, intermittent refusals that move work to the fallback;
+  - Go, which pi already reaches as `opencode-go/…`;
+  - what tumwater turns off and denies, and why `read` must stay allowed;
+  - role notes ride the role-notes MCP server; a run's first model request cannot see MCP tools (upstream issues 51812 and 56240), and notes are written at a run's end, after that;
+  - XDG left alone, and why;
+  - where sessions and spill files live.
+- **docs/config.md:** `backends.opencode`, `TUMWATER_OPENCODE_BIN` and `maxConcurrentPerProvider.opencode`.
+- **scripts/smoke-opencode.mjs** (`npm run smoke:opencode`, **not in `npm test`**), the twin of scripts/smoke-claude.mjs. It drives the real `opencode` through the compiled `runAgent`, in a throwaway git repo:
+  - a three-step run on `opencode/deepseek-v4.1-flash-free` that reads, edits and checks a file;
+  - a resume of that session that recalls something from the first run;
+  - a SIGTERM during a long `node` shell command, then a check that no marked process survives;
+  - a run carrying a notes file that reads a file and runs a command, then saves a role note before it ends; the notes file must then hold the note. This is the real usage pattern, and it is the guard on OpenCode's MCP timing (finding 21);
+  - checks that the run's tokens came from `run_usage` (the export) and its cost is 0, and that the catalog cache calls the model free.
+
+  It prints a named PASS or FAIL for each check and exits nonzero on the first failure. A free-tier 403 gets its own FAIL line saying the gate refused the exact production invocation, so a stricter gate is seen here before the team sees it.
+
+**Files touched.**
+- Source: src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts, src/agent/opencode/opencode-backend.ts, src/agent/session-ledger.ts, src/orchestrator/retention.ts.
+- Scripts: scripts/smoke-opencode.mjs (new), package.json.
+- Docs: docs/backends.md, docs/config.md.
+- Tests: test/doctor-model-checks.test.ts, test/doctor-checks.test.ts, test/session-ledger.test.ts.
+
+**Acceptance criteria.**
+- **Doctor with a fake `opencode`:**
+  - `opencode v1.19.3` fails, naming the install command.
+  - `opencode v2.0.31` fails; `opencode v2.0.32` passes.
+  - A model missing from the catalog fails, and the free model reads "free".
+  - A non-gateway model with no listed credential warns.
+  - A temp HOME whose `.config/opencode/opencode.jsonc` has an MCP server and an `instructions` entry gets one warning naming both.
+  - A pi-only config shows no opencode rows.
+- **Pruning:** with an OpenCode ledger record older than the window, pruning calls the fake's `session delete` with its id, and leaves a fresh one alone.
+- `npm run smoke:opencode` exists, includes the end-of-run note check, and is not reachable from `npm test`.
 - `npm test` passes.
 
 ### The "provider contention" doctor row names every provider key that waited, not just the busiest (planned 2026-10-17 by the plan role; independent of every eligible Planned entry — the provider-wait median plan touches src/report, src/ui/gui/gui-client-report.ts and the report tests, and OpenCode 6b/7 and 6d/7 touch src/pi, src/gates, src/status and src/agent/opencode, none of them src/doctor/doctor-checks.ts or its test (the blocked OpenCode 7/7 does edit src/doctor/doctor-checks.ts for its install/models/leaks checks, so whichever lands second rebases); touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts and docs/cli.md) — done 2026-10-17 by the feature role

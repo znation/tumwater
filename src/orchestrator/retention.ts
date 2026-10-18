@@ -8,8 +8,10 @@
 
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { pruneOldFiles } from "../files/files.js";
-import { pruneSessionLedgers } from "../agent/session-ledger.js";
-import { sessionsRootDir, toolOutputDir } from "../paths.js";
+import { pruneSessionLedgers, pruneOpencodeSessions } from "../agent/session-ledger.js";
+import { loadConfigSafe } from "../config/config.js";
+import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
+import { opencodeDbPath, sessionsRootDir, toolOutputDir } from "../paths.js";
 
 /** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
  * has passed since the last prune (or no prune has run yet). */
@@ -65,10 +67,24 @@ export class RetentionPruner {
 
   private prune(root: string, days: number): void {
     const sessions = sessionsRootDir(root);
-    // Age out session/tool-output files first: an entirely stale dir is gone before the line
-    // pass reads it. Ledger lines are counted separately — a ledger's mtime stays young while
-    // its role runs, so pruneOldFiles never ages the file out; trimming its lines is what
-    // bounds it, and each warning must name the unit it pruned.
+    // OpenCode's sessions live outside .tumwater (design §4, finding 17): resolve its binary
+    // and OPENCODE_DB exactly as a run's invocation would, and purge its expired sessions and
+    // spill files from the ledger BEFORE the file pass below ages it out — an idle role's
+    // whole ledger file is deleted once its mtime passes the window, so only reading it first
+    // hands every expired OpenCode session id to `opencode session delete`. Each half warns its
+    // own unit.
+    const { config } = loadConfigSafe(root);
+    const bin = config !== undefined ? opencodeBackend.resolveBin(config).bin : undefined;
+    const deleted = pruneOpencodeSessions(sessions, days, {
+      bin,
+      env: { ...process.env, OPENCODE_DB: opencodeDbPath(root) },
+      spillDir: opencodeSpillDir(root),
+    });
+    if (deleted > 0)
+      warnEventBestEffort(root, TUMWATER_SOURCE, `deleted ${deleted} expired opencode session(s)`);
+    // Age out session/tool-output files now: an entirely stale dir is gone before the line
+    // pass reads it. A running role's ledger mtime stays young, so pruneOldFiles never ages
+    // that file out; each warning must name the unit it pruned.
     const pruned = pruneOldFiles(sessions, days) + pruneOldFiles(toolOutputDir(root), days);
     if (pruned > 0)
       warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${pruned} old agent session/tool-output file(s)`);

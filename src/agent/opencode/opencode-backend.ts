@@ -50,6 +50,40 @@ import { opencodeExportLines, opencodeTranslator, type OpencodeStreamTranslator 
  * both the resume-existence check and the reconciling export. */
 const EXPORT_TIMEOUT_MS = 10_000;
 
+/** The minimum OpenCode CLI version this harness accepts (plans/opencode-backend.md "Which
+ * OpenCode", part 7/7): 2.0.32, the version H1 verified live. V1 is maintenance-only and has
+ * the git-repo hang (issue 55037), so doctor fails an installed CLI below this and names
+ * `brew install opencode`. */
+export const OPENCODE_MIN_VERSION = "2.0.32";
+
+/** The repository's root (initial) commit hash, or undefined when git cannot answer (not a
+ * repo, or git missing). `git rev-list --max-parents=0 HEAD` is the same read OpenCode makes
+ * to key its shell spill by the tree's root commit. Read-only. */
+function rootCommitOf(root: string): string | undefined {
+  try {
+    const res = spawnSync("git", ["-C", root, "rev-list", "--max-parents=0", "HEAD"], {
+      encoding: "utf8",
+      timeout: 5_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const line = res.stdout?.trim();
+    return line !== undefined && /^[0-9a-f]{40}$/i.test(line) ? line : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The tree's shell spill dir OpenCode writes (finding 17, part 7/7):
+ * `~/.local/share/opencode/shell/<root commit>/`, keyed by the repository's root commit hash and
+ * OUTSIDE `.tumwater/`, so only a `session delete` or an explicit spill prune reaches it. Empty
+ * string when the root commit cannot be read — callers then skip spill work (doctor reports no
+ * spill dir; retention prunes no spill files). */
+export function opencodeSpillDir(root: string): string {
+  const commit = rootCommitOf(root);
+  if (commit === undefined) return "";
+  return path.join(os.homedir(), ".local", "share", "opencode", "shell", commit);
+}
+
 /** The catalog cache key for a run's resolved model id (part 6d/7): a bare gateway id gets the
  * `opencode/` provider prefix, a provider-qualified id passes as is — the same rule
  * opencodeArgs uses to build the `--model` arg and opencode-catalog.ts uses to key the cache,

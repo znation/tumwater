@@ -53,8 +53,11 @@ import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { agentsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
-import { claudeSeamsInUse } from "./doctor-model-checks.js";
+import { claudeSeamsInUse, opencodeSeamsInUse, AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
+import { boundedProbe } from "./probe.js";
+import { childEnv } from "../process/process.js";
+import { opencodeBackend, OPENCODE_MIN_VERSION } from "../agent/opencode/opencode-backend.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { INSTANCE_ROLES, loopEnabled, loopIds } from "../roles/loop-ids.js";
@@ -320,6 +323,40 @@ function formatBytes(n: number): string {
  * misconfiguration. Stands down when no seam routes to claude: a pi-only team reads no claude
  * state, and the report must not walk a host directory that has nothing to do with the team.
  * `homeDir` and `env` are test seams. */
+/** The dotted version in `opencode --version` (prints `opencode v2.0.32`), or undefined when it
+ * names none. */
+function parseOpencodeCliVersion(output: string): string | undefined {
+  return /v(\d+\.\d+\.\d+)/.exec(output)?.[1];
+}
+
+/** OpenCode CLI-version readiness (plans/opencode-backend.md "Which OpenCode", part 7/7): the
+ * team targets V2 at 2.0.32 or later, the version H1 verified live. An installed CLI below that
+ * (a 1.x binary included) fails naming `brew install opencode`; at or above it reads the
+ * version. Stands down when no seam routes to opencode, so a pi-only team spawns no opencode. */
+export async function checkOpencodeVersion(
+  root: string,
+  pathEnv: string = envPath(),
+  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
+): Promise<CheckOutcome> {
+  const { config } = loadConfigSafe(root);
+  if (config === undefined) return okOutcome("no readable tumwater.json — nothing to verify");
+  if (!opencodeSeamsInUse(config)) return okOutcome("no model jobs run on opencode");
+  const resolved = opencodeBackend.resolveBin(config);
+  const result = await boundedProbe(
+    resolved.bin,
+    ["--version"],
+    childEnv({ PATH: pathEnv }),
+    timeoutMs,
+    AUTH_CHECK_MAX_OUTPUT_BYTES,
+  );
+  const found = result !== null && result.code === 0 ? parseOpencodeCliVersion(result.stdout) : undefined;
+  if (found === undefined)
+    return warnOutcome("could not check — `opencode --version` did not run or its output was unreadable");
+  if (belowNodeFloor(found, `>=${OPENCODE_MIN_VERSION}`))
+    return failOutcome(`opencode ${found} is older than ${OPENCODE_MIN_VERSION} — run \`brew install opencode\``);
+  return okOutcome(`opencode ${found} (>= ${OPENCODE_MIN_VERSION})`);
+}
+
 export function checkClaudeTranscripts(
   config: TumwaterConfig | undefined,
   homeDir: string = os.homedir(),

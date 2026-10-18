@@ -18,6 +18,7 @@ import {
   checkInit,
   checkMergeLock,
   checkNodeVersion,
+  checkOpencodeVersion,
   checkProviderConcurrency,
   checkProviderContention,
   checkRepo,
@@ -41,6 +42,7 @@ import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { backdate } from "./helpers/backdate.js";
 import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
+import { writeScript } from "./fakes/fake-commands.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 
 // Unit coverage for the pre-flight environment and repo checks
@@ -1118,4 +1120,43 @@ test("checkBuildCheck appends the passing merge check timing from the last 24h",
   const out = checkBuildCheck(root);
   assert.equal(out.level, "ok");
   assert.match(out.detail, /^npm test · passing merge checks in the last 24h took .*\(2 runs\)$/);
+});
+
+// --- OpenCode version readiness (part 7/7) --------------------------------------------------
+// The team targets OpenCode V2 at 2.0.32 (the H1-verified version). checkOpencodeVersion fails
+// an older CLI — a 1.x binary included — naming the install command, and stands down without an
+// opencode seam.
+test("checkOpencodeVersion fails a 1.x or too-old opencode and passes at the floor", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "opencode/deepseek-v4.1-flash-free" });
+  const bin = tmpdir("doctor-opencode-version-");
+
+  writeScript(path.join(bin, "opencode"), 'echo "opencode v1.19.3"');
+  const v1 = await checkOpencodeVersion(root, bin);
+  assert.equal(v1.level, "fail");
+  assert.match(v1.detail, /opencode 1\.19\.3 is older than 2\.0\.32 — run `brew install opencode`/);
+
+  writeScript(path.join(bin, "opencode"), 'echo "opencode v2.0.31"');
+  const old = await checkOpencodeVersion(root, bin);
+  assert.equal(old.level, "fail");
+  assert.match(old.detail, /is older than 2\.0\.32/);
+
+  writeScript(path.join(bin, "opencode"), 'echo "opencode v2.0.32"');
+  const ok = await checkOpencodeVersion(root, bin);
+  assert.equal(ok.level, "ok");
+  assert.match(ok.detail, /opencode 2\.0\.32 \(>= 2\.0\.32\)/);
+
+  writeScript(path.join(bin, "opencode"), "exit 3");
+  const unreadable = await checkOpencodeVersion(root, bin);
+  assert.equal(unreadable.level, "warn");
+  assert.match(unreadable.detail, /could not check/);
+});
+
+test("checkOpencodeVersion stands down without an opencode seam", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "local/free-model" });
+  assert.deepEqual(await checkOpencodeVersion(root, fakeBins("pi")), {
+    level: "ok",
+    detail: "no model jobs run on opencode",
+  });
 });

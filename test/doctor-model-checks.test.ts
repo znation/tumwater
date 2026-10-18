@@ -9,6 +9,7 @@ import {
   checkFallbackChain,
   checkFallbackModel,
   checkImageInput,
+  checkOpencode,
   checkTierModels,
   piProviderAuth,
 } from "../src/doctor/doctor-model-checks.js";
@@ -16,6 +17,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
+import { writeOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { piBackend } from "../src/pi/pi-backend.js";
@@ -903,4 +905,139 @@ test("checkFallbackChain flags a spent step cap and never probes a non-local ser
   const priced = await checkFallbackChain(remote, models, async () => (calls++, true));
   assert.equal(calls, 0);
   assert.match(priced.detail, /priced, team cap only/);
+});
+
+// --- OpenCode readiness (part 7/7) ----------------------------------------------------------
+// checkOpencode runs only when a seam routes to opencode: each opencode model must be in the
+// catalog cache (failing an unknown one), a non-gateway provider needs a credential the fake
+// `opencode auth list` lists, and the operator's global config must not leak into team runs.
+test("checkOpencode stands down on a pi-only config and reads the free model as free", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "local/free-model" });
+  const empty = tmpdir("doctor-opencode-pi-");
+  assert.deepEqual(await checkOpencode(root, empty, empty), { level: "ok", detail: "no model jobs run on opencode" });
+
+  // A free opencode model in the catalog cache reads "free" at ok.
+  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free" });
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: { "opencode/deepseek-v4.1-flash-free": { free: true, context: 200_000 } },
+  });
+  const free = await checkOpencode(root, empty, empty);
+  assert.equal(free.level, "ok");
+  assert.match(free.detail, /deepseek-v4\.1-flash-free — free/);
+});
+
+test("checkOpencode fails a model missing from the catalog cache", async () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "opencode", model: "opencode/not-in-catalog" });
+  const out = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), tmpdir("doctor-opencode-home-"));
+  assert.equal(out.level, "fail");
+  // The seam resolves the bare model (the routing strips the `opencode/` backend prefix); the
+  // catalog key goes back through opencodeModelKey, and the failure names the model.
+  assert.match(out.detail, /not-in-catalog is not in the opencode catalog cache/);
+});
+
+test("checkOpencode notes a thinking level the catalog has no effort for as dropped", async () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free", thinking: "high" });
+  // The catalog lists efforts but not `high`: the level is dropped.
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: { "opencode/deepseek-v4.1-flash-free": { free: true, efforts: ["low", "medium"] } },
+  });
+  const hasList = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), tmpdir("doctor-opencode-home-"));
+  assert.equal(hasList.level, "warn");
+  assert.match(hasList.detail, /deepseek-v4\.1-flash-free has no high effort — that thinking level is dropped/);
+
+  // A model with no effort list at all supports no thinking level either, so it drops too.
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: { "opencode/deepseek-v4.1-flash-free": { free: true } },
+  });
+  const noList = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), tmpdir("doctor-opencode-home-"));
+  assert.equal(noList.level, "warn");
+  assert.match(noList.detail, /deepseek-v4\.1-flash-free has no high effort — that thinking level is dropped/);
+});
+
+test("checkOpencode warns a non-gateway provider opencode does not list a credential for", async () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "opencode", model: "opencode/anthropic/claude-sonnet" });
+  // The seam resolves `anthropic/claude-sonnet`, and that is the catalog key too.
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: { "anthropic/claude-sonnet": { free: false, inputPerM: 3, outputPerM: 15 } },
+  });
+  // Not listed: the fake auth list is empty.
+  const bin = tmpdir("doctor-opencode-auth-");
+  writeScript(path.join(bin, "opencode"), "echo '[]'");
+  const notListed = await checkOpencode(root, bin, tmpdir("doctor-opencode-home-"));
+  assert.equal(notListed.level, "warn");
+  assert.match(notListed.detail, /anthropic\/claude-sonnet is a non-gateway provider opencode does not list a credential for/);
+
+  // Listed: the fake auth list names the provider, so no warning.
+  writeScript(path.join(bin, "opencode"), "echo '[\"anthropic\"]'");
+  const listed = await checkOpencode(root, bin, tmpdir("doctor-opencode-home-"));
+  assert.notEqual(listed.level, "warn");
+  assert.ok(!listed.detail.includes("non-gateway provider"), listed.detail);
+
+  // A credential is never vouched for by a raw substring: a listed `anthropic-foo` must not
+  // stand in for the `anthropic` provider, so doctor still warns.
+  writeScript(path.join(bin, "opencode"), "echo '[\"anthropic-foo\"]'");
+  const substring = await checkOpencode(root, bin, tmpdir("doctor-opencode-home-"));
+  assert.equal(substring.level, "warn");
+  assert.match(substring.detail, /anthropic\/claude-sonnet is a non-gateway provider opencode does not list a credential for/);
+});
+
+test("checkOpencode warns about the operator's global config that leaks an MCP server and instructions", async () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free" });
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: { "opencode/deepseek-v4.1-flash-free": { free: true } },
+  });
+  const home = tmpdir("doctor-opencode-home-");
+  fs.mkdirSync(path.join(home, ".config", "opencode"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, ".config", "opencode", "opencode.jsonc"),
+    '{ "mcp": { "servers": { "srv": {} } }, "instructions": ["hi"] }',
+  );
+  // The config root is injected (XDG config home when set, else ~/.config) so the scan is
+  // hermetic and matches the folder a run actually loads.
+  const configHome = path.join(home, ".config");
+  const out = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), home, configHome);
+  assert.equal(out.level, "warn");
+  // Only the MCP server is disabled for team runs; the instructions entry still loads.
+  assert.match(out.detail, /opencode\.jsonc carries an MCP server and a instructions entry — still loads into team runs/);
+
+  // A config with only an MCP server is the one genuinely disabled for team runs.
+  fs.writeFileSync(path.join(home, ".config", "opencode", "opencode.jsonc"), '{ "mcp": { "servers": { "srv": {} } } }');
+  const mcpOnly = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), home, configHome);
+  assert.equal(mcpOnly.level, "warn");
+  assert.match(mcpOnly.detail, /opencode\.jsonc carries an MCP server — disabled for team runs/);
+});
+
+test("checkOpencode scans the XDG config home, not ~/.config, when XDG_CONFIG_HOME is set", async () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free" });
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: { "opencode/deepseek-v4.1-flash-free": { free: true } },
+  });
+  // A same-shaped leak sits in ~/.config/opencode; the leak the run would actually load lives
+  // in $XDG_CONFIG_HOME/opencode. With the XDG root injected, only the latter is scanned.
+  const home = tmpdir("doctor-opencode-home-");
+  fs.mkdirSync(path.join(home, ".config", "opencode"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".config", "opencode", "opencode.jsonc"), '{ "mcp": { "servers": { "srv": {} } } }');
+  const xdg = tmpdir("doctor-opencode-xdg-");
+  fs.mkdirSync(path.join(xdg, "opencode"), { recursive: true });
+  fs.writeFileSync(path.join(xdg, "opencode", "opencode.jsonc"), '{ "plugin": ["x"] }');
+  const out = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), home, xdg);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /opencode\.jsonc carries a plugin entry — still loads into team runs/);
+  assert.ok(!out.detail.includes("disabled for team runs"), out.detail);
+  // With the XDG root left unset, the ~/.config copy is the one scanned instead.
+  const noXdg = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), home, "");
+  assert.equal(noXdg.level, "warn");
+  assert.match(noXdg.detail, /carries an MCP server — disabled for team runs/);
 });

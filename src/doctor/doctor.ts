@@ -23,6 +23,7 @@ import {
   checkDiskSpace,
   checkEventLog,
   checkFlakyChecks,
+  checkOpencodeVersion,
   checkMergeLock,
   checkNodeVersion,
   checkProviderConcurrency,
@@ -34,7 +35,7 @@ import {
   checkWorkInstances,
   type DoctorReport,
 } from "./doctor-checks.js";
-import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackChain, checkFallbackModel, checkImageInput, checkTierModels } from "./doctor-model-checks.js";
+import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackChain, checkFallbackModel, checkImageInput, checkOpencode, checkTierModels } from "./doctor-model-checks.js";
 import { agentQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleQueuedMerges, checkStaleBugs, checkStalePrompts, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs } from "./doctor-backlog.js";
@@ -108,6 +109,8 @@ export async function runDoctor(
     { name: "claude auth", ...(await checkClaudeAuth(root, pathEnv)) },
     { name: "claude api key", ...(await checkAnthroApiKey(root, undefined, pathEnv)) },
     { name: "claude version", ...(await checkClaudeVersion(root, pathEnv)) },
+    { name: "opencode version", ...(await checkOpencodeVersion(root, pathEnv)) },
+    { name: "opencode", ...(await checkOpencode(root, pathEnv)) },
     { name: "backend binary", ...checkAgentBinary(root, pathEnv) },
     // The transcript total is informational and only read when a seam routes to claude.
     { name: "claude transcripts", ...checkClaudeTranscripts(config) },

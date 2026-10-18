@@ -9,6 +9,7 @@
  * it needs. `id` is backend-specific: claude mints a UUID before its spawn, pi leaves it as the
  * session name because pi has no separate id to hand out ahead of the run. */
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
@@ -190,4 +191,69 @@ export function pruneSessionLedgers(sessionsRoot: string, days: number): number 
     }
   });
   return pruned;
+}
+
+/** How long one `opencode session delete <id> --standalone` may take before it gives up: the
+ * session export measured 0.18 s live, so 10 s is a generous bound on a slow or wedged CLI. */
+const SESSION_DELETE_TIMEOUT_MS = 10_000;
+
+/** The options the retention pass resolves for the OpenCode session purge (part 7/7): the
+ * binary and environment (OPENCODE_DB) are per team root, resolved by the caller (retention)
+ * exactly as a run's invocation resolves them — so the deletes hit the same database the runs
+ * wrote. An undefined `bin` skips the session deletes (no opencode configured/spawnable). */
+interface OpencodePruneOptions {
+  /** The resolved opencode binary to run `session delete` with. */
+  bin?: string;
+  /** The run environment, carrying OPENCODE_DB for the team root. */
+  env?: NodeJS.ProcessEnv;
+}
+
+/** Delete each OpenCode session the ledger records as expired, with one
+ * `opencode session delete <id> --standalone` each (bounded), plus the spill files older than
+ * the window in the team's shell spill dir. The session's spill files and server state live
+ * OUTSIDE `.tumwater/` (finding 17), so trimming the ledger line alone would orphan them; the
+ * CLI's `session delete` is the one way to reach them. Best-effort and backend-specific, kept
+ * out of the generic `pruneSessionLedgers` line pass: it returns the session-deletes that
+ * reported success, and prunes spill files with the same window. The caller (retention) runs
+ * this BEFORE pruneSessionLedgers trims the lines, so the full ledger is still in view. */
+export function pruneOpencodeSessions(
+  sessionsRoot: string,
+  days: number,
+  opts: OpencodePruneOptions & { spillDir?: string },
+): number {
+  const cutoff = Date.now() - days * 24 * 3600 * 1000;
+  let deleted = 0;
+  if (opts.bin !== undefined) {
+    walkFiles(sessionsRoot, (file) => {
+      if (!file.endsWith(SESSION_LEDGER_FILE)) return;
+      for (const record of readSessions(path.dirname(file))) {
+        if (record.agent !== "opencode" || record.at >= cutoff) continue;
+        try {
+          const res = spawnSync(opts.bin!, ["session", "delete", record.id, "--standalone"], {
+            env: opts.env,
+            timeout: SESSION_DELETE_TIMEOUT_MS,
+            stdio: "ignore",
+          });
+          if (res.status === 0) deleted += 1;
+        } catch {
+          // Best effort: an unwritable env or a missing binary must not fail the prune.
+        }
+      }
+    });
+  }
+  const spill = opts.spillDir;
+  if (spill !== undefined && spill !== "") {
+    // Walk and delete files older than the window in the team's spill dir. walkFiles never
+    // throws (it swallows a vanished/unreadable dir), and each unlink is best-effort, so this
+    // whole half of the purge cannot fail the prune.
+    walkFiles(spill, (file, entry) => {
+      if (!entry.isFile()) return;
+      try {
+        if (fs.statSync(file).mtimeMs < cutoff) fs.unlinkSync(file);
+      } catch {
+        // Best effort: a vanished or unwritable spill file is not a failure.
+      }
+    });
+  }
+  return deleted;
 }

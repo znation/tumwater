@@ -207,6 +207,69 @@ verify run therefore raises no false alarm.
 
 See [plans/agent-backends.md](../plans/agent-backends.md) for the series' full design.
 
+## OpenCode (`opencode/…` model ids)
+
+A model id that starts with `opencode/` runs the job on the OpenCode CLI for its free DeepSeek
+model, instead of pi:
+
+```json
+{
+  "model": "opencode/deepseek-v4.1-flash-free",
+  "fallback": [
+    { "model": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra", "maxDailyCostUsd": 10 },
+    "qwenrunner/qwen3.8-27b"
+  ],
+  "maxConcurrentPerProvider": { "opencode": 3 }
+}
+```
+
+`backends.opencode.bin` overrides the binary (`TUMWATER_OPENCODE_BIN` overrides it for one run);
+`backends.opencode.args` appends extra argv. The team targets OpenCode V2 at **2.0.32 or later**
+(the H1-verified version); `tumwater doctor` fails an older (or a 1.x) binary and names
+`brew install opencode`. A model id whose provider names a backend id always routes there,
+so `opencode/deepseek-v4.1-flash-free` runs on the OpenCode CLI; pi's own built-in `opencode`
+gateway provider is not reachable from tumwater.
+
+**The free model and its catch.** `deepseek-v4.1-flash-free` sits on OpenCode's pay-as-you-go
+console gateway, not on OpenCode Go, costs \$0 "for a limited time", needs no login, and keeps no
+data. It is only served to OpenCode's own client — other clients get a 403 `FreeTierError` — and
+the client refuses a request that looks wrong (a malformed session id, or the `read` tool denied
+outright). It is also flaky: official clients have hit the 403 intermittently. tumwater treats a
+free-tier refusal as a provider failure that moves the job to its tier's `fallback` — never a
+config error that stops a role — and a free OpenCode model is free to the budget gate (a valid
+`fallback` step for a priced primary; at the cap it keeps running). The catalog prices the model
+as free until an observed bill marks it priced.
+
+**OpenCode Go** (`opencode-go/…`) is a separate, paid thing (\$10/month); pi already reaches it
+as `opencode-go/models` with `OPENCODE_API_KEY`, so Go needs no tumwater change.
+
+**What tumwater turns off, and why `read` must stay allowed.** The injected config disables every
+operator MCP server (team runs carry only tumwater's own role-notes server) and denies `execute`,
+`subagent`, `webfetch`, `websearch`, `question` and `skill`. It never denies `read` — denying it
+trips the free-tier gate — and `shell`, `glob`, `grep` and `edit` stay allowed for the work.
+tumwater never sets `OPENCODE_CLIENT` (no impersonation).
+
+**Role notes ride the role-notes MCP server**, as on claude; the tool is `role_notes`. A run's
+first model request cannot see MCP tools (upstream issues [51812](https://github.com/sst/opencode/issues/51812)
+and [56240](https://github.com/sst/opencode/issues/56240)), but notes are written at a run's end,
+by which time the tool is listed — 6 of 6 end-of-run notes were saved live. A run that ends after
+a single model request (a role that finds nothing to do) loses its note.
+
+**XDG is left alone.** `XDG_CONFIG_HOME` and its siblings are not redirected: OpenCode's shell-tool
+children inherit the environment, and pointing XDG at a private copy would strip the shell's own
+identity (git's `.gitconfig`). The operator's global opencode config and `AGENTS.md` therefore
+still load into team runs; `tumwater doctor` warns about any MCP server or plugin/agent/instructions
+entry they carry (it scans `$XDG_CONFIG_HOME/opencode`, or `~/.config/opencode` when
+`XDG_CONFIG_HOME` is unset — the folder a run actually loads).
+
+**Where sessions and spill files live.** All sessions share one database per team root at
+`.tumwater/opencode/opencode.db` (the catalog would otherwise be re-fetched per session); a run's
+spill files land under `~/.local/share/opencode/shell/<root commit>/`. Session retention
+(`sessionRetentionDays`) deletes the team's expired OpenCode sessions (`opencode session delete`)
+and its old spill files, same window as every other session file.
+
+See [plans/opencode-backend.md](../plans/opencode-backend.md) for the series' full design.
+
 ## Worked example: one machine's measurements, 2026-09
 
 The configuration and measurements below are one operator's rig, recorded as a concrete example

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   latestSession,
+  pruneOpencodeSessions,
   pruneSessionLedgers,
   readSessions,
   recordSession,
@@ -13,6 +14,7 @@ import {
   type SessionRecord,
 } from "../src/agent/session-ledger.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeScript } from "./fakes/fake-commands.js";
 
 // The session ledger (plans/agent-backends.md "Sessions") is the resume paths' memory of which
 // session a `--continue` would actually reach: one line per run, kind and agent tagged. These
@@ -157,4 +159,38 @@ test("pruneSessionLedgers drops lines past the window and keeps the recent ones"
   assert.deepEqual(readSessions(dir), [recent]);
   // A vanished root is nothing to do, and an empty result removes the file's content, not it.
   assert.equal(pruneSessionLedgers(path.join(root, "nope"), 7), 0);
+});
+
+test("pruneOpencodeSessions deletes expired opencode sessions and prunes old spill files", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  recordSession(dir, record({ agent: "opencode", id: "ses-old", at: now - 30 * day }));
+  recordSession(dir, record({ agent: "opencode", id: "ses-fresh", at: now }));
+  // A non-opencode record is never handed to the delete hook.
+  recordSession(dir, record({ agent: "pi", id: "id-pi", at: now - 30 * day }));
+
+  const bin = tmpdir("opencode-prune-bin-");
+  const capture = path.join(tmpdir("opencode-prune-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "opencode"), `printf '%s\\n' "$*" >> ${capture}`);
+
+  const spill = path.join(root, "spill");
+  fs.mkdirSync(spill, { recursive: true });
+  const oldSpill = path.join(spill, "old.txt");
+  const freshSpill = path.join(spill, "fresh.txt");
+  fs.writeFileSync(oldSpill, "x");
+  fs.writeFileSync(freshSpill, "x");
+  const oldTime = new Date(now - 30 * day);
+  fs.utimesSync(oldSpill, oldTime, oldTime);
+
+  const deleted = pruneOpencodeSessions(root, 7, { bin: path.join(bin, "opencode"), env: { OPENCODE_DB: "/x.db" }, spillDir: spill });
+  assert.equal(deleted, 1, "only the expired opencode session is deleted");
+  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  assert.ok(log.includes("session delete ses-old --standalone"), `old session deleted: ${log}`);
+  assert.ok(!log.includes("ses-fresh"), `fresh session left alone: ${log}`);
+  assert.ok(!log.includes("id-pi"), `a non-opencode record never reaches the delete hook: ${log}`);
+  assert.ok(!fs.existsSync(oldSpill), "the old spill file is deleted");
+  assert.ok(fs.existsSync(freshSpill), "the fresh spill file is kept");
 });
