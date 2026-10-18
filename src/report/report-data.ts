@@ -144,6 +144,15 @@ function foldProviderCost(target: UsageFold, providerCost: unknown): void {
   }
 }
 
+/** Push a provider- or workspace-slot wait's ms into the accumulator list a median reads,
+ * when the event carried a positive wait: a wait is only event-logged at or above the 30 s
+ * threshold, so a 0 ms wait (a probe seam) or a pre-waitedMs event adds nothing and the two
+ * wait medians reflect real blocked admissions only. */
+function pushPositiveWaitedMs(list: number[], ev: HarnessEvent): void {
+  const waited = finiteNumber(ev.waitedMs, 0);
+  if (waited > 0) list.push(waited);
+}
+
 /** Fold one event into a usage accumulator: run_end events add a tick (per role and, when
  * the target counts ticks, in total), their output tokens, and their cost — zero-cost ticks
  * contribute nothing, so they leave no costByRole key, keeping the render's "$0 roles are
@@ -216,18 +225,11 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // (run_end has none), so a run that started with no configured model contributes no key.
     const model = typeof ev.model === "string" && ev.model.length > 0 ? ev.model : null;
     if (model !== null) addTo(target.runsByModel, model, 1);
-  } else if (ev.type === "provider_wait") {
-    // The day report's provider-slot wait median, mirroring the merge_wait push: a wait only
-    // event-logged at or above the 30 s threshold counts, so a 0 ms wait (a probe seam) adds
-    // nothing and the median reflects real blocked admissions only.
-    const waited = finiteNumber(ev.waitedMs, 0);
-    if (waited > 0) target.providerWaitsMs.push(waited);
-  } else if (ev.type === "slot_wait") {
-    // The day report's workspace-slot wait median, mirroring the provider_wait push: a wait
-    // only event-logged at or above the 30 s threshold counts, so a 0 ms wait (a probe seam)
-    // or a pre-waitedMs event adds nothing.
-    const waited = finiteNumber(ev.waitedMs, 0);
-    if (waited > 0) target.slotWaitsMs.push(waited);
+  } else if (ev.type === "provider_wait" || ev.type === "slot_wait") {
+    // The day report's provider/workspace-slot wait median (mirroring the merge_wait push):
+    // only a positive wait counts, so a probe seam's 0 ms wait and a pre-waitedMs event add
+    // nothing. A provider wait is the semaphore admission's; a slot wait the pooled lease's.
+    pushPositiveWaitedMs(ev.type === "provider_wait" ? target.providerWaitsMs : target.slotWaitsMs, ev);
   } else if (ev.type === "merge_done" || ev.type === "merge_failed") { 
     target.mergeRuns = (target.mergeRuns ?? 0) + 1;
     if (ev.type === "merge_failed") target.mergeFailed = (target.mergeFailed ?? 0) + 1;
