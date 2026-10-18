@@ -355,10 +355,11 @@ export function handleConfig(res: http.ServerResponse, root: string): void {
   for (const key of EDITABLE_CONFIG_KEYS) out[key] = record[key] ?? null;
   sendJson(res, 200, out);
 }
-/** Handle GET /api/retire: the Settings view's "Disabled roles" card — each configured,
- * disabled, non-director role that still has a worktree, branch, merge ref, or paused marker,
- * with what `tumwater retire` would remove (previewRetire, so the rails and wording are the
- * CLI's) and the rails' objections. Read-only (previewRetire's contract) and works whether or
+/** Handle GET /api/retire: the Settings view's "Disabled roles" card — every configured,
+ * disabled, non-director role, with what `tumwater retire` would remove (previewRetire, so the
+ * rails and wording are the CLI's) and the rails' objections. `wouldRemove` is empty when there
+ * is nothing to retire (a role disabled with a clean checkout), so the card can also re-enable
+ * a role via POST /api/role-enable. Read-only (previewRetire's contract) and works whether or
  * not the team runs; a throw reaches the server's outer 500, an unreadable tumwater.json
  * answers 500 like /api/config. */
 export async function handleRetireList(res: http.ServerResponse, root: string): Promise<void> {
@@ -370,7 +371,6 @@ export async function handleRetireList(res: http.ServerResponse, root: string): 
   const roles = [];
   for (const role of knownRoleIds(config).filter((id) => id !== DIRECTOR_ROLE && !loopEnabled(config, id))) {
     const { wouldRemove, objections } = await previewRetire(root, role);
-    if (wouldRemove.length === 0) continue;
     roles.push({ role, wouldRemove, phrases: wouldRemove.map((a) => artifactPhrase(a, role)), objections });
   }
   sendJson(res, 200, { roles });

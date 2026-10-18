@@ -7,7 +7,7 @@ import type http from "node:http";
 import { handleRetireList } from "../src/gui/gui-endpoints.js";
 import { handleRetire } from "../src/gui/gui-endpoint-commands.js";
 import { worktreePath } from "../src/paths.js";
-import { initializedWorktree, sh } from "./fixtures/repo-fixtures.js";
+import { initializedWorktree, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 import { captureJson } from "./fakes/fake-res.js";
 import { readJson } from "./helpers/json-read.js";
 
@@ -42,20 +42,50 @@ const branchExists = (root: string) => {
   }
 };
 
-test("GET /api/retire lists a disabled role's leftovers and omits enabled roles", async () => {
+test("GET /api/retire lists every disabled role and omits enabled roles", async () => {
   const { root } = await initializedWorktree();
   disableRole(root, "improve");
   const { captured, data } = await captureJson((res) => handleRetireList(res, root));
   assert.equal(captured.status, 200);
   const roles = (data as { roles: Array<{ role: string; wouldRemove: string[]; phrases: string[]; objections: string[] }> }).roles;
-  assert.equal(roles.length, 1);
-  assert.equal(roles[0]!.role, "improve");
-  assert.ok(roles[0]!.wouldRemove.includes("worktree") && roles[0]!.wouldRemove.includes("branch"));
-  assert.ok(roles[0]!.phrases.includes("the branch (tumwater/improve)"));
-  assert.deepEqual(roles[0]!.objections, []);
+  // The leftover role carries its wouldRemove/phrases; the default-disabled clean selfcheck
+  // role is listed too — the card's whole point is that a clean disabled role is not hidden.
+  const improve = roles.find((r) => r.role === "improve");
+  assert.ok(improve);
+  assert.ok(improve!.wouldRemove.includes("worktree") && improve!.wouldRemove.includes("branch"));
+  assert.ok(improve!.phrases.includes("the branch (tumwater/improve)"));
+  assert.deepEqual(improve!.objections, []);
+  const selfcheck = roles.find((r) => r.role === "selfcheck");
+  assert.ok(selfcheck);
+  assert.deepEqual(selfcheck!.wouldRemove, []);
+  assert.deepEqual(selfcheck!.objections, []);
+  // A repo with nothing disabled (the opt-in selfcheck re-enabled) answers empty.
   const enabled = await initializedWorktree();
+  writeConfig(enabled.root, { roles: { selfcheck: { enabled: true } } });
   const again = await captureJson((res) => handleRetireList(res, enabled.root));
   assert.deepEqual(again.data, { roles: [] });
+});
+
+test("GET /api/retire lists a disabled role even when it has no leftovers", async () => {
+  const { root } = await initializedWorktree();
+  disableRole(root, "improve");
+  // Remove the role's worktree and branch so it has nothing to retire.
+  sh(root, "git", "worktree", "remove", "--force", worktreePath(root, "improve"));
+  try {
+    sh(root, "git", "branch", "-D", "tumwater/improve");
+  } catch {
+    // The branch may not exist in a fresh seeded repo; either way the role is clean.
+  }
+  const { captured, data } = await captureJson((res) => handleRetireList(res, root));
+  assert.equal(captured.status, 200);
+  // The clean disabled role still gets a row, with empty wouldRemove/phrases, so the card can
+  // re-enable it even though there is nothing to retire. (selfcheck is also listed, clean.)
+  const roles = (data as { roles: Array<{ role: string; wouldRemove: string[]; phrases: string[]; objections: string[] }> }).roles;
+  const improve = roles.find((r) => r.role === "improve");
+  assert.ok(improve);
+  assert.deepEqual(improve!.wouldRemove, []);
+  assert.deepEqual(improve!.phrases, []);
+  assert.deepEqual(improve!.objections, []);
 });
 
 test("GET /api/retire answers 500 on an unreadable tumwater.json", async () => {

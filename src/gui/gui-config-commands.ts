@@ -1,7 +1,8 @@
 /**
  * The dashboard's POST config/budget command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
- * config-set, config-unset, budget, role-cap, and notify-test — the post-handler layer onto
+ * config-set, config-unset, budget, role-cap, role-enable, and notify-test — the
+ * post-handler layer onto
  * the config-write domain module. Each handler adapts HTTP and touches no socket beyond its
  * own `res`.
  */
@@ -117,6 +118,29 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
     (v) => JSON.stringify(v),
     (v) => `${base}: instructions saved (${v.length} chars)`,
   );
+}
+
+/** Handle POST /api/role-enable: the Settings view's "Disabled roles" card Enable button —
+ * re-enables one disabled role (the GUI half of the CLI's `tumwater role <id> --enable`). Same
+ * body discipline as /api/role-cap (readPostBody → 400 malformed/non-object, 413 oversized); a
+ * missing, non-string, or blank role is a 400 `role required`, and a bare `feature-2` loop id
+ * maps to its base role's key (baseRoleOf), so an instance enables the role it belongs to. The
+ * director is accepted: it cannot be disabled, so enabling it is harmless and mirrors the CLI's
+ * --enable. The write goes through the CLI's own setConfigKey with the raw JSON literal "true"
+ * (so JSON.parse yields the boolean checkBoolean expects), and validateConfig's unknown-role
+ * check refuses an unknown id as configKeyError's 400 before anything is written. */
+export async function handleRoleEnable(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"role": "selfcheck"}');
+  if (!body) return;
+  const role = body.role;
+  if (typeof role !== "string" || role.trim() === "") return badRequest(res, "role required");
+  const base = baseRoleOf(role);
+  const key = `roles.${base}.enabled`;
+  // setConfigKey takes raw CLI text; the JSON literal "true" round-trips to the boolean
+  // checkBoolean expects, and validateConfig owns the unknown-role check in writeConfigMutation.
+  const result = setConfigKey(root, key, "true");
+  if (!result.ok) return configKeyError(res, key, result);
+  sendJson(res, 200, { ok: true, role: base, message: `${base}: enabled` });
 }
 
 /** Handle POST /api/role-quiet-hours: the role drawer's own-window editor sets or clears one

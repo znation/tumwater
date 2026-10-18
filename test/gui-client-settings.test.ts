@@ -26,13 +26,14 @@ interface SettingsFns {
   saveBrief(form: { querySelector(sel: string): { value: string } }): Promise<void>;
   renderRetirable(d: unknown, armed: (role: string) => boolean): string;
   fetchRetirable(): Promise<void>;
+  enableRole(role: string): Promise<void>;
   confirmRetire(role: string): Promise<void>;
 }
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "confirmRetire"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -350,20 +351,67 @@ test("a submit on form.brief-form routes to saveBrief, and the settings listener
   assert.doesNotMatch(clientRegion("settings-view").slice(clientRegion("settings-view").indexOf("async function fetchBrief")), /settings-row/);
 });
 
-test("renderRetirable esc's ids, phrases, and objections; a row with objections has no Retire button", () => {
+test("renderRetirable renders an Enable button for every row, a Retire button only for the leftover row, and esc's ids", () => {
   const { renderRetirable } = settingsScope();
-  assert.match(renderRetirable({ roles: [] }, () => false), /No disabled role has anything left to remove\./);
-  const clean = { role: "a&b", wouldRemove: ["branch"], phrases: ["the branch (<x>)"], objections: [] };
-  const html = renderRetirable({ roles: [clean] }, () => false);
+  assert.match(renderRetirable({ roles: [] }, () => false), /No role is disabled\./);
+  // A role with leftovers: the Enable and two-click Retire buttons, and the would-remove
+  // phrases.
+  const leftover = { role: "a&b", wouldRemove: ["branch"], phrases: ["the branch (<x>)"], objections: [] };
+  const html = renderRetirable({ roles: [leftover] }, () => false);
+  assert.match(html, /data-action='enable' data-role='a&amp;b'>Enable<\/button>/);
   assert.match(html, /data-action='retire' data-role='a&amp;b'>Retire<\/button>/);
   assert.match(html, /would remove the branch \(&lt;x&gt;\)/);
-  assert.match(renderRetirable({ roles: [clean] }, (r) => r === "a&b"), />Confirm retire<\/button>/);
+  assert.match(renderRetirable({ roles: [leftover] }, (r) => r === "a&b"), />Confirm retire<\/button>/);
+  // A clean disabled role (nothing to retire): still the Enable button, no Retire button,
+  // and the no-leftovers copy.
+  const clean = { role: "improve", wouldRemove: [], phrases: [], objections: [] };
+  const cleanHtml = renderRetirable({ roles: [clean] }, () => false);
+  assert.match(cleanHtml, /data-action='enable' data-role='improve'>Enable<\/button>/);
+  assert.match(cleanHtml, /no leftovers to remove/);
+  assert.doesNotMatch(cleanHtml, /data-action='retire'/);
+  assert.doesNotMatch(cleanHtml, /would remove/);
+  // A row with objections keeps Enable beside the objections and the CLI --force command,
+  // no Retire button.
   const blocked = { role: "improve", wouldRemove: ["worktree"], phrases: ["the worktree"], objections: ["the worktree has <b>changes</b>"] };
   const bad = renderRetirable({ roles: [blocked] }, () => false);
   assert.match(bad, /&lt;b&gt;changes&lt;\/b&gt;/);
   assert.doesNotMatch(bad, /<b>/);
   assert.match(bad, /tumwater retire --role improve --force/);
+  assert.match(bad, /data-action='enable' data-role='improve'>Enable<\/button>/);
   assert.doesNotMatch(bad, /data-action='retire'/);
+});
+
+test("enableRole posts /api/role-enable, flashes the server's message, and refetches", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let refetched = 0;
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "retirecard", "settingscard", "doctorbody", "briefcard"]) els[id] = { innerHTML: "", dataset: {} };
+  const { enableRole } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async () => { refetched++; return { roles: [] }; },
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return { ok: true, message: "improve: enabled" };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await enableRole("improve");
+  assert.deepEqual(posts, [{ path: "/api/role-enable", body: { role: "improve" } }]);
+  assert.deepEqual(flashes, ["improve: enabled"]);
+  // The card is refetched so the enabled role drops off.
+  assert.equal(refetched, 1);
+  // A rejected post flashes the error pattern and still refetches.
+  const { enableRole: enableFail } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async () => ({ roles: [] }),
+    postJson: async () => {
+      throw { message: "refusing to enable role improve" };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await enableFail("improve");
+  assert.equal(flashes[flashes.length - 1]!, "error: refusing to enable role improve");
 });
 
 test("confirmRetire arms on the first click and posts /api/retire on the second", async () => {

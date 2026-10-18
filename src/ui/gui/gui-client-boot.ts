@@ -87,6 +87,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (clickClosest(ev, "button[data-action='notify-test']")) { ev.preventDefault(); testNotify(); }
     const retire = clickClosest(ev, "button[data-action='retire']");
     if (retire) { ev.preventDefault(); confirmRetire(retire.dataset.role); }
+    const enable = clickClosest(ev, "button[data-action='enable']");
+    if (enable) { ev.preventDefault(); enableRole(enable.dataset.role); }
   });
   // The Health card's Problems only checkbox: repaint the cached report with only its warn
   // and fail rows (toggleDoctorProblems, gui-client-settings), without rerunning the checks.

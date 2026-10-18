@@ -13,6 +13,6 @@
  */
 export { handlePrompt, handlePromptRole, handlePromptCancel, handlePromptEdit, handlePromptTop } from "./gui-prompt-commands.js";
 export { handleQuestionAnswer, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit } from "./gui-backlog-commands.js";
-export { handleConfigSet, handleConfigUnset, handleBudget, handleRoleCap, handleRoleInstructions, handleRoleQuietHours, handleNotifyTest } from "./gui-config-commands.js";
+export { handleConfigSet, handleConfigUnset, handleBudget, handleRoleCap, handleRoleInstructions, handleRoleEnable, handleRoleQuietHours, handleNotifyTest } from "./gui-config-commands.js";
 export { handlePause, handlePauseRole, handleWake, handleWakeCancel } from "./gui-team-commands.js";
 export { handleResetCounters, handleRestart, handleReclaim, handleAbort, handleStopSchedule, handleRoleNotes, handleRetire, handleBriefEdit } from "./gui-operator-commands.js";

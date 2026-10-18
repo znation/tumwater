@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleInstructions, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleInstructions, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -888,6 +888,60 @@ test("handleRoleQuietHours clearing a key the file never set writes nothing", as
   assert.equal(captured.status, 200);
   // Clearing an absent map entry is a no-op success — the file bytes stay identical.
   assert.equal(fs.readFileSync(configPath(root), "utf8"), before);
+});
+
+function serveRoleEnable(root: string, body: unknown) {
+  return captureJson((res) => handleRoleEnable(fakeReq(JSON.stringify(body)), res, root));
+}
+
+// POST /api/role-enable: the Settings view's "Disabled roles" card Enable button. Writes the
+// role's enabled key through the CLI's own setConfigKey (raw JSON literal "true", so the value
+// lands as the boolean checkBoolean expects); the director is accepted (it cannot be disabled);
+// an instance id maps to its base role's key; an unknown id is refused through validateConfig.
+test("handleRoleEnable writes roles.<role>.enabled true and answers 200", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { improve: { enabled: false } } });
+  const { captured, data } = await serveRoleEnable(root, { role: "improve" });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, role: "improve", message: "improve: enabled" });
+  // The file on disk is what the running team polls — the write went through setConfigKey.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { improve: Record<string, unknown> }).improve.enabled, true);
+});
+
+test("handleRoleEnable maps an instance id to its base role's key and accepts the director", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { instances: 2, enabled: false } } });
+  // A bare feature-2 style instance id writes the base role's enabled key.
+  const inst = await serveRoleEnable(root, { role: "feature-2" });
+  assert.equal(inst.captured.status, 200);
+  assert.deepEqual(inst.data, { ok: true, role: "feature", message: "feature: enabled" });
+  let onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { feature: Record<string, unknown> }).feature.enabled, true);
+  // The director is accepted (harmless — it cannot be disabled) and its key is written.
+  const dir = await serveRoleEnable(root, { role: "director" });
+  assert.equal(dir.captured.status, 200);
+  assert.deepEqual(dir.data, { ok: true, role: "director", message: "director: enabled" });
+  onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDisk.roles as { director: Record<string, unknown> }).director.enabled, true);
+});
+
+test("handleRoleEnable rejects a missing, blank, non-string, or unknown role without writing", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { improve: { enabled: false } } });
+  const before = fs.readFileSync(configPath(root), "utf8");
+  const post = (body: unknown) => captureJson((res) => handleRoleEnable(fakeReq(JSON.stringify(body)), res, root));
+  // Missing, blank, and non-string roles each answer 400 and leave the file byte-identical.
+  for (const bad of [{}, { role: "  " }, { role: 5 }, { role: null }]) {
+    const rejected = await post(bad);
+    assert.equal(rejected.captured.status, 400);
+    assert.match((rejected.data as { error: string }).error, /role required/);
+    assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "a refused write never touches the file");
+  }
+  // An unknown id is refused through validateConfig's unknown-role answer, writing nothing.
+  const unknown = await post({ role: "bogus" });
+  assert.equal(unknown.captured.status, 400);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "a refused write never touches the file");
 });
 
 test("handleConfigSet refuses a key outside the curated set, naming it", async () => {
