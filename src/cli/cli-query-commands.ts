@@ -357,6 +357,16 @@ function sayAskerWake(root: string, title: string): void {
   if (wake !== null) say(wake);
 }
 
+/** Refuse an unknown role id with the shared unknownRoleMessage wording before a per-role
+ * config write resolves the id. Every `tumwater role` write branch starts with the same
+ * prelude — load the config (falling back to defaultConfig so built-in roles resolve) and
+ * throw the unknown-role error unless the id appears — so this keeps that check in one place.
+ * The caller then derives `baseRoleOf(id)` for the write key. */
+function requireKnownRole(root: string, id: string): void {
+  const cfg = loadConfigSafe(root).config ?? defaultConfig();
+  if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+}
+
 /** The config-key write the three per-role hold branches (quiet hours, daily cap, min run
  * interval) share: with `clear`, or an empty typed value, unset `key` under `base`; else set
  * it. `serialize` shapes the value `setConfigKey` stores (it JSON-encodes nothing itself) and
@@ -428,8 +438,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     if (clear && rest.includes("--notes-file")) fail("give --clear-notes or --notes-file, not both");
     if (rest.includes("--json")) fail("--json does not apply to a notes write");
     if (id === DIRECTOR_ROLE) fail("the director has no notes");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    requireKnownRole(root, id);
     const text = clear ? "" : readPromptFileArg(notesFile || fail("--notes-file needs a path"));
     try {
       say(`${id}: ${saveRoleNote(roleNotesPath(root, id), text)}`);
@@ -446,8 +455,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (instructionsWrite) {
     if (clearInst && rest.includes("--instructions-file")) fail("give --clear-instructions or --instructions-file, not both");
     if (rest.includes("--json")) fail("--json does not apply to an instructions write");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    requireKnownRole(root, id);
     const base = baseRoleOf(id);
     if (clearInst) {
       const result = unsetConfigKey(root, `roles.${base}.instructions`);
@@ -470,8 +478,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (quietWrite) {
     if (clearQuiet && rest.includes("--quiet-hours")) fail("give --clear-quiet-hours or --quiet-hours, not both");
     if (rest.includes("--json")) fail("--json does not apply to a quiet-hours write");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    requireKnownRole(root, id);
     if (id === DIRECTOR_ROLE) fail("the director has no quiet hours");
     const base = baseRoleOf(id);
     const window = flagValue(rest, "--quiet-hours") ?? "";
@@ -488,8 +495,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (capWrite) {
     if (clearCap && rest.includes("--cap")) fail("give --clear-cap or --cap, not both");
     if (rest.includes("--json")) fail("--json does not apply to a cap write");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    requireKnownRole(root, id);
     if (id === DIRECTOR_ROLE) fail("the director has no daily cap");
     const base = baseRoleOf(id);
     const cap = flagValue(rest, "--cap") ?? "";
@@ -506,8 +512,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (intervalWrite) {
     if (clearInterval && rest.includes("--min-run-interval")) fail("give --clear-min-run-interval or --min-run-interval, not both");
     if (rest.includes("--json")) fail("--json does not apply to a min-run-interval write");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const secs = flagValue(rest, "--min-run-interval") ?? "";
     writeRoleConfigKey(root, base, clearInterval, secs, `roles.${base}.minRunIntervalSeconds`, "min run interval", (v) => v, (v) => `${v}s`);
@@ -523,8 +528,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // a currently-disabled id resolves; an instance id writes its base role's key.
   if (enable || disable) {
     if (rest.includes("--json")) fail("--json does not apply to an enable/disable write");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    requireKnownRole(root, id);
     if (disable && id === DIRECTOR_ROLE) fail("the director cannot be disabled");
     const base = baseRoleOf(id);
     const result = setConfigKey(root, `roles.${base}.enabled`, enable ? "true" : "false");
