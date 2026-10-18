@@ -79,6 +79,14 @@ test("the completion command works outside a repo and rejects other shells", asy
     assert.notEqual(bad.code, 0);
     assert.match(bad.stderr, /bash, zsh, or fish/);
   }
+  // A far-off shell (`tcsh`) stays hint-free; a single near-miss (zs -> zsh) gets the same
+  // typoSuffix `logs --type`/`history --result` give.
+  const tcsh = await cli(dir, "completion", "tcsh");
+  assert.ok(!tcsh.stderr.includes("did you mean"), tcsh.stderr);
+  const typo = await cli(dir, "completion", "zs");
+  assert.notEqual(typo.code, 0);
+  assert.match(typo.stderr, /bash, zsh, or fish/);
+  assert.match(typo.stderr, /did you mean `zsh`\?/);
   const fish = await cli(dir, "completion", "fish");
   assert.equal(fish.code, 0);
   assert.match(fish.stdout, /complete -c tumwater/);

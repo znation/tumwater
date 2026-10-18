@@ -45,6 +45,7 @@ import { repoToplevel } from "./git/git.js";
 
 import { didYouMean } from "./text/suggest.js";
 import { errorMessage, gotSuffix, stripTerminalControls } from "./text/text.js";
+import { typoSuffix } from "./text/suggest.js";
 import { completionConfigKeys, completionRoleIds, completionScript, SUPPORTED_SHELLS, type CompletionShell } from "./cli/completion.js";
 import { HELP, helpTopic, helpTopicForArgs, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
@@ -398,7 +399,10 @@ async function main(): Promise<void> {
       }
       const shell = args[0];
       if (args.length !== 1 || !SUPPORTED_SHELLS.includes(shell as CompletionShell))
-        fail(`completion takes one shell: bash, zsh, or fish${gotSuffix(args.length > 1 ? args[1] : shell)}`);
+        // A single near-miss shell word gets the same typoSuffix `logs --type`/`history --result`
+        // give, so `completion zs` reads "did you mean `zsh`?" while a far-off value (`tcsh`) and
+        // a wrong arity (none or several words, typed shown by gotSuffix) stay hint-free.
+        fail(`completion takes one shell: bash, zsh, or fish${gotSuffix(args.length > 1 ? args[1] : shell)}${args.length === 1 ? typoSuffix(shell ?? "", SUPPORTED_SHELLS) : ""}`);
       say(completionScript(shell as CompletionShell));
       break;
     }
