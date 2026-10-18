@@ -182,6 +182,14 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   lines.push(rankedRoleLine("Failed runs by role", rankedRoleMap(data.failedRunsByRole).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Fallbacks by role", rankedRoleMap(data.fallbacksByRole).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Image reroutes by role", rankedRoleMap(data.imageReroutesByRole).filter(([, n]) => n > 0), String));
+  // Deferred maintenance ticks per reason code, the --since twin of the day render's line:
+  // how many due maintenance runs stood down and why (backlog / no-work / plans-full).
+  // Gated to the team report — a reason is not a role, so a role-scoped window omits it.
+  // Zero-means-absent: a window with no deferral prints no line.
+  if (data.role === undefined) {
+    const deferred = rankedRoleMap(data.deferredByReason ?? {}).filter(([, n]) => n > 0);
+    if (deferred.length > 0) lines.push(rankedRoleLine("Deferred runs by reason", deferred, String));
+  }
   // The merged-commits split by base role, matching the day render's unfiltered line: the
   // window's totals.commits carries the count; this line says which role's commits it was.
   lines.push(rankedRoleLine("Commits by role", rankedRoleMap(data.commitsByRole), String));
@@ -339,6 +347,15 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push(rankedRoleLine("Failed runs by role", rankedRoleTotals(data.series, (d) => d.failedRunsByRole ?? {}).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Fallbacks by role", rankedRoleTotals(data.series, (d) => d.fallbacksByRole ?? {}).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Image reroutes by role", rankedRoleTotals(data.series, (d) => d.imageReroutesByRole ?? {}).filter(([, n]) => n > 0), String));
+  // Deferred maintenance ticks per reason code — how many due maintenance runs stood down
+  // and why, so an idle day reads as backlog-open / no-work / plans-full rather than blank,
+  // the per-role breakdown of the deferred maintenances. Gated to the team report — a
+  // reason is not a role (ROLE_SCOPE_NOTE covers the omission). Zero-means-absent: a window
+  // with no deferral prints no line, so a deferral-free day's output is unchanged.
+  if (data.role === undefined) {
+    const deferred = rankedRoleTotals(data.series, (d) => d.deferredByReason ?? {}).filter(([, n]) => n > 0);
+    if (deferred.length > 0) lines.push(rankedRoleLine("Deferred runs by reason", deferred, String));
+  }
   // Work ratio 4/4: the merged commits split by base role and by tier. The totals line's
   // `commits` carries the count; these lines say who made it and how much of it was work.
   lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));

@@ -119,6 +119,13 @@ interface UsageFold {
    * role. A run_start whose `model` is absent or empty contributes no key. Team-only: a
    * model is not a role, so a role-scoped report carries an empty map. */
   runsByModel: Record<string, number>;
+  /** run_deferred events per reason code (a maintenance tick that stood down — `DeferReason`
+   * in src/scheduling/scheduling.ts: "backlog", "no-work" or "plans-full"), so a day's
+   * deferred maintenance ticks are tallied by why they stood down instead of reading as
+   * idle. A missing, foreign or torn reason folds as "no-work" — the same fallback
+   * deferredReasonText applies in the feed — so the tally and the feed agree. Team-only: a
+   * reason is not a role, so a role-scoped report carries an empty map. */
+  deferredByReason: Record<string, number>;
 }
 
 /** Fold one event's `providerCost` map (`Record<provider, {costUsd, notionalCostUsd}>` — the
@@ -186,6 +193,14 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   } else if (ev.type === "image_reroute") {
     // One reroute per event, preflight or after a blind read.
     addTo(target.imageReroutesByRole, eventRole(ev), 1);
+  } else if (ev.type === "run_deferred") {
+    // One deferral per event, a due maintenance tick that stood down. Bucket by the raw
+    // reason code ("backlog", "plans-full", else "no-work" for a missing/foreign/torn
+    // reason — the same fallback deferredReasonText applies in the feed), so the collector
+    // stays free of a presentation import and the render prints the code the event carried.
+    // Team-only: a reason is not a role.
+    const reason = ev.reason === "backlog" || ev.reason === "plans-full" ? ev.reason : "no-work";
+    addTo(target.deferredByReason, reason, 1);
   } else if (ev.type === "merged") {
     target.commits++;
     // Work ratio 4/4: split merged commits by base role and by tier. Instance suffixes fold
@@ -288,6 +303,7 @@ interface DayFold {
   costByProvider: Record<string, number>;
   notionalByProvider: Record<string, number>;
   runsByModel: Record<string, number>;
+  deferredByReason: Record<string, number>;
 }
 
 /** The event-log half of a windowed report, memoized per (root, fromKey). `offset` is how
@@ -406,6 +422,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       costByProvider: {},
       notionalByProvider: {},
       runsByModel: {},
+      deferredByReason: {},
     };
     entry.days.set(dayKey, fold);
   }
@@ -574,6 +591,10 @@ export interface ReportDay {
    * model is not a role, so only the team series carries it (absent when the day had no
    * modelled start, zero means absent). */
   runsByModel?: Record<string, number>;
+  /** run_deferred events per reason code (a maintenance tick that stood down, bucketed by
+   * why — "backlog", "no-work" or "plans-full"); team-only like runsByModel, because a
+   * reason is not a role. Absent when the day had no deferral (zero means absent). */
+  deferredByReason?: Record<string, number>;
 }
 
 /** The window totals both reports surface — output tokens (the merge share included), the
@@ -675,6 +696,11 @@ export interface SinceReport {
    * costByProvider), so the --since render can gate its `Runs by model` line on the
    * window's own events. A model is not a role, so a scoped report carries an empty map. */
   runsByModel: Record<string, number>;
+  /** run_deferred events per reason code (a maintenance tick that stood down, bucketed by
+   * why — "backlog", "no-work" or "plans-full"); absent when the window has none — the
+   * same conditional the day collector applies to ReportDay.deferredByReason, so a --since
+   * JSON carries it only when nonzero. A reason is not a role, so a scoped window omits it. */
+  deferredByReason?: Record<string, number>;
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the cutoff's day, the log's oldest
    * retained event predates the cutoff instant (the same-day case a day key cannot decide),
@@ -728,6 +754,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
+    deferredByReason: {},
   };
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
@@ -774,6 +801,10 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
   // collector applies to ReportDay.notionalByRole (line ~573), so a role-scoped window
   // whose role spent no notional carries no notionalByRole instead of an empty map.
   const notionalByRole = scopedByRole(acc.notionalByRole, base);
+  // Deferred runs are bucketed by a reason code (not a role), so a role-scoped window
+  // carries no entries — the same team-only rule runsByModel follows. Only set when the
+  // window actually deferred (zero means absent), so a deferral-free --since JSON omits it.
+  const deferred = scopedByRole(acc.deferredByReason, base);
   return {
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),
@@ -803,6 +834,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     // scoped role), the same full-map-for-team / empty-for-scoped rule costByProvider
     // follows. Always present so the render can gate on the window's own events.
     runsByModel: scopedByRole(acc.runsByModel, base),
+    ...(Object.keys(deferred).length > 0 ? { deferredByReason: deferred } : {}),
     coversFullWindow,
   };
 }
@@ -878,6 +910,11 @@ export function collectReport(root: string, days: number, role?: string): Report
       // carries the map; only set when a modelled start happened (zero means absent), so a
       // model-less day keeps its exact pre-feature shape.
       if (Object.keys(fold.runsByModel).length > 0) day.runsByModel = fold.runsByModel;
+      // Deferred runs are a team attribution (a reason is not a role), so only the team
+      // series carries the map; only set when a day actually deferred (zero means absent),
+      // so a deferral-free day keeps its exact pre-feature shape.
+      if (Object.keys(fold.deferredByReason).length > 0)
+        day.deferredByReason = fold.deferredByReason;
       day.mergeRuns = fold.mergeRuns;
       day.mergeTokens = fold.mergeTokens;
       day.mergeCostUsd = fold.mergeCostUsd;

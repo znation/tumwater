@@ -1014,6 +1014,46 @@ test("team report --since breaks merge outcomes by role and the scoped --since o
   assert.ok(!scoped.out.includes("**Merge failures by role:"), "a scoped --since omits the failures line");
 });
 
+test("team report tallies deferred maintenance runs by reason; scoped and deferral-free reports omit them", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }),
+    JSON.stringify({ ts: ago(4 * 60_000), loop: "feature", type: "run_deferred", reason: "no-work" }),
+    JSON.stringify({ ts: ago(3 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }),
+    JSON.stringify({ ts: ago(2 * 60_000), loop: "feature", type: "run_deferred" }), // no reason: folds as no-work
+    JSON.stringify({ ts: ago(1 * 60_000), loop: "feature", type: "run_deferred", reason: "plans-full" }),
+  ]);
+  // The day report prints the tally beside the other per-role breakdowns (count desc, code
+  // asc), and --since carries the same window map.
+  const md = await runCli(root, "report", "--days", "3");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Deferred runs by reason:\*\* backlog — 2 · no-work — 2 · plans-full — 1/);
+  const sinceMd = await runCli(root, "report", "--since", "6h");
+  assert.equal(sinceMd.code, 0);
+  assert.match(sinceMd.out, /\*\*Deferred runs by reason:\*\* backlog — 2 · no-work — 2 · plans-full — 1/);
+
+  // The day series and --since JSON carry the per-reason map (zero-means-absent).
+  const json = JSON.parse((await runCli(root, "report", "--json", "--days", "3")).out);
+  assert.deepEqual(json.series[json.series.length - 1].deferredByReason, { backlog: 2, "no-work": 2, "plans-full": 1 });
+  const sinceJson = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
+  assert.deepEqual(sinceJson.deferredByReason, { backlog: 2, "no-work": 2, "plans-full": 1 });
+
+  // A reason is not a role, so a role-scoped day and --since omit the line and the field.
+  const scoped = await runCli(root, "report", "--role", "feature", "--days", "3");
+  assert.ok(!scoped.out.includes("**Deferred runs by reason:"), "a scoped day report omits it");
+  const scopedSince = await runCli(root, "report", "--role", "feature", "--since", "6h");
+  assert.ok(!scopedSince.out.includes("**Deferred runs by reason:"), "a scoped --since omits it");
+  assert.ok(!("deferredByReason" in JSON.parse((await runCli(root, "report", "--json", "--role", "feature", "--days", "3")).out).series[0]));
+  assert.ok(!("deferredByReason" in JSON.parse((await runCli(root, "report", "--json", "--role", "feature", "--since", "6h")).out)));
+
+  // A deferral-free window prints no line and omits the field.
+  const clean = makeRepo();
+  writeEvents(clean, [JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 })]);
+  const cleanMd = await runCli(clean, "report", "--days", "3");
+  assert.ok(!cleanMd.out.includes("**Deferred runs by reason:"), "no deferral prints no line");
+  assert.ok(!("deferredByReason" in JSON.parse((await runCli(clean, "report", "--json", "--days", "3")).out).series[0]));
+});
+
 test("report --json omits mergedByRole/mergeFailedByRole when no role has either; carries them when one does", async () => {
   const clean = makeRepo();
   const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--days", "2")).out);

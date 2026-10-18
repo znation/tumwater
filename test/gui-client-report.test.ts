@@ -798,3 +798,50 @@ test("the Usage render chain gates the Merge failures by reason chart right afte
   assert.match(chain, /seriesHasAny\(d, "mergeFailedByReason"\) \? block\("Merge failures by reason", chartMergeFailuresByReason\(d\)\) : ""/);
   assert.equal((chain.match(/block\("Merge failures by reason", chartMergeFailuresByReason\(d\)\)/g) || []).length, 1);
 });
+
+test("the Deferred runs by reason chart stacks per reason and reportDeferredOrder lists each code once", () => {
+  // The Deferred runs by reason chart is the dashboard twin of the day report's "Deferred
+  // runs by reason" line: one segment per (day, reason code) stacked in reportDeferredOrder's
+  // order, from each run_deferred event's reason. The map is sparse, so a day with none
+  // keeps its empty slot.
+  interface Builders {
+    reportDeferredOrder(d: ReportData): Array<[string, number]>;
+    chartDeferredByReason(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportDeferredOrder, chartDeferredByReason, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportDeferredOrder", "chartDeferredByReason", "seriesHasAny"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { deferredByReason: { "no-work": 1, backlog: 2 } }),
+    mkDay("2026-09-02", { deferredByReason: { backlog: 1 } }),
+    mkDay("2026-09-03"),
+  ]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  // Count desc, then name asc: backlog (3) ahead of no-work (1).
+  assert.deepEqual(reportDeferredOrder(data), [["backlog", 3], ["no-work", 1]]);
+  assert.deepEqual(titles(chartDeferredByReason(data)), ["2026-09-01 · backlog: 2 deferrals", "2026-09-01 · no-work: 1 deferral", "2026-09-02 · backlog: 1 deferral"]);
+  const empty = mk([mkDay("2026-09-01"), mkDay("2026-09-02"), mkDay("2026-09-03")]);
+  assert.equal(seriesHasAny(empty, "deferredByReason"), false);
+  assert.equal(seriesHasAny(data, "deferredByReason"), true);
+});
+
+test("the Usage render chain gates the Deferred runs by reason chart after Runs by model, team only", () => {
+  // The usage view's render chain must name the Deferred runs by reason chart once, team-only
+  // and gated on the series really carrying a reason, sitting right after the Runs by model
+  // term the same team-only rule orders it after.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const runs = chain.indexOf('block("Runs by model"');
+  const deferred = chain.indexOf('block("Deferred runs by reason"');
+  assert.ok(runs >= 0, "the Runs by model term exists");
+  assert.ok(deferred > runs, "Deferred runs by reason sits after Runs by model in the chain");
+  assert.match(chain, /!d\.role && seriesHasAny\(d, "deferredByReason"\) \? block\("Deferred runs by reason", chartDeferredByReason\(d\), "per day · backlog, no-work, plans-full"\) : ""/);
+  // Exactly one such gated term (the chain term carries its caption as a third argument).
+  assert.equal((chain.match(/block\("Deferred runs by reason", chartDeferredByReason\(d\), "per day · backlog, no-work, plans-full"\)/g) || []).length, 1);
+});

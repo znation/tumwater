@@ -211,6 +211,14 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return Object.entries(byReason).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
 
+  // Window tallies per deferred-reason code, count desc then code asc — the reason twin of
+  // reportModelOrder and reportMergeFailureOrder, so the "Deferred runs by reason" chart
+  // matches the day report's line ordering, reusing the shared tallyAcross these dynamic-
+  // keyed orders are built from.
+  function reportDeferredOrder(data) {
+    return tallyAcross(data.series, ["deferredByReason"], []);
+  }
+
   // Stacked bars, one color per entry in the caller's order (the first at the bottom), with a
   // legend in the same order. entries is the ordered [key, total][] list that drives the
   // colors, stack order, and legend; keys are dynamic (roles, providers): escaped everywhere.
@@ -270,6 +278,13 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // dashboard twin of the day report's "Runs by model" line. Sparse like the provider charts.
   function chartRunsByModel(data) {
     return stackChart(data, reportModelOrder(data), "runsByModel", (n) => plural(n, "run"), countAxis, true);
+  }
+
+  // The team's deferred maintenance ticks, per day, stacked by reason: each segment one
+  // (day, reason code), the dashboard twin of the day report's "Deferred runs by reason"
+  // line. Sparse like the model chart; the reason codes are the legend labels.
+  function chartDeferredByReason(data) {
+    return stackChart(data, reportDeferredOrder(data), "deferredByReason", (n) => plural(n, "deferral"), countAxis, true);
   }
 
   // The API-equivalent (notional) spend of subscription runs, per provider, on the same axis
@@ -629,6 +644,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +
         (seriesHasAny(d, "mergedByRole") ? block("Merged by role", chartMergedByRole(d)) : "") +
         (!d.role && seriesHasAny(d, "runsByModel") ? block("Runs by model", chartRunsByModel(d)) : "") +
+        (!d.role && seriesHasAny(d, "deferredByReason") ? block("Deferred runs by reason", chartDeferredByReason(d), "per day · backlog, no-work, plans-full") : "") +
         (seriesHasAny(d, "mergeFailedByRole") ? block("Merge failures by role", chartMergeFailuresByRole(d)) : "") +
         (seriesHasAny(d, "mergeFailedByReason") ? block("Merge failures by reason", chartMergeFailuresByReason(d)) : "") +
         (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +

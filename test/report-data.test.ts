@@ -1119,3 +1119,43 @@ test("collectReport and collectReportSince tally merge_failed by reason, zero me
   assert.ok(!("mergeFailedByReason" in collectReport(plain, 2).series[0]!), "a failure-free team day omits the field");
   assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).mergeFailedByReason, {});
 });
+
+test("collectReport and collectReportSince tally run_deferred by reason, zero meaning absent, team scope only", () => {
+  const deferred = (ts: number, reason?: string) =>
+    JSON.stringify({ ts, loop: "feature", type: "run_deferred", run: 1, ...(reason === undefined ? {} : { reason }) });
+  const root = tmpdir();
+  writeEvents(root, [
+    deferred(todayTs(), "backlog"),
+    deferred(todayTs(), "no-work"),
+    deferred(todayTs(), "backlog"),
+    deferred(todayTs()), // no reason: folds as no-work, matching deferredReasonText's fallback
+    JSON.stringify({ ts: at(1), loop: "feature", type: "run_deferred", reason: "plans-full" }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 }),
+  ]);
+  const data = collectReport(root, 3);
+  assert.deepEqual(data.series[2]?.deferredByReason, { backlog: 2, "no-work": 2 }, "counts reasons and folds the reason-less one into no-work");
+  assert.deepEqual(data.series[1]?.deferredByReason, { "plans-full": 1 }, "the plans-full day carries its own map");
+  assert.ok(!("deferredByReason" in (data.series[0] ?? {})), "a day with no deferral omits the field");
+
+  const since = collectReportSince(root, 3 * 24 * HOUR);
+  assert.deepEqual(since.deferredByReason, { backlog: 2, "no-work": 2, "plans-full": 1 }, "--since carries the same window map");
+  // Renders name the tally, count desc then name asc, team report only.
+  assert.match(renderReportMarkdown(data), /\*\*Deferred runs by reason:\*\* backlog — 2 · no-work — 2 · plans-full — 1/);
+  assert.match(renderSinceReportMarkdown(since), /\*\*Deferred runs by reason:\*\* backlog — 2 · no-work — 2 · plans-full — 1/);
+  assert.doesNotMatch(renderReportMarkdown(collectReport(root, 3, "feature")), /\*\*Deferred runs by reason:/, "a scoped day report omits it");
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(root, 3 * 24 * HOUR, "feature")), /\*\*Deferred runs by reason:/, "a scoped --since report omits it");
+
+  // Team-only: a reason is not a role, so a role-scoped report carries nothing.
+  assert.ok(!("deferredByReason" in collectReportSince(root, 3 * 24 * HOUR, "feature")), "scoped window omits the field");
+  const scoped = collectReport(root, 3, "feature");
+  assert.ok(!("deferredByReason" in (scoped.series[2] ?? {})), "scoped day omits the field");
+
+  // A deferral-free window: no run_deferred at all, so the team day and --since omit the
+  // field and print no line.
+  const plain = tmpdir();
+  writeEvents(plain, [JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 })]);
+  assert.ok(!("deferredByReason" in collectReport(plain, 2).series[0]!), "a deferral-free team day omits the field");
+  assert.ok(!("deferredByReason" in collectReportSince(plain, 2 * 24 * HOUR)), "a deferral-free --since omits the field");
+  assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*Deferred runs by reason:/);
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*Deferred runs by reason:/);
+});
