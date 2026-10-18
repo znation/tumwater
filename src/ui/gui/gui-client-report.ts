@@ -146,11 +146,18 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     ], countAxis, true);
   }
 
-  // The lower median of the day's passing full-suite merge checks, from checkMedianMs; a day
-  // without one keeps its empty slot.
-  function chartCheckMedian(data) {
-    return reportSvg(data.series, (d) => [{ value: Number(d.checkMedianMs) || 0, color: "#0ea5e9", title: d.date + ": " + fmtSpan(Number(d.checkMedianMs) || 0) + " median merge check" }],
+  // The lower-median bar for a duration field (check/merge-wait/provider-wait/slot-wait): one
+  // bar per day from that day's median ms, its hover chip in the bar's color. Shared by the four
+  // duration-median charts so the field/color/label triple cannot drift when a fifth median
+  // joins.
+  function medianBarChart(data, field, color, label) {
+    return reportSvg(data.series, (d) => [{ value: Number(d[field]) || 0, color, title: d.date + ": " + fmtSpan(Number(d[field]) || 0) + " median " + label }],
       (v) => fmtSpan(v), false);
+  }
+
+  // The lower median of the day's passing full-suite merge checks, from checkMedianMs.
+  function chartCheckMedian(data) {
+    return medianBarChart(data, "checkMedianMs", "#0ea5e9", "merge check");
   }
 
   // The day's failed full-suite checks, from checkFailures; a day without one keeps its empty
@@ -160,25 +167,19 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       countAxis, true);
   }
 
-  // The lower median of the day's merge waits, enqueue to merged on main, from mergeWaitMedianMs;
-  // a day without one keeps its empty slot.
+  // The lower median of the day's merge waits, enqueue to merged on main, from mergeWaitMedianMs.
   function chartMergeWaitMedian(data) {
-    return reportSvg(data.series, (d) => [{ value: Number(d.mergeWaitMedianMs) || 0, color: "#f59e0b", title: d.date + ": " + fmtSpan(Number(d.mergeWaitMedianMs) || 0) + " median merge wait" }],
-      (v) => fmtSpan(v), false);
+    return medianBarChart(data, "mergeWaitMedianMs", "#f59e0b", "merge wait");
   }
 
-  // The lower median of the day's provider-slot waits, from providerWaitMedianMs; a day
-  // without one keeps its empty slot, as chartMergeWaitMedian does.
+  // The lower median of the day's provider-slot waits, from providerWaitMedianMs.
   function chartProviderWaitMedian(data) {
-    return reportSvg(data.series, (d) => [{ value: Number(d.providerWaitMedianMs) || 0, color: "#a855f7", title: d.date + ": " + fmtSpan(Number(d.providerWaitMedianMs) || 0) + " median provider wait" }],
-      (v) => fmtSpan(v), false);
+    return medianBarChart(data, "providerWaitMedianMs", "#a855f7", "provider wait");
   }
 
-  // The lower median of the day's workspace-slot waits, from slotWaitMedianMs; a day
-  // without one keeps its empty slot, as chartProviderWaitMedian does.
+  // The lower median of the day's workspace-slot waits, from slotWaitMedianMs.
   function chartSlotWaitMedian(data) {
-    return reportSvg(data.series, (d) => [{ value: Number(d.slotWaitMedianMs) || 0, color: "#22c55e", title: d.date + ": " + fmtSpan(Number(d.slotWaitMedianMs) || 0) + " median workspace wait" }],
-      (v) => fmtSpan(v), false);
+    return medianBarChart(data, "slotWaitMedianMs", "#22c55e", "workspace wait");
   }
 
   // Window totals per provider — spend desc, then name — so both provider charts share one
