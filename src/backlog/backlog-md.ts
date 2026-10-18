@@ -170,6 +170,28 @@ export function fenceAwareHeadingLines(md: string, prefix: "## " | "### "): stri
  * non-heading placeholders like `_None yet._` and any prose before the first heading, keeps
  * interior blank lines within a body while trimming leading/trailing ones, and ends an open
  * entry's body at EOF as well as at the next heading. */
+/** The `Validation gap` tag of one already-parsed entry body — the first line outside a fence
+ * matching `` **Validation gap:** <tag> `` (an optional `- ` bullet before the marker is
+ * allowed), the tag lowercased, or `null` when no such line exists. Fence-aware because a
+ * `## Fixed` body may quote the bug template (the case BUGS.md's "a fix narrative can land on
+ * main without its fix" entry records): a quoted `**Validation gap:**` line inside a fenced
+ * block is an example, not this entry's own trace, and must not count. The consumer that owns
+ * the closed tag vocabulary (the bugfix role guidance's VALIDATION_GAP_TAGS) validates the
+ * returned tag; this reader only records that a trace line exists and what it named. Walked
+ * line by line through the module's fenceTracker so this reader can never disagree with
+ * sectionLines/parseEntryDetails about what is fenced content. Returns the FIRST such line:
+ * a body with two validation-gap lines records the first (the tally counts an entry once). */
+export function validationGapTag(body: string): string | null {
+  const fenced = fenceTracker();
+  const re = /^\s*(?:[-*]\s+)?\*\*Validation gap:\*\*\s*([A-Za-z][A-Za-z-]*)/;
+  for (const line of body.split("\n")) {
+    if (fenced.inside(line)) continue;
+    const m = re.exec(line);
+    if (m) return (m[1] as string).toLowerCase();
+  }
+  return null;
+}
+
 export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntry[] {
   const entries: BacklogEntry[] = [];
   let title: string | null = null; // The open entry's heading (null = no entry open yet).

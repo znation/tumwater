@@ -406,6 +406,13 @@ export function renderReportMarkdown(data: ReportData): string {
   const items = t.featuresDone + t.bugsFixed;
   const perItem = items > 0 ? ` · ${(t.commits / items).toFixed(1)} commits per backlog item` : "";
   lines.push(`**Commits:** ${t.workCommits ?? 0} work / ${t.maintenanceCommits ?? 0} maintenance${perItem}`);
+  // Where the bugfix work was hardest to confirm: the window's fixed bugs tallied by their
+  // `Validation gap` tag, so the team can see where its own test infrastructure was weakest
+  // (recorded first, consumed now). Team-only (a tag has no role) and zero-means-absent: no
+  // line and no totals key for a role-scoped report or a window with no tagged fixed bug.
+  if (data.role === undefined && t.validationGapsByTag && Object.keys(t.validationGapsByTag).length > 0) {
+    lines.push(rankedRoleLine("Validation gaps", rankedRoleMap(t.validationGapsByTag), String));
+  }
   // The shared SPARSE_WINDOW_NOTE (one voice across the report's two windows and the other
   // windowed renders): covered is false only when events were aggregated from a log whose
   // oldest retained event lies inside the window, so the hedged sentence stays true whenever

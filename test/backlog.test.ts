@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   entryDates,
   fenceTracker,
+  validationGapTag,
 } from "../src/backlog/backlog-md.js";
 import {
   DONE_DATE_RE,
@@ -481,6 +482,24 @@ test("sectionFilingDates reads each entry's FIRST stamp date, matching filingDat
   );
   assert.deepEqual(sectionFilingDates(root, "BUGS.md", "Open"), ["2026-10-01"]);
   assert.deepEqual(sectionFilingDates(root, "BUGS.md", "Fixed"), ["2026-10-01"]);
+});
+
+test("validationGapTag reads the first Validation gap tag outside a fence, lowercased", () => {
+  assert.equal(validationGapTag("- **Validation gap:** no-repro — the flake never reproduced"), "no-repro");
+  assert.equal(validationGapTag("**Validation gap:** unclear-invariant — …"), "unclear-invariant");
+  assert.equal(validationGapTag("**Symptom:** a body with no trace line"), null);
+  // A quoted template inside a fenced block is an example, not the entry's own trace.
+  assert.equal(
+    validationGapTag(
+      "**Reproduced by:**\n\n```\n**Validation gap:** none — the existing suite confirmed it.\n```\n\n**Fix.**\n",
+    ),
+    null,
+  );
+  // A body with two traces records the first (the tally counts an entry once).
+  assert.equal(
+    validationGapTag("- **Validation gap:** no-fake — first\n- **Validation gap:** slow-check — second"),
+    "no-fake",
+  );
 });
 
 test("completionDate reads the last completion stamp from a heading only", () => {

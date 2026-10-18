@@ -314,10 +314,56 @@ Body.
   assert.equal(data.totals.bugsFixed, 3);
 });
 
+test("collectReport tallies fixed bugs' Validation gap tags over the window, team-only", () => {
+  const root = tmpdir();
+  const d0 = dayKey(at(0));
+  const d1 = dayKey(at(1));
+  const dOld = dayKey(at(10)); // outside the 3-day window
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Fixed",
+      body: `### Tagged no-repro (found 2026-09-01, fixed ${d0})
+
+- **Validation gap:** no-repro — the flake never reproduced.
+
+### Tagged no-repro again (found 2026-09-02, fixed ${d1})
+
+**Validation gap:** no-repro — also never reproduced.
+
+### Tagged no-fake (found 2026-09-03, fixed ${d1})
+
+**Validation gap:** no-fake — had to write a shim.
+
+### Untagged in window (found 2026-09-04, fixed ${d1})
+
+**Symptom:** no trace line here.
+
+### Tagged none but out of window (found 2026-09-01, fixed ${dOld})
+
+**Validation gap:** none — the existing suite confirmed it.`,
+    },
+  ]);
+
+  const team = collectReport(root, 3, undefined);
+  assert.deepEqual(team.totals.validationGapsByTag, { "no-repro": 2, "no-fake": 1 });
+
+  // Role scope drops the tally: a tag has no role.
+  const scoped = collectReport(root, 3, "bugfix");
+  assert.ok(!("validationGapsByTag" in scoped.totals));
+
+  // A window whose only fixed bug is untagged omits the key (zero-means-absent).
+  const root2 = tmpdir();
+  writeBacklogFile(root2, "BUGS.md", [
+    { heading: "## Fixed", body: `### Untagged only (found 2026-09-01, fixed ${d0})\n\n**Symptom:** nothing.` },
+  ]);
+  const untagged = collectReport(root2, 3, undefined);
+  assert.ok(!("validationGapsByTag" in untagged.totals));
+});
+
+// The per-day filing read folds the same entry detection as the completion read, so an
+// entry's opened day (its `planned`/`reported`/`found by` stamp) drives these two fields
+// — not its completion stamp, which only the done/fixed read consumes.
 test("collectReport counts plans added and bugs filed from backlog filing stamps", () => {
-  // The per-day filing read folds the same entry detection as the completion read, so an
-  // entry's opened day (its `planned`/`reported`/`found by` stamp) drives these two fields
-  // — not its completion stamp, which only the done/fixed read consumes.
   const root = tmpdir();
   const d1 = dayKey(at(4));
   const d2 = dayKey(at(3));

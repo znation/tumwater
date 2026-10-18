@@ -18,9 +18,12 @@ import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.
 import {
   DONE_DATE_RE,
   FIXED_DATE_RE,
+  completionDate,
+  fixedBugEntries,
   sectionCompletionDates,
   sectionFilingDates,
 } from "../backlog/backlog.js";
+import { validationGapTag } from "../backlog/backlog-md.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo, lowerMedian, memoSetLru } from "../collections.js";
 import { finiteNumber } from "../files/json-object.js";
@@ -633,6 +636,10 @@ export interface ReportData {
     commitsByRole?: Record<string, number>;
     workCommits?: number;
     maintenanceCommits?: number;
+    /** Fixed bugs' `Validation gap` tags over the window, by tag; team-only day-granular
+     * backlog metadata, absent when zero like its siblings (a tag has no role, so a
+     * role-scoped report never carries it). */
+    validationGapsByTag?: Record<string, number>;
   };
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the window's first day, or the
@@ -1009,6 +1016,22 @@ export function collectReport(root: string, days: number, role?: string): Report
     for (const d of sectionFilingDates(root, "BUGS.md", "Fixed")) countOn(d, "bugsFiled");
   }
 
+  // Tally the fixed bugs' `Validation gap` tags over the window, so the team can see where
+  // its own tests were weakest. An entry counts only when it is in the window (the same
+  // out-of-window drop countOn applies: its completion date must be a key of byDate), and
+  // only the team report carries the tally — a tag has no role (the render gates on the
+  // same `role === undefined`). Zero-means-absent: a window with no tagged fixed bug spreads
+  // no key, so the byte-for-byte assertions on pre-feature windows hold.
+  const validationGaps: Record<string, number> = {};
+  if (role === undefined) {
+    for (const e of fixedBugEntries(root)) {
+      const date = completionDate(e.title, FIXED_DATE_RE);
+      if (date === null || !byDate.has(date)) continue;
+      const tag = validationGapTag(e.body);
+      if (tag !== null) addTo(validationGaps, tag, 1);
+    }
+  }
+
   const totals = {
     tokensOut: 0,
     runs: 0,
@@ -1070,6 +1093,7 @@ export function collectReport(root: string, days: number, role?: string): Report
       ...(mergeFailed > 0 ? { mergeFailed } : {}),
       ...(plansAdded > 0 ? { plansAdded } : {}),
       ...(bugsFiled > 0 ? { bugsFiled } : {}),
+      ...(Object.keys(validationGaps).length > 0 ? { validationGapsByTag: validationGaps } : {}),
     },
     coversFullWindow,
   };

@@ -192,6 +192,29 @@ test("report --since folds failed ticks by role and narrows to the scoped base r
   assert.match(cleanNone.out, /\*\*Failed runs by role:\*\* -/, "a scoped role with no failures renders '-'");
 });
 
+test("renderReportMarkdown prints the fixed bugs' Validation gaps as a team-only line", () => {
+  const base = collectReport(tmpdir(), 2);
+  const data: ReportData = {
+    ...base,
+    series: base.series,
+    totals: { ...base.totals, validationGapsByTag: { "no-repro": 2, "no-fake": 1 } },
+  };
+  const md = renderReportMarkdown(data);
+  // Count desc then name asc, printed right after the Commits line.
+  assert.match(md, /\*\*Validation gaps:\*\* no-repro — 2 · no-fake — 1/);
+  const commitIdx = md.indexOf("**Commits:");
+  const gapIdx = md.indexOf("**Validation gaps:");
+  assert.ok(gapIdx > commitIdx, "the Validation gaps line follows the Commits line");
+
+  // A role-scoped report or an empty tally prints no such line.
+  const scoped: ReportData = { ...base, role: "bugfix", totals: { ...base.totals, validationGapsByTag: { "no-repro": 1 } } };
+  assert.ok(!renderReportMarkdown(scoped).includes("**Validation gaps:"));
+  const emptyTags: ReportData = { ...base, totals: { ...base.totals, validationGapsByTag: {} } };
+  assert.ok(!renderReportMarkdown(emptyTags).includes("**Validation gaps:"));
+  const noTags: ReportData = { ...base };
+  assert.ok(!renderReportMarkdown(noTags).includes("**Validation gaps:"));
+});
+
 test("renderReportMarkdown prints commits by role and the work/maintenance split with commits per item", () => {
   const data: ReportData = {
     days: 1,
