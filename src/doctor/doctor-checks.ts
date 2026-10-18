@@ -339,7 +339,7 @@ export function checkClaudeTranscripts(
   }
   let bytes = 0;
   for (const slug of slugs) bytes += treeBytes(path.join(dir, slug));
-  const projects = slugs.length === 1 ? "1 project" : `${slugs.length} projects`;
+  const projects = plural(slugs.length, "project");
   return okOutcome(`${formatBytes(bytes)} across ${projects} in ${dir}`);
 }
 

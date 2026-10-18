@@ -7,6 +7,7 @@ import { DECOMPOSITION_GUIDANCE, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, PLAN_SIZI
 import { CLAIMS_RULE, CLAIMS_RULE_COMPACT, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";
 import { daysBetween } from "../text/datetime.js";
+import { plural } from "../text/phrases.js";
 import { worktreePath } from "../paths.js";
 import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
 
@@ -371,7 +372,7 @@ function savedClause(savedDay?: string, today?: string): string {
   const age = daysBetween(savedDay, today);
   if (age < 0) return `last saved ${savedDay}; `;
   if (age === 0) return "last saved today; ";
-  return `last saved ${savedDay}, ${age === 1 ? "1 day" : `${age} days`} ago; `;
+  return `last saved ${savedDay}, ${plural(age, "day")} ago; `;
 }
 
 /** The role's notebook as shown to it: its own earlier ticks' note, labeled as unverified.
