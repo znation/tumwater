@@ -406,21 +406,25 @@ export function fileEntryWithBody(root: string, kind: "bug" | "plan", title: str
     : appendOperatorEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", t, body);
 }
 
+/** The `--file` filing form shared by plan and bug: split the file's title and body, require a
+ * title and a structurally-sound body, and file under the kind's section (fileEntryWithBody).
+ * filePlanFromText and fileBugFromText are the public plan/bug twins routing through it. */
+function fileFromText(root: string, kind: "bug" | "plan", text: string, usage: string): FiledEntry {
+  const { title, body } = splitEntryFile(text);
+  requireEntryTitle(kind, title, usage);
+  requireBodyStructurallySound(body, "filed");
+  return fileEntryWithBody(root, kind, title, body);
+}
+
 /** `tumwater plan --file`: file the markdown file's title and line-for-line body under
  * PLANS.md's `## Planned`. A body that would grow a phantom section writes nothing. */
 export function filePlanFromText(root: string, text: string, usage: string): FiledEntry {
-  const { title, body } = splitEntryFile(text);
-  requireEntryTitle("plan", title, usage);
-  requireBodyStructurallySound(body, "filed");
-  return fileEntryWithBody(root, "plan", title, body);
+  return fileFromText(root, "plan", text, usage);
 }
 
 /** `tumwater bug --file`: the bug twin of filePlanFromText, under BUGS.md's `## Open`. */
 export function fileBugFromText(root: string, text: string, usage: string): FiledEntry {
-  const { title, body } = splitEntryFile(text);
-  requireEntryTitle("bug", title, usage);
-  requireBodyStructurallySound(body, "filed");
-  return fileEntryWithBody(root, "bug", title, body);
+  return fileFromText(root, "bug", text, usage);
 }
 
 /** The loop prompt a filed bug wakes the `bugfix` loop with — one wording for the CLI's
@@ -493,26 +497,31 @@ export function cancelPlan(root: string, n: number): { file: string; title: stri
   return removeEntry(root, "PLANS.md", "Planned", n);
 }
 
+/** The `--edit <n> --file` form shared by plan and bug: split the file, strip a pasted-back
+ * heading's own stamp, and require a title and structurally-sound body before splicing into the
+ * kind's section (editEntry). editPlanFromText and editBugFromText are the public plan/bug twins
+ * routing through it, so the two cannot drift. */
+function editFromText(root: string, kind: "bug" | "plan", n: number, text: string, usage: string): { file: string; title: string } {
+  const { title: rawTitle, body } = splitEntryFile(text);
+  // A first line pasted back as the full heading carries the entry's stamp; the splice re-adds it.
+  const title = stripEntryStamp(rawTitle);
+  requireEntryTitle(kind, title, usage);
+  requireBodyStructurallySound(body, "written");
+  const target = backlogTarget(kind);
+  return editEntry(root, target.fileName, target.sectionTitle, n, title, body);
+}
+
 /** `tumwater plan --edit <n> --file`: rewrite the nth `## Planned` entry from a markdown file,
  * title and body kept line for line (splitEntryFile), position and original stamp kept. A body
  * that would grow a phantom section writes nothing. */
 export function editPlanFromText(root: string, n: number, text: string, usage: string): { file: string; title: string } {
-  const { title: rawTitle, body } = splitEntryFile(text);
-  // A first line pasted back as the full heading carries the entry's stamp; the splice re-adds it.
-  const title = stripEntryStamp(rawTitle);
-  requireEntryTitle("plan", title, usage);
-  requireBodyStructurallySound(body, "written");
-  return editEntry(root, "PLANS.md", "Planned", n, title, body);
+  return editFromText(root, "plan", n, text, usage);
 }
 
 /** `tumwater bug --edit <n> --file`: the bug twin of editPlanFromText over `## Open`. The body is
  * written as the file gives it, so a bug filed with `--file` can be revised with its body. */
 export function editBugFromText(root: string, n: number, text: string, usage: string): { file: string; title: string } {
-  const { title: rawTitle, body } = splitEntryFile(text);
-  const title = stripEntryStamp(rawTitle);
-  requireEntryTitle("bug", title, usage);
-  requireBodyStructurallySound(body, "written");
-  return editEntry(root, "BUGS.md", "Open", n, title, body);
+  return editFromText(root, "bug", n, text, usage);
 }
 
 /** `tumwater bug --edit <n> "<symptom>"`: replace the nth BUGS.md `## Open` entry's heading
