@@ -787,6 +787,135 @@ test("role --enable and --disable write the role's enabled state", async () => {
   assert.match(r.stderr, /instructions and enable writes cannot share one invocation/);
 });
 
+test("role --provider/--model/--thinking (and --clear-*) write the role's model triple", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role model triple");
+  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+
+  // `--model <id>` writes roles.feature.model through the config core.
+  let r = await cli(repo, "role", "feature", "--model", "anthropic/claude-sonnet-4");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: model set to anthropic\/claude-sonnet-4/);
+  assert.equal(config().roles.feature.model, "anthropic/claude-sonnet-4");
+
+  // `--provider <id>` and `--thinking <level>` write the other two fields.
+  r = await cli(repo, "role", "feature", "--provider", "openai");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: provider set to openai/);
+  assert.equal(config().roles.feature.provider, "openai");
+  r = await cli(repo, "role", "feature", "--thinking", "high");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: thinking set to high/);
+  assert.equal(config().roles.feature.thinking, "high");
+
+  // A tier name stores the string (a tier reference, valid for roles.<id>.model).
+  r = await cli(repo, "role", "feature", "--model", "strong");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.feature.model, "strong");
+
+  // An instance id targets its base role: feature-2 writes roles.feature.*.
+  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
+  r = await cli(repo, "role", "feature-2", "--model", "gpt-5");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.feature.model, "gpt-5");
+  r = await cli(repo, "role", "feature-2", "--provider", "anthropic");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.feature.provider, "anthropic");
+  r = await cli(repo, "role", "feature-2", "--thinking", "low");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.feature.thinking, "low");
+
+  // Two model-triple writes cannot share one invocation, and write nothing.
+  const beforeShare = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--model", "anthropic/x", "--provider", "y");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /provider and model writes cannot share one invocation/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeShare, "no write from a shared invocation");
+
+  // A clear removes each key; `--X ""` and whitespace-only values clear too, and a clear
+  // writes nothing when unset.
+  for (const [flag, clearFlag, field] of [
+    ["--model", "--clear-model", "model"],
+    ["--provider", "--clear-provider", "provider"],
+    ["--thinking", "--clear-thinking", "thinking"],
+  ] as const) {
+    r = await cli(repo, "role", "feature", clearFlag);
+    assert.equal(r.code, 0, field);
+    assert.match(r.stdout, new RegExp(`feature: ${field} cleared`));
+    assert.equal(config().roles.feature[field], undefined, `${field} cleared`);
+    const bytes = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+    r = await cli(repo, "role", "feature", clearFlag);
+    assert.equal(r.code, 0, field);
+    assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytes, `${field} clear of an unset key writes nothing`);
+    r = await cli(repo, "role", "feature", flag, "");
+    assert.equal(r.code, 0, field);
+    assert.match(r.stdout, new RegExp(`feature: ${field} cleared`));
+    r = await cli(repo, "role", "feature", flag, "   ");
+    assert.equal(r.code, 0, field);
+    assert.match(r.stdout, new RegExp(`feature: ${field} cleared`));
+  }
+
+  // A malformed thinking level fails with checkModelTripleField's message naming the key and
+  // naming THINKING_LEVELS, leaving the file unchanged.
+  const before = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--thinking", "bogus");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /roles\.feature\.thinking must be one of off, minimal, low, medium, high, xhigh, max \(got "bogus"\)/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "file unchanged on bogus thinking");
+
+  // An unknown id is refused for any of the three, writing nothing.
+  r = await cli(repo, "role", "bogus", "--model", "gpt-5");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus/);
+  r = await cli(repo, "role", "bogus", "--provider", "openai");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus/);
+  r = await cli(repo, "role", "bogus", "--thinking", "high");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus/);
+
+  // --json is refused with any of the three writes.
+  r = await cli(repo, "role", "feature", "--model", "gpt-5", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to a model write/);
+  r = await cli(repo, "role", "feature", "--provider", "openai", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to a provider write/);
+  r = await cli(repo, "role", "feature", "--thinking", "high", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to a thinking write/);
+
+  // --clear-X alongside --X is refused.
+  r = await cli(repo, "role", "feature", "--clear-model", "--model", "gpt-5");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /give --clear-model or --model, not both/);
+  r = await cli(repo, "role", "feature", "--clear-provider", "--provider", "openai");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /give --clear-provider or --provider, not both/);
+  r = await cli(repo, "role", "feature", "--clear-thinking", "--thinking", "high");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /give --clear-thinking or --thinking, not both/);
+  // A model-triple write combined with another role write is refused, naming both kinds.
+  r = await cli(repo, "role", "feature", "--model", "gpt-5", "--cap", "5");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /cap and model writes cannot share one invocation/);
+  // All the refusals above left the file unchanged (it still holds the cleared state).
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "file unchanged after all refusals");
+
+  // The director's model-triple writes are accepted (configForRole resolves roles.director.*).
+  r = await cli(repo, "role", "director", "--model", "claude-opus-4");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.director.model, "claude-opus-4");
+  r = await cli(repo, "role", "director", "--provider", "anthropic");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.director.provider, "anthropic");
+  r = await cli(repo, "role", "director", "--thinking", "medium");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.director.thinking, "medium");
+});
+
 test("role validates its arguments like every other command", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role validation");

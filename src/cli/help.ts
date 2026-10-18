@@ -344,6 +344,21 @@ Usage:
                                    for the base id; clearing falls back to the team-wide interval
   tumwater role <id> --clear-min-run-interval
                                    Clear that role's own minimum-run interval
+  tumwater role <id> --provider <id>
+                                   Set that role's model provider (e.g. openai), written to
+                                   roles.<id>.provider for the base id
+  tumwater role <id> --clear-provider
+                                   Clear that role's model provider
+  tumwater role <id> --model <id>  Set that role's model (a model id or a tier name like
+                                   strong), written to roles.<id>.model for the base id
+  tumwater role <id> --clear-model
+                                   Clear that role's model
+  tumwater role <id> --thinking <level>
+                                   Set that role's pi thinking level (off|minimal|low|
+                                   medium|high|xhigh|max), written to roles.<id>.thinking
+                                   for the base id
+  tumwater role <id> --clear-thinking
+                                   Clear that role's thinking level
   tumwater role <id> --enable      Enable the role, written to roles.<id>.enabled
                                    (the base id for an instance)
   tumwater role <id> --disable     Disable it (refused for the director); clean up

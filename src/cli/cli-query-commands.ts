@@ -69,9 +69,19 @@ const MIN_RUN_INTERVAL_SPEC = { names: ["--min-run-interval"], value: true, valu
 const ENABLE_SPEC = { names: ["--enable"] };
 const DISABLE_SPEC = { names: ["--disable"] };
 
+/** `role`'s model-triple write flags: clear the field, or set it, written to
+ * roles.<base>.provider/.model/.thinking. model and provider take an id; thinking takes a
+ * pi `--thinking` level (off|minimal|low|medium|high|xhigh|max). */
+const CLEAR_PROVIDER_SPEC = { names: ["--clear-provider"] };
+const PROVIDER_SPEC = { names: ["--provider"], value: true, valueName: "<id>" };
+const CLEAR_MODEL_SPEC = { names: ["--clear-model"] };
+const MODEL_SPEC = { names: ["--model"], value: true, valueName: "<id>" };
+const CLEAR_THINKING_SPEC = { names: ["--clear-thinking"] };
+const THINKING_SPEC = { names: ["--thinking"], value: true, valueName: "<level>" };
+
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
  * neither a flag nor the value of a --role, --notes-file, --instructions-file,
- * --quiet-hours, --cap or --min-run-interval flag. Returns
+ * --quiet-hours, --cap, --min-run-interval, --provider, --model or --thinking flag. Returns
  * the id (null when
  * absent) and the remaining arguments — flags only, ready for rejectUnknownArgs and
  * sayJsonOrRender. The id may also arrive as --role <id>, the flag spelling every other
@@ -80,7 +90,7 @@ const DISABLE_SPEC = { names: ["--disable"] };
  * command's mixed positional/flag vocabulary. */
 function peelRolePositional(args: string[]): { id: string | null; rest: string[] } {
   const valueIdx = new Set<number>();
-  for (const flag of ["--role", "--notes-file", "--instructions-file", "--quiet-hours", "--cap", "--min-run-interval"]) {
+  for (const flag of ["--role", "--notes-file", "--instructions-file", "--quiet-hours", "--cap", "--min-run-interval", "--provider", "--model", "--thinking"]) {
     const at = args.indexOf(flag);
     if (at >= 0) valueIdx.add(at + 1);
   }
@@ -367,12 +377,12 @@ function requireKnownRole(root: string, id: string): void {
   if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
 }
 
-/** The config-key write the three per-role hold branches (quiet hours, daily cap, min run
- * interval) share: with `clear`, or an empty typed value, unset `key` under `base`; else set
- * it. `serialize` shapes the value `setConfigKey` stores (it JSON-encodes nothing itself) and
- * `display` gives the human phrase for the confirmation line. The caller returns right after.
- * The instructions branch keeps its own block: its value is a file's text, so an empty value
- * is a legitimate write, not a clear. */
+/** The config-key write the six per-role hold branches (quiet hours, daily cap, min run
+ * interval, provider, model and thinking) share: with `clear`, or an empty typed value, unset
+ * `key` under `base`; else set it. `serialize` shapes the value `setConfigKey` stores (it
+ * JSON-encodes nothing itself) and `display` gives the human phrase for the confirmation
+ * line. The caller returns right after. The instructions branch keeps its own block: its
+ * value is a file's text, so an empty value is a legitimate write, not a clear. */
 function writeRoleConfigKey(
   root: string,
   base: string,
@@ -400,7 +410,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
   // a repo the team never started in — and a torn one — instead of refusing.
   const { id: positional, rest } = peelRolePositional(args);
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC]);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
   // a silent pick of one.
@@ -417,11 +427,17 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const clearQuiet = rest.includes("--clear-quiet-hours");
   const clearCap = rest.includes("--clear-cap");
   const clearInterval = rest.includes("--clear-min-run-interval");
+  const clearProvider = rest.includes("--clear-provider");
+  const clearModel = rest.includes("--clear-model");
+  const clearThinking = rest.includes("--clear-thinking");
   const notesWrite = clear || rest.includes("--notes-file");
   const instructionsWrite = clearInst || rest.includes("--instructions-file");
   const quietWrite = clearQuiet || rest.includes("--quiet-hours");
   const capWrite = clearCap || rest.includes("--cap");
   const intervalWrite = clearInterval || rest.includes("--min-run-interval");
+  const providerWrite = clearProvider || rest.includes("--provider");
+  const modelWrite = clearModel || rest.includes("--model");
+  const thinkingWrite = clearThinking || rest.includes("--thinking");
   const enable = rest.includes("--enable");
   const disable = rest.includes("--disable");
   const writes: string[] = [];
@@ -430,6 +446,9 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (quietWrite) writes.push("quiet-hours");
   if (capWrite) writes.push("cap");
   if (intervalWrite) writes.push("min-run-interval");
+  if (providerWrite) writes.push("provider");
+  if (modelWrite) writes.push("model");
+  if (thinkingWrite) writes.push("thinking");
   if (enable) writes.push("enable");
   if (disable) writes.push("disable");
   if (writes.length > 1)
@@ -516,6 +535,42 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     const base = baseRoleOf(id);
     const secs = flagValue(rest, "--min-run-interval") ?? "";
     writeRoleConfigKey(root, base, clearInterval, secs, `roles.${base}.minRunIntervalSeconds`, "min run interval", (v) => v, (v) => `${v}s`);
+    return;
+  }
+  // The model-triple writes: the terminal twins of `config set roles.<base>.provider|model|thinking
+  // <value>` and `config unset` — the three fields configForRole resolves through seamOverrides.
+  // `tumwater role <id>` renders them as its Model: line. Each lands in roles.<base>.<field>.
+  // Through setConfigKey/unsetConfigKey, validateConfig's checkModelTripleField ("tier-name"
+  // shape) owns validation (model accepts a tier name; thinking must be a THINKING_LEVELS level)
+  // and each write is atomic. No director refusal: accepted exactly as --min-run-interval is.
+  if (providerWrite) {
+    if (clearProvider && rest.includes("--provider")) fail("give --clear-provider or --provider, not both");
+    if (rest.includes("--json")) fail("--json does not apply to a provider write");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    const base = baseRoleOf(id);
+    const provider = flagValue(rest, "--provider") ?? "";
+    writeRoleConfigKey(root, base, clearProvider, provider, `roles.${base}.provider`, "provider", (v) => JSON.stringify(v), (v) => v);
+    return;
+  }
+  if (modelWrite) {
+    if (clearModel && rest.includes("--model")) fail("give --clear-model or --model, not both");
+    if (rest.includes("--json")) fail("--json does not apply to a model write");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    const base = baseRoleOf(id);
+    const model = flagValue(rest, "--model") ?? "";
+    writeRoleConfigKey(root, base, clearModel, model, `roles.${base}.model`, "model", (v) => JSON.stringify(v), (v) => v);
+    return;
+  }
+  if (thinkingWrite) {
+    if (clearThinking && rest.includes("--thinking")) fail("give --clear-thinking or --thinking, not both");
+    if (rest.includes("--json")) fail("--json does not apply to a thinking write");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    const base = baseRoleOf(id);
+    const level = flagValue(rest, "--thinking") ?? "";
+    writeRoleConfigKey(root, base, clearThinking, level, `roles.${base}.thinking`, "thinking", (v) => JSON.stringify(v), (v) => v);
     return;
   }
   // The enable/disable write: the scoped write for the enabled state `tumwater role <id>`
