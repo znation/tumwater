@@ -175,6 +175,23 @@ function overDurationCap(ms: number, verb: string): { ok: false; error: string }
   return ms > PAUSE_FOR_MAX_MS ? fail(`${verb} is capped at 90d`) : null;
 }
 
+/** Parse a duration with parseDurationMs and apply the shared 90d cap in one step, mapping
+ * both a non-duration spelling (`bad`, caller-specific wording) and an over-cap value to an
+ * error result — the same parse-then-cap tail the defer, role-pause, role-wake and stop-in
+ * parsers each repeated, so the four cannot drift on the cap arm. Callers that keep their
+ * own ok-tails (forMs/inMs/ms) flatten this result before returning it. */
+function parseDurationOrFail(
+  t: string,
+  verb: string,
+  bad: string,
+): { ok: true; ms: number } | { ok: false; error: string } {
+  const ms = parseDurationMs(t);
+  if (ms === null) return fail(bad);
+  const over = overDurationCap(ms, verb);
+  if (over) return over;
+  return { ok: true, ms };
+}
+
 /** Parse the TUI's Ctrl+L defer line: empty → null (clear the pending delay; deliver now),
  * otherwise a parseDurationMs duration at or under the 90d cap — the same grammar and cap
  * `tumwater prompt --at` and the dashboard composer's defer field admit, so the three
@@ -187,14 +204,11 @@ export function parseDeferInput(
 ): { ok: true; ms: number | null } | { ok: false; error: string } {
   const t = text.trim();
   if (t === "") return { ok: true, ms: null };
-  const ms = parseDurationMs(t);
-  if (ms === null)
-    return fail(`send later needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(text)}`);
   // The dashboard composer's server check caps the same duration at the same limit, so the
   // TUI refuses it inline with the identical wording instead of queueing a marker past the cap.
-  const over = overDurationCap(ms, "send later");
-  if (over) return over;
-  return { ok: true, ms };
+  const r = parseDurationOrFail(t, "send later", `send later needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(text)}`);
+  if (!r.ok) return r;
+  return { ok: true, ms: r.ms };
 }
 
 /** Parse the TUI's Ctrl+F pause line: "[duration] [reason]". Empty is a standing pause with no
@@ -224,13 +238,9 @@ export function parseRolePauseInput(
 ): { ok: true; forMs?: number } | { ok: false; error: string } {
   const t = text.trim();
   if (t === "") return { ok: true };
-  const ms = parseDurationMs(t);
-  if (ms === null) {
-    return fail("a role pause takes only a duration like 45m or 2h (empty pauses until resumed) — reasons are team-wide, use Ctrl+F");
-  }
-  const over = overDurationCap(ms, "pause");
-  if (over) return over;
-  return { ok: true, forMs: ms };
+  const r = parseDurationOrFail(t, "pause", "a role pause takes only a duration like 45m or 2h (empty pauses until resumed) — reasons are team-wide, use Ctrl+F");
+  if (!r.ok) return r;
+  return { ok: true, forMs: r.ms };
 }
 
 /** Parse the TUI's Ctrl+W per-loop wake line: empty wakes the loop now, a duration schedules
@@ -242,24 +252,18 @@ export function parseRoleWakeInput(
   const t = text.trim();
   if (t === "") return { ok: true };
   if (t.toLowerCase() === "cancel") return { ok: true, cancel: true };
-  const ms = parseDurationMs(t);
-  if (ms === null) {
-    return fail('a role wake takes a duration like 45m or 2h, "cancel" to drop its scheduled wakes, or empty to wake now');
-  }
-  const over = overDurationCap(ms, "wake");
-  if (over) return over;
-  return { ok: true, inMs: ms };
+  const r = parseDurationOrFail(t, "wake", 'a role wake takes a duration like 45m or 2h, "cancel" to drop its scheduled wakes, or empty to wake now');
+  if (!r.ok) return r;
+  return { ok: true, inMs: r.ms };
 }
 
 /** Parse the TUI's Ctrl+Q scheduled-stop line: a duration, same 90d cap `tumwater stop --in`
  * enforces. Empty is refused on purpose — an immediate stop has its own command, and this key
  * must never mean "stop now". */
 export function parseStopInInput(text: string): { ok: true; inMs: number } | { ok: false; error: string } {
-  const ms = parseDurationMs(text.trim());
-  if (ms === null) return fail("a scheduled stop takes a duration like 45m or 2h — Esc to cancel");
-  const over = overDurationCap(ms, "stop");
-  if (over) return over;
-  return { ok: true, inMs: ms };
+  const r = parseDurationOrFail(text.trim(), "stop", "a scheduled stop takes a duration like 45m or 2h — Esc to cancel");
+  if (!r.ok) return r;
+  return { ok: true, inMs: r.ms };
 }
 
 /** Parse the TUI's Ctrl+R role-prompt line: the trimmed text when non-empty, otherwise an
