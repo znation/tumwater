@@ -17,7 +17,7 @@ import { withStateLock } from "../concurrency/lock.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { canonicalConfigKey, normalizeConfigKeys } from "./config-aliases.js";
-import { loadConfig, parseJsonConfig, collapseAgentAliases } from "./config.js";
+import { loadConfig, parseJsonConfig, collapseAgentAliases, knownRoleIdsCached } from "./config.js";
 import {
   checkDailyBudgetUsd,
   checkProviderConcurrencyCap,
@@ -288,6 +288,65 @@ export function setConfigKey(
   });
   if (!result.ok) return result;
   return { ok: true, value, oldValue };
+}
+
+/** Set a role's provider/model/thinking override triple in tumwater.json (`roles.<base>`),
+ * the write behind the dashboard role drawer's Model overrides editor: one writeConfigMutation
+ * rebuilds `roles.<base>` from the FILE's own `roles` section (the `rawConfigObject(root).roles` /
+ * `objectOrEmpty` idiom setConfigKey's role branch uses, so the write never re-expands the
+ * operator's partial section), and validateConfig's `roles.<id>` check (checkModelTriple,
+ * modelShape "tier-name") owns the whole candidate, so a bad `thinking` level writes nothing.
+ * An unknown base id writes nothing too — refused up front, because validateConfig is skipped
+ * on the no-op path (a clear of fields a role the file never held changes nothing) and the
+ * writer must not answer a phantom role "updated". `undefined` leaves that field as the file
+ * has it; `""` deletes it (never stores an empty string, which checkStringField rejects), and
+ * clearing the entry's last override removes `roles.<base>` entirely rather than leaving an
+ * empty object (the file-wide no-empty-object invariant unsetConfigKey's `without` keeps).
+ * An all-no-op call (every named field already absent-or-equal) returns the loaded config
+ * unchanged and writeConfigMutation skips the write, so clearing keys the file never held
+ * leaves its bytes identical. */
+export function setRoleModelFields(
+  root: string,
+  base: string,
+  fields: { provider?: string; model?: string; thinking?: string },
+): { ok: true } | { ok: false; error: string } {
+  // An unknown base id writes nothing. validateConfig owns the refusal when the write changes
+  // the candidate, but it is skipped on the no-op path (clearing fields a role the file never
+  // held changes nothing), so refuse the phantom role up front — the same knownRoleIds guard
+  // the CLI's unsetConfigKey clear paths and the GUI's rejectBadRole use — rather than answer
+  // a bogus id "updated".
+  if (!knownRoleIdsCached(root).includes(base)) return fail(`unknown role "${base}"`);
+  return writeConfigMutation(root, (cfg) => {
+    const rawRolesCandidate = rawConfigObject(root).roles;
+    const rawRoles = objectOrEmpty(rawRolesCandidate) as Record<string, Record<string, unknown>>;
+    const rawEntryCandidate = rawRoles[base];
+    const rawEntry = objectOrEmpty(rawEntryCandidate);
+    const nextEntry = { ...rawEntry };
+    let changed = false;
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === undefined) continue; // leave that field as the file has it
+      if (value === "") {
+        if (Object.prototype.hasOwnProperty.call(nextEntry, key)) {
+          delete nextEntry[key];
+          changed = true;
+        }
+      } else if (nextEntry[key] !== value) {
+        nextEntry[key] = value;
+        changed = true;
+      }
+    }
+    if (!changed) return cfg; // writeConfigMutation skips the write — file bytes identical
+    const nextRoles = { ...rawRoles };
+    // Clearing the entry's last override empties it — never leave an empty `roles.<base>: {}`
+    // (the file-wide no-empty-object invariant unsetConfigKey's `without` keeps); an emptied
+    // entry falls back to the catalog's defaults at load. When the section empties entirely,
+    // drop the `roles` key too, exactly as unsetConfigKey's role branch does.
+    if (Object.keys(nextEntry).length === 0) delete nextRoles[base];
+    else nextRoles[base] = nextEntry;
+    if (Object.keys(nextRoles).length === 0)
+      return without(cfg as unknown as Record<string, unknown>, "roles") as unknown as TumwaterConfig;
+    return { ...cfg, roles: nextRoles } as unknown as TumwaterConfig;
+  });
 }
 
 /** A shallow copy of `obj` without `key` — the copy each `unsetConfigKey` branch edits

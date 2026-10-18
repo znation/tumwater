@@ -318,6 +318,25 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         loadDrawerRole(arg);
         return d && typeof d.message === "string" ? d.message : "Quiet hours updated";
       });
+    } else if (act === "model-edit") {
+      startModelEdit(arg, { provider: drawerRole?.view?.providerOverride ?? "", model: drawerRole?.view?.modelOverride ?? "", thinking: drawerRole?.view?.thinkingOverride ?? "" });
+    } else if (act === "model-discard") {
+      stopModelEdit();
+    } else if (act === "model-save") {
+      // Every field is a text input, so no badInput guard; an empty value reaches the
+      // server's clear branch for that field. All three are sent (each trimmed) — the server
+      // ignores whatever it does not recognize and requires at least one present.
+      const providerBox = $("modeleditprovider");
+      const modelBox = $("modeleditmodel");
+      const thinkingBox = $("modeleditthinking");
+      const provider = providerBox ? providerBox.value.trim() : "";
+      const model = modelBox ? modelBox.value.trim() : "";
+      const thinking = thinkingBox ? thinkingBox.value.trim() : "";
+      postAction("/api/role-model", { role: arg, provider, model, thinking }, (d) => {
+        modelEditing = null;
+        loadDrawerRole(arg);
+        return d && typeof d.message === "string" ? d.message : "Model overrides updated";
+      });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
       const title = entryTitleAt(file, index);

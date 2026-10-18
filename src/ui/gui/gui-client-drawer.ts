@@ -39,6 +39,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     quietEditing = null;
     intervalEditing = null;
     instancesEditing = null;
+    modelEditing = null;
     disarmNoteClear();
     if (wasLoop && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
     drawerTicks = null;
@@ -308,6 +309,29 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (modelLine !== "" || view.modelTier !== undefined) {
       rows.push(kvRow("Model", (modelLine !== "" ? modelLine + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
     }
+    // The per-role model triple (roles.<base>.provider/.model/.thinking, the file's own raw
+    // overrides rolePayload's providerOverride/modelOverride/thinkingOverride carry) — the
+    // one per-role write the Model row above still renders read-only, the dashboard half of
+    // the CLI's --provider/--model/--thinking. An always-shown row (every role, the director
+    // included, since the CLI writes its triple too) whose body names the payload's raw
+    // overrides, or no overrides, and whose control is a model-edit button (Edit/Set model);
+    // while the editor is open for this role, three text inputs prefilled with the raw
+    // overrides (empty when unset) plus Save/Discard replace the body, mirroring the interval
+    // editor's markup.
+    const rawTriple = [];
+    if (typeof view.providerOverride === "string" && view.providerOverride !== "") rawTriple.push("provider: " + view.providerOverride);
+    if (typeof view.modelOverride === "string" && view.modelOverride !== "") rawTriple.push("model: " + view.modelOverride);
+    if (typeof view.thinkingOverride === "string" && view.thinkingOverride !== "") rawTriple.push("thinking: " + view.thinkingOverride);
+    const modelBody = rawTriple.length ? rawTriple.join(" · ") : "no overrides";
+    const editModel = modelEditing && modelEditing.role === role;
+    const modelControl = editModel
+      ? "<input id='modeleditprovider' type='text' placeholder='provider' value='" + esc(modelEditing.provider) + "'>" +
+        "<input id='modeleditmodel' type='text' placeholder='model' value='" + esc(modelEditing.model) + "'>" +
+        "<input id='modeleditthinking' type='text' placeholder='thinking' value='" + esc(modelEditing.thinking) + "'>" +
+        "<div><button type='button' class='btn btn-sm btn-primary' data-act='model-save' data-arg='" + esc(role) + "'>Save</button> " +
+        "<button type='button' class='btn btn-sm' data-act='model-discard' data-arg='" + esc(role) + "'>Discard</button></div>"
+      : "<button type='button' class='btn btn-sm' data-act='model-edit' data-arg='" + esc(role) + "'>" + (rawTriple.length ? "Edit" : "Set model") + "</button>";
+    rows.push("<div><dt>Model overrides</dt><dd title='" + esc(modelBody) + "'>" + esc(modelBody) + modelControl + "</dd></div>");
     // Context window: the resolved primary seam's declared window and whether a run on it gets
     // the compact prompt - the same seam '- Next run:' previews. Guard optional to keep an older
     // payload that lacks the fields rendering as before.
@@ -472,6 +496,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let quietEditing = null; // { role, window }
   let intervalEditing = null; // { role, value } — value is the seeded override (number) or "" when none
   let instancesEditing = null; // { role, value } — value is the seeded count (number) or "" when none
+  let modelEditing = null; // { role, provider, model, thinking } — the seeded raw overrides ("" when unset)
   function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
   // The notebook clear and the backlog entry cancel each build a two-click confirm slot from
   // the shared confirmSlot factory (defined in the loops splice, an earlier one), so the arm,
@@ -490,6 +515,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function stopIntervalEdit() { intervalEditing = null; repaintDrawerRole(); }
   function startInstancesEdit(role, value) { instancesEditing = { role, value: value === "" || value == null ? "" : Number(value) }; repaintDrawerRole(); }
   function stopInstancesEdit() { instancesEditing = null; repaintDrawerRole(); }
+  function startModelEdit(role, seed) { modelEditing = { role, provider: String((seed && seed.provider) ?? ""), model: String((seed && seed.model) ?? ""), thinking: String((seed && seed.thinking) ?? "") }; repaintDrawerRole(); }
+  function stopModelEdit() { modelEditing = null; repaintDrawerRole(); }
   function startQuietEdit(role, window) { quietEditing = { role, window: String(window ?? "") }; repaintDrawerRole(); }
   function stopQuietEdit() { quietEditing = null; repaintDrawerRole(); }
   // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so

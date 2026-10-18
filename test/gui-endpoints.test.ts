@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -892,6 +892,105 @@ test("handleRoleQuietHours clearing a key the file never set writes nothing", as
 function serveRoleInterval(root: string, body: unknown) {
   return captureJson((res) => handleRoleInterval(fakeReq(JSON.stringify(body)), res, root));
 }
+
+// POST /api/role-model: the role drawer's Model overrides editor sets or clears one role's
+// provider/model/thinking triple (roles.<base>.*) in one atomic write through
+// setRoleModelFields — the per-role hold the Model row renders read-only. Same body
+// discipline as /api/role-interval; a missing/blank role, a non-string field, or a body
+// with none of the three is a 400; an instance id maps to its base role's keys; the
+// director is accepted; a bad thinking level is refused naming roles.<base>.thinking; an
+// unknown role is refused on the set and the no-op/clear path alike.
+function serveRoleModel(root: string, body: unknown) {
+  return captureJson((res) => handleRoleModel(fakeReq(JSON.stringify(body)), res, root));
+}
+
+test("handleRoleModel writes the triple through setRoleModelFields and answers 200", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { enabled: true } } });
+  const { captured, data } = await serveRoleModel(root, { role: "feature", provider: "claude", model: "claude-opus-5", thinking: "high" });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, role: "feature", message: "feature: model updated" });
+  // The file on disk is what the scheduler polls — the write went through setRoleModelFields.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  const feat = (onDisk.roles as { feature: Record<string, unknown> }).feature;
+  assert.equal(feat.enabled, true, "the entry's other fields preserved");
+  assert.equal(feat.provider, "claude");
+  assert.equal(feat.model, "claude-opus-5");
+  assert.equal(feat.thinking, "high");
+  // Clearing with empty strings removes all three in one write.
+  const cleared = await serveRoleModel(root, { role: "feature", provider: "", model: "", thinking: "" });
+  assert.equal(cleared.captured.status, 200);
+  const after = readJson(configPath(root)) as Record<string, unknown>;
+  const feat2 = (after.roles as { feature: Record<string, unknown> }).feature;
+  assert.deepEqual(feat2, { enabled: true }, "all three overrides cleared, the entry's other fields kept");
+});
+
+test("handleRoleModel maps an instance id to its base role's keys and accepts the director", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { instances: 2 } } });
+  const inst = await serveRoleModel(root, { role: "feature-2", provider: "claude", model: "opus" });
+  assert.equal(inst.captured.status, 200);
+  assert.deepEqual(inst.data, { ok: true, role: "feature", message: "feature: model updated" });
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  const feat = (onDisk.roles as { feature: Record<string, unknown> }).feature;
+  assert.equal(feat.instances, 2, "the entry's other fields preserved");
+  assert.equal(feat.provider, "claude");
+  assert.equal(feat.model, "opus");
+  // The director is accepted — configForRole resolves roles.director.* like any role's.
+  const dir = await serveRoleModel(root, { role: "director", thinking: "low" });
+  assert.equal(dir.captured.status, 200);
+  const onDiskDir = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal((onDiskDir.roles as { director: Record<string, unknown> }).director.thinking, "low");
+});
+
+test("handleRoleModel trims values and refuses a bad thinking level, writing nothing", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { provider: "claude" } } });
+  // Values are trimmed before the write.
+  const trimmed = await serveRoleModel(root, { role: "feature", provider: "  claude  ", model: " opus " });
+  assert.equal(trimmed.captured.status, 200);
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  const feat = (onDisk.roles as { feature: Record<string, unknown> }).feature;
+  assert.equal(feat.provider, "claude");
+  assert.equal(feat.model, "opus");
+  // A bad thinking level answers 400 naming roles.feature.thinking, file untouched.
+  const beforeBad = fs.readFileSync(configPath(root), "utf8");
+  const bad = await serveRoleModel(root, { role: "feature", thinking: "bogus" });
+  assert.equal(bad.captured.status, 400);
+  assert.match((bad.data as { error: string }).error, /roles\.feature\.thinking/);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), beforeBad, "a rejected write never touches the file");
+});
+
+test("handleRoleModel refuses a missing role, a non-string field, none-of-the-three, and an unknown role", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { provider: "claude" } } });
+  const before = fs.readFileSync(configPath(root), "utf8");
+  // A missing/blank role answers 400 role required.
+  for (const bad of [{}, { role: "  " }, { role: 5 }, { role: null }]) {
+    const rejected = await serveRoleModel(root, bad);
+    assert.equal(rejected.captured.status, 400);
+    assert.match((rejected.data as { error: string }).error, /role required/);
+  }
+  // A non-string field names that field.
+  const nonString = await serveRoleModel(root, { role: "feature", provider: 5 });
+  assert.equal(nonString.captured.status, 400);
+  assert.match((nonString.data as { error: string }).error, /"provider" must be a string/);
+  // A body with none of the three fields answers 400.
+  const none = await serveRoleModel(root, { role: "feature" });
+  assert.equal(none.captured.status, 400);
+  assert.match((none.data as { error: string }).error, /provider, model or thinking required/);
+  // An unknown role id is refused through validateConfig, writing nothing.
+  const unknown = await serveRoleModel(root, { role: "nope", provider: "claude" });
+  assert.equal(unknown.captured.status, 400);
+  assert.match((unknown.data as { error: string }).error, /unknown role|nope/i);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "every refused write leaves the file byte-identical");
+  // A no-op on an unknown role (clearing fields that role never had) is refused too, not a
+  // false 200 "updated": setRoleModelFields's up-front known-role guard covers the path
+  // validateConfig is skipped on.
+  const unknownNoop = await serveRoleModel(root, { role: "nope", provider: "" });
+  assert.equal(unknownNoop.captured.status, 400);
+  assert.match((unknownNoop.data as { error: string }).error, /unknown role|nope/i);
+});
 
 // POST /api/role-interval: the role drawer's min run interval editor. Writes through the
 // CLI's own setConfigKey dotted path (per-key checkMinRunInterval + whole-config

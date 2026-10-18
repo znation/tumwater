@@ -560,6 +560,39 @@ test("instances-edit opens the editor, instances-save posts the count (empty inp
   assert.deepEqual(events, ["stop"]);
 });
 
+test("model-edit seeds the editor from the raw overrides, model-save posts the trimmed triple, model-discard posts nothing", () => {
+  const posts: unknown[] = [];
+  const events: string[] = [];
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      drawerRole: { role: "clean", state: "ok", view: { providerOverride: "claude", modelOverride: "claude-opus-5", thinkingOverride: "high" } },
+      $: (id: string) => ({ "modeleditprovider": { value: " claude " }, "modeleditmodel": { value: "claude-opus-5" }, "modeleditthinking": { value: "high" } }[id] || null),
+      startModelEdit: (r: string, seed: object) => events.push(`edit ${r} ${JSON.stringify(seed)}`),
+      stopModelEdit: () => events.push("stop"),
+      modelEditing: { current: null },
+      loadDrawerRole: (r: string) => events.push(`load ${r}`),
+      postAction: (path: string, body: unknown, done: (d: unknown) => string) => {
+        posts.push([path, body]);
+        // postAction toasts the callback's message — record it as an event.
+        events.push(done({ message: "clean: model updated" }));
+      },
+    },
+  );
+  // model-edit seeds the editor with the payload's raw overrides.
+  scope.runAct("model-edit", "clean");
+  assert.deepEqual(events, ["edit clean " + JSON.stringify({ provider: "claude", model: "claude-opus-5", thinking: "high" })]);
+  // model-save posts the three trimmed input values and flashes the server's message.
+  scope.runAct("model-save", "clean");
+  assert.deepEqual(posts[0], ["/api/role-model", { role: "clean", provider: "claude", model: "claude-opus-5", thinking: "high" }]);
+  assert.deepEqual(events.slice(-2), ["load clean", "clean: model updated"]);
+  // model-discard closes the editor, posting nothing.
+  events.length = 0;
+  scope.runAct("model-discard", "clean");
+  assert.deepEqual(posts, [["/api/role-model", { role: "clean", provider: "claude", model: "claude-opus-5", thinking: "high" }]]);
+  assert.deepEqual(events, ["stop"]);
+});
+
 test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
   const log: string[] = [];
   const calls: string[] = [];

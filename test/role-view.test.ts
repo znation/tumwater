@@ -128,6 +128,32 @@ test("renderRoleMarkdown prints the Instances line only when a count is configur
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Instances:/);
 });
 
+test("the payload carries the raw model-triple overrides only when the file sets them", () => {
+  const dir = root();
+  // A config that sets provider/model/thinking only through roles feature: the resolved
+  // provider/model/thinking come from the top level, and the raw overrides ride along.
+  writeConfig(dir, { model: "model-a", roles: { feature: { provider: "prov-b", model: "model-b", thinking: "high" } } });
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.providerOverride, "prov-b");
+  assert.equal(p.modelOverride, "model-b");
+  assert.equal(p.thinkingOverride, "high");
+  // An instance id resolves the overrides through its base role, like instructions and the
+  // min-run override.
+  const inst = rolePayload(dir, "feature-2", NO_MODELS);
+  assert.equal(inst.modelOverride, "model-b");
+  // A role the file gives no overrides carries none — the payload stays byte-identical.
+  const none = rolePayload(dir, "bugfix", NO_MODELS);
+  assert.equal("providerOverride" in none, false);
+  assert.equal("modelOverride" in none, false);
+  assert.equal("thinkingOverride" in none, false);
+  // A partial triple carries only the fields the file sets.
+  writeConfig(dir, { roles: { feature: { model: "m" } } });
+  const partial = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal("providerOverride" in partial, false);
+  assert.equal(partial.modelOverride, "m");
+  assert.equal("thinkingOverride" in partial, false);
+});
+
 test("an instance id resolves the instructions override through its base role", () => {
   const dir = root();
   writeConfig(dir, { roles: { feature: { instructions: "Stay small.", instances: 2 } } });

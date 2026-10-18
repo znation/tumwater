@@ -117,6 +117,15 @@ export interface RoleViewPayload {
    * only when set — so a payload without one renders the team default and every existing
    * `role --json` golden stays byte-identical. */
   minRunIntervalOverride?: number;
+  /** The role's own raw provider override (the FILE's roles.<base>.provider), present only
+   * when the file sets it — distinct from the resolved `provider` field, which merges the
+   * top-level value. Read through the base role, so an instance id shows the override its
+   * runs carry. Absent when unset, so a payload without one stays byte-identical. */
+  providerOverride?: string;
+  /** The role's own raw model override (roles.<base>.model), present only when set. */
+  modelOverride?: string;
+  /** The role's own raw thinking override (roles.<base>.thinking), present only when set. */
+  thinkingOverride?: string;
   /** The configured parallel-runner count (roles.<base>.instances), present only when set —
    * so a payload without one stays byte-identical to before. Resolved through the base role
    * like the min-run-interval override, so an instance id shows the count its runs carry. */
@@ -332,6 +341,18 @@ export function rolePayload(
   // byte-identical when there is no override).
   const rawInterval = rawRoleField(root, base, "minRunIntervalSeconds");
   const minRunIntervalOverride = typeof rawInterval === "number" ? rawInterval : undefined;
+  // The raw provider/model/thinking the FILE holds (roles.<base>), distinct from the resolved
+  // provider/model/thinking fields configForRole merges with the top level — the drawer's
+  // Model overrides editor prefills from these, empty when unset. Presence is judged against
+  // the FILE (rawRoleField) like minRunIntervalOverride, so a config that relies on the top
+  // level or a tier name carries no override. Each is spread only when a string, so a file
+  // with no overrides yields a payload byte-identical to today's.
+  const providerOverrideRaw = rawRoleField(root, base, "provider");
+  const modelOverrideRaw = rawRoleField(root, base, "model");
+  const thinkingOverrideRaw = rawRoleField(root, base, "thinking");
+  const providerOverride = typeof providerOverrideRaw === "string" ? providerOverrideRaw : undefined;
+  const modelOverride = typeof modelOverrideRaw === "string" ? modelOverrideRaw : undefined;
+  const thinkingOverride = typeof thinkingOverrideRaw === "string" ? thinkingOverrideRaw : undefined;
   const capUsd = cfg.maxDailyCostUsdPerRole?.[base];
   let dailyCap: RoleViewPayload["dailyCap"];
   if (role !== DIRECTOR_ROLE && typeof capUsd === "number" && Number.isFinite(capUsd) && capUsd > 0) {
@@ -392,6 +413,9 @@ export function rolePayload(
     ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
     ...(minRunIntervalOverride !== undefined ? { minRunIntervalOverride } : {}),
+    ...(providerOverride !== undefined ? { providerOverride } : {}),
+    ...(modelOverride !== undefined ? { modelOverride } : {}),
+    ...(thinkingOverride !== undefined ? { thinkingOverride } : {}),
     // The configured parallel-runner count (roles.<base>.instances), present only when the
     // config sets it — unlike minRunIntervalSeconds no catalog seed fills built-ins' counts,
     // so the merged cfg tells presence exactly. Resolved through the base role like the

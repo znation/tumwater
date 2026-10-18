@@ -37,6 +37,8 @@ interface DrawerScope {
   stopIntervalEdit(): void;
   startInstancesEdit(role: string, value: number | string): void;
   stopInstancesEdit(): void;
+  startModelEdit(role: string, seed: { provider: string; model: string; thinking: string }): void;
+  stopModelEdit(): void;
   loadDrawerRole(role: string): Promise<void>;
   toggleLoop(role: string): void;
   toggleEntry(file: string, index: number): void;
@@ -1049,4 +1051,47 @@ test("the Configuration Model row names pi's saved default when no explicit mode
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<h3>Configuration<\/h3>/);
   assert.match(role, /<dt>Model<\/dt><dd[^>]*>pi default \(deepseek\/deepseek-v4\) \(default tier\)<\/dd>/);
+});
+
+// The Model overrides row (roles.<base>.*, rolePayload's providerOverride/modelOverride/
+// thinkingOverride) is the one per-role write the read-only Model row leaves out — the
+// dashboard half of the CLI's --provider/--model/--thinking. Always shown (every role), its
+// body names the raw overrides or `no overrides`, and its editor prefills the three inputs
+// from the payload's raw overrides.
+test("the Model overrides row names the raw triple and its editor prefills the raw overrides", async () => {
+  const withOv = openDrawer(["toggleLoop", "startModelEdit", "stopModelEdit"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "claude/claude-opus-5", modelTier: "strong", providerOverride: "claude", modelOverride: "claude-opus-5", thinkingOverride: "high" } },
+  });
+  withOv.scope.toggleLoop("clean");
+  await flush();
+  let role = withOv.paintedFor("drawerrole");
+  // The body names the payload's raw overrides joined by ·, with an Edit control.
+  assert.match(role, /<dt>Model overrides<\/dt><dd title='provider: claude · model: claude-opus-5 · thinking: high'>provider: claude · model: claude-opus-5 · thinking: high<button[^>]*data-act='model-edit'[^>]*>Edit<\/button><\/dd>/);
+  // Editing swaps in three inputs prefilled with the raw overrides plus Save/Discard.
+  withOv.scope.startModelEdit("clean", { provider: "claude", model: "claude-opus-5", thinking: "high" });
+  role = withOv.paintedFor("drawerrole");
+  assert.match(role, /<input id='modeleditprovider'[^>]*value='claude'>/);
+  assert.match(role, /<input id='modeleditmodel'[^>]*value='claude-opus-5'>/);
+  assert.match(role, /<input id='modeleditthinking'[^>]*value='high'>/);
+  assert.match(role, /data-act='model-save' data-arg='clean'/);
+  assert.match(role, /data-act='model-discard' data-arg='clean'/);
+  // Discarding restores the sentence and button.
+  withOv.scope.stopModelEdit();
+  role = withOv.paintedFor("drawerrole");
+  assert.match(role, /data-act='model-edit' data-arg='clean'>Edit<\/button>/);
+  assert.doesNotMatch(role, /modeleditprovider/);
+
+  // A role with no raw overrides says `no overrides` and offers a Set model control; the
+  // editor seeds empty inputs.
+  const none = openDrawer(["toggleLoop", "startModelEdit"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/default", modelTier: "default" } },
+  });
+  none.scope.toggleLoop("clean");
+  await flush();
+  const noneRole = none.paintedFor("drawerrole");
+  assert.match(noneRole, /<dt>Model overrides<\/dt><dd title='no overrides'>no overrides<button[^>]*data-act='model-edit'[^>]*>Set model<\/button><\/dd>/);
+  none.scope.startModelEdit("clean", { provider: "", model: "", thinking: "" });
+  assert.match(none.paintedFor("drawerrole"), /<input id='modeleditprovider'[^>]*value=''>/);
 });

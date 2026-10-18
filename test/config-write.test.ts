@@ -13,7 +13,7 @@ import { readJson } from "./helpers/json-read.js";
 import { fileURLToPath } from "node:url";
 import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { setConfigKey, unsetConfigKey, setDailyBudgetUsd } from "../src/config/config-write.js";
+import { setConfigKey, unsetConfigKey, setDailyBudgetUsd, setRoleModelFields } from "../src/config/config-write.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
 import { helpTopic } from "../src/cli/help.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
@@ -328,6 +328,102 @@ test("dotted writes preserve the file's own roles section", () => {
     merged,
     "a dotted unset leaves roles written",
   );
+});
+
+// setRoleModelFields — the dashboard role drawer's Model overrides editor — rebuilds
+// roles.<base> from the FILE's own roles section in one writeConfigMutation, never storing an
+// empty string, all-or-nothing through validateConfig (a bad thinking level writes nothing),
+// refuses an unknown base even on the no-op path, drops an entry (and the section) when its
+// last override is cleared, and no-ops when nothing actually changes (the file bytes stay
+// identical).
+test("setRoleModelFields sets, clears, and no-ops the model triple against the file's own section", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "tumwater.json");
+  const narrowed = { feature: { enabled: true }, qa: { enabled: false } };
+  fs.writeFileSync(file, JSON.stringify({ roles: narrowed }));
+
+  // A set rebuilds roles.feature from the file's own entry, preserving its other fields and
+  // the file's other entries (never re-expanding the section to the catalog).
+  let r = setRoleModelFields(dir, "feature", { provider: "claude", model: "claude-opus-5", thinking: "high" });
+  assert.deepEqual(r, { ok: true });
+  let raw = readJson(file) as Record<string, unknown>;
+  assert.deepEqual(raw.roles, {
+    feature: { enabled: true, provider: "claude", model: "claude-opus-5", thinking: "high" },
+    qa: { enabled: false },
+  });
+  assert.equal(loadConfig(dir).roles.feature?.provider, "claude");
+  assert.equal(loadConfig(dir).roles.feature?.thinking, "high");
+
+  // "" clears each named field; clearing keys the file never had is a no-op that leaves the
+  // file bytes identical.
+  r = setRoleModelFields(dir, "feature", { provider: "", model: "", thinking: "" });
+  assert.deepEqual(r, { ok: true });
+  raw = readJson(file) as Record<string, unknown>;
+  assert.deepEqual(
+    (raw.roles as { feature: Record<string, unknown> }).feature,
+    { enabled: true },
+    "all three overrides cleared, the entry's other fields kept",
+  );
+  // Re-clearing (the keys are already gone) is a no-op: the file bytes stay identical.
+  const afterClear = fs.readFileSync(file, "utf8");
+  r = setRoleModelFields(dir, "feature", { provider: "", model: "", thinking: "" });
+  assert.deepEqual(r, { ok: true });
+  assert.equal(fs.readFileSync(file, "utf8"), afterClear, "clearing a never-set field leaves the file byte-identical");
+
+  // undefined leaves that field as the file has it.
+  r = setRoleModelFields(dir, "feature", { model: "opus" });
+  assert.deepEqual(r, { ok: true });
+  raw = readJson(file) as Record<string, unknown>;
+  assert.deepEqual((raw.roles as { feature: Record<string, unknown> }).feature, { enabled: true, model: "opus" });
+});
+
+test("setRoleModelFields refuses an unknown base on a no-op and drops an entry whose last override is cleared", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "tumwater.json");
+  // A no-op (clearing fields a role the file never held) on an unknown base must not answer
+  // ok: validateConfig is skipped on that path, so the up-front known-role guard refuses the
+  // phantom role instead of a false "updated", writing nothing (no file created).
+  const fresh = tmpdir();
+  let r = setRoleModelFields(fresh, "nope", { provider: "", model: "", thinking: "" });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /unknown role "nope"/);
+  assert.equal(fs.existsSync(path.join(fresh, "tumwater.json")), false, "a refused no-op never creates the file");
+
+  // Clearing the entry's only overrides removes roles.<base> entirely — no empty object kept.
+  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { provider: "claude", model: "opus", thinking: "high" } } }));
+  r = setRoleModelFields(dir, "feature", { provider: "", model: "", thinking: "" });
+  assert.deepEqual(r, { ok: true });
+  let raw = readJson(file) as Record<string, unknown>;
+  assert.equal("roles" in raw, false, "the section emptied by dropping its last entry is removed, not kept as {}");
+  // A role with other fields keeps them when only the triple is cleared.
+  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { provider: "claude", enabled: true, model: "opus" } } }));
+  r = setRoleModelFields(dir, "feature", { provider: "", model: "" });
+  assert.deepEqual(r, { ok: true });
+  raw = readJson(file) as Record<string, unknown>;
+  assert.deepEqual((raw.roles as { feature: Record<string, unknown> }).feature, { enabled: true }, "the other fields survive a triple clear");
+});
+
+test("setRoleModelFields is all-or-nothing: a bad thinking level or unknown role writes nothing", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "tumwater.json");
+  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { enabled: true, provider: "claude" } } }));
+
+  // A bad thinking level names roles.feature.thinking and leaves the whole entry untouched
+  // (the provider set alongside it is not written either — the candidate failed validation).
+  const before = fs.readFileSync(file, "utf8");
+  let r = setRoleModelFields(dir, "feature", { provider: "claude", thinking: "bogus" });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /roles\.feature\.thinking/);
+  assert.equal(fs.readFileSync(file, "utf8"), before, "a rejected candidate never touches the file");
+  const raw = readJson(file) as Record<string, unknown>;
+  assert.equal((raw.roles as { feature: Record<string, unknown> }).feature.provider, "claude", "the prior provider value is kept");
+
+  // An unknown base id is refused by validateConfig, writing nothing (no file is created).
+  const fresh = tmpdir();
+  r = setRoleModelFields(fresh, "nope", { provider: "claude" });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /unknown role|nope/i);
+  assert.equal(fs.existsSync(path.join(fresh, "tumwater.json")), false, "a refused write never creates the file");
 });
 
 test("parseConfigKey rejects dotted shapes outside the per-role maps and roles entries", () => {

@@ -6,7 +6,7 @@
  * the config-write domain module. Each handler adapts HTTP and touches no socket beyond its
  * own `res`.
  */
-import { setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
+import { setConfigKey, setDailyBudgetUsd, setRoleModelFields, unsetConfigKey } from "../config/config-write.js";
 import { checkDailyBudgetUsd, checkMinRunInterval } from "../config/config-keys.js";
 import { testNotifyHook } from "../cli/notify-command.js";
 import { rejectBadRole, requireConfigKey } from "./gui-args.js";
@@ -185,6 +185,48 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
   const result = setConfigKey(root, `roles.${base}.instances`, JSON.stringify(value));
   if (!result.ok) return configKeyError(res, `roles.${base}.instances`, result);
   sendJson(res, 200, { ok: true, role: base, instances: value, message: `${base}: instances set to ${value as number}` });
+}
+
+/** Handle POST /api/role-model: the role drawer's Model overrides editor sets or clears one
+ * role's provider/model/thinking triple (roles.<base>.provider/.model/.thinking) in one
+ * atomic write, prefilled from the payload's raw overrides — the per-role model write the
+ * `Model` row it still shows read-only is missing (the CLI's --provider/--model/--thinking
+ * already write it). Same body discipline as /api/role-interval (readPostBody → 400
+ * malformed/non-object, 413 oversized); a missing/blank role is a 400 `role required`, each
+ * of the three must be a string when present (400 naming the field otherwise), and at least
+ * one must be present (400 `provider, model or thinking required`). A bare `feature-2` loop
+ * id maps to its base role's keys (baseRoleOf). The director is accepted — configForRole
+ * resolves roles.director.* like any role's, matching the CLI's accepted triple for it.
+ * Values are trimmed; `""` clears that field (never stored — checkStringField rejects an
+ * empty string). The write rides setRoleModelFields, whose validateConfig names
+ * roles.<base>.<field> on a bad value and refuses an unknown role, reported as a 400 exactly
+ * as handleRoleInterval reports a write failure. */
+export async function handleRoleModel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"role": "feature", "provider": "claude", "model": "claude-opus-5", "thinking": "high"}');
+  if (!body) return;
+  const role = body.role;
+  if (typeof role !== "string" || role.trim() === "") {
+    badRequest(res, "role required");
+    return;
+  }
+  const fields: { provider?: string; model?: string; thinking?: string } = {};
+  for (const key of ["provider", "model", "thinking"] as const) {
+    const value = body[key];
+    if (value === undefined) continue;
+    if (typeof value !== "string") {
+      badRequest(res, `"${key}" must be a string — a model override, or "" to clear it${gotSuffix(value)}`);
+      return;
+    }
+    fields[key] = value.trim();
+  }
+  if (!("provider" in fields) && !("model" in fields) && !("thinking" in fields)) {
+    badRequest(res, "provider, model or thinking required");
+    return;
+  }
+  const base = baseRoleOf(role);
+  const result = setRoleModelFields(root, base, fields);
+  if (!result.ok) return badRequest(res, result.error);
+  sendJson(res, 200, { ok: true, role: base, message: `${base}: model updated` });
 }
 
 /** Handle POST /api/role-instructions: the role drawer's standing-instructions editor — the
