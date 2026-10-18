@@ -1,4 +1,4 @@
-// --- src/report/report-data.ts: collectReport's memoized event-log fold ---
+// --- src/report/report-fold.ts: collectReport's memoized event-log fold ---
 // collectReport caches the event-log half of the day report per (root, fromKey) so a
 // dashboard re-fetching /api/report every poll folds only appended log lines instead of
 // re-reading the whole window. These tests pin the contract the memo must hold: a warm call

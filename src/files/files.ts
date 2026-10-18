@@ -29,9 +29,9 @@ export function statOrNull(file: string): fs.Stats | null {
  * plus matching size and, when the caller tracks it, mtime. The one home of the freshness
  * check shared by files/stat-cache.ts's cachedByStat, events/events.ts's appended-shape memo
  * (`mtimeMs` omitted — it decides "our own append left this log clean" from identity and size
- * alone), report/report-data.ts's fold cache, gates/maintenance-quota.ts's window counter,
+ * alone), report/report-fold.ts's fold cache, gates/maintenance-quota.ts's window counter,
  * and failure/failure-data.ts's digest cache. Callers whose cached field is a byte offset
- * rather than a size (report-data, maintenance-quota) pass that offset as `size`, since a
+ * rather than a size (report-fold, maintenance-quota) pass that offset as `size`, since a
  * fully-folded log's offset equals its length. */
 export function sameStatIdentity(
   st: { dev: number; ino: number; size: number; mtimeMs: number },

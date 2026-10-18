@@ -280,7 +280,7 @@ interface FailureDigestEntry {
  * collector re-reads and re-parses up to 2× the window's log bytes each time (~4 MB on this
  * repo's own log, growing toward the rotation cap). An unchanged log and window cost one stat
  * and return the prior result; any change — an append, a rotation, or a new local day —
- * re-derives exactly as uncached. Mirrors report-data.ts's foldWindowEvents, which already
+ * re-derives exactly as uncached. Mirrors report-fold.ts's foldWindowEvents, which already
  * spares the usage report the same re-read. */
 const failureDigestCache = new Map<string, FailureDigestEntry>();
 const FAILURE_DIGEST_CACHE_MAX = 8;

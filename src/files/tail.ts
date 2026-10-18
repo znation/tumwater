@@ -19,7 +19,7 @@ import { piLogPath } from "../paths.js";
  * re-read next poll once its writer has written the newline instead of being parsed torn
  * or lost. The tail primitives here build on it (withTail, followFile); outside this
  * module it is called directly by src/ui/progress-data.ts, src/ui/transcript-tail.ts, and
- * the report fold in src/report/report-data.ts. */
+ * the report fold in src/report/report-fold.ts. */
 export function readCompleteLines(file: string, offset: number, size: number): { lines: string[]; end: number } {
   const len = size - offset;
   if (len <= 0) return { lines: [], end: offset };

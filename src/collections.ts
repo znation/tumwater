@@ -50,7 +50,7 @@ export function increment<K>(map: Map<K, number>, key: K): void {
  * step (the seed matters because `noUncheckedIndexedAccess` reads every entry as possibly
  * undefined), shared by the failure digest's outcome tally per role (failure-data.ts), the
  * usage report's window role totals (report-render.ts), and its per-day fold's tick and cost
- * tallies (report-data.ts), so those sites cannot drift on how a missing key is seeded. The
+ * tallies (report-fold.ts), so those sites cannot drift on how a missing key is seeded. The
  * test duration reporter (test/test-durations-reporter.ts) keeps its own copy: it imports no
  * tumwater module by design, since node --test loads it into its own parent process.
  *
@@ -71,7 +71,7 @@ export function addTo<K extends string>(
  * (delete + re-set, so a re-read at the cap does not evict itself) and, when the map would
  * exceed `max` entries, dropping the oldest (first-inserted) one. The single home of the
  * bounded-memo discipline — the `delete(key); set(key, …)` refresh and the
- * `keys().next().value` oldest-eviction — shared by the report fold (report-data.ts's
+ * `keys().next().value` oldest-eviction — shared by the report fold (report-fold.ts's
  * reportFoldCache), the failure digest (failure-data.ts's failureDigestCache), and the
  * baseline verdict cache (main-baseline.ts's baselineCache), so those sites cannot drift on
  * how a hit is refreshed or an over-cap cache drained. After any call the map holds at most
