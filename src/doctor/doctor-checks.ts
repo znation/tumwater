@@ -12,6 +12,7 @@ import {
 } from "../config/config.js";
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
+import { isPassingFullCheck } from "../build/build-check-events.js";
 import { CUSTOM_NAME_RE, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
@@ -938,7 +939,7 @@ export function checkProviderConcurrency(config: TumwaterConfig | undefined, roo
  * figure a run that happened. Undefined when no event qualifies. */
 export function checkDurationPhrase(events: readonly HarnessEvent[]): string | undefined {
   const durations = events
-    .filter((e) => e.type === "build_check" && e.status === "passed" && ["merge", "batch", "baseline"].includes(String(e.scope)))
+    .filter(isPassingFullCheck)
     .map((e) => finiteNumber(e.durationMs, 0))
     .filter((ms) => ms > 0);
   if (durations.length === 0) return undefined;
