@@ -3,7 +3,7 @@ import { mergeApproved, type BatchRoleWiring } from "./merge-batch.js";
 import { removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
-import { dropMerge, queuedMergeFiles } from "./merge-queue.js";
+import { dropMerge, entryRevisionFields, queuedMergeFiles } from "./merge-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { saveLoopState } from "../loop/loop-state.js";
@@ -176,8 +176,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
           summary: v.entry.summary,
           body: v.entry.body,
           highFriction: v.entry.highFriction,
-          ...(v.entry.revisionRound !== undefined ? { revisionRound: v.entry.revisionRound } : {}),
-          ...(v.entry.priorReview !== undefined ? { priorReview: v.entry.priorReview } : {}),
+          ...entryRevisionFields(v.entry),
           ...(v.verifiedHead !== undefined ? { verifiedHead: v.verifiedHead } : {}),
         })),
         (role) => wiring.get(role)!,

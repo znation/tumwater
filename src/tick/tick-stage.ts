@@ -17,7 +17,7 @@ import {
   stampedSubject,
 } from "../git/commit-message.js";
 import { logEventBestEffort } from "../events/events.js";
-import { enqueueMerge } from "../merge/merge-queue.js";
+import { enqueueMerge, entryRevisionFields } from "../merge/merge-queue.js";
 import { plural } from "../text/phrases.js";
 import { recordFlow } from "./qa-coverage.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
@@ -298,8 +298,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
     summary,
     body: body ? formatCommitBody(body) : undefined,
     highFriction: highFriction || undefined,
-    ...(revisionRound !== undefined ? { revisionRound } : {}),
-    ...(priorReview !== undefined ? { priorReview } : {}),
+    ...entryRevisionFields({ revisionRound, priorReview }),
     enqueuedAt: Date.now(),
   });
   // The revision is now in flight: the rejected ref's lifecycle continues in the merger

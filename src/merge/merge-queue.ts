@@ -81,6 +81,17 @@ export function enqueueMerge(root: string, entry: MergeEntry): void {
   writeJsonAtomic(path.join(dir, name), entry);
 }
 
+/** The revision fields of a queue entry, serialized only when present — the shape merge
+ * surfaces (drain, verify) and the tick-stage enqueue re-emit when they build their own
+ * entry/request objects, so the `revisionRound`/`priorReview` names live in one place and
+ * cannot drift. */
+export function entryRevisionFields(e: { revisionRound?: number; priorReview?: PriorReview }): { revisionRound?: number; priorReview?: PriorReview } {
+  return {
+    ...(e.revisionRound !== undefined ? { revisionRound: e.revisionRound } : {}),
+    ...(e.priorReview !== undefined ? { priorReview: e.priorReview } : {}),
+  };
+}
+
 /** Every queue file in execution order (oldest first) — the same filename sort queuedMerges,
  * headMerge, and the orchestrator's per-poll queued-roles set read. A missing queue dir
  * reads as an empty queue. */

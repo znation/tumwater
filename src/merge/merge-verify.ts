@@ -8,7 +8,7 @@ import { withProviderLease } from "../concurrency/provider-lease.js";
 import { LoopRunner } from "../loop/loop.js";
 import { branchHead, isMergedInto } from "../git/git.js";
 import { addMergeChange, mergeUsage, removeMergeChange, setMergeChangeStatus } from "./merge-slot.js";
-import { dropMerge, queuedMergeFiles, staleHeadFile, type MergeEntry } from "./merge-queue.js";
+import { dropMerge, entryRevisionFields, queuedMergeFiles, staleHeadFile, type MergeEntry } from "./merge-queue.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { verifyRequest, type VerifyVerdict } from "./merge-batch.js";
@@ -192,8 +192,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
                 summary: entry.summary,
                 body: entry.body,
                 highFriction: entry.highFriction,
-                ...(entry.revisionRound !== undefined ? { revisionRound: entry.revisionRound } : {}),
-                ...(entry.priorReview !== undefined ? { priorReview: entry.priorReview } : {}),
+                ...entryRevisionFields(entry),
               },
               { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runMergePi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
             ),
