@@ -11,6 +11,7 @@
 import { spawnSync } from "node:child_process";
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
 import { opencodeModelsPath } from "../../paths.js";
+import { logEventBestEffort, type HarnessEventInput } from "../../events/events.js";
 
 /** models.dev's catalog, the data OpenCode caches in its database `kv` table (finding 10). */
 const CATALOG_URL = "https://models.dev/api.json";
@@ -126,6 +127,52 @@ export function parseOpencodeCatalog(body: unknown, providers: readonly string[]
 export function opencodeModelFree(cache: OpencodeCatalogCache, model: string): boolean {
   const entry = cache.models[model];
   return entry !== undefined && entry.free && entry.billedAt === undefined;
+}
+
+/** The catalog cache key for an opencode run's resolved selector: the `<provider>/<model>`
+ * form part 6a/7 keys the cache by. A selector already bearing a slash is a routed provider
+ * key (`opencode-go/<model>`), kept as-is; a bare id is the `opencode` gateway and gets the
+ * `opencode/` prefix — the same rule opencode-args.ts applies when it builds the `--model`
+ * arg, so the key a run is priced by always matches the key a run is billed by. */
+export function opencodeModelKey(selector: string): string {
+  return selector.includes("/") ? selector : `opencode/${selector}`;
+}
+
+/** Options for observeOpencodeRun, every moving part injectable so the demo logic is testable
+ * with no real event feed. */
+interface OpencodeObserveOptions {
+  /** The event-feed source (role id) for the `opencode_free_model_billed` event. */
+  source: string;
+  /** Overrides Date.now, for a deterministic `billedAt` stamp. */
+  now?: () => number;
+  /** Overrides the event logger (default logEventBestEffort), for tests. */
+  log?: (event: HarnessEventInput) => void;
+}
+
+/** Demote a catalog-free model the moment a run bills it (part 6c/7): when a run reports a
+ * nonzero cost on a model the cache calls free, mark that entry priced (`billedAt`) in the
+ * cache and log `opencode_free_model_billed` {model, costUsd} once. A subsequent priced run on
+ * the same model sees `billedAt` already set and stays silent, and the next
+ * `opencodeModelFree` answer for it is false. A run reporting $0, a priced model, or an
+ * unknown model leaves the cache untouched — a $0 run never demotes (missing and priced
+ * models are already "not free" to opencodeModelFree). Best-effort like observeClaudeAccount:
+ * the caller wraps the write/log in try/catch so an unwritable cache or feed never fails the
+ * run that observed it. Returns the cache after the observation, or null when nothing changed. */
+export function observeOpencodeRun(
+  root: string,
+  run: { model: string; costUsd: number },
+  opts: OpencodeObserveOptions,
+): OpencodeCatalogCache | null {
+  const cache = loadOpencodeCache(root);
+  const entry = cache.models[run.model];
+  if (entry === undefined || !entry.free || entry.billedAt !== undefined || run.costUsd <= 0) {
+    return null;
+  }
+  entry.billedAt = opts.now !== undefined ? opts.now() : Date.now();
+  writeOpencodeCache(root, cache);
+  const log = opts.log !== undefined ? opts.log : (e: HarnessEventInput) => logEventBestEffort(root, e);
+  log({ source: opts.source, type: "opencode_free_model_billed", model: run.model, costUsd: run.costUsd });
+  return cache;
 }
 
 /** Read the cached catalog, or an empty one (fetchedAt 0, no models) when the file is missing

@@ -41,24 +41,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - **Fallback:** a free OpenCode model works as the budget `fallback` for a priced pi primary.
 - `npm test` passes.
 
-### OpenCode backend, part 6c/7: An observed price on a catalog-free OpenCode model demotes it to priced and logs an event (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/agent/opencode/opencode-catalog.ts src/events/events.ts src/events/event-format.ts src/tick/tick-finalize.ts src/merge/merge-slot.ts and their tests)
-
-**Goal.** If the promotion ends and OpenCode bills a model the cache calls free, tumwater notices on the first priced run and treats that model as priced from then on.
-
-**Approach.**
-- **src/agent/opencode/opencode-catalog.ts:** `observeOpencodeRun(root, { model, costUsd })` — a run with `costUsd > 0` on a model the cache calls free sets `billedAt` on that entry and logs `opencode_free_model_billed` {model, costUsd} once.
-- **src/events/events.ts:** the new `opencode_free_model_billed` event; render it in src/events/event-format.ts.
-- **src/tick/tick-finalize.ts** and **src/merge/merge-slot.ts:** call `observeOpencodeRun` next to `observeClaudeAccount`, with the run's resolved model and its `costUsd`.
-
-**Files touched.**
-- Source: src/agent/opencode/opencode-catalog.ts, src/events/events.ts, src/events/event-format.ts, src/tick/tick-finalize.ts, src/merge/merge-slot.ts.
-- Tests: test/opencode-catalog.test.ts, test/event-format.test.ts, test/tick-finalize.test.ts, test/merge-slot.test.ts.
-
-**Acceptance criteria.**
-- A fake run reporting a cost on a cached free model sets `billedAt` and logs `opencode_free_model_billed` once; a second priced run does not log it again; the next `opencodeModelFree` answer is false.
-- A run reporting cost 0 leaves the entry free and logs nothing.
-- `npm test` passes.
-
 ### OpenCode backend, part 6d/7: OpenCode thinking variants and image input come from the catalog (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/agent/opencode/opencode-backend.ts src/agent/opencode/opencode-args.ts and their tests)
 
 **Goal.** A thinking level OpenCode's catalog lists for the model rides the invocation as `#<level>`; a level it does not list is dropped; and the backend answers whether its model reads images from the same catalog.
@@ -1210,6 +1192,24 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 
 ## Done
 
+
+### OpenCode backend, part 6c/7: An observed price on a catalog-free OpenCode model demotes it to priced and logs an event (planned 2026-10-17 by user; split 2026-10-17 by the plan role from part 6/7; requires part 6a/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/agent/opencode/opencode-catalog.ts src/events/events.ts src/events/event-format.ts src/events/event-labels.ts src/loop/loop-pi.ts and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** If the promotion ends and OpenCode bills a model the cache calls free, tumwater notices on the first priced run and treats that model as priced from then on.
+
+**Approach.**
+- **src/agent/opencode/opencode-catalog.ts:** `observeOpencodeRun(root, { model, costUsd }, { source })` — a run with `costUsd > 0` on a model the cache calls free sets `billedAt` on that entry and logs `opencode_free_model_billed` {model, costUsd} once; plus `opencodeModelKey`, the selector→cache-key mapping that matches opencode-args.ts's own `opencode/` prefix rule.
+- **src/events/events.ts:** the new `opencode_free_model_billed` event; render it in src/events/event-format.ts and label it in src/events/event-labels.ts.
+- **src/loop/loop-pi.ts** (`observeFreeModelCost`): observe at the fold chokepoint every run of the loop passes through — the one place that holds the run's resolved model (opts.config), its cost, and the loop's root and role. The plan named tick-finalize/merge-slot next to observeClaudeAccount, but neither call site carries the run's model on the data it sees (PiRunResult/TickUsage), so the seam moved here while the entry was implemented.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-catalog.ts, src/events/events.ts, src/events/event-format.ts, src/events/event-labels.ts, src/loop/loop-pi.ts.
+- Tests: test/opencode-catalog.test.ts, test/event-format.test.ts, test/loop-pi-opencode.test.ts (new).
+
+**Acceptance criteria.**
+- A fake run reporting a cost on a cached free model sets `billedAt` and logs `opencode_free_model_billed` once; a second priced run does not log it again; the next `opencodeModelFree` answer is false.
+- A run reporting cost 0 leaves the entry free and logs nothing.
+- `npm test` passes.
 
 ### The team alert banner names the per-role daily-cap hold and the maintenance-allowance hold, so an operator sees why roles are idling without reading every row (planned 2026-10-17 by the plan role; independent of the two eligible Planned entries — the OpenCode 6a/7 plan touches src/agent/opencode/ and src/paths.ts, and the day-report model plan touches src/report/ and src/ui/gui/gui-client-report.ts — while this touches only src/ui/team-alerts.ts; the blocked plain-terms series renames `AlertLoop`→`AlertRole` in the same file, so whichever merges second rebases; touches src/ui/team-alerts.ts test/team-alerts.test.ts) — done 2026-10-17 by the feature role
 

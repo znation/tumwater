@@ -990,6 +990,27 @@ test("formatEvent renders the model-fallback episode start and end", () => {
   assert.doesNotMatch(endedTorn, /NaN/);
 });
 
+test("formatEvent renders an opencode free model billed as demoted from free to priced", () => {
+  const line = formatEvent({
+    ts: 0,
+    source: "feature",
+    type: "opencode_free_model_billed",
+    model: "opencode/deepseek-v4.1-flash-free",
+    costUsd: 0.05,
+  } as never);
+  assert.match(line, /feature\s+opencode opencode\/deepseek-v4\.1-flash-free billed \$0\.05 — demoted from free to priced$/);
+  // A torn cost reads as $0, never NaN or undefined.
+  const torn = formatEvent({
+    ts: 0,
+    source: "feature",
+    type: "opencode_free_model_billed",
+    model: "opencode/m",
+    costUsd: "five",
+  } as never);
+  assert.match(torn, /\$0\.00 — demoted from free to priced$/);
+  assert.doesNotMatch(torn, /NaN|undefined/);
+});
+
 test("formatEvent renders slot_wait with the wait, purpose, and pool shape", () => {
   const line = formatEvent({
     ts: 0,

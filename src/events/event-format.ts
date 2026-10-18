@@ -474,6 +474,12 @@ export function eventMessage(e: HarnessEvent): string {
     case "model_fallback_ended":
       // The return counterpart: names the pair ticks resume on and how long the episode ran.
       return `model fallback ended — back on ${textOr(e.provider, "pi's default")}/${textOr(e.model, "pi's default")} after ${minutes(e.durationMs)}m`;
+    case "opencode_free_model_billed":
+      // The promotion ended (plans/opencode-backend.md §7, part 6c/7): a run billed what the
+      // catalog called free, so the team now prices that model as paid from here on. No warning
+      // prefix — the demotion is the harness handling the spend — but it names the model and the
+      // cost so the operator sees why a badge stopped saying "cost n/a".
+      return `opencode ${textOr(e.model, "model")} billed ${usd(finiteNumber(e.costUsd, 0))} — demoted from free to priced`;
     case "image_blind": {
       // Routine-with-explanation like the model-fallback events — no warning prefix: the
       // run was stopped (or a gate run noted) because the model cannot see the image. Names

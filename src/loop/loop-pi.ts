@@ -9,6 +9,7 @@ import { configForRole, seamHoldKey, seamPairName, type ResolvedModelConfig } fr
 import { ensureProviderLease } from "../concurrency/provider-lease.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
+import { observeOpencodeRun, opencodeModelKey } from "../agent/opencode/opencode-catalog.js";
 import { dailyCost, teamDailyCost, pairDailyCost } from "../budget/budget.js";
 import { loadLoopState } from "./loop-state.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
@@ -245,6 +246,25 @@ export class LoopPi {
    * Extracted verbatim from runRolePi so the rule lives in one place
    * (574a14c's loopPiOpts move was the wiring half of the same single-source-of-truth).
    */
+  /** Part 6c/7: demote a catalog-free opencode model the first time a run bills it. Observed
+   * here — the fold chokepoint every run of the loop passes through — because it is the one
+   * place that has the run's resolved model (opts.config) and its cost (the run) together, and
+   * it holds the loop's root and role for the cache and the event feed. pi and claude runs
+   * have no opencode catalog entry and no-op. Best-effort like observeClaudeAccount: an
+   * unwritable cache or event feed must not fail the run that observed it. */
+  private observeFreeModelCost(run: PiRunResult, config: ResolvedModelConfig): void {
+    if (config.agent !== "opencode") return;
+    try {
+      observeOpencodeRun(
+        this.host.root,
+        { model: opencodeModelKey(config.model ?? ""), costUsd: run.costUsd },
+        { source: this.host.role },
+      );
+    } catch {
+      // The next priced run demotes it; nothing this run depends on is lost.
+    }
+  }
+
   private async runWithTransientRetry(
     opts: PiRunOptions,
     /** runGatePi only: skip folding the FINAL returned run (the caller folds it), while a
@@ -274,6 +294,7 @@ export class LoopPi {
     await ensureProviderLease(opts.config);
     const pi = await runPi(opts);
     this.warnFallbackClone(pi);
+    this.observeFreeModelCost(pi, opts.config);
     if (
       !pi.aborted &&
       !pi.timedOut &&
@@ -328,6 +349,7 @@ export class LoopPi {
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
       this.warnFallbackClone(retry);
+      this.observeFreeModelCost(retry, opts.config);
       if (foldFinal) fold(retry);
       this.warnBackendKindFloor(retry);
       return retry;

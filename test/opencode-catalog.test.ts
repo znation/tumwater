@@ -12,12 +12,16 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   opencodeModelFree,
+  opencodeModelKey,
+  observeOpencodeRun,
   parseOpencodeCatalog,
   refreshOpencodeCatalog,
   writeOpencodeCache,
   type OpencodeCatalogCache,
   type CatalogFetch,
 } from "../src/agent/opencode/opencode-catalog.js";
+import { opencodeModelsPath } from "../src/paths.js";
+import type { HarnessEventInput } from "../src/events/events.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** The real 2.0.32 catalogue capture (finding 10). From the compiled module
@@ -186,4 +190,67 @@ test("a failed fetch keeps the old cache and logs one warning", async () => {
   const kept = result.models["opencode/deepseek-v4.1-flash-free"];
   assert.ok(kept);
   assert.equal(kept.free, true);
+});
+
+test("observeOpencodeRun demotes a cached free model on a priced run, once", () => {
+  const root = tmpdir();
+  writeOpencodeCache(root, { fetchedAt: 1, models: { "opencode/free-m": { free: true } } });
+  const logged: HarnessEventInput[] = [];
+  const first = observeOpencodeRun(
+    root,
+    { model: "opencode/free-m", costUsd: 0.05 },
+    { source: "feature", now: () => 42, log: (e) => logged.push(e) },
+  );
+  assert.ok(first, "a priced run on a free model returns the demoted cache");
+  assert.equal(first.models["opencode/free-m"]?.billedAt, 42);
+  assert.equal(opencodeModelFree(first, "opencode/free-m"), false, "demoted to priced");
+  assert.equal(logged.length, 1, "logs the event once");
+  assert.equal(logged[0]!.type, "opencode_free_model_billed");
+  assert.equal(logged[0]!.model, "opencode/free-m");
+  assert.equal(logged[0]!.costUsd, 0.05);
+  // A second priced run re-reads the persisted cache (billedAt survives a reload), so it logs
+  // nothing and changes nothing — the demotion is stable across reads.
+  const second = observeOpencodeRun(
+    root,
+    { model: "opencode/free-m", costUsd: 0.04 },
+    { source: "feature", log: (e) => logged.push(e) },
+  );
+  assert.equal(second, null);
+  assert.equal(logged.length, 1, "the second priced run does not log again");
+  const persisted = JSON.parse(fs.readFileSync(opencodeModelsPath(root), "utf8")) as { models: Record<string, { billedAt?: number }> };
+  assert.equal(persisted.models["opencode/free-m"]?.billedAt, 42, "the demotion is written to the cache");
+});
+
+test("observeOpencodeRun leaves a $0 run free and logs nothing", () => {
+  const root = tmpdir();
+  writeOpencodeCache(root, { fetchedAt: 1, models: { "opencode/free-m": { free: true } } });
+  const logged: HarnessEventInput[] = [];
+  const result = observeOpencodeRun(
+    root,
+    { model: "opencode/free-m", costUsd: 0 },
+    { source: "feature", log: (e) => logged.push(e) },
+  );
+  assert.equal(result, null);
+  assert.equal(logged.length, 0, "a $0 run logs nothing");
+  const persisted = JSON.parse(fs.readFileSync(opencodeModelsPath(root), "utf8")) as { models: Record<string, { free: boolean; billedAt?: number }> };
+  assert.equal(persisted.models["opencode/free-m"]?.free, true);
+  assert.equal(persisted.models["opencode/free-m"]?.billedAt, undefined, "a $0 run never demotes");
+});
+
+test("observeOpencodeRun ignores unknown and already-priced models", () => {
+  const root = tmpdir();
+  writeOpencodeCache(root, {
+    fetchedAt: 1,
+    models: { "opencode/priced": { free: false }, "opencode/free-billed": { free: true, billedAt: 7 } },
+  });
+  const logged: HarnessEventInput[] = [];
+  assert.equal(observeOpencodeRun(root, { model: "opencode/unknown", costUsd: 1 }, { source: "feature", log: (e) => logged.push(e) }), null);
+  assert.equal(observeOpencodeRun(root, { model: "opencode/priced", costUsd: 1 }, { source: "feature", log: (e) => logged.push(e) }), null);
+  assert.equal(observeOpencodeRun(root, { model: "opencode/free-billed", costUsd: 1 }, { source: "feature", log: (e) => logged.push(e) }), null);
+  assert.equal(logged.length, 0);
+});
+
+test("opencodeModelKey maps a bare gateway id and keeps a routed provider key", () => {
+  assert.equal(opencodeModelKey("deepseek-v4.1-flash-free"), "opencode/deepseek-v4.1-flash-free");
+  assert.equal(opencodeModelKey("opencode-go/deepseek-v4.1-flash"), "opencode-go/deepseek-v4.1-flash");
 });
