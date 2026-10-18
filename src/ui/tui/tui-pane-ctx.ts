@@ -7,7 +7,6 @@ export interface TuiPaneEditorState {
   budgetMode: boolean;
   rolePromptFor: string | null;
   searchMode: boolean;
-  deferMode: boolean;
   pauseEditMode: boolean;
   queuedEditFor: { role: string; file: string } | null;
   answerFor: { position: number; title: string } | null;
@@ -39,7 +38,7 @@ export interface TuiPaneCtx {
  * exclusion reads on its own instead of leaning on the routing order. */
 export function promptLineFree(es: TuiPaneEditorState): boolean {
   return (
-    !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode &&
+    !es.budgetMode && !es.rolePromptFor && !es.searchMode &&
     !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
     !es.notesEditFor && !es.briefEditMode && !es.retireMode && !es.quietMode
   );

@@ -61,7 +61,7 @@ export function createNotesEditor(session: TuiEditorSession): TuiEditorModule {
         exitNotesMode();
       } else {
         // Mid-recall, hand the arrows' saved draft back before the notes editor takes the
-        // line — the same settle the defer and role editors do — so leaving restores the
+        // line — the same settle the role editors do — so leaving restores the
         // draft, not a history entry, with no stale recall state riding along.
         const role = ctx.roleIds[ctx.view - 1]!; // defined: the open-arm range guard above pins the view into roleIds
         session.settleDraft((t) => (notesSavedInput = t), (n) => (notesSavedCursor = n));

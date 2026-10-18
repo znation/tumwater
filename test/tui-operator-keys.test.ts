@@ -296,7 +296,7 @@ test("Ctrl+F during a / search is inert: no pause editor opens over the search",
   });
 });
 
-test("a 91d pause entry flashes the cap error and keeps the editor open; Ctrl+B and Ctrl+L refuse", async () => {
+test("a 91d pause entry flashes the cap error and keeps the editor open; Ctrl+B refuses", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "f", { ctrl: true });
@@ -306,8 +306,6 @@ test("a 91d pause entry flashes the cap error and keeps the editor open; Ctrl+B 
     assert.match(tui.lastFrame(), /pause is capped at 90d/);
     assert.match(tui.lines().at(-1) ?? "", /^pause › 91d/);
     tui.key(undefined, "b", { ctrl: true });
-    assert.match(tui.lastFrame(), /finish or cancel the pause first/);
-    tui.key(undefined, "l", { ctrl: true });
     assert.match(tui.lastFrame(), /finish or cancel the pause first/);
     assert.match(tui.lines().at(-1) ?? "", /^pause ›/);
   });

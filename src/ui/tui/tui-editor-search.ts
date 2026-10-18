@@ -32,7 +32,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
   ): boolean => {
     if (
       !key.ctrl && str === "/" && !searchMode && !session.held.budget &&
-      !session.held.rolePromptFor && !session.held.defer && !session.held.pause &&
+      !session.held.rolePromptFor && !session.held.pause &&
       !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.attach && !session.held.retire &&
       (ctx.view === 0 || ctx.view === ctx.roleIds.length + 4) && session.input === ""

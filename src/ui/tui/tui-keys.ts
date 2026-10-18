@@ -49,8 +49,6 @@ interface TuiKeysState {
   cursor: number;
   budgetMode: boolean;
   rolePromptFor: string | null;
-  /** Whether the prompt line is editing the next prompt's defer delay (Ctrl+L). */
-  deferMode: boolean;
   /** Whether the prompt line is editing an image path to attach to the next director prompt
    * (Ctrl+V on the Activity view). */
   attachMode: boolean;
@@ -74,9 +72,6 @@ interface TuiKeysState {
   pauseEditWake: boolean;
   /** the team editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F) */
   pauseEditStop: boolean;
-  /** The pending defer delay as a human label (durationLabel), or null when the next prompt
-   * delivers immediately; named in the prompt prefix and the Ctrl+L hint. */
-  defer: string | null;
   view: number;
   /** The Health pane's problems-only view (Ctrl+O): whether the tab paints only the warn and
    * fail checks, the same trim `tumwater doctor --problems` applies. Session-only like the

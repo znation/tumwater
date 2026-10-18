@@ -37,13 +37,13 @@ export function createTranscriptPane(session: TuiPaneSession) {
       // dashboard drawer use. Guarded to a transcript view and out of budget-edit and
       // role-prompt modes, the same way the per-loop controls below are; the History view's
       // trail arm is handled by the history module ahead of this one in the routing order.
-      // The editor flags below (budget/role/defer/pause/queued/answer/entry/search) are all
+      // The editor flags below (budget/role/pause/queued/answer/entry/search) are all
       // false here — the editors consume every key that reads or writes the line — but the
       // guard restates them so the arm keeps its mutual-exclusion contract explicit. (The
       // `search` flag is absent from this guard exactly as before: the shared `/` search
       // editor consumes the key first, so the pane arm is never reached while it is open.)
       if (
-        ctx.es.budgetMode || ctx.es.rolePromptFor || ctx.es.deferMode || ctx.es.pauseEditMode ||
+        ctx.es.budgetMode || ctx.es.rolePromptFor || ctx.es.pauseEditMode ||
         ctx.es.queuedEditFor || ctx.es.answerFor || ctx.es.entryEditFor || ctx.es.notesEditFor ||
         ctx.es.quietMode ||
         session.roleIds.length === 0 || session.view < 1 || session.view > session.roleIds.length

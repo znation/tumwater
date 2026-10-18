@@ -124,7 +124,7 @@ export function applyKey(
   return { text, cursor: c };
 }
 
-/** Six parsers below signal an invalid value through the same `{ ok: false, error }` arm
+/** Five parsers below signal an invalid value through the same `{ ok: false, error }` arm
  * of a `{ ok: true, … } | { ok: false, error: string }` result. `fail` is that arm's one
  * constructor — the same-named error-arm helper quiet-hours.ts's parseQuietHours uses — so
  * the error shape each parser returns cannot drift from the others (a prior copy pasted the
@@ -167,19 +167,18 @@ export function parseBudgetInput(
 }
 
 /** The 90d cap refusal every duration editor shares — the same over-cap arm (`ms` past
- * PAUSE_FOR_MAX_MS, the limit `pause --for`/`wake --in`/`stop --in`/"defer" and the
- * dashboard composer's defer field all admit), spelled once per verb so the wording cannot
- * drift between the five parsers. Returns the error result when `ms` exceeds the cap, else
- * null so the caller keeps its ok result. */
+ * PAUSE_FOR_MAX_MS, the limit `pause --for`/`wake --in`/`stop --in` all admit), spelled once
+ * per verb so the wording cannot drift between the four parsers. Returns the error result
+ * when `ms` exceeds the cap, else null so the caller keeps its ok result. */
 function overDurationCap(ms: number, verb: string): { ok: false; error: string } | null {
   return ms > PAUSE_FOR_MAX_MS ? fail(`${verb} is capped at 90d`) : null;
 }
 
 /** Parse a duration with parseDurationMs and apply the shared 90d cap in one step, mapping
  * both a non-duration spelling (`bad`, caller-specific wording) and an over-cap value to an
- * error result — the same parse-then-cap tail the defer, role-pause, role-wake and stop-in
- * parsers each repeated, so the four cannot drift on the cap arm. Callers that keep their
- * own ok-tails (forMs/inMs/ms) flatten this result before returning it. */
+ * error result — the same parse-then-cap tail the role-pause, role-wake and stop-in parsers
+ * each repeated, so the three cannot drift on the cap arm. Callers that keep their own
+ * ok-tails (forMs/inMs/ms) flatten this result before returning it. */
 function parseDurationOrFail(
   t: string,
   verb: string,
@@ -191,26 +190,6 @@ function parseDurationOrFail(
   if (over) return over;
   return { ok: true, ms };
 }
-
-/** Parse the TUI's Ctrl+L defer line: empty → null (clear the pending delay; deliver now),
- * otherwise a parseDurationMs duration at or under the 90d cap — the same grammar and cap
- * `tumwater prompt --at` and the dashboard composer's defer field admit, so the three
- * surfaces cannot disagree. Invalid spellings and over-cap values return an actionable error
- * so the flash can show it and the editor stays open for a fix. Pure, like parseBudgetInput;
- * the pending delay itself (a session-scoped duration applied at submit) lives in
- * tui-keys.ts. */
-export function parseDeferInput(
-  text: string,
-): { ok: true; ms: number | null } | { ok: false; error: string } {
-  const t = text.trim();
-  if (t === "") return { ok: true, ms: null };
-  // The dashboard composer's server check caps the same duration at the same limit, so the
-  // TUI refuses it inline with the identical wording instead of queueing a marker past the cap.
-  const r = parseDurationOrFail(t, "send later", `send later needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(text)}`);
-  if (!r.ok) return r;
-  return { ok: true, ms: r.ms };
-}
-
 /** Parse the TUI's Ctrl+F pause line: "[duration] [reason]". Empty is a standing pause with no
  * reason; a leading parseDurationMs word is the duration (`forMs`, not an epoch, so this stays
  * pure) and the rest the reason; otherwise the whole text is the reason. Durations over the

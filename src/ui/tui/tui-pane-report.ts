@@ -61,7 +61,7 @@ export function createReportPane(session: TuiPaneSession) {
   ): boolean => {
     if (
       key.ctrl && key.name === "e" &&
-      !ctx.es.budgetMode && !ctx.es.rolePromptFor && !ctx.es.deferMode && !ctx.es.pauseEditMode &&
+      !ctx.es.budgetMode && !ctx.es.rolePromptFor && !ctx.es.pauseEditMode &&
       !ctx.es.queuedEditFor && !ctx.es.answerFor && !ctx.es.entryEditFor &&
       !ctx.es.retireMode && promptLineFree(ctx.es)
     ) {

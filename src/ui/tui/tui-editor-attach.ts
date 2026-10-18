@@ -53,7 +53,7 @@ export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
         session.flashMessage("image attach cancelled");
       } else {
         // Mid-recall, hand the arrows' saved draft back before the attach editor takes the
-        // line — the same settle the defer and role editors do — so leaving restores the
+        // line — the same settle the role editors do — so leaving restores the
         // draft, not a history entry, with no stale recall state riding along.
         session.settleDraft((t) => (attachSavedInput = t), (n) => (attachSavedCursor = n));
         attachMode = true;

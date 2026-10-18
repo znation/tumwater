@@ -80,7 +80,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     if (
       key.ctrl && key.name === "f" &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
-      !session.held.defer && !session.held.queued && !session.held.answer && !session.held.entry &&
+      !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.attach && !session.held.notes && !session.held.retire && !session.held.quiet
     ) {
       // Ctrl+F toggles the whole-team pause (mnemonic: **F**leet) through the same
@@ -112,7 +112,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     if (
       key.ctrl && key.name === "q" &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
-      !session.held.defer && !session.held.queued && !session.held.answer && !session.held.entry &&
+      !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.attach && !session.held.notes && !session.held.retire && !session.held.quiet
     ) {
       // Ctrl+Q (mnemonic: **q**uit later) schedules or cancels a graceful team stop through
@@ -139,7 +139,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     if (
       key.ctrl && key.name === "r" && ctx.view === 0 && !pauseEditMode &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
-      !session.held.defer && !session.held.queued && !session.held.answer && !session.held.entry &&
+      !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.attach && !session.held.retire
     ) {
       // Ctrl+R on the Activity view applies the pending self-redeploy now — the terminal twin
@@ -176,7 +176,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     }
     if (
       !session.held.budget &&
-      !session.held.defer && !session.held.pause &&
+      !session.held.pause &&
       !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.notes && !session.held.retire && !session.held.quiet &&
       ctx.roleIds.length > 0 &&

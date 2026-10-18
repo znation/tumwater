@@ -31,7 +31,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
     if (
       key.ctrl && key.name === "e" &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
-      !session.held.defer && !session.held.pause && queuedEditFor === null &&
+      !session.held.pause && queuedEditFor === null &&
       !session.held.answer && !session.held.entry &&
       ctx.view === ctx.roleIds.length + 6 && ctx.selectedQueued !== null
     ) {

@@ -95,7 +95,6 @@ messages, and agent prompts. Each row is a rule a reviewer can check.
 | quiet kill | **stall** ("Stalled, resumed") |
 | "while the project is quiet" | "while there is nothing to do" |
 | "quiet" | Only quiet hours |
-| defer (TUI Ctrl+L) | **send later** (matches `prompt --at`) |
 | observer TUI | **TUI** ("observer" means only the qa/selfcheck role group) |
 | seam(s) ("claude seams", "strong seams", doctor `routing: seam selector backend`) | Name the thing: "role runs, the reviewer and the conflict resolver", or **model jobs** for short. Doctor's routing header becomes `job · model · backend`. |
 | drain, draining | **finish current work, then stop**, **finishing up** |

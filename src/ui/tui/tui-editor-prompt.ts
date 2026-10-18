@@ -1,6 +1,5 @@
 // vocabulary: plain
 import { submitRolePromptAndWake } from "../../operator/operator-intent.js";
-import { durationLabel } from "../../cli/cli-args.js";
 import { pushPromptHistory } from "./tui-prompt-history.js";
 import { parseRolePromptInput } from "./tui-input.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
@@ -38,7 +37,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
     // guard as the Ctrl+P/A/W pause controls so an editor's prompt line is never disturbed.
     if (
       !session.held.budget &&
-      !session.held.defer && !session.held.pause &&
+      !session.held.pause &&
       !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.notes && !session.held.quiet &&
       ctx.roleIds.length > 0 &&
@@ -86,22 +85,10 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
       } else {
         const role = rolePromptFor;
         try {
-          const pending = session.deferMs;
-          submitRolePromptAndWake(
-            session.root,
-            role,
-            parsed.value,
-            undefined,
-            pending === null ? undefined : session.now() + pending,
-          );
+          submitRolePromptAndWake(session.root, role, parsed.value, undefined);
           session.promptHistory = pushPromptHistory(session.promptHistory, parsed.value);
-          session.deferMs = null;
           exitRolePromptMode();
-          session.flashMessage(
-            pending === null
-              ? `added to ${role}'s inbox`
-              : `added to ${role}'s inbox — delivers in ${durationLabel(pending)}`,
-          );
+          session.flashMessage(`added to ${role}'s inbox`);
         } catch (err) {
           session.flashError(err);
         }

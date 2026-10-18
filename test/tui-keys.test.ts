@@ -18,7 +18,7 @@ import { renderRoleChange } from "../src/change/change-render.js";
 import { enqueueMerge, readMergeQueue } from "../src/merge/merge-queue.js";
 import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
-import { notBeforeMarker, notBeforeMs } from "../src/inbox/prompt-not-before.js";
+import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
 import { abortRequestPath, branchName, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
@@ -206,106 +206,6 @@ test("role-prompt mode opens for the viewed loop, submits, and Esc restores the 
   keys.handleKey(undefined, { name: "escape" });
   assert.equal(keys.state().rolePromptFor, null);
   assert.equal(fs.readdirSync(queue).length, 1, "a cancelled role prompt queues nothing");
-});
-
-test("defer mode sets a one-shot delay applied to the next director or role prompt", () => {
-  const root = makeRoot();
-  const { keys } = makeKeys(root, () => 1_000_000);
-  keys.syncSnapshot(0, false, ["clean"]);
-  const directorQueue = path.join(root, ".tumwater", "inbox"); // the director keeps its queue at the inbox root
-  const roleQueue = path.join(root, ".tumwater", "inbox", "clean");
-  const firstLine = (dir: string): string => {
-    const file = fs.readdirSync(dir).find((f) => f.endsWith(".md"))!;
-    return fs.readFileSync(path.join(dir, file), "utf8").split("\n")[0]!;
-  };
-
-  // Ctrl+L opens empty (no pending delay) and a valid duration saves it.
-  keys.handleKey(undefined, { ctrl: true, name: "l" });
-  assert.equal(keys.state().deferMode, true);
-  assert.equal(keys.state().input, "", "no pending delay pre-fills an empty line");
-  for (const ch of "45m") keys.handleKey(ch, { name: ch });
-  keys.handleKey(undefined, { name: "return" });
-  assert.equal(keys.state().deferMode, false);
-  assert.equal(keys.state().defer, "45m", "the pending delay is named in state");
-  assert.equal(keys.state().flash, "next prompt delivers in 45m");
-
-  // The next director submit rides the delay as the marker line and clears it (one-shot).
-  for (const ch of "defer me") keys.handleKey(ch, { name: ch });
-  keys.handleKey(undefined, { name: "return" });
-  assert.equal(keys.state().defer, null, "a successful submit clears the pending delay");
-  assert.equal(keys.state().flash, "added to the director's inbox — delivers in 45m");
-  assert.equal(firstLine(directorQueue), notBeforeMarker(1_000_000 + 45 * 60_000).split("\n")[0]);
-
-  // A pending delay also rides the next role submit; the role editor opens after it is saved.
-  keys.handleKey(undefined, { ctrl: true, name: "l" });
-  for (const ch of "90m") keys.handleKey(ch, { name: ch });
-  keys.handleKey(undefined, { name: "return" });
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript
-  keys.handleKey(undefined, { ctrl: true, name: "r" });
-  assert.equal(keys.state().rolePromptFor, "clean");
-  for (const ch of "role defer") keys.handleKey(ch, { name: ch });
-  keys.handleKey(undefined, { name: "return" });
-  assert.equal(keys.state().defer, null);
-  assert.equal(keys.state().flash, "added to clean's inbox — delivers in 90m");
-  assert.equal(firstLine(roleQueue), notBeforeMarker(1_000_000 + 90 * 60_000).split("\n")[0]);
-});
-
-test("defer mode is exclusive with the other prompt-line editors and survives view cycling", () => {
-  const root = makeRoot();
-  const { keys } = makeKeys(root, () => 0);
-  keys.syncSnapshot(50, false, ["clean"]);
-
-  // A pending delay survives Ctrl+T (view cycling leaves the editor without clearing it).
-  keys.handleKey(undefined, { ctrl: true, name: "l" });
-  for (const ch of "45m") keys.handleKey(ch, { name: ch });
-  keys.handleKey(undefined, { name: "return" });
-  keys.handleKey(undefined, { ctrl: true, name: "t" });
-  assert.equal(keys.state().view, 1);
-  assert.equal(keys.state().defer, "45m", "view cycling keeps the pending delay");
-
-  // Esc restores the saved draft and leaves the pending delay unchanged.
-  for (const ch of "draft") keys.handleKey(ch, { name: ch });
-  keys.handleKey(undefined, { ctrl: true, name: "l" });
-  assert.equal(keys.state().input, "45m", "the editor pre-fills the pending delay");
-  keys.handleKey(undefined, { name: "escape" });
-  assert.equal(keys.state().input, "draft");
-  assert.equal(keys.state().defer, "45m", "Esc cancels the edit, not the saved delay");
-
-  // An empty line clears the delay (deliver now) and restores the draft.
-  keys.handleKey(undefined, { ctrl: true, name: "l" });
-  keys.handleKey(undefined, { ctrl: true, name: "u" });
-  keys.handleKey(undefined, { name: "return" });
-  assert.equal(keys.state().defer, null);
-  assert.equal(keys.state().input, "draft");
-  assert.equal(keys.state().flash, "send later cleared");
-
-  // An invalid spelling (and an over-cap value) flashes and keeps the editor open.
-  keys.handleKey(undefined, { ctrl: true, name: "l" });
-  for (const ch of "junk") keys.handleKey(ch, { name: ch });
-  keys.handleKey(undefined, { name: "return" });
-  assert.equal(keys.state().deferMode, true, "an invalid duration keeps the editor open");
-  assert.match(keys.state().flash!, /send later needs a duration/);
-  keys.handleKey(undefined, { ctrl: true, name: "u" });
-  for (const ch of "91d") keys.handleKey(ch, { name: ch });
-  keys.handleKey(undefined, { name: "return" });
-  assert.equal(keys.state().deferMode, true);
-  assert.equal(keys.state().flash, "send later is capped at 90d");
-  keys.handleKey(undefined, { name: "escape" });
-
-  // Ctrl+B while the defer editor holds the line refuses and changes nothing.
-  keys.handleKey(undefined, { ctrl: true, name: "l" });
-  keys.handleKey(undefined, { ctrl: true, name: "b" });
-  assert.equal(keys.state().deferMode, true, "defer keeps the line; budget does not open");
-  assert.equal(keys.state().budgetMode, false);
-  assert.match(keys.state().flash!, /finish or cancel the send-later edit first/);
-  keys.handleKey(undefined, { name: "escape" });
-
-  // Ctrl+L while another editor holds the line refuses and changes nothing.
-  keys.handleKey(undefined, { ctrl: true, name: "b" });
-  keys.handleKey(undefined, { ctrl: true, name: "l" });
-  assert.equal(keys.state().budgetMode, true);
-  assert.equal(keys.state().deferMode, false);
-  assert.match(keys.state().flash!, /finish or cancel the budget edit first/);
 });
 
 test("notes edit mode reads a role's notes replacement from a typed file path", () => {
@@ -2394,18 +2294,16 @@ test("the backlog pane answers the selected open question through tryAnswerQuest
   assert.deepEqual(keys.state().answerFor, { position: 2, title: "Second?" });
   assert.equal(keys.state().input, "");
 
-  // Whitespace-only stays; Ctrl+B, Ctrl+L, and arrows are inert.
+  // Whitespace-only stays; Ctrl+B and arrows are inert.
   keys.handleKey(" ", { name: "space" });
   keys.handleKey(undefined, { name: "return" });
   assert.match(keys.state().flash!, /needs a decision/);
   assert.notEqual(keys.state().answerFor, null);
   const sel = keys.state().selectedEntry;
   keys.handleKey(undefined, { ctrl: true, name: "b" });
-  keys.handleKey(undefined, { ctrl: true, name: "l" });
   keys.handleKey(undefined, { name: "up" });
   assert.notEqual(keys.state().answerFor, null);
   assert.equal(keys.state().budgetMode, false);
-  assert.equal(keys.state().deferMode, false);
   assert.equal(keys.state().selectedEntry, sel);
 
   // Esc restores the draft and writes nothing.
@@ -3096,7 +2994,7 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, deferMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false };
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
   // exclusion every other mode enforces, or they would run over the retire modal.

@@ -54,7 +54,7 @@ current one, so history, old logs and old scripts stay readable.
 | your checkout | The working copy you edit, where main is checked out. |
 | estimated spend | Cost computed from token counts, not billed. |
 | main's check is failing | The check fails on main. |
-| send later | Hold a message until a chosen time (`prompt --at`; TUI Ctrl+L). |
+| send later | Hold a message until a chosen time (`prompt --at`). |
 | TUI | The terminal interface. "Observer" names only the qa and selfcheck role group. |
 
 ## In the code
@@ -116,7 +116,6 @@ Identifiers follow the glossary: fleet → team, loop → runner, tick → run, 
 | quiet kill | stall ("Stalled, resumed") | n/a (prose) |
 | "while the project is quiet" | "while there is nothing to do" | n/a (prose) |
 | "quiet" (for idleness) | quiet means only quiet hours | n/a (prose) |
-| defer (TUI Ctrl+L) | send later | n/a (prose) |
 | observer TUI | TUI | n/a (prose) |
 | seam(s), "claude seams", "strong seams", `routing: seam selector backend` | model jobs; header `job · model · backend` | n/a (prose) |
 | drain, draining | finish current work, then stop; finishing up | n/a (prose) |

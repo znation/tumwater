@@ -21,8 +21,6 @@ interface TuiHeld {
   rolePromptFor: string | null;
   /** The shared `/` search editor is open. */
   search: boolean;
-  /** Ctrl+L defer-edit mode. */
-  defer: boolean;
   /** Ctrl+F/Ctrl+Q/Ctrl+P/Ctrl+W pause/stop/wake editor is open. */
   pause: boolean;
   /** The loop the pause editor pauses, null for the team editors (Ctrl+F/Ctrl+Q). */
@@ -53,7 +51,7 @@ interface TuiHeld {
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
  * `TuiEditorCtx`) instead of the whole `TuiEditorsDeps`: the one prompt line (`input`/`cursor`),
- * the session history, the pending send-later delay, the mutually-exclusive-mode registry, the
+ * the session history, the mutually-exclusive-mode registry, the
  * shared deps the modules call, and the shared helpers whose invariants hold here once — at the
  * module boundary — rather than being re-stated per editor. */
 export interface TuiEditorSession {
@@ -63,12 +61,9 @@ export interface TuiEditorSession {
   cursor: number;
   /** The prompt line's session history (tui-prompt-history.ts's rules). */
   promptHistory: PromptHistory;
-  /** The pending send-later delay (a DURATION, not an epoch): submit computes now() + deferMs.
-   * Shared by the defer editor, the role-prompt submit, and the director submit. */
-  deferMs: number | null;
   /** The pending image attachments the next director prompt will carry (Ctrl+V on the Activity
-   * view's prompt line). Both this and deferMs are submit-time state the director submit
-   * reads, so they live in the session. */
+   * view's prompt line). This is submit-time state the director submit reads, so it lives in the
+   * session. */
   images: PromptImageInput[];
   /** The mutually-exclusive editor modes, mirrored here as they change (see TuiHeld). */
   held: TuiHeld;
@@ -108,7 +103,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "defer" | "attach" | "notes" | "brief" | "retire" | "quiet"): string | null;
+  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -118,13 +113,11 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     input: "",
     cursor: 0,
     promptHistory: newPromptHistory(),
-    deferMs: null,
     images: [],
     held: {
       budget: false,
       rolePromptFor: null,
       search: false,
-      defer: false,
       pause: false,
       pauseEditRole: null,
       pauseEditWake: false,
@@ -177,13 +170,11 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.brief && entering !== "brief") return session.busyFlash("brief edit");
       if (h.retire && entering !== "retire") return session.busyFlash("retire role");
       if (h.quiet && entering !== "quiet") return session.busyFlash("quiet hours");
-      if (entering === "defer" && h.budget) return session.busyFlash("budget edit");
-      if (entering === "budget" && h.defer) return session.busyFlash("send-later edit");
-      if (entering === "attach" && (h.budget || h.defer)) return session.busyFlash(h.budget ? "budget edit" : "send-later edit");
-      if (entering === "notes" && (h.attach || h.budget || h.defer)) return session.busyFlash(h.attach ? "image attach" : h.budget ? "budget edit" : "send-later edit");
-      if (entering === "brief" && (h.budget || h.defer)) return session.busyFlash(h.budget ? "budget edit" : "send-later edit");
-      if (entering === "retire" && (h.attach || h.notes || h.budget || h.defer)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : "send-later edit");
-      if (entering === "quiet" && (h.attach || h.notes || h.budget || h.defer || h.brief || h.retire)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.budget ? "budget edit" : "send-later edit");
+      if (entering === "attach" && h.budget) return session.busyFlash("budget edit");
+      if (entering === "notes" && (h.attach || h.budget)) return session.busyFlash(h.attach ? "image attach" : "budget edit");
+      if (entering === "brief" && h.budget) return session.busyFlash("budget edit");
+      if (entering === "retire" && (h.attach || h.notes || h.budget)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : "budget edit");
+      if (entering === "quiet" && (h.attach || h.notes || h.budget || h.brief || h.retire)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : "budget edit");
       return null;
     },
   };

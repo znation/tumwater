@@ -34,7 +34,7 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
     if (
       key.ctrl && key.name === "a" &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
-      !session.held.defer && !session.held.pause && !session.held.queued &&
+      !session.held.pause && !session.held.queued &&
       !session.held.answer && !session.held.entry && !session.held.retire &&
       ctx.view === ctx.roleIds.length + 1 && ctx.selectedEntry !== null
     ) {

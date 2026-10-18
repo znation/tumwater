@@ -1,12 +1,10 @@
 // vocabulary: plain
 import { submitPrompt } from "../../inbox/inbox-submit.js";
-import { durationLabel } from "../../cli/cli-args.js";
 import { applyKey } from "./tui-input.js";
 import { pushPromptHistory, recallPromptHistory } from "./tui-prompt-history.js";
 import { createTuiEditorSession } from "./tui-editor-session.js";
 import { createBudgetEditor } from "./tui-editor-budget.js";
 import { createQuietEditor } from "./tui-editor-quiet.js";
-import { createDeferEditor } from "./tui-editor-defer.js";
 import { createAttachEditor } from "./tui-editor-attach.js";
 import { createNotesEditor } from "./tui-editor-notes.js";
 import { createBriefEditor } from "./tui-editor-brief.js";
@@ -58,18 +56,13 @@ export interface TuiEditorsDeps {
   commitBacklogEdit(file: string, subject: string): void;
 }
 
-/** The state the render reads back for the prompt line: the shared line itself, the modes it
- * names in the hint line, and the pending defer delay. The pane merges these into the frame. */
+/** The state the render reads back for the prompt line: the shared line itself and the modes
+ * it names in the hint line. The pane merges these into the frame. */
 interface TuiEditorState {
   input: string;
   cursor: number;
   budgetMode: boolean;
   rolePromptFor: string | null;
-  /** Whether the prompt line is editing the next prompt's defer delay (Ctrl+L). */
-  deferMode: boolean;
-  /** The pending defer delay as a human label (durationLabel), or null when the next prompt
-   * delivers immediately. */
-  defer: string | null;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
   /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */
@@ -127,7 +120,7 @@ interface TuiEditors {
 
 /** The prompt-line editor half of the createTuiKeys closure: a thin aggregator that builds the
  * shared prompt-line session (tui-editor-session.ts) and the set of mutually-exclusive modal
- * editors on it — budget Ctrl+B, quiet-hours Ctrl+O, role-prompt Ctrl+R, defer Ctrl+L, pause
+ * editors on it — budget Ctrl+B, quiet-hours Ctrl+O, role-prompt Ctrl+R, pause
  * Ctrl+F/Ctrl+Q, answer, entry-edit, queued-edit, and the `/` search — each with its own
  * saved-draft pair and exit
  * helper in its own module beside the session. `handleKey` routes each key to the editors in
@@ -142,7 +135,6 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const editors: TuiEditorModule[] = [
     createBudgetEditor(session),
     createQuietEditor(session),
-    createDeferEditor(session),
     createAttachEditor(session),
     createNotesEditor(session),
     createPauseEditor(session),
@@ -170,7 +162,6 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // shared/none case of the Enter arm. Only reached when the key was "return" and no editor
     // consumed it; any other unhandled key falls through to the pane arms.
     if (key.name === "return") {
-      const pending = session.deferMs;
       const prompt = session.input.trim();
       if (!prompt) {
         // Whitespace-only input queues nothing; drop it like an empty line.
@@ -179,19 +170,14 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       } else {
         const images = session.images.length > 0 ? session.images : undefined;
         try {
-          submitPrompt(session.root, prompt, images, pending === null ? undefined : session.now() + pending);
+          submitPrompt(session.root, prompt, images);
           session.promptHistory = pushPromptHistory(session.promptHistory, prompt);
-          session.deferMs = null;
           // A successful send consumes the pending image attachments; a thrown submit below
           // keeps them so the operator can resubmit with the images still attached.
           session.images = [];
           session.input = "";
           session.cursor = 0;
-          session.flashMessage(
-            pending === null
-              ? "added to the director's inbox"
-              : `added to the director's inbox — delivers in ${durationLabel(pending)}`,
-          );
+          session.flashMessage("added to the director's inbox");
         } catch (err) {
           // The queue write failed (disk full, permissions): keep the operator's text so
           // it can be resubmitted, and flash the reason — the same contract the GUI's
@@ -208,10 +194,10 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const onArrow = (direction: "up" | "down"): boolean => {
     // Up/Down walk the submitted-prompt history the way readline does (tui-prompt-history.ts's
     // recall rules). The backlog pane keeps the arrows for entry browsing (its branch
-    // above already returned), and budget, defer, pause and search modes keep them out —
-    // recalling a prompt into the cap/delay/field text would be a paste, not a recall. No
+    // above already returned), and budget, pause and search modes keep them out —
+    // recalling a prompt into the cap/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.quiet && !session.held.defer && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire) {
+    if (!session.held.budget && !session.held.quiet && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -257,8 +243,6 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         cursor: session.cursor,
         budgetMode: session.held.budget,
         rolePromptFor: session.held.rolePromptFor,
-        deferMode: session.held.defer,
-        defer: session.deferMs === null ? null : durationLabel(session.deferMs),
         pauseEditMode: session.held.pause,
         pauseEditRole: session.held.pauseEditRole,
         pauseEditWake: session.held.pauseEditWake,

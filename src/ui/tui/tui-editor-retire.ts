@@ -47,7 +47,7 @@ export function createRetireEditor(session: TuiEditorSession): TuiEditorModule {
         return true;
       }
       // Mid-recall, hand the arrows' saved draft back before the retire editor takes the line —
-      // the same settle the defer and role editors do — so leaving restores the draft, not a
+      // the same settle the role editors do — so leaving restores the draft, not a
       // history entry, with no stale recall state riding along.
       session.settleDraft((t) => (retireSavedInput = t), (n) => (retireSavedCursor = n));
       retireMode = true;
