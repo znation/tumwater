@@ -314,15 +314,18 @@ reply with ONLY the closing block — no tool calls, no other text — one line 
 }
 
 /** The one-turn follow-up sent into a tick's OWN session (--continue) when the harness's
- * pre-queue self-check found deterministic faults the merge gate would reject. The session
- * still holds everything the run did, so the author fixes the faults before the change commits
- * and queues — the gate keeps its final say, and the fix costs one bounded turn instead of a
- * rejection cycle. A finding the author believes is wrong is answered in RISK rather than
- * forced away; the reply re-states the closing block because the harness re-derives the commit
- * message from it. Carries the tick prompt's no-git rule (the harness commits). */
+ * pre-queue self-check found problems likely to get the change rejected. Only some findings are
+ * the merge gate's own deterministic checks; the rest (path drift, plan dependencies) are
+ * heuristics, so the prompt never claims the gate rejects every one — claiming it did made an
+ * author sweep a rename through the backlog's history (2026-10-18). The session still holds
+ * everything the run did, so the author fixes the faults before the change commits and queues —
+ * the gate keeps its final say, and the fix costs one bounded turn instead of a rejection cycle.
+ * A finding the author believes is wrong is answered in RISK rather than forced away; the reply
+ * re-states the closing block because the harness re-derives the commit message from it.
+ * Carries the tick prompt's no-git rule (the harness commits). */
 export function buildStageFixPrompt(findings: string[]): string {
-  return `Your change is about to commit, but tumwater's pre-queue self-check found faults the
-merge gate rejects deterministically:
+  return `Your change is about to commit, but tumwater's pre-queue self-check found problems the
+merge gate or its review is likely to reject:
 ${numberedList(findings)}
 Fix each one in the worktree now with the smallest edit that resolves it, and keep everything else
 as it is. When a finding is wrong, say why in your RISK line instead of forcing a change that

@@ -18,7 +18,9 @@
  * files whose final newline the change removed. These stage the change (`git add -A`) to read
  * the index with git only, then restore the index to HEAD before returning: staging is a read
  * aid for the checks, not a change to the tick's state. A git hiccup yields no finding rather
- * than failing the tick.
+ * than failing the tick. Unlike the backlog checks above, the gate does not run these: they are
+ * heuristics for what a reviewer tends to reject, so neither path check looks inside record
+ * prose (isRecordProse), where an old or not-yet-created path is correct as written.
  *
  * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
  * merge re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
@@ -60,6 +62,18 @@ const MAX_NEWLINE_FILES = 10;
  * `b/` prefix and is returned as `/dev/null`. */
 function diffPlusPath(line: string): string {
   return line.slice(4).replace(/^b\//, "");
+}
+
+/** True for record prose: a backlog file (BACKLOG_FILES: PLANS.md, BUGS.md, QUESTIONS.md and the
+ * finished-entry archives) or a markdown design doc under `plans/`. They record history and
+ * describe planned work, so a path there is correct as written even when it is absent from the
+ * tree: a finished entry names a file as it was, and a plan names the file it will create or
+ * both sides of the move it describes. Asking a rename to sweep them rewrote "old → new" into
+ * "new → new" and history into the present; that failure took five rejections on
+ * one rename on 2026-10-18 and -19. */
+function isRecordProse(file: string): boolean {
+  const base = file.slice(file.lastIndexOf("/") + 1);
+  return BACKLOG_FILES.has(base) || (file.startsWith("plans/") && file.endsWith(".md"));
 }
 
 /** The capped list a finding line appends: at most `max` entries joined by ", ", then
@@ -139,9 +153,11 @@ export function waitingNoteFinding(head: string, base: string): string | undefin
   );
 }
 
-/** The deterministic findings the merge gate would reject this uncommitted change for, or an
- * empty list when it is clean. Checks the worktree at `wt` against `mainBranch`'s merge-base;
- * `exemptPaths` are the config's review-exemption globs that scope the false-fix check.
+/** The findings likely to get this uncommitted change rejected at merge, or an empty list when
+ * it is clean: the merge gate's own deterministic checks plus the staging-only heuristics (plan
+ * dependencies, the bugfix Waiting note, path drift). Checks the worktree at `wt` against
+ * `mainBranch`'s merge-base; `exemptPaths` are the config's review-exemption globs that scope
+ * the false-fix check.
  *
  * Never throws: a check that fails yields no finding, so a git hiccup at staging time defers to
  * the gate instead of failing the tick. */
@@ -271,7 +287,8 @@ async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[
 
 /** (a) References left behind by a rename or delete: for each `D` path and each `R` origin,
  * `git grep --cached` the old path across the staged tree and report up to MAX_STALE_HITS
- * `file:line` hits. Renames report the path they moved to; deletes report the deletion. */
+ * `file:line` hits outside record prose (isRecordProse). Renames report the path they moved to;
+ * deletes report the deletion. */
 async function staleReferenceFindings(
   wt: string,
   entries: NameStatusEntry[],
@@ -289,7 +306,7 @@ async function staleReferenceFindings(
     const hits: string[] = [];
     for (const line of out.split("\n")) {
       const m = /^([^:]+):(\d+):(.*)$/.exec(line);
-      if (!m || !hasStandalonePathOccurrence(m[3] ?? "", old)) continue;
+      if (!m || isRecordProse(m[1]!) || !hasStandalonePathOccurrence(m[3] ?? "", old)) continue;
       hits.push(`${m[1]}:${m[2]}`);
       if (hits.length >= MAX_STALE_HITS) break;
     }
@@ -349,13 +366,6 @@ async function missingPathFindings(
     if (e.oldPath) oldPaths.add(e.oldPath);
     if (e.status === "D") oldPaths.add(e.path);
   }
-  // Backlog prose files routinely name the file a plan proposes to create, which is by
-  // definition absent from the tree; the added-nonexistent-path heuristic targets real
-  // references, so it spares them (the rename/delete stale-reference scan still covers them).
-  function isBacklogProse(path: string): boolean {
-    const base = path.slice(path.lastIndexOf("/") + 1);
-    return BACKLOG_FILES.has(base);
-  }
   const seen = new Set<string>();
   const missing: string[] = [];
   let file: string | null = null;
@@ -366,10 +376,10 @@ async function missingPathFindings(
     }
     if (!line.startsWith("+") || line.startsWith("+++")) continue;
     // A test file's fixtures routinely name paths from the software under test, which need
-    // not exist here, and a backlog prose file names the paths a plan proposes to create; the
+    // not exist here, and record prose names the paths a plan proposes to create; the
     // added-nonexistent-path heuristic targets real references, so it spares added lines in
-    // test/ and the backlog prose files (the rename/delete scan above still covers them).
-    if (file !== null && (file.startsWith("test/") || isBacklogProse(file))) continue;
+    // test/ and in record prose (isRecordProse).
+    if (file !== null && (file.startsWith("test/") || isRecordProse(file))) continue;
     for (const p of pathTokens(line.slice(1))) {
       const top = p.slice(0, p.indexOf("/"));
       if (!topDirs.has(top) || oldPaths.has(p) || staged.has(p) || seen.has(p)) continue;

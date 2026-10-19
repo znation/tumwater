@@ -478,7 +478,10 @@ test("buildStageFixPrompt lists every finding, forbids git state changes, and as
   const p = buildStageFixPrompt(["first fault", "second fault"]);
   assert.match(p, /1\. first fault/);
   assert.match(p, /2\. second fault/);
-  assert.match(p, /merge gate rejects deterministically/);
+  assert.match(p, /merge gate or its review is likely to reject/);
+  // Only some findings are the gate's deterministic checks; claiming all were made an author
+  // sweep a rename through the backlog's history (2026-10-18).
+  assert.doesNotMatch(p, /deterministically/);
   assert.match(p, /no add, commit, reset, checkout/);
   assert.match(p, /SUMMARY:/);
   assert.match(p, /RISK:/);

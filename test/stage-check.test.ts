@@ -196,6 +196,45 @@ test("a stale reference ending a sentence is still reported", async () => {
   assert.match(findings[0]!, /config\.ts was renamed to src\/config\.ts but is still named at: README\.md:\d+/);
 });
 
+// Record prose (the backlog files, their archives and plans/ design docs) names paths as they
+// were or as a plan describes them, so the stale-reference scan skips it. On 2026-10-18 the scan
+// listed a rename's own plan entry as stale; the author swept the backlog, turned the entry's
+// "old → new" pairs into "new → new", and the reviewer rejected that.
+
+test("a stale reference in record prose is not reported, while one in a doc still is", async () => {
+  const { wt } = await repoWith({
+    "src/a.ts": "export const a = 1;\n",
+    "README.md": "See src/a.ts for details.\n",
+    "PLANS.md": "# Plans\n\n## Planned\n\n### Move a\n\nMove src/a.ts to src/x/a.ts.\n",
+    "BUGS.md": "# Bugs\n\n## Open\n\n### A bug\n\nSeen in src/a.ts.\n",
+    "BUGS-FIXED.md": "# Fixed bugs\n\n## Fixed\n\n### Old bug\n\n**Fix:** src/a.ts now does it.\n",
+    "plans/design.md": "# Design\n\nsrc/a.ts holds the logic.\n",
+  });
+  fs.mkdirSync(path.join(wt, "src", "x"), { recursive: true });
+  fs.renameSync(path.join(wt, "src", "a.ts"), path.join(wt, "src", "x", "a.ts"));
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /src\/a\.ts was renamed to src\/x\/a\.ts but is still named at: README\.md:\d+$/);
+  for (const recordFile of ["PLANS.md", "BUGS.md", "BUGS-FIXED.md", "plans/design.md"]) {
+    assert.ok(!findings[0]!.includes(`${recordFile}:`), `${recordFile} must not be listed`);
+  }
+});
+
+test("a rename named only in record prose yields no stale-reference finding", async () => {
+  const { wt } = await repoWith({
+    "src/a.ts": "export const a = 1;\n",
+    "PLANS-DONE.md": "# Done plans\n\n## Done\n\n### Add a\n\nAdded src/a.ts.\n",
+    "QUESTIONS.md": "# Questions\n\n## Open\n\n### Where does a live?\n\nIn src/a.ts?\n",
+    "plans/design.md": "# Design\n\nsrc/a.ts holds the logic.\n",
+  });
+  fs.mkdirSync(path.join(wt, "src", "x"), { recursive: true });
+  fs.renameSync(path.join(wt, "src", "a.ts"), path.join(wt, "src", "x", "a.ts"));
+
+  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+});
+
 test("an added line naming a nonexistent path yields a finding", async () => {
   const { wt } = await repoWith({
     "src/keep.ts": "export const keep = 1;\n",
@@ -241,6 +280,20 @@ test("an added line in a backlog prose file naming a nonexistent path yields no 
     "PLANS.md": "Start.\n",
   });
   fs.writeFileSync(path.join(wt, "PLANS.md"), `Start.\nAdd a \`${absent}\` module.\n`);
+
+  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+});
+
+test("an added line in a plans/ design doc naming a nonexistent path yields no finding", async () => {
+  // A design doc names the files its plan will create, like a backlog entry does. Built from
+  // segments so this test source holds no literal path token.
+  const keep = ["src", "keep.ts"].join("/");
+  const absent = ["src", "x", "src", "x", "a.ts"].join("/");
+  const { wt } = await repoWith({
+    [keep]: "export const keep = 1;\n",
+    "plans/design.md": "Start.\n",
+  });
+  fs.writeFileSync(path.join(wt, "plans", "design.md"), `Start.\nAdd a \`${absent}\` module.\n`);
 
   assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
 });
