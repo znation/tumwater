@@ -188,6 +188,19 @@ export function requireConfigKey(
   return key;
 }
 
+/** Pull the required, non-blank string `role` out of a config POST body — the shared 400
+ * (`role required`) for the role-cap, min-run-interval, instances, model, instructions,
+ * role-enable/disable, and quiet-hours handlers in gui-config-commands.ts. Returns the role
+ * as sent (untrimmed, not yet validated against the role list), or null once the 400 is sent. */
+export function requireRoleField(res: http.ServerResponse, body: Record<string, unknown>): string | null {
+  const role = body.role;
+  if (typeof role !== "string" || role.trim() === "") {
+    badRequest(res, "role required");
+    return null;
+  }
+  return role;
+}
+
 /** Pull the required `paused` boolean out of a pause endpoint's body — the shared validator
  * for /api/pause and /api/pause-role, which must reject a missing or non-boolean target state
  * with the same 400 wording: the target state is explicit (`paused: true|false`), so a retried

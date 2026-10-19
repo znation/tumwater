@@ -10,7 +10,7 @@
 import { setConfigKey, setDailyBudgetUsd, setRoleModelFields, unsetConfigKey } from "../config/config-write.js";
 import { checkDailyBudgetUsd, checkMinRunInterval } from "../config/config-keys.js";
 import { testNotifyHook } from "../cli/notify-command.js";
-import { rejectBadRole, requireConfigKey } from "./gui-args.js";
+import { rejectBadRole, requireConfigKey, requireRoleField } from "./gui-args.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { badRequest, sendJson } from "./http-body.js";
@@ -60,11 +60,8 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
 export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "maxDailyCostUsd": 2}');
   if (!body) return;
-  const role = body.role;
-  if (typeof role !== "string" || role.trim() === "") {
-    badRequest(res, "role required");
-    return;
-  }
+  const role = requireRoleField(res, body);
+  if (role === null) return;
   if (role === DIRECTOR_ROLE) {
     badRequest(res, "the director has no daily cap");
     return;
@@ -103,11 +100,8 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
 export async function handleRoleInterval(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "minRunIntervalSeconds": 300}');
   if (!body) return;
-  const role = body.role;
-  if (typeof role !== "string" || role.trim() === "") {
-    badRequest(res, "role required");
-    return;
-  }
+  const role = requireRoleField(res, body);
+  if (role === null) return;
   const value = body.minRunIntervalSeconds;
   if (value === undefined) {
     badRequest(res, "minRunIntervalSeconds required");
@@ -156,11 +150,8 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
 export async function handleRoleInstances(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "instances": 3}');
   if (!body) return;
-  const role = body.role;
-  if (typeof role !== "string" || role.trim() === "") {
-    badRequest(res, "role required");
-    return;
-  }
+  const role = requireRoleField(res, body);
+  if (role === null) return;
   const value = body.instances;
   if (value === undefined) {
     badRequest(res, "instances required");
@@ -205,11 +196,8 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
 export async function handleRoleModel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "provider": "claude", "model": "claude-opus-5", "thinking": "high"}');
   if (!body) return;
-  const role = body.role;
-  if (typeof role !== "string" || role.trim() === "") {
-    badRequest(res, "role required");
-    return;
-  }
+  const role = requireRoleField(res, body);
+  if (role === null) return;
   const fields: { provider?: string; model?: string; thinking?: string } = {};
   for (const key of ["provider", "model", "thinking"] as const) {
     const value = body[key];
@@ -245,8 +233,8 @@ export async function handleRoleModel(req: http.IncomingMessage, res: http.Serve
 export async function handleRoleInstructions(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "text": "…"}');
   if (!body) return;
-  const role = body.role;
-  if (typeof role !== "string" || role.trim() === "") return badRequest(res, "role required");
+  const role = requireRoleField(res, body);
+  if (role === null) return;
   if (typeof body.text !== "string") return badRequest(res, `"text" must be a string — the full replacement instructions, or "" to clear it${gotSuffix(body.text)}`);
   const base = baseRoleOf(role);
   // An empty or whitespace-only buffer clears the override, like the CLI's --clear-instructions;
@@ -276,8 +264,8 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
 async function setRoleEnabled(req: http.IncomingMessage, res: http.ServerResponse, root: string, enabled: boolean): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "selfcheck"}');
   if (!body) return;
-  const role = body.role;
-  if (typeof role !== "string" || role.trim() === "") return badRequest(res, "role required");
+  const role = requireRoleField(res, body);
+  if (role === null) return;
   const base = baseRoleOf(role);
   if (!enabled && base === DIRECTOR_ROLE) return badRequest(res, "the director cannot be disabled");
   const key = `roles.${base}.enabled`;
@@ -319,8 +307,8 @@ export async function handleRoleDisable(req: http.IncomingMessage, res: http.Ser
 export async function handleRoleQuietHours(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "window": "23:00-07:00"}');
   if (!body) return;
-  const role = body.role;
-  if (typeof role !== "string" || role.trim() === "") return badRequest(res, "role required");
+  const role = requireRoleField(res, body);
+  if (role === null) return;
   if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no quiet hours");
   if (typeof body.window !== "string") return badRequest(res, `"window" must be a string — a window like 23:00-07:00, or "" to clear it${gotSuffix(body.window)}`);
   const base = baseRoleOf(role);
