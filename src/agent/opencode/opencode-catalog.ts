@@ -9,6 +9,7 @@
  * tests. */
 
 import { spawnSync } from "node:child_process";
+import { isJsonObject } from "../../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
 import { opencodeModelsPath } from "../../paths.js";
 import { logEventBestEffort, type HarnessEventInput } from "../../events/events.js";
@@ -86,9 +87,7 @@ export function parseOpencodeCatalog(body: unknown, providers: readonly string[]
   // models.dev's api.json IS the provider map; OpenCode's cached copy wraps that map under `body`.
   const wrapped = root?.body;
   const catalog =
-    typeof wrapped === "object" && wrapped !== null && !Array.isArray(wrapped)
-      ? (wrapped as Record<string, unknown>)
-      : ((body ?? {}) as Record<string, unknown>);
+    isJsonObject(wrapped) ? wrapped : ((body ?? {}) as Record<string, unknown>);
   for (const [provider, providerRaw] of Object.entries(catalog)) {
     if (provider !== "opencode" && !providers.includes(provider)) continue;
     const providerInfo = providerRaw as { models?: Record<string, unknown> } | null;
@@ -184,7 +183,7 @@ export function observeOpencodeRun(
  * fills the file in. */
 export function readOpencodeCache(root: string): OpencodeCatalogCache {
   const existing = readJsonFile<Partial<OpencodeCatalogCache>>(opencodeModelsPath(root));
-  if (existing !== null && typeof existing.fetchedAt === "number" && existing.models !== undefined && typeof existing.models === "object" && !Array.isArray(existing.models)) {
+  if (existing !== null && typeof existing.fetchedAt === "number" && isJsonObject(existing.models)) {
     return {
       fetchedAt: existing.fetchedAt,
       cliVersion: typeof existing.cliVersion === "string" ? existing.cliVersion : undefined,

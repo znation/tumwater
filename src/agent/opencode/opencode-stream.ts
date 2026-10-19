@@ -296,7 +296,7 @@ export function opencodeTranslator(opts: { cwd?: string } = {}): OpencodeStreamT
  * the run's real cost and token totals. Anything malformed returns `[]`; part 5/7 logs
  * `opencode_usage_partial` when this is empty. */
 export function opencodeExportLines(exportJson: unknown): string[] {
-  if (typeof exportJson !== "object" || exportJson === null || Array.isArray(exportJson)) return [];
+  if (!isJsonObject(exportJson)) return [];
   const info = (exportJson as Json).info;
   if (typeof info !== "object" || info === null) return [];
   const cost = nonNegativeNumber((info as Json).cost, undefined);

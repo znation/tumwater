@@ -381,7 +381,7 @@ function healNumber(value: unknown, fallback: number): number {
  * non-negative finite numbers drop, and a `__proto__` key stays an own property. */
 function healPairCosts(value: unknown): Record<string, number> {
   const out: Record<string, number> = {};
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return out;
+  if (!isJsonObject(value)) return out;
   for (const [k, v] of Object.entries(value)) {
     if (typeof v === "number" && Number.isFinite(v) && v >= 0)
       Object.defineProperty(out, k, { value: v, enumerable: true, writable: true, configurable: true });

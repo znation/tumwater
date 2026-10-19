@@ -18,6 +18,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { isJsonObject } from "../../files/json-object.js";
 
 /** The operator's global opencode config lives in `$XDG_CONFIG_HOME/opencode/` (or
  * `~/.config/opencode/`), in `config.json`, `opencode.json` or `opencode.jsonc`. */
@@ -139,11 +140,10 @@ export function operatorMcpNames(env: NodeJS.ProcessEnv, homeDir: string): strin
       return [];
     }
     const mcp = (parsed as { mcp?: unknown } | null)?.mcp;
-    if (mcp === undefined || mcp === null) return [];
-    if (typeof mcp !== "object" || Array.isArray(mcp)) return [];
+    if (!isJsonObject(mcp)) return [];
     const names = new Set<string>();
-    const servers = (mcp as Record<string, unknown>).servers;
-    if (typeof servers === "object" && servers !== null && !Array.isArray(servers)) {
+    const servers = mcp.servers;
+    if (isJsonObject(servers)) {
       for (const key of Object.keys(servers)) names.add(key);
     }
     // V1-shaped `mcp.<name>` keys, other than the V2 `servers` grouping.

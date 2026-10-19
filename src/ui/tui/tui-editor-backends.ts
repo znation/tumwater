@@ -2,6 +2,7 @@
 import { existsSync } from "node:fs";
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { loadConfigSafe, parseJsonConfig } from "../../config/config.js";
+import { isJsonObject } from "../../files/json-object.js";
 import { CONFIG_BASENAME, configPath } from "../../paths.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
@@ -135,7 +136,7 @@ function rawBackends(root: string): unknown {
   // an empty section is indistinguishable from unset — and "empty clears" on save treats them
   // the same anyway, so an empty section pre-fills empty, not "{}".
   const section = raw.backends;
-  return section && typeof section === "object" && !Array.isArray(section) && Object.keys(section).length === 0
+  return isJsonObject(section) && Object.keys(section).length === 0
     ? undefined
     : section;
 }

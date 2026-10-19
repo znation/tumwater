@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readTextOrNull } from "../files/files.js";
+import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { piModelsPath } from "../pi/pi-models.js";
@@ -36,10 +37,6 @@ export function secretEnvValues(env: NodeJS.ProcessEnv): { name: string; value: 
   return out;
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
 /** The credentials pi stores: literal `apiKey`s and header values in `models.json`, and the
  * `key`/`access`/`refresh` fields (plus secret-named `env` values) of the sibling `auth.json`.
  * `$NAME` interpolations (secretEnvValues covers those) and `!command` values are skipped. A
@@ -51,11 +48,11 @@ export function piCredentialValues(modelsPath: string = piModelsPath()): Secret[
     if (looksLikeSecret(value)) out.push({ name, value });
   };
   const models = readJsonFile<Record<string, unknown>>(modelsPath);
-  if (models && isRecord(models.providers)) {
+  if (models && isJsonObject(models.providers)) {
     for (const [p, cfg] of Object.entries(models.providers)) {
-      if (!isRecord(cfg)) continue;
+      if (!isJsonObject(cfg)) continue;
       add(`models.json ${p}.apiKey`, cfg.apiKey);
-      if (isRecord(cfg.headers)) {
+      if (isJsonObject(cfg.headers)) {
         for (const [h, v] of Object.entries(cfg.headers)) add(`models.json ${p}.headers.${h}`, v);
       }
     }
@@ -63,9 +60,9 @@ export function piCredentialValues(modelsPath: string = piModelsPath()): Secret[
   const auth = readJsonFile<Record<string, unknown>>(path.join(path.dirname(modelsPath), "auth.json"));
   if (auth) {
     for (const [p, cred] of Object.entries(auth)) {
-      if (!isRecord(cred)) continue;
+      if (!isJsonObject(cred)) continue;
       for (const f of ["key", "access", "refresh"]) add(`auth.json ${p}.${f}`, cred[f]);
-      if (isRecord(cred.env)) {
+      if (isJsonObject(cred.env)) {
         for (const [n, v] of Object.entries(cred.env)) {
           if (SECRET_NAME.test(n)) add(`auth.json ${p}.env.${n}`, v);
         }
