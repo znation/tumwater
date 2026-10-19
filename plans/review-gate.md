@@ -330,3 +330,7 @@ context but are not prerequisites.
 
 Reviewing merges of main into loop branches (conflict resolution keeps its existing verifier);
 multi-reviewer quorums; human review checkpoints.
+
+Reviewing a diff once (approval by a context-free patch-id, retries in place, review alongside
+the gate) and review after merging for listed roles are now planned in plans/fast-merge.md
+(2026-10-19).

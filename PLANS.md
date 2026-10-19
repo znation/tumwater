@@ -6,6 +6,400 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
+### Fast merge, part 1/14: The merge pipeline re-queues a kept change itself, so a retry needs no author run (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 1: roles stop waiting on their own change"; touches src/merge/merge-slot.ts src/merge/merge-queue.ts src/merge/merge-verify.ts src/runner/leftover.ts src/orchestrator/orchestrator.ts docs/how-it-works.md and their tests)
+
+**Goal.** A merge attempt that ends `merge_blocked`, `review_error`, `merge_conflict` or `main_red` drops its queue entry and keeps its pin. Only the author's next run puts it back, through `recoverLeftover` (src/runner/leftover.ts), and that run waits for its scheduling gap. After `main_red` it also waits on the idle backoff, which doubles from 120 s up to 10 h. From 2026-10-17 to 2026-10-19, 79 `merge_blocked` attempts alone held 60 h of pipeline time. The pipeline should re-queue such a change itself, at once.
+
+**Approach.**
+- Factor the eligibility checks of `recoverLeftover` into one exported helper that both the author path and the pipeline call, so the two cannot drift. The checks are:
+  - a pin that main already contains is stale and gets deleted;
+  - the `mergeReviewError` hold;
+  - `MERGE_CONFLICT_LIMIT`, at which the conflict hand-back stays the author's job.
+- After `writeMergeOutcome` (src/merge/merge-slot.ts) drops the entry, handle a result in `RETRIABLE_MERGE_RESULTS` (src/merge/merge-core.ts) whose pin still exists and that the helper allows:
+  - enqueue a new entry for the same runner;
+  - copy the dropped entry's `run`, `summary`, `body`, `highFriction`, `revisionRound` and `priorReview` unchanged, so the summary is not the "recovered leftover work from …" label;
+  - use the pin's current sha;
+  - log `merge_queued` with a new `retry` field naming the result.
+- A `review_error` re-queue waits 60 s. Add an optional `notBefore` (epoch ms) to `MergeEntry` (src/merge/merge-queue.ts) and have `drainVerify` (src/merge/merge-verify.ts) skip an entry until then. A dead reviewer backend is already held team-wide by `reviewHeld`.
+- `main_red` keeps the pin, as today. The orchestrator poll (src/orchestrator/orchestrator.ts, where it reads `mainHead`) re-queues such a pin on the first poll whose main head differs from the head when the attempt settled. Record that head on the runner's state, beside the pin.
+- The interlock (`queuedRoles`, src/orchestrator/orchestrator-scheduling.ts) is unchanged: the runner still does not run while its re-queued entry exists. Leftover recovery at run start stays as the backstop after a restart or a crash.
+- docs/how-it-works.md: in the paragraph about merge retries, say the pipeline re-queues a kept change itself.
+
+**Files touched.**
+- Source: src/merge/merge-slot.ts, src/merge/merge-queue.ts, src/merge/merge-verify.ts, src/runner/leftover.ts, src/orchestrator/orchestrator.ts, and src/runner/runner-state.ts for the head field.
+- Docs: docs/how-it-works.md.
+- Tests: test/leftover.test.ts, test/merge-queue.test.ts, test/merge-slot.test.ts, and an orchestrator test with a fake agent.
+
+**Acceptance criteria.**
+- A change whose first in-lock merge check is red, then green, merges with no `run_start` for its runner between its `merge_failed merge_blocked` and its `merge_done`. The re-queue's `merge_queued` carries the original summary and `retry: "merge_blocked"`.
+- A `review_error` attempt re-queues once, no sooner than 60 s later. A held reviewer configuration error does not re-queue.
+- A `main_red` pin re-queues once main's head moves, and not before.
+- At `MERGE_CONFLICT_LIMIT` the hand-back still goes through the author's run, as today.
+- `npm test` passes.
+
+### Fast merge, part 2/14: A runner waiting on its change no longer counts toward its role's `instances` (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 1: roles stop waiting on their own change"; touches src/roles/runner-ids.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/orchestrator.ts src/scheduling/claims.ts src/ui/status-model.ts src/status/status-roles.ts docs/config.md docs/how-it-works.md and their tests)
+
+**Goal.** A runner with a change in the merge pipeline never runs (plans/merge-queue.md invariant 3), so `instances: 5` means five runners that are each idle while their change merges. From 2026-10-17 to 2026-10-19 the five feature runners wrote code for 77.5 h and waited on their own changes for 129.5 h. On average only 1.4 of them were writing code at any moment. Keep the one-change-per-runner rule, and let the role use more runners: a runner waiting on its change no longer holds one of the role's `instances` places.
+
+**Approach.**
+- Only the roles in `INSTANCE_ROLES` (feature, bugfix) change. Single-runner roles stay exactly as they are.
+- src/roles/runner-ids.ts:
+  - `runnerIds` and `runnerEnabled` allow runner ids up to `2 × instances`: `feature` … `feature-10` at `instances: 5`. Name the factor once as `RUNNERS_PER_INSTANCE = 2`.
+  - `configuredInstances` keeps its meaning: the role's limit on concurrent runs.
+- Admission, in the poll (src/orchestrator/orchestrator-scheduling.ts):
+  - A runner of an instance role may start a run only while fewer than `instances` of that role's runners are running (a run in flight, not a queued change).
+  - A runner with a queued change is still skipped by the interlock.
+  - Among eligible runners, first admit one with a pending revision or conflict hand-back, then the lowest-index runner with neither.
+- Claims (src/scheduling/claims.ts):
+  - Each runner keeps its own claim. A waiting runner keeps the entry its change carries, and the next admitted runner is assigned the next eligible entry.
+  - The claim-group hold (`busy`, orchestrator-scheduling.ts ~176-180) and `workReserveCount` count running runners, not runner ids.
+- Lowering `instances` keeps today's resize behavior: surplus runners finish what is queued and start nothing new.
+- Status: a runner with index above `instances` that has no run, no queued change, no claim and no pending revision does not get its own row. This covers `tumwater status` (src/status/status-roles.ts), the dashboard and the TUI (src/ui/status-model.ts), so the table does not show ten idle feature rows.
+- docs/config.md `instances` row: the number of runs writing code at once; tumwater keeps up to twice as many runners, so a runner waiting on its change does not hold a place. docs/how-it-works.md: the same, in the parallel-instances paragraph.
+
+**Files touched.**
+- Source: src/roles/runner-ids.ts, src/orchestrator/orchestrator-scheduling.ts, src/orchestrator/orchestrator.ts, src/scheduling/claims.ts, src/ui/status-model.ts, src/status/status-roles.ts.
+- Docs: docs/config.md, docs/how-it-works.md.
+- Tests: test/runner-ids.test.ts (or wherever `runnerIds` is tested), the scheduling and claims tests, and an orchestrator e2e test with a fake agent.
+- Keep the interlock assertions in test/orchestrator-3.e2e.test.ts true per runner.
+
+**Acceptance criteria.**
+- With `instances: 2` and a fake reviewer that blocks: while one feature change waits in the pipeline, a second feature runner starts a run on the next planned entry. No third run starts while two are running.
+- A change rejected for revision runs on its own runner before a free runner starts new work, once a place is free.
+- No two runners ever hold the same claim.
+- An idle surplus runner does not appear in `tumwater status`.
+- plan, clean and every other single-runner role schedule exactly as before.
+- `npm test` passes.
+
+### Fast merge, part 3/14: Main watch runs the full check on main's tip after merges and records each verdict with its failing tests (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-baseline.ts src/baseline/main-red.ts src/build/build-check-report.ts src/build/build-check.ts src/orchestrator/orchestrator.ts src/events/events.ts docs/how-it-works.md and their tests, plus a new src/baseline/main-watch.ts)
+
+**Goal.** Parts 4–8 need a full-check verdict for main's commits, with the names of the failing tests, without any run or merge waiting for it. Today a full check runs on main only when something needs one right away: a fresh run's red-main gate, the gate's re-attribution, a merge's attribution, or the redeployer. A red verdict keeps only its script and a clipped output tail. This part adds the watch and records what it sees. Nothing acts on it yet.
+
+**Approach.**
+- New src/baseline/main-watch.ts, called from the orchestrator poll beside `redeploy.poll` (src/orchestrator/orchestrator.ts ~448) with the poll's `mainHead`. When the head differs from the last watched head and no watch run is in flight:
+  - Run main's full check on the tip through `gateMainQueue` in `_gate-main` (src/baseline/main-red.ts), at merge-tier check priority.
+  - Cached verdicts count, so do not force a fresh run.
+  - A red runs once more before it is final (`reverifyRed`).
+  - One run covers every commit since the last watched head; a head that moves during a run is watched next.
+- Doc-only commits inherit green, as `inheritedGreen` already does.
+- Skip while the team is held for a restart or for disk space, and when the project has no check.
+- Failing tests:
+  - Add `failingTests?: string[]` to `MainBaseline` (src/baseline/main-baseline.ts).
+  - Parse them from the complete check output, before `clipBuildTail` cuts it (src/build/build-check-report.ts, src/build/build-check.ts): every line `FAILED_TEST_LINE` matches, with the trailing duration stripped, deduplicated, in output order, at most 50.
+  - Export the parser for parts 7 and 9.
+- Persist reds: `.tumwater/state/baseline-verdicts.json` gains `reds: [{ sha, script, failingTests }]` (newest 64) beside `greens`, loaded at start like the greens.
+- Log a `main_check` event: `{ sha, status, durationMs, covered, failingTests? }`. `covered` counts first-parent commits since the previous watched head. Register it in the event catalog (src/events/events.ts) so `tumwater logs` renders it.
+- docs/how-it-works.md: a short paragraph on the watch.
+
+**Files touched.**
+- Source: new src/baseline/main-watch.ts; src/baseline/main-baseline.ts, src/baseline/main-red.ts, src/build/build-check-report.ts, src/build/build-check.ts, src/orchestrator/orchestrator.ts, src/events/events.ts.
+- Docs: docs/how-it-works.md.
+- Tests: a new test/main-watch.test.ts, test/main-baseline-persist.test.ts, and a parser case in the build-check report tests.
+
+**Acceptance criteria.**
+- After a fake merge, exactly one `main_check` with status `passed` is logged for the new head.
+- Two merges in quick succession produce at most two watch runs. A run that covers both reports `covered: 2`.
+- A red tip logs `main_check` status `failed` with `failingTests` parsed from a node:test fixture output holding three `✖` lines. The red was re-run once first.
+- A restart reloads the red verdict and its failing tests.
+- A doc-only commit inherits green without a run.
+- No run, gate or merge waits on the watch.
+- `npm test` passes.
+
+### Fast merge, part 4/14: A commit that turned main red is bisected, reverted and handed back to its role (planned 2026-10-19 by user; requires part 3/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-watch.ts src/merge/merge-drain.ts src/merge/merge-git.ts src/merge/merge-core.ts src/operator/revert.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md and their tests)
+
+**Goal.** When main goes red, the commit that did it should leave main in minutes and go back to its author as a revision. It should not hold a red main open while N roles try to fix the same break. Tumwater's own code does this, with no new role: bugfix keeps fix-forward for what a revert cannot handle.
+
+**Approach.**
+- Trigger: the watch (part 3) confirms a red tip T, and the newest earlier green verdict is on commit G.
+- Environment guard: re-check G with a fresh run. If G is red now too, the cause is the environment, not a commit. Warn `main's last green commit <G> is red now too — not reverting` and stop.
+- Bisect:
+  - Over the first-parent commits in G..T whose diff is not exempt-only (`review.exemptPaths`), binary-search for the first red commit C, reusing cached verdicts. Runs go through `gateMainQueue` in `_gate-main`.
+  - Confirm C's red once, and that C's parent is green.
+  - The new failures are T's failing tests minus G's.
+- Owner: the `merged` event whose `commit` is C names the runner. Revert only when that runner's base role is not the director. Do not revert a commit with no `merged` event (an operator or hand commit) or a revert commit.
+- Revert, as a new merge-slot task kind serialized with merges in `drainMerge` (src/merge/merge-drain.ts):
+  - Factor the git steps of `revertMergedCommit` (src/operator/revert.ts) into a helper that takes a worktree, used by both.
+  - In `_merge` at main's tip, run `git revert --no-edit C`; a conflict aborts it.
+  - Run `check.gateCommand` on the result when one is set; red aborts.
+  - Commit with the subject `tumwater revert` uses and a body naming C's subject and the failing tests.
+  - Land it with `ffMainToOrWhy` (src/merge/merge-git.ts) under the merge lock.
+  - Log `main_revert` `{ commit, revert, runner, failingTests }` and register it in src/events/events.ts.
+- Hand back, like `recordRejectedChange` (src/merge/merge-core.ts):
+  - Set the rejected ref to C and `state.revision` (round from C's `Revision` trailer, plus one).
+  - Set `lastReview` reasons to `reverted after merge: turned main red — <failing tests>` plus the clipped output. `REVISION_BACKSTOP` applies.
+  - Give it to C's own runner when that runner has no queued change and no pending revision, else to the first free runner of the same base role.
+  - If none is free, keep it pending in `.tumwater/state/reverted.json` and assign it on a later poll.
+- No revert: a revert that conflicts or fails its check, a director, operator or hand commit, or main still red with the same new failures after a revert. In each case send bugfix the heal prompt (`mainRedHealPrompt`, src/baseline/main-red.ts), extended to name C, the failing tests and the clipped output.
+- docs/invariants.md: an entry stating that an automatic revert only reverts a commit a role runner merged, whose red reproduced and whose parent is green. Pin it with this part's test. docs/how-it-works.md: the revert flow.
+
+**Files touched.**
+- Source: src/baseline/main-watch.ts, src/merge/merge-drain.ts, src/merge/merge-git.ts, src/merge/merge-core.ts, src/operator/revert.ts, src/baseline/main-red.ts, src/events/events.ts.
+- Docs: docs/how-it-works.md, docs/invariants.md.
+- Tests: test/main-watch.test.ts, the revert CLI tests (they must still pass on the shared helper), and an orchestrator test with a fake check.
+
+**Acceptance criteria.**
+- In a fake repo: G is green, A merges green, B makes a test fail, D is doc-only. The watch finds the tip red, the bisect names B, and main gets a revert of B. The next watch verdict is green, and B's runner holds a revision whose reasons name the failing test.
+- With G red on its re-check, nothing is reverted and the warning is logged.
+- A revert that conflicts: nothing is reverted, and bugfix's inbox holds a heal prompt naming B.
+- A director-merged culprit is not reverted, and bugfix gets the heal prompt.
+- `npm test` passes.
+
+### Fast merge, part 5/14: Self-redeploy runs main's newest green commit, not only a green tip (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/redeploy/redeployer.ts src/redeploy/redeploy.ts src/redeploy/redeploy-policy.ts src/redeploy/redeploy-probes.ts src/orchestrator/orchestrator.ts src/baseline/main-baseline.ts docs/how-it-works.md docs/invariants.md and their tests)
+
+**Goal.** Self-redeploy only ever runs a commit whose full check is green (decided 2026-10-19 by you). Today it targets only main's tip (`mainHead`, src/orchestrator/orchestrator.ts ~355). When the tip is red it deploys nothing until main moves (`blockedHead`, src/redeploy/redeployer.ts ~317 and ~411). Once part 6 lets main be briefly red between merges, that would stall redeploys. The target should be the newest green commit instead.
+
+**Approach.**
+- Choose the target before `redeploy.poll`, or as a `RedeployDeps` method (src/redeploy/redeploy-policy.ts):
+  - Walk main's first-parent history from the tip back to the running build's commit, at most 64 commits.
+  - Take the newest commit with a green full-check verdict in the cache; observed and inherited greens both count.
+  - An unchecked tip is checked as today (`mainIsGreen`, src/redeploy/redeploy.ts). If it is red, fall back to the newest older green commit that is newer than the running build.
+- `staleness`, `mainGreen`, `compile`, `swap` and the prewarm probe (src/redeploy/redeploy-probes.ts) already take a sha; pass the target.
+- `blockedHead` blocks only the red commit itself.
+- Only full-check verdicts count. A green from a cheaper command (part 6's `check.mergeCommand`) never makes a commit deployable.
+- docs/invariants.md: an entry stating that self-redeploy only runs a commit with a green full-check verdict, pinned by this part's test. docs/how-it-works.md: the redeploy paragraph.
+
+**Files touched.**
+- Source: src/redeploy/redeployer.ts, src/redeploy/redeploy.ts, src/redeploy/redeploy-policy.ts, src/redeploy/redeploy-probes.ts, src/orchestrator/orchestrator.ts, src/baseline/main-baseline.ts.
+- Docs: docs/how-it-works.md, docs/invariants.md.
+- Tests: test/redeployer.test.ts, test/redeploy-wiring.test.ts.
+
+**Acceptance criteria.**
+- Running build A, main A → B (green) → C (red): the redeploy targets B.
+- Running build A, main A → B (red): no redeploy.
+- A green tip is deployed as today.
+- A commit with only a non-full-check green is never deployed.
+- `npm test` passes.
+
+### Fast merge, part 6/14: `check.mergeCommand` runs a cheaper check inside the merge lock and moves the full check after the merge (planned 2026-10-19 by user; requires parts 3/14, 4/14 and 5/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/config/config-schema.ts src/config/config-validation.ts src/build/build-check-detect.ts src/build/build-check-scoped.ts src/build/build-check-events.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/baseline/main-red.ts src/review/review-precheck.ts tumwater.json docs/config.md docs/how-it-works.md DEVELOPMENT.md test/affected-tests.ts and their tests)
+
+**Goal.** Every code merge runs the full `npm test` inside the merge lock: `verifyMerge`'s no-op-rebase and inherited-green skips are both off while `check.gateCommand` is set (src/merge/merge-to-main.ts ~266-349). That is 96 s at p50 per merge on the serial slot. A first red there sends the change back through the whole pipeline. With parts 3–5 catching and reverting a break after the merge, the lock only needs what must never reach main: lint, compile and the change's affected tests. Those stay before every merge (decided 2026-10-19 by you).
+
+**Approach.**
+- Config: `check.mergeCommand?: string`.
+  - Add it to `CheckConfig` and `CHECK_KEYS` (src/config/config-schema.ts).
+  - Validate it like `gateCommand` (src/config/config-validation.ts ~315-323); blank means off.
+  - Add an accessor `mergeCommandOf` beside `gateCommandOf` (src/build/build-check-detect.ts).
+  - Update the valid-keys string in test/config-validation-check.test.ts.
+- With `mergeCommand` set:
+  - `verifyMerge` and the batch path (src/merge/merge-batch.ts, src/merge/merge-stack.ts) run it instead of the full check. Swap the command per scope in src/build/build-check-scoped.ts (~74).
+  - The in-lock run is skipped when the rebased head is the head the gate verified (`rebasedHead === verifiedHead`).
+  - Its green never calls `noteGreenBaseline`: main's verdicts come from the watch.
+  - Its `build_check` events carry `full: false`. Code that reads `isFullCheckScope`/`MERGE_SCOPES` (src/build/build-check-events.ts) as "this was the full check" treats them as not full: attribution, reports, doctor's merge-check median.
+  - `mainRedGate` and `bugfixMainRedNote` (src/baseline/main-red.ts) read the watch's newest verdict for main's tip or its nearest checked ancestor and never start a full check themselves. No verdict yet reads as green.
+  - The gate's re-attribution (src/review/review-precheck.ts ~135) uses the watch's verdict for the tip when it has one, and attributes as today when it has none.
+- Unset, nothing changes.
+- tumwater.json: `"check": { …, "mergeCommand": "npm run test:gate" }`.
+- Docs that promise a full check per merge or "never a red main" now say what happens instead: docs/config.md (the `check` row), docs/how-it-works.md (~65-69), DEVELOPMENT.md (~37-42), the comment in test/affected-tests.ts (~7-8), and the comments in src/merge/merge-batch.ts (~159, ~296).
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/build/build-check-detect.ts, src/build/build-check-scoped.ts, src/build/build-check-events.ts, src/merge/merge-to-main.ts, src/merge/merge-batch.ts, src/merge/merge-stack.ts, src/baseline/main-red.ts, src/review/review-precheck.ts.
+- Config and docs: tumwater.json, docs/config.md, docs/how-it-works.md, DEVELOPMENT.md, test/affected-tests.ts (comment only).
+- Tests: test/config-validation-check.test.ts, test/build-check-detect.test.ts, test/build-check.test.ts, test/merge-to-main.test.ts, test/main-red.test.ts.
+
+**Acceptance criteria.**
+- With `mergeCommand` set to a passing fake command and a full check that would fail, a change merges. The watch then reports the tip red and part 4 reverts the change.
+- When the rebased head equals the verified head, no in-lock `build_check` runs.
+- A `mergeCommand` green never appears among the persisted greens.
+- A fresh run on main with a watch verdict starts without running a full check.
+- With `mergeCommand` unset, the existing merge tests pass unchanged.
+- `npm test` passes.
+
+### Fast merge, part 7/14: A gate or merge check that fails only main's known failures lets the change go on (planned 2026-10-19 by user; requires part 3/14 landed; design in plans/fast-merge.md "Lever 3: main's known failures instead of a team-wide hold"; touches src/review/review-precheck.ts src/merge/merge-check-failures.ts src/merge/merge-to-main.ts src/baseline/main-watch.ts src/baseline/main-red.ts src/prompt/gate-prompts.ts and their tests)
+
+**Goal.** A change should not be held for a failure main already has. Today a repeated gate failure runs a fresh full check on main (`mainTipVerdict(…, true)`, src/review/review-precheck.ts ~135). If main is red, the change ends `main_red` and waits, even when its only failure is main's.
+
+**Approach.**
+- Add `knownMainFailures(root)` in src/baseline/main-watch.ts: the failing tests of the watch's newest verdict for main's tip or its nearest checked ancestor. It is empty when that verdict is green.
+- A red check's failing tests come from part 3's parser, over the complete output. They are `undefined` when nothing parses.
+- Gate, after its one re-run: if the failing tests parse and every one of them is a known failure, the change goes on to review as verified. Log the warning `gate check fails only main's known failures: <tests>`. This replaces the fresh full run on main and the `main_red` outcome for that case.
+- In the merge lock (`mergeCheckRed`, src/merge/merge-check-failures.ts, and `verifyMerge`): the same subset rule counts as passed. The fast-forward goes ahead with a warning and no `merge_blocked` strike.
+- When the gate passed on known failures, the reviewer prompt names those failures as main's (`buildReviewPrompt`, src/prompt/gate-prompts.ts).
+- Unparsed output, or any failure outside the known set, keeps today's handling.
+
+**Files touched.**
+- Source: src/review/review-precheck.ts, src/merge/merge-check-failures.ts, src/merge/merge-to-main.ts, src/baseline/main-watch.ts, src/baseline/main-red.ts, src/prompt/gate-prompts.ts.
+- Tests: test/review-precheck.test.ts, test/merge-to-main.test.ts, test/main-watch.test.ts.
+
+**Acceptance criteria.**
+- The watch's verdict is red with test X. A change whose gate fails only X goes on to review and merges. A change failing X and Y is handled as today.
+- Output that names no test is handled as today.
+- No fresh full check of main runs for a gate failure that only repeats main's failures.
+- `npm test` passes.
+
+### Fast merge, part 8/14: Every role runs on a red main, with a note listing main's known failures (planned 2026-10-19 by user; requires part 7/14 landed; design in plans/fast-merge.md "Lever 3: main's known failures instead of a team-wide hold"; touches src/baseline/main-red.ts src/runner/runner-run.ts src/prompt/gate-prompts.ts src/roles/roles.ts docs/how-it-works.md and their tests)
+
+**Goal.** On a red main, feature and every code maintenance role (`BASELINE_BLOCKED_ROLES`, src/roles/roles.ts) end their runs `main_red` and wait, and each red commit logs "code merges blocked until main is green". Once part 7 lets changes through on known failures, the team should keep working on a red main. Only the owner (part 4's revert, then bugfix) deals with the red.
+
+**Approach.**
+- `mainRedGate` (src/baseline/main-red.ts): when main's red verdict names its failing tests, every role proceeds. When it names none, the block stays as today.
+- Every role except bugfix gets a `<main-known-red>` block in its prompt. Build it in src/prompt/gate-prompts.ts beside `buildMainRedNote`, and append it in src/runner/runner-run.ts where `bugfixMainRedNote` is appended. It contains:
+  - the failing tests, at most 20;
+  - "These tests already fail on main. Tumwater or the bugfix role owns them. Leave them alone unless your task is about them; a change merges when it adds no new failures."
+- bugfix keeps `<main-red>` and the heal prompt. `warnMainRedOnce` sends the heal prompt once per set of failing tests (sorted test names as the key) instead of once per red commit.
+- The `main_red_hold` message becomes `main <sha> is red (<n> failing tests); changes that add no new failures still merge`.
+- docs/how-it-works.md: the red-main paragraph.
+
+**Files touched.**
+- Source: src/baseline/main-red.ts, src/runner/runner-run.ts, src/prompt/gate-prompts.ts, src/roles/roles.ts.
+- Docs: docs/how-it-works.md.
+- Tests: test/main-red.test.ts, and the prompt tests that cover `buildMainRedNote`.
+
+**Acceptance criteria.**
+- On a red main with named failures, a feature run authors, and its prompt holds the block with those test names. bugfix's prompt holds `<main-red>`.
+- Two red commits with the same failing set send bugfix one heal prompt.
+- On a red main whose failure names no test, a feature run ends `main_red` as today.
+- `npm test` passes.
+
+### Fast merge, part 9/14: A flaky test is quarantined and filed in BUGS.md the first time it fails and then passes on the same tree (planned 2026-10-19 by user; requires part 7/14 landed; design in plans/fast-merge.md "Lever 4: a flaky test is quarantined the first time"; touches src/review/known-flakes.ts src/review/review-precheck.ts src/merge/merge-check-failures.ts src/merge/merge-core.ts src/baseline/main-watch.ts src/backlog/backlog-write.ts src/backlog/backlog-archive.ts docs/how-it-works.md and their tests)
+
+**Goal.** On 2026-10-19, test/merger.test.ts "a green batch stacks every approved change…" failed 104 times between 05:00 and its fix at 12:29 (a10e2ccfe). It accounted for 104 of the 165 check-failure warnings since 2026-10-17. Each failure cost a retry and often a full requeue. Today a flake is excused only after it repeats inside a 24 h window, and the excuse still ends the gate's attempt. A test that fails and then passes on the same tree should stop costing anything at once, and bugfix should get it.
+
+**Approach.**
+- If the BUGS.md entry "An excused known-flaky gate failure ends the merge attempt as `review_error`…" is still under `## Open`, fix it first in this part, as its fix sketch says, and close it.
+- Keep a quarantine list in `.tumwater/state/quarantine.json`: `[{ test, firstSeen, lastSeen, count, bug }]`, newest 100.
+- A test is added when a check fails and an immediate re-run of the same tree passes: each failing test the failed run names joins the list. This covers:
+  - the gate's re-run;
+  - a new single re-run of a red in-lock merge check, before the pin is kept as `merge_blocked`;
+  - the watch's confirming re-run.
+- A quarantined test counts as a known failure everywhere:
+  - in part 7's subset rule;
+  - in the watch: a red that names only quarantined tests counts as green for the bisect and for redeploy, recorded with `quarantined: [tests]`;
+  - in part 4's culprit search.
+- Filing: one BUGS.md `## Open` entry per newly quarantined test, via `fileBugFromText`/`appendEntry` (src/backlog/backlog-write.ts).
+  - Title it "`<test>` failed, then passed on the same tree (quarantined by tumwater YYYY-MM-DD)", with the failing output tail.
+  - Commit it on main under the merge lock and the primary-worktree lock, as `archiveFinishedOnMain` does (src/backlog/backlog-archive.ts).
+  - When the primary checkout is dirty or off main, warn and retry on a later poll.
+- Release: a quarantined test whose bug entry is no longer under `## Open` leaves the list. A later flake puts it back.
+- Fold the 24 h known-flake excuse (`isKnownFlake`, src/review/known-flakes.ts) into quarantine. The `FLAKY_WARNING_PREFIX` warnings stay, since doctor's "flaky checks" row reads them.
+
+**Files touched.**
+- Source: src/review/known-flakes.ts, src/review/review-precheck.ts, src/merge/merge-check-failures.ts, src/merge/merge-core.ts, src/baseline/main-watch.ts, src/backlog/backlog-write.ts, src/backlog/backlog-archive.ts.
+- Docs: docs/how-it-works.md.
+- Tests: test/known-flakes.test.ts, test/review-precheck.test.ts, test/main-watch.test.ts, and a merge-check test.
+
+**Acceptance criteria.**
+- A fake test fails once, then passes. The gate's re-run passes, the test is quarantined, and one BUGS.md entry is committed on main. A later change whose gate fails only that test goes on without a re-run.
+- A red in-lock merge check whose immediate re-run passes merges, and quarantines the test.
+- A watch red that names only quarantined tests starts no bisect.
+- Moving the bug entry out of `## Open` releases the test.
+- `npm test` passes.
+
+### Fast merge, part 10/14: An approval survives a rebase, a requeue and a restart while the change's own lines are unchanged (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/git/git.ts src/review/review.ts src/runner/runner-state.ts src/tick/tick-apply.ts and their tests)
+
+**Goal.** 42% of review time from 2026-10-17 to 2026-10-19 went to reviewing a diff that had not changed: 66 reviews after a requeue (14.3 h) and 40 after a clean rebase (3.5 h). The approval key is a patch-id that hashes context lines (src/git/git.ts ~487-513), so main moving next to a hunk invalidates it. PLANS.md and BUGS.md hunks, in nearly every change, are the usual case. Only one approval is remembered per role (`lastApprovedPatchId`, src/runner/runner-state.ts).
+
+**Approach.**
+- The approval patch-id hashes the change's own lines only: `git diff --no-color --no-ext-diff --no-textconv --binary -U0 main...head | git patch-id --verbatim`. Update the comment that says context lines count.
+- Remember up to 8 approved patch-ids per runner (`approvedPatchIds`), persisted with the runner state so they survive a restart.
+  - Clear them when the change merges (`changed`) or is finally rejected (src/tick/tick-apply.ts).
+  - `lastApprovedHead` stays.
+- The reuse check in src/review/review.ts (~274-281) matches any remembered id.
+- The gate pre-check still runs before reuse on a tree that moved; only the reviewer is skipped.
+- A conflict resolution that changes the change's own lines gets a different id and is reviewed, as today.
+
+**Files touched.**
+- Source: src/git/git.ts, src/review/review.ts, src/runner/runner-state.ts, src/tick/tick-apply.ts.
+- Tests: test/git.test.ts (or test/git-diff.test.ts) and the review tests.
+
+**Acceptance criteria.**
+- A change is approved. Main then edits a PLANS.md line next to the change's PLANS.md hunk, and the change is verified again. No `review_start` is logged, the gate runs, and the change merges.
+- A change whose own lines changed is reviewed.
+- After a restart, an approved change that is still queued is verified again without a review.
+- `npm test` passes.
+
+### Fast merge, part 11/14: A failed reviewer run retries in place before the attempt ends `review_error` (planned 2026-10-19 by user; requires part 10/14 landed; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/review/review.ts src/runner/runner-pi.ts src/merge/merge-core.ts src/events/events.ts and their tests)
+
+**Goal.** From 2026-10-17 to 2026-10-19, `review_error` ended 47 attempts and cost 34 h of pipeline time. A reviewer that timed out, was killed (exit 143), lost its connection or never stated a VERDICT ended the attempt. The change then waited for a requeue and paid the gate again. `runWithTransientRetry` (src/runner/runner-pi.ts) skips timeouts and kills. A timed-out review resumes only on the next attempt (`REVIEW_RESUME_LIMIT`).
+
+**Approach.**
+- In the review step (src/review/review.ts ~561-601), retry up to twice more within the same verify, 30 s apart, when the reviewer run:
+  - timed out or was quiet-killed;
+  - was killed by a signal;
+  - failed in transport or at the provider (not a `configError`);
+  - stated no VERDICT after its recovery turn.
+- Resume the session when `REVIEW_RESUME_LIMIT` allows; otherwise start fresh.
+- While the reviewer's provider is held (`reviewHeld`), wait for the hold to lift instead of counting an attempt.
+- Only after the retries does the attempt end `review_error`, as today. `REVIEW_FAILURE_LIMIT` keeps counting unparseable verdicts per head.
+- `review_failed` events carry `attempt`; register the field in src/events/events.ts.
+
+**Files touched.**
+- Source: src/review/review.ts, src/runner/runner-pi.ts, src/merge/merge-core.ts, src/events/events.ts.
+- Tests: the review tests with a fake reviewer.
+
+**Acceptance criteria.**
+- A fake reviewer exits 143 once, then approves: one verify, the change merges, and no `merge_failed` is logged.
+- Three failed reviewer runs end `review_error`, as today.
+- A configuration error is not retried.
+- `npm test` passes.
+
+### Fast merge, part 12/14: The review runs alongside the gate check instead of after it (planned 2026-10-19 by user; requires part 11/14 landed; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/review/review.ts src/review/review-precheck.ts src/merge/merge-batch.ts src/git/worktree-pool.ts src/prompt/gate-prompts.ts src/merge/merge-slot.ts and their tests)
+
+**Goal.** The reviewer starts only after `gateBuildPrecheck` passes (src/review/review.ts ~262-321), so every attempt pays the gate's duration (p50 67 s) before the review begins. The two can run at once.
+
+**Approach.**
+- After the rebase and the deterministic rejects, lease a second pool slot (src/git/worktree-pool.ts), detached at the same head with purpose `verify-check`. Run the gate check there while the reviewer starts in the change's own slot.
+- The reviewer prompt always says "Tumwater is running the project's check on this tree; do not run the suite" (src/prompt/gate-prompts.ts), replacing the `verifiedByHarness` branch. The suite re-run tripwire always applies.
+- Joining the two:
+  - A red gate, after its re-run and the part 7 and 9 excuses, aborts the reviewer run and settles as today.
+  - A green gate plus an approval is approved with `verifiedHead`.
+  - An approval that arrives first waits for the gate.
+  - A pre-check rejection resets only the check slot.
+- The merge stage shows both (src/merge/merge-slot.ts `setMergeStage`).
+- With no free pool slot, run the two in sequence, as today.
+
+**Files touched.**
+- Source: src/review/review.ts, src/review/review-precheck.ts, src/merge/merge-batch.ts, src/git/worktree-pool.ts, src/prompt/gate-prompts.ts, src/merge/merge-slot.ts.
+- Tests: the review and pool tests.
+
+**Acceptance criteria.**
+- With a fake gate of 20 s and a fake reviewer of 20 s, a verify takes about 20 s, not 40 s (from its events).
+- A red gate aborts the reviewer, records no verdict, and the change is handled as today.
+- With no free slot, the two run in sequence.
+- `npm test` passes.
+
+### Fast merge, part 13/14: The run prompt names the gate command for verification and says tumwater runs the full check (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 6: agents run the tests for what they touched"; touches src/prompt/prompt.ts src/tick/tick-prompt.ts and their tests)
+
+**Goal.** The run prompt says "verify with `npm run test` (the project's declared check) — run it after your change and fix what you broke" (src/prompt/prompt.ts ~147). From 2026-10-17 to 2026-10-19 agents ran the full suite in 70 of 162 sampled author runs, 12% of author run time. Tumwater runs the gate command on every change and the full check itself, so the agent only needs the gate command.
+
+**Approach.**
+- src/tick/tick-prompt.ts (~127): pass `gateCommandOf(config)` to the prompt builder alongside the detected check.
+- src/prompt/prompt.ts: with a gate command, the verify text becomes: "verify with `<gate>` (lint, compile and the tests your change affects) — run it after your change and fix what you broke. Tumwater runs the full check (`<check>`) itself; do not run it." The "Leave the project working" rule's scratch-file advice names the gate command. Without a gate command the wording is unchanged.
+
+**Files touched.**
+- Source: src/prompt/prompt.ts, src/tick/tick-prompt.ts.
+- Tests: test/prompt.test.ts (~125, ~129, ~411), test/tick-prompt.test.ts (~117), plus a new case with `check.gateCommand` set.
+
+**Acceptance criteria.**
+- With `check.gateCommand: "npm run test:gate"`, a feature prompt names `npm run test:gate` and does not contain "verify with `npm run test`".
+- Without a gate command, the existing wording tests (`pytest -q`, `make check`, the fallback) pass unchanged.
+- `npm test` passes.
+
+### Fast merge, part 14/14: Roles listed in `review.afterMerge` merge once the gate passes and are reviewed after merging (planned 2026-10-19 by user; requires parts 4/14 and 6/14 landed; design in plans/fast-merge.md "Lever 7: maintenance roles reviewed after merging"; touches src/config/config-schema.ts src/config/config-validation.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-drain.ts src/merge/merge-core.ts tumwater.json docs/config.md docs/how-it-works.md and their tests)
+
+**Goal.** clean, dedupe and coverage merge many small code changes, and each one waits for a review before it can merge. For those roles a review after the merge, with the power to revert, keeps the quality bar at a fraction of the wait.
+
+**Approach.**
+- Config: `review.afterMerge?: string[]` of base role ids (src/config/config-schema.ts; validated in src/config/config-validation.ts as known role ids, never `director`).
+- Verify (src/merge/merge-verify.ts): for a listed role, the deterministic rejects and the gate still run, and the reviewer is skipped, so the change goes on to merge.
+- After the merge:
+  - Record a post-merge review for the merged commit C in `.tumwater/state/post-review.json`. The verify drain runs it at `VERIFY_TIER` when permits allow, with the usual reviewer prompt over `git diff C^ C`.
+  - An approval ends it. `review_verdict` and `review_rejected` carry `afterMerge: true`.
+  - A rejection reverts C through part 4's revert task and hands it back as a revision with the reviewer's reasons.
+  - A revert that conflicts leaves C on main and sends the reasons to the role's inbox (`enqueueRolePrompt`).
+- tumwater.json: `"afterMerge": ["clean", "dedupe", "coverage"]`.
+- docs/config.md (the `review` row) and docs/how-it-works.md.
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/review/review.ts, src/merge/merge-verify.ts, src/merge/merge-drain.ts, src/merge/merge-core.ts.
+- Config and docs: tumwater.json, docs/config.md, docs/how-it-works.md.
+- Tests: the config validation tests, plus a merge test with a fake reviewer.
+
+**Acceptance criteria.**
+- A listed role's change merges with no `review_start` before its `merged` event. An `afterMerge` review follows it.
+- A rejecting post-merge review puts a revert commit on main and gives the role's runner a revision with the reviewer's reasons.
+- An unlisted role is reviewed before merging, as today.
+- `npm test` passes.
+
 ### Plain terms code runner, part 6/14: Convert the TUI and the merge and review modules (planned 2026-10-16 by user; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/ui/tui/ + the other src/ui/*.ts + src/merge/ + src/review/ + src/verdict/ + their tests)
 
 **Goal.** The TUI, the remaining src/ui/ modules, and the merge, review and verdict modules use role and runner names in identifiers, comments and test titles.

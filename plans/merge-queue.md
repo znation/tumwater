@@ -91,3 +91,6 @@ rejected: divergence time is the dominant cost of a multi-role fleet, the tick-s
 coordination protocol, and a review reject stops being a free `reset --hard main` once commits
 stack. If a task is too big for one tick, the answer is a bounded WIP carry over the existing
 `resumePending` machinery — not a long-lived branch.
+
+Runners per role and the full check moving after the merge are now planned in
+plans/fast-merge.md (2026-10-19). Invariant 3 (one in-flight change per runner) stays.
