@@ -14,7 +14,7 @@ import { reviewAheadOfMain } from "../src/review/review.js";
 import { aheadOfMain, headOf } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { logEvent } from "../src/events/events.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
@@ -602,7 +602,7 @@ test("an approved change cleanly rebased onto a moved main reuses its approval: 
     const state = freshLoopState(ROLE);
     const approvedHead = await headOf(wt, "HEAD");
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
-    assert.ok(state.lastApprovedPatchId, "the approval is keyed by its patch-id too");
+    assert.equal(state.approvedPatchIds?.length, 1, "the approval is keyed by its patch-id too");
     const checksBefore = eventsOfType(root, "build_check").length;
 
     const rebased = await moveMainAndRebase(root, wt);
@@ -626,13 +626,30 @@ test("an approved change cleanly rebased onto a moved main reuses its approval: 
   });
 });
 
+test("main editing next to the change's hunk, or a restart, keeps the approval", async () => {
+  const { root, wt } = await greenBuildFixture();
+  const runs = path.join(tmpdir(), "pi-runs");
+  await withPi(`echo run >> '${runs}'\n${reviewerStub()}`, async () => {
+    const state = freshLoopState(ROLE);
+    assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
+    // A restart: the runner state round-trips through its file.
+    saveLoopState(root, state);
+    const reloaded = loadLoopState(root, ROLE);
+    await moveMainAndRebase(root, wt);
+    const result = await reviewAheadOfMain(gateCtx(root, wt, 2), reloaded);
+    assert.equal(result.decision, "approved");
+    assert.equal(result.run, undefined, "no reviewer run was spent");
+    assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 1);
+  });
+});
+
 test("a rebase that changes the patch is re-reviewed", async () => {
   const { root, wt } = await greenBuildFixture();
   const runs = path.join(tmpdir(), "pi-runs");
   await withPi(`echo run >> '${runs}'\n${reviewerStub()}`, async () => {
     const state = freshLoopState(ROLE);
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
-    const approvedPatch = state.lastApprovedPatchId;
+    const approvedPatch = state.approvedPatchIds?.[0];
     await moveMainAndRebase(root, wt);
     // What a conflict resolution does: the rebased commit carries a hunk the reviewer never saw.
     fs.appendFileSync(path.join(wt, "seed.txt"), "resolved differently\n");
@@ -641,7 +658,8 @@ test("a rebase that changes the patch is re-reviewed", async () => {
     assert.equal(result.decision, "approved");
     assert.ok(result.run, "the changed patch got its own reviewer run");
     assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 2);
-    assert.notEqual(state.lastApprovedPatchId, approvedPatch, "the new approval names the new patch");
+    assert.equal(state.approvedPatchIds?.length, 2, "the new patch is remembered beside the old");
+    assert.notEqual(state.approvedPatchIds?.[1], approvedPatch, "the new approval names the new patch");
   });
 });
 

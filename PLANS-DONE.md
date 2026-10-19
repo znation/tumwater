@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 10/14: An approval survives a rebase, a requeue and a restart while the change's own lines are unchanged (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/git/git.ts src/review/review.ts src/runner/runner-state.ts src/tick/tick-apply.ts and their tests) — done 2026-10-19
+
+**Goal.** 42% of review time from 2026-10-17 to 2026-10-19 went to reviewing a diff that had not changed: 66 reviews after a requeue (14.3 h) and 40 after a clean rebase (3.5 h). The approval key is a patch-id that hashes context lines (src/git/git.ts ~487-513), so main moving next to a hunk invalidates it. PLANS.md and BUGS.md hunks, in nearly every change, are the usual case. Only one approval is remembered per role (`lastApprovedPatchId`, src/runner/runner-state.ts).
+
+**Approach.**
+- The approval patch-id hashes the change's own lines only: `git diff --no-color --no-ext-diff --no-textconv --binary -U0 main...head | git patch-id --verbatim`. Update the comment that says context lines count.
+- Remember up to 8 approved patch-ids per runner (`approvedPatchIds`), persisted with the runner state so they survive a restart.
+  - Clear them when the change merges (`changed`) or is finally rejected (src/tick/tick-apply.ts).
+  - `lastApprovedHead` stays.
+- The reuse check in src/review/review.ts (~274-281) matches any remembered id.
+- The gate pre-check still runs before reuse on a tree that moved; only the reviewer is skipped.
+- A conflict resolution that changes the change's own lines gets a different id and is reviewed, as today.
+
+**Files touched.**
+- Source: src/git/git.ts, src/review/review.ts, src/runner/runner-state.ts, src/tick/tick-apply.ts.
+- Tests: test/git.test.ts (or test/git-diff.test.ts) and the review tests.
+
+**Acceptance criteria.**
+- A change is approved. Main then edits a PLANS.md line next to the change's PLANS.md hunk, and the change is verified again. No `review_start` is logged, the gate runs, and the change merges.
+- A change whose own lines changed is reviewed.
+- After a restart, an approved change that is still queued is verified again without a review.
+- `npm test` passes.
+
 ### Fast merge, part 1/14: The merge pipeline re-queues a kept change itself, so a retry needs no author run (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 1: roles stop waiting on their own change"; touches src/merge/merge-slot.ts src/merge/merge-queue.ts src/merge/merge-verify.ts src/runner/leftover.ts src/orchestrator/orchestrator.ts docs/how-it-works.md and their tests) — done 2026-10-19 by the feature role
 
 **Goal.** A merge attempt that ends `merge_blocked`, `review_error`, `merge_conflict` or `main_red` drops its queue entry and keeps its pin. Only the author's next run puts it back, through `recoverLeftover` (src/runner/leftover.ts), and that run waits for its scheduling gap. After `main_red` it also waits on the idle backoff, which doubles from 120 s up to 10 h. From 2026-10-17 to 2026-10-19, 79 `merge_blocked` attempts alone held 60 h of pipeline time. The pipeline should re-queue such a change itself, at once.

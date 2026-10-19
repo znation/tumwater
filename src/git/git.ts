@@ -483,9 +483,10 @@ export async function aheadOfMain(wt: string, mainBranch: string): Promise<numbe
 
 /** The patch-id of the change `head` makes on top of `base`: `git diff` over `base...head` (from
  * their merge-base, the same range aheadOfMainDiff hands the reviewer) piped into
- * `git patch-id`. Two shas carrying the same diff — an approved head and its clean rebase onto
- * a moved main — share it, since patch-id ignores hunk line numbers; a rebase that changed any
- * line of the patch, context included, does not. `--verbatim` over `--stable`: `--stable` also
+ * `git patch-id`. The diff is `-U0`: the change's own lines only, no context. Two shas carrying
+ * the same change — an approved head and its rebase onto a main that moved next to a hunk —
+ * share it, since patch-id ignores hunk line numbers; a rebase that changed any added or removed
+ * line does not. `--verbatim` over `--stable`: `--stable` also
  * strips whitespace, so a whitespace-only difference would reuse an approval. `--binary` puts
  * binary content in the hash (without it every binary change reads "Binary files differ"), and
  * `--no-ext-diff --no-textconv` keep user diff config out of it. The raw stdout goes to
@@ -497,7 +498,7 @@ export async function patchId(wt: string, base: string, head: string): Promise<s
     // Both children run through execGitBounded, so a hung diff or patch-id is SIGTERMed group-wide
     // and SIGKILLed after the grace instead of stalling merge's approval check.
     const { stdout: diff } = await execGitBounded(
-      ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--binary", `${base}...${head}`],
+      ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--binary", "-U0", `${base}...${head}`],
       { cwd: wt, timeoutMs: GIT_TIMEOUT_MS },
     );
     if (diff === "") return null;

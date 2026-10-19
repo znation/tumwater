@@ -315,6 +315,19 @@ test("loadRunnerState drops a nested record that is not a plain object, keeping 
   assert.equal(s.claim?.key, "k");
 });
 
+test("approvedPatchIds survive a save and load; an older single id folds in; junk entries drop", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "approved");
+  ensureParentDir(file);
+  fs.writeFileSync(file, JSON.stringify({ role: "approved", approvedPatchIds: ["a", 3, "b"] }));
+  assert.deepEqual(loadRunnerState(dir, "approved").approvedPatchIds, ["a", "b"]);
+  fs.writeFileSync(file, JSON.stringify({ role: "approved", lastApprovedPatchId: "old" }));
+  const s = loadRunnerState(dir, "approved");
+  assert.deepEqual(s.approvedPatchIds, ["old"]);
+  assert.equal("lastApprovedPatchId" in s, false);
+  assert.equal(loadRunnerState(dir, "fresh").approvedPatchIds, undefined);
+});
+
 test("loadRunnerState heals and validates the reviewResume marker", () => {
   const dir = tmpdir();
   const file = statePath(dir, "resume");

@@ -663,12 +663,16 @@ test("patchId is the same for one diff at two shas: a clean rebase onto a moved 
   assert.equal(await patchId(repo, "main", rebased), before, "same diff, same patch-id");
 });
 
-test("patchId differs when a rebase changes the patch: new context, or whitespace alone", async () => {
+test("patchId differs when the change's own lines differ, whitespace alone included; context does not count", async () => {
   const { repo, side } = patchFixture();
   const before = await patchId(repo, "main", side);
-  // Main edits a line inside the hunk's context: the rebase is clean, the patch is not the same.
+  // Main edits a line next to the hunk (context under -U3, not under -U0): the patch is the same.
   advanceMain(repo, (t) => t.replace("line 4\n", "line four\n"));
   sh(repo, "git", "rebase", "-q", "main");
+  assert.equal(await patchId(repo, "main", "HEAD"), before, "context is not part of the id");
+  // Amending the change's own line is a different patch.
+  fs.writeFileSync(path.join(repo, "a.txt"), fs.readFileSync(path.join(repo, "a.txt"), "utf8").replace("changed\n", "changed again\n"));
+  sh(repo, "git", "commit", "-a", "--amend", "--no-edit");
   assert.notEqual(await patchId(repo, "main", "HEAD"), before);
 
   // A whitespace-only difference in the added line is a different patch too (`--stable` would

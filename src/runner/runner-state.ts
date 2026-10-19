@@ -25,6 +25,9 @@ import { allRoleIds } from "../roles/roles.js";
  * resuming the same session forever. */
 export const REVIEW_RESUME_LIMIT = 2;
 
+/** Approved patch-ids a runner remembers (RunnerState.approvedPatchIds). */
+export const APPROVED_PATCH_IDS_MAX = 8;
+
 /** Persisted per-runner state in .tumwater/state/<role>.json. */
 export interface RunnerState {
   role: string;
@@ -169,10 +172,11 @@ export interface RunnerState {
   /** Branch HEAD that passed review most recently. Leftover commits at exactly this HEAD
    * merge without re-review (a merge_blocked retry must not burn another review run). */
   lastApprovedHead?: string;
-  /** git/git.ts patchId of the change at lastApprovedHead against main — the diff the reviewer
-   * judged. A different head carrying the same patch (a clean rebase onto a moved main) reuses
-   * the approval: no second model review, though the gate's build pre-check still runs. */
-  lastApprovedPatchId?: string;
+  /** git/git.ts patchIds (the change's own lines, no context) of the diffs the reviewer approved,
+   * oldest first, at most APPROVED_PATCH_IDS_MAX. A head carrying any of them (a rebase onto a
+   * moved main, a requeue, a restart) reuses the approval: no second model review, though the
+   * gate's build pre-check still runs. Cleared when the change merges or is finally rejected. */
+  approvedPatchIds?: string[];
   /** Consecutive failed reviews of the SAME branch HEAD (reset when the reviewed HEAD
    * changes or a review succeeds). Past the limit the leftover is discarded with a warning,
    * so a misconfigured reviewer cannot wedge a runner re-reviewing one commit forever. */
@@ -468,6 +472,13 @@ export function loadRunnerState(root: string, role: string): RunnerState {
   healOptionalNumber(s, "unreviewFailures");
   healOptionalNumber(s, "parkedSince");
   if (s.skipReason !== undefined && !SKIP_REASONS.includes(s.skipReason)) delete s.skipReason;
+  // The one-id field an older state file carries folds into the list.
+  const legacy = (saved as { lastApprovedPatchId?: unknown } | null)?.lastApprovedPatchId;
+  delete (s as { lastApprovedPatchId?: unknown }).lastApprovedPatchId;
+  if (s.approvedPatchIds !== undefined || typeof legacy === "string") {
+    const ids = [...(Array.isArray(s.approvedPatchIds) ? s.approvedPatchIds : []), ...(typeof legacy === "string" ? [legacy] : [])];
+    s.approvedPatchIds = ids.filter((id): id is string => typeof id === "string").slice(-APPROVED_PATCH_IDS_MAX);
+  }
   if (s.reviewResume !== undefined) {
     const r = healRecord(s.reviewResume, (v) => {
       v.attempts = healNumber(v.attempts, 0);

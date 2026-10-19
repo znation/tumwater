@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { REVIEW_RESUME_LIMIT, saveLoopState, type LoopState } from "../runner/runner-state.js";
+import { APPROVED_PATCH_IDS_MAX, REVIEW_RESUME_LIMIT, saveLoopState, type LoopState } from "../runner/runner-state.js";
 import { modelSelectorField, resolvedAgentConfig, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
@@ -149,7 +149,7 @@ export interface GateResult {
  * that can move a commit into main routes through here, so no crash or abort path smuggles
  * unreviewed work in:
  * - gate disabled, or an already-approved HEAD, or an exempt (doc-only) diff → merge as-is;
- * - a new HEAD carrying the last approved patch (lastApprovedPatchId) → approved after the
+ * - a new HEAD carrying an approved patch (approvedPatchIds) → approved after the
  *   build pre-check, with no reviewer run;
  * - approve → record lastApprovedHead and its patch-id, and discard the reviewer's stray
  *   working-tree edits (its only output channel is the verdict);
@@ -272,12 +272,10 @@ export async function reviewAheadOfMain(
   // above has just run on this tree (a failure rejected it there), and its verifiedHead rides
   // on the result as for any approval.
   const reviewedPatchId = (await patchId(wt, mainBranch, head)) ?? undefined;
-  if (state.lastApprovedPatchId !== undefined) {
-    if (reviewedPatchId === state.lastApprovedPatchId) {
-      state.reviewResume = undefined;
-      state.lastApprovedHead = head;
-      return { decision: "approved", verifiedHead };
-    }
+  if (reviewedPatchId !== undefined && state.approvedPatchIds?.includes(reviewedPatchId)) {
+    state.reviewResume = undefined;
+    state.lastApprovedHead = head;
+    return { decision: "approved", verifiedHead };
   }
 
   // The reviewer's model selector (plans/model-tiers.md "Observability"): resolved from the
@@ -608,9 +606,12 @@ export async function reviewAheadOfMain(
 
   // Approve: record the reviewed HEAD and discard any stray working-tree edits the reviewer
   // made while reading around — its only output channel is the verdict. The patch-id keys the
-  // approval to the diff it judged; unreadable, it clears any older one (no reuse at all).
+  // approval to the diff it judged; unreadable, it is not remembered.
   state.lastApprovedHead = head;
-  state.lastApprovedPatchId = reviewedPatchId;
+  if (reviewedPatchId !== undefined) {
+    const kept = (state.approvedPatchIds ?? []).filter((id) => id !== reviewedPatchId);
+    state.approvedPatchIds = [...kept, reviewedPatchId].slice(-APPROVED_PATCH_IDS_MAX);
+  }
   state.reviewResume = undefined;
   recordReview(state, "approve", verdict.reasons, head);
   state.unreviewFailures = 0;

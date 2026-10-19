@@ -231,29 +231,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Moving the bug entry out of `## Open` releases the test.
 - `npm test` passes.
 
-### Fast merge, part 10/14: An approval survives a rebase, a requeue and a restart while the change's own lines are unchanged (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/git/git.ts src/review/review.ts src/runner/runner-state.ts src/tick/tick-apply.ts and their tests)
-
-**Goal.** 42% of review time from 2026-10-17 to 2026-10-19 went to reviewing a diff that had not changed: 66 reviews after a requeue (14.3 h) and 40 after a clean rebase (3.5 h). The approval key is a patch-id that hashes context lines (src/git/git.ts ~487-513), so main moving next to a hunk invalidates it. PLANS.md and BUGS.md hunks, in nearly every change, are the usual case. Only one approval is remembered per role (`lastApprovedPatchId`, src/runner/runner-state.ts).
-
-**Approach.**
-- The approval patch-id hashes the change's own lines only: `git diff --no-color --no-ext-diff --no-textconv --binary -U0 main...head | git patch-id --verbatim`. Update the comment that says context lines count.
-- Remember up to 8 approved patch-ids per runner (`approvedPatchIds`), persisted with the runner state so they survive a restart.
-  - Clear them when the change merges (`changed`) or is finally rejected (src/tick/tick-apply.ts).
-  - `lastApprovedHead` stays.
-- The reuse check in src/review/review.ts (~274-281) matches any remembered id.
-- The gate pre-check still runs before reuse on a tree that moved; only the reviewer is skipped.
-- A conflict resolution that changes the change's own lines gets a different id and is reviewed, as today.
-
-**Files touched.**
-- Source: src/git/git.ts, src/review/review.ts, src/runner/runner-state.ts, src/tick/tick-apply.ts.
-- Tests: test/git.test.ts (or test/git-diff.test.ts) and the review tests.
-
-**Acceptance criteria.**
-- A change is approved. Main then edits a PLANS.md line next to the change's PLANS.md hunk, and the change is verified again. No `review_start` is logged, the gate runs, and the change merges.
-- A change whose own lines changed is reviewed.
-- After a restart, an approved change that is still queued is verified again without a review.
-- `npm test` passes.
-
 ### Fast merge, part 11/14: A failed reviewer run retries in place before the attempt ends `review_error` (planned 2026-10-19 by user; requires part 10/14 landed; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/review/review.ts src/runner/runner-pi.ts src/merge/merge-core.ts src/events/events.ts and their tests)
 
 **Goal.** From 2026-10-17 to 2026-10-19, `review_error` ended 47 attempts and cost 34 h of pipeline time. A reviewer that timed out, was killed (exit 143), lost its connection or never stated a VERDICT ended the attempt. The change then waited for a requeue and paid the gate again. `runWithTransientRetry` (src/runner/runner-pi.ts) skips timeouts and kills. A timed-out review resumes only on the next attempt (`REVIEW_RESUME_LIMIT`).
