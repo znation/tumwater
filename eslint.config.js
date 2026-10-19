@@ -145,6 +145,13 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-member-access": "error",
       "@typescript-eslint/no-unsafe-call": "error",
       "@typescript-eslint/no-unsafe-return": "error",
+      // The throw contract: no shipped code path may throw a non-Error. Every catch site renders
+      // the throw through errorMessage() (`err instanceof Error ? err.message : String(err)`) and
+      // cli.ts only prints a stack when `err instanceof Error`, so a thrown string/number/undefined
+      // would surface as its raw text with no stack or context (an object's "[object Object]"). src
+      // is spotless today (0 sites), so this is a regression guard like the no-unsafe-* family, not
+      // a migration; tests keep throwing fixture strings deliberately, so it is scoped to src.
+      "@typescript-eslint/only-throw-error": "error",
     },
   },
 );
