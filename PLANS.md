@@ -1376,4 +1376,28 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The migrated form of the team's config in the note above, loaded in a test, resolves `seamsInUse` to claude for every primary seam and `qwenrunner/qwen3.8-27b` on pi for the fallback.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
+
+### `tumwater history --result` takes a comma-separated list of outcome classes, so one listing or summary shows every run of the outcomes an operator is chasing (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — touches only `src/history/history.ts`, `src/cli/help.ts`, docs/cli.md and `test/cli-history-filtering.test.ts`)
+
+**Goal.** `history --result` narrows to ONE outcome class today (`cmdHistory`, `src/history/history.ts`), so "every run that did not merge" (`none` + `refused` + `problems`) or "merged and refused runs" takes one command per class, and `--summary`/`--json` cannot cover the union in one document. Accept `--result a,b`: a row passes when `historyClass(r.result)` is any listed class, composing with `--role`, `-n`, `--since`, `--grep`, `--summary` and `--json` as the single class does. A single class behaves exactly as now. This mirrors the `logs --type` comma-list plan (feature-3's entry above) on the other observing view; the two share no file.
+
+**Approach.**
+- **src/history/history.ts** — in `cmdHistory`'s `--result` block: keep the `resultRaw === undefined || resultRaw === ""` check, then split `resultRaw` on `,`, trim each piece and drop empty ones; when none remain (`--result ,`), `fail(HISTORY_RESULT_VALUE_ERROR)`. Parse each piece with `parseHistoryResultClass` (unchanged, in `src/history/history-data.ts`); the FIRST piece that parses to null fails with today's message built from that piece (`history --result must be one of …${gotSuffix(piece)}${typoSuffix(piece, …)}`), so a single bad value prints today's text unchanged. Replace `resultClass: HistoryResultClass | null` with `resultClasses: HistoryResultClass[] | null` (deduplicated, in the order typed) and filter `rows.filter((r) => resultClasses.includes(historyClass(r.result)))`. The empty-state line reads `no runs with result "${resultClasses.join(",")}"` under the same `afterGrep > 0` rule, so `--result changes` and `--result merged` still print `no runs with result "changes"` (class names, as today). Update the `--result` comment block and `cmdHistory`'s doc comment ("narrows to one outcome class" → "to the listed outcome classes").
+- **src/cli/help.ts** — the `history` usage reads `[--result <merged|none|refused|problems>[,...]]` and the prose says `--result <class>[,<class>...] narrows to the listed outcome classes`.
+- **docs/cli.md** — the `Watch run history` row's `--result` synopsis gains `[,...]` and one clause: `--result none,refused,problems` shows every run that did not merge.
+- No change to `src/cli/cli-flag-specs.ts` (`--result` still takes one value word), `src/cli/completion.ts` (single classes still complete the first piece), the TUI History pane, or the dashboard's History filter.
+
+**Tests** (in `test/cli-history-filtering.test.ts`, beside `test("history --result narrows to one outcome class and composes with --json")`, reusing `seededHistoryRepo`):
+- `history --result none,problems` prints exactly the rows that `--result none` and `--result problems` print between them, newest first; ` none , problems ` with spaces and `none,none,problems` behave the same; `--json` with the list holds the same rows.
+- `--since 1h --role clean --result changes,none` composes as the single class does, and `--result merged,refused --summary` counts only those classes' runs.
+- `-n 2 --result changes,refused` over rows of neither class prints `no runs with result "changes,refused"`.
+- `--result none,problms` fails with exit 1, `got "problms"` and the did-you-mean hint naming `problems`; `--result ,` fails with `history --result needs a value`.
+- The existing single-class `--result` tests pass unchanged.
+
+**Acceptance criteria.**
+- `tumwater history --result a,b` lists exactly the rows whose outcome class is `a` or `b`, in the `-n`, `--since`, `--summary` and `--json` views, and composes with `--role` and `--grep` as the single class does.
+- A single `--result <class>` produces output identical to today's, including the empty-state line and the unknown-class error (the existing tests pass untouched).
+- An unknown piece fails naming that piece with its hint; a list with no non-empty piece fails with `HISTORY_RESULT_VALUE_ERROR`.
+- `tumwater help history` and docs/cli.md document the comma list; `npm test` passes.
+
 ## Done
