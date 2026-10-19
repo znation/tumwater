@@ -239,6 +239,24 @@ function clearStaleIndexLock(wt: string): void {
   }
 }
 
+/** `git checkout --detach ref`, tolerating a dangling merge pin. Leaving a detached HEAD makes
+ * git walk every ref to report orphaned commits, so one `refs/tumwater/merge/<role>` whose
+ * object is gone fails the checkout "fatal: bad object <ref>" (128) and errors the role's run.
+ * The pin is unusable either way, so the named ref is deleted and the checkout retried; any
+ * other failure, or a bad ref outside refs/tumwater/merge/, still throws. */
+async function checkoutDetached(wt: string, ref: string): Promise<void> {
+  for (;;) {
+    try {
+      await git(wt, "checkout", "--detach", ref);
+      return;
+    } catch (err) {
+      const dangling = /fatal: bad object (refs\/tumwater\/merge\/\S+)/.exec(String(err instanceof Error ? err.message : err));
+      if (dangling === null) throw err;
+      await git(wt, "update-ref", "-d", dangling[1]!);
+    }
+  }
+}
+
 /** Hard-reset a worktree to `ref`, self-healing the two wedges a killed git leaves behind: a
  * stale index.lock is cleared first (or the reset fails "Unable to create '…/index.lock'"
  * forever), and an interrupted merge or rebase is aborted (or the tick wedges on "you are
@@ -249,7 +267,7 @@ function clearStaleIndexLock(wt: string): void {
 async function hardResetWorktree(wt: string, ref: string, detach = false): Promise<void> {
   clearStaleIndexLock(wt);
   await abortSync(wt);
-  if (detach) await git(wt, "checkout", "--detach", ref);
+  if (detach) await checkoutDetached(wt, ref);
   await git(wt, "reset", "--hard", ref);
   await git(wt, "clean", "-fd");
   pruneStaleBuildDir(wt);

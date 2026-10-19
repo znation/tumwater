@@ -402,3 +402,18 @@ test("abortSync survives a worktree pointer whose target is not a directory", as
     "the fallback aborts touched nothing",
   );
 });
+
+test("ensureDetachedWorktree drops a dangling merge ref that makes `checkout --detach` exit 128", async () => {
+  const repo = makeRepo();
+  const first = headSha(repo);
+  const dir = path.join(repo, ".tumwater", "worktrees", "_slot-1");
+  await ensureDetachedWorktree(repo, dir, first);
+  // A merge pin whose object is gone: update-ref refuses to write it, so write the loose ref.
+  const refFile = path.join(repo, ".git", "refs", "tumwater", "merge", "feature-5");
+  fs.mkdirSync(path.dirname(refFile), { recursive: true });
+  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
+  sh(dir, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "wip");
+  await ensureDetachedWorktree(repo, dir, mainSha(repo));
+  assert.equal(headSha(dir), mainSha(repo));
+  assert.equal(fs.existsSync(refFile), false);
+});

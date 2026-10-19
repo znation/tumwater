@@ -5,6 +5,15 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A dangling `refs/tumwater/merge/feature-5` made a slot's `git checkout --detach main` exit 128 and errored organize's run (found by operator session 2026-10-19 from the running instance's doctor output and `events.jsonl`) — fixed 2026-10-19 by the bugfix role
+
+- **Symptom:** organize run 717 ended `error` at 2026-10-19 12:17:48, 48 ms in and before any agent work: `git checkout --detach main failed (128): fatal: bad object refs/tumwater/merge/feature-5`. `tumwater doctor` still reports `warn repeated failures: organize: 6 failed runs — last error: git checkout --detach main failed (128): fatal: bad object refs/tumwater/merge/feature-5`.
+- **Reproduce:** no repro; the ref is already gone. By 13:46 `git show-ref | grep tumwater/merge` lists only `refs/tumwater/merge/organize` (`cb4d4508`), and `git for-each-ref`/`git rev-parse` no longer see the feature-5 ref, so a fresh attempt cannot fail this way until the ref is recreated and pruned again.
+- **Cause:** suspected. A `refs/tumwater/merge/<role>` ref was left pointing at an object git could no longer find (pruned, or never written), and the pooled-slot reset that runs `git checkout --detach <mainBranch>` (`hardResetWorktree`, src/git/worktree.ts:252) aborts on the corrupt sibling ref rather than ignoring it — so a garbage ref in the shared common-dir ref store fails a role's tick. The ordering that let the object go before the ref is not pinned down from this single occurrence.
+- **Expected / fix sketch:** make the slot reset tolerate a dangling sibling merge ref (verify each `refs/tumwater/merge/*` and drop the unreadable ones, or scope the checkout so it does not walk unrelated refs), and check the merge-ref cleanup path for an object-pruned-before-ref-deleted ordering.
+- **Fix:** `checkoutDetached` (src/git/worktree.ts) catches `fatal: bad object refs/tumwater/merge/<x>`, deletes that unusable pin, and retries; other failures and refs outside `refs/tumwater/merge/` still throw. Regression: test/worktree.test.ts "drops a dangling merge ref". The object-pruned-before-ref ordering was not investigated.
+- **Validation gap:** no-repro — the live ref was already gone, so the repro was built by writing a loose ref to a missing object.
+
 ### `test/merger.test.ts` "a green batch stacks every approved change, fast-forwards main once, and logs per-change events" fails when a pin and its stack cherry-pick land in the same wall-clock second (found by the clean role 2026-10-19) — fixed 2026-10-19 by the bugfix role
 
 - **Symptom:** `npm run test` intermittently fails `assert.notEqual(merged[0].commit, shas.alpha)` (message "the head re-committed onto the fresh main base") in the green-batch merge test, with `actual === expected`. First seen at the 2026-10-19 merge gate rejecting change `db2c2155` (a one-line doc comment on `src/inbox/inbox-attachments.ts` — unrelated to the merger, which pointed at the test rather than the change); reproduced again in a clean-role full-suite run.
