@@ -230,6 +230,13 @@ export function commitIn(dir: string, msg: string): void {
   sh(dir, "git", "commit", "-m", msg);
 }
 
+// Pin commits get a fixed, far-past committer date so a "now" cherry-pick back onto main can
+// never fall in the same wall-clock second as the pin. When a pin and its cherry-pick share one
+// second and everything else (tree, parent, identity, message, timezone) is identical, git gives
+// them the SAME sha — which would make the batch's "the head re-committed" assertion a false
+// failure. Backdating the pin makes its committer date always differ from the pick's "now".
+const PIN_COMMITTER_DATE = "2001-01-01T00:00:00 -0700";
+
 /** Commit one change on a detached HEAD and hand the repo back on main, returning the new
  * commit's sha — the "a tick's leftover, pinned off main" shape the tests build.
  * `change` writes the off-main edit (a file write or append in the common case); `reset`
@@ -243,7 +250,12 @@ export function pinOffMain(
   sh(dir, "git", "checkout", "--detach");
   if (opts.reset) sh(dir, "git", "reset", "--hard", "main");
   change(dir);
-  commitIn(dir, message);
+  sh(dir, "git", "add", "-A");
+  execFileSync("git", ["commit", "-m", message], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, GIT_COMMITTER_DATE: PIN_COMMITTER_DATE },
+  });
   const sha = headSha(dir);
   sh(dir, "git", "checkout", "main");
   return sha;

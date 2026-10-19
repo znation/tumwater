@@ -691,6 +691,21 @@ test("a green batch stacks every approved change, fast-forwards main once, and l
   });
 });
 
+test("the batch fixture's pins are backdated so a same-second pick cannot reproduce a pin's sha (regression)", async () => {
+  // The green-batch test's "the head re-committed" assertion broke when a pin and its
+  // same-wall-clock-second cherry-pick — identical tree, parent, identity, message and
+  // timezone — got the SAME sha from git. The fix backdates every pin's committer time so a
+  // "now" pick can never fall in the pin's second. This pins THAT fix: if the fixture ever
+  // stops backdating pins, this fails (the pin lands at "now").
+  const { root, shas } = await batchFixture(["alpha"]);
+  const pinCommitterEpoch = Number(sh(root, "git", "show", "-s", "--format=%ct", shas.alpha!));
+  const aYearAgo = Math.floor(Date.now() / 1000) - 31536000;
+  assert.ok(
+    pinCommitterEpoch < aYearAgo,
+    `a pin must be backdated well before now so a same-second pick cannot reproduce it (got committer epoch ${pinCommitterEpoch})`,
+  );
+});
+
 test("a batch stacks every commit of a multi-commit pin, not its head alone", async () => {
   // The regression this pins: picking a pin's single head would merge only its last diff and
   // orphan the work beneath it — the stack must pick the whole range from main to that head.
