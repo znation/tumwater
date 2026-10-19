@@ -133,7 +133,10 @@ async function main(): Promise<void> {
       // args.
       if (args.length > 0) {
         if (args[0] !== "get" && args[0] !== "set" && args[0] !== "unset")
-          fail(CONFIG_USAGE);
+          // A near-miss subcommand word gets the same typoSuffix `completion <shell>` and
+          // `logs --type` give, so `config gte` reads "did you mean `get`?" while a far-off
+          // word (`show`) and a flag (`--anything`) stay hint-free.
+          fail(`${CONFIG_USAGE}${typoSuffix(args[0] ?? "", ["get", "set", "unset"])}`);
         if (args[0] === "get" && args.length !== 2) fail("usage: tumwater config get <key>");
         if (args[0] === "set" && args.length !== 3) fail("usage: tumwater config set <key> <value>");
         if (args[0] === "unset" && args.length !== 2) fail("usage: tumwater config unset <key>");

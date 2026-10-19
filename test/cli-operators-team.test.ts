@@ -349,6 +349,14 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config/);
 
+  // A near-miss subcommand word gets the same did-you-mean hint `completion <shell>` gets.
+  r = await cli(repo, "config", "gte");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /did you mean `get`\?/);
+  r = await cli(repo, "config", "--anything");
+  assert.equal(r.code, 1);
+  assert.doesNotMatch(r.stderr, /did you mean/);
+
   // get and unset take exactly one arg; set exactly two.
   r = await cli(repo, "config", "get");
   assert.equal(r.code, 1);
