@@ -32,7 +32,7 @@ also outside `npm test`.
 ## Status
 
 <!-- tumwater:status:start -->
-**v0.1.4**: working tumwater. The director and 14 of the 15 roles are enabled by default; `selfcheck`,
+**v0.2.1**: working tumwater. The director and 14 of the 15 roles are enabled by default; `selfcheck`,
 which files tumwater bugs from tumwater's own event log, is opt-in (`roles.selfcheck.enabled`).
 
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
