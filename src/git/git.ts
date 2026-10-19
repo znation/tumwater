@@ -1,3 +1,4 @@
+import { errCode } from "../errno.js";
 import fs from "node:fs";
 import path from "node:path";
 import { GIT_TIMEOUT_MS, commitAuthorArgs, committerIdentArgs, execGitBounded, git, gitTry } from "./git-run.js";
@@ -93,7 +94,7 @@ function repoFiles(dir: string): RepoFiles | undefined {
     if (pointer === "") return undefined;
     commondir = path.resolve(gitdir, pointer);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") return undefined; // A primary checkout has none.
+    if (errCode(err) !== "ENOENT") return undefined; // A primary checkout has none.
   }
   try {
     if (fs.statSync(dir).uid !== uid || fs.statSync(gitdir).uid !== uid) return undefined;
@@ -138,13 +139,13 @@ function storedRef(commondir: string, ref: string): string | null | undefined {
     const loose = fs.readFileSync(path.join(commondir, ref), "utf8").trim();
     return isSha(loose) ? loose : undefined;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+    if (errCode(err) !== "ENOENT") return undefined;
   }
   let packed: string;
   try {
     packed = fs.readFileSync(path.join(commondir, "packed-refs"), "utf8");
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "ENOENT" ? null : undefined;
+    return errCode(err) === "ENOENT" ? null : undefined;
   }
   return shaFromPackedRefs(packed, ` ${ref}`);
 }
@@ -193,7 +194,7 @@ export function hasWorktreeRegistrations(root: string): boolean | undefined {
   try {
     return fs.readdirSync(path.join(repo.commondir, "worktrees")).length > 0;
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "ENOENT" ? false : undefined;
+    return errCode(err) === "ENOENT" ? false : undefined;
   }
 }
 
@@ -288,7 +289,7 @@ function toplevelFromFiles(dir: string): string | undefined {
     try {
       text = fs.readFileSync(config, "utf8");
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+      if (errCode(err) === "ENOENT") continue;
       return undefined;
     }
     // core.worktree, a true core.bare, or an include that could carry either.

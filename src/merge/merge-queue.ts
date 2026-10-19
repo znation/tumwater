@@ -1,3 +1,4 @@
+import { errCode } from "../errno.js";
 import fs from "node:fs";
 import path from "node:path";
 import { listQueueFiles, queueFileName, removeQueueFile } from "../files/file-queue.js";
@@ -131,7 +132,7 @@ export function legacyMigrateLandQueueDir(root: string): string[] {
       fs.renameSync(file, dest);
       notes.push(`moved ${name}`);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      if (errCode(err) !== "ENOENT") throw err;
     }
   }
   try {

@@ -1,3 +1,4 @@
+import { errCode } from "../errno.js";
 import { legacyMigrateLandQueueDir } from "../merge/merge-queue.js";
 import fs from "node:fs";
 import { deleteRefIfAt, refSha, refsUnder, setRef } from "../git/git.js";
@@ -16,7 +17,7 @@ registerStartupMigration({
       fs.unlinkSync(legacyLandingStatePath(root));
       return ["removed the old landing.json marker"]; // vocabulary-ok: names the legacy file
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if (errCode(err) === "ENOENT") return [];
       throw err;
     }
   },
