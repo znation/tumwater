@@ -120,78 +120,89 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
 test("a live maxConcurrentPerProvider edit admits a parked omlx tick and logs its own event", async () => {
   // plans/provider-concurrency.md §7: config-live re-applies the key caps on an edit and fires
   // provider_concurrency_changed per changed provider. All three roles share omlx with cap 1,
-  // so a second omlx tick is always parked; growing the cap to 2 admits it (overlap appears)
-  // within a poll, and shrinking to 1 preempts nothing (semaphore unit tests pin the
+  // so a second omlx tick meeting the key is parked; growing the cap to 2 admits it (overlap
+  // appears) within a poll, and shrinking to 1 preempts nothing (semaphore unit tests pin the
   // never-preempt contract).
+  //
+  // The roles run nothing-to-do work — no change, hence no merge. A role with a queued or
+  // in-flight merge never ticks (the merge-queue interlock), so change-producing roles would
+  // serialize on the one merge slot and could never overlap on ANY cap: the parked-tick
+  // admission this test exists for would be unobservable. With no merges to interlock them,
+  // moving main wakes the roles deferred after their no-op startup run, putting two due in one
+  // poll — one poll's launch pass starts every due tick its permits allow — for the cap to
+  // admit or park. Mirrors the sibling maxConcurrent test above.
   const repo = makeRepo();
   await initProject(repo, "live per-provider cap resize");
-  const cfg = fastConfig(["feature", "bugfix", "clean"]);
+  const cfg = fastConfig(["clean", "dedupe", "bugfix"]);
   cfg.maxConcurrent = 4;
   cfg.maxConcurrentPerProvider = { omlx: 1 };
-  cfg.review!.enabled = false;
-  cfg.roles.feature!.provider = "omlx";
-  cfg.roles.feature!.model = "m";
-  cfg.roles.bugfix!.provider = "omlx";
-  cfg.roles.bugfix!.model = "m";
   cfg.roles.clean!.provider = "omlx";
   cfg.roles.clean!.model = "m";
+  cfg.roles.dedupe!.provider = "omlx";
+  cfg.roles.dedupe!.model = "m";
+  cfg.roles.bugfix!.provider = "omlx";
+  cfg.roles.bugfix!.model = "m";
   saveConfig(repo, cfg);
+  // bugfix's open bug keeps it on the every-wake schedule; without it bugfix defers like clean
+  // and dedupe and the startup burst below never reaches three samples.
+  seedOpenBug(repo);
   const runDir = tmpdir();
-  const restore = fakePi(
-    [
-      `d="${runDir}/runs"; mkdir -p "$d"`,
-      `f=$(mktemp "$d/run.XXXXXX")`,
-      `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
-      `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
-      `echo change >> change.txt`,
-      `sleep 1.5`,
-      `rm -f "$f"`,
-      `printf '%s\\n' '${assistantLine("do the work\\nSUMMARY: add a change")}'`,
-    ].join("\n"),
-  );
+  const restore = concurrencyRecordingFakePi(runDir);
   const orch = startLiveOrchestrator(repo);
   try {
-    // Phase 1 (omlx cap 1): three roles on one omlx slot — no overlap, and one is always parked.
-    await waitFor(() => readSamples(runDir).length >= 6 && readEvents(repo).some((e) => e.type === "merge_done"), "several omlx runs and a merge", 150_000);
+    // Phase 1 (omlx cap 1): the startup burst runs one at a time — the second omlx run meeting
+    // the full key parks, so no sample ever exceeds one concurrent run.
+    await waitFor(() => readSamples(runDir).length >= 3, "the startup burst", 60_000);
     assert.ok(
       readSamples(runDir).every((n) => n <= 1),
-      `peak stays 1 while the second omlx tick waits on its cap (samples: ${readSamples(runDir)})`,
+      `peak stays 1 while the second omlx tick waits on its key (samples: ${readSamples(runDir)})`,
     );
 
     // Phase 2 (omlx cap 2): the live edit admits the parked tick — overlap appears, no restart.
-    const grow = fastConfig(["feature", "bugfix", "clean"]);
+    // The parked startup tick is the subject: under cap 1 the role that lost the permit waits on
+    // the key, and the grow admits it alongside the tick already running. No wake is needed —
+    // and a main move here would re-defer the waiter instead of admitting it — so grow and read.
+    const grow = fastConfig(["clean", "dedupe", "bugfix"]);
     grow.maxConcurrent = 4;
     grow.maxConcurrentPerProvider = { omlx: 2 };
-    grow.review!.enabled = false;
-    grow.roles.feature!.provider = "omlx";
-    grow.roles.feature!.model = "m";
-    grow.roles.bugfix!.provider = "omlx";
-    grow.roles.bugfix!.model = "m";
     grow.roles.clean!.provider = "omlx";
     grow.roles.clean!.model = "m";
+    grow.roles.dedupe!.provider = "omlx";
+    grow.roles.dedupe!.model = "m";
+    grow.roles.bugfix!.provider = "omlx";
+    grow.roles.bugfix!.model = "m";
     saveConfig(repo, grow);
     await waitFor(
       () => readEvents(repo).some((e) => e.type === "provider_concurrency_changed" && e.provider === "omlx" && e.to === 2),
       "the provider_concurrency_changed grow event",
     );
-    await waitFor(() => readSamples(runDir).some((n) => n >= 2), "overlapping omlx runs after the grow", 150_000);
+    await waitFor(() => readSamples(runDir).some((n) => n >= 2), "overlapping omlx runs after the grow", 60_000);
 
-    // Phase 3 (omlx cap 1 again): a shrink logs its event and preempts nothing.
-    const shrink = fastConfig(["feature", "bugfix", "clean"]);
+    // Phase 3 (omlx cap 1 again): a shrink logs its event and preempts nothing — every run
+    // admitted after the shrink is sequential again. Wake the roles once more so there are
+    // post-shrink runs to read.
+    const shrink = fastConfig(["clean", "dedupe", "bugfix"]);
     shrink.maxConcurrent = 4;
     shrink.maxConcurrentPerProvider = { omlx: 1 };
-    shrink.review!.enabled = false;
-    shrink.roles.feature!.provider = "omlx";
-    shrink.roles.feature!.model = "m";
-    shrink.roles.bugfix!.provider = "omlx";
-    shrink.roles.bugfix!.model = "m";
     shrink.roles.clean!.provider = "omlx";
     shrink.roles.clean!.model = "m";
+    shrink.roles.dedupe!.provider = "omlx";
+    shrink.roles.dedupe!.model = "m";
+    shrink.roles.bugfix!.provider = "omlx";
+    shrink.roles.bugfix!.model = "m";
     saveConfig(repo, shrink);
     await waitFor(
       () => readEvents(repo).some((e) => e.type === "provider_concurrency_changed" && e.provider === "omlx" && e.to === 1),
       "the provider_concurrency_changed shrink event",
     );
+    const fromShrink = readSamples(runDir).length;
+    mergeWork(repo);
+    await waitFor(() => readSamples(runDir).length >= fromShrink + 2, "post-shrink runs", 60_000);
+    assert.ok(
+      readSamples(runDir).slice(fromShrink).every((n) => n <= 1),
+      `no new concurrent run after the shrink (samples: ${readSamples(runDir)})`,
+    );
+
     const changes = eventsOfType(repo, "provider_concurrency_changed").filter((e) => e.provider === "omlx");
     assert.deepEqual(
       changes.map((c) => [c.from, c.to]),
