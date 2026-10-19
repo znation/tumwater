@@ -66,6 +66,10 @@ interface TuiKeysState {
   quietMode: boolean;
   /** The Transcript view's Ctrl+S min-run-interval mode holds the prompt line. */
   intervalMode: boolean;
+  /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line: the
+   * role whose `roles.<base>.instructions` override the prompt line is replacing from a typed
+   * file path, or null when closed. */
+  instructionsEditFor: string | null;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
   /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */

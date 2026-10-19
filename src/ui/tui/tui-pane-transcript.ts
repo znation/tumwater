@@ -45,7 +45,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
       if (
         ctx.es.budgetMode || ctx.es.rolePromptFor || ctx.es.pauseEditMode ||
         ctx.es.queuedEditFor || ctx.es.answerFor || ctx.es.entryEditFor || ctx.es.notesEditFor ||
-        ctx.es.quietMode ||
+        ctx.es.quietMode || ctx.es.instructionsEditFor ||
         session.roleIds.length === 0 || session.view < 1 || session.view > session.roleIds.length
       ) {
         session.requestRender();

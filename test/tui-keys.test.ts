@@ -3001,7 +3001,7 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false, intervalMode: false };
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false, intervalMode: false, instructionsEditFor: null };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
   // exclusion every other mode enforces, or they would run over the retire modal.
@@ -3013,6 +3013,9 @@ test("promptLineFree is false while retire-edit mode holds the line, so the Heal
   es.quietMode = false;
   es.intervalMode = true;
   assert.equal(promptLineFree(es), false, "the interval editor blocks the Transcript pane's own arms");
+  es.intervalMode = false;
+  es.instructionsEditFor = "clean";
+  assert.equal(promptLineFree(es), false, "the instructions editor blocks the pane arms while it holds the line");
 });
 
 test("Ctrl+O on a role's Transcript edits that role's quiet-hours window, not another's or the team's", () => {
@@ -3166,4 +3169,87 @@ test("Ctrl+S on a role's Transcript edits that role's min run interval; instance
   keys.handleKey(undefined, { name: "return" });
   assert.match(keys.state().flash!, /director: min run interval set to 30s/);
   assert.equal(intervalOf("director"), 30, "the director's override is written through the same core");
+});
+
+test("Ctrl+L on a role's Transcript replaces that role's instructions from a file; instance and director write the base key", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "feature-2", "director"]);
+  const file = path.join(root, "instructions.txt");
+  const instructionsOf = (role: string): string | undefined => {
+    const cfg = path.join(root, "tumwater.json");
+    if (!fs.existsSync(cfg)) return undefined;
+    return (readJson(cfg) as { roles?: Record<string, { instructions?: string }> }).roles?.[role]?.instructions;
+  };
+
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature's transcript
+  assert.equal(keys.state().view, 1);
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature");
+
+  // Open: the line blanks (a prompt draft is saved), and Esc restores it byte-for-byte with
+  // nothing written.
+  for (const ch of "pending draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(keys.state().instructionsEditFor, "feature");
+  assert.equal(keys.state().input, "", "opening the editor blanks the prompt line");
+  assert.match(keys.state().flash!, /replace feature's instructions from a file/);
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().instructionsEditFor, null);
+  assert.equal(keys.state().input, "pending draft", "Esc restores the saved draft");
+  assert.equal(instructionsOf("feature"), undefined, "Esc writes nothing");
+
+  // Enter on a path to a non-empty file writes roles.feature.instructions through setConfigKey
+  // (a JSON string), flashes the saved wording, and restores the draft.
+  fs.writeFileSync(file, "answer every question in two lines");
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  for (const ch of file) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().instructionsEditFor, null, "a saved override leaves edit mode");
+  assert.equal(keys.state().input, "pending draft", "Enter restores the saved draft");
+  assert.match(keys.state().flash!, /feature: instructions saved \(\d+ chars\)/);
+  assert.equal(instructionsOf("feature"), "answer every question in two lines");
+
+  // An empty/whitespace-only file clears the key through unsetConfigKey.
+  fs.writeFileSync(file, "   \n");
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  for (const ch of file) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash!, /feature: instructions cleared/);
+  assert.equal(instructionsOf("feature"), undefined, "an empty file removes the override");
+
+  // An empty path flashes and stays; a missing file flashes and stays.
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash!, /a file path is required/);
+  assert.equal(keys.state().instructionsEditFor, "feature", "an empty path stays in the editor");
+  keys.handleKey(undefined, { name: "escape" });
+
+  const missing = path.join(root, "nope.txt");
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  for (const ch of missing) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash!, /no such file: .*nope\.txt/);
+  assert.equal(keys.state().instructionsEditFor, "feature", "a missing file stays in the editor");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // An instance id writes its base role's key — roles.feature, not roles.feature-2.
+  fs.writeFileSync(file, "for the instance");
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature-2's transcript (view 2)
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature-2");
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  for (const ch of file) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(instructionsOf("feature"), "for the instance", "an instance id writes its base role's key");
+  assert.equal(instructionsOf("feature-2"), undefined, "no per-instance entry is left behind");
+
+  // The director writes roles.director (no refusal, like the dashboard editor and the CLI's
+  // --instructions-file, whose override reaches its own runs).
+  fs.writeFileSync(file, "director instructions");
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → director's transcript (view 3)
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "director");
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  for (const ch of file) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash!, /director: instructions saved \(\d+ chars\)/);
+  assert.equal(instructionsOf("director"), "director instructions", "the director's override is written through the same core");
 });

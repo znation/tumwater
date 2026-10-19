@@ -321,3 +321,10 @@ test("the transcript Ctrl+S interval mode names its save/cancel keys and a `min 
   assert.equal(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, edit, 300)), "Enter save interval · Esc cancel · Ctrl+D quit");
   assert.equal(plain(promptPrefix(edit)), "min run interval › ");
 });
+
+test("the transcript Ctrl+L instructions mode names its save/cancel keys and an `instructions for <role> ›` prefix", () => {
+  const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null };
+  const edit = { ...base, instructionsEditFor: "qa" };
+  assert.equal(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, edit, 300)), "Enter save instructions · Esc cancel · Ctrl+D quit");
+  assert.equal(plain(promptPrefix(edit)), "instructions for qa › ");
+});
