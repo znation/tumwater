@@ -3182,6 +3182,28 @@ test("Ctrl+O on an instance's Transcript writes the base role's quiet-hours key"
   assert.equal(Object.keys(setWindow()).length, 1, "no per-instance entry is left behind");
 });
 
+test("Ctrl+W on Activity edits the pool size; Ctrl+W on a role's Transcript still opens the wake editor", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "director", "clean"]);
+
+  // On the Activity view (0), Ctrl+W opens the worktree-slots editor — the team scope has a
+  // pool size to edit, and a role's wake editor is not in play.
+  keys.handleKey(undefined, { ctrl: true, name: "w" });
+  assert.equal(keys.state().slotsMode, true, "Activity routes Ctrl+W to the worktree-slots editor");
+  assert.equal(keys.state().pauseEditWake, false, "the wake editor stays closed on Activity");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().slotsMode, false);
+
+  // On a role's Transcript, Ctrl+W still opens the wake editor (not the slots editor), so the
+  // new Activity arm does not swallow the wake key.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature's transcript (view 1)
+  assert.equal(keys.state().view, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "w" });
+  assert.equal(keys.state().pauseEditWake, true, "a role's Transcript routes Ctrl+W to the wake editor");
+  assert.equal(keys.state().slotsMode, false, "the slots editor stays closed on a Transcript");
+});
+
 test("Ctrl+X retire refuses a role the safety rails object to and removes nothing", async () => {
   const { root } = await initializedWorktree();
   // improve is still enabled (not disabled), so retire's enabled-role rail objects.

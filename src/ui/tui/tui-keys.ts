@@ -73,6 +73,8 @@ interface TuiKeysState {
   intervalMode: boolean;
   /** The Activity view's Ctrl+P provider-concurrency-caps mode holds the prompt line. */
   providerCapsMode: boolean;
+  /** The Activity view's Ctrl+W worktree-pool mode holds the prompt line. */
+  slotsMode: boolean;
   /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line: the
    * role whose `roles.<base>.instructions` override the prompt line is replacing from a typed
    * file path, or null when closed. */

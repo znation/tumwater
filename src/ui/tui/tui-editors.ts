@@ -6,6 +6,7 @@ import { createTuiEditorSession } from "./tui-editor-session.js";
 import { createBudgetEditor } from "./tui-editor-budget.js";
 import { createProviderCapsEditor } from "./tui-editor-provider-caps.js";
 import { createConcurrencyEditor } from "./tui-editor-concurrency.js";
+import { createSlotsEditor } from "./tui-editor-slots.js";
 import { createQuietEditor } from "./tui-editor-quiet.js";
 import { createIntervalEditor } from "./tui-editor-interval.js";
 import { createInstructionsEditor } from "./tui-editor-instructions.js";
@@ -116,6 +117,8 @@ interface TuiEditorState {
    * role whose `roles.<base>.instructions` override the prompt line is replacing from a typed
    * file path, or null when closed. */
   instructionsEditFor: string | null;
+  /** The Activity view's Ctrl+W worktree-pool mode holds the prompt line. */
+  slotsMode: boolean;
 }
 
 /** The prompt-line editor subsystem `createTuiKeys` constructs: the aggregator that owns the
@@ -157,6 +160,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     createBudgetEditor(session),
     createProviderCapsEditor(session),
     createConcurrencyEditor(session),
+    createSlotsEditor(session),
     createQuietEditor(session),
     createIntervalEditor(session),
     createInstructionsEditor(session),
@@ -222,7 +226,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, pause and search modes keep them out —
     // recalling a prompt into the cap/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.concurrency && !session.held.quiet && !session.held.interval && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.providerCaps) {
+    if (!session.held.budget && !session.held.concurrency && !session.held.slots && !session.held.quiet && !session.held.interval && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.providerCaps) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -287,6 +291,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         providerCapsMode: session.held.providerCaps,
         intervalMode: session.held.interval,
         instructionsEditFor: session.held.instructions,
+        slotsMode: session.held.slots,
       };
     },
   };

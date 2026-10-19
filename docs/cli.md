@@ -65,6 +65,7 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+F` | Activity | pause the team (`[duration] [reason]`), or resume it when paused |
 | `Ctrl+Q` | Activity | stop the team later (a duration), or cancel a scheduled stop |
 | `Ctrl+R` | Activity | apply the pending self-redeploy now (the terminal twin of `tumwater restart` and the dashboard update alert's restart button) |
+| `Ctrl+W` | Activity | edit the team's worktree pool size (`worktreeSlots`, an integer ≥ 1; empty restores the `maxConcurrent + 1` default) |
 | `Ctrl+V` | Activity | attach an image path to the next prompt to the director (the terminal twin of `tumwater prompt --attach <path>` and the dashboard composer's drop/paste) |
 | `Ctrl+G` | Activity, History, Usage, Failures | cycle the role scope |
 | `/` | Activity, History, Backlog | search (on Backlog, filter the active entries by heading or body) |

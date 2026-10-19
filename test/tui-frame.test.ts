@@ -251,6 +251,12 @@ test("the prompt line names who Enter sends to", () => {
   // Brief-edit mode names its own hint keys and prefixes the line with `brief`.
   assert.equal(plain(hintLine({ kind: "brief" }, { ...base, briefEditMode: true }, 300)), "Enter replace brief from file · Esc cancel · Ctrl+D quit");
   assert.equal(plain(promptPrefix({ ...base, briefEditMode: true })), "brief › ");
+
+  // Worktree-slots mode (Ctrl+W on Activity) names its own hint keys and prefixes the line
+  // with `worktree slots` — the terminal twin of the Settings `Worktree slots` field.
+  const slotsBase = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, slotsMode: true };
+  assert.equal(plain(promptPrefix(slotsBase)), "worktree slots › ");
+  assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, slotsBase, 300)), "Enter save worktree slots · Esc cancel · Ctrl+D quit");
 });
 
 test("activity and transcript lines take the tones of what they report", () => {

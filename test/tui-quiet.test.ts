@@ -133,6 +133,30 @@ test("Ctrl+R, Ctrl+F, Ctrl+P and Ctrl+W stay inert while the quiet editor holds 
   });
 });
 
+// The team-wide scope (Ctrl+S on the Activity view) must get the same direct-guard cover on
+// the Activity view itself, where the role-prompt/Ctrl+O case above never runs: the Activity's
+// Ctrl+R self-redeploy and `/` search both name `quiet` (and every other held editor) in their
+// own arms, so neither can step onto the team quiet editor's line.
+test("Ctrl+R and `/` stay inert on Activity while the team quiet editor holds the line", async () => {
+  const repo = await makeTuiRepo(); // one enabled role; start view is Activity
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "s", { ctrl: true }); // the team quiet editor takes the line
+    assert.equal(tui.lines().at(-1), "team quiet hours ›");
+
+    // Ctrl+R on Activity applies the pending self-redeploy — it must not fire over the team
+    // quiet editor's line (a restart would otherwise write a request marker and flash its
+    // apply wording, so the frame must stay free of that flash).
+    tui.key(undefined, "r", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "team quiet hours ›", "Ctrl+R does not restart while the team quiet editor holds the line");
+    assert.doesNotMatch(tui.lastFrame(), /restart requested|no update is waiting|current with main/, "Ctrl+R does not flash a restart over the team quiet editor");
+
+    // `/` opens the Activity search — it must not take the line over the team quiet editor.
+    tui.key("/", "/");
+    assert.match(tui.lastFrame(), /team quiet hours/, "`/` does not open the search over the team quiet editor");
+    assert.doesNotMatch(tui.lastFrame(), /search events/, "no search-mode flash");
+  });
+});
+
 // Ctrl+O means the event-type/outcome/problems cycle on the Activity, History and Health
 // views — the quiet editor may only take the line on a role's Transcript, so the other views
 // keep their own Ctrl+O (the prompt line is untouched).
