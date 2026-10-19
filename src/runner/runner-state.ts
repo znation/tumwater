@@ -588,6 +588,18 @@ export function hasOutstandingWork(s: Pick<RunnerState, "revision" | "resumePend
   return s.revision !== undefined || s.resumePending === true;
 }
 
+/** True when the loop got an explicit operator wake after its last completed run
+ * (state.wokenAt newer than lastRunEndedAt), so the scheduler ships its min-interval gap and
+ * the need-based deferral stands the loop down. The single home of the "freshly woken since
+ * the last run end" test, previously repeated inline by the due-check, plan deferral, and
+ * need-based deferral (scheduling.ts's isEligible, planDeferral, and deferTickReason) and by
+ * the orchestrator's fresh-demand and plans-full stand-down tests
+ * (orchestrator-scheduling.ts's hasDemand and its stand-down guard), so those surfaces cannot
+ * drift on what counts as a fresh wake. */
+export function freshlyWoken(s: LoopState): boolean {
+  return s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0);
+}
+
 /** Per-role cache of the persisted live claim, keyed by the state file's stat — one stat per
  * role per call in steady state, a read only when the file changed (cachedByStat's contract),
  * so a team poll's allLiveClaims does no read I/O once every claim is known. */

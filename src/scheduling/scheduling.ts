@@ -9,7 +9,7 @@
  * module only reads LoopRunner through its public fields and imports no runtime from it. */
 
 import type { LoopRunner } from "../runner/runner.js";
-import { hasOutstandingWork, type LoopState } from "../runner/runner-state.js";
+import { freshlyWoken, hasOutstandingWork, type LoopState } from "../runner/runner-state.js";
 import { scheduleConfigForRole } from "../config/config-views.js";
 import {
   BUGFIX_ROLE,
@@ -110,7 +110,7 @@ export function isEligible(
   // (LoopState.wokenAt): an explicit "try again now" with an empty queue must not silently
   // wait out the remaining slow clock it ticked inside — a queued prompt carries its own
   // due-ness in the inbox check above, so it never depends on this stamp surviving.
-  const woken = s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0);
+  const woken = freshlyWoken(s);
   if (sinceLast < minGap && !woken) return { run: false };
   // Once mode's clock override, second half: a raised backoffSeconds means nextRunAt is a
   // backoff deadline, not the scheduled clock, and is honored; at zero it is the clock a
@@ -218,7 +218,7 @@ export type DeferReason = "backlog" | "no-work" | "plans-full";
  * before, inside DEFER_MAX_MS) while PLANS.md already holds its eligible-plan target
  * (planBacklogFull). `lastResult` does not matter: the charter would stop either way. */
 function planDeferral(s: LoopState, planBacklogFull: boolean, now: number): DeferReason | null {
-  const woken = s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0);
+  const woken = freshlyWoken(s);
   return planBacklogFull &&
     !woken &&
     !hasOutstandingWork(s) &&
@@ -246,7 +246,7 @@ export function deferTickReason(
   if (base === "plan") return planDeferral(s, planBacklogFull, now);
   const searchBugfix = base === BUGFIX_ROLE && !openBugsNow;
   const due =
-    !(s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0)) &&
+    !freshlyWoken(s) &&
     (DEFERRABLE_ROLES.has(base) || searchBugfix) &&
     s.lastResult === "no_change" &&
     s.lastMainHead !== "" &&

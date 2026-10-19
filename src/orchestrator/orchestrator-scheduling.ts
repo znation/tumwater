@@ -16,7 +16,7 @@ import { deferTickReason, isEligible, type DeferReason } from "../scheduling/sch
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/runner-ids.js";
-import { hasOutstandingWork, saveLoopState, type SkipReason } from "../runner/runner-state.js";
+import { freshlyWoken, hasOutstandingWork, saveLoopState, type SkipReason } from "../runner/runner-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -238,8 +238,7 @@ export async function pollRunnerReasons(
   // maintenance); shared by the bootstrap and maintenance-allowance holds so the two cannot
   // drift on what counts as demand.
   const hasDemand = (runner: LoopRunner): boolean =>
-    inboxSize(root, runner.role) > 0 ||
-    (runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastRunEndedAt ?? 0));
+    inboxSize(root, runner.role) > 0 || freshlyWoken(runner.state);
   // The new-project bootstrap hold (part 2/2): held unless the loop has a fresh operator wake
   // or a queued prompt.
   const bootstrapHeldNow = (runner: LoopRunner): boolean =>
@@ -431,7 +430,7 @@ export async function pollRunnerReasons(
     if (
       (standDownBase === "feature" || (standDownBase === BUGFIX_ROLE && openBugsNow)) &&
       (reason === "scheduled" || reason === "main moved") &&
-      !(runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastRunEndedAt ?? 0)) &&
+      !freshlyWoken(runner.state) &&
       runner.state.claim === undefined &&
       !hasOutstandingWork(runner.state)
     ) {
