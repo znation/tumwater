@@ -121,6 +121,32 @@ export function readTranscriptTail(
   let stoppedAtBoundary = false;
   let armed = false; // A qualifying agent_start was recorded; walking older lines for its marker line.
   let boundaryIndex = -1; // Index in `lines` of the arming agent_start (valid while armed).
+
+  // Advances the arming state across one pushed line while `armed` — walking older lines for
+  // the label-bearing marker that precedes the arming agent_start. Every line pushed here
+  // sits inside [marker .. EOF] when a boundary lands, so the walk keeps it. Returns true when
+  // a boundary was found and the walk must stop; false to keep walking.
+  const walkArmed = (raw: string): boolean => {
+    if (raw.includes('"tumwater_run"')) {
+      // A kind-only marker carries no label and is skipped — a full re-read lets it pass
+      // through too — so the scan keeps walking to the labeled marker that actually applies,
+      // or to the older agent_start when the run is unlabeled.
+      if (markerHasLabel(raw)) {
+        armed = false; // Boundary found — the post-loop EOF-while-armed fallback must not fire.
+        stoppedAtBoundary = true; // Window [this marker .. EOF] renders identically to a full re-read.
+        return true;
+      }
+      return false;
+    }
+    if (raw.includes('"agent_start"')) {
+      lines.splice(boundaryIndex + 1); // No label before the next older run: unlabeled — stop at A.
+      armed = false;
+      stoppedAtBoundary = true;
+      return true;
+    }
+    return false;
+  };
+
   try {
     for (;;) {
       const len = Math.min(TAIL_SCAN_CHUNK, pos);
@@ -169,23 +195,8 @@ export function readTranscriptTail(
         }
         lines.push(raw);
         if (armed) {
-          // Walking for the label-bearing marker line preceding the arming agent_start; every
-          // line pushed here sits inside [marker .. EOF] when one lands, so keep it.
-          if (raw.includes('"tumwater_run"')) {
-            // A kind-only marker carries no label and is skipped — a full re-read lets it
-            // pass through too — so the scan keeps walking to the labeled marker that
-            // actually applies, or to the older agent_start when the run is unlabeled.
-            if (markerHasLabel(raw)) {
-              armed = false; // Boundary found — the post-loop EOF-while-armed fallback must not fire.
-              stoppedAtBoundary = true; // Window [this marker .. EOF] renders identically to a full re-read.
-              break;
-            }
-          } else if (raw.includes('"agent_start"')) {
-            lines.splice(boundaryIndex + 1); // No label before the next older run: unlabeled — stop at A.
-            armed = false;
-            stoppedAtBoundary = true;
-            break;
-          }
+          // Walking for the label-bearing marker line preceding the arming agent_start.
+          if (walkArmed(raw)) break;
         } else if (isEntryCandidate(raw, includePrompts)) {
           candidates += 1;
         } else if (raw.includes('"agent_start"') && candidates >= limit) {
