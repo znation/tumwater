@@ -172,11 +172,20 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   for (const file of scheduledWakeFiles(root)) if (!wakeNotDue(file)) applyWakeMarker(root, file, runners);
 }
 
-/** Whether a wake marker's deadline still lies ahead: a missing, non-numeric, or non-finite
- * `notBeforeMs` reads as immediate, and a null (corrupt) marker is due. */
-function wakeNotDue(markerFile: string): boolean {
+/** A scheduled-wake marker's deadline in ms, or undefined when it has none: undefined for a
+ * missing or corrupt marker and for a `notBeforeMs` that is absent, non-numeric, or non-finite
+ * (the "immediate" reading both the due-check and the pending-list apply — a hand edit's
+ * `1e999` must not read as a forever-out deadline). */
+function wakeDeadlineMs(markerFile: string): number | undefined {
   const marker = readJsonFile<{ notBeforeMs?: unknown }>(markerFile);
-  const notBefore = marker === null ? undefined : finiteNumber(marker.notBeforeMs, undefined);
+  return marker === null ? undefined : finiteNumber(marker.notBeforeMs, undefined);
+}
+
+/** Whether a wake marker's deadline still lies ahead: a missing, non-numeric, or non-finite
+ * `notBeforeMs` reads as immediate (one helper owns the reading), and a null (corrupt) marker
+ * is due. */
+function wakeNotDue(markerFile: string): boolean {
+  const notBefore = wakeDeadlineMs(markerFile);
   return notBefore !== undefined && notBefore > Date.now();
 }
 
@@ -203,8 +212,7 @@ export function pendingScheduledWakes(root: string, now: number): { roles: strin
   const out: { roles: string[]; atMs: number }[] = [];
   for (const file of scheduledWakeFiles(root)) {
     const roles = requestedRoles(file);
-    const marker = readJsonFile<{ notBeforeMs?: unknown }>(file);
-    const atMs = marker === null ? undefined : finiteNumber(marker.notBeforeMs, undefined);
+    const atMs = wakeDeadlineMs(file);
     if (roles && roles.length > 0 && atMs !== undefined && atMs > now) out.push({ roles, atMs });
   }
   return out.sort((x, y) => x.atMs - y.atMs);
