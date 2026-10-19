@@ -266,13 +266,11 @@ export function setConfigKey(
     if (key !== "roles") preserveFileRoles(root, next);
     // Writers keep one spelling: a whole-section `backends` set (the GUI Save path) drops the
     // legacy aliases the new pi form now carries, so the file can never hold both.
-    if (key === "backends" && isJsonObject(value)) {
-      const pi = isJsonObject(value.pi) ? value.pi : undefined;
-      const record = next as unknown as Record<string, unknown>;
-      if (pi?.bin !== undefined) delete record.agentBin;
-      if (pi?.args !== undefined) delete record.piArgs;
-      return next;
-    }
+    // Writers keep one spelling: a whole-section `backends` set (the GUI Save path) drops the
+    // legacy agentBin/piArgs aliases the new pi form now carries, so the file can never hold
+    // both — the same collapseAgentAliases rule the whole-config writers (above and in
+    // config.ts) use, so the alias policy cannot drift between the per-key arm and the others.
+    if (key === "backends") return collapseAgentAliases(next);
     // Writers keep one spelling: a legacy top-level set drops the matching backends.pi field, so
     // the file can never hold both (validateConfig's raw pass rejects a file that does).
     if (key === "agentBin" || key === "piArgs") {
