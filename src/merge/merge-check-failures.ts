@@ -2,7 +2,7 @@
 import { deleteRef, headOf, patchId } from "../git/git.js";
 import { mergeRefName } from "../paths.js";
 import { recordReview } from "../tick/tick-apply.js";
-import { saveLoopState, type LoopState } from "../loop/loop-state.js";
+import { saveLoopState, type LoopState } from "../runner/runner-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
 import { mainTipVerdict } from "../baseline/main-red.js";

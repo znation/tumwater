@@ -1,4 +1,4 @@
-/** The model-fallback state machine (src/loop/model-fallback.ts, PLANS.md "Model failure
+/** The model-fallback state machine (src/runner/model-fallback.ts, PLANS.md "Model failure
  * fallback, part 1/2"): the trip threshold, the pre-trip clear, the probe window, and the
  * failed-probe backoff — all pure with the clock passed in. */
 import test from "node:test";
@@ -14,7 +14,7 @@ import {
   recordModelFallback,
   type ModelFallbackState,
   type ModelFallbackVerdict,
-} from "../src/loop/model-fallback.js";
+} from "../src/runner/model-fallback.js";
 
 const fold = (verdict: ModelFallbackVerdict, now: number, probe = false) => ({
   verdict,

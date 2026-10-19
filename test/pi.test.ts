@@ -22,7 +22,7 @@ import { messageUpdateHasContent, toolUpdateHasContent } from "../src/pi/pi-even
 import { startPiWatchdogs } from "../src/pi/pi-watchdogs.js";
 import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
-import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
+import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
 import { gitOnlyBinDir, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logFlagsTo, readRunLines, withIdlePi, withPi } from "./fakes/fake-pi.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
@@ -437,7 +437,7 @@ test("a non-zero pi exit with assistant text still counts as a successful run", 
 
 test("a non-zero pi exit without assistant text is a failed run", async () => {
   // The other half of the same branch: no output means nothing landed, so it must stay an
-  // error (the tick-level regression for this lives in test/loop.test.ts).
+  // error (the tick-level regression for this lives in test/runner.test.ts).
   const result = await runFakePi(`echo 'pi exploded' >&2\nexit 1`);
   assert.equal(result.ok, false);
   assert.match(result.errorMessage ?? "", /pi exploded|exited 1/);
@@ -668,8 +668,8 @@ test("a missing pi binary fails the tick with an error", async () => {
 // pi crashing on malformed JSON (a torn model-server chunk): five ticks in the first 18 days died
 // with "Unterminated string in JSON at position N" as their only error, one of them 2 h 39 m of
 // director work. The session survives on disk, so the harness treats it as transient
-// (src/loop/loop-pi.ts retries once with --continue) — flagged from pi's stderr at exit, and only
-// for exits the harness itself did not cause.
+// (src/runner/runner-pi.ts retries once with --continue) — flagged from pi's stderr at exit,
+// and only for exits the harness itself did not cause.
 test("runPi flags a JSON.parse crash on pi's stderr as a transient pi crash", async () => {
   const r = await runFakePi(
     `echo 'SyntaxError: Unterminated string in JSON at position 2781 (line 1 column 2782)' >&2\nexit 1`,

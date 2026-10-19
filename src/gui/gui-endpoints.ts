@@ -16,7 +16,7 @@ import { answeredQuestionEntries, donePlanEntries, fixedBugEntries, openBugEntri
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { knownRoleIds, loadConfigSafe } from "../config/config.js";
-import { loopEnabled } from "../roles/loop-ids.js";
+import { loopEnabled } from "../roles/runner-ids.js";
 import { artifactPhrase, previewRetire } from "../operator/retire.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { collectReport, collectReportSince } from "../report/report-data.js";

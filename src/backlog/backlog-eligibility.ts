@@ -11,10 +11,10 @@
 
 import path from "node:path";
 import { statOrNull } from "../files/files.js";
-import { allLiveClaims } from "../loop/loop-state.js";
+import { allLiveClaims } from "../runner/runner-state.js";
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { openParenthetical, trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
 import { actionableEntryRangesFor, stripEntryStamp } from "./backlog-structure.js";

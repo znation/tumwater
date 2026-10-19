@@ -14,7 +14,7 @@ import { attempt } from "./helpers/exit-capture.js";
 import { displayWidth } from "../src/text/text-width.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { initProject } from "../src/init/init.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { tmpdir, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";

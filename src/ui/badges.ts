@@ -267,7 +267,7 @@ export function wakeBadge(wake: { roles: string[]; atMs: number } | undefined, n
 
 /** One loop's own pending-wake marker for its state cell: ` · wake in <duration>` for the
  * earliest future wake naming `role` (or `instanceOf`, the base role an extra instance runs),
- * empty when none does. Same match rule as the GUI's `scheduledWakesFor` (gui-client-loops.ts
+ * empty when none does. Same match rule as the GUI's `scheduledWakesFor` (gui-client-roles.ts
  * keeps its own JS copy). `wakes` need not be sorted. */
 export function loopWakeMarker(
   wakes: { roles: string[]; atMs: number }[] | undefined,

@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { dirname, join } from "node:path";
 import { leaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
 import { eventsLogPath, slotWorktreePath, slotsStatePath, worktreeUsePath } from "../src/paths.js";

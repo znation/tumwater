@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { freshLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState } from "../src/runner/runner-state.js";
 import { loopPhase, loopRank, sortLoopsByState } from "../src/ui/status-model.js";
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";

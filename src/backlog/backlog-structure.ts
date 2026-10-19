@@ -14,7 +14,7 @@ import {
   headingTitle,
 } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
-import { allLiveClaims } from "../loop/loop-state.js";
+import { allLiveClaims } from "../runner/runner-state.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import {

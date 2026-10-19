@@ -37,7 +37,7 @@ import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFro
 import { answeredQuestionAt, answeredQuestionCount, answeredQuestionList, answeredQuestionPayload, openQuestionAt, questionListPayload, renderShownQuestion } from "../backlog/question-answer.js";
 import { editInEditor } from "./cli-editor.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { setConfigKey, unsetConfigKey } from "../config/config-write.js";
 
 /** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */

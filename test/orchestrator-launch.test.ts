@@ -19,8 +19,8 @@ import fs from "node:fs";
 
 import { launchDueTicks } from "../src/orchestrator/orchestrator-launch.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import type { LoopRunner } from "../src/loop/loop.js";
-import type { LoopState } from "../src/loop/loop-state.js";
+import type { LoopRunner } from "../src/runner/runner.js";
+import type { LoopState } from "../src/runner/runner-state.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { TeamGateStates } from "../src/gates/gate-polls.js";
 import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, type FallbackBreaker } from "../src/budget/fallback-breaker.js";

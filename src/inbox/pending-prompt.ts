@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import { enqueueRolePrompt, removeSameStemSiblings, takeQueuedFile } from "./inbox.js";
 import { movePromptImages, stripVanishedImageReferences } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -8,7 +8,7 @@ import { warnEventBestEffort } from "../events/events.js";
 /**
  * The raw user prompt a director tick is executing, and the requeue policy for every outcome
  * that leaves the request unfulfilled — extracted from LoopRunner's private methods
- * (src/loop/loop.ts) so the subtle fresh-vs-resume requeue semantics have one named home beside
+ * (src/runner/runner.ts) so the subtle fresh-vs-resume requeue semantics have one named home beside
  * the queue mechanics they ride on (src/inbox/inbox.ts).
  */
 export class PendingPrompt {

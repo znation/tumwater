@@ -37,7 +37,7 @@ import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrid
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { claudeWindowUsedUp, readClaudeAccount, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { dayAt } from "../text/datetime.js";
 

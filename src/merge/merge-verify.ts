@@ -5,7 +5,7 @@ import { gateRoleConfig } from "../gates/budget-gates.js";
 import { reviewRunConfig, seamConcurrencyKey } from "../config/config-views.js";
 import { providerWaitStage } from "./merge-slot.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
-import { LoopRunner } from "../loop/loop.js";
+import { LoopRunner } from "../runner/runner.js";
 import { branchHead, isMergedInto } from "../git/git.js";
 import { addMergeChange, mergeUsage, removeMergeChange, setMergeChangeStatus } from "./merge-slot.js";
 import { dropMerge, entryRevisionFields, queuedMergeFiles, staleHeadFile, type MergeEntry } from "./merge-queue.js";
@@ -41,7 +41,7 @@ export function verifyLimit(maxConcurrent: number): number {
 /** Resolve a merge entry's authoring runner: the live runner when the role is enabled
  * (runners are never removed from the array on disable — only a warning event fires); a role
  * disabled before this process started has no runner, so a throwaway one supplies the same
- * wiring (loop-pi.ts, runMergePi, foldMergeUsage) and a disk-loaded state to fold and save
+ * wiring (runner-pi.ts, runMergePi, foldMergeUsage) and a disk-loaded state to fold and save
  * on. Both share the live config, like every runner — the director takes directorConfig (the live
  * config, its budget-gate exemption, unless a used-up window moved it), every other role takes
  * roleConfig (gateRoleConfig's single home for the rule; the scheduler assigns the live runners

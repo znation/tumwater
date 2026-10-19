@@ -18,9 +18,9 @@ import {
 import { formatModelSelector, isAgentId, parseModelSelector } from "./model-selector.js";
 import { modelPairName } from "../budget/budget.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { enabledRoleIds } from "./config.js";
-import { modelFallbackActive, type ModelFallbackState } from "../loop/model-fallback.js";
+import { modelFallbackActive, type ModelFallbackState } from "../runner/model-fallback.js";
 import {
   FALLBACK_REVIEW_TIMEOUT_S,
   REVIEW_TIMEOUT_S,
@@ -56,7 +56,7 @@ function fallbackSelectorFields(
  * fleets, part 2/4"): a pair that routes to a non-pi backend carries that backend's name as
  * its provider — `claude/claude-sonnet-5-5` and a bare `claude-sonnet-5-5` on a claude
  * team both read `claude` — so the budget gate's handback (gate-polls.ts's tickOnPair
- * against the tick's seamHoldKey capture, loop-tick.ts's setTickPair) matches a tick on
+ * against the tick's seamHoldKey capture, runner-run.ts's setTickPair) matches a tick on
  * either selector form. The same routing rule as routeModel: a provider naming an agent is
  * that agent, no provider runs on the config's `agent`, anything else is pi, which keeps
  * its own provider (a bare pi selector keeps undefined, exactly as before). */

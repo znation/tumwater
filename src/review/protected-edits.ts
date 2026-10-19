@@ -4,7 +4,7 @@ import { promptBlockOf } from "../brief/brief.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { briefCandidates } from "../paths.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 
 /** The brief files that may carry the initial prompt block: the basenames of `briefCandidates`. */
 const BRIEF_FILES = briefCandidates("").map((p) => path.basename(p));

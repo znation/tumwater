@@ -9,7 +9,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { assertClean, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
-import { seedCounters } from "./fixtures/loop-fixtures.js";
+import { seedCounters } from "./fixtures/runner-fixtures.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is tested as a
 // child process — the spawn helpers (CLI, cli, cliWithEnv, spawnCli, exitCode) live in

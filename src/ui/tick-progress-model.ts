@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
 

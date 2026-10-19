@@ -14,7 +14,7 @@ import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { buildCheckSkipWarning } from "../src/build/build-check-events.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { buildCheckFixture } from "./fixtures/loop-fixtures.js";
+import { buildCheckFixture } from "./fixtures/runner-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";

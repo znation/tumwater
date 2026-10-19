@@ -5,7 +5,7 @@
  * test/gui-client-labels.test.ts. Spliced into gui-client.ts's script right after the format
  * helpers, so every later client module can call the two functions. */
 import { EVENT_TYPE_LABELS, RUN_RESULT_LABELS } from "../../events/event-labels.js";
-import { INSTANCE_ID_SOURCE } from "../../roles/loop-ids.js";
+import { INSTANCE_ID_SOURCE } from "../../roles/runner-ids.js";
 
 export const GUI_CLIENT_LABELS_JS = String.raw`  // labels:start
   const INSTANCE_ID = new RegExp(${JSON.stringify(INSTANCE_ID_SOURCE)});

@@ -11,7 +11,7 @@ import {
 } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
 import { baselineVerdictsPath } from "../src/paths.js";
-import { baselineFixture, runsOf } from "./fixtures/loop-fixtures.js";
+import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Main's green baseline verdicts survive a team restart (persistBaselineVerdicts in

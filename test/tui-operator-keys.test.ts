@@ -2,7 +2,7 @@
  * on an unpaused loop, an immediate resume on a paused one) and its team-pause interplay
  * note, Ctrl+A's abort confirmation and liveness gate, Ctrl+W's wake editor, Ctrl+Q's
  * scheduled team stop, and the keys' inertness outside transcript views and in budget mode.
- * Like the other topic-named slices (loop-refusal,
+ * Like the other topic-named slices (runner-refusal,
  * orchestrator-budget, review-precheck), this file holds one coherent topic; the shared
  * fake-TTY harness lives in fixtures/tui-fixtures.ts. Each test file gets its own process, so the
  * harness's global stdout/stdin/readline patches never meet another file's environment. */
@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { isTeamPaused, scheduledStopAt, pauseTeam, pausedRoles, standingTeamPause } from "../src/team/team-state.js";
 import { listWakes, requestWake } from "../src/operator/operator-intent.js";
 import { abortRequestPath, pausedRolesPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../src/paths.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";

@@ -750,7 +750,7 @@ test("the dashboard page reloads itself when the serving build sha changes", asy
 test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const { nextRunCell } = await import("../src/ui/status-render.js");
-  const { freshLoopState } = await import("../src/loop/loop-state.js");
+  const { freshLoopState } = await import("../src/runner/runner-state.js");
   const { yieldMultiplierFor } = await import("../src/scheduling/backoff.js");
   type LoopState = ReturnType<typeof freshLoopState>;
 

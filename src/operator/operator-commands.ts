@@ -9,7 +9,7 @@ import { revertMergedCommit } from "./revert.js";
 import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
 import { shortSha } from "../text/format.js";
-import { INSTANCE_ROLES } from "../roles/loop-ids.js";
+import { INSTANCE_ROLES } from "../roles/runner-ids.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import {
   normalizePauseReason,
@@ -71,7 +71,7 @@ function namedRole(root: string, args: string[]): string | null {
 }
 
 /** namedRole for the commands that write or lift the per-role pause marker: `--role feature-1`
- * (`bugfix-1`) is the pause key of instance 1 of a multi-instance role (src/roles/loop-ids.ts's
+ * (`bugfix-1`) is the pause key of instance 1 of a multi-instance role (src/roles/runner-ids.ts's
  * instancePauseKey), returned verbatim; every other value resolves through namedRole. */
 function pauseTargetRole(root: string, args: string[]): string | null {
   const role = flagValue(args, "--role");

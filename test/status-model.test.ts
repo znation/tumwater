@@ -14,7 +14,7 @@ import { idleClaimText, isActivePhase, loopPhase, loopRank, loopRowCells, sortLo
 import { phaseTone } from "../src/ui/tone.js";
 import { workingDetail } from "../src/ui/tick-progress-model.js";
 import { teamAlerts } from "../src/ui/team-alerts.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState } from "../src/runner/runner-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { GATE_SESSION, SESSION, snapshotWith, toolStart, writePiLog } from "./fixtures/status-fixtures.js";

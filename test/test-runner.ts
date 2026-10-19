@@ -24,7 +24,7 @@ import { typoSuffix } from "../src/text/suggest.js";
  * instead
  * of the full suite — filters match e2e files too, so `npm test orchestrator` or
  * `npm run test:e2e` deliberately brings the tier back. A filter may carry a `#name` part
- * (`npm test 'loop#resume'`), which additionally filters the individual tests inside the selected
+ * (`npm test 'runner#resume'`), which additionally filters the individual tests inside the selected
  * files by name substring — with 2,000+ tests, running one module still runs its whole file, and
  * the failing test's name is usually known. A filter that matches nothing is an error listing what
  * exists (a `#name` that matches nothing fails the run too — a silent empty pass would look
@@ -61,7 +61,7 @@ export const SUITE_TIMEOUT_MS = 30 * 60_000;
 export function timedOutFailure(r: { error?: unknown }): string | null {
   if ((r.error as { code?: unknown } | undefined)?.code !== "ETIMEDOUT") return null;
   return `the test suite exceeded its ${SUITE_TIMEOUT_MS / 60_000}-minute ceiling and was killed — a test hangs or ` +
-    `leaves the event loop alive; bisect with npm test '<file filter>' or a "#name" filter (npm test 'loop#resume')`;
+    `leaves the event loop alive; bisect with npm test '<file filter>' or a "#name" filter (npm test 'runner#resume')`;
 }
 
 /** What selectTestFiles decided: which compiled files to run (and their source-style names for
@@ -117,7 +117,7 @@ const E2E_SUFFIX = ".e2e.test.js";
 /** Pick which compiled test files under `distDir` to run. No filters → every file except the
  * `.e2e.test.js` tier (run that via `npm run test:e2e`). Otherwise a file is selected when its
  * source-style name contains at least one filter as a plain substring (no regex, case-sensitive
- * — `loop` selects both loop.test.ts and loop-2.test.ts); e2e files are filterable like any
+ * — `runner` selects both runner.test.ts and runner-2.test.ts); e2e files are filterable like any
  * other. Non-test files in the directory are ignored.
  *
  * File selection uses each filter's part before the `#`: at least one non-empty part selects
@@ -134,7 +134,7 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
       return {
         names: [],
         files: [],
-        error: `a "#" must be followed by the test name to run, as in loop#resume (got ${JSON.stringify(raw)})`,
+        error: `a "#" must be followed by the test name to run, as in runner#resume (got ${JSON.stringify(raw)})`,
       };
   }
   let entries: string[];
@@ -157,7 +157,7 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
   if (picked.length === 0) {
     // A near-miss filter gets the shared did-you-mean every other unknown-value error
     // carries, computed against each file's stem (the substring a developer usually types,
-    // `loop` for loop.test.ts) as well as its full source-style name — the listing alone
+    // `runner` for runner.test.ts) as well as its full source-style name — the listing alone
     // leaves a one-letter slip like `lopp` unmatched. Only the first file filter is hinted;
     // this branch is reached only when none of them matched.
     const firstFileFilter = parsed.find((p) => p.file !== "")?.file ?? "";
@@ -285,7 +285,7 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  *   mark would make a spawned run's watch compare against a stale pid and stop early.
  * - TUMWATER_NOTES_PATH names the role's notes file the `tumwater-notes` command reads, so a
  *   non-authoring run that inherited a tick's notebook path would point that command at a file
- *   the run's own contract says it must not touch (test/loop-pi.test.ts pins the empty env line).
+ *   the run's own contract says it must not touch (test/runner-pi.test.ts pins the empty env line).
  * - TUMWATER_RUN names the outer run a nested run's stamp is appended to (run-marker.ts), so an
  *   inherited mark made a spawned run's sweep read the suite's own process tree.
  * - DASHBOARD_CHILD_ENV makes reexecSelf exit its restart code instead of supervising, so an
@@ -333,7 +333,7 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
 
 /** Detect a `#name` filter that matched nothing, from the TAP side-channel the run wrote to
  * `tap`: TAP records one `ok`/`not ok` line per thing the run executed, and node --test names a
- * file whose tests all miss the pattern by the file itself (`ok 1 - loop.test.js`) while matched
+ * file whose tests all miss the pattern by the file itself (`ok 1 - runner.test.js`) while matched
  * tests and their parent describes carry their own names. So when every ok line names a compiled
  * test file, nothing inside any file ran — the filter passed an empty suite, which must fail
  * loudly (a silent green run would read as verified work that never executed). Returns the
@@ -365,7 +365,7 @@ export function noNameMatchReason(tapPath: string, nameFilters: readonly string[
 
 /** Split the runner's argv into its filters and its coverage mode: `--coverage` selects the
  * mode wherever it appears and is removed from the filters, so it composes with every filter
- * form (`--coverage loop`, `loop --coverage`, `--coverage 'loop#resume'`). Exported for
+ * form (`--coverage runner`, `runner --coverage`, `--coverage 'runner#resume'`). Exported for
  * test/test-runner.test.ts to pin the split without spawning the runner. */
 export function splitCoverageArgv(argv: readonly string[]): { filters: string[]; coverage: boolean } {
   return { filters: argv.filter((a) => a !== "--coverage"), coverage: argv.includes("--coverage") };

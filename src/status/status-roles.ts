@@ -1,6 +1,6 @@
 // vocabulary: plain
 import path from "node:path";
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import type { readSlotsState } from "../git/slots-state.js";
 import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
 import {
@@ -10,7 +10,7 @@ import {
 } from "../config/config-views.js";
 import { modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { isCustomRole } from "../config/config.js";
-import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
+import { baseRoleOf, loopIds } from "../roles/runner-ids.js";
 import { formatModelSelector } from "../config/model-selector.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { isJsonObject } from "../files/json-object.js";

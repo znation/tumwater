@@ -5,7 +5,7 @@ import { truncate } from "../text/text.js";
 /** Diagnosis of a pi run that ended without worktree changes: whether the generation was cut
  * off at the context ceiling (real work, unfulfilled) and the diagnostic notes for the warning
  * event logged when no nothing-to-do sentinel appeared anywhere in the reply. Split out of
- * loop.ts so the classification — with its own data model — has a single testable home; the
+ * runner.ts so the classification — with its own data model — has a single testable home; the
  * tick verdict (tick-verdict.ts) logs the warning and re-queues unfulfilled prompts from it. */
 
 interface NoChangeDiagnosis {

@@ -11,7 +11,7 @@ import { formatModelSelector, isAgentId, parseModelSelector, routeModel, type Mo
 import { modelPairName } from "../budget/budget.js";
 import { isJsonObject } from "../files/json-object.js";
 import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
  * is the concrete selector id piArgs consumes (the tier map, if any, has been resolved to
@@ -171,7 +171,7 @@ export function configForRole(config: TumwaterConfig, role: string): ResolvedMod
  * (descriptionIncomplete) the plan role schedules with a ZERO min gap, so a fresh project plans
  * back-to-back until a run changes nothing — the zero gap is tighter than bootstrap. One home
  * for the rule: isEligible enforces the same gap when it decides whether plan may start, and
- * loop-tick.ts hands this config to applyTickOutcome so nextRunAt is scheduled from the same
+ * runner-run.ts hands this config to applyTickOutcome so nextRunAt is scheduled from the same
  * figure instead of the role default. `descriptionIncomplete` means the brief's status section
  * is still the placeholder; the initial prompt half is always present (init rejects an empty
  * one), so the placeholder status is the machine-detectable "description not yet complete". */
@@ -272,7 +272,7 @@ export function resolvedModelFields(
  * provider/model/thinking triple formatted as one selector string, or an empty object when
  * no model id is resolved (pi's own default) — the key stays absent rather than empty, the
  * same empty-means-unset rule resolvedModelFields applies to the raw halves. One home of
- * that assembly and guard, shared by the two run-start event writers (loop-tick.ts's run_start,
+ * that assembly and guard, shared by the two run-start event writers (runner-run.ts's run_start,
  * review.ts's review_start) and the per-loop status snapshot (status-data.ts) so the three
  * observability surfaces cannot disagree about which model a run starts on. A non-pi agent is
  * named as the selector's provider namespace (agentQualifiedSelector), so a claude run reads

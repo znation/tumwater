@@ -3,7 +3,7 @@ import { setConfigKey, setDailyBudgetUsd } from "../../config/config-write.js";
 import { loadConfigSafe } from "../../config/config.js";
 import { usdCap } from "../../text/format.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
-import { baseRoleOf } from "../../roles/loop-ids.js";
+import { baseRoleOf } from "../../roles/runner-ids.js";
 import { parseBudgetInput } from "./tui-input.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";

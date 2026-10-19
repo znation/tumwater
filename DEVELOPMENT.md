@@ -6,7 +6,7 @@ npm test                                   # lint + build + the unit suite (what
 npm run test:gate                          # lint + build + only the tests your change reaches
 npm run lint                               # just the lint: no-floating-promises (see eslint.config.js)
 npm test merge                             # only test files whose name contains "merge"
-npm test 'loop#resume'                     # …and inside them, only tests whose name contains "resume"
+npm test 'runner#resume'                   # …and inside them, only tests whose name contains "resume"
 npm run test:e2e                           # live-orchestrator e2e tier, kept out of the gate
 npm run test:coverage [filter]             # the unit suite with node's coverage table
 ```
@@ -148,9 +148,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 
 ## Layout
 
-- `src/loop/loop.ts`: the runner class and its lifecycle/public surface. `src/loop/loop-pi.ts`
-  holds its pi-run plumbing, `loop-tick.ts` the run pipeline phases, `loop-recovery.ts` the
-  abort/pin/recovery phases, and `loop-fallback.ts` the model-fallback fold.
+- `src/runner/runner.ts`: the runner class and its lifecycle/public surface. `src/runner/runner-pi.ts`
+  holds its pi-run plumbing, `runner-run.ts` the run pipeline phases, `runner-recovery.ts` the
+  abort/pin/recovery phases, and `runner-fallback.ts` the model-fallback fold.
 - `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts`
   holds its launch pass (admitting due roles to their runs).
 - `src/agent/`: the backend-neutral agent runner (`run-agent.ts` — the spawn, the

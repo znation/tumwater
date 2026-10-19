@@ -5,14 +5,14 @@ import path from "node:path";
 import { planTickStart } from "../src/tick/tick-resume.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
-import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
 import { sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { runAgent } from "../src/agent/run-agent.js";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
 import { applyTickOutcome } from "../src/tick/tick-apply.js";
-import { slotPinnedForResume } from "../src/loop/loop-tick.js";
+import { slotPinnedForResume } from "../src/runner/runner-run.js";
 import { defaultConfig } from "../src/config/config.js";
 import { fallbackRoleConfig } from "../src/config/config-fallbacks.js";
 import { piBackend } from "../src/pi/pi-backend.js";
@@ -31,7 +31,7 @@ registerAgentBackend(claudeBackend);
 // tick-resume.ts owns planTickStart — the decision every tick starts with: whether it resumes
 // the interrupted session (and under which cause), what prompt it runs, and which side effects
 // (flag consumption, lastError capture, prompt reclaim) happen even on the paths that skip the
-// work. loop.ts consumes the plan verbatim, so a wrong decision here misroutes whole ticks.
+// work. runner.ts consumes the plan verbatim, so a wrong decision here misroutes whole ticks.
 // These tests pin the decision table directly, against a real session dir and a real prompt
 // queue, the way pending-prompt.test.ts pins the requeue policy.
 

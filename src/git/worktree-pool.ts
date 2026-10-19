@@ -14,7 +14,7 @@
 import path from "node:path";
 import { loadConfig, slotCount } from "../config/config.js";
 import { worktreesDir, slotWorktreePath } from "../paths.js";
-import { loadLoopState } from "../loop/loop-state.js";
+import { loadLoopState } from "../runner/runner-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState, slotForDir, updateSlotsState } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";

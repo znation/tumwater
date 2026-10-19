@@ -1,5 +1,5 @@
-import { stateSkipReason } from "../loop/loop-state.js";
-import type { LoopRunner } from "../loop/loop.js";
+import { stateSkipReason } from "../runner/runner-state.js";
+import type { LoopRunner } from "../runner/runner.js";
 
 /**
  * Once-mode bookkeeping (`tumwater run --once`), extracted from the orchestrator's poll loop.

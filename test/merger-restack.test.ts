@@ -5,7 +5,7 @@ import path from "node:path";
 import { BATCH_RESTACK_ATTEMPTS } from "../src/merge/merge-stack.js";
 import { refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState } from "../src/runner/runner-state.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { withApprovePi } from "./fakes/fake-pi.js";

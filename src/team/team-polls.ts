@@ -5,7 +5,7 @@ import { claudeWindowUsedUp, windowReserved, type ClaudeAccount, type ClaudeWind
 import type { HarnessEventInput } from "../events/events.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import type { ModelTier } from "../config/config-schema.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";

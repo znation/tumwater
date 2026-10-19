@@ -11,7 +11,7 @@ import {
   refusalNote,
   withoutRefusalNotes,
 } from "../backlog/backlog-eligibility.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { changedFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit-message.js";
@@ -20,7 +20,7 @@ import { logEventBestEffort } from "../events/events.js";
 import { clearSupersededRejection } from "../tick/tick-apply.js";
 import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 
 /** Handling a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended
  * with TUMWATER_REFUSED. Only the markdown objection note may merge — it is the durable record
@@ -29,7 +29,7 @@ import type { LoopState } from "../loop/loop-state.js";
  * then). A refusal with no note left resets the worktree cleanly and lets the reason live in
  * the event + lastSummary only. The note commit merges directly: md-only diffs are review-exempt
  * by construction under the gate's exemption patterns, so routing it through the gate would burn
- * nothing but add a failure mode for a record that is not code. Split out of loop.ts — which
+ * nothing but add a failure mode for a record that is not code. Split out of runner.ts — which
  * keeps the tick lifecycle around it — because this is a self-contained concern with its own
  * policy and its own git surface (commit-only-the-notes / reset); the only things it borrows
  * from the loop are identity, the pre-commit counters for the trailer, and the loop's shared

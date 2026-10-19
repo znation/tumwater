@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { latestSession } from "../agent/session-ledger.js";
 import { RETRIABLE_MERGE_RESULTS } from "../merge/merge-core.js";
@@ -9,9 +9,9 @@ import { buildHandoffPrompt, buildResumePrompt, type ResumeCause } from "../prom
 
 /** What a tick starts with, decided before any worktree or pi work: whether it resumes the
  * interrupted session (and why), the prompt it runs, and the raw user request it executes.
- * planTickStart owns the whole decision — runTick (src/loop/loop.ts) consumes the plan verbatim:
- * a null plan means the loop has nothing to run (the tick is skipped), a resumed tick gets
- * the cause-named bridge prompt, a fresh tick the assembled one. */
+ * planTickStart owns the whole decision — runTick (src/runner/runner.ts) consumes the
+ * plan verbatim: a null plan means the loop has nothing to run (the tick is skipped), a
+ * resumed tick gets the cause-named bridge prompt, a fresh tick the assembled one. */
 export interface TickStartPlan {
   /** The last merge's failure (the merger's own vocabulary — review_error, merge_conflict,
    * merge_blocked — with the detail it wrote into `lastError`), captured before the plan

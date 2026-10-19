@@ -13,7 +13,7 @@ import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeImageProbeCache } from "../src/doctor/image-probe.js";
 import { collectImageProbeFailures } from "../src/status/status-roles.js";

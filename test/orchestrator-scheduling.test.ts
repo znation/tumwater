@@ -8,10 +8,10 @@ import { newMaintenanceQuotaGateState, pollMaintenanceQuotaGate } from "../src/g
 import { OnceRound } from "../src/scheduling/once-round.js";
 import { pollTeamHold } from "../src/team/team-polls.js";
 import { TEAM_OPEN, heldProviders, windowHeldProviders, type TeamHold } from "../src/team/team-hold.js";
-import type { LoopRunner } from "../src/loop/loop.js";
+import type { LoopRunner } from "../src/runner/runner.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkMergedCache } from "../src/scheduling/work-merged-cache.js";
-import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
@@ -788,7 +788,7 @@ test("a plan runner is admitted while the brief status is the placeholder, skipp
   fs.writeFileSync(path.join(root, "README.md"), readmeTemplate("p", "Build a thing."));
   const r = fakeRunner("plan", defaultConfig());
   // A just-finished productive tick under description-incomplete schedules nextRunAt at now
-  // (src/loop/loop-tick.ts): due-now, not an hour out, so the incomplete/complete admission
+  // (src/runner/runner-run.ts): due-now, not an hour out, so the incomplete/complete admission
   // difference is what the poll observes.
   r.state.runs = 1;
   r.state.lastRunEndedAt = T0;

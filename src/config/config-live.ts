@@ -1,11 +1,11 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, loadConfigCached } from "./config.js";
-import { loopIds } from "../roles/loop-ids.js";
+import { loopIds } from "../roles/runner-ids.js";
 import { configForRole, teamModelLabel, modelSelectorField } from "./config-views.js";
 import { seamsInUse } from "./config-fallbacks.js";
 import { bestEffortEventLogger, TUMWATER_SOURCE } from "../events/events.js";
-import { LoopRunner } from "../loop/loop.js";
+import { LoopRunner } from "../runner/runner.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";

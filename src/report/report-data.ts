@@ -24,7 +24,7 @@ import {
 import { validationGapTag } from "../backlog/backlog-md.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo, lowerMedian } from "../collections.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { commitTier } from "../roles/roles.js";
 import {
   foldUsageEvent,

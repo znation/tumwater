@@ -18,7 +18,7 @@ import { addTo, memoSetLru } from "../collections.js";
 import { finiteNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/time-spend.js";
 import type { TickResult } from "../tick/tick-outcome.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { commitTier } from "../roles/roles.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,

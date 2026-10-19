@@ -14,7 +14,7 @@ import { reviewAheadOfMain } from "../src/review/review.js";
 import { aheadOfMain, headOf } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { logEvent } from "../src/events/events.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";

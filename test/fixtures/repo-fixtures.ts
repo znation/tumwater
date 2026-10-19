@@ -3,7 +3,7 @@
  * run through initProject), worktreeAt (a linked role worktree), writeConfig (a seeded
  * tumwater.json), and mergeWork (a commit on main that counts as work for the deferral rule).
  * Split from the old util.ts grab-bag, now dissolved into the topic-named modules
- * (oracles.ts, log-fixtures.ts, loop-fixtures.ts, gui-fixtures.ts); the live-orchestrator,
+ * (oracles.ts, log-fixtures.ts, runner-fixtures.ts, gui-fixtures.ts); the live-orchestrator,
  * fake-pi, and fake-command families live in their own modules (orchestrator-fixtures.ts,
  * fake-pi.ts, fake-commands.ts). The dependency runs one way: the other test modules and
  * the tests import from here; this module imports only the leaf fake-command utilities

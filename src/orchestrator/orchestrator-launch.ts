@@ -22,7 +22,7 @@ import { seamHoldKey } from "../config/config-views.js"
 import type { TeamGateStates } from "../gates/gate-polls.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
-import type { LoopRunner } from "../loop/loop.js";
+import type { LoopRunner } from "../runner/runner.js";
 import { fairOrder } from "../scheduling/scheduling.js";
 import { modelPairName } from "../budget/budget.js";
 import type { Semaphore } from "../concurrency/semaphore.js";

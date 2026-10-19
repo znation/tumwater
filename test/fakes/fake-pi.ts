@@ -10,7 +10,7 @@ import path from "node:path";
 // Every helper here installs or models a fake `pi` executable: tests run offline against these
 // shims on PATH, never a real model (see PRINCIPLES.md). The generic install machinery they
 // sit on — writeScript/pathPrepend, the fake-command-on-PATH technique — lives in
-// fake-commands.ts; loop-fixtures.ts builds on it too (buildCheckFixture).
+// fake-commands.ts; runner-fixtures.ts builds on it too (buildCheckFixture).
 
 // A shim on PATH runs only when nothing outranks PATH in resolveAgentBin, and TUMWATER_PI_BIN
 // does: an inherited one (an operator's wrapper around the real pi, which a team's pi tool

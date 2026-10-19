@@ -5,7 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { entryKey } from "../src/backlog/backlog-eligibility.js";
 import { openBugs, plannedPlans, entryAgeSuffix } from "../src/backlog/backlog.js";
-import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 

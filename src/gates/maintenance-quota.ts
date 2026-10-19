@@ -25,7 +25,7 @@ import { eventRole, parseEventLine } from "../events/event-read.js";
 import { finiteNumber } from "../files/json-object.js";
 import { dayKey } from "../text/datetime.js";
 import { commitTier } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { HarnessEvent } from "../events/events.js";
 

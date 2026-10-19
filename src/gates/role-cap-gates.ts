@@ -27,12 +27,12 @@
  * 80% re-logs one `role_cap_warning` (the durable-cause honest report the streak-gate doc
  * accepts). */
 
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import { groupBy } from "../collections.js";
 import { budgetWarning, dailyCost, todayStamp } from "../budget/budget.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 
 /** A runner as the gate reads it — the role and the loop state whose daily window is judged. */
 interface CapObservation {

@@ -61,9 +61,9 @@ test("an explicit filter selects e2e files too, so the tier is one `npm test e2e
 });
 
 test("filters substring-match the source-style name and are ORed together", () => {
-  const dir = fakeDistDir("merge.test.js", "loop.test.js", "loop-2.test.js", "tui.test.js");
-  // A short stem selects every file it occurs in (both loop files).
-  assert.deepEqual(selectTestFiles(["loop"], dir).names, ["loop-2.test.ts", "loop.test.ts"]);
+  const dir = fakeDistDir("merge.test.js", "runner.test.js", "runner-2.test.js", "tui.test.js");
+  // A short stem selects every file it occurs in (both runner files).
+  assert.deepEqual(selectTestFiles(["runner"], dir).names, ["runner-2.test.ts", "runner.test.ts"]);
   // The full source-style name matches too — a filter copied from the error listing works.
   assert.deepEqual(selectTestFiles(["merge.test.ts"], dir).names, ["merge.test.ts"]);
   // Multiple filters are ORed; order follows the sorted file list, not the filter order.
@@ -76,33 +76,33 @@ test("matching is a plain substring: case-sensitive, no regex metacharacters", (
   const sel = selectTestFiles(["merge"], dir);
   assert.match(sel.error ?? "", /no test file matches/);
   // A regex metacharacter in the filter is literal, not a pattern.
-  const dotSel = selectTestFiles(["loop-2"], fakeDistDir("loop-2.test.js"));
-  assert.deepEqual(dotSel.names, ["loop-2.test.ts"]);
+  const dotSel = selectTestFiles(["runner-2"], fakeDistDir("runner-2.test.js"));
+  assert.deepEqual(dotSel.names, ["runner-2.test.ts"]);
 });
 
 test("a #name part filters the tests inside the selected files, as one escaped-literal pattern", () => {
-  const dir = fakeDistDir("loop.test.js", "tui.test.js", "loop.e2e.test.js");
+  const dir = fakeDistDir("runner.test.js", "tui.test.js", "runner.e2e.test.js");
   // The file part selects like a bare filter (e2e included — naming a file is deliberate).
-  const sel = selectTestFiles(["loop#hangs"], dir);
+  const sel = selectTestFiles(["runner#hangs"], dir);
   assert.equal(sel.error, undefined);
-  assert.deepEqual(sel.names, ["loop.e2e.test.ts", "loop.test.ts"]);
+  assert.deepEqual(sel.names, ["runner.e2e.test.ts", "runner.test.ts"]);
   assert.equal(sel.namePattern, "hangs");
   assert.deepEqual(sel.nameFilters, ["hangs"], "the raw typed name is kept for the announcement");
   // The name parts OR together and are regex-escaped, so node --test's matcher sees the
   // literal substring typed — the same no-regex rule the file part follows.
-  const two = selectTestFiles(["loop#one", "tui#x.y"], dir);
+  const two = selectTestFiles(["runner#one", "tui#x.y"], dir);
   assert.equal(two.error, undefined);
   assert.equal(two.namePattern, "one|x\\.y");
   assert.deepEqual(two.nameFilters, ["one", "x.y"], "raw names, not the escaped alternation");
   // A bare #name filter searches the whole suite — the unfiltered gating set, e2e excluded.
   const bare = selectTestFiles(["#only"], dir);
   assert.equal(bare.error, undefined);
-  assert.deepEqual(bare.names, ["loop.test.ts", "tui.test.ts"]);
+  assert.deepEqual(bare.names, ["runner.test.ts", "tui.test.ts"]);
   assert.equal(bare.namePattern, "only");
   // A filter with no name part still selects without a pattern, as before.
   assert.equal(selectTestFiles(["tui"], dir).namePattern, undefined);
   // A bare `#` would mean "run nothing" — rejected with the syntax shown.
-  const empty = selectTestFiles(["loop#"], dir);
+  const empty = selectTestFiles(["runner#"], dir);
   assert.match(empty.error ?? "", /a "#" must be followed by the test name to run/);
   // parseFilter splits at the first # only; a test name may itself carry one.
   assert.deepEqual(parseFilter("a#b#c"), { file: "a", name: "b#c" });
@@ -118,15 +118,15 @@ test("noNameMatchReason reads the run's TAP side-channel: all-file ok lines mean
   };
   // node --test names a file whose tests all miss the pattern by the file itself; matched
   // tests and their parent describes carry their own names.
-  assert.match(noNameMatchReason(tap("ok 1 - loop.test.js\nok 2 - tui.test.js\n")) ?? "", /no test name matches/);
+  assert.match(noNameMatchReason(tap("ok 1 - runner.test.js\nok 2 - tui.test.js\n")) ?? "", /no test name matches/);
   // The typed name parts are echoed so a multi-name run need not reread its command line.
   assert.match(
-    noNameMatchReason(tap("ok 1 - loop.test.js\n"), ["resume", "wake"]) ?? "",
+    noNameMatchReason(tap("ok 1 - runner.test.js\n"), ["resume", "wake"]) ?? "",
     /no test name matches "resume" or "wake"/,
   );
-  assert.equal(noNameMatchReason(tap("ok 1 - resume hangs\nok 2 - loop.test.js\n")), null);
+  assert.equal(noNameMatchReason(tap("ok 1 - resume hangs\nok 2 - runner.test.js\n")), null);
   assert.equal(noNameMatchReason(tap("ok 1 - resume # SKIP later\nok 2 - tui.test.js\n")), null, "a directive suffix is not the name");
-  assert.equal(noNameMatchReason(tap("not ok 1 - a failed test\nok 2 - loop.test.js\n")), null, "a failed match still matched");
+  assert.equal(noNameMatchReason(tap("not ok 1 - a failed test\nok 2 - runner.test.js\n")), null, "a failed match still matched");
   // No TAP (a crashed run) is not evidence: the exit code already reports that.
   assert.equal(noNameMatchReason(path.join(tmpdir(), "absent-tap.out")), null);
   assert.equal(noNameMatchReason(tap("")), null);
@@ -139,15 +139,15 @@ test("no match reports every available name so one edit fixes it", () => {
 });
 
 test("a near-miss filter names the file it probably meant", () => {
-  const dir = fakeDistDir("loop.test.js", "tui.test.js");
-  // A one-letter slip of the stem (`lopp` for `loop`) gets the shared did-you-mean an
+  const dir = fakeDistDir("runner.test.js", "tui.test.js");
+  // A one-letter slip of the stem (`runer` for `runner`) gets the shared did-you-mean an
   // unknown value elsewhere in the harness prints, while the listing still follows it.
-  const stem = selectTestFiles(["lopp"], dir);
-  assert.match(stem.error ?? "", /did you mean `loop`\?/);
+  const stem = selectTestFiles(["runer"], dir);
+  assert.match(stem.error ?? "", /did you mean `runner`\?/);
   // A near-miss of the full source-style name suggests the name itself, so the hint can be
   // pasted as a filter unchanged.
-  const full = selectTestFiles(["loop.test.tss"], dir);
-  assert.match(full.error ?? "", /did you mean `loop\.test\.ts`\?/);
+  const full = selectTestFiles(["runner.test.tss"], dir);
+  assert.match(full.error ?? "", /did you mean `runner\.test\.ts`\?/);
   // A filter with no near miss keeps the plain listing — no invented suggestion.
   assert.doesNotMatch(selectTestFiles(["nosuch"], dir).error ?? "", /did you mean/);
 });
@@ -181,10 +181,10 @@ test("splitCoverageArgv lifts --coverage out of the filters wherever it appears"
   assert.deepEqual(splitCoverageArgv([]), { filters: [], coverage: false });
   assert.deepEqual(splitCoverageArgv(["--coverage"]), { filters: [], coverage: true });
   // Either position, and composed with filters and #name parts alike.
-  assert.deepEqual(splitCoverageArgv(["--coverage", "loop"]), { filters: ["loop"], coverage: true });
-  assert.deepEqual(splitCoverageArgv(["loop", "--coverage", "tui"]), { filters: ["loop", "tui"], coverage: true });
-  assert.deepEqual(splitCoverageArgv(["--coverage", "loop#resume"]), { filters: ["loop#resume"], coverage: true });
-  assert.deepEqual(splitCoverageArgv(["loop"]), { filters: ["loop"], coverage: false });
+  assert.deepEqual(splitCoverageArgv(["--coverage", "runner"]), { filters: ["runner"], coverage: true });
+  assert.deepEqual(splitCoverageArgv(["runner", "--coverage", "tui"]), { filters: ["runner", "tui"], coverage: true });
+  assert.deepEqual(splitCoverageArgv(["--coverage", "runner#resume"]), { filters: ["runner#resume"], coverage: true });
+  assert.deepEqual(splitCoverageArgv(["runner"]), { filters: ["runner"], coverage: false });
 });
 
 test("nodeSupportsTestCoverageExclude follows node 22.5, where the flag arrived", () => {

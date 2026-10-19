@@ -3,7 +3,7 @@
  * runner that produces it, the dashboards that render it, and the state machine that applies
  * it. The application policy — which outcomes count which streaks, when a session resumes,
  * how the next run is scheduled — lives next door in tick-apply.ts; the clock arithmetic it
- * drives in backoff.ts. This module holds only the shared types. Split out of loop-state.ts —
+ * drives in backoff.ts. This module holds only the shared types. Split out of runner-state.ts —
  * the persisted state file's load/save — and later of the types.ts grab-bag, as LoopState and
  * HarnessEvent were before it. */
 
@@ -88,7 +88,7 @@ export interface TickOutcome {
    * only by those outcomes; every other resume cause is derived from state (cut-off streak,
    * restart). */
   resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute";
-  /** The tick ended on leftover recovery (src/loop/leftover.ts) — the leftover went on the merge
+  /** The tick ended on leftover recovery (src/runner/leftover.ts) — the leftover went on the merge
    * queue (or already was there, or could not be pinned) — without an authoring run. No model
    * ran, so the orchestrator's fallback breaker takes the tick as no evidence about the backend. */
   recoveredLeftover?: boolean;
@@ -98,4 +98,4 @@ export interface TickOutcome {
  * tick prompt injects (tick-prompt.ts's buildRejectedReviewNote) and the same-head strike
  * counter reads (review.ts's unreviewFailures). Mutates `s` in place; the timestamp is
  * stamped here so every call site shares one Date.now() read and the shape stays in one place
- * (loop-state.ts's lastReview). */
+ * (runner-state.ts's lastReview). */

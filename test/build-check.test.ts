@@ -11,7 +11,7 @@ import { buildCheckEvent, buildCheckSkipWarning, starvedDeadlineMs } from "../sr
 import { detectBuildCheck } from "../src/build/build-check-detect.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { buildCheckFixture } from "./fixtures/loop-fixtures.js";
+import { buildCheckFixture } from "./fixtures/runner-fixtures.js";
 import { pathPrepend, pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { waitFor } from "./helpers/wait.js";

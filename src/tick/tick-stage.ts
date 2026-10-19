@@ -2,7 +2,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import { commitAll, foldCommitsSince, headOf } from "../git/git.js";
 import { changedFiles } from "../git/git-diff.js";
 import {
@@ -20,7 +20,7 @@ import { logEventBestEffort } from "../events/events.js";
 import { enqueueMerge, entryRevisionFields } from "../merge/merge-queue.js";
 import { plural } from "../text/phrases.js";
 import { recordFlow } from "./qa-coverage.js";
-import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
+import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
 import { entryKey } from "../backlog/backlog-eligibility.js";
 import { assignedMovedFinding, heldMovedFinding } from "./stage-check.js";
@@ -33,11 +33,11 @@ interface TickFlow {
   result: "passed" | "bug";
 }
 
-/** The shared loop wiring a changed worktree's staging needs (src/loop/loop-tick.ts): the per-tick
- * authoring-run counters as a snapshot, plus the callbacks that touch the loop — warnings,
- * the summary follow-up run, the pre-queue self-check with its fix-up run, the merge-ref pin,
- * and the abort finalizer. Mirrors the context-object shapes of leftover.ts, refusal.ts, and
- * merge-core.ts. */
+/** The shared loop wiring a changed worktree's staging needs (src/runner/runner-run.ts):
+ * the per-tick authoring-run counters as a snapshot, plus the callbacks that touch the
+ * loop — warnings, the summary follow-up run, the pre-queue self-check with its fix-up
+ * run, the merge-ref pin, and the abort finalizer. Mirrors the context-object shapes of
+ * leftover.ts, refusal.ts, and merge-core.ts. */
 interface TickStageContext {
   root: string;
   role: string;
@@ -49,13 +49,13 @@ interface TickStageContext {
    * summary follow-up can finalize through the loop's requeue path. */
   userPrompt: string | null;
   /** The revision round this tick holds the rejected diff for (plans/revise-rejected.md), or
-   * undefined when the tick is not a revision. Set by loop-tick.ts only when the revision was
+   * undefined when the tick is not a revision. Set by runner-run.ts only when the revision was
    * applied this tick (or a resume carried its already-applied edits), never read from
    * `state.revision`: a per-role user-request tick leaves that field set by design. */
   revisionRound?: number;
   /** The branch main's name, for the merge-base of the staged-moved-entry comparison (part 4/7)
    * and of the backlog archive's commit-time sweep. Optional so callers that never staged a
-   * backlog move (and older tests) keep compiling; loop-tick.ts always supplies it. */
+   * backlog move (and older tests) keep compiling; runner-run.ts always supplies it. */
   mainBranch?: string;
   wt: string;
   /** The pi run's final reply text, the summary's source. */
@@ -80,7 +80,7 @@ interface TickStageContext {
 
 /** Fold commits an agent run made since `base` into the tick's tree, keeping the harness commit
  * the tick's only one (INV-H1); warns when any were folded. The one home of the fold-and-warn
- * policy and its wording, shared by the two fold sites — the authoring run (loop-tick.ts) and
+ * policy and its wording, shared by the two fold sites — the authoring run (runner-run.ts) and
  * this module's follow-up turns — so they cannot drift. */
 export async function foldAgentCommitsSince(
   ctx: { warn(msg: string): void },
@@ -100,7 +100,7 @@ export async function foldAgentCommitsSince(
  * outcome without anything queued. */
 export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome> {
   const s = ctx.state;
-  // A revision tick carries the round it applied on its context (loop-tick.ts): it rides onto the
+  // A revision tick carries the round it applied on its context (runner-run.ts): it rides onto the
   // queued merge so a rejection of this change records the NEXT round (plans/revise-rejected.md).
   // Undefined for a fresh change — including a user-request tick that leaves a pending revision
   // untouched — so only the tick that actually held the rejected diff is labeled a revision.

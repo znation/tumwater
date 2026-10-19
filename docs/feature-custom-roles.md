@@ -38,7 +38,7 @@ alongside the built-in roles.
 2. `tumwater run` spins up the loop with its own worktree/branch; `tumwater status`
    lists it like any role; `--role security` works in prompts, logs, history.
 3. Removing the entry disables and archives the loop's branch safely (existing
-   loop-state handling).
+   runner-state handling).
 
 ## Rationale
 

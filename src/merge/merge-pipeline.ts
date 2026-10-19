@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { LoopRunner } from "../loop/loop.js";
+import type { LoopRunner } from "../runner/runner.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import type { SemaphoreLease } from "../concurrency/semaphore.js";
 import { runOnAbort } from "../process/process.js";
@@ -13,8 +13,8 @@ import { mergeRefName, rejectedRefName } from "../paths.js";
 import type { AbortableMerge } from "../operator/operator-requests.js";
 import type { MergeEntry } from "./merge-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
-import type { FoldsUsage } from "../loop/loop-pi.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { FoldsUsage } from "../runner/runner-pi.js";
+import type { LoopState } from "../runner/runner-state.js";
 
 /** One merge task the pipeline owns (merge queue 3/5, land-queue speed 2c) — a verification or the
  * merge: its task, the controller that aborts it (harness shutdown OR `tumwater abort --role`

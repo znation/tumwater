@@ -14,7 +14,7 @@ import {
   YIELD_RING,
   yieldMultiplier,
 } from "../src/scheduling/backoff.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState } from "../src/runner/runner-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles/roles.js";
@@ -25,7 +25,7 @@ import { todayStamp } from "../src/budget/budget.js";
  * state and
  * clock — the wake semantics, the backoff ladders, the bounded cut-off/quiet-kill resume
  * streaks — and the review-verdict record. Moved out of
- * loop-state.test.ts when the policy split out of loop-state.ts, whose own tests (load/save,
+ * runner-state.test.ts when the policy split out of runner-state.ts, whose own tests (load/save,
  * zeroCounters) stayed there. */
 
 test("clearBackoff zeroes the backoff and pulls nextRunAt to now, preserving everything else", () => {

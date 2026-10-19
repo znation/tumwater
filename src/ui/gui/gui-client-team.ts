@@ -4,7 +4,7 @@
  * the alerts band for whatever needs a human (a failing loop, a red main, a spent budget,
  * an old build, open questions, a pause), today's progress tiles with their
  * per-day bar chart, the backlog with its questions/plans/bugs tabs, and the notable activity
- * feed (the loops table with its per-row actions lives in gui-client-loops.ts; the composer
+ * feed (the loops table with its per-row actions lives in gui-client-roles.ts; the composer
  * rendered onto this view lives in gui-client-composer.ts). renderTeam repaints all of it
  * from each /api/status poll. Spliced into gui-client.ts's script, reaching its helpers (esc,
  * icon, getJson, postJson, postAction, plural, agree, recall, fmtAgo, fmtTokens, fmtUsd,

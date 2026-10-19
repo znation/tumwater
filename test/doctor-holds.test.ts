@@ -4,7 +4,7 @@ import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkM
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseTeam, pauseRole } from "../src/team/team-state.js";
 import { todayStamp } from "../src/budget/budget.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { humanSeconds } from "../src/text/datetime.js";

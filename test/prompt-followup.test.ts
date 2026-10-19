@@ -20,7 +20,7 @@ test("buildCutOffNote counts the failed runs and offers nothing-to-do as the hon
 });
 
 test("buildSummaryRequestPrompt asks for exactly the closing block and nothing else", () => {
-  // The follow-up for a changed tick whose reply lacked SUMMARY (src/loop/loop-pi.ts
+  // The follow-up for a changed tick whose reply lacked SUMMARY (src/runner/runner-pi.ts
   // requestSummary): it must name every label the commit-message parser reads and forbid
   // further tool use.
   const p = buildSummaryRequestPrompt();

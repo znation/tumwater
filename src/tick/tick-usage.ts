@@ -2,11 +2,11 @@ import type { BackendFailureKind } from "../pi/pi.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import type { RateWindow } from "../pi/pi-stream.js";
 import type { ClaudeBilling } from "../agent/claude/claude-account.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import { recordDailyCost } from "../budget/budget.js";
 import { nonNegativeNumber } from "../files/json-object.js";
 
-/** Usage accounting for one role loop, split out of loop.ts — which keeps the tick lifecycle —
+/** Usage accounting for one role loop, split out of runner.ts — which keeps the tick lifecycle —
  * because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
  * commit trailer reads turns, the run_end event reads costUsd, and the orchestrator's team-wide
  * hold reads lastRateLimit and lastBackendFailure (src/team/team-hold.ts,

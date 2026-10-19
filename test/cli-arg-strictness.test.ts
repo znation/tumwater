@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init/init.js";
 import { resetRequestPath, wakeRequestPath } from "../src/paths.js";
-import { loadLoopState } from "../src/loop/loop-state.js";
-import { seedCounters } from "./fixtures/loop-fixtures.js";
+import { loadLoopState } from "../src/runner/runner-state.js";
+import { seedCounters } from "./fixtures/runner-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 

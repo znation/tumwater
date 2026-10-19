@@ -1,9 +1,9 @@
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import type { OrchestratorInfo, PermitSnapshot } from "../team/orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
-import { baseRoleOf, loopIds, loopPaused } from "../roles/loop-ids.js";
+import { baseRoleOf, loopIds, loopPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
 import type { ModelFallbackView } from "../config/config-fallbacks.js";
 import type { ClaudeWindowEntry } from "../agent/claude/claude-account.js";
@@ -27,7 +27,7 @@ import { collectRootInstallDrift } from "./status-install.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
- * snapshot() reads through (main-check scan, last-known-good config, loop-state stat cache)
+ * snapshot() reads through (main-check scan, last-known-good config, runner-state stat cache)
  * live in status/status-polls.ts. snapshot() composes the per-domain collectors in
  * status-roles.ts, status-inbox.ts and status-budget.ts and keeps the one-off fields here. */
 

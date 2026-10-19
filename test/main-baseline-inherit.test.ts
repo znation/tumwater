@@ -10,7 +10,7 @@ import {
   noteInheritedGreen,
 } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
-import { baselineFixture, runsOf } from "./fixtures/loop-fixtures.js";
+import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The green carry-over in src/baseline/main-baseline.ts (inheritedGreen, noteInheritedGreen):

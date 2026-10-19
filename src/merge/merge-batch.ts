@@ -23,8 +23,8 @@ import { errorMessage } from "../text/text.js";
 import type { MergeChangeStatus } from "./merge-slot.js";
 import { mergeStack, type StackEntry, type StackOutcome } from "./merge-stack.js";
 import type { TickResult } from "../tick/tick-outcome.js";
-import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
+import type { LoopState } from "../runner/runner-state.js";
 
 /** The identity a verify or a merge needs from the harness: root, main branch, live config, and
  * the task's abort signal. Deliberately thinner than MergerContext — no single `state` and no

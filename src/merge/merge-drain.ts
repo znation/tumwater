@@ -6,7 +6,7 @@ import { withProviderLease } from "../concurrency/provider-lease.js";
 import { dropMerge, entryRevisionFields, queuedMergeFiles } from "./merge-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { saveLoopState } from "../loop/loop-state.js";
+import { saveLoopState } from "../runner/runner-state.js";
 import {
   abortOnShutdown,
   discardPinnedRefs,

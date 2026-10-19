@@ -6,12 +6,12 @@ import { setRef } from "../../src/git/git.js";
 import { ensureWorktree } from "../../src/git/worktree.js";
 import { eventsLogPath, mergeRefName } from "../../src/paths.js";
 import { defaultConfig } from "../../src/config/config.js";
-import { freshLoopState } from "../../src/loop/loop-state.js";
+import { freshLoopState } from "../../src/runner/runner-state.js";
 import { readEvents } from "../../src/events/event-read.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { TickResult } from "../../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
-import type { LoopState } from "../../src/loop/loop-state.js";
+import type { LoopState } from "../../src/runner/runner-state.js";
 import { projManifest, writeScript } from "../fakes/fake-commands.js";
 import { mainSha, makeRepo, pinOffMain, sh } from "./repo-fixtures.js";
 import { piRunResult } from "../fakes/fake-pi.js";
@@ -69,7 +69,7 @@ export function makeCtx(
 }
 
 /** A repo with one commit NOT contained in main, pinned by the merge ref — exactly what
- * loop.ts leaves behind after pinAndReset. The role worktree is created at main (clean), as the
+ * runner.ts leaves behind after pinAndReset. The role worktree is created at main (clean), as the
  * reset left it. */
 export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: string }> {
   const root = makeRepo();

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { collectInboxes } from "../src/status/status-inbox.js";
-import { loopIds } from "../src/roles/loop-ids.js";
+import { loopIds } from "../src/roles/runner-ids.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { initProject } from "../src/init/init.js";

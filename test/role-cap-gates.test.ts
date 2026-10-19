@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { dailyCost, recordDailyCost } from "../src/budget/budget.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState } from "../src/runner/runner-state.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import {
   newRoleCapGateState,
@@ -14,7 +14,7 @@ import {
 } from "../src/gates/role-cap-gates.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { spentLoopState } from "./fixtures/loop-fixtures.js";
+import { spentLoopState } from "./fixtures/runner-fixtures.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 

@@ -37,7 +37,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { TUMWATER_SOURCE, logEvent, type HarnessEvent } from "../src/events/events.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { bootstrapLatchPath, slotWorktreePath, worktreesDir } from "../src/paths.js";

@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { dailyCost } from "../budget/budget.js";
 import type { LiveProgress } from "./progress-data.js";

@@ -17,7 +17,7 @@ import { initProject } from "../src/init/init.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { allRoleIds } from "../src/roles/roles.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { withCountedReads } from "./helpers/fs-faults.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { backdate } from "./helpers/backdate.js";

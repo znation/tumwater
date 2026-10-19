@@ -1,6 +1,6 @@
 // vocabulary: plain
 import { baselineBlocked, BUGFIX_ROLE } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { enqueueRolePrompt } from "../inbox/inbox.js";
 import { isCustomRole, liveConfig } from "../config/config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
@@ -23,7 +23,7 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * authoring run is spent on top of pristine main, verify that MAIN ITSELF is green — a red main
  * rejects every code diff deterministically at the review gate (BUGS.md's "Build broken on main"
  * and "Tests red on main" entries), so while a SHA is known red the blocked roles skip authoring
- * instead of burning runs that are guaranteed to fail. Split out of loop.ts — which keeps the
+ * instead of burning runs that are guaranteed to fail. Split out of runner.ts — which keeps the
  * tick lifecycle around it — because this is a self-contained policy with its own per-process
  * state (one harness-level `main_red_hold` event AND one queued healer prompt per
  * newly-discovered red SHA) and its own

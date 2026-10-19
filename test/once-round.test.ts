@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
-import type { LoopRunner } from "../src/loop/loop.js";
-import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
+import type { LoopRunner } from "../src/runner/runner.js";
+import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 function configWithRole(role: string, enabled: boolean): TumwaterConfig {

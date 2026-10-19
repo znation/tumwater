@@ -1,9 +1,9 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
-import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
+import { hasOutstandingWork, type LoopState } from "../runner/runner-state.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import {
   ERROR_BACKOFF,
   pushYieldOutcome,
@@ -36,7 +36,7 @@ export function recordReview(s: LoopState, verdict: string, reasons: string[], h
  * Called from the points a change merges (`applyMergeOutcome`'s changed branch and
  * `handleRefusal`'s note merge), never while a revision is still owed: a merge that leaves
  * `state.revision` set — a per-role user-request tick did not apply the rejected change — did
- * not resolve it, and its next revision tick still needs the objections (loop-tick.ts's revision
+ * not resolve it, and its next revision tick still needs the objections (runner-run.ts's revision
  * note). A model-reviewed merge already overwrote `lastReview` with its approve; this only
  * clears a standing `reject`. */
 export function clearSupersededRejection(s: LoopState): void {
@@ -73,7 +73,7 @@ const CUT_OFF_RESUME_LIMIT = 3;
 export const QUIET_KILL_RESUME_LIMIT = 3;
 
 /** Record a finished tick on the loop's state and schedule its next run from the outcome.
- * Split out of LoopRunner.tick() (loop.ts) so the scheduling policy — which outcomes retry
+ * Split out of LoopRunner.tick() (runner.ts) so the scheduling policy — which outcomes retry
  * promptly, which back off and on which ladder, how cut-off resumes are bounded — sits with
  * the other scheduling helpers here instead of inline in the tick lifecycle. Mutates `s` in place:
  * the caller's state object is authoritative across an in-flight tick (see resetCounters).

@@ -7,7 +7,7 @@ import { eventTypeLabel } from "../src/events/event-labels.js";
 import type { TeamAlert } from "../src/ui/team-alerts.js";
 import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init/init.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import {
   alertLines,
   eventTone,

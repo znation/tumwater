@@ -24,7 +24,7 @@ import {
   freshLoopState,
   loadLoopState,
   saveLoopState,
-} from "../src/loop/loop-state.js";
+} from "../src/runner/runner-state.js";
 import {
   abortRequestPath,
   pausedPath,

@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { BackoffConfig } from "../config/config-schema.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { yieldScaledRole } from "../roles/roles.js";
 

@@ -1,13 +1,13 @@
 // vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
-import type { LoopRunner } from "../loop/loop.js";
+import type { LoopRunner } from "../runner/runner.js";
 import { logEvent, warnEvent, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { errorMessage } from "../text/text.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
+import { loadLoopState, saveLoopState, zeroCounters } from "../runner/runner-state.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import {

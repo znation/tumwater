@@ -19,7 +19,7 @@ import {
   TIER_MAP_KEYS,
 } from "./config-schema.js";
 import { allRoleIds } from "../roles/roles.js";
-import { INSTANCE_ROLES, baseRoleOf } from "../roles/loop-ids.js";
+import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
 import { isJsonObject } from "../files/json-object.js";
 import { expandHomeTilde } from "../files/files.js";
 import os from "node:os";
@@ -570,7 +570,7 @@ function checkSelectorValue(
         checkSelectorHalves(o, `roles.${id}.`, "model", o.provider ?? r.provider, problems);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(o, `roles.${id}.`, "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
-        // Only feature and bugfix may split (src/roles/loop-ids.ts INSTANCE_ROLES); an
+        // Only feature and bugfix may split (src/roles/runner-ids.ts INSTANCE_ROLES); an
         // instances count under any other role would never spawn a runner, so reject it
         // rather than let the operator believe it did something.
         if ("instances" in o && !INSTANCE_ROLES.has(id)) {

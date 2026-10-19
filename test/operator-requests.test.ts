@@ -22,8 +22,8 @@ import {
   wakeRequestPath,
   STATE_DIR,
 } from "../src/paths.js";
-import type { LoopRunner } from "../src/loop/loop.js";
-import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import type { LoopRunner } from "../src/runner/runner.js";
+import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";

@@ -6,7 +6,7 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { BUDGET_WARNING_FRACTION } from "../src/budget/budget.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import { readEvents } from "../src/events/event-read.js";
-import { spentLoopState } from "./fixtures/loop-fixtures.js";
+import { spentLoopState } from "./fixtures/runner-fixtures.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";

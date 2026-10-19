@@ -5,9 +5,9 @@ import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowSt
 import { summarizeTickRows, type TickRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { pauseTeam } from "../src/team/team-state.js";
-import type { LoopState } from "../src/loop/loop-state.js";
+import type { LoopState } from "../src/runner/runner-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 // Unit seam for cli/cli-run.ts's onceSummary — the one-line `tumwater run --once` summary a cron

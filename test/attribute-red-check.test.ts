@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { attributeRedCheck } from "../src/merge/merge-check-failures.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/runner/runner-state.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { warnEvent } from "../src/events/events.js";
@@ -15,7 +15,7 @@ import { shortSha } from "../src/text/format.js";
 import type { BuildCheck } from "../src/build/build-check-detect.js";
 import type { BuildCheckOutcome, BuildCheckRun } from "../src/build/build-check.js";
 import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { baselineFixture, fakeNpm } from "./fixtures/loop-fixtures.js";
+import { baselineFixture, fakeNpm } from "./fixtures/runner-fixtures.js";
 
 // Unit coverage for attributeRedCheck (src/merge/merge-check-failures.ts): the gate's final
 // attribution step, shared by a batch bisect's last move and a single merge's in-lock check at the

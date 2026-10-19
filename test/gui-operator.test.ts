@@ -9,7 +9,7 @@ import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { initProject } from "../src/init/init.js";
 import { PAUSE_REASON_MAX } from "../src/team/team-state.js";
 import { mergeStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath, scheduledWakeDir } from "../src/paths.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { enqueueRolePrompt, queuedRolePromptEntries, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";

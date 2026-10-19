@@ -8,7 +8,7 @@ import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
-import { freshLoopState, loadLoopState, type LoopState } from "../loop/loop-state.js";
+import { freshLoopState, loadLoopState, type LoopState } from "../runner/runner-state.js";
 import { eventsLogPath, statePath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import {
@@ -251,9 +251,9 @@ export function configForStatus(root: string): TumwaterConfig {
   return lastGoodConfig.get(root) ?? defaultConfig();
 }
 
-// Per-poll loop-state cache (stat-cache.cachedByStat): the TUI and GUI poll snapshot every second,
-// but a role's state file changes only at its tick boundaries (start/end) — between ticks it
-// sits unchanged for minutes. Serve an unchanged file from the stat-keyed cache: one stat
+// Per-poll runner-state cache (stat-cache.cachedByStat): the TUI and GUI poll snapshot every
+// second, but a role's state file changes only at its tick boundaries (start/end) — between ticks
+// it sits unchanged for minutes. Serve an unchanged file from the stat-keyed cache: one stat
 // syscall per file per poll instead of re-reading and re-parsing JSON that hasn't moved.
 // Keyed by state-file path so distinct roots never collide; capped inside cachedByStat so many
 // short-lived roots in tests cannot grow it unbounded.

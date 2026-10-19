@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { eventsLogPath } from "../src/paths.js";
 import { finalizeTick } from "../src/tick/tick-finalize.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, loadLoopState, zeroCounters } from "../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, zeroCounters } from "../src/runner/runner-state.js";
 import { TickUsage } from "../src/tick/tick-usage.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import {
@@ -12,7 +12,7 @@ import {
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,
 } from "../src/tick/tick-apply.js";
-import type { LoopState } from "../src/loop/loop-state.js";
+import type { LoopState } from "../src/runner/runner-state.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";

@@ -214,7 +214,7 @@ test("honors vocabulary-ok with a reason and refuses an empty one", () => {
 test("skips import specifiers, property-name literals and type literals", () => {
   const src =
     H +
-    'import x from "./fleet.js";\nexport * from "./loop.js";\nconst o = { "tick": 1 };\ntype T = "fleet" | "loop";\nconst m = await import("./tick.js");\nconst r = require("./seam.js");\n';
+    'import x from "./fleet.js";\nexport * from "./runner.js";\nconst o = { "tick": 1 };\ntype T = "fleet" | "loop";\nconst m = await import("./tick.js");\nconst r = require("./seam.js");\n';
   assert.deepEqual(vocabularyFindings("m.ts", src), []);
 });
 

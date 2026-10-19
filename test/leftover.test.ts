@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { MERGE_CONFLICT_LIMIT, recoverLeftover, type LeftoverContext } from "../src/loop/leftover.js";
+import { MERGE_CONFLICT_LIMIT, recoverLeftover, type LeftoverContext } from "../src/runner/leftover.js";
 import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
@@ -13,12 +13,12 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { eventsOfType, unwritableEvents, warningMessages } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
-// Unit coverage for src/loop/leftover.ts's recoverLeftover — the salvage path that puts a commit
+// Unit coverage for src/runner/leftover.ts's recoverLeftover — the salvage path that puts a commit
 // a
 // previous tick left unmerged back on the durable merge queue (merge-queue speed 3c: the slot is
 // main's one writer): normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch
 // when a crash landed in the commit→pin window. The queue and the ref mechanics are real; no
-// merge runs here. The loop e2e tests (test/loop-leftover-recovery.test.ts) drive the queued
+// merge runs here. The loop e2e tests (test/runner-leftover-recovery.test.ts) drive the queued
 // entry through
 // the merge slot end-to-end.
 

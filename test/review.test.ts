@@ -6,7 +6,7 @@ import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review/review.js
 import { aheadOfMain, headOf, patchId } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, REVIEW_RESUME_LIMIT } from "../src/loop/loop-state.js";
+import { freshLoopState, REVIEW_RESUME_LIMIT } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsLogPath, piLogPath, reviewRunSessionDir } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
@@ -623,7 +623,7 @@ test("after REVIEW_RESUME_LIMIT resumes the next review starts from scratch", as
 
 test("a stalled tool call during review warns in the event feed while the watchdog counts down", async (t) => {
   // The reviewer hangs on an interactive tool call; the gate must surface the stall in the
-  // feed — the same guarantee as the author-side warning (test/loop-2.test.ts) — rather than
+  // feed — the same guarantee as the author-side warning (test/runner-2.test.ts) — rather than
   // stay silent until the quiet watchdog kills the run minutes later.
   const { root, wt } = await gateFixture();
   await withPi(

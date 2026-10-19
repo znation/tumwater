@@ -4,7 +4,7 @@
 // symlink to one committed shim whose script body lives beside it, and tests point PATH at a
 // directory holding the fakes they need. This module is that generic install machinery; the
 // specific families built on it live in fake-pi.ts (fake pi) and the test files themselves
-// (fake git/npm, build tools). loop-fixtures.ts also imports writeScript for its
+// (fake git/npm, build tools). runner-fixtures.ts also imports writeScript for its
 // buildCheckFixture.
 
 import { fileURLToPath } from "node:url";

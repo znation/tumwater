@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { lastTickCell, lastMergedCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState } from "../src/runner/runner-state.js";
 import { applyMergeOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { teamDailyCost, todayStamp } from "../src/budget/budget.js";

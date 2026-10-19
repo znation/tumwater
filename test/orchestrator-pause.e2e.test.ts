@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
-import { loadLoopState } from "../src/loop/loop-state.js";
+import { loadLoopState } from "../src/runner/runner-state.js";
 import { pauseRole, resumeRole } from "../src/team/team-state.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { pausedPath } from "../src/paths.js";
@@ -73,7 +73,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
 
 // The persistence bullet of the same plan: pausing while stopped, then starting. The marker
 // is the only state involved — a team that starts already paused stays blocked until resume,
-// with no restart and no loop-state or config changes.
+// with no restart and no runner-state or config changes.
 test("starting already paused keeps role ticks blocked until resume — no restart needed", async () => {
   const repo = await makeFastRepo("operator pause at startup test", ["clean", "director"]);
   const restore = fakePiIdle();

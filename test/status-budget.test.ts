@@ -6,8 +6,8 @@ import { readOrchestratorInfo, writeOrchestratorInfo } from "../src/team/orchest
 import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { loadConfig } from "../src/config/config.js";
-import { spentLoopState } from "./fixtures/loop-fixtures.js";
-import { saveLoopState } from "../src/loop/loop-state.js";
+import { spentLoopState } from "./fixtures/runner-fixtures.js";
+import { saveLoopState } from "../src/runner/runner-state.js";
 import { LOCAL_FREE_MODELS_JSON, writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 
 // The budget collector folds the spend/billing block from the shared reads (config, loops,

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { loadConfigSafe } from "../config/config.js";
 import { CUSTOM_NAME_RE } from "../config/config-schema.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { loopEnabled } from "../roles/loop-ids.js";
+import { loopEnabled } from "../roles/runner-ids.js";
 import {
   branchExists,
   countCommitsInRange,
@@ -15,7 +15,7 @@ import {
   targetBranch,
 } from "../git/git.js";
 import { errorMessage } from "../text/text.js";
-import { loadLoopState } from "../loop/loop-state.js";
+import { loadLoopState } from "../runner/runner-state.js";
 import { branchName, mergeRefName, legacyLandingRefName, worktreePath } from "../paths.js";
 import { isUsableWorktree, removeWorktree } from "../git/worktree.js";
 import { roleWorktreeDir, slotForDir, updateSlotsState } from "../git/slots-state.js";

@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { hasOutstandingWork, saveLoopState, type LoopState } from "../loop/loop-state.js";
+import { hasOutstandingWork, saveLoopState, type LoopState } from "../runner/runner-state.js";
 import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
@@ -47,8 +47,8 @@ const CLAIM_RELEASING: ReadonlySet<TickResult> = new Set([
 ]);
 
 /** Fold a finished tick's outcome into the loop's state and the event feed — everything that
- * happens AFTER the pi run, extracted from LoopRunner.tick (src/loop/loop.ts) so the runner keeps
- * only tick lifecycle (worktree, sessions, abort) and this module owns the per-result
+ * happens AFTER the pi run, extracted from LoopRunner.tick (src/runner/runner.ts) so the runner
+ * keeps only tick lifecycle (worktree, sessions, abort) and this module owns the per-result
  * bookkeeping policy. Order matters here and is pinned by behavior, not by a test seam: the
  * outcome's folds are applied to state before applyTickOutcome schedules the next run, the
  * main-head read happens while `running` is still true (a poll that runs in that window must not

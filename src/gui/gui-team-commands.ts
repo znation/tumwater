@@ -5,7 +5,7 @@
  * `wakeInSecondsMs` body rules they share. Each handler adapts HTTP onto the domain work one
  * layer down (team/team-state, operator-intent) and touches no socket beyond its own `res`.
  */
-import { baseRoleOf, INSTANCE_ROLES } from "../roles/loop-ids.js";
+import { baseRoleOf, INSTANCE_ROLES } from "../roles/runner-ids.js";
 import { normalizePauseReason, pauseTeam, pauseRole, resumeTeam, resumeRole } from "../team/team-state.js";
 import { cancelWakes, PAUSE_FOR_MAX_MS, requestWake } from "../operator/operator-intent.js";
 import { requirePausedFlag, validRoleIds } from "./gui-args.js";

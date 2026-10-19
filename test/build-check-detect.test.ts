@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
-import { buildCheckFixture } from "./fixtures/loop-fixtures.js";
+import { buildCheckFixture } from "./fixtures/runner-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 import { checkTimeoutMs } from "../src/build/build-check.js";
 import type { CheckConfig } from "../src/config/config-schema.js";

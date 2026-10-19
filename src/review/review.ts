@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { REVIEW_RESUME_LIMIT, saveLoopState, type LoopState } from "../loop/loop-state.js";
+import { REVIEW_RESUME_LIMIT, saveLoopState, type LoopState } from "../runner/runner-state.js";
 import { modelSelectorField, resolvedAgentConfig, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
@@ -10,7 +10,7 @@ import type { PriorReview } from "../merge/merge-queue.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { nativeLogPath, piLogPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { GateRunsPi } from "../loop/loop-pi.js";
+import type { GateRunsPi } from "../runner/runner-pi.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildReviewPrompt, buildReviewResumePrompt } from "../prompt/gate-prompts.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";

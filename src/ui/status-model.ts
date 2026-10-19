@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
-import type { LoopState } from "../loop/loop-state.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
+import type { LoopState } from "../runner/runner-state.js";
 import type { PermitSnapshot } from "../team/orchestrator-info.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { heldByMainRed } from "../status/status-polls.js";
@@ -140,7 +140,7 @@ export function loopPhase(
     const staged = merge.stageSince === undefined ? base : `${base} ${duration(Date.now() - merge.stageSince)}`;
     if (merge.stage !== "reviewing" && merge.stage !== "resolving") return staged;
     // The reviewer writes the role's own log from its leased pooled slot, and the conflict
-    // resolver from the merge worktree, both as gate runs (loop-pi.ts): the GATE accumulator,
+    // resolver from the merge worktree, both as gate runs (runner-pi.ts): the GATE accumulator,
     // read here rather than taken from `live` — the merge role's tick has ended, so the
     // frame's per-running-loop tail is not this run's (callers pass null for it). Each run's
     // `tumwater_run` marker resets that accumulator, so neither shows the other's counts.
@@ -389,7 +389,7 @@ function isBindingLimit(permits: PermitSnapshot, key: string): boolean {
  * instead of restating the prefixes — and statusPayload reuses it for each loop row's
  * `inFlight` flag, the cap count every surface reads. The row ACTIONS (abort vs wake) instead
  * key off the running set, which also includes the director: the GUI derives it from the
- * rendered phase (gui-client-loops.ts/drawer's phaseInfo.live). */
+ * rendered phase (gui-client-roles.ts/drawer's phaseInfo.live). */
 export function isActivePhase(phase: string): boolean {
   return ACTIVE_PHASE_PREFIXES.some((p) => phase.startsWith(p));
 }
@@ -455,7 +455,7 @@ export function sortLoopsByState<T extends LoopSortRow>(loops: readonly T[]): T[
   });
 }
 
-/** Token metrics for display. gen / peak ctx are per-tick windows — loop-tick.ts resets them at
+/** Token metrics for display. gen / peak ctx are per-tick windows — runner-run.ts resets them at
  * tick start, so the persisted values hold only what the current (mid-flight) or last
  * completed tick used, never lifetime totals. While a tick is in flight the on-disk values
  * are 0 and the live log tail supplies exactly this run's output; idle loops show their

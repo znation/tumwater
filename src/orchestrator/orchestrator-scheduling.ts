@@ -9,14 +9,14 @@
 import { increment } from "../collections.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { reviewRunConfig, seamHoldKey } from "../config/config-views.js";
-import type { LoopRunner } from "../loop/loop.js";
+import type { LoopRunner } from "../runner/runner.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
-import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/loop-ids.js";
-import { hasOutstandingWork, saveLoopState, type SkipReason } from "../loop/loop-state.js";
+import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/runner-ids.js";
+import { hasOutstandingWork, saveLoopState, type SkipReason } from "../runner/runner-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { briefStatusIncomplete } from "../brief/brief.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
@@ -344,7 +344,7 @@ export async function pollRunnerReasons(
     // covers both. Uniform over every role, director included: its prompt is not finished until it
     // merges. Placed before the need-based deferral block on purpose — no episode bookkeeping is
     // needed (the tick that queued the merge ran, which closed any deferral episode; its `queued`
-    // can leave a prior no_change in lastResult — loop-state.ts records only completed results
+    // can leave a prior no_change in lastResult — runner-state.ts records only completed results
     // — but the merge's outcome replaces it before the interlock lets the role back into this
     // pass), and skipping here saves that branch's workMergedSince git-range query for the skipped
     // role.

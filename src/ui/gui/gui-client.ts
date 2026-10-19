@@ -17,7 +17,7 @@ import { GUI_CLIENT_DRAWER_JS } from "./gui-client-drawer.js";
 import { GUI_CLIENT_TEAM_JS } from "./gui-client-team.js";
 import { GUI_CLIENT_HISTORY_JS } from "./gui-client-history.js";
 import { GUI_CLIENT_LABELS_JS } from "./gui-client-labels.js";
-import { GUI_CLIENT_LOOPS_JS } from "./gui-client-loops.js";
+import { GUI_CLIENT_LOOPS_JS } from "./gui-client-roles.js";
 import { GUI_CLIENT_MARKDOWN_JS } from "./gui-client-markdown.js";
 import { GUI_CLIENT_MODEL_JS } from "./gui-client-model.js";
 import { GUI_CLIENT_OPERATOR_JS } from "./gui-client-operator.js";

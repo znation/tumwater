@@ -12,7 +12,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { loadLoopState } from "../src/loop/loop-state.js";
+import { loadLoopState } from "../src/runner/runner-state.js";
 import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { eventsLogPath } from "../src/paths.js";
 import type { BuildStatus } from "../src/build/build-info.js";

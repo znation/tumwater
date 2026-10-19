@@ -3,7 +3,7 @@ import fs from "node:fs";
 import type { TumwaterConfig, RoleConfig } from "./config-schema.js";
 import type { ResolvedModelConfig } from "./config-views.js";
 import { allRoleIds } from "../roles/roles.js";
-import { loopIds } from "../roles/loop-ids.js";
+import { loopIds } from "../roles/runner-ids.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";

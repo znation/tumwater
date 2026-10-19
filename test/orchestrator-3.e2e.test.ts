@@ -13,7 +13,7 @@ import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
-import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import {
   abortRequestPath,
   branchName,
@@ -33,7 +33,7 @@ import {
   startLiveOrchestrator,
   stopOrchestrator,
 } from "./fixtures/orchestrator-fixtures.js";
-import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
+import { makeLoopRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
@@ -356,7 +356,7 @@ test("a merge whose pinned sha no longer exists degrades to an error outcome, no
 
 // --- abort requests: the marker-file plumbing that reaches LoopRunner's
 // user-abort branch — consumption, kill, event, and the silent no-op shapes. The loop-level
-// semantics themselves are pinned in test/loop.test.ts; the CLI side in test/cli.test.ts. ---
+// semantics themselves are pinned in test/runner.test.ts; the CLI side in test/cli.test.ts. ---
 
 test("an abort request kills an in-flight tick, consumes its marker, and logs one event", async () => {
   const repo = makeRepo();

@@ -5,7 +5,7 @@ import path from "node:path";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
-import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
 import { loadConfig } from "../src/config/config.js";
 import { configRequestPath } from "../src/paths.js";
 import { writeConfig } from "./fixtures/repo-fixtures.js";
@@ -173,7 +173,7 @@ test("a blind image read fails the tick with an error naming the file and the mo
 // another configured tier (here strong) can read images, a blind read stops routing its work
 // to that tier instead of failing. The verdict ends `aborted` with the `image-reroute` resume
 // cause and records a one-shot marker the next tick's model choice reads. These unit tests
-// exercise the pure verdict decision with a fake pi; the loop e2e (test/loop-2.test.ts) covers
+// exercise the pure verdict decision with a fake pi; the loop e2e (test/runner-2.test.ts) covers
 // the next tick actually running on the target.
 
 test("a blind read on a text-only tier with a vision reroute target aborts as image-reroute", async () => {

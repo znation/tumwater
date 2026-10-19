@@ -9,19 +9,19 @@ import {
   type MergePipeline,
   type MergePipelineContext,
 } from "../../src/merge/merge-pipeline.js";
-import type { LoopRunner } from "../../src/loop/loop.js";
+import type { LoopRunner } from "../../src/runner/runner.js";
 import { enqueueMerge, queueDepth } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
 import { setRef } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { defaultConfig } from "../../src/config/config.js";
-import { freshLoopState } from "../../src/loop/loop-state.js";
+import { freshLoopState } from "../../src/runner/runner-state.js";
 import { snapshot } from "../../src/status/status-data.js";
 import { mergeForRole, loopPhase } from "../../src/ui/status-model.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { MergeEntry } from "../../src/merge/merge-queue.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner } from "./runner-fixtures.js";
 import { pinOffMain, tmpdir } from "./repo-fixtures.js";
 import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 

@@ -15,7 +15,7 @@ import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { contextBudgetRule } from "../src/prompt/prompt.js";
 import { PI_DIALECT } from "../src/prompt/dialect.js";
 import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";

@@ -11,11 +11,11 @@ import assert from "node:assert/strict";
 import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { spentLoopState } from "./fixtures/loop-fixtures.js";
+import { spentLoopState } from "./fixtures/runner-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { LOCAL_FREE_MODELS_JSON, MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { projectCapHit } from "../src/budget/budget.js";
 import { renderStatus } from "../src/ui/status-render.js";
@@ -88,7 +88,7 @@ test("snapshot prefers the running orchestrator's published budget over the pers
   await initProject(repo, "published budget test"); // seeds tumwater.json with maxDailyCostUsd: 50
 
   // One loop with $1 persisted. The scheduler's own gate figure is $60 — the in-flight charge
-  // its live runner states carry, which no loop-state save has landed yet (BUGS.md 2026-09-30:
+  // its live runner states carry, which no runner-state save has landed yet (BUGS.md 2026-09-30:
   // the gate charges run-by-run, the files persist at the saves).
   const clean = spentLoopState("clean", 1);
   saveLoopState(repo, clean);

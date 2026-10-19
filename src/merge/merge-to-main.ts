@@ -32,7 +32,7 @@ import { syncRootInstall } from "../build/dep-install.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { resolverConfig } from "../config/config-views.js";
 import type { TickResult } from "../tick/tick-outcome.js";
-import type { RunsPi } from "../loop/loop-pi.js";
+import type { RunsPi } from "../runner/runner-pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 
 /** Merge a change on main: rebase onto main (keeping history linear), re-verify the rebased tree
@@ -41,7 +41,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
  * worktree-parameterized: whatever `wt` holds at its HEAD after the rebase is what merges — a role
  * branch (whose ref tracks its own tip through the rebase) or a detached merger worktree pinned at
  * a bare sha (which does not move when git rebase rewrites it, so fast-forwarding to the original
- * pin would fail whenever main moved between commit and merge). Split out of loop.ts — which
+ * pin would fail whenever main moved between commit and merge). Split out of runner.ts — which
  * keeps the tick lifecycle around it — because this is a self-contained concern with its own flow
  * (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it
  * borrows from the loop are identity (root/mainBranch), `role` for events and session naming only,

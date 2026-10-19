@@ -1,7 +1,7 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { publishInfoFields, writeOrchestratorInfo, type OrchestratorInfo } from "../team/orchestrator-info.js";
-import { loopEnabled, loopIds } from "../roles/loop-ids.js";
+import { loopEnabled, loopIds } from "../roles/runner-ids.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
   FALLBACK_BREAKER_POLICY,
@@ -15,7 +15,7 @@ import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons, reviewHoldKey } from "./orchestrator-scheduling.js";
 import { openBugs } from "../backlog/backlog.js";
 import { eligibleEntries } from "../backlog/backlog-eligibility.js";
-import { LoopRunner } from "../loop/loop.js";
+import { LoopRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";

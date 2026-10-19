@@ -8,8 +8,8 @@
  * re-deriving them inside the loop. Dependency direction: orchestrator → scheduling; this
  * module only reads LoopRunner through its public fields and imports no runtime from it. */
 
-import type { LoopRunner } from "../loop/loop.js";
-import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
+import type { LoopRunner } from "../runner/runner.js";
+import { hasOutstandingWork, type LoopState } from "../runner/runner-state.js";
 import { scheduleConfigForRole } from "../config/config-views.js";
 import {
   BUGFIX_ROLE,
@@ -17,7 +17,7 @@ import {
   DIRECTOR_ROLE,
   roleTier,
 } from "../roles/roles.js";
-import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
+import { baseRoleOf, loopEnabled } from "../roles/runner-ids.js";
 import { yieldMultiplierFor } from "./backoff.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
@@ -81,7 +81,7 @@ export function isEligible(
   // A queued per-role prompt is due on its own existence, exactly like the director's inbox:
   // no min-gap, no backoff, no scheduled clock. The queue is the durable record of the
   // demand, so it survives every race a wake marker cannot — a wake consumed while a tick
-  // is in flight is overwritten by that tick's end-save (loop.ts's wake() contract), but the
+  // is in flight is overwritten by that tick's end-save (runner.ts's wake() contract), but the
   // prompt file it enqueued is not, and this check picks the demand up on the first poll
   // after the tick ends.
   if (inboxCount > 0) return { run: true, reason: "inbox" };
@@ -100,8 +100,8 @@ export function isEligible(
   // never enter the ring (backoff.ts), so a failing backend does not stretch anything;
   // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
   const mult = yieldMultiplierFor(runner.state);
-  // The same bootstrap rule (scheduleConfigForRole) loop-tick.ts schedules nextRunAt from: during a
-  // young project's bootstrap, plan runs on the team's global clock rather than its 3600 s
+  // The same bootstrap rule (scheduleConfigForRole) runner-run.ts schedules nextRunAt from:
+  // during a young project's bootstrap, plan runs on the team's global clock rather than its 3600 s
   // default. Yield scaling still applies to whatever gap is chosen.
   const minGapSeconds = scheduleConfigForRole(
     runner.config,

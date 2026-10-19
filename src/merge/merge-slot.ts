@@ -3,7 +3,7 @@ import { dropMerge, type MergeEntry } from "./merge-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
-import { saveLoopState, type LoopState } from "../loop/loop-state.js";
+import { saveLoopState, type LoopState } from "../runner/runner-state.js";
 import { applyMergeOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
@@ -11,7 +11,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { mergeStatePath } from "../paths.js";
-import type { LoopRunner } from "../loop/loop.js";
+import type { LoopRunner } from "../runner/runner.js";
 import type { PermitWaitHooks } from "../concurrency/check-permit.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
@@ -419,7 +419,7 @@ export interface MergeUsage {
  * folded onto the rate-limit and backend-failure stamps this fold writes: a 429 on a claude
  * reviewer must hold `claude`, not the pi author's provider (PLANS.md "Mixed claude + pi
  * fleets, part 2/4"). The reviewer's final runs are folded HERE (merge-core.ts's
- * reviewPinnedChange), not inside LoopPi — loop-pi.ts stamps the retried first attempt; this
+ * reviewPinnedChange), not inside LoopPi — runner-pi.ts stamps the retried first attempt; this
  * stamps the final run, which ends on a different seam when the reviewer runs on a
  * non-pi backend. */
 /** Fetch-or-create a provider's accumulator entry in `usage.providerCost` and add `amount`

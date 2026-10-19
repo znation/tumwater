@@ -23,7 +23,7 @@ import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { piBackend } from "../src/pi/pi-backend.js";
 import { claudeBackend } from "../src/agent/claude/claude-backend.js";
 import { todayStamp } from "../src/budget/budget.js";
-import { saveLoopState, loadLoopState } from "../src/loop/loop-state.js";
+import { saveLoopState, loadLoopState } from "../src/runner/runner-state.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { ImageProbeResult } from "../src/doctor/image-probe.js";
 import { envPath } from "../src/files/files.js";

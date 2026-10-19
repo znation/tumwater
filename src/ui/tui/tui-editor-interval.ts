@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { checkMinRunInterval } from "../../config/config-keys.js";
-import { baseRoleOf } from "../../roles/loop-ids.js";
+import { baseRoleOf } from "../../roles/runner-ids.js";
 import { rawRoleField } from "../../roles/role-view.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";

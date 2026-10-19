@@ -9,7 +9,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType, mainRedHolds, warningEvents } from "./fixtures/log-fixtures.js";
-import { baselineFixture, fakeNpm, makeLoopRunner, runsOf } from "./fixtures/loop-fixtures.js";
+import { baselineFixture, fakeNpm, makeLoopRunner, runsOf } from "./fixtures/runner-fixtures.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";

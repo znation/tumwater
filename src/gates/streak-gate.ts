@@ -31,8 +31,8 @@
  * it is not ticking, and the role_streak_paused event tells the operator why. */
 
 import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
-import type { LoopState } from "../loop/loop-state.js";
-import { loopPaused } from "../roles/loop-ids.js";
+import type { LoopState } from "../runner/runner-state.js";
+import { loopPaused } from "../roles/runner-ids.js";
 import { pauseRole } from "../team/team-state.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 

@@ -18,7 +18,7 @@ import {
   type ClaimRunner,
 } from "../src/scheduling/claims.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
 import { buildAssignmentNote } from "../src/prompt/gate-prompts.js";
 import { makeRepo, commitIn } from "./fixtures/repo-fixtures.js";
 

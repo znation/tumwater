@@ -19,7 +19,7 @@ import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { slotWorktreePath } from "../src/paths.js";
 import { todayStamp } from "../src/budget/budget.js";

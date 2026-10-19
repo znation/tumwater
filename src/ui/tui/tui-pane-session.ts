@@ -5,7 +5,7 @@ import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { TickDetail } from "../../tick/tick-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
 import type { HistoryResultClass } from "../../history/history-data.js";
-import { baseRoleOf } from "../../roles/loop-ids.js";
+import { baseRoleOf } from "../../roles/runner-ids.js";
 import type { labeledBacklogEntries } from "./tui-backlog.js";
 
 /** A backlog-entry cancel target (plan or bug position + title), shared by the backlog pane's

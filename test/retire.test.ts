@@ -18,7 +18,7 @@ import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
 import { cli } from "./helpers/cli-harness.js";
 import { readJson } from "./helpers/json-read.js";
 import { branchHead, setRef } from "../src/git/git.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
 import { helpTopic } from "../src/cli/help.js";
 
@@ -87,7 +87,7 @@ test("retire refuses a dirty worktree and a mid-tick loop before removing anythi
   assert.ok(fs.existsSync(wt), "dirty refusal removes nothing");
   fs.rmSync(path.join(wt, "scratch.txt"));
 
-  // A persisted running flag (loop-state.json) refuses too.
+  // A persisted running flag (runner-state.json) refuses too.
   const state = freshLoopState("improve");
   state.running = true;
   saveLoopState(root, state);

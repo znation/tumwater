@@ -11,7 +11,7 @@ import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { questionAsker } from "../backlog/question-answer.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
+import { loadLoopState, saveLoopState, zeroCounters } from "../runner/runner-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { reclaimPass } from "../team/reclaim.js";

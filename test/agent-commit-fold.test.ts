@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { foldCommitsSince, headOf } from "../src/git/git.js";
-import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
+import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { commitIn, initializedRepo, sh } from "./fixtures/repo-fixtures.js";

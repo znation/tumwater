@@ -57,7 +57,7 @@ export function finiteNumber<T>(value: unknown, fallback: T): number | T {
  * amount is as poisonous as NaN: it runs a spend total backwards and makes every `>= cap`
  * comparison false, so the daily budget's safety valve would never trip. The call sites, by
  * the fallback each passes: budget/budget.ts's spendNumber (dayCostUsd/usd → 0),
- * loop/loop-state.ts's healNumber (every numeric LoopState field → 0),
+ * runner/runner-state.ts's healNumber (every numeric LoopState field → 0),
  * tick/tick-usage.ts's counter (each persisted usage count → 0), pi/pi-stream.ts's usageNumber
  * (one wire usage number → 0), ui/progress-data.ts's message_end read (totalTokens → the
  * previous context, output and its peak floor → 0), time-spend.ts's tickDurationMs (an event's

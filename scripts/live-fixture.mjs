@@ -37,7 +37,7 @@ const LOG_LINES = [
 
 /** Seed `root` as a running team: the .tumwater state/log directories, a live orchestrator
  * marker (this process's pid, so snapshot reports running and live detail renders), and one
- * working loop-state + pi log per role — ticks recently finished, a tick started 90s ago and
+ * working runner-state + pi log per role — ticks recently finished, a tick started 90s ago and
  * still running, so the TUI's live-detail and elapsed branches both have something to show.
  * The caller owns the tempdir itself (mkdtemp names differ per script) and any per-role state
  * overrides it wants on top (diff-check's idle and review-phase loops). */

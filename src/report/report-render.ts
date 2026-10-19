@@ -15,7 +15,7 @@ import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { markdownTable } from "../text/markdown.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */

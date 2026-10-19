@@ -5,7 +5,7 @@
  * level — the schema facts, single-homed here so adding a key edits one file: its type,
  * its default (config.ts), and its allow-list entry sit beside each other. Split out of the former
  * types.ts grab-bag — the runtime types a tick produces now live beside their consumers
- * (TickResult and TickOutcome in tick-outcome.ts, LoopState in loop-state.ts, HarnessEvent
+ * (TickResult and TickOutcome in tick-outcome.ts, LoopState in runner-state.ts, HarnessEvent
  * in events.ts, MergeEntry in merge-queue.ts, and the pi-run types in run-agent.ts and
  * pi-run-result.ts) — so the schema the file on disk is validated against and the runtime
  * state the harness runs with

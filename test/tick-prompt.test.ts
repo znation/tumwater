@@ -13,7 +13,7 @@ import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
-import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
 import { applyMergeOutcome } from "../src/tick/tick-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -34,7 +34,7 @@ function root(): string {
 
 function state(overrides: Partial<LoopState> = {}): LoopState {
   // The production constructor, not a hand-rolled literal: a copied field list drifts
-  // silently when loop-state.ts grows a field (this one had already dropped dayStamp and
+  // silently when runner-state.ts grows a field (this one had already dropped dayStamp and
   // dayCostUsd), while a spread over freshLoopState picks the shape up automatically.
   return { ...freshLoopState("coverage"), ...overrides };
 }

@@ -24,7 +24,7 @@ import {
   loadLoopState,
   saveLoopState,
   zeroCounters,
-} from "../src/loop/loop-state.js";
+} from "../src/runner/runner-state.js";
 import { nextBackoffSeconds } from "../src/scheduling/backoff.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { resetRequestPath, worktreePath } from "../src/paths.js";

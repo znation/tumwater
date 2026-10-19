@@ -9,7 +9,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { eventsLogPath } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
+import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";

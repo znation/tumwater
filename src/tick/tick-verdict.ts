@@ -1,12 +1,12 @@
 // vocabulary: plain
-/** The UNFULFILLED-VERDICT half of a finished pi run's classification (see loop-tick.ts's
+/** The UNFULFILLED-VERDICT half of a finished pi run's classification (see runner-run.ts's
  * handlePiResultPhase for the seam): everything that decides a run left nothing landable — abort,
  * config request, quiet kill, timeout, refusal, failure without changes, or no change at all —
  * with the staging handoff (src/tick/tick-stage.ts) staying in the tick pipeline. Returns null when
- * the run IS fulfillable, which the pipeline answers with stageTickMerge. Split out of loop.ts so
+ * the run IS fulfillable, which the pipeline answers with stageTickMerge. Split out of runner.ts so
  * the runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
  * tree reads next to its sibling outcome modules (tick-outcome, tick-apply, tick-stage). */
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { imageReroute } from "../agent/image-input.js";
@@ -150,7 +150,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   // its session and worktree edits intact. Keep both and let the next tick hand off over the
   // kept worktree (plans/agent-backends.md §7, part 7a/7); the cap is what keeps one runaway
   // run from overshooting the daily cap. `aborted` is the budget-handback result
-  // (src/loop/loop-recovery.ts) and schedules the resume promptly.
+  // (src/runner/runner-recovery.ts) and schedules the resume promptly.
   if (!pi.ok && ctx.role !== DIRECTOR_ROLE && pi.budgetCapped) {
     s.lastError = pi.errorMessage ?? "claude per-run budget cap reached";
     // Arm the resume here rather than in applyTickOutcome: the lease release reads

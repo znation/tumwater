@@ -12,7 +12,7 @@ import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-c
 /** Prompts for the merge gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
  * (merge-to-main.ts), the adversarial pre-merge review (review.ts), and the notes that carry the
- * gate's verdicts back to the loop that authored the change (loop-tick.ts, tick-prompt.ts,
+ * gate's verdicts back to the loop that authored the change (runner-run.ts, tick-prompt.ts,
  * main-red.ts). The machine-detectable half of the gate's reply contract — verdict constants
  * and detection for parsing a reviewer's VERDICT line — lives in reply-contract.ts. */
 
@@ -405,7 +405,7 @@ export function buildRejectedReviewNote(review: {
 }
 
 /** The note injected into a role's tick prompt when its rejected change has been re-applied to
- * current main as uncommitted edits (plans/revise-rejected.md, loop/revision.ts's
+ * current main as uncommitted edits (plans/revise-rejected.md, runner/revision.ts's
  * applyRevision): this tick's one task is to revise the change already in the worktree, not
  * author a new one. The prior objections are numbered so the author can work through them; a
  * revision round past the first also reaches here. The chain keeps revising while each round
@@ -500,7 +500,7 @@ ${lines.join("\n")}
 }
 
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change
- * at MERGE_CONFLICT_LIMIT (src/loop/leftover.ts): at the cap recovery ordinarily hands the
+ * at MERGE_CONFLICT_LIMIT (src/runner/leftover.ts): at the cap recovery ordinarily hands the
  * change back to its author with markers instead, so a discard means that lineage already used
  * its hand-back. The merge failures were harness-level, so without the note the author would
  * never learn its work is gone — or that redoing it from memory of the old diff would conflict

@@ -5,7 +5,7 @@ import path from "node:path";
 import { runBuildCheck } from "../src/build/build-check.js";
 import { errCode } from "../src/errno.js";
 import { pidAlive } from "../src/process/process.js";
-import { buildCheckFixture } from "./fixtures/loop-fixtures.js";
+import { buildCheckFixture } from "./fixtures/runner-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";

@@ -1,16 +1,16 @@
 /** The daily-cost budget: a loop's and the team's local-day spend and the gate those figures
  * drive (plans/daily-cost-budget.md, plans/fallback-model.md). The circuit breaker that judges
  * whether the gate's fallback can actually serve lives beside it in fallback-breaker.ts. Split
- * out of loop-state.ts, which owns
+ * out of runner-state.ts, which owns
  * LoopState persistence and scheduling bookkeeping: the budget is POLICY both the scheduler and
  * every observer evaluate from the same definitions. Kept free of the scheduler and of pi's
  * model catalog (fallback readiness arrives as plain booleans), so observers can depend on it
  * without importing either — the one-way rule that previously kept these functions in
- * loop-state.ts. */
+ * runner-state.ts. */
 
 import { MODEL_TIERS, type TumwaterConfig } from "../config/config-schema.js";
 import { nonNegativeNumber } from "../files/json-object.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import { dayAt, dayKey } from "../text/datetime.js";
 
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other

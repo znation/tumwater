@@ -15,8 +15,8 @@ import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSa
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../team/team-state.js";
-import { loadLoopState } from "../loop/loop-state.js";
-import { baseRoleOf, loopIds, loopPaused } from "./loop-ids.js";
+import { loadLoopState } from "../runner/runner-state.js";
+import { baseRoleOf, loopIds, loopPaused } from "./runner-ids.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
@@ -140,7 +140,7 @@ export interface RoleViewPayload {
   /** The next tick's assembled prompt, verbatim, through the preview seam — or null when
    * the loop has nothing to run (a director with an empty inbox). */
   nextPrompt: string | null;
-  /** The loop's persisted schedule (loop-state.ts): the epoch-ms instant before which it
+  /** The loop's persisted schedule (runner-state.ts): the epoch-ms instant before which it
    * must not run again and the backoff in seconds it is currently serving (0 when not
    * backing off) — the same two fields the status `next run` cell reads. `nextRunAt` is 0
    * for a loop that has never been scheduled; `backoffSeconds` is 0 unless a wake-clearing

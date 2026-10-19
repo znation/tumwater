@@ -9,7 +9,7 @@ import { backendKindPhrase, budgetPhrase, describeToolCall, firstReason, shortSp
 // --- describeToolCall (one-line labels for in-flight and stalled tool calls) ---
 
 test("describeToolCall summarizes common arg shapes tersely", () => {
-  assert.equal(describeToolCall("read", { path: "/a/b/loop.ts" }), "read loop.ts");
+  assert.equal(describeToolCall("read", { path: "/a/b/runner.ts" }), "read runner.ts");
   assert.equal(describeToolCall("bash", { command: "npm run build" }), "bash npm run build");
   assert.equal(describeToolCall("edit", {}), "edit");
   assert.equal(describeToolCall("bash", { command: "x".repeat(100) }), `bash ${"x".repeat(31)}…`);
@@ -19,13 +19,13 @@ test("describeToolCall summarizes common arg shapes tersely", () => {
 test("describeToolCall with an omitted toolName yields the bare detail, no leading space", () => {
   // pi omits toolName on some start events; the stall warning must still name the command.
   assert.equal(describeToolCall("", { command: "sleep 999" }), "sleep 999");
-  assert.equal(describeToolCall("", { path: "/a/b/loop.ts" }), "loop.ts");
+  assert.equal(describeToolCall("", { path: "/a/b/runner.ts" }), "runner.ts");
   assert.equal(describeToolCall("", {}), "", "no name and no recognizable arg — the caller falls back");
 });
 
 test("describeToolCall basenames path-like keys and shows the others verbatim", () => {
   // Both path spellings reduce to the file name, not the full directory.
-  assert.equal(describeToolCall("read", { file_path: "/a/b/loop.ts" }), "read loop.ts");
+  assert.equal(describeToolCall("read", { file_path: "/a/b/runner.ts" }), "read runner.ts");
   assert.equal(describeToolCall("write", { path: "relative/dir/file.md" }), "write file.md");
   // The remaining candidate keys are shown as-is (no basename), whitespace-collapsed.
   assert.equal(describeToolCall("bash", { cmd: "git status" }), "bash git status");

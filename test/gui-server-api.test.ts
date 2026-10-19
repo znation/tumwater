@@ -6,7 +6,7 @@ import { initProject } from "../src/init/init.js";
 import { tickRows, readTickRowsSince } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { enqueueRolePrompt, inboxSize, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";

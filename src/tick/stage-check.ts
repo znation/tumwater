@@ -39,7 +39,7 @@ import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { readTextOrNull } from "../files/files.js";
 import { BACKLOG_FILES, finishedArchiveOf, parseEntryDetails } from "../backlog/backlog-md.js";
 import { entryKey, planDependencyProblems, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { WAITING_FOR_FAILURE_NOTE } from "../roles/role-guidance.js";
 import { gitTry } from "../git/git-run.js";
 import { moreSuffix } from "../text/phrases.js";

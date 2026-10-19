@@ -30,7 +30,7 @@ import { writeJsonAtomic } from "../files/json-files.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 
 /** The bootstrap verdict as the gate and the status readers compute it: whether the hold is
  * active, and its progress against the target. Null when no bootstrap is configured (or its

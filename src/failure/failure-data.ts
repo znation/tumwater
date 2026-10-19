@@ -11,7 +11,7 @@
 import type { TickResult } from "../tick/tick-outcome.js";
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, type EventLogState } from "../events/event-window.js";
 import { eventDayKey, eventRole } from "../events/event-read.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { timeAndSpend, type LossCause, type TimeSpendRow } from "./time-spend.js";
 import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";

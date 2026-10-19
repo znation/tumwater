@@ -1,8 +1,8 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { LoopState } from "../loop/loop-state.js";
+import type { LoopState } from "../runner/runner-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { planBacklogTarget } from "../scheduling/claims.js";
 import { configForRole } from "../config/config-views.js";
 import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
@@ -103,7 +103,7 @@ function flakyChecksNote(root: string): string | undefined {
 }
 
 /** Assemble the prompt a loop's next tick runs on — the whole "what should this tick see"
- * concern, split out of loop.ts so the runner owns only lifecycle and the prompt owns only
+ * concern, split out of runner.ts so the runner owns only lifecycle and the prompt owns only
  * content. Returns null when the loop has nothing to run this tick (a director with an empty
  * inbox); `userPrompt` carries the dequeued user request — the director's, or a per-role one
  * queued by `tumwater prompt --role <id>` — back so the runner can record it as pending and

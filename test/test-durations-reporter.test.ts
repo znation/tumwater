@@ -39,20 +39,20 @@ async function runReporter(events: TestEvent[]): Promise<Record<string, number>>
 
 test("sums nesting-0 test durations per file, pass and fail alike", async () => {
   const totals = await runReporter([
-    event("test:pass", { file: "/dist/test/loop.test.js", durationMs: 100 }),
-    event("test:pass", { file: "/dist/test/loop.test.js", durationMs: 50 }),
+    event("test:pass", { file: "/dist/test/runner.test.js", durationMs: 100 }),
+    event("test:pass", { file: "/dist/test/runner.test.js", durationMs: 50 }),
     event("test:fail", { file: "/dist/test/merge.test.js", durationMs: 20 }),
   ]);
-  assert.deepEqual(totals, { "loop.test.js": 150, "merge.test.js": 20 });
+  assert.deepEqual(totals, { "runner.test.js": 150, "merge.test.js": 20 });
 });
 
 test("ignores nested tests so a file's time is never counted twice", async () => {
   const totals = await runReporter([
-    event("test:pass", { file: "/dist/test/loop.test.js", durationMs: 100 }),
-    event("test:pass", { nesting: 1, file: "/dist/test/loop.test.js", durationMs: 90 }),
-    event("test:fail", { nesting: 2, file: "/dist/test/loop.test.js", durationMs: 10 }),
+    event("test:pass", { file: "/dist/test/runner.test.js", durationMs: 100 }),
+    event("test:pass", { nesting: 1, file: "/dist/test/runner.test.js", durationMs: 90 }),
+    event("test:fail", { nesting: 2, file: "/dist/test/runner.test.js", durationMs: 10 }),
   ]);
-  assert.deepEqual(totals, { "loop.test.js": 100 });
+  assert.deepEqual(totals, { "runner.test.js": 100 });
 });
 
 test("ignores events without a duration-bearing file (suites, diagnostics)", async () => {

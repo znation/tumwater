@@ -391,7 +391,7 @@ file holding a secret env value is a finding".
 (`git reset --soft` to the pre-run HEAD) before the verdict is read, so they end up inside the
 run's single tumwater-stamped commit, and a clean tree after such a run is not `no_change`.
 
-**Binds.** `src/git/git.ts`, `src/loop/loop-tick.ts`, `src/tick/tick-stage.ts`.
+**Binds.** `src/git/git.ts`, `src/runner/runner-run.ts`, `src/tick/tick-stage.ts`.
 
 **Pinned by.** `test/agent-commit-fold.test.ts` — "an agent commit beside uncommitted edits becomes
 one harness commit", "an agent commit with a clean tree is not dropped as no_change", and the
@@ -428,13 +428,13 @@ inconclusive (never a provider failure or an "answered").
 
 **Binds.** `src/pi/pi-stream.ts` (`PiStreamParser.detectBlindRead`), `src/agent/run-agent.ts`
 (the kill + result), `src/tick/tick-verdict.ts` (the fail branch),
-`src/loop/model-fallback.ts` (`modelFallbackVerdict`).
+`src/runner/model-fallback.ts` (`modelFallbackVerdict`).
 
 **Pinned by.** `test/pi-parser.test.ts` — the blind-read detection cases; `test/pi.test.ts` —
 "an authoring run that reads an image on a blind model is killed and fails" and "a gate run
 that reads an image on a blind model is logged, not killed"; `test/tick-verdict.test.ts` — "a
 blind image read fails the tick with an error naming the file and the model";
-`test/loop-2.test.ts` — "a tick whose agent reads an image on a blind model stops and fails".
+`test/runner-2.test.ts` — "a tick whose agent reads an image on a blind model stops and fails".
 
 ### INV-J2: a blind read on a tier with an image-capable peer reroutes to it, and a rerouted run never hops twice
 
@@ -453,13 +453,13 @@ reaches planTickStart's image-reroute branch). A queued prompt attaching an imag
 to the target at model choice when the role's model reads no images (`image_reroute`,
 `preflight: true`); with no target the run errors without spawning pi.
 
-**Binds.** `src/tick/tick-verdict.ts` (the reroute arm), `src/loop/loop-tick.ts` (model choice
-+ attachment preflight), `src/loop/loop.ts` (`runConfig`), `src/tick/tick-resume.ts` (the
+**Binds.** `src/tick/tick-verdict.ts` (the reroute arm), `src/runner/runner-run.ts` (model choice
++ attachment preflight), `src/runner/runner.ts` (`runConfig`), `src/tick/tick-resume.ts` (the
 image-reroute handoff), `src/prompt/prompt-followup.ts` (`buildHandoffPrompt`'s image-reroute
 note), `src/events/event-format.ts` (the `image_reroute` and image-reroute resume lines).
 
 **Pinned by.** `test/tick-verdict.test.ts` — the reroute verdict tests (target + one-hop);
-`test/loop-2.test.ts` — "a blind read on a text-only loop reroutes to the vision target, then
+`test/runner-2.test.ts` — "a blind read on a text-only loop reroutes to the vision target, then
 back to its own tier" and "a rerouted director prompt runs fresh on the vision target and is
 delivered once"; `test/prompt-followup.test.ts` — the handoff-note test;
 `test/event-format.test.ts` — the `image_reroute` and image-reroute resume rendering tests.

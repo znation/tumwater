@@ -16,7 +16,7 @@ import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -55,7 +55,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
 
     // The same figures are published in the orchestrator info file for the dashboards
     // (BUGS.md 2026-09-30): the gate's own pair, summed over the live runner states, which
-    // the persisted loop-state file can lag while a tick is in flight.
+    // the persisted runner-state file can lag while a tick is in flight.
     assert.deepEqual(readOrchestratorInfo(repo)?.budget, { spentUsd: 1, capUsd: 0.5 });
 
     // The paused role starts no new ticks even though its schedule says to run: wait well

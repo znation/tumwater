@@ -6,7 +6,7 @@
  * the only implementations living in the dispatcher itself. */
 import type { StdioOptions } from "node:child_process";
 import { compareCodeUnits, increment } from "../collections.js";
-import { loopIds, loopPaused } from "../roles/loop-ids.js";
+import { loopIds, loopPaused } from "../roles/runner-ids.js";
 import { fail, say } from "./cli-output.js";
 import {
   durationLabel,
@@ -31,7 +31,7 @@ import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { runStartupMigrations } from "../orchestrator/startup-migration-steps.js";
-import { loadLoopState, stateSkipReason, type LoopState } from "../loop/loop-state.js";
+import { loadLoopState, stateSkipReason, type LoopState } from "../runner/runner-state.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { readTickRowsSince, summarizeTickRows, type HistorySummaryRow } from "../history/history-data.js";

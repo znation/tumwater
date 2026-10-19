@@ -8,11 +8,11 @@ import { cancelQueuedFile } from "../src/inbox/inbox-cancel.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { imageReferenceLines, imageReferencePaths, savePromptImages } from "../src/inbox/inbox-attachments.js";
 import { roleInboxDir } from "../src/paths.js";
-import type { LoopState } from "../src/loop/loop-state.js";
+import type { LoopState } from "../src/runner/runner-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // pending-prompt.ts holds the requeue policy for every tick outcome that leaves a user
-// request unfulfilled — the subtle fresh-vs-resume bookkeeping loop.ts rides on. These tests
+// request unfulfilled — the subtle fresh-vs-resume bookkeeping runner.ts rides on. These tests
 // pin that policy directly against a real queue directory (the same mechanics inbox.test.ts
 // exercises), because a wrong requeue either loses a user request or runs it twice.
 

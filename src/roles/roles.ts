@@ -7,7 +7,7 @@
  * lookup helpers the CLI, GUI, and tick prompt share. */
 
 import { ROLES, type Role } from "./role-catalog.js";
-import { baseRoleOf } from "./loop-ids.js";
+import { baseRoleOf } from "./runner-ids.js";
 import { typoSuffix } from "../text/suggest.js";
 
 export { ROLES };

@@ -18,7 +18,7 @@ import {
 } from "../src/backlog/backlog-structure.js";
 import { DONE_DATE_RE, FIXED_DATE_RE } from "../src/backlog/backlog.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-structure.ts — the stranded-plan detector (plans, part

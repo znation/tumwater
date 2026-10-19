@@ -9,12 +9,12 @@
 
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
+import { hasOutstandingWork, type LoopState } from "../runner/runner-state.js";
 import { type EligibleEntry, backlogHolds, eligibleEntries, entryKey } from "../backlog/backlog-eligibility.js";
 import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
-import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
+import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 
 /** How long a claim may sit while its runner is idle before the poll releases it as stale. A
  * day is far past any tick, so the release only catches a claim whose runner stopped taking
