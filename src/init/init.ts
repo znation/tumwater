@@ -4,7 +4,7 @@ import path from "node:path";
 import { saveConfig } from "../config/config.js";
 import { seedConfig } from "../config/config-example.js";
 import { findOnPath, writeTextAtomic } from "../files/files.js";
-import { COMMIT_IDENT, GIT_MISSING_MESSAGE, git, gitTry } from "../git/git-run.js";
+import { GIT_MISSING_MESSAGE, commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
 import { hasCommits, isGitRepo } from "../git/git.js";
 import {
   INITIAL_PROMPT_MAX_CHARS,
@@ -334,7 +334,7 @@ export async function initProject(
     if (staged === null) {
       // Non-zero exit = something is staged.
       const message = withCommits ? "tumwater: init files" : "tumwater: init";
-      await git(root, ...COMMIT_IDENT, "commit", "-m", message, "--", ...committable);
+      await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "-m", message, "--", ...committable);
       committed = true;
     }
   }

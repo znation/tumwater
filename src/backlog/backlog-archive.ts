@@ -28,7 +28,7 @@ import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../eve
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { changeBaseRev, currentBranch, fileContentAt, headOf, targetBranch } from "../git/git.js";
 import { stampedSubject } from "../git/commit-message.js";
-import { COMMIT_IDENT, git, gitTry } from "../git/git-run.js";
+import { commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
 import { mergeLockDir, primaryWorktreeLockPath } from "../paths.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, errorMessage } from "../text/text.js";
@@ -371,7 +371,7 @@ export async function archiveFinishedOnMain(
         );
         try {
           await git(root, "add", "--", ...touched);
-          await git(root, ...COMMIT_IDENT, "commit", "--only", "-m", subject, "--", ...touched);
+          await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", subject, "--", ...touched);
         } catch (err) {
           await gitTry(root, "reset", "-q", "--", ...touched);
           const tracked = touched.filter((f) => !created.includes(f));

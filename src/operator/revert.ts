@@ -2,7 +2,7 @@
 import { loadConfigSafe } from "../config/config.js";
 import { withStateLockAsync } from "../concurrency/lock.js";
 import { currentBranch, headOf, isMergedInto, targetBranch } from "../git/git.js";
-import { COMMIT_IDENT, gitTry } from "../git/git-run.js";
+import { commitAuthorArgs, committerIdentArgs, gitTry } from "../git/git-run.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { primaryWorktreeLockPath } from "../paths.js";
 import { shortSha } from "../text/format.js";
@@ -67,7 +67,7 @@ export async function revertMergedCommit(
       const pathsSpec = ((await gitTry(root, "diff", "--cached", "--name-only", "--no-renames")) ?? "")
         .split("\n")
         .filter((p) => p.length > 0);
-      if ((await gitTry(root, ...COMMIT_IDENT, "commit", "--only", "-m", commitMsg, "--", ...pathsSpec)) === null) {
+      if ((await gitTry(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", commitMsg, "--", ...pathsSpec)) === null) {
         await gitTry(root, "revert", "--abort");
         return { ok: false, error: `the revert of ${shortSha(full)} did not commit; nothing was committed` };
       }

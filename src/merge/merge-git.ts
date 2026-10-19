@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { COMMIT_IDENT, git, gitTry, runGit } from "../git/git-run.js";
+import { committerIdentArgs, git, gitTry, runGit } from "../git/git-run.js";
 import { writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { unquotePorcelainPath } from "../git/git-diff.js";
@@ -95,7 +95,7 @@ async function attemptRebase(
     // section of every conflict, which the deterministic backlog resolver reads
     // (plans/parallel-work-instances.md, part 3/7); rebaseOntoMain aborts on conflict, so the
     // marker style only matters to its leave-conflicts sibling.
-    await runGit(wt, [...COMMIT_IDENT, "-c", "merge.conflictStyle=diff3", "rebase", mainBranch]);
+    await runGit(wt, [...(await committerIdentArgs(wt)), "-c", "merge.conflictStyle=diff3", "rebase", mainBranch]);
     return "rebased";
   } catch {
     return (await conflictedFiles(wt)).length > 0 ? "conflict" : "other";
@@ -218,7 +218,7 @@ export function conflictMarkerReason(wt: string, files: string[]): string | unde
  * added; the caller aborts and reports merge_conflict. */
 export async function continueRebase(wt: string): Promise<string> {
   await git(wt, "add", "-A");
-  await runGit(wt, [...COMMIT_IDENT, "rebase", "--continue"], { GIT_EDITOR: "true" });
+  await runGit(wt, [...(await committerIdentArgs(wt)), "rebase", "--continue"], { GIT_EDITOR: "true" });
   return headOf(wt, "HEAD");
 }
 

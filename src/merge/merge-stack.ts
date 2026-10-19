@@ -7,7 +7,7 @@
  * and the per-attempt abort observation. The bisect over a red stack (mergeApproved, in
  * merge-batch.ts) drives this file's mergeStack one prefix at a time. */
 
-import { COMMIT_IDENT, gitTry } from "../git/git-run.js";
+import { committerIdentArgs, gitTry } from "../git/git-run.js";
 import { branchHead, deleteRef, gitLines, headOf } from "../git/git.js";
 import { mergeRefName, mergeLockDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
@@ -75,7 +75,7 @@ async function assembleStack(
     // from merging only its last diff and orphaning the work beneath it. (Not a
     // rebase: after 2/5 the role branches sit at main and each merge lives only in its
     // pinned ref — there is nothing to rebase.)
-    const pick = await gitTry(wt, ...COMMIT_IDENT, "cherry-pick", `${base}..${entry.sha}`);
+    const pick = await gitTry(wt, ...(await committerIdentArgs(wt)), "cherry-pick", `${base}..${entry.sha}`);
     if (pick === null) {
       // A conflict (or an already-applied patch — the crash-window re-drain): abort the
       // pick and abandon to one-at-a-time. The worktree may be left mid-state; its next

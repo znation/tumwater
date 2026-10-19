@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { COMMIT_IDENT, GIT_TIMEOUT_MS, execGitBounded, git, gitTry } from "./git-run.js";
+import { GIT_TIMEOUT_MS, commitAuthorArgs, committerIdentArgs, execGitBounded, git, gitTry } from "./git-run.js";
 
 /** A valid object id (SHA-1 or SHA-256). */
 function isSha(s: string): boolean {
@@ -442,7 +442,7 @@ export async function commitPathsAndDiscardRest(
   if (added === null) return null; // Pathspec matched nothing — treat as nothing stageable.
   const staged = await gitTry(wt, "diff", "--cached", "--name-only");
   if (!staged) return null; // Nothing actually changed under those paths.
-  await git(wt, ...COMMIT_IDENT, "commit", "-m", message);
+  await git(wt, ...(await committerIdentArgs(wt)), "commit", ...commitAuthorArgs(), "-m", message);
   await git(wt, "reset", "--hard", "HEAD");
   await git(wt, "clean", "-fd");
   return headOf(wt, "HEAD");
@@ -526,6 +526,6 @@ export async function foldCommitsSince(wt: string, base: string): Promise<number
 /** Stage and commit everything in the worktree. Returns the new commit hash. */
 export async function commitAll(wt: string, message: string): Promise<string> {
   await git(wt, "add", "-A");
-  await git(wt, ...COMMIT_IDENT, "commit", "-m", message);
+  await git(wt, ...(await committerIdentArgs(wt)), "commit", ...commitAuthorArgs(), "-m", message);
   return headOf(wt, "HEAD");
 }

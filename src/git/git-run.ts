@@ -3,6 +3,45 @@
  * refs, branches, diffs) live in git.ts and its siblings — this module knows git's argv,
  * not the repository's shape. */
 
+/** The author every harness-authored commit carries: tumwater, always, so blame-based
+ * classification (docs/code-metrics.md "Who wrote it", keyed on author and trailer) and
+ * INV-H1's "tumwater-stamped commit" wording stay true regardless of who invokes the team. */
+const COMMIT_AUTHOR = "tumwater <tumwater@localhost>";
+
+/** The ambient git identity of whoever invokes the team — `git config user.name` and
+ * `user.email` from the repo's local config and then global/system (git's own lookup path),
+ * read through gitTry so a key that is unset (git exits nonzero) reads as blank. When the
+ * repo and machine configure none (or only one of the two), fall back to tumwater on both
+ * sides so ticks still work with no global git config (the long-standing fallback). No
+ * process-global cache: identity is resolved per call against the command's `cwd`, so a
+ * repo (or a test) with its own local identity reads correctly and no cross-repo bleed is
+ * possible. */
+export async function committerIdent(
+  cwd: string,
+): Promise<{ name: string; email: string }> {
+  const name = (await gitTry(cwd, "config", "user.name"))?.trim() ?? "";
+  const email = (await gitTry(cwd, "config", "user.email"))?.trim() ?? "";
+  if (name !== "" && email !== "") return { name, email };
+  return { name: "tumwater", email: "tumwater@localhost" };
+}
+
+/** The `--author` argv fragment every `git commit` call appends right after its `commit`
+ * subcommand, so the tumwater author is pinned: a commit would otherwise inherit the previous
+ * commit's author once committer and author stop being the same identity. `--author` is a
+ * commit option, not a global one, so it belongs after the subcommand, unlike the `-c` pairs. */
+export function commitAuthorArgs(): string[] {
+  return ["--author", COMMIT_AUTHOR];
+}
+
+/** Committer-only identity argv: the two `-c` pairs alone. For a rebase/cherry-pick these
+ * preserve each source commit's original (tumwater) author while rewriting the committer to
+ * the account running the team; a `git commit` call adds `commitAuthorArgs()` after its
+ * subcommand to pin the author too. */
+export async function committerIdentArgs(cwd: string): Promise<string[]> {
+  const { name, email } = await committerIdent(cwd);
+  return ["-c", `user.name=${name}`, "-c", `user.email=${email}`];
+}
+
 import { spawn, type PromiseWithChild } from "node:child_process";
 import { findOnPath } from "../files/files.js";
 import { realGitFromXcrun } from "./xcrun-git.js";
@@ -18,13 +57,6 @@ import { errorMessage } from "../text/text.js";
  * KILL_GRACE_MS whatever the child does. */
 export const GIT_TIMEOUT_MS = 600_000;
 
-/** Identity used for harness-authored commits so ticks work without global git config. */
-export const COMMIT_IDENT = [
-  "-c",
-  "user.name=tumwater",
-  "-c",
-  "user.email=tumwater@localhost",
-];
 
 /** The error every failed git subprocess reports: the argv, the cause text (git's stderr or the
  * spawn error's message), and git's exit code or the spawn errno. */

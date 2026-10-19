@@ -1,7 +1,7 @@
 import { loadConfigSafe } from "../config/config.js";
 import { withStateLockAsync } from "../concurrency/lock.js";
 import { currentBranch, targetBranch } from "../git/git.js";
-import { COMMIT_IDENT, gitTry } from "../git/git-run.js";
+import { commitAuthorArgs, committerIdentArgs, gitTry } from "../git/git-run.js";
 import { primaryWorktreeLockPath } from "../paths.js";
 
 /** Commit one operator-written backlog file on main, so the entry reaches the worktrees that
@@ -21,7 +21,7 @@ export async function commitOperatorBacklogEdit(root: string, file: string, subj
       const primary = await currentBranch(root);
       if (primary === null) return false;
       if (targetBranch(loadConfigSafe(root).config?.baseBranch, primary) !== primary) return false;
-      return (await gitTry(root, ...COMMIT_IDENT, "commit", "--only", "-m", subject, "--", file)) !== null;
+      return (await gitTry(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", subject, "--", file)) !== null;
     });
   } catch {
     return false;
