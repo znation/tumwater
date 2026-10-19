@@ -75,7 +75,7 @@ const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 /** The image-count rule: at most PROMPT_IMAGES_MAX_COUNT entries. Split out of
  * promptImagesProblem so a surface holding the raw path list can refuse an over-long
  * `--attach` list before reading or encoding a single file, with the count wording still the
- * one definition both call sites render. Null when the count is acceptable. */
+ * one definition every raw-path surface renders. Null when the count is acceptable. */
 export function promptImagesCountProblem(count: number): string | null {
   return count > PROMPT_IMAGES_MAX_COUNT
     ? `at most ${PROMPT_IMAGES_MAX_COUNT} images per prompt (got ${count})`
