@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 4a/14: The main watch names the first-parent commit that turned main red (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 3/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-watch.ts src/baseline/main-culprit.ts src/events/events.ts and their tests) — done 2026-10-19 by the feature role
+
+**Goal.** Part 3's watch records a red tip but not which commit broke it. This part finds that commit and records it, without acting on it yet. Parts 4b/14 (revert) and 4c/14 (hand-back) act on this event. Splitting the search out keeps each part one run.
+
+**Approach.**
+- New module src/baseline/main-culprit.ts exporting `findRedCulprit(root, wt, config, red)`, where `red` is the watch's confirmed red `MainBaseline` at tip T. It runs inside the watch's existing `withMainTipWorktree` callback, so every check goes through `gateMainQueue` in `_gate-main`. Re-point the mirror per candidate with `ensureDetachedWorktree(root, gateMainWorktreePath(root), sha)`, and re-point it back at T before returning.
+- Last green G: walk `git rev-list --first-parent T` (T excluded) and take the newest commit whose `cachedBaselineVerdict` (src/baseline/main-baseline.ts) is `"green"`. Cap the walk at a constant `CULPRIT_SEARCH_MAX = 50`. When none is found, return `{ kind: "unattributed", reason: "no green commit within 50 first-parent commits" }`.
+- Environment guard: check G with `checkMainBaseline(…, forceFresh = true, …, CHECK_TIER.merge)`. If G is red now, return `{ kind: "environment", green: G }`.
+- Bisect: the candidates are the first-parent commits in G..T, minus those whose diff touches only `review.exemptPaths` (`isExemptDiff`, src/review/exemptions.ts). Binary-search for the first red candidate C. Use `checkMainBaseline` with observedOnly = true, so cached verdicts answer without a run. Then confirm C once with `reverifyRed = true`; if it comes back green, return `unattributed` ("red did not reproduce at <C>").
+- New failures: T's `failingTests` minus G's (G's are empty when its cached verdict is green, so this is T's list; keep the subtraction for a G that carried known failures).
+- Owner: the newest `merged` event whose `commit` is C (src/merge/merge-to-main.ts and src/merge/merge-stack.ts log it; its `source` is the runner). Read it with `readEvents` (src/events/event-read.ts); a commit whose `merged` event has left the read tail counts as having none. Return `{ kind: "culprit", commit: C, runner?: string, failingTests }`. `runner` is absent for a commit with no `merged` event (an operator or hand commit).
+- `createMainWatch` (src/baseline/main-watch.ts): after it logs a `main_check` with status `failed`, it calls `findRedCulprit` and logs exactly one event:
+  - culprit → `main_culprit` `{ commit, runner?, failingTests, green }`. Register `main_culprit` in the event-type union in src/events/events.ts with a comment in the style of `main_check`'s.
+  - environment → a `warning` `main's last green commit <short G> is red now too — not attributing`.
+  - unattributed → a `warning` naming the reason.
+- Search only once per red head: a later poll on the same T does not search again. Update the module comment ("nothing acts on what it sees yet" still holds; add that the watch names the culprit).
+
+**Files touched.** src/baseline/main-culprit.ts (new), src/baseline/main-watch.ts, src/events/events.ts, src/events/event-labels.ts and src/events/event-format.ts (the new event type needs a label and a line), docs/how-it-works.md, test/main-watch.test.ts (the culprit cases live here, not in a new test/main-culprit.test.ts).
+
+**Acceptance criteria.**
+- In a fake repo with a fake check: G is green, A merges green, B makes a test fail, D is doc-only. The watch on D logs `main_culprit` with commit B, B's `merged` runner, and the failing test.
+- With the check made red at G too, no `main_culprit` is logged and the "red now too" warning is.
+- A red culprit with no `merged` event yields `main_culprit` with no `runner`.
+- No green within the cap gives the unattributed warning.
+- `npm test` passes.
+
 ### Fast merge, part 7/14: A gate or merge check that fails only main's known failures lets the change go on — done 2026-10-19 (planned 2026-10-19 by user; requires part 3/14 landed; design in plans/fast-merge.md "Lever 3: main's known failures instead of a team-wide hold"; touches src/review/review-precheck.ts src/merge/merge-check-failures.ts src/merge/merge-to-main.ts src/baseline/main-watch.ts src/baseline/main-red.ts src/prompt/gate-prompts.ts and their tests)
 
 **Goal.** A change should not be held for a failure main already has. Today a repeated gate failure runs a fresh full check on main (`mainTipVerdict(…, true)`, src/review/review-precheck.ts ~135). If main is red, the change ends `main_red` and waits, even when its only failure is main's.

@@ -1,5 +1,6 @@
 // vocabulary: plain
 import { checkMainBaseline } from "./main-baseline.js";
+import { findRedCulprit } from "./main-culprit.js";
 import { baselineCheckLogger, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
@@ -8,11 +9,14 @@ import { gitTry } from "../git/git-run.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
+import { shortSha } from "../text/format.js";
 
 /** The main watch: after main's head moves, run the full check on the new tip in the `_gate-main`
  * mirror and record the verdict — a `main_check` event, and the failing tests on the red baseline
- * (which persists beside the greens). It records only: no run, gate or merge waits on it, and
- * nothing acts on what it sees yet (plans/fast-merge.md, Lever 2, part 3).
+ * (which persists beside the greens). On a red tip it also names the first-parent commit that
+ * turned main red (a `main_culprit` event, or a warning when none can be named). It records only:
+ * no run, gate or merge waits on it, and nothing acts on what it sees yet (plans/fast-merge.md,
+ * Lever 2, parts 3 and 4a).
  *
  * One watch run is in flight at a time, and it covers every commit since the last watched head; a
  * head that moves during a run is watched next. The run goes through checkMainBaseline, so a
@@ -89,6 +93,28 @@ export function createMainWatch(root: string, mainBranch: string): MainWatch {
         ...(baseline.status === "red" ? { failingTests: baseline.failingTests ?? [] } : {}),
         ...(baseline.inheritedFrom !== undefined ? { inherited: true } : {}),
       });
+      if (baseline.status !== "red") return;
+      // Once per red head: lastWatched already holds it, so a later poll does not search again.
+      const found = await findRedCulprit(root, wt, config, baseline);
+      if (found.kind === "culprit") {
+        logEventBestEffort(root, {
+          source: TUMWATER_SOURCE,
+          type: "main_culprit",
+          commit: found.commit,
+          ...(found.runner !== undefined ? { runner: found.runner } : {}),
+          failingTests: found.failingTests,
+          green: found.green,
+        });
+      } else {
+        logEventBestEffort(root, {
+          source: TUMWATER_SOURCE,
+          type: "warning",
+          message:
+            found.kind === "environment"
+              ? `main's last green commit ${shortSha(found.green)} is red now too — not attributing`
+              : `main watch could not name the commit that turned main red: ${found.reason}`,
+        });
+      }
     });
   }
 
