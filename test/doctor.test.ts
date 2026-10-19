@@ -382,20 +382,29 @@ test("doctor --reprobe is accepted and wired — full report, same exit contract
   // --reprobe is the one flag the dispatch reads (probeImages "all" instead of "missing") and
   // it must reach runDoctor like any other accepted flag — accepted rather than rejected, and
   // rendering the same full report with the same exit-code contract as a plain run.
-  const r = await cli(repo, "doctor", "--reprobe");
-  assert.equal(r.code, 0, `expected exit 0 on a ready repo:\n${r.stdout}\n${r.stderr}`);
-  assert.match(r.stdout, /tumwater doctor — not running/);
-  assert.match(r.stdout, /ok\s+git binary/);
-  assert.match(r.stdout, /ready to run/);
+  // The hermetic PATH supplies a fake `pi` (and ps/top): without it the backend-binary check
+  // fails on a host that has no `pi` — CI, e.g. — and the "ready repo" exit-0 contract this
+  // test pins would assert against a genuinely unready host instead of the fixture.
+  const psRan = path.join(tmpdir("doctor-ps-"), "ran");
+  const restore = pathPrepend(hermeticHostBins(psRan));
+  try {
+    const r = await cli(repo, "doctor", "--reprobe");
+    assert.equal(r.code, 0, `expected exit 0 on a ready repo:\n${r.stdout}\n${r.stderr}`);
+    assert.match(r.stdout, /tumwater doctor — not running/);
+    assert.match(r.stdout, /ok\s+git binary/);
+    assert.match(r.stdout, /ready to run/);
 
-  // The flag composes with --json (the other accepted flag) instead of tripping the shared
-  // rejector: the stdout is one JSON.parse-able DoctorReport, same as --json alone.
-  const json = await cli(repo, "doctor", "--reprobe", "--json");
-  assert.equal(json.code, 0, `expected exit 0:\n${json.stdout}\n${json.stderr}`);
-  const report = JSON.parse(json.stdout);
-  assert.equal(typeof report.verdict, "string");
-  assert.ok(Array.isArray(report.checks) && report.checks.length > 0);
-  assert.match(report.header, /tumwater doctor/);
+    // The flag composes with --json (the other accepted flag) instead of tripping the shared
+    // rejector: the stdout is one JSON.parse-able DoctorReport, same as --json alone.
+    const json = await cli(repo, "doctor", "--reprobe", "--json");
+    assert.equal(json.code, 0, `expected exit 0:\n${json.stdout}\n${json.stderr}`);
+    const report = JSON.parse(json.stdout);
+    assert.equal(typeof report.verdict, "string");
+    assert.ok(Array.isArray(report.checks) && report.checks.length > 0);
+    assert.match(report.header, /tumwater doctor/);
+  } finally {
+    restore();
+  }
 });
 
 test("doctor rejects unknown arguments", async () => {
@@ -457,14 +466,23 @@ test("problemsOnly keeps header, routing and verdict and drops only the ok check
 test("doctor --problems is accepted and wired — hides ok rows, JSON holds none, help lists it", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli doctor problems");
-  const r = await cli(repo, "doctor", "--problems");
-  assert.equal(r.code, 0, `${r.stdout}\n${r.stderr}`);
-  assert.match(r.stdout, /ready to run/);
-  assert.doesNotMatch(r.stdout, /^ok\s+git binary/m);
-  const json = await cli(repo, "doctor", "--problems", "--json");
-  const report = JSON.parse(json.stdout);
-  assert.ok(!report.checks.some((c: { level: string }) => c.level === "ok"));
-  assert.match(helpTopic("doctor") ?? "", /--problems/);
+  // The same hermetic PATH the plain-render wiring test above uses: a fake `pi` so the
+  // backend-binary check passes on a host without one (CI), keeping the ready-repo exit-0
+  // contract a property of the fixture rather than of the machine.
+  const psRan = path.join(tmpdir("doctor-ps-"), "ran");
+  const restore = pathPrepend(hermeticHostBins(psRan));
+  try {
+    const r = await cli(repo, "doctor", "--problems");
+    assert.equal(r.code, 0, `${r.stdout}\n${r.stderr}`);
+    assert.match(r.stdout, /ready to run/);
+    assert.doesNotMatch(r.stdout, /^ok\s+git binary/m);
+    const json = await cli(repo, "doctor", "--problems", "--json");
+    const report = JSON.parse(json.stdout);
+    assert.ok(!report.checks.some((c: { level: string }) => c.level === "ok"));
+    assert.match(helpTopic("doctor") ?? "", /--problems/);
+  } finally {
+    restore();
+  }
 });
 
 test("doctor --problems keeps the exit-code contract on a failing environment", async () => {
