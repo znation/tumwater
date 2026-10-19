@@ -158,11 +158,12 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
           session.flashError(err);
         }
       };
+
+      // File mode: the line holds a path whose contents replace title and body through the
+      // same title-checked tryEditEntry core the title edit uses, keeping the entry's
+      // position and its (planned …)/(found by …) stamp. A missing file, an empty path, a
+      // file with no title line, and a structurally unsound body all flash and stay here.
       if (entryBodyFile && target.position !== null) {
-        // File mode: the line holds a path whose contents replace title and body through the
-        // same title-checked tryEditEntry core the title edit uses, keeping the entry's
-        // position and its (planned …)/(found by …) stamp. A missing file, an empty path, a
-        // file with no title line, and a structurally unsound body all flash and stay here.
         const p = session.input.trim();
         if (!p) {
           session.flashMessage("a file path is required");
@@ -193,9 +194,13 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
         applyEntryEdit(newTitle, body);
         return true;
       }
+
       if (!session.input.trim()) {
         session.flashMessage("an entry needs a title");
-      } else if (target.position === null) {
+        return true;
+      }
+
+      if (target.position === null) {
         // New entry (Ctrl+N): file by title with an empty body and wake its loop, the same
         // steps handleBacklogFile takes; a length problem or a throw stays in the editor.
         try {
@@ -203,19 +208,20 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
           const problem = promptLengthProblem(wakeText(collapseWhitespace(session.input)), role);
           if (problem) {
             session.flashMessage(problem);
-          } else {
-            const filed = fileEntryWithBody(session.root, target.kind, session.input, "");
-            session.commitBacklogEdit(filed.file, `File ${target.kind}: ${filed.title}`);
-            submitRolePromptAndWake(session.root, role, wakeText(filed.title));
-            exitEntryEdit();
-            session.flashMessage(`filed ${target.kind}: ${filed.title} — woke ${role}`);
+            return true;
           }
+          const filed = fileEntryWithBody(session.root, target.kind, session.input, "");
+          session.commitBacklogEdit(filed.file, `File ${target.kind}: ${filed.title}`);
+          submitRolePromptAndWake(session.root, role, wakeText(filed.title));
+          exitEntryEdit();
+          session.flashMessage(`filed ${target.kind}: ${filed.title} — woke ${role}`);
         } catch (err) {
           session.flashError(err);
         }
-      } else {
-        applyEntryEdit(session.input);
+        return true;
       }
+
+      applyEntryEdit(session.input);
       return true;
     }
     return false;
