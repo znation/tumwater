@@ -1305,6 +1305,7 @@ test("Ctrl+O cycles the History pane's outcome class, filters rows by historyCla
     { ts: now - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
     { ts: now - 50_000, loop: "feature", type: "run_end", run: 2, result: "no_change" },
     { ts: now - 40_000, loop: "feature", type: "run_end", run: 3, result: "error" },
+    { ts: now - 30_000, loop: "feature", type: "run_end", run: 4, result: "refused" },
   ]);
   const { keys } = makeKeys(root, () => now);
   keys.syncSnapshot(0, false, []);
@@ -1331,6 +1332,12 @@ test("Ctrl+O cycles the History pane's outcome class, filters rows by historyCla
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().historyResult, "none");
   assert.match(keys.state().paneCache ?? "", /feature #2/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #1/);
+
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, "refused");
+  assert.match(keys.state().paneCache ?? "", /^result: refused\n/, "the header names the refused class");
+  assert.match(keys.state().paneCache ?? "", /feature #4/);
   assert.doesNotMatch(keys.state().paneCache ?? "", /feature #1/);
 
   keys.handleKey(undefined, { ctrl: true, name: "o" });

@@ -27,16 +27,17 @@ export const HISTORY_MAX_TICKS = 200;
 
 /** The outcome classes `tumwater history --result` and the dashboard's History filter both
  * speak: Changes (the tick merged or queued work), No change (it did nothing on purpose, or
- * the operator aborted it), Problems (everything else, e.g. error/rejected). The one canonical
+ * the operator aborted it), Refused (a run that deliberately declined its entry), Problems
+ * (everything else, e.g. error/rejected). The one canonical
  * rule; the browser's copy in gui-client-history.ts is pinned to it by
  * test/gui-client-history.test.ts, so the two cannot drift. */
-export const HISTORY_RESULT_CLASSES = ["changes", "none", "problems"] as const;
+export const HISTORY_RESULT_CLASSES = ["changes", "none", "refused", "problems"] as const;
 
 /** One outcome class, derived from the list above so the two cannot disagree. */
 export type HistoryResultClass = (typeof HISTORY_RESULT_CLASSES)[number];
 
 /** The spelling each class has on `--result` and in the TUI filter: `changes` reads `merged`. */
-export const HISTORY_RESULT_FLAG_NAMES: Readonly<Record<HistoryResultClass, string>> = { changes: "merged", none: "none", problems: "problems" };
+export const HISTORY_RESULT_FLAG_NAMES: Readonly<Record<HistoryResultClass, string>> = { changes: "merged", none: "none", refused: "refused", problems: "problems" };
 
 /** Parse a `--result` value: a flag name, or a class name (so `changes` stays a hidden alias). */
 export function parseHistoryResultClass(raw: string): HistoryResultClass | null {
@@ -44,11 +45,13 @@ export function parseHistoryResultClass(raw: string): HistoryResultClass | null 
 }
 
 /** Which outcome class a tick result falls in (the HISTORY_RESULT_CLASSES rule): `changed` and
- * `queued` are `changes`; `no_change`, `skipped`, and `user_aborted` are `none`; every other
- * result is `problems`. Pure; the canonical home the dashboard's client-side filter mirrors. */
+ * `queued` are `changes`; `no_change`, `skipped`, and `user_aborted` are `none`; `refused` is
+ * `refused`; every other result is `problems`. Pure; the canonical home the dashboard's
+ * client-side filter mirrors. */
 export function historyClass(result: string): HistoryResultClass {
   if (result === "changed" || result === "queued") return "changes";
   if (result === "no_change" || result === "skipped" || result === "user_aborted") return "none";
+  if (result === "refused") return "refused";
   return "problems";
 }
 
@@ -60,6 +63,7 @@ export interface HistorySummaryRow {
   runs: number;
   changes: number;
   none: number;
+  refused: number;
   problems: number;
   tokens: number;
   costUsd: number;
@@ -75,7 +79,7 @@ export interface HistorySummaryRow {
 /** Tally rows per loop by historyClass, each row counted once. Loops come back in plain string
  * order (not localeCompare) so the order is deterministic; `total` sums every loop. Pure. */
 export function summarizeTickRows(rows: TickRow[]): { roles: HistorySummaryRow[]; total: HistorySummaryRow } {
-  const blank = (role: string): HistorySummaryRow => ({ role, runs: 0, changes: 0, none: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null });
+  const blank = (role: string): HistorySummaryRow => ({ role, runs: 0, changes: 0, none: 0, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null });
   const byLoop = new Map<string, HistorySummaryRow>();
   const total = blank("total");
   for (const row of rows) {

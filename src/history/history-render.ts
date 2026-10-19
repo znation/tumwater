@@ -65,7 +65,7 @@ export function renderRow(row: TickRow, widths: RowWidths): string {
 export function renderSummary(summary: { roles: HistorySummaryRow[]; total: HistorySummaryRow }): string {
   const all = [...summary.roles, summary.total];
   const loopWidth = Math.max(...["role", ...all.map((r) => roleLabel(r.role))].map(displayWidth));
-  const cols = ["runs", "changes", "none", "problems", "tokens", "cost", "time"] as const;
+  const cols = ["runs", "changes", "none", "refused", "problems", "tokens", "cost", "time"] as const;
   const cell = (r: HistorySummaryRow, c: (typeof cols)[number]): string =>
     c === "tokens"
       ? compactTokens(r.tokens)

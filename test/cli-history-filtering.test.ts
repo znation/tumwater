@@ -273,6 +273,33 @@ test("history --result narrows to one outcome class and composes with --json", a
   assert.deepEqual(payload.rows.map((r) => [r.role, r.result]), [["bugfix", "error"]]);
 });
 
+test("--result refused gets its own class, so a deliberate refusal stops folding into problems", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history refused");
+  writeEvents(repo, [
+    { ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "refused", summary: "declined" },
+    { ts: Date.now() - 30_000, loop: "bugfix", type: "run_end", run: 2, result: "error", error: "pi unreachable" },
+  ]);
+
+  const refused = await cli(repo, "history", "--result", "refused");
+  assert.equal(refused.code, 0);
+  assert.equal(refused.stdout.trim().split("\n").length, 1);
+  assert.match(refused.stdout, /feature\s+#1\s+refused/);
+
+  // The refusal no longer lands in the problems bucket.
+  const problems = await cli(repo, "history", "--result", "problems");
+  assert.equal(problems.code, 0);
+  assert.equal(problems.stdout.trim().split("\n").length, 1);
+  assert.match(problems.stdout, /bugfix\s+#2\s+error/);
+  assert.doesNotMatch(problems.stdout, /feature/);
+
+  // The JSON payload filters to the refused row alone.
+  const json = await cli(repo, "history", "--result", "refused", "--json");
+  assert.equal(json.code, 0);
+  const payload = JSON.parse(json.stdout) as { rows: Array<{ role: string; result: string }> };
+  assert.deepEqual(payload.rows.map((r) => [r.role, r.result]), [["feature", "refused"]]);
+});
+
 test("history --result composes with --since and --role", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history result compose");
@@ -342,14 +369,14 @@ test("history --result fails with its own wording for a missing or unknown class
 
   const bogus = await cli(repo, "history", "--result", "bogus");
   assert.equal(bogus.code, 1);
-  assert.match(bogus.stderr, /merged, none, problems/);
+  assert.match(bogus.stderr, /merged, none, refused, problems/);
   assert.match(bogus.stderr, /got "bogus"/);
   assert.ok(!bogus.stderr.includes("did you mean"), bogus.stderr); // not a near-miss
 
   // A near-miss of a real result gets the did-you-mean, the same typoSuffix `logs --type` gives.
   const typo = await cli(repo, "history", "--result", "mergd");
   assert.equal(typo.code, 1);
-  assert.match(typo.stderr, /merged, none, problems/);
+  assert.match(typo.stderr, /merged, none, refused, problems/);
   assert.match(typo.stderr, /got "mergd"/);
   assert.match(typo.stderr, /did you mean `merged`\?/);
 });
@@ -360,11 +387,11 @@ test("history --summary tallies each loop's outcomes over the rows the table wou
   const text = await cli(repo, "history", "--summary");
   assert.equal(text.code, 0);
   assert.deepEqual(text.stdout.split("\n").map((l) => l.trimEnd()), [
-    "role     runs  changes  none  problems  tokens   cost  time  last change",
-    "bugfix      1        0     0         1       0  $0.00     —  —",
-    "clean       1        0     1         0       0  $0.00     —  —",
-    `feature     1        1     0         0    2400  $0.02    4s  ${when}`,
-    `total       3        1     1         1    2400  $0.02    4s  ${when}`,
+    "role     runs  changes  none  refused  problems  tokens   cost  time  last change",
+    "bugfix      1        0     0        0         1       0  $0.00     —  —",
+    "clean       1        0     1        0         0       0  $0.00     —  —",
+    `feature     1        1     0        0         0    2400  $0.02    4s  ${when}`,
+    `total       3        1     1        0         1    2400  $0.02    4s  ${when}`,
     "",
   ]);
 
@@ -373,7 +400,7 @@ test("history --summary tallies each loop's outcomes over the rows the table wou
   assert.equal(payload.roles.length, 3);
   // The timed feature tick #7 (run_start 1787222691956 → run_end 1787222695956) folds a 4s span
   // into the summary; the clean and bugfix ticks had no start, so only total and feature carry it.
-  assert.deepEqual(payload.total, { role: "total", runs: 3, changes: 1, none: 1, problems: 1, tokens: 2400, costUsd: 0.02, durationMs: 4000, lastChangeTs: 1787222695956 });
+  assert.deepEqual(payload.total, { role: "total", runs: 3, changes: 1, none: 1, refused: 0, problems: 1, tokens: 2400, costUsd: 0.02, durationMs: 4000, lastChangeTs: 1787222695956 });
 
   const scoped = await cli(repo, "history", "--summary", "--role", "feature");
   assert.equal(scoped.stdout.trim().split("\n").length, 3);
@@ -381,7 +408,7 @@ test("history --summary tallies each loop's outcomes over the rows the table wou
 
   const problems = await cli(repo, "history", "--summary", "--result", "problems");
   // The problems class is the bugfix error tick: no start was logged, so its time cell is a dash.
-  assert.match(problems.stdout, /^total +1 +0 +0 +1 +0 +\$0\.00 +— +—$/m);
+  assert.match(problems.stdout, /^total +1 +0 +0 +0 +1 +0 +\$0\.00 +— +—$/m);
   assert.doesNotMatch(problems.stdout, /^clean/m);
 });
 

@@ -569,13 +569,14 @@ test("summarizeTickRows tallies each loop's outcome classes in name order with a
     row("bugfix", "skipped", 800),
     row("feature", "error", 700),
     row("bugfix", "rejected", 600),
+    row("feature", "refused", 400),
   ]);
   assert.deepEqual(summary.roles, [
-    { role: "bugfix", runs: 3, changes: 1, none: 1, problems: 1, tokens: 0, costUsd: 0, lastChangeTs: 300 },
-    { role: "feature", runs: 3, changes: 1, none: 1, problems: 1, tokens: 0, costUsd: 0, lastChangeTs: 100 },
+    { role: "bugfix", runs: 3, changes: 1, none: 1, refused: 0, problems: 1, tokens: 0, costUsd: 0, lastChangeTs: 300 },
+    { role: "feature", runs: 4, changes: 1, none: 1, refused: 1, problems: 1, tokens: 0, costUsd: 0, lastChangeTs: 100 },
   ]);
-  assert.deepEqual(summary.total, { role: "total", runs: 6, changes: 2, none: 2, problems: 2, tokens: 0, costUsd: 0, lastChangeTs: 300 });
-  assert.deepEqual(summarizeTickRows([]), { roles: [], total: { role: "total", runs: 0, changes: 0, none: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null } });
+  assert.deepEqual(summary.total, { role: "total", runs: 7, changes: 2, none: 2, refused: 1, problems: 2, tokens: 0, costUsd: 0, lastChangeTs: 300 });
+  assert.deepEqual(summarizeTickRows([]), { roles: [], total: { role: "total", runs: 0, changes: 0, none: 0, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null } });
   const newest = summarizeTickRows([row("a", "changed", 5), row("a", "changed", 9), row("a", "changed", 7)]);
   assert.equal(newest.roles[0]?.lastChangeTs, 9);
 });
@@ -591,10 +592,10 @@ test("summarizeTickRows sums tokens and cost per loop and into the total", () =>
     row("bugfix", 0, 0),
   ]);
   assert.deepEqual(summary.roles, [
-    { role: "bugfix", runs: 2, changes: 2, none: 0, problems: 0, tokens: 200, costUsd: 0.02, lastChangeTs: 0 },
-    { role: "feature", runs: 2, changes: 2, none: 0, problems: 0, tokens: 15000, costUsd: 1.5, lastChangeTs: 0 },
+    { role: "bugfix", runs: 2, changes: 2, none: 0, refused: 0, problems: 0, tokens: 200, costUsd: 0.02, lastChangeTs: 0 },
+    { role: "feature", runs: 2, changes: 2, none: 0, refused: 0, problems: 0, tokens: 15000, costUsd: 1.5, lastChangeTs: 0 },
   ]);
-  assert.deepEqual(summary.total, { role: "total", runs: 4, changes: 4, none: 0, problems: 0, tokens: 15200, costUsd: 1.52, lastChangeTs: 0 });
+  assert.deepEqual(summary.total, { role: "total", runs: 4, changes: 4, none: 0, refused: 0, problems: 0, tokens: 15200, costUsd: 1.52, lastChangeTs: 0 });
 });
 
 test("summarizeTickRows sums each loop's run time into the total, skipping null spans", () => {
@@ -608,10 +609,10 @@ test("summarizeTickRows sums each loop's run time into the total, skipping null 
     row("bugfix", null), // a lost start adds nothing
   ]);
   assert.deepEqual(summary.roles, [
-    { role: "bugfix", runs: 2, changes: 2, none: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 30000, lastChangeTs: 0 },
-    { role: "feature", runs: 2, changes: 2, none: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 180000, lastChangeTs: 0 },
+    { role: "bugfix", runs: 2, changes: 2, none: 0, refused: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 30000, lastChangeTs: 0 },
+    { role: "feature", runs: 2, changes: 2, none: 0, refused: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 180000, lastChangeTs: 0 },
   ]);
-  assert.deepEqual(summary.total, { role: "total", runs: 4, changes: 4, none: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 210000, lastChangeTs: 0 });
+  assert.deepEqual(summary.total, { role: "total", runs: 4, changes: 4, none: 0, refused: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 210000, lastChangeTs: 0 });
 });
 
 test("summarizeTickRows leaves durationMs absent when every row's span is null", () => {
@@ -626,7 +627,7 @@ test("summarizeTickRows leaves durationMs absent when every row's span is null",
 
 test("renderSummary shows tokens, cost and time columns in order, with a dash for an untimed loop", () => {
   const row = (role: string, durationMs?: number): HistorySummaryRow => ({
-    role, runs: 1, changes: 1, none: 0, problems: 0, tokens: 14000, costUsd: 0.5, durationMs, lastChangeTs: null,
+    role, runs: 1, changes: 1, none: 0, refused: 0, problems: 0, tokens: 14000, costUsd: 0.5, durationMs, lastChangeTs: null,
   });
   const out = renderSummary({
     roles: [row("feature", 3_600_000), row("bugfix")],

@@ -466,7 +466,7 @@ test("handleHistory ?summary folds the served rows into an additive per-role sum
   assert.equal(captured.status, 200);
   const { rows, summary } = data as {
     rows: Parameters<typeof summarizeTickRows>[0];
-    summary: { roles: { role: string; lastChangeTs: number | null }[]; total: { runs: number; changes: number; none: number; problems: number; tokens: number; costUsd: number; lastChangeTs: number } };
+    summary: { roles: { role: string; lastChangeTs: number | null }[]; total: { runs: number; changes: number; none: number; refused: number; problems: number; tokens: number; costUsd: number; lastChangeTs: number } };
   };
   assert.equal(rows.length, 4);
   // The summary folds the exact served rows through the shared collector, so it can never

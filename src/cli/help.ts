@@ -113,7 +113,7 @@ Usage:
   tumwater notify --test          Run the configured notify hook once with a synthetic event
                                    so the command can be checked before a real page
   tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]
-                   [--result <merged|none|problems>] [--summary] [--json]
+                   [--result <merged|none|refused|problems>] [--summary] [--json]
                                    One row per completed run, newest first — time, role,
                                    run number, result, duration, tokens/cost, and the
                                    summary (or error), each row one line; --since <duration>
@@ -121,7 +121,8 @@ Usage:
                                    7d, like logs --since); --grep <text> keeps only rows whose
                                    line matches, case-insensitively (like logs --grep);
                                    --result <class> narrows to one outcome class — merged
-                                   (merged or waiting to merge), none (no_change/skipped/user_aborted), or
+                                   (merged or waiting to merge), none (no_change/skipped/user_aborted),
+                                   refused (a run that deliberately declined its entry), or
                                    problems (everything else) — composed with --role, --since,
                                    -n, and --grep; --json prints the rows as
                                    machine-readable history data — ts, tokens, and costUsd

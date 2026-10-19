@@ -21,7 +21,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   let histRows = null;
   let histSummary = null;
   let histFetchedAt = 0;
-  const HIST_FILTERS = [["all", "All"], ["changes", "Changes"], ["none", "No change"], ["problems", "Problems"]];
+  const HIST_FILTERS = [["all", "All"], ["changes", "Changes"], ["none", "No change"], ["refused", "Refused"], ["problems", "Problems"]];
   const HIST_MODES = [["table", "Table"], ["summary", "Summary"]];
   function buildHistoryView() {
     if (!buildOnce("history", "<div class='view-head'><div><h1>History</h1><p>Every completed run, newest first.</p></div>" +
@@ -205,6 +205,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   function historyClass(result) {
     if (result === "changed" || result === "queued") return "changes";
     if (result === "no_change" || result === "skipped" || result === "user_aborted") return "none";
+    if (result === "refused") return "refused";
     return "problems";
   }
   // The History table for rows (/api/history's, newest first) under a grep (already applied
@@ -255,8 +256,9 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // history-table:end
   // history-summary:start
   // The Summary table: one row per loop plus the total, in the same column set the CLI's
-  // history --summary prints (ticks, changes, none, problems, tokens, cost, time, last change), so
-  // the dashboard and the CLI cannot drift column for column. Every number comes from the
+  // history --summary prints (ticks, changes, none, refused, problems, tokens, cost, time,
+  // last change), so the dashboard and the CLI cannot drift column for column. Every number
+  // comes from the
   // server's summary (built on the shared summarizeTickRows) — nothing here re-derives a
   // tally — and the cost/token cells reuse the page's report formatters. The time cell is the
   // sum of the loop's run spans via fmtSpan, a dash when none of its rows carried a span. The
@@ -268,11 +270,11 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     const rowsHtml = all.map((r) =>
       "<tr" + (r.role === "total" ? " class='hist-total'" : "") + ">" +
       "<td class='mono'>" + esc(r.role === "total" ? r.role : roleLabel(r.role)) + "</td>" +
-      cell(r, "runs") + cell(r, "changes") + cell(r, "none") + cell(r, "problems") +
+      cell(r, "runs") + cell(r, "changes") + cell(r, "none") + cell(r, "refused") + cell(r, "problems") +
       cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
       "<td class='num'>" + durCell(r.durationMs) + "</td>" +
       "<td>" + esc(r.lastChangeTs === null || r.lastChangeTs === undefined ? "—" : fmtAgo(Number(r.lastChangeTs))) + "</td></tr>").join("");
-    return "<div class='table-wrap'><table class='table history'><thead><tr><th>Role</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th class='num'>Time</th><th>Last change</th></tr></thead><tbody>" +
+    return "<div class='table-wrap'><table class='table history'><thead><tr><th>Role</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Refused</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th class='num'>Time</th><th>Last change</th></tr></thead><tbody>" +
       rowsHtml + "</tbody></table></div>";
   }
   // history-summary:end

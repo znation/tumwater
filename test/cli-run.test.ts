@@ -341,10 +341,10 @@ const tickRow = (loop: string, result: string, tick: number): TickRow =>
   ({ ts: 1_700_000_000_000 + tick, time: "", role: loop, run: tick, result, model: null, durationMs: 1, tokens: 0, costUsd: 0, usage: "", detail: "" });
 
 test("windowSummary counts every tick once by outcome class, with the history table", () => {
-  const out = windowSummary("2h", summarizeTickRows([tickRow("clean", "changed", 1), tickRow("clean", "no_change", 2), tickRow("qa", "error", 1)]), true);
+  const out = windowSummary("2h", summarizeTickRows([tickRow("clean", "changed", 1), tickRow("clean", "no_change", 2), tickRow("clean", "refused", 3), tickRow("qa", "error", 1)]), true);
   const lines = out.split("\n");
-  assert.equal(lines[0], "for 2h: 3 runs — 1 changes, 1 none, 1 problems");
-  assert.match(lines[1] ?? "", /^role\s+runs\s+changes\s+none\s+problems\s+tokens\s+cost\s+time\s+last change$/);
+  assert.equal(lines[0], "for 2h: 4 runs — 1 changes, 1 none, 1 refused, 1 problems");
+  assert.match(lines[1] ?? "", /^role\s+runs\s+changes\s+none\s+refused\s+problems\s+tokens\s+cost\s+time\s+last change$/);
   assert.deepEqual(lines.slice(2).map((l) => l.split(/\s+/)[0]), ["clean", "qa", "total"]);
 });
 

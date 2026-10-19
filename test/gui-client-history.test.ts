@@ -49,9 +49,9 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   assert.match(html, /data-tickdetail='1' data-role='coverage' data-tick='5' aria-expanded='false'/);
   assert.match(html, /data-tickdetail='1' data-role='qa' data-tick='2'/);
   // The outcome filter's buckets.
-  const bucketCases = ["changed", "queued", "no_change", "skipped", "user_aborted", "error", "rejected"];
+  const bucketCases = ["changed", "queued", "no_change", "skipped", "user_aborted", "refused", "error", "rejected"];
   assert.deepEqual(bucketCases.map(historyClass),
-    ["changes", "changes", "none", "none", "none", "problems", "problems"]);
+    ["changes", "changes", "none", "none", "none", "refused", "problems", "problems"]);
   // The browser copy is pinned to the CLI's canonical rule (history-data.ts's historyClass):
   // any change to one copy without the other fails here, so the two cannot drift.
   assert.deepEqual(bucketCases.map(historyClass), bucketCases.map(sharedHistoryClass));
@@ -355,16 +355,16 @@ test("histSummaryHtml paints one row per loop plus the total, with the report fo
   const now = Date.now();
   const summary = {
     roles: [
-      { role: "clean", runs: 2, changes: 2, none: 0, problems: 0, tokens: 500, costUsd: 0.25, durationMs: 3_600_000, lastChangeTs: now - 5 * 60_000 },
-      { role: "feature", runs: 1, changes: 0, none: 1, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null },
-      { role: "qa", runs: 1, changes: 0, none: 0, problems: 1, tokens: 12_500, costUsd: 0, lastChangeTs: null },
+      { role: "clean", runs: 2, changes: 2, none: 0, refused: 0, problems: 0, tokens: 500, costUsd: 0.25, durationMs: 3_600_000, lastChangeTs: now - 5 * 60_000 },
+      { role: "feature", runs: 1, changes: 0, none: 1, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null },
+      { role: "qa", runs: 1, changes: 0, none: 0, refused: 0, problems: 1, tokens: 12_500, costUsd: 0, lastChangeTs: null },
     ],
-    total: { role: "total", runs: 4, changes: 2, none: 1, problems: 1, tokens: 13_000, costUsd: 0.25, durationMs: 3_600_000, lastChangeTs: now - 5 * 60_000 },
+    total: { role: "total", runs: 4, changes: 2, none: 1, refused: 0, problems: 1, tokens: 13_000, costUsd: 0.25, durationMs: 3_600_000, lastChangeTs: now - 5 * 60_000 },
   };
   const html = histSummaryHtml(summary);
-  // The column set mirrors history --summary: loop, ticks, changes, none, problems, tokens,
-  // cost, time, last change, so the dashboard and the CLI cannot drift column for column.
-  for (const h of ["Role", "Runs", "Merged", "None", "Problems", "Tokens", "Cost", "Time", "Last change"]) {
+  // The column set mirrors history --summary: loop, ticks, changes, none, refused, problems,
+  // tokens, cost, time, last change, so the dashboard and the CLI cannot drift column for column.
+  for (const h of ["Role", "Runs", "Merged", "None", "Refused", "Problems", "Tokens", "Cost", "Time", "Last change"]) {
     assert.match(html, new RegExp("<th[^>]*>" + h + "</th>"), "the " + h + " header");
   }
   // The time cell folds the loop's run spans via fmtSpan (an hour reads "60m", its minute bucket);

@@ -262,7 +262,7 @@ export function windowSummary(label: string, summary: { roles: HistorySummaryRow
   const lines = [
     total.runs === 0
       ? `for ${label}: 0 runs — nothing ran`
-      : `for ${label}: ${plural(total.runs, "run")} — ${total.changes} changes, ${total.none} none, ${total.problems} problems`,
+      : `for ${label}: ${plural(total.runs, "run")} — ${total.changes} changes, ${total.none} none, ${total.refused} refused, ${total.problems} problems`,
   ];
   if (total.runs > 0) lines.push(renderSummary(summary));
   if (!covered) lines.push(SPARSE_WINDOW_NOTE);
