@@ -641,6 +641,11 @@ test("handleConfig returns exactly the curated keys, resolved values with null f
   assert.equal(cfg.notify, null);
   // agents resolves to the default empty map when the file names none.
   assert.deepEqual(cfg.backends, {});
+  // The run-concurrency knobs: maxConcurrent resolves to loadConfig's default (6) when the
+  // file does not set it, and the two optional keys read null.
+  assert.equal(cfg.maxConcurrent, 6);
+  assert.equal(cfg.maxConcurrentPerProvider, null);
+  assert.equal(cfg.worktreeSlots, null);
   // customRoles is deliberately not served: the panel's reach is the curated set.
   assert.equal("customRoles" in cfg, false);
 });
@@ -664,6 +669,50 @@ test("handleConfigSet round-trips: set, then GET shows the new value and the fil
   // The file on disk is what the running team polls — the write went through setConfigKey.
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal(onDisk.maxDailyCostUsd, 30);
+});
+
+test("handleConfigSet writes the run-concurrency knobs and refuses a type-invalid value byte-identically", async () => {
+  const root = tmpdir();
+  const runOne = await serveConfigSet(root, { key: "maxConcurrent", value: 8 });
+  assert.equal(runOne.captured.status, 200);
+  assert.deepEqual(runOne.data, { ok: true, key: "maxConcurrent", value: 8, oldValue: 6 });
+  const slots = await serveConfigSet(root, { key: "worktreeSlots", value: 9 });
+  assert.equal(slots.captured.status, 200);
+  assert.deepEqual(slots.data, { ok: true, key: "worktreeSlots", value: 9 });
+  assert.equal("oldValue" in (slots.data as Record<string, unknown>), false, "the file never held worktreeSlots, so JSON omits the undefined oldValue");
+  const caps = await serveConfigSet(root, { key: "maxConcurrentPerProvider", value: { anthropic: 4 } });
+  assert.equal(caps.captured.status, 200);
+  assert.deepEqual(caps.data, { ok: true, key: "maxConcurrentPerProvider", value: { anthropic: 4 } });
+  assert.equal("oldValue" in (caps.data as Record<string, unknown>), false, "the file never held maxConcurrentPerProvider, so JSON omits the undefined oldValue");
+  // The file on disk holds each under its top-level key, polled live by the running team
+  // (max_concurrent_changed / provider_concurrency_changed / worktree_slots_changed).
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal(onDisk.maxConcurrent, 8);
+  assert.equal(onDisk.worktreeSlots, 9);
+  assert.deepEqual(onDisk.maxConcurrentPerProvider, { anthropic: 4 });
+  // A type-invalid value and a negative worktreeSlots return the shared validator's 400 and
+  // leave the file byte-identical to what the successful writes produced.
+  const before = fs.readFileSync(configPath(root), "utf8");
+  const bad = await serveConfigSet(root, { key: "maxConcurrent", value: "many" });
+  assert.equal(bad.captured.status, 400);
+  assert.match((bad.data as { error: string }).error, /maxConcurrent/);
+  const neg = await serveConfigSet(root, { key: "worktreeSlots", value: -1 });
+  assert.equal(neg.captured.status, 400);
+  assert.match((neg.data as { error: string }).error, /worktreeSlots/);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "the refused writes leave the file byte-identical");
+  // POST /api/config-unset clears each file override; unsetting maxConcurrent re-serializes
+  // the merged config with its default (6) filled in, while the two optional keys drop out.
+  await serveConfigUnset(root, { key: "maxConcurrent" });
+  await serveConfigUnset(root, { key: "worktreeSlots" });
+  await serveConfigUnset(root, { key: "maxConcurrentPerProvider" });
+  const after = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal(after.maxConcurrent, 6, "the file reverted maxConcurrent to the default");
+  assert.equal("worktreeSlots" in after, false);
+  assert.equal("maxConcurrentPerProvider" in after, false);
+  const served = await serveConfig(root);
+  assert.equal((served.data as Record<string, unknown>).maxConcurrent, 6);
+  assert.equal((served.data as Record<string, unknown>).worktreeSlots, null);
+  assert.equal((served.data as Record<string, unknown>).maxConcurrentPerProvider, null);
 });
 
 test("handleBudget refuses a finite-but-unrepresentable cap with the shared screen's message", async () => {
