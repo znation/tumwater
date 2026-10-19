@@ -5,6 +5,7 @@ import { changeBaseRev, commitMessage, headOf } from "../git/git.js";
 import { aheadOfMainFiles, treeDiffFiles } from "../git/git-diff.js";
 import { resolvedDiffDiverges } from "./merge-diff.js";
 import {
+  conflictedFileHunks,
   conflictedFiles,
   continueRebase,
   ffMainToOrWhy,
@@ -397,7 +398,12 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
   try {
     pi = await ctx.runPi(
       wt,
-      buildConflictPrompt(ctx.role, remaining, check, { change, main: commits, mainOmitted: omitted }),
+      // Each file's hunk ranges, so the resolver reads the hunks rather than the file from line 1.
+      buildConflictPrompt(ctx.role, conflictedFileHunks(wt, remaining), check, {
+        change,
+        main: commits,
+        mainOmitted: omitted,
+      }),
       `tumwater-${ctx.role}-${ctx.tick}-conflict`,
       // The resolver rides the strong tier (plans/model-tiers.md part 4/8): resolution is rare,
       // tolerant of latency, and edits code inside merge. Its spend still folds into the

@@ -41,6 +41,25 @@ test("buildConflictHandbackNote names the files, the reason and what main change
   assert.match(note, /Resolve every marker/);
 });
 
+test("buildConflictHandbackNote lists hunk ranges and points the author at them", () => {
+  const note = buildConflictHandbackNote(
+    "revision",
+    [
+      { path: "PLANS-DONE.md", hunks: [{ start: 3, end: 12 }], more: 0 },
+      { path: "src/a.ts", hunks: [], more: 0 },
+    ],
+    { change: "", main: [] },
+  );
+  assert.ok(
+    note.includes(
+      "Conflicted files:\n- PLANS-DONE.md (conflict hunks at lines 3-12)\n- src/a.ts\n" +
+        "Read each listed hunk's line range plus a few lines of context, not a conflicted file from the top.\n",
+    ),
+  );
+  const plain = buildConflictHandbackNote("merge", ["notes.md"], { change: "", main: [] });
+  assert.ok(plain.includes("Conflicted files:\n- notes.md\n\n"), "no ranges, no read line");
+});
+
 test("buildConflictHandbackNote says a revision, not a merge, and tolerates no intent", () => {
   const note = buildConflictHandbackNote("revision", [], { change: "", main: [] });
   assert.match(note, /rejected change was being revised/);
@@ -469,6 +488,47 @@ test("buildConflictPrompt bounds reading to the conflicted files", () => {
   const p = oneLine(buildConflictPrompt("dedupe", ["src/a.ts"]));
   assert.match(p, /Read only the conflicted files and what they directly reference/);
   assert.match(p, /`grep -n '<<<<<<<' FILE`/);
+});
+
+// Told only to grep the markers, the 2026-10-17..19 resolvers still opened the conflicted
+// PLANS.md at line 1 (2.0M chars of tool-output-capped reads inside the merge slot), so each
+// file's hunk ranges are named and the resolver is sent to them.
+test("buildConflictPrompt lists each file's conflict hunk ranges and sends the resolver to them", () => {
+  const raw = buildConflictPrompt("feature", [
+    { path: "PLANS.md", hunks: [{ start: 8, end: 30 }, { start: 59, end: 79 }], more: 0 },
+    { path: "src/git.ts", hunks: [{ start: 120, end: 140 }], more: 4 },
+    { path: "gone.txt", hunks: [], more: 0 },
+  ]);
+  assert.ok(
+    raw.includes(
+      "Conflicted files:\n" +
+        "- PLANS.md (conflict hunks at lines 8-30, 59-79)\n" +
+        "- src/git.ts (conflict hunks at lines 120-140, and 4 more)\n" +
+        "- gone.txt\n",
+    ),
+    "each file's ranges ride its own bullet; a file with no hunks found is the bare path",
+  );
+  const p = oneLine(raw);
+  assert.match(p, /Read only the conflicted files and what they directly reference/);
+  assert.match(p, /Read each conflict hunk listed above as its line range plus about five lines of context/);
+  assert.match(p, /never read a conflicted file from the top/);
+  // Line numbers shift as hunks are resolved, and capped hunks are unlisted: the grep stays.
+  assert.match(p, /resolve the last hunk first, or re-run `grep -n '<<<<<<<' FILE`, which also finds hunks past the listed ones/);
+  assert.doesNotMatch(p, /finds each marker; read around it in ranges/, "the bare grep rule is replaced");
+});
+
+test("buildConflictPrompt with no hunk ranges known keeps the grep rule alone", () => {
+  for (const files of [["src/a.ts"], [{ path: "src/a.ts", hunks: [], more: 0 }]]) {
+    const p = oneLine(buildConflictPrompt("dedupe", files));
+    assert.match(p, /- src\/a\.ts Resolve every conflict marker/, "the bare bullet");
+    assert.match(p, /`grep -n '<<<<<<<' FILE` finds each marker; read around it in ranges/);
+    assert.doesNotMatch(p, /conflict hunks at lines|Read each conflict hunk listed above/);
+  }
+});
+
+test("buildConflictPrompt points a backlog conflict at its section headings' line numbers", () => {
+  const p = oneLine(buildConflictPrompt("feature", ["PLANS.md"]));
+  assert.match(p, /`grep -n '\^## ' FILE` lists those headings with their line numbers/);
 });
 
 // The pre-queue self-check's fix-up prompt (PLANS.md "Pre-queue self-check, part 1/2"): one bounded

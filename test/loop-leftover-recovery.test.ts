@@ -133,7 +133,7 @@ test("a pin at the merge-conflict cap is handed back and the tick resolves it in
       assert.equal(outcome.recoveredLeftover, undefined, "not a recovery tick");
       const prompt = fs.readFileSync(prompts, "utf8");
       assert.match(prompt, /conflict-handback/);
-      assert.match(prompt, /Conflicted files:\n- seed\.txt/);
+      assert.match(prompt, /Conflicted files:\n- seed\.txt \(conflict hunks at lines 1-\d+\)\n/);
       assert.match(prompt, /main moved the same line/, "the prompt shows what main changed");
       assert.doesNotMatch(prompt, /was discarded without merging/);
       assert.equal(runner.state.conflictHandback?.reason, "merge");

@@ -46,7 +46,7 @@ import { appendPromptNote } from "../text/format.js";
 import type { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { applyRevision, applyWithConflicts } from "./revision.js";
-import { hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
+import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
 import { mergeToMain } from "../merge/merge-to-main.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
@@ -126,9 +126,9 @@ async function handbackIntent(
 
 /** Build the conflict-handback note for a change re-applied over current main: derive the
  * author intent from the change's own commit and the main commits touching its conflicted
- * files, then append the handback note built from that intent and the same reason. All three
- * handback-note sites (merge apply, revision apply, handoff resume) share this so the intent
- * and the note never drift apart. */
+ * files, then append the handback note built from that intent, the same reason and each file's
+ * conflict hunk ranges as they sit in `wt` now. All three handback-note sites (merge apply,
+ * revision apply, handoff resume) share this so the intent and the note never drift apart. */
 async function appendHandbackNote(
   prompt: string,
   wt: string,
@@ -138,7 +138,7 @@ async function appendHandbackNote(
   conflicted: string[],
 ): Promise<string> {
   const intent = await handbackIntent(wt, mainBranch, sha, conflicted);
-  return appendPromptNote(prompt, buildConflictHandbackNote(reason, conflicted, intent));
+  return appendPromptNote(prompt, buildConflictHandbackNote(reason, conflictedFileHunks(wt, conflicted), intent));
 }
 
 /** The repo-relative paths in `wt` that currently carry conflict markers. The apply path knows

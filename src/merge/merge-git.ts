@@ -123,6 +123,11 @@ export async function rebaseOntoMainLeaveConflicts(
   return state === "rebased" ? "clean" : state === "conflict" ? "conflict" : "failed";
 }
 
+/** A conflict block's start or end marker line: seven `<` or `>`, then a space or the line's end.
+ * The one marker definition hasConflictMarkers and conflictHunkRanges share, so the ranges a
+ * conflict prompt names are exactly the blocks the marker check later rejects. */
+const MARKER_EDGE = /^(<{7}|>{7})( |$)/m;
+
 /** True if any of the given files still contains a git conflict marker.
  * A deleted file counts as resolved (the resolver chose the deletion). */
 export function hasConflictMarkers(wt: string, files: string[]): boolean {
@@ -131,14 +136,66 @@ export function hasConflictMarkers(wt: string, files: string[]): boolean {
   // characters), and flagging it would reject clean resolutions forever. A resolver that
   // leaves only a separator line behind is treated as resolved; its stray line is content the
   // project's own tests can catch.
-  const marker = /^(<{7}|>{7})( |$)/m;
   return files.some((f) => {
     const p = path.join(wt, f);
     try {
-      return marker.test(fs.readFileSync(p, "utf8"));
+      return MARKER_EDGE.test(fs.readFileSync(p, "utf8"));
     } catch {
       return false;
     }
+  });
+}
+
+/** How many conflict hunks a conflict prompt lists per file: every hunk of a typical backlog or
+ * code conflict, and a bound on a file pasted over wholesale. */
+export const MAX_LISTED_HUNKS = 10;
+
+/** A conflicted file as the conflict prompts list it: its repo-relative path, the 1-based
+ * inclusive line ranges of its first MAX_LISTED_HUNKS conflict hunks, and how many more hunks
+ * the cap left out. */
+export interface ConflictedFile {
+  path: string;
+  hunks: Array<{ start: number; end: number }>;
+  more: number;
+}
+
+/** The 1-based inclusive line ranges of the conflict hunks in `text`, each from a start marker
+ * line through the next end marker line. Markers are matched by line prefix alone, so a hunk
+ * inside a markdown code fence counts too: git writes its markers wherever the conflict falls.
+ * A second start marker inside an open hunk stays part of it, and an unterminated hunk runs to
+ * the last line. */
+export function conflictHunkRanges(text: string): Array<{ start: number; end: number }> {
+  const lines = text.split("\n");
+  const ranges: Array<{ start: number; end: number }> = [];
+  let start: number | undefined;
+  lines.forEach((line, i) => {
+    if (!MARKER_EDGE.test(line)) return;
+    if (line.startsWith("<")) start ??= i + 1;
+    else if (start !== undefined) {
+      ranges.push({ start, end: i + 1 });
+      start = undefined;
+    }
+  });
+  const lastLine = text.endsWith("\n") ? lines.length - 1 : lines.length;
+  if (start !== undefined) ranges.push({ start, end: lastLine });
+  return ranges;
+}
+
+/** Each of `files` (repo-relative, under `wt`) with its conflict hunks' line ranges, for the
+ * conflict prompts to name, so whoever resolves them reads the hunks instead of opening the file
+ * from line 1. Over 2026-10-17..19 the merge's conflict resolvers spent 2.0M chars reading the
+ * conflicted PLANS.md from its top, 16-47K chars a read because its lines are long. Any text
+ * file counts, backlog or code; a deleted, unreadable or binary (NUL-bearing) file lists none. */
+export function conflictedFileHunks(wt: string, files: readonly string[]): ConflictedFile[] {
+  return files.map((f) => {
+    let text = "";
+    try {
+      text = fs.readFileSync(path.join(wt, f), "utf8");
+    } catch {
+      // Deleted or unreadable: no ranges to name.
+    }
+    const all = text.includes("\0") ? [] : conflictHunkRanges(text);
+    return { path: f, hunks: all.slice(0, MAX_LISTED_HUNKS), more: Math.max(0, all.length - MAX_LISTED_HUNKS) };
   });
 }
 

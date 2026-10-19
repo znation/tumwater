@@ -4,6 +4,7 @@ import { KILL_BY_PID_RULE, OLDER_NAMES_SENTENCE, TEST_RUNNER_RULE, dateLine } fr
 import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../roles/role-guidance.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
+import type { ConflictedFile } from "../merge/merge-git.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { numberedList } from "../text/markdown.js";
 import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-contract.js";
@@ -51,6 +52,22 @@ function conflictIntentBlocks(intent: ConflictIntent): string {
   return lines.join("\n");
 }
 
+/** One conflicted file's bullet: its path, then its conflict hunks' line ranges when known
+ * (merge-git.ts's conflictedFileHunks). A plain path, or a file with no hunks found, is the bare
+ * bullet. */
+function conflictedFileLine(file: string | ConflictedFile): string {
+  if (typeof file === "string") return `- ${file}`;
+  if (file.hunks.length === 0) return `- ${file.path}`;
+  const ranges = file.hunks.map((h) => `${h.start}-${h.end}`).join(", ");
+  const more = file.more > 0 ? `, and ${file.more} more` : "";
+  return `- ${file.path} (conflict hunks at lines ${ranges}${more})`;
+}
+
+/** True when any conflicted file carries hunk ranges, so the prompt can point at them. */
+function listsHunks(files: readonly (string | ConflictedFile)[]): boolean {
+  return files.some((f) => typeof f !== "string" && f.hunks.length > 0);
+}
+
 /** The prompt for resolving merge conflicts left in a loop's worktree. `check` — the project's
  * resolved check, as the tick prompt threads it — is named so the resolver knows which command
  * the harness will run (told only to keep the tests passing, the 2026-10-04 resolver guessed
@@ -63,11 +80,15 @@ function conflictIntentBlocks(intent: ConflictIntent): string {
  * harness verifies nothing. `intent` — this branch's own
  * commit message and the main commits that touched the conflicted files since the merge-base —
  * shows the resolver what both sides meant instead of only the markers; omitted, the prompt is
- * unchanged. `today` pins the date line (prompt.ts's dateLine) for tests; omitted, it is the
- * local day. */
+ * unchanged. A file given with its conflict hunks' line ranges (conflictedFileHunks) is listed
+ * with them, and the rules then send the resolver to those ranges: told only to grep the
+ * markers, the 2026-10-17..19 resolvers still opened the conflicted PLANS.md at line 1, one
+ * tool-output-capped read after another, while every queued merge waited. A plain path lists
+ * the file alone. `today` pins the date line (prompt.ts's dateLine) for tests; omitted, it is
+ * the local day. */
 export function buildConflictPrompt(
   roleId: string,
-  files: string[],
+  files: readonly (string | ConflictedFile)[],
   check?: BuildCheck,
   intent?: ConflictIntent,
   today?: string,
@@ -81,6 +102,15 @@ export function buildConflictPrompt(
     : "";
   const intentBlocks = intent ? conflictIntentBlocks(intent) : "";
   const removalCitation = intent ? ` (see "What main changed in these files" above)` : "";
+  const readRule = listsHunks(files)
+    ? `- Read only the conflicted files and what they directly reference, not the codebase at large.
+  Read each conflict hunk listed above as its line range plus about five lines of context on
+  each side; never read a conflicted file from the top, where one read of a long-lined file
+  fills the tool-output limit. Editing a hunk shifts the line numbers below it, so resolve the
+  last hunk first, or re-run \`grep -n '<<<<<<<' FILE\`, which also finds hunks past the listed
+  ones.`
+    : `- Read only the conflicted files and what they directly reference (\`grep -n '<<<<<<<' FILE\`
+  finds each marker; read around it in ranges) — not the codebase at large.`;
   return `You are the "${roleId}" role on this project's tumwater team — tumwater runs a team of AI roles that develop the project. ${OLDER_NAMES_SENTENCE} A rebase of
 your work branch onto main stopped on conflicts; the conflict markers are sitting in the
 worktree now. Resolve them.
@@ -88,7 +118,7 @@ worktree now. Resolve them.
 ${dateLine(today)}
 
 Conflicted files:
-${files.map((f) => `- ${f}`).join("\n")}
+${files.map(conflictedFileLine).join("\n")}
 ${intentBlocks ? intentBlocks + "\n" : ""}
 Resolve every conflict marker (<<<<<<<, =======, >>>>>>>) by combining the intent of BOTH sides:
 "ours" is this branch's change, "theirs" is the latest main. Do not simply pick one side unless
@@ -97,8 +127,7 @@ the two changes are genuinely alternatives. Keep the project building and its te
 Rules for this run:
 - Edit files only. Never run any git command that changes state (no add, commit, merge, rebase,
   reset, checkout) — tumwater concludes the rebase for you. Reading git state is fine.
-- Read only the conflicted files and what they directly reference (\`grep -n '<<<<<<<' FILE\`
-  finds each marker; read around it in ranges) — not the codebase at large.
+${readRule}
 - When main has deliberately removed or replaced what the branch edits (a revert, a rewrite of
   the same code), the branch's edit is dropped: resolve toward main's version — the branch's
   change is re-derived on top of current main by its author if it still matters. Never merge
@@ -110,7 +139,7 @@ ${TEST_RUNNER_RULE}${noCheckRunRule}
   \`## \` section headings are structure, not text: the result keeps exactly one of each
   \`## \` heading, and every \`### \` entry sits under the section its own side put it in —
   a newly planned feature stays under \`## Planned\` even when the other side moved entries
-  around it.
+  around it. \`grep -n '^## ' FILE\` lists those headings with their line numbers.
 - When every marker is resolved and the project is consistent, just stop.`;
 }
 
@@ -497,25 +526,30 @@ export function buildConflictDiscardNote(summary: string, attempts: number): str
  * over current main. `reason` says whether it was an approved change whose merge kept
  * conflicting or a rejected change whose revision re-apply conflicted. The note names the
  * conflicted files and shows the same "What main changed in these files" intent block part 1/2
- * gives the resolver, so the author sees what main did without re-deriving it. A pure function
- * so its shape is pinned in tests. */
+ * gives the resolver, so the author sees what main did without re-deriving it. Files given with
+ * their hunk ranges are listed the way the resolver prompt lists them, with a line pointing the
+ * author at those ranges: a hand-back can leave markers in a 1.9 MB PLANS-DONE.md. A pure
+ * function so its shape is pinned in tests. */
 export function buildConflictHandbackNote(
   reason: "merge" | "revision",
-  conflicted: string[],
+  conflicted: readonly (string | ConflictedFile)[],
   intent: ConflictIntent,
 ): string {
   const why =
     reason === "merge"
       ? "Your previously approved change could not be merged: conflict resolution could not reconcile it with main"
       : "Your rejected change was being revised, but its diff no longer applies cleanly to main";
-  const files = conflicted.length > 0 ? conflicted.map((f) => `- ${f}`).join("\n") : "- (none recorded)";
+  const files = conflicted.length > 0 ? conflicted.map(conflictedFileLine).join("\n") : "- (none recorded)";
+  const readHint = listsHunks(conflicted)
+    ? "\nRead each listed hunk's line range plus a few lines of context, not a conflicted file from the top."
+    : "";
   return `<conflict-handback>
 ${why}. Main moved under it, and the change is now in your worktree as uncommitted edits with the
 conflict markers left in place.
 Resolve every marker (<<<<<<<, =======, >>>>>>>) by combining the intent of BOTH sides, keeping
 main's deliberate removals, then re-run the project's declared check.
 Conflicted files:
-${files}
+${files}${readHint}
 
 ${conflictIntentBlocks(intent)}
 </conflict-handback>`;

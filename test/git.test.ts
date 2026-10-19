@@ -33,6 +33,9 @@ import { ensureWorktree, resetWorktreeToMain } from "../src/git/worktree.js";
 // them from git.ts in the bugfix that completed the half-finished organize tick 78 move) once the
 // merger and the batch merger started calling them directly.
 import {
+  MAX_LISTED_HUNKS,
+  conflictHunkRanges,
+  conflictedFileHunks,
   conflictedFiles,
   continueRebase,
   ffMainTo,
@@ -265,6 +268,63 @@ test("hasConflictMarkers does not flag setext/RST underlines of seven equals (re
 test("hasConflictMarkers treats a deleted file as resolved", () => {
   const dir = tmpdir();
   assert.ok(!hasConflictMarkers(dir, ["gone.txt"]));
+});
+
+// The conflict prompts name each hunk's 1-based line range so the resolver reads the hunks, not
+// the conflicted file from line 1 (2026-10-17..19: 2.0M chars of top-of-PLANS.md reads).
+test("conflictHunkRanges gives each hunk's 1-based start and end marker lines", () => {
+  const text = [
+    "intro", // 1
+    "<<<<<<< HEAD", // 2
+    "ours", // 3
+    "||||||| base", // 4
+    "base", // 5
+    "=======", // 6
+    "theirs", // 7
+    ">>>>>>> 1234567 (branch edit)", // 8
+    "between", // 9
+    "```", // 10: a markdown code fence does not hide a hunk
+    "<<<<<<< HEAD", // 11
+    "=======", // 12
+    "x", // 13
+    ">>>>>>> main", // 14
+    "```", // 15
+    "",
+  ].join("\n");
+  assert.deepEqual(conflictHunkRanges(text), [
+    { start: 2, end: 8 },
+    { start: 11, end: 14 },
+  ]);
+});
+
+test("conflictHunkRanges uses the marker check's own definition of a marker", () => {
+  // A setext underline of seven `=` and eight-character runs are content, CRLF lines still
+  // count, and a stray end marker outside a hunk opens nothing.
+  const text = "Title\r\n=======\r\n>>>>>>> stray\r\n<<<<<<<<\r\n<<<<<<<\r\nours\r\n>>>>>>>\r\n";
+  assert.deepEqual(conflictHunkRanges(text), [{ start: 5, end: 7 }]);
+  assert.deepEqual(conflictHunkRanges("no markers\n"), []);
+});
+
+test("conflictHunkRanges runs an unterminated hunk to the last line", () => {
+  assert.deepEqual(conflictHunkRanges("a\n<<<<<<< HEAD\nours\nlast\n"), [{ start: 2, end: 4 }]);
+  assert.deepEqual(conflictHunkRanges("a\n<<<<<<< HEAD\nours"), [{ start: 2, end: 3 }]);
+});
+
+test("conflictedFileHunks caps each file's list and names no hunks in a gone or binary file", () => {
+  const dir = tmpdir();
+  const hunk = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\n";
+  fs.writeFileSync(path.join(dir, "many.ts"), hunk.repeat(MAX_LISTED_HUNKS + 3));
+  fs.writeFileSync(path.join(dir, "blob.bin"), `\0${hunk}`);
+  const [many, gone, blob] = conflictedFileHunks(dir, ["many.ts", "gone.txt", "blob.bin"]);
+  assert.equal(many!.path, "many.ts");
+  assert.equal(many!.hunks.length, MAX_LISTED_HUNKS);
+  assert.deepEqual(many!.hunks.slice(0, 2), [
+    { start: 1, end: 5 },
+    { start: 6, end: 10 },
+  ]);
+  assert.equal(many!.more, 3, "the hunks past the cap are counted, not listed");
+  assert.deepEqual(gone, { path: "gone.txt", hunks: [], more: 0 });
+  assert.deepEqual(blob, { path: "blob.bin", hunks: [], more: 0 });
 });
 
 // A non-ASCII conflicted filename arrives C-quoted from `git diff --name-only` (core.quotePath

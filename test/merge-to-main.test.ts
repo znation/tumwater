@@ -111,6 +111,11 @@ test("a rebase conflict is resolved by one pi run and merges with linear history
   assert.equal(calls.length, 1, "exactly one resolution attempt per tick");
   assert.equal(calls[0]!.session, "tumwater-improve-7-conflict", "named after the role and tick");
   assert.match(calls[0]!.prompt, /seed\.txt/, "the prompt names the conflicted file");
+  assert.match(
+    calls[0]!.prompt,
+    /^- seed\.txt \(conflict hunks at lines 1-\d+\)$/m,
+    "with the line range of its one hunk, read from the conflicted worktree",
+  );
   assert.equal(
     calls[0]!.config?.model,
     undefined,
