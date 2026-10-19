@@ -2,10 +2,10 @@
  * mainCheckBadge, mergeBadge, pauseBadge) and the humanSeconds phrasing they share. Split
  * out of status-model.test.ts when the badges moved from src/ui/status-model.ts to
  * src/ui/badges.ts — this suite travels with the new module the way status-model.test.ts
- * travels with the per-loop display model. */
+ * travels with the per-role display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, chainBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, runWindowBadge, wakeBadge, loopWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, chainBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, runWindowBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
 import type { StatusSnapshot } from "../src/status/status-data.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -22,7 +22,7 @@ test("budgetBadge renders the standing daily-cost rule in every cap state", () =
 });
 
 // The cost n/a fallback model (plans/fallback-model.md): while it carries the team the badge
-// names it, and the loops keep their ordinary state cells — they are working, not stopped.
+// names it, and the roles keep their ordinary state cells — they are working, not stopped.
 test("budgetBadge names the fallback model only while it is carrying the team", () => {
   const fallback = { provider: "omlx", model: "local-free" };
   assert.equal(
@@ -318,19 +318,19 @@ test("wakeBadge names a pending scheduled wake and is empty otherwise", () => {
   assert.equal(wakeBadge({ roles: ["feature"], atMs: now }, now), "");
 });
 
-test("loopWakeMarker names the earliest future wake that names the loop", () => {
+test("roleWakeMarker names the earliest future wake that names the role", () => {
   const now = 1_000_000;
   const h = 3_600_000;
   const wakes = [{ roles: ["feature"], atMs: now + h }, { roles: ["plan"], atMs: now + 2 * h }];
-  assert.equal(loopWakeMarker(wakes, "feature", undefined, now), " · wake in 1h");
-  assert.equal(loopWakeMarker(wakes, "plan", undefined, now), " · wake in 2h");
-  assert.equal(loopWakeMarker(wakes, "qa", undefined, now), "");
-  assert.equal(loopWakeMarker(wakes, "feature-2", "feature", now), " · wake in 1h", "an instance matches its base role's wake");
-  assert.equal(loopWakeMarker([...wakes].reverse(), "plan", undefined, now), " · wake in 2h");
+  assert.equal(roleWakeMarker(wakes, "feature", undefined, now), " · wake in 1h");
+  assert.equal(roleWakeMarker(wakes, "plan", undefined, now), " · wake in 2h");
+  assert.equal(roleWakeMarker(wakes, "qa", undefined, now), "");
+  assert.equal(roleWakeMarker(wakes, "feature-2", "feature", now), " · wake in 1h", "an instance matches its base role's wake");
+  assert.equal(roleWakeMarker([...wakes].reverse(), "plan", undefined, now), " · wake in 2h");
   const both = [{ roles: ["plan"], atMs: now + 3 * h }, { roles: ["plan"], atMs: now + h }];
-  assert.equal(loopWakeMarker(both, "plan", undefined, now), " · wake in 1h", "latest-first still yields the earliest");
-  assert.equal(loopWakeMarker([{ roles: ["feature"], atMs: now }], "feature", undefined, now), "");
-  assert.equal(loopWakeMarker(undefined, "feature", undefined, now), "");
+  assert.equal(roleWakeMarker(both, "plan", undefined, now), " · wake in 1h", "latest-first still yields the earliest");
+  assert.equal(roleWakeMarker([{ roles: ["feature"], atMs: now }], "feature", undefined, now), "");
+  assert.equal(roleWakeMarker(undefined, "feature", undefined, now), "");
 });
 
 test("runWindowBadge counts down to the deadline, then reads stopping, and is empty unwindowed", () => {

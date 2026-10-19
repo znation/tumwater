@@ -6,32 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Plain terms code runner, part 4/14: Rename the status model's role phase and rank (planned 2026-10-16 by user; requires part 3/14 landed; design in plans/terminology.md "Code names"; touches src/ui/status-model.ts + src/ui/tone.ts + src/ui/badges.ts + test/status-model.test.ts + test/badges.test.ts)
-
-**Goal.** The shared display model names what it describes, a role's row: `rolePhase`, `roleRank`, `ROLE_RANK_RULES`, `sortRolesByState`, `roleRowCells` and `roleWakeMarker`.
-
-**Approach.**
-- Series rules (every code-runner part):
-  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
-  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
-  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
-  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
-  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
-  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
-  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
-- src/ui/status-model.ts: `loopPhase` → `rolePhase`, `loopRank` → `roleRank`, `LOOP_RANK_RULES` → `ROLE_RANK_RULES`, `sortLoopsByState` → `sortRolesByState`, `LoopSortRow` → `RoleSortRow`, `loopRowCells` → `roleRowCells`. Each export used outside this part keeps an alias: `loopPhase` is named in src/merge/, src/runner/, src/tick/, src/ui/ and src/ui/gui/; `LOOP_RANK_RULES` is interpolated by src/ui/gui/gui-client-model.ts.
-- src/ui/badges.ts: `loopWakeMarker` → `roleWakeMarker` (alias; src/ui/status-render.ts uses it). src/ui/tone.ts: migrate its `loopRank` import and comments.
-- test/status-model.test.ts (about 130 `loopPhase` calls and 69 `freshLoopState` calls) and test/badges.test.ts: migrate to the new names, including `freshRunnerState`, and convert comments and test titles.
-- The browser twin of the rank (`loopRank` inside gui-client-model.ts's template) is part 7/14's; only the server export's name changes here.
-
-**Files touched.** src/ui/status-model.ts, src/ui/tone.ts, src/ui/badges.ts, test/status-model.test.ts, test/badges.test.ts.
-
-**Acceptance criteria.**
-- `rolePhase`, `roleRank`, `ROLE_RANK_RULES`, `sortRolesByState`, `roleRowCells` and `roleWakeMarker` are the declared names; old names exist only as deprecated aliases, and only while another file still uses them.
-- `grep -nE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_|\bloops?\b'` over this part's five files lists only aliases and kept senses.
-- No behavior change: the suite's test count is unchanged.
-- `npm run test` passes.
-
 ### Plain terms code runner, part 5/14: Convert the status renderer and payload and the team alerts (planned 2026-10-16 by user; requires part 4/14 landed; design in plans/terminology.md "Code names"; touches src/ui/status-render.ts + src/ui/status-payload.ts + src/ui/team-alerts.ts + their tests)
 
 **Goal.** The status table renderer, the status payload builder and the team alerts use role and runner names, and `AlertLoop` becomes `AlertRole`.

@@ -1,26 +1,26 @@
 // vocabulary: plain
-import { loopRank } from "./status-model.js";
+import { roleRank } from "./status-model.js";
 
 /** The shared COLOR/EVENT-CLASSIFICATION vocabulary of the observer surfaces, split out of
- * status-model.ts (which keeps only the status display model: loop phases, badges, row cells):
+ * status-model.ts (which keeps only the status display model: role phases, badges, row cells):
  * the tone palette both surfaces color by, a tick result's tone, and what kind of news an
  * event is for the activity feeds. Kept apart from the renderers (status-render.ts,
  * tui-frame.ts) so "what color is this" lives in one place while "how a terminal draws it"
  * stays with the layout. The dashboard draws the same families in its own tones
  * (gui-client-model.ts phaseInfo/resultInfo; its eventKind is generated from this file's
  * PROBLEM_RESULTS/ROUTINE_EVENTS/PROBLEM_EVENTS lists; test/gui-client.test.ts and
- * test/tui-frame.test.ts keep the copies aligned): in-progress work blue, a loop that needs
- * attention red, a held loop yellow, a merged change green, a change on its way to merge
+ * test/tui-frame.test.ts keep the copies aligned): in-progress work blue, a role that needs
+ * attention red, a held role yellow, a merged change green, a change on its way to merge
  * cyan; idle states and neutral outcomes stay uncolored. */
 
-/** The colors the observer surfaces share for loop state and tick outcomes, as the terminal's
+/** The colors the observer surfaces share for role state and tick outcomes, as the terminal's
  * base palette names them — so they follow the user's terminal theme. */
 export type Tone = "blue" | "red" | "yellow" | "green" | "cyan" | "magenta" | "dim";
 
-/** A loop phase label's (status-model loopPhase) tone, by its rank: live and pipeline work
+/** A role phase label's (status-model rolePhase) tone, by its rank: live and pipeline work
  * blue, attention red, paused yellow, idle none. */
 export function phaseTone(phase: string): Tone | undefined {
-  const rank = loopRank(phase);
+  const rank = roleRank(phase);
   return rank <= 1 ? "blue" : rank === 2 ? "red" : rank === 3 ? "yellow" : undefined;
 }
 

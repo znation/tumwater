@@ -13,8 +13,8 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
  * table (status-render.ts's renderStatus header) and the JSON/GUI payload
  * (status-payload.ts's preformatted badge fields). Split from status-model.ts, which keeps the
- * per-loop display model (phase, rows, token metrics) — the badges are header-scale team
- * facts (build, main check, budget, merge queue, timed pause) rather than per-loop state, and
+ * per-role display model (phase, rows, token metrics) — the badges are header-scale team
+ * facts (build, main check, budget, merge queue, timed pause) rather than per-role state, and
  * their one-home rule ("the page cannot re-derive and drift from these strings") is easier to
  * see when the module is exactly the badges. The duration phrasing they share (humanSeconds)
  * lives in datetime.ts — core modules need it too, so it sits below the ui layer. */
@@ -91,7 +91,7 @@ export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"]): string {
 
 /** The team's current budget-gate state, derived from a snapshot's budget block — the header
  * badge's default-tier story (part 5c/8): the badge names the team's bulk fallback, so it
- * reads the `default` tier's verdict alone (the per-tier pause lives on the loop rows, via
+ * reads the `default` tier's verdict alone (the per-tier pause lives on the role rows, via
  * status-data.ts's budgetPausedRoles). */
 function teamBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
   return budgetGate(budgetReached(budget), { default: budget.fallback !== null, strong: budget.fallback !== null }, false);
@@ -265,11 +265,11 @@ export function wakeBadge(wake: { roles: string[]; atMs: number } | undefined, n
   return ` · wake scheduled in ${humanUntil(wake.atMs, now)} (${wake.roles.join(", ")})`;
 }
 
-/** One loop's own pending-wake marker for its state cell: ` · wake in <duration>` for the
+/** One role's own pending-wake marker for its state cell: ` · wake in <duration>` for the
  * earliest future wake naming `role` (or `instanceOf`, the base role an extra instance runs),
  * empty when none does. Same match rule as the GUI's `scheduledWakesFor` (gui-client-roles.ts
  * keeps its own JS copy). `wakes` need not be sorted. */
-export function loopWakeMarker(
+export function roleWakeMarker(
   wakes: { roles: string[]; atMs: number }[] | undefined,
   role: string,
   instanceOf: string | undefined,
@@ -324,7 +324,7 @@ export function pauseCountdown(pausedUntil: number | undefined, now: number): st
 
 /** The header's quiet-hours fragment (plans: "Quiet hours … part 2/2, observability"): the
  * schedule as standing information in every configured state — `· quiet until 07:00` while
- * the local clock sits inside the window (the active reading answers "why are the loops
+ * the local clock sits inside the window (the active reading answers "why are the roles
  * idle?" with when they start again) and `· quiet 23:00-07:00` otherwise — and empty when
  * the snapshot carries no window, so a team without the schedule keeps its header
  * byte-identical. The window end comes from quiet-hours.ts's quietWindowEnd — read back out of
@@ -372,3 +372,6 @@ export function permitsBadge(permits: StatusSnapshot["permits"]): string {
   if (providers.length === 0) return "";
   return ` · running ${permits.inUse} of ${permits.limit} · ${providers}`;
 }
+
+/** @deprecated Use roleWakeMarker. */
+export const loopWakeMarker = roleWakeMarker;
