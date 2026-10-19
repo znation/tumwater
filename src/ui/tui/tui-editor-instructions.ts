@@ -48,8 +48,9 @@ export function createInstructionsEditor(session: TuiEditorSession): TuiEditorMo
       ctx.roleIds.length > 0 && ctx.view >= 1 && ctx.view <= ctx.roleIds.length
     ) {
       // Ctrl+L toggles the replace-instructions editor on a role's Transcript view (mnemonic:
-      // the instructions **l**ine, bound on no other TUI view — the in-range role check keeps
-      // the arm from firing off a role transcript).
+      // the instructions **l**ine, bound on no other TUI view except the Activity view's
+      // fallback editor — the in-range role check keeps the arm from firing off a role
+      // transcript, and the fallback arm (which runs before this one) keeps Ctrl+L on Activity).
       // The line edits one file path that becomes the viewed role's whole
       // `roles.<base>.instructions` override through the same setConfigKey write the CLI and
       // the dashboard drawer use. Entering saves the prompt draft and blanks the line; leaving

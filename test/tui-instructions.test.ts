@@ -170,15 +170,17 @@ test("the pause and notebook arms stay inert while Ctrl+L holds the line", async
   });
 });
 
-// Ctrl+L is unbound on every non-transcript view — the instructions editor may only take the
-// line on a role's Transcript, so the other views ignore it (the prompt line is untouched).
-test("Ctrl+L on Activity, Backlog, History and Health leaves the prompt line alone", async () => {
+// Ctrl+L is the Activity view's team-fallback editor (and the instructions editor on a role's
+// Transcript); the non-transcript views other than Activity have no Ctrl+L arm, so Backlog,
+// History and Health ignore it (the prompt line is untouched).
+test("Ctrl+L opens the fallback editor on Activity, and leaves the prompt line alone on Backlog, History and Health", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
-    // Activity (the start view).
+    // Activity (the start view): Ctrl+L is the team-fallback editor.
     for (const ch of "prompt") tui.key(ch, ch);
     tui.key(undefined, "l", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "director › prompt", "Activity's Ctrl+L never opens the editor");
+    assert.equal(tui.lines().at(-1), "fallback ›", "Activity's Ctrl+L opens the fallback editor");
+    tui.key(undefined, "escape"); // exit, restoring the prompt draft
 
     // Backlog (after 2 Ctrl+T: activity → clean transcript → backlog).
     for (let i = 0; i < 2; i++) tui.key(undefined, "t", { ctrl: true });

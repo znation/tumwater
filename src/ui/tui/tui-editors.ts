@@ -4,6 +4,7 @@ import { applyKey } from "./tui-input.js";
 import { pushPromptHistory, recallPromptHistory } from "./tui-prompt-history.js";
 import { createTuiEditorSession } from "./tui-editor-session.js";
 import { createBudgetEditor } from "./tui-editor-budget.js";
+import { createFallbackEditor } from "./tui-editor-fallback.js";
 import { createProviderCapsEditor } from "./tui-editor-provider-caps.js";
 import { createNotifyEditor } from "./tui-editor-notify.js";
 import { createBackendsEditor } from "./tui-editor-backends.js";
@@ -110,6 +111,9 @@ interface TuiEditorState {
   providerCapsMode: boolean;
   /** The Activity view's Ctrl+E notify-hook mode holds the prompt line. */
   notifyMode: boolean;
+  /** Whether the prompt line is editing the team's fallback model `fallback` (Ctrl+L on
+   * the Activity view). */
+  fallbackMode: boolean;
   /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
   quietMode: boolean;
   /** Whether the open quiet editor edits the team-wide `quietHours` window (Ctrl+S on the
@@ -164,6 +168,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const session = createTuiEditorSession(deps);
   const editors: TuiEditorModule[] = [
     createBudgetEditor(session),
+    createFallbackEditor(session),
     createProviderCapsEditor(session),
     createNotifyEditor(session),
     createBackendsEditor(session),
@@ -234,7 +239,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, pause and search modes keep them out —
     // recalling a prompt into the cap/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.concurrency && !session.held.slots && !session.held.quiet && !session.held.interval && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.providerCaps && !session.held.notify && !session.held.backends) {
+    if (!session.held.budget && !session.held.concurrency && !session.held.slots && !session.held.quiet && !session.held.interval && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.providerCaps && !session.held.notify && !session.held.backends && !session.held.fallback) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -298,6 +303,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         quietTeam: session.held.quietTeam,
         providerCapsMode: session.held.providerCaps,
         notifyMode: session.held.notify,
+        fallbackMode: session.held.fallback,
         intervalMode: session.held.interval,
         instructionsEditFor: session.held.instructions,
         slotsMode: session.held.slots,

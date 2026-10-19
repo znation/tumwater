@@ -67,6 +67,8 @@ interface TuiHeld {
   notify: boolean;
   /** The Activity view's Ctrl+X agent-backends editor holds the prompt line. */
   backends: boolean;
+  /** The Activity view's Ctrl+L team-fallback editor holds the prompt line. */
+  fallback: boolean;
 }
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
@@ -125,7 +127,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends"): string | null;
+  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -160,6 +162,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       slots: false,
       notify: false,
       backends: false,
+      fallback: false,
     },
     root: deps.root,
     now: deps.now,
@@ -208,6 +211,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.slots && entering !== "slots") return session.busyFlash("worktree slots");
       if (h.notify && entering !== "notify") return session.busyFlash("notify hook");
       if (h.backends && entering !== "backends") return session.busyFlash("agent backends");
+      if (h.fallback && entering !== "fallback") return session.busyFlash("fallback edit");
       if (entering === "attach" && h.budget) return session.busyFlash("budget edit");
       if (entering === "notes" && (h.attach || h.budget)) return session.busyFlash(h.attach ? "image attach" : "budget edit");
       if (entering === "brief" && h.budget) return session.busyFlash("budget edit");
@@ -220,6 +224,12 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (entering === "slots" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : "budget edit");
       if (entering === "notify" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "instructions edit");
       if (entering === "backends" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions || h.providerCaps || h.concurrency)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : h.providerCaps ? "provider caps" : h.concurrency ? "run cap edit" : "budget edit");
+      // The budget editor is a held flag like the rest, but the guard names it in these
+      // per-target bottom clauses rather than a `h.budget && entering !== "budget"` top clause,
+      // so every editor that takes the line must name `h.budget` itself — without it, entering
+      // the fallback editor over the budget editor would overwrite the budget draft instead of
+      // flashing the way out.
+      if (entering === "fallback" && h.budget) return session.busyFlash("budget edit");
       return null;
     },
   };

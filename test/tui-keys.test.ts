@@ -3442,3 +3442,35 @@ test("Ctrl+X opens the agent-backends editor on Activity and keeps its meaning o
   assert.equal(keys.state().retireMode, true, "Health keeps Ctrl+X for the retire editor");
   assert.equal(keys.state().backendsMode, false, "the backends editor stays closed on Health");
 });
+
+test("Ctrl+L opens the fallback editor on Activity and the instructions editor on a role's Transcript", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+
+  // Activity (view 0): Ctrl+L is the team-fallback editor; the budget editor stays closed.
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(keys.state().fallbackMode, true, "Ctrl+L on Activity opens the fallback editor");
+  assert.equal(keys.state().budgetMode, false, "the budget editor does not open");
+  assert.equal(keys.state().input, "", "unset fallback pre-fills empty");
+  assert.match(keys.state().flash!, /fallback/);
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(keys.state().fallbackMode, false, "Ctrl+L again cancels the fallback editor");
+
+  // On Activity with the budget editor open (Ctrl+B), Ctrl+L flashes the way out, not open.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.match(keys.state().flash!, /finish or cancel the budget edit first/);
+  assert.equal(keys.state().fallbackMode, false, "the fallback editor does not open over the budget editor");
+  assert.equal(keys.state().budgetMode, true, "the budget editor keeps the line");
+  keys.handleKey(undefined, { name: "escape" }); // out of budget mode
+
+  // On a role's Transcript (view 1), Ctrl+L keeps its instructions meaning: the fallback arm
+  // falls through (view guard) so the instructions editor opens with the viewed role pinned.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → clean's transcript
+  assert.equal(keys.state().view, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(keys.state().instructionsEditFor, "clean", "Ctrl+L on a Transcript opens the instructions editor");
+  assert.equal(keys.state().fallbackMode, false, "the fallback editor does not open on a Transcript");
+});
