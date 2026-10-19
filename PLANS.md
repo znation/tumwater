@@ -1084,6 +1084,29 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - An unknown `backend` in a tier entry, role or review; an unknown key in an object tier entry; a `/` id under explicit claude; a provider-less id under explicit pi; and `claude/…` under explicit pi each fail `validateConfig` with a message naming the path and value (test/config-validation-model.test.ts).
 - `npm test` passes.
 
+### Every run commit's trailer names the model and backend that wrote it (planned 2026-10-19 by the director role from a user request; touches src/git/commit-message.ts src/tick/tick-stage.ts src/runner/runner-run.ts src/tick/tick-verdict.ts src/verdict/refusal.ts test/commit-message.test.ts test/tick-stage.test.ts test/refusal.test.ts docs/how-it-works.md)
+
+**Goal.** The user asked that commits tumwater makes say which model and backend produced them. Today a run's commit message is the `tumwater(<role>): <summary>` subject, the author's WHY/RISK/VERIFIED body, and a harness-stamped trailer from `commitTrailer` (src/git/commit-message.ts): `Run: <role> #N · turns … · ctx …`, plus an optional `Friction:` line and an optional `Revision:` line (which must stay last). Nothing records the model, so on a mixed team (a Claude strong tier, a pi default tier, a free fallback) `git log` cannot tell which seam wrote a change, or whether a commit came from a fallback episode. Decision (no open question): the model goes in a commit-message trailer line, not git notes or author metadata. Notes are not carried by cherry-pick/rebase in the merge queue, and the commit author stays the user's git identity.
+
+**Approach.**
+- **src/git/commit-message.ts** — add `export function modelTrailerLine(agent: string, provider: string | undefined, model: string | undefined): string`, which returns `Model: ${model === undefined ? "default" : modelLabel(agent, provider, model)} · backend ${agent}`. Import `modelLabel` from `../agent/backend-traits.js`. Examples: `Model: claude-opus-5-5 · backend claude`, `Model: huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra · backend pi`, `Model: opencode/<id> · backend opencode`. Give `commitTrailer` a 7th optional parameter, `modelLine?: string`. When it is set, it goes on its own line directly after the `Run:` line and before `Friction:`/`Revision:`. Leave the `Run:` line's format unchanged (the glossary's alias parser and existing tests read it). Update the `commitTrailer` doc comment to name the new line.
+- **src/tick/tick-stage.ts** — add `modelLine?: string` to `TickStageContext` (doc: "the trailer's Model line for the seam this tick's authoring run started on; transient retries reuse the same seam"), and pass `ctx.modelLine` as `commitTrailer`'s 7th argument in `stageTickMerge`.
+- **src/runner/runner-run.ts** — where `stageTickMerge({...})` is called, pass `modelLine: modelTrailerLine(seamAgent(cfg), cfg.provider, cfg.model)` (`seamAgent` from `../config/model-selector.js`). `cfg` is already the post-fallback, post-image-reroute seam, so a fallback or reroute tick records the model it actually ran on. Pass the same value into `resolveTickVerdict`'s context as a new `modelLine` field.
+- **src/tick/tick-verdict.ts** — add `modelLine?: string` to the verdict context, and forward it into the `handleRefusal` context object.
+- **src/verdict/refusal.ts** — add `modelLine?: string` to `RefusalContext`, and pass it as `commitTrailer`'s 7th argument in `handleRefusal` (the 5th and 6th stay `undefined`).
+- `parseCommitMetadata` does not need to read the line back: leftover recovery re-reviews the pinned commit as written, and its message keeps the line.
+- **docs/how-it-works.md** — where the commit message/trailer is described (grep `trailer`; add one sentence beside the run/review description if there is none), say that every run commit carries `Model: <model> · backend <id>`.
+
+**Tests.**
+- test/commit-message.test.ts: `modelTrailerLine` for claude, pi (provider/model), opencode, and the `model === undefined` → `default` case. `commitTrailer` with a modelLine puts it on line 2, with `Friction:` and `Revision:` after it and `Revision:` last. `commitTrailer` without one is byte-identical to today (the existing assertions stay unchanged).
+- test/tick-stage.test.ts: a staged commit made with `modelLine` set carries that exact line in `git log -1 --format=%B`.
+- test/refusal.test.ts: a refusal commit made with `modelLine` set carries it.
+
+**Acceptance criteria.**
+- A changed run's commit and a refusal commit both carry `Model: <label> · backend <agent>` on the line after `Run:`, for the seam the run started on, fallback and image reroute included.
+- `Revision:` stays the last line, and `parseCommitMetadata` still reads `revisionRound` and `highFriction` from a message that has the Model line.
+- `npm run test` passes.
+
 ### Backend/model split, part 2/5: A fallback step takes `backend` beside `model` (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 1/5 landed; touches src/config/config-schema.ts src/config/config-fallbacks.ts src/config/config-validation.ts src/config/config-views.ts test/config-views.test.ts test/config-validation.test.ts test/config-live.test.ts test/config-write.test.ts)
 
 **Goal.** A fallback step can cross backends by saying so — `{ "backend": "pi", "model": "qwenrunner/qwen3.8-27b" }` — instead of by the shape of its model id. Series goal and siblings: part 1/5.
