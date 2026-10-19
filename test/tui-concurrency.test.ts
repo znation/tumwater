@@ -54,6 +54,22 @@ test("Ctrl+N on Activity opens the run-cap editor pre-filled from the file, savi
   });
 });
 
+test("Enter trims surrounding whitespace before writing and flashing the run cap", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    // The shared team-editor factory trims the line on Enter (the old pass-through editor
+    // flashed the raw string), so a typed ` 9 ` saves and reports as `9`.
+    tui.key(undefined, "n", { ctrl: true });
+    for (let i = 0; i < 1; i++) tui.key(undefined, "backspace"); // clear the prefilled "6"
+    tui.key(" ", " ");
+    tui.key("9", "9");
+    tui.key(" ", " ");
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /max concurrent runs set to 9/, "the flash shows the trimmed value, not the raw ` 9 `");
+    assert.equal(readConfig(repo).maxConcurrent, 9, "the count is trimmed to the JSON number in tumwater.json");
+  });
+});
+
 test("Enter on an empty line clears the run cap and flashes the reset wording", async () => {
   const repo = await makeTuiRepo();
   const cfg = loadConfig(repo);
