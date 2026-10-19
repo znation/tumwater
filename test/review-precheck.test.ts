@@ -425,15 +425,17 @@ test("a repeat failure matching a recorded flake keeps the commit and counts no 
     state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
     const head = await headOf(wt, "HEAD");
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
-    assert.equal(result.decision, "failed");
-    assert.equal(result.unverified, true, "the flake says nothing about the change");
+    // The excused flake does not end the attempt as a failed gate (review_error upstream): the
+    // change goes on to the model review, unverified by the harness.
+    assert.equal(result.decision, "approved", "the excused flake proceeds to review");
+    assert.equal(result.verifiedHead, undefined, "the tree was not verified");
     assert.equal(result.mainRed, undefined, "main is not consulted, let alone blamed");
     assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
-    assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
-    assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");
+    assert.equal(state.unreviewFailures, 0, "no strike; the approval clears the earlier reviewer strike as any approval does");
+    assert.notEqual(state.lastReview?.verdict, "rejected", "no rejection recorded against the author");
     assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
     assert.equal(await aheadOfMain(wt, "main"), 1);
-    assert.ok(!fs.existsSync(marker), "no pi run before a flake decision");
+    assert.ok(fs.existsSync(marker), "the reviewer ran after the flake decision");
     const events = readEvents(root);
     assert.ok(!events.some((e) => e.type === "review_rejected"), "no rejection logged");
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed"], "main was never consulted");

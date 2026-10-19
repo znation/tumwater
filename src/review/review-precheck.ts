@@ -113,12 +113,14 @@ export async function gateBuildPrecheck(
       // host-sleep path above does. Before this, the repeat was attributed through main's
       // per-SHA baseline cache (usually a green seeded by an earlier merge), so a load- or
       // clock-sensitive test rejected whichever unrelated change hit it (BUGS.md 2026-10-06).
+      // The excuse is not a failure of the gate, so the change goes on to the model review
+      // instead of ending the merge attempt as review_error and paying a requeue. It carries no
+      // verifiedHead and no harness counts sentence — the tree was not verified — so the merge
+      // path's own check still judges the tree before it reaches main.
       const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
       if (isKnownFlake(root, flaky)) {
-        const detail = `known-flaky failure, merge kept: ${flaky}`;
-        recordReview(state, "failed", [detail], head);
-        warnEventBestEffort(root, role, detail);
-        return { resolved: { decision: "failed", detail, unverified: true } };
+        warnEventBestEffort(root, role, `known-flaky failure, merge kept: ${flaky}`);
+        return {};
       }
       const reasons = checkFailureReasons(check, outcome);
       // A failure that reproduced is attributed, never fixed here: the one merge slot the
