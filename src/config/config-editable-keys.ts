@@ -28,6 +28,7 @@ export const EDITABLE_CONFIG_KEYS = [
   "maxConcurrent",
   "maxConcurrentPerProvider",
   "worktreeSlots",
+  "claudeWindowReserve",
   "quietHours",
   "notify",
   // The per-backend section (plans/agent-backends.md, part 4a/7): the whole `agents` object is

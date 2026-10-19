@@ -1570,6 +1570,38 @@ test("Ctrl+Y is inert while budget mode holds the prompt line", () => {
   keys.handleKey(undefined, { name: "escape" });
 });
 
+test("Ctrl+Y opens the claude-reserve editor on Activity, flashes the busy message in budget mode, and keeps the History Summary toggle off Activity", () => {
+  const root = makeRoot();
+  writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+
+  // Activity (view 0): Ctrl+Y is the claude-reserve editor; the History Summary flag is
+  // untouched (it names a different view's toggle).
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().claudeReserveMode, true, "Ctrl+Y on Activity opens the claude-reserve editor");
+  assert.equal(keys.state().historySummary, false, "the History Summary flag is unchanged");
+  assert.equal(keys.state().input, "", "unset claudeWindowReserve pre-fills empty");
+  assert.match(keys.state().flash!, /claudeWindowReserve/);
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().claudeReserveMode, false, "Ctrl+Y again cancels the claude-reserve editor");
+
+  // With the budget editor holding the line, Ctrl+Y flashes the busy message, not a toggle.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().claudeReserveMode, false, "Ctrl+Y does not open under the budget editor");
+  assert.match(keys.state().flash!, /finish or cancel the budget edit first/);
+  keys.handleKey(undefined, { name: "escape" });
+
+  // On History (view 4), Ctrl+Y still toggles the per-role Summary table: the new arm returns
+  // false off view 0, so the History arm runs.
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().historySummary, true, "on History Ctrl+Y still toggles the Summary table");
+  assert.equal(keys.state().claudeReserveMode, false, "the claude-reserve editor does not open on History");
+});
+
 test("Ctrl+Y's summary folds the History pane's exact-loop scope, not the team read", () => {
   const root = makeRoot();
   writeEvents(root, [
@@ -3116,7 +3148,7 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null };
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null, claudeReserveMode: false };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
   // exclusion every other mode enforces, or they would run over the retire modal.
@@ -3132,6 +3164,9 @@ test("promptLineFree is false while retire-edit mode holds the line, so the Heal
   es.roleModelMode = true;
   assert.equal(promptLineFree(es), false, "the role-model editor blocks the pane arms while it holds the line");
   es.roleModelMode = false;
+  es.claudeReserveMode = true;
+  assert.equal(promptLineFree(es), false, "the claude-reserve editor blocks the pane arms while it holds the line");
+  es.claudeReserveMode = false;
   es.instructionsEditFor = "clean";
   assert.equal(promptLineFree(es), false, "the instructions editor blocks the pane arms while it holds the line");
 });

@@ -107,14 +107,14 @@ test("the tab strip names every view and brackets the current one", () => {
 });
 
 test("the hint line says what the keys do in each view and mode", () => {
-  const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, queuedEditFor: { role: string; file: string } | null = null, answerFor: { position: number; title: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, queuedEditFor, answerFor }, 400));
-  assert.equal(hint({ kind: "activity", role: null, grep: null, type: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+E notify hook · Ctrl+A model · Ctrl+O type: all · Ctrl+G scope: team · / search · Ctrl+P provider caps · Ctrl+X agent backends · Ctrl+T next view · Ctrl+L fallback · Ctrl+F pause team · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+V attach image · Ctrl+R restart · Ctrl+D quit");
+  const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, queuedEditFor: { role: string; file: string } | null = null, answerFor: { position: number; title: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, queuedEditFor, answerFor }, 440));
+  assert.equal(hint({ kind: "activity", role: null, grep: null, type: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+E notify hook · Ctrl+A model · Ctrl+O type: all · Ctrl+G scope: team · / search · Ctrl+P provider caps · Ctrl+X agent backends · Ctrl+T next view · Ctrl+L fallback · Ctrl+Y claude reserve · Ctrl+F pause team · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+V attach image · Ctrl+R restart · Ctrl+D quit");
   // The Activity hint names the Ctrl+V image attach on the prompt line.
-  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 360)), /Ctrl\+V attach image/);
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 440)), /Ctrl\+V attach image/);
   // The Activity hint names the Ctrl+A team-model editor.
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+A model/);
   // The Activity hint names the Ctrl+R restart command on the prompt line.
-  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 360)), /Ctrl\+R restart/);
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 440)), /Ctrl\+R restart/);
   // The Activity pane names its exact-loop scope and its text search, the raw id or the team
   // and "search" or the active pattern, matching the History pane's conventions.
   assert.match(hint({ kind: "activity", role: "feature", grep: null, type: null }), /Ctrl\+G scope: feature · \/ search/);
@@ -201,10 +201,10 @@ test("the hint line says what the keys do in each view and mode", () => {
     { kind: "pending" } as const,
     { kind: "queued" } as const,
     { kind: "health" } as const,
-  ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 400)), /Ctrl\+D quit/);
+  ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 440)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
-  const spans = hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 400);
-  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+E", "Ctrl+A", "Ctrl+O", "Ctrl+G", "/", "Ctrl+P", "Ctrl+X", "Ctrl+T", "Ctrl+L", "Ctrl+F", "Ctrl+Q", "Ctrl+C", "Ctrl+V", "Ctrl+R", "Ctrl+D"]);
+  const spans = hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 440);
+  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+E", "Ctrl+A", "Ctrl+O", "Ctrl+G", "/", "Ctrl+P", "Ctrl+X", "Ctrl+T", "Ctrl+L", "Ctrl+Y", "Ctrl+F", "Ctrl+Q", "Ctrl+C", "Ctrl+V", "Ctrl+R", "Ctrl+D"]);
 });
 
 test("retire-edit mode shows its own hint keys and prompt prefix", () => {
@@ -361,6 +361,14 @@ test("the provider-caps mode names its save/cancel keys, a `provider caps ›` p
   assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, edit, 300)), "Enter save provider caps · Esc cancel · Ctrl+D quit");
   assert.equal(plain(promptPrefix(edit)), "provider caps › ");
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, base, 300)), /Ctrl\+P provider caps/);
+});
+
+test("the claude-reserve mode names its save/cancel keys, a `claude reserve ›` prefix, and its Activity hint", () => {
+  const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null };
+  const edit = { ...base, claudeReserveMode: true };
+  assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, edit, 300)), "Enter save claude reserve · Esc cancel · Ctrl+D quit");
+  assert.equal(plain(promptPrefix(edit)), "claude reserve › ");
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, base, 300)), /Ctrl\+Y claude reserve/);
 });
 
 test("the notify mode names its save/cancel keys, a `notify hook ›` prefix, and its Activity hint", () => {

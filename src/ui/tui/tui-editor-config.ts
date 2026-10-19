@@ -17,7 +17,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
 interface TeamConfigKeySpec {
   /** The session's mutually-exclusive-held registry name this editor owns (and toggles on
    * the `held` object as it enters and leaves). */
-  mode: "concurrency" | "slots" | "notify" | "providerCaps" | "fallback";
+  mode: "concurrency" | "slots" | "notify" | "providerCaps" | "fallback" | "claudeReserve";
   /** The Ctrl+<key> arm that opens (and, while open, toggles out of) the editor. */
   openCtrl: string;
   /** The tumwater.json key the editor writes on Enter — cleared (`unsetConfigKey`) on an

@@ -75,6 +75,9 @@ interface TuiHeld {
   roleModel: boolean;
   /** The Transcript view's Ctrl+G instance-count editor holds the prompt line. */
   instances: boolean;
+  /** The Activity view's Ctrl+Y claude subscription-window reserve editor holds the prompt
+   * line, editing the team's top-level `claudeWindowReserve`. */
+  claudeReserve: boolean;
 }
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
@@ -133,7 +136,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "roleModel" | "model" | "instances"): string | null;
+  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "roleModel" | "model" | "instances" | "claudeReserve"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -172,6 +175,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       roleModel: false,
       model: false,
       instances: false,
+      claudeReserve: false,
     },
     root: deps.root,
     now: deps.now,
@@ -224,6 +228,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.fallback && entering !== "fallback") return session.busyFlash("fallback edit");
       if (h.roleModel && entering !== "roleModel") return session.busyFlash("role model edit");
       if (h.instances && entering !== "instances") return session.busyFlash("role instances");
+      if (h.claudeReserve && entering !== "claudeReserve") return session.busyFlash("claude reserve");
       if (entering === "attach" && h.budget) return session.busyFlash("budget edit");
       if (entering === "notes" && (h.attach || h.budget)) return session.busyFlash(h.attach ? "image attach" : "budget edit");
       if (entering === "brief" && h.budget) return session.busyFlash("budget edit");
@@ -240,6 +245,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (entering === "fallback" && h.budget) return session.busyFlash("budget edit");
       if (entering === "roleModel" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "instructions edit");
       if (entering === "instances" && h.budget) return session.busyFlash("budget edit");
+      if (entering === "claudeReserve" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions || h.providerCaps || h.concurrency || h.slots || h.notify || h.backends)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : h.providerCaps ? "provider caps" : h.concurrency ? "run cap edit" : h.slots ? "worktree slots" : h.notify ? "notify hook" : h.backends ? "agent backends" : "budget edit");
       return null;
     },
   };

@@ -27,6 +27,8 @@ export interface TuiPaneEditorState {
   roleModelMode: boolean;
   /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line. */
   instructionsEditFor: string | null;
+  /** The Activity view's Ctrl+Y claude-window-reserve mode holds the prompt line. */
+  claudeReserveMode: boolean;
 }
 
 /** The per-keypress read `createTuiKeys` passes to every pane arm — the editor flags the
@@ -47,7 +49,7 @@ export function promptLineFree(es: TuiPaneEditorState): boolean {
     !es.budgetMode && !es.rolePromptFor && !es.searchMode &&
     !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
     !es.notesEditFor && !es.briefEditMode && !es.retireMode && !es.quietMode && !es.intervalMode &&
-    !es.roleModelMode && !es.instructionsEditFor
+    !es.roleModelMode && !es.instructionsEditFor && !es.claudeReserveMode
   );
 }
 
