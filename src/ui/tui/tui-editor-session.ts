@@ -69,6 +69,8 @@ interface TuiHeld {
   backends: boolean;
   /** The Activity view's Ctrl+L team-fallback editor holds the prompt line. */
   fallback: boolean;
+  /** The Transcript view's Ctrl+G instance-count editor holds the prompt line. */
+  instances: boolean;
 }
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
@@ -127,7 +129,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback"): string | null;
+  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "instances"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -163,6 +165,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       notify: false,
       backends: false,
       fallback: false,
+      instances: false,
     },
     root: deps.root,
     now: deps.now,
@@ -212,6 +215,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.notify && entering !== "notify") return session.busyFlash("notify hook");
       if (h.backends && entering !== "backends") return session.busyFlash("agent backends");
       if (h.fallback && entering !== "fallback") return session.busyFlash("fallback edit");
+      if (h.instances && entering !== "instances") return session.busyFlash("role instances");
       if (entering === "attach" && h.budget) return session.busyFlash("budget edit");
       if (entering === "notes" && (h.attach || h.budget)) return session.busyFlash(h.attach ? "image attach" : "budget edit");
       if (entering === "brief" && h.budget) return session.busyFlash("budget edit");
@@ -230,6 +234,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       // the fallback editor over the budget editor would overwrite the budget draft instead of
       // flashing the way out.
       if (entering === "fallback" && h.budget) return session.busyFlash("budget edit");
+      if (entering === "instances" && h.budget) return session.busyFlash("budget edit");
       return null;
     },
   };

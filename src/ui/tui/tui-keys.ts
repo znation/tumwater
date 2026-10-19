@@ -81,6 +81,8 @@ interface TuiKeysState {
   backendsMode: boolean;
   /** The Activity view's Ctrl+L team-fallback mode holds the prompt line. */
   fallbackMode: boolean;
+  /** The Transcript view's Ctrl+G instance-count mode holds the prompt line. */
+  instancesMode: boolean;
   /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line: the
    * role whose `roles.<base>.instructions` override the prompt line is replacing from a typed
    * file path, or null when closed. */

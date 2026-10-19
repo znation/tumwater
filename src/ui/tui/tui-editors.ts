@@ -12,6 +12,7 @@ import { createConcurrencyEditor } from "./tui-editor-concurrency.js";
 import { createSlotsEditor } from "./tui-editor-slots.js";
 import { createQuietEditor } from "./tui-editor-quiet.js";
 import { createIntervalEditor } from "./tui-editor-interval.js";
+import { createInstancesEditor } from "./tui-editor-instances.js";
 import { createInstructionsEditor } from "./tui-editor-instructions.js";
 import { createAttachEditor } from "./tui-editor-attach.js";
 import { createNotesEditor } from "./tui-editor-notes.js";
@@ -129,6 +130,8 @@ interface TuiEditorState {
   slotsMode: boolean;
   /** The Activity view's Ctrl+X agent-backends mode holds the prompt line. */
   backendsMode: boolean;
+  /** The Transcript view's Ctrl+G instance-count mode holds the prompt line. */
+  instancesMode: boolean;
 }
 
 /** The prompt-line editor subsystem `createTuiKeys` constructs: the aggregator that owns the
@@ -176,6 +179,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     createSlotsEditor(session),
     createQuietEditor(session),
     createIntervalEditor(session),
+    createInstancesEditor(session),
     createInstructionsEditor(session),
     createAttachEditor(session),
     createNotesEditor(session),
@@ -239,7 +243,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, pause and search modes keep them out —
     // recalling a prompt into the cap/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.concurrency && !session.held.slots && !session.held.quiet && !session.held.interval && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.providerCaps && !session.held.notify && !session.held.backends && !session.held.fallback) {
+    if (!session.held.budget && !session.held.concurrency && !session.held.slots && !session.held.quiet && !session.held.interval && !session.held.instances && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.providerCaps && !session.held.notify && !session.held.backends && !session.held.fallback) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -308,6 +312,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         instructionsEditFor: session.held.instructions,
         slotsMode: session.held.slots,
         backendsMode: session.held.backends,
+        instancesMode: session.held.instances,
       };
     },
   };

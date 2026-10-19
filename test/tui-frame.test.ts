@@ -124,15 +124,15 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 100)), /Ctrl\+B daily cap/);
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+T next view · Ctrl+D quit",
   );
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: true, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+X clear notes · Ctrl+E edit notes · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+X clear notes · Ctrl+E edit notes · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+T next view · Ctrl+D quit",
   ); // the notebook's next step is the change view, and Ctrl+E replaces the notes
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: true }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+T next view · Ctrl+D quit",
   ); // the cycle's last step names the way back
   assert.match(hint({ kind: "backlog" }), /↑↓ open entries · \/ search entries · Ctrl\+X cancel entry · Ctrl\+R release entry · Ctrl\+V top entry · Ctrl\+E edit entry · Ctrl\+N new plan\/bug · Ctrl\+A answer question · PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /PgUp\/PgDn scroll/);
@@ -376,4 +376,12 @@ test("the Activity team quiet-hours mode names its save/cancel keys and a `team 
   const role = { ...base, quietMode: true, quietTeam: false };
   assert.equal(plain(promptPrefix(role)), "quiet hours › ");
   assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, role, 300)), "Enter save quiet hours · Esc cancel · Ctrl+D quit");
+});
+
+test("the transcript Ctrl+G instances mode names its save/cancel keys, an `instances ›` prefix, and its Ctrl+G hint", () => {
+  const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null };
+  const edit = { ...base, instancesMode: true };
+  assert.equal(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, edit, 300)), "Enter save instances · Esc cancel · Ctrl+D quit");
+  assert.equal(plain(promptPrefix(edit)), "instances › ");
+  assert.match(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, base, 300)), /Ctrl\+G instances/);
 });

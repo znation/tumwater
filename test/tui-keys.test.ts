@@ -1020,9 +1020,11 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
   keys.syncSnapshot(0, false, ["feature", "clean"]);
   assert.equal(keys.state().scopeRole, null, "a fresh TUI starts team-wide");
 
-  // Off a report view the key only moves the scope; no cache is computed. (View 0 now belongs
-  // to the Activity feed's own Ctrl+G scope, so start from a transcript view.)
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript
+  // Off a report view the key only moves the scope; no cache is computed. (View 0 and a
+  // role's Transcript now own their Ctrl+G — the Activity feed scope and the instances editor —
+  // so start from a Backlog view, where Ctrl+G still falls through to the report scope.)
+  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → backlog (view 3)
+  assert.equal(keys.state().view, 3);
   keys.handleKey(undefined, { ctrl: true, name: "g" });
   assert.equal(keys.state().scopeRole, "feature");
   keys.handleKey(undefined, { ctrl: true, name: "g" });
@@ -1031,7 +1033,7 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
   assert.equal(keys.state().scopeRole, null, "the cycle wraps back to the team");
 
   // Usage: each press recomputes the cached Markdown, and the scoped text differs.
-  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
+  for (let i = 0; i < 1; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
   assert.equal(keys.state().view, 4);
   const teamUsage = keys.state().paneCache;
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
@@ -1063,8 +1065,11 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
   // The roster names an instance; the scoped collectors fold it into `feature`.
   keys.syncSnapshot(0, false, ["feature", "feature-2"]);
 
-  // Off a report view the key only moves the scope. (View 0 now belongs to the Activity feed.)
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript
+  // Off a report view the key only moves the scope. (View 0 and a role's Transcript now own
+  // their Ctrl+G — the Activity feed scope and the instances editor — so start from a Backlog
+  // view, where Ctrl+G still falls through to the report scope.)
+  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → backlog (view 3)
+  assert.equal(keys.state().view, 3);
   const seen: Array<string | null> = [];
   for (let i = 0; i < 2; i++) {
     keys.handleKey(undefined, { ctrl: true, name: "g" });
@@ -1073,7 +1078,7 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
   assert.deepEqual(seen, ["feature", null], "feature-2 collects feature's body, so the cycle skips it");
 
   // On the Usage pane the tab-strip scope and the collected body's own `role:` name agree.
-  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
+  for (let i = 0; i < 1; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
   assert.equal(keys.state().view, 4);
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // team → feature
   assert.equal(keys.state().scopeRole, "feature");
@@ -1142,19 +1147,18 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
   assert.equal(keys.state().historyRole, null, "a roster drop clears the stale history scope");
 });
 
-test("Ctrl+G is inert while an editor holds the prompt line, and a shrinking roster clears the scope", () => {
+test("Ctrl+G on a Transcript is inert while an editor holds the prompt line, and opens once it is free", () => {
   const root = makeRoot();
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(50, false, ["feature", "clean"]);
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript, where Ctrl+G moves the report scope
-  keys.handleKey(undefined, { ctrl: true, name: "g" });
-  assert.equal(keys.state().scopeRole, "feature");
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript
+  assert.equal(keys.state().view, 1);
 
-  // Budget mode owns the prompt line: Ctrl+G must not cycle the scope.
+  // Budget mode owns the prompt line: Ctrl+G must not open the instances editor.
   keys.handleKey(undefined, { ctrl: true, name: "b" });
   assert.equal(keys.state().budgetMode, true);
   keys.handleKey(undefined, { ctrl: true, name: "g" });
-  assert.equal(keys.state().scopeRole, "feature", "Ctrl+G is inert in budget mode");
+  assert.equal(keys.state().instancesMode, false, "Ctrl+G is inert in budget mode");
   assert.equal(keys.state().budgetMode, true);
   keys.handleKey(undefined, { name: "escape" });
 
@@ -1162,14 +1166,14 @@ test("Ctrl+G is inert while an editor holds the prompt line, and a shrinking ros
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(keys.state().rolePromptFor, "feature");
   keys.handleKey(undefined, { ctrl: true, name: "g" });
-  assert.equal(keys.state().scopeRole, "feature", "Ctrl+G is inert in role-prompt mode");
+  assert.equal(keys.state().instancesMode, false, "Ctrl+G is inert in role-prompt mode");
   keys.handleKey(undefined, { name: "escape" });
 
-  // A roster that still names the role keeps the scope; one that drops it resets.
-  keys.syncSnapshot(0, false, ["feature", "clean"]);
-  assert.equal(keys.state().scopeRole, "feature", "a still-present role keeps its scope");
-  keys.syncSnapshot(0, false, ["clean"]);
-  assert.equal(keys.state().scopeRole, null, "a roster drop clears the stale scope");
+  // With the line free, Ctrl+G opens the instances editor on the Transcript.
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().instancesMode, true, "Ctrl+G opens the instances editor once the line is free");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().instancesMode, false);
 });
 
 test("syncSnapshot recomputes an on-screen report pane when it clears a retired scope", () => {
@@ -3473,4 +3477,82 @@ test("Ctrl+L opens the fallback editor on Activity and the instructions editor o
   keys.handleKey(undefined, { ctrl: true, name: "l" });
   assert.equal(keys.state().instructionsEditFor, "clean", "Ctrl+L on a Transcript opens the instructions editor");
   assert.equal(keys.state().fallbackMode, false, "the fallback editor does not open on a Transcript");
+});
+
+test("Ctrl+G on a role's Transcript edits that role's parallel-runner count; an instance id writes the base role's key", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "feature-2"]);
+  const instancesOf = (role: string): number | undefined => {
+    const file = path.join(root, "tumwater.json");
+    if (!fs.existsSync(file)) return undefined;
+    return (readJson(file) as { roles?: Record<string, { instances?: number }> })
+      .roles?.[role]?.instances;
+  };
+
+  // A role's Transcript (view 1): Ctrl+G opens the instances editor (not the scope cycle),
+  // pre-fills empty when the file sets nothing, and leaves the scope state untouched.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature's transcript
+  assert.equal(keys.state().view, 1);
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature");
+  for (const ch of "pending draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().instancesMode, true, "Ctrl+G opens the instances editor on a Transcript");
+  assert.equal(keys.state().input, "", "an override-less role pre-fills an empty line");
+  assert.equal(keys.state().activityRole, null, "the instances editor does not touch Activity's scope");
+  assert.equal(keys.state().historyRole, null, "...nor History's scope");
+  assert.match(keys.state().flash!, /edit feature's parallel-runner count/);
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().instancesMode, false);
+  assert.equal(keys.state().input, "pending draft", "Esc restores the saved draft");
+  assert.equal(instancesOf("feature"), undefined, "Esc writes nothing");
+
+  // Enter on a valid count writes the dotted key for the VIEWED role through setConfigKey, and
+  // a second Ctrl+G cancels the open editor.
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  for (const ch of "3") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().instancesMode, false, "a saved count leaves edit mode");
+  assert.equal(keys.state().input, "pending draft", "Enter restores the saved draft");
+  assert.match(keys.state().flash!, /feature: instances set to 3/);
+  assert.equal(instancesOf("feature"), 3, "the count is written as a JSON number");
+
+  // An instance id writes its base role's key — roles.feature, not roles.feature-2.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature-2's transcript (view 2)
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature-2");
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().input, "3", "an instance re-opening pre-fills its base role's count");
+  for (let i = 0; i < 1; i++) keys.handleKey(undefined, { name: "backspace" });
+  for (const ch of "4") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(instancesOf("feature"), 4, "an instance id writes its base role's key");
+  assert.equal(instancesOf("feature-2"), undefined, "no per-instance entry is left behind");
+});
+
+test("Ctrl+G on Activity, History and the report views keeps its scope cycle, not the instances editor", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "clean"]);
+  // Activity = view 0, transcripts = views 1-2, backlog = 3, usage = 4, failures = 5, history = 6.
+
+  // Activity: Ctrl+G cycles activityRole; the instances editor stays closed.
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().activityRole, "feature", "Activity Ctrl+G scopes to the first roster id");
+  assert.equal(keys.state().instancesMode, false, "the instances editor does not open on Activity");
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().activityRole, "clean", "Activity Ctrl+G walks the roster");
+
+  // Usage (view 4): Ctrl+G cycles the report scope.
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 4);
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().scopeRole, "feature", "Usage Ctrl+G cycles the report scope");
+  assert.equal(keys.state().instancesMode, false, "the instances editor stays closed off a Transcript");
+
+  // History (view 6): Ctrl+G cycles historyRole.
+  for (let i = 0; i < 2; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 6);
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().historyRole, "feature", "History Ctrl+G cycles the history scope");
+  assert.equal(keys.state().instancesMode, false, "the instances editor stays closed off a Transcript");
 });
