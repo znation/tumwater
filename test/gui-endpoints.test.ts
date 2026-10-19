@@ -1315,16 +1315,20 @@ test("handleConfigSet refuses a key outside the curated set, naming it", async (
   const unknownKey = await serveConfigSet(root, { key: "modle", value: "gpt-5" });
   assert.equal(unknownKey.captured.status, 400);
   assert.match((unknownKey.data as { error: string }).error, /modle/);
-  // A known-but-not-curated key is refused too — curation, not validity, is the gate.
+  assert.match((unknownKey.data as { error: string }).error, /did you mean `model`/);
+  // A known-but-not-curated key is refused too — curation, not validity, is the gate. It is
+  // far from every curated key, so it names the list with no hint.
   const curated = await serveConfigSet(root, { key: "customRoles", value: [] });
   assert.equal(curated.captured.status, 400);
   assert.match((curated.data as { error: string }).error, /customRoles/);
+  assert.doesNotMatch((curated.data as { error: string }).error, /did you mean/);
   // A body with no key at all names no value — the shared gotSuffix convention appends
   // nothing for an absent field rather than echoing back a literal `null` it never carried.
   const missing = await serveConfigSet(root, { value: "gpt-5" });
   assert.equal(missing.captured.status, 400);
   assert.match((missing.data as { error: string }).error, /key must be one of/);
   assert.doesNotMatch((missing.data as { error: string }).error, /got null/);
+  assert.doesNotMatch((missing.data as { error: string }).error, /did you mean/);
 });
 
 test("handleConfigUnset removes one curated key and leaves its siblings", async () => {
@@ -1344,15 +1348,20 @@ test("handleConfigUnset removes one curated key and leaves its siblings", async 
 
 test("handleConfigUnset refuses a key outside the curated set, naming it", async () => {
   const root = tmpdir();
+  const mis = await serveConfigUnset(root, { key: "modle" });
+  assert.equal(mis.captured.status, 400);
+  assert.match((mis.data as { error: string }).error, /did you mean `model`/);
   const curated = await serveConfigUnset(root, { key: "customRoles" });
   assert.equal(curated.captured.status, 400);
   assert.match((curated.data as { error: string }).error, /customRoles/);
+  assert.doesNotMatch((curated.data as { error: string }).error, /did you mean/);
   // A body with no key at all names no value — the shared gotSuffix convention appends
   // nothing for an absent field rather than echoing back a literal `null` it never carried.
   const missing = await serveConfigUnset(root, {});
   assert.equal(missing.captured.status, 400);
   assert.match((missing.data as { error: string }).error, /key must be one of/);
   assert.doesNotMatch((missing.data as { error: string }).error, /got null/);
+  assert.doesNotMatch((missing.data as { error: string }).error, /did you mean/);
 });
 
 test("handleConfigUnset on a key the file never held is a 200 no-op with no oldValue", async () => {

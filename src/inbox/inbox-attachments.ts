@@ -5,6 +5,7 @@ import { removeQuiet, unlinkAllMissingTolerant } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { roleInboxDir } from "../paths.js";
 import { errorMessage, isNonBlankString } from "../text/text.js";
+import { typoSuffix } from "../text/suggest.js";
 import { agree, plural } from "../text/phrases.js";
 
 /** Images attached to queued prompts: a GUI drop or paste into the composer saves each image
@@ -87,7 +88,7 @@ export function promptImagesCountProblem(count: number): string | null {
 export function promptImageExtensionProblem(name: string): string | null {
   const ext = path.extname(name).toLowerCase();
   if (PROMPT_IMAGE_EXTENSIONS.includes(ext)) return null;
-  return `unsupported image type ${JSON.stringify(ext === "" ? name : `*${ext}`)} — expected one of ${PROMPT_IMAGE_EXTENSIONS.join(" ")}`;
+  return `unsupported image type ${JSON.stringify(ext === "" ? name : `*${ext}`)} — expected one of ${PROMPT_IMAGE_EXTENSIONS.join(" ")}${typoSuffix(ext, PROMPT_IMAGE_EXTENSIONS)}`;
 }
 
 /** The per-image size rule, in decoded bytes: at most PROMPT_IMAGE_MAX_BYTES. Split out so a

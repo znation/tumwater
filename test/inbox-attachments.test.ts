@@ -8,6 +8,7 @@ import {
   movePromptImages,
   PROMPT_IMAGES_MAX_COUNT,
   promptImagesProblem,
+  promptImageExtensionProblem,
   savePromptImages,
   stripVanishedImageReferences,
 } from "../src/inbox/inbox-attachments.js";
@@ -41,6 +42,16 @@ test("promptImagesProblem accepts valid images and names every rule it enforces"
     String(promptImagesProblem([{ name: "shot.png", dataBase64: Buffer.alloc(5 * 1024 * 1024 + 1).toString("base64") }])),
     /at most 5242880 \(5 MiB\) per image/,
   );
+});
+
+test("promptImageExtensionProblem names the near miss on a mistyped extension, the list alone otherwise", () => {
+  // A listed extension is accepted, and a mistyped one names its match after the list.
+  assert.equal(promptImageExtensionProblem("shot.png"), null);
+  assert.match(String(promptImageExtensionProblem("shot.pnng")), /did you mean `\.png`/);
+  // A far-off extension and a no-extension name get the list but no hint.
+  assert.match(String(promptImageExtensionProblem("notes.txt")), /expected one of/);
+  assert.doesNotMatch(String(promptImageExtensionProblem("notes.txt")), /did you mean/);
+  assert.doesNotMatch(String(promptImageExtensionProblem("README")), /did you mean/);
 });
 
 test("savePromptImages writes beside the queue file under the same stem, sanitized and deduplicated", () => {

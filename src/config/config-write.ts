@@ -17,6 +17,7 @@ import { withStateLock } from "../concurrency/lock.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { canonicalConfigKey, normalizeConfigKeys } from "./config-aliases.js";
+import { unknownRoleMessage } from "../roles/roles.js";
 import { loadConfig, parseJsonConfig, collapseAgentAliases, knownRoleIdsCached } from "./config.js";
 import {
   checkDailyBudgetUsd,
@@ -313,7 +314,7 @@ export function setRoleModelFields(
   // held changes nothing), so refuse the phantom role up front — the same knownRoleIds guard
   // the CLI's unsetConfigKey clear paths and the GUI's rejectBadRole use — rather than answer
   // a bogus id "updated".
-  if (!knownRoleIdsCached(root).includes(base)) return fail(`unknown role "${base}"`);
+  if (!knownRoleIdsCached(root).includes(base)) return fail(unknownRoleMessage(base, knownRoleIdsCached(root)));
   return writeConfigMutation(root, (cfg) => {
     const rawRolesCandidate = rawConfigObject(root).roles;
     const rawRoles = objectOrEmpty(rawRolesCandidate) as Record<string, Record<string, unknown>>;

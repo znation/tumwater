@@ -386,7 +386,13 @@ test("setRoleModelFields refuses an unknown base on a no-op and drops an entry w
   const fresh = tmpdir();
   let r = setRoleModelFields(fresh, "nope", { provider: "", model: "", thinking: "" });
   assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.error, /unknown role "nope"/);
+  if (!r.ok) assert.match(r.error, /unknown role: nope/);
+  if (!r.ok) assert.doesNotMatch(r.error, /did you mean/);
+  // A near-miss base names its match — the same hint unknownRoleMessage prints elsewhere.
+  r = setRoleModelFields(fresh, "featur", { provider: "", model: "", thinking: "" });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /unknown role: featur/);
+  if (!r.ok) assert.match(r.error, /did you mean `feature`/);
   assert.equal(fs.existsSync(path.join(fresh, "tumwater.json")), false, "a refused no-op never creates the file");
 
   // Clearing the entry's only overrides removes roles.<base> entirely — no empty object kept.

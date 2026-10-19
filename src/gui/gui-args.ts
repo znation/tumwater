@@ -182,7 +182,7 @@ export function requireConfigKey(
 ): string | null {
   const key = body.key;
   if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
-    badRequest(res, `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}`);
+    badRequest(res, `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}${typeof key === "string" ? typoSuffix(key, EDITABLE_CONFIG_KEYS) : ""}`);
     return null;
   }
   return key;
