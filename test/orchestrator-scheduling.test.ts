@@ -18,7 +18,6 @@ import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
-import { EMPTY_STATUS, readmeTemplate } from "../src/brief/brief.js";
 import { HOUR } from "./helpers/oracles.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
@@ -61,7 +60,6 @@ function schedulingCtx(root: string, runners: readonly LoopRunner[], roleProvide
     capPaused: new Set<string>(),
     maintenanceQuota: { allowance: Number.POSITIVE_INFINITY, used: 0, held: false },
     bootstrapHeld: new Set<string>(),
-    bootstrapActive: false,
     budgetPausedRoles: new Set<string>(),
     probeRoles: new Set<string>(),
     reviewStrongPaused: false,
@@ -541,7 +539,6 @@ test("the bootstrap hold blocks maintenance through scheduling but admits plan a
     ]),
   );
   ctx.bootstrapHeld = new Set(["clean"]);
-  ctx.bootstrapActive = true;
   const reasons = await pollRunnerReasons(ctx);
   assert.equal(reasons.has(runners[2]!), false, "a bootstrap-held maintenance loop starts no tick");
   assert.equal(reasons.has(runners[0]!), true, "plan keeps ticking during bootstrap");
@@ -783,31 +780,28 @@ test("a held-only bugfix runner is still admitted on demand, startup, revision, 
   assert.equal(await admitted(() => {}, bugsFile(REFUSED_BUG, OPEN_BUG)), true, "an eligible bug");
 });
 
-test("a plan runner is admitted while the brief status is the placeholder, skipped once real", async () => {
-  const root = tmpdir("tumwater-scheduling-brief-");
-  fs.writeFileSync(path.join(root, "README.md"), readmeTemplate("p", "Build a thing."));
+test("a due-now plan runner is admitted while PLANS.md has planning room, skipped once full", async () => {
+  const root = tmpdir("tumwater-scheduling-plan-");
   const r = fakeRunner("plan", defaultConfig());
-  // A just-finished productive tick under description-incomplete schedules nextRunAt at now
-  // (src/runner/runner-run.ts): due-now, not an hour out, so the incomplete/complete admission
-  // difference is what the poll observes.
+  // A non-empty lastMainHead with an empty poll mainHead keeps the main-moved wake from
+  // confusing the case; workBacklogOpen short-circuits the workMergedSince git query (the
+  // harness path uses a real cache), so the admission decision keys on planBacklogFull alone.
   r.state.runs = 1;
   r.state.lastRunEndedAt = T0;
   r.state.nextRunAt = T0;
+  r.state.lastMainHead = "abc";
 
-  const admitted = await pollRunnerReasons(
-    schedulingCtx(root, [r], new Map([["plan", undefined]])),
-  );
-  assert.ok(admitted.has(r), "plan is admitted while the brief status is the placeholder");
+  const ctx = () => ({
+    ...schedulingCtx(root, [r], new Map([["plan", undefined]])),
+    workBacklogOpen: true,
+  });
 
-  // Replace the status body with a real line; the same due-now runner is now skipped.
-  fs.writeFileSync(
-    path.join(root, "README.md"),
-    readmeTemplate("p", "Build a thing.").replace(EMPTY_STATUS, "**v0.0.1**: a real status"),
-  );
-  const skipped = await pollRunnerReasons(
-    schedulingCtx(root, [r], new Map([["plan", undefined]])),
-  );
-  assert.ok(!skipped.has(r), "plan is skipped once the status is real");
+  const admitted = await pollRunnerReasons(ctx());
+  assert.ok(admitted.has(r), "plan is admitted while PLANS.md has planning room");
+
+  // Mark the backlog full; the same due-now runner is now held on its 3600 s clock.
+  const skipped = await pollRunnerReasons({ ...ctx(), planBacklogFull: true });
+  assert.ok(!skipped.has(r), "plan is skipped once PLANS.md holds its plan target");
 });
 
 test("a bugfix runner in search mode is not stood down", async () => {

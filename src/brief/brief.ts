@@ -25,9 +25,9 @@ export const STATUS_END = "<!-- tumwater:status:end -->";
 
 /** The placeholder every fresh template seeds between the status markers. A brief still
  * carrying exactly this body (or an empty one) is "description incomplete"; once the readme
- * role replaces it with a real status the tight-loop rule turns itself off. Hoisted so the
- * template and briefStatusIncomplete cannot drift on the wording. */
-export const EMPTY_STATUS = "_No status yet. The readme role keeps this section up to date._";
+ * role replaces it with a real status the project's description is complete. Hoisted so the
+ * template and the readme role's real-status replacement cannot drift on the wording. */
+const EMPTY_STATUS = "_No status yet. The readme role keeps this section up to date._";
 
 /** The two managed sections a fresh brief carries — the initial prompt in its prompt
  * markers, an empty status in its status markers — under the given H1. Both homes render
@@ -108,23 +108,6 @@ function firstBriefText(
  * actual file) and doctor's brief check. */
 export function briefFile(root: string): string | null {
   return readBrief(root)?.file ?? null;
-}
-
-/** False when there is no resolved brief, or the resolved brief carries no well-formed
- * STATUS_START/STATUS_END pair (a malformed brief is doctor's warning, not a tight loop);
- * otherwise true when the status body between the markers is empty or still the EMPTY_STATUS
- * placeholder. The one machine-detectable "description not yet complete" signal: the initial
- * prompt half of the description is always present (init rejects an empty one). One small
- * single-file read, like readInitialPrompt. */
-export function briefStatusIncomplete(root: string): boolean {
-  const found = firstBriefText(root, ownsBrief);
-  if (!found) return false;
-  const bodyStart = found.text.indexOf(STATUS_START);
-  if (bodyStart < 0) return false;
-  const bodyEnd = found.text.indexOf(STATUS_END, bodyStart + STATUS_START.length);
-  if (bodyEnd < 0) return false;
-  const body = found.text.slice(bodyStart + STATUS_START.length, bodyEnd).trim();
-  return body === "" || body === EMPTY_STATUS;
 }
 
 /** The project's initial prompt, extracted from the resolved brief file's managed section —

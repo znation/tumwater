@@ -149,9 +149,6 @@ interface TeamGatePoll {
    * pass admits that demand), exactly like the need-based deferral. Empty when no bootstrap is
    * configured or the latch has ended it. */
   bootstrapHeld: ReadonlySet<string>;
-  /** Whether bootstrap is active this poll: the scheduling pass uses it to give plan the
-   * global min-tick gap so a fresh project gets a steady stream of plans for feature. */
-  bootstrapActive: boolean;
   /** The roles (the director excluded) whose budget tier resolved to pause while the cap is
    * reached (part 5c/8): a role whose own `model` tier (roleSeamTier) has no usable free pair
    * — none configured, one priced above zero, or its breaker demoted — starts no new ticks,
@@ -387,7 +384,6 @@ export function pollTeamGates(
   // pass folds the held set in beside capPaused (with the fresh-wake/queued-prompt override the
   // need-based deferral honors).
   const bootstrapHeld = pollBootstrapGate(root, states.bootstrap, runners, liveConfig, now);
-  const bootstrapActive = states.bootstrap.active;
 
   // Per-role quiet hours (src/scheduling/quiet-hours.ts): a role whose own quietHoursPerRole window
   // covers `now` starts no new ticks — the team window's semantics scoped to one loop, the
@@ -547,7 +543,6 @@ export function pollTeamGates(
     capPaused,
     maintenanceQuota,
     bootstrapHeld,
-    bootstrapActive,
     budgetPausedRoles,
     servingResolved,
     priceResolved,

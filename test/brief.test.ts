@@ -8,9 +8,7 @@ import {
   PROMPT_START,
   STATUS_END,
   STATUS_START,
-  EMPTY_STATUS,
   briefFile,
-  briefStatusIncomplete,
   briefTemplate,
   readmeTemplate,
   replaceInitialPrompt,
@@ -190,34 +188,6 @@ test("readInitialPrompt truncates a hand-edited over-long prompt", () => {
   assert.ok(got.length < long.length, "shorter than the raw prompt");
   assert.ok(got.startsWith("x".repeat(INITIAL_PROMPT_MAX_CHARS)), "keeps the first cap chars");
   assert.match(got, /truncated at 4096 chars/);
-});
-
-test("briefStatusIncomplete is true for the templates and false once the status is real", () => {
-  // A freshly seeded README carries the placeholder status.
-  const root = tmpdir();
-  writeReadme(root, readmeTemplate("myproj", "Build a thing."));
-  assert.equal(briefStatusIncomplete(root), true, "a fresh readmeTemplate is incomplete");
-
-  // Replacing the status body with any non-placeholder line completes the description.
-  writeReadme(
-    root,
-    readmeTemplate("myproj", "Build a thing.").replace(EMPTY_STATUS, "**v0.0.1**: a real status"),
-  );
-  assert.equal(briefStatusIncomplete(root), false, "a real status body is complete");
-
-  // An adopted repo's TUMWATER.md is incomplete too, and wins over a marked README.
-  const adopted = tmpdir();
-  writeReadme(adopted, readmeTemplate("p", "From README."));
-  writeBrief(adopted, briefTemplate("p", "From TUMWATER."));
-  assert.equal(briefStatusIncomplete(adopted), true, "a fresh briefTemplate is incomplete");
-
-  // A brief with a valid prompt block but no status markers is malformed, not incomplete.
-  const noStatus = tmpdir();
-  writeReadme(noStatus, `# p\n\n${PROMPT_START}\nBuild a thing.\n${PROMPT_END}\n`);
-  assert.equal(briefStatusIncomplete(noStatus), false, "no status markers is not a tight loop");
-
-  // No brief at all: nothing to run a tight loop over.
-  assert.equal(briefStatusIncomplete(tmpdir()), false, "no brief is not incomplete");
 });
 
 test("replaceInitialPrompt keeps every byte outside the markers and matches readInitialPrompt's block", () => {

@@ -37,8 +37,7 @@ import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickMerge, foldAgentCommitsSince } from "../tick/tick-stage.js";
 import { stageCheckFindings } from "../tick/stage-check.js";
-import { bootstrapStatus } from "../gates/bootstrap-gates.js";
-import { briefStatusIncomplete } from "../brief/brief.js";
+import { planBacklogFull } from "../scheduling/claims.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { errorMessage } from "../text/text.js";
@@ -160,20 +159,14 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   // This role's view of the config (per-role provider/model/thinking + minRunIntervalSeconds
   // overrides): resolved once so every interval-based scheduling branch honors a slow
   // clock (e.g. the steward's ~6 h) and a live-reloaded config applies from this tick on.
-  // New-project bootstrap (plans/work-ratio.md, part 2/2): while active, plan schedules on the
-  // global min-tick gap rather than its 3600 s default. And while the brief's status section is
-  // still the placeholder (briefStatusIncomplete), plan schedules with a zero gap so a fresh
-  // project plans back-to-back until a run changes nothing. The shared verdict below is the
-  // same one the gate and isEligible read, and scheduleConfigForRole is the one home of the
-  // rule, so the scheduler that admits plan and the nextRunAt this tick writes cannot disagree.
-  const bootstrapActive = bootstrapStatus(ctx.root, ctx.config)?.active === true;
-  const descriptionIncomplete = briefStatusIncomplete(ctx.root);
-  const primaryCfg = scheduleConfigForRole(
-    ctx.config,
-    ctx.role,
-    bootstrapActive,
-    descriptionIncomplete,
-  );
+  // While PLANS.md still has planning room (planBacklogFull false), plan schedules with a zero
+  // gap so a productive plan tick reruns on the next poll; an unproductive tick drops to the
+  // idle backoff, and once the target is met the plans-full deferral holds the tick. The shared
+  // verdict below is the same one the gate and isEligible read, and scheduleConfigForRole is
+  // the one home of the rule, so the scheduler that admits plan and the nextRunAt this tick
+  // writes cannot disagree.
+  const planBacklogOpen = !planBacklogFull(ctx.root, ctx.config);
+  const primaryCfg = scheduleConfigForRole(ctx.config, ctx.role, planBacklogOpen);
   // Model-fallback episode (src/runner/model-fallback.ts): while one is active the tick runs
   // on the role's tier fallback pair, and once the cooldown elapses it runs on the primary
   // as the probe. Resolved at tick start so the authoring run below and the end-of-tick fold
@@ -182,8 +175,8 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   const fallback = fallbackRoleConfig(ctx.config, ctx.role);
   const probing = fallback !== null && modelFallbackProbe(s.modelFallback, now);
   const onFallback = fallback !== null && modelFallbackActive(s.modelFallback, now);
-  // The fallback pair keeps primaryCfg's gap (they resolve the same one outside bootstrap),
-  // so a plan on its model fallback during bootstrap still schedules on the global clock.
+  // The fallback pair keeps primaryCfg's gap (they resolve the same one outside the plan
+  // loop's zero-gap window), so a plan on its model fallback still schedules the same gap.
   let cfg =
     onFallback && fallback !== null
       ? { ...fallback, minRunIntervalSeconds: primaryCfg.minRunIntervalSeconds }

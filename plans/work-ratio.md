@@ -78,7 +78,11 @@ roles landed 271 commits, about 6.3 for every work landing.
    - When `tumwater init` finds an empty project, it writes `"bootstrap": {"untilPlansDone": 5}`.
    - Until PLANS.md `## Done` holds 5 entries, only plan, feature, director, and bugfix with open
      bugs tick.
-   - plan runs on the global gap instead of its 3600 s one.
+   - plan runs on the plan loop's current gap rule (src/config/config-views.ts's
+     scheduleConfigForRole) instead of its fixed 3600 s one: a zero gap while PLANS.md still
+     has planning room (planBacklogFull false), its 3600 s default once the target is met.
+     (The old rule gave plan the GLOBAL min-tick gap during bootstrap; that no longer applies
+     — the plan loop's zero-gap window now keys on the backlog, which subsumes it.)
    - Completion is latched in `.tumwater/`, so a later `## Done` compression by steward cannot
      re-enter bootstrap.
    - Existing codebases adopting tumwater never enter bootstrap.

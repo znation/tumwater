@@ -32,16 +32,11 @@ interface EligibilityOptions {
    * zero; every backoff ladder leaves it raised. Resume gating, `s.running`, and
    * per-role enablement are kept as-is. */
   once?: boolean;
-  /** New-project bootstrap (plans/work-ratio.md, part 2/2): while active, the plan loop's
-   * min-tick gap is the GLOBAL `minRunIntervalSeconds` rather than its per-role default
-   * (3600 s), so a fresh project gets a steady stream of plans for feature instead of one an
-   * hour. Every other role's gap is unchanged. */
-  bootstrapActive?: boolean;
-  /** The brief's status section is still the placeholder (docs/config.md): while a project's
-   * description is incomplete, the plan loop's min-tick gap is ZERO rather than its per-role
-   * default, so a fresh project plans back-to-back until a run changes nothing. Every other
+  /** PLANS.md still has planning room (planBacklogFull false): while true, the plan loop's
+   * min-tick gap is ZERO rather than its per-role default (3600 s), so a productive plan tick
+   * reruns on the next poll and an unproductive one drops to the idle backoff. Every other
    * role's gap is unchanged. */
-  descriptionIncomplete?: boolean;
+  planBacklogOpen?: boolean;
 }
 
 /** Should this loop tick now? `inboxCount` is the calling loop's own queued-prompt count
@@ -100,14 +95,14 @@ export function isEligible(
   // never enter the ring (backoff.ts), so a failing backend does not stretch anything;
   // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
   const mult = yieldMultiplierFor(runner.state);
-  // The same bootstrap rule (scheduleConfigForRole) runner-run.ts schedules nextRunAt from:
-  // during a young project's bootstrap, plan runs on the team's global clock rather than its 3600 s
-  // default. Yield scaling still applies to whatever gap is chosen.
+  // The same planBacklogOpen rule (scheduleConfigForRole) runner-run.ts schedules nextRunAt
+  // from: while PLANS.md has planning room, plan runs on a zero gap; once the target is met it
+  // drops to its 3600 s default (the plans-full deferral then holds the tick). Yield scaling
+  // still applies to whatever gap is chosen.
   const minGapSeconds = scheduleConfigForRole(
     runner.config,
     runner.role,
-    opts.bootstrapActive === true,
-    opts.descriptionIncomplete === true,
+    opts.planBacklogOpen === true,
   ).minRunIntervalSeconds;
   const minGap = opts.once ? 0 : minGapSeconds * 1000 * mult;
   const sinceLast = now - (s.lastRunEndedAt ?? 0);

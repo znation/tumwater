@@ -511,7 +511,7 @@ test("a queued healer prompt makes a bugfix runner due on the next poll despite 
   r.state.lastRunEndedAt = now - 1000;
   r.state.lastResult = "no_change";
   r.state.recentOutcomes = "nnnn"; // a streak of empty ticks, so yield scaling stretches the gap
-  assert.deepEqual(isEligible(r, now, "abc", 1, { descriptionIncomplete: false }), {
+  assert.deepEqual(isEligible(r, now, "abc", 1, {}), {
     run: true,
     reason: "inbox",
   });

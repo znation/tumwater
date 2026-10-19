@@ -18,7 +18,6 @@ import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/runner-ids.js";
 import { hasOutstandingWork, saveLoopState, type SkipReason } from "../runner/runner-state.js";
 import { inboxSize } from "../inbox/inbox.js";
-import { briefStatusIncomplete } from "../brief/brief.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
@@ -50,8 +49,6 @@ interface SchedulingPassCtx {
    * maintenance loops already in flight. The pass admits at most the remaining
    * `allowance - used` due maintenance loops, so the headroom is never overshot within a poll. */
   maintenanceQuota: MaintenanceQuotaVerdict;
-  /** Whether bootstrap is active this poll: plan runs on the global min-tick gap when so. */
-  bootstrapActive: boolean;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now. */
   roleQuietHeld: ReadonlySet<string>;
   /** The roles (the director excluded) whose budget tier resolved to pause while the cap is
@@ -124,7 +121,6 @@ export async function pollRunnerReasons(
     capPaused,
     maintenanceQuota,
     bootstrapHeld,
-    bootstrapActive,
     budgetPausedRoles,
     probeRoles,
     reviewStrongPaused,
@@ -142,10 +138,6 @@ export async function pollRunnerReasons(
     workMergedSince,
   } = ctx;
   const reasons = new Map<LoopRunner, string | undefined>();
-  // Computed ONCE per poll (the plan tight-loop rule, src/brief/brief.ts): the flag means the
-  // brief's status section is still the placeholder, read once from the resolved brief so the
-  // whole pass agrees on it — the pass already holds root for its other per-poll reads.
-  const descriptionIncomplete = briefStatusIncomplete(root);
   // Merge-queue interlock data, listed ONCE per poll (was once per runner per poll — each
   // queuedMergeFiles() re-lists the merge-queue directory and re-stats every queued entry): the
   // check below only asks whether the runner's role has a queued entry. The queue changes
@@ -326,8 +318,7 @@ export async function pollRunnerReasons(
     // queued prompt makes its loop due by itself, no wake marker needed (isEligible).
     const { run, reason } = isEligible(runner, now, mainHead, inboxSize(root, runner.role), {
       once: once.active,
-      bootstrapActive,
-      descriptionIncomplete,
+      planBacklogOpen: !planBacklogFull,
     });
     if (!run) {
       // Not due this poll: any deferral episode has ended (or never started). No event —

@@ -103,7 +103,7 @@ The fields of a `roles.<id>` entry:
 | `provider` | none | A provider override for this role; unset uses the top-level value. |
 | `model` | none | A model override for this role: a selector, or a tier name from the top-level `model` map; unset uses the role's catalog tier. |
 | `thinking` | none | A thinking-level override for this role; unset uses the top-level value. |
-| `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa and selfcheck, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. While the project brief's status section still carries the placeholder (`_No status yet._ …`), the plan role schedules with a zero gap instead, so a fresh project plans back-to-back until a run changes nothing. |
+| `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa and selfcheck, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. While PLANS.md's `## Planned` still has planning room (`planBacklogFull` false — below the plan loop's eligible-plan target, or holding a plan that needs review/needs replan), the plan role schedules with a zero gap instead, so a productive plan run reruns on the next poll and an unproductive one drops to the idle backoff; once the target is met the plan loop defers (`plans-full`) and this interval applies. |
 | `instances` | `1` | How many parallel instances the role may have, 1–8; accepted only for feature and bugfix. |
 
 Model backends (OpenAI-compatible endpoints, the `claude` backend, and fallbacks) are covered in

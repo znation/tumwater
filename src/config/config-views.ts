@@ -164,29 +164,25 @@ export function configForRole(config: TumwaterConfig, role: string): ResolvedMod
   };
 }
 
-/** The config a role's ticks SCHEDULE from: configForRole, except that while the new-project
- * bootstrap is active (plans/work-ratio.md, part 2/2) the plan role schedules on the GLOBAL
- * minRunIntervalSeconds rather than its per-role 3600 s slow clock, so a young project gets a
- * steady stream of plans for feature; and while the brief still carries the placeholder status
- * (descriptionIncomplete) the plan role schedules with a ZERO min gap, so a fresh project plans
- * back-to-back until a run changes nothing — the zero gap is tighter than bootstrap. One home
- * for the rule: isEligible enforces the same gap when it decides whether plan may start, and
- * runner-run.ts hands this config to applyTickOutcome so nextRunAt is scheduled from the same
- * figure instead of the role default. `descriptionIncomplete` means the brief's status section
- * is still the placeholder; the initial prompt half is always present (init rejects an empty
- * one), so the placeholder status is the machine-detectable "description not yet complete". */
+/** The config a role's ticks SCHEDULE from: configForRole, except that while PLANS.md still
+ * has planning room (planBacklogOpen — below the plan loop's eligible-plan target, or holding
+ * a plan that needs review/needs replan) the plan role schedules with a ZERO min gap, so a
+ * productive plan tick reruns on the next poll and an unproductive one drops to the idle
+ * backoff. The plan loop's own machine signal is `planBacklogFull` (src/scheduling/claims.ts):
+ * a fresh project's empty backlog is not full, so this subsumes the old placeholder-status
+ * trigger. One home for the rule: isEligible enforces the same gap when it decides whether
+ * plan may start, and runner-run.ts hands this config to applyTickOutcome so nextRunAt is
+ * scheduled from the same figure instead of the role default. Every other role, and the plan
+ * role once the target is met (which already holds the tick via the plans-full deferral),
+ * schedule configForRole unchanged. */
 export function scheduleConfigForRole(
   config: TumwaterConfig,
   role: string,
-  bootstrapActive: boolean,
-  descriptionIncomplete = false,
+  planBacklogOpen = false,
 ): ResolvedModelConfig {
   const resolved = configForRole(config, role);
-  if (descriptionIncomplete && baseRoleOf(role) === "plan") {
+  if (planBacklogOpen && baseRoleOf(role) === "plan") {
     return { ...resolved, minRunIntervalSeconds: 0 };
-  }
-  if (bootstrapActive && baseRoleOf(role) === "plan") {
-    return { ...resolved, minRunIntervalSeconds: config.minRunIntervalSeconds };
   }
   return resolved;
 }

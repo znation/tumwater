@@ -234,50 +234,22 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   assert.equal(woken.reason, "main moved");
 });
 
-test("bootstrap schedules plan on the global gap instead of its slow per-role default", () => {
-  const cfg = defaultConfig(); // global 20 s, plan's per-role default 3600 s
-  const t0 = Date.now();
-  const r = makeLoopRunner(makeRepo(), "plan", cfg);
-  r.state.runs = 1;
-  r.state.lastMainHead = ""; // no main-moved wake to confuse the case
-
-  // A productive tick schedules nextRunAt from the gap applyTickOutcome is handed. Outside
-  // bootstrap that is plan's 3600 s slow clock, and isEligible holds the loop until it passes.
-  applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", false), "plan", { result: "changed" });
-  assert.ok(r.state.nextRunAt - Date.now() > 3_000_000, "plan schedules an hour out by default");
-  assert.equal(
-    isEligible(r, t0 + 21_000, "", 0).run,
-    false,
-    "outside bootstrap, plan waits out its 3600 s clock",
-  );
-
-  // During bootstrap the same tick schedules the global 20 s clock, and isEligible agrees.
-  applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", true), "plan", { result: "changed" });
-  assert.ok(
-    r.state.nextRunAt - Date.now() <= cfg.minRunIntervalSeconds * 1000,
-    "plan schedules on the global gap during bootstrap",
-  );
-  const bootstrapping = isEligible(r, t0 + 21_000, "", 0, { bootstrapActive: true });
-  assert.equal(bootstrapping.run, true, "during bootstrap, plan runs on the global gap");
-  assert.equal(bootstrapping.reason, "scheduled");
-});
-
-test("a placeholder-status brief schedules plan on a zero gap until a no_change tick", () => {
+test("plan schedules on a zero gap while PLANS.md has planning room, idle backoff otherwise", () => {
   const cfg = defaultConfig(); // global 20 s, plan's per-role 3600 s, idleBackoff.initialSeconds 120
   assert.equal(
-    scheduleConfigForRole(cfg, "plan", false, true).minRunIntervalSeconds,
+    scheduleConfigForRole(cfg, "plan", true).minRunIntervalSeconds,
     0,
-    "description-incomplete schedules plan on a zero gap",
+    "an open plan backlog schedules plan on a zero gap",
   );
   assert.equal(
-    scheduleConfigForRole(cfg, "feature", false, true).minRunIntervalSeconds,
+    scheduleConfigForRole(cfg, "plan", false).minRunIntervalSeconds,
+    configForRole(cfg, "plan").minRunIntervalSeconds,
+    "a full plan backlog leaves plan on its per-role clock",
+  );
+  assert.equal(
+    scheduleConfigForRole(cfg, "feature", true).minRunIntervalSeconds,
     configForRole(cfg, "feature").minRunIntervalSeconds,
-    "the flag leaves a non-plan role's interval unchanged",
-  );
-  assert.equal(
-    scheduleConfigForRole(cfg, "plan", true, false).minRunIntervalSeconds,
-    cfg.minRunIntervalSeconds,
-    "the bootstrap result is unchanged when the flag defaults to false",
+    "the open flag leaves a non-plan role's interval unchanged",
   );
 
   const t0 = Date.now();
@@ -285,18 +257,18 @@ test("a placeholder-status brief schedules plan on a zero gap until a no_change 
   r.state.runs = 1;
   r.state.lastMainHead = ""; // no main-moved wake to confuse the case
 
-  // A productive plan tick under description-incomplete schedules nextRunAt at now.
-  applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", false, true), "plan", {
+  // A productive plan tick under planBacklogOpen schedules nextRunAt at now.
+  applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", true), "plan", {
     result: "changed",
   });
   assert.ok(r.state.nextRunAt - Date.now() < 1000, "plan schedules at now under the zero gap");
   const afterChanged = Date.now();
-  const due = isEligible(r, afterChanged + 1, "", 0, { descriptionIncomplete: true });
+  const due = isEligible(r, afterChanged + 1, "", 0, { planBacklogOpen: true });
   assert.equal(due.run, true, "a just-productive plan is admitted immediately");
   assert.equal(due.reason, "scheduled");
 
   // A no_change tick drops to the idle backoff ladder rather than the zero gap.
-  applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", false, true), "plan", {
+  applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", true), "plan", {
     result: "no_change",
   });
   assert.ok(
@@ -304,10 +276,20 @@ test("a placeholder-status brief schedules plan on a zero gap until a no_change 
     "a no_change plan tick schedules the idle backoff out",
   );
   assert.equal(
-    isEligible(r, t0 + 2, r.state.lastMainHead, 0, { descriptionIncomplete: true }).run,
+    isEligible(r, t0 + 2, r.state.lastMainHead, 0, { planBacklogOpen: true }).run,
     false,
     "with lastMainHead unchanged the burst has ended",
   );
+
+  // Closed case: without planBacklogOpen a just-productive plan holds on its 3600 s clock.
+  applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", false), "plan", {
+    result: "changed",
+  });
+  assert.ok(
+    r.state.nextRunAt - Date.now() > 3_000_000,
+    "plan schedules an hour out when the backlog is full",
+  );
+  assert.equal(isEligible(r, t0 + 21_000, "", 0).run, false, "without the flag, plan waits out its 3600 s clock");
 });
 
 test("an interrupted tick resumes promptly on restart despite the min gap", () => {
