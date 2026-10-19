@@ -5,7 +5,7 @@
  * collected view and a `now` instant — no I/O, no clock reads — so the age it prints can be
  * pinned by a test. */
 
-import { humanSeconds, secondsSince } from "../text/datetime.js";
+import { humanAgo, humanSeconds, secondsSince } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { plural } from "../text/phrases.js";
@@ -56,12 +56,12 @@ export function renderMergeQueue(view: MergeQueueView, now: number, inFlight?: M
   } else {
     lines.push(`merge queue (${depth}):`);
     view.entries.forEach((e, i) => {
-      const age = humanSeconds(secondsSince(e.enqueuedAt, now));
+      const age = humanAgo(e.enqueuedAt, now);
       const label = queueEntryMergeLabel(e.sha, inFlight, now);
       const tag = label ? ` · [${label}]` : "";
       const note = revisionNote(e);
       const noteTag = note ? ` · ${note}` : "";
-      lines.push(`  ${i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age} ago${tag}${noteTag} · ${e.summary}`);
+      lines.push(`  ${i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age}${tag}${noteTag} · ${e.summary}`);
     });
   }
   if (view.unreadable > 0) {

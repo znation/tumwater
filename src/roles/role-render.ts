@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
-import { clockHm, formatTimestamp, humanSeconds, nextRunPhrase, secondsSince, secondsUntil } from "../text/datetime.js";
+import { clockHm, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
@@ -195,7 +195,7 @@ function scheduleLine(p: RoleViewPayload, now: number): string[] {
   }
   const last =
     p.lastRunEndedAt !== undefined
-      ? `${formatTimestamp(p.lastRunEndedAt)} (${humanSeconds(secondsSince(p.lastRunEndedAt, now))} ago)`
+      ? `${formatTimestamp(p.lastRunEndedAt)} (${humanAgo(p.lastRunEndedAt, now)})`
       : "never";
   return [`- Next run: ${next}`, `- Last run: ${last}`, ...(p.quietHours ?? []).map(quietHoursLine)];
 }

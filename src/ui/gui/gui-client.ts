@@ -182,7 +182,7 @@ const FORMAT_JS = String.raw`  // format:start
   // The absolute local time of a tick end with its age ("14:32:05 · 3m ago"), prefixed MM-DD
   // once older than a day; "-" when never ticked — status-render.ts's lastTickCell.
   // Whole elapsed seconds since an instant, clamped at zero and rounded to the nearest
-  // second — datetime.ts's elapsedSeconds (the browser runtime cannot import it), shared by
+  // second — datetime.ts's secondsSince (the browser runtime cannot import it), shared by
   // fmtLastTick and fmtAgo below so the clamp cannot drift between the page's ages.
   const ageSec = (ts) => Math.max(0, Math.round((Date.now() - ts) / 1000));
   const fmtLastTick = (ts) => {

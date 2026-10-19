@@ -5,7 +5,7 @@ import { dailyCost } from "../budget/budget.js";
 import type { LiveProgress } from "./progress-data.js";
 import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
-import { elapsedSeconds, formatTime, humanSeconds, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
+import { formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, permitsBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByState } from "./status-model.js";
@@ -27,8 +27,7 @@ import { refusedEntryTitles } from "../backlog/backlog-eligibility.js";
 
 function ago(ts: number | undefined): string {
   if (!ts) return "-";
-  const s = elapsedSeconds(ts);
-  return `${humanSeconds(s)} ago`;
+  return humanAgo(ts, Date.now());
 }
 
 /** The table's `last tick` cell: the absolute local time of the last tick end alongside its

@@ -45,13 +45,6 @@ export function secondsUntil(atMs: number, now: number): number {
   return Math.max(0, Math.round((atMs - now) / 1000));
 }
 
-/** Whole elapsed seconds since an epoch-ms instant, clamped at zero and rounded to the
- * nearest second — the age rule status-render.ts's lastTickCell ages its `HH:MM:SS · Ns ago`
- * stamp through (secondsSince against the real clock). */
-export function elapsedSeconds(sinceMs: number): number {
-  return secondsSince(sinceMs, Date.now());
-}
-
 /** Calendar date as `YYYY-MM-DD` in local time — shared by the transcript run separators,
  * the daily-budget day stamp (todayStamp), and the usage report's per-day buckets, which must
  * all agree on what counts as one day. */
@@ -155,6 +148,17 @@ export function humanSeconds(s: number): string {
  * clamps at zero), matching every countdown's existing behavior. */
 export function humanUntil(atMs: number, now: number): string {
   return humanSeconds(secondsUntil(atMs, now));
+}
+
+/** `humanUntil`'s past-direction twin: how long since an epoch-ms instant, as `NS ago` —
+ * the past-direction phrase five renderers each built as `{humanSeconds(secondsSince(...))} ago`
+ * (status-render.ts's ago against the real clock, role-render.ts's last-run and
+ * merge-queue-render.ts's enqueue ages, inbox.ts's queued-age suffix, and doctor-notify.ts's
+ * latest-failed-page age, which had inlined the clamp itself), so the clamp, the rounding,
+ * and the " ago" wording cannot drift per consumer. Lives here beside the other time
+ * phrasing so core modules (which may not import src/ui) share the same form. */
+export function humanAgo(sinceMs: number, now: number): string {
+  return `${humanSeconds(secondsSince(sinceMs, now))} ago`;
 }
 
 /** The shared "when may this loop next act" phrase — the `next run` cell (status-render.ts's

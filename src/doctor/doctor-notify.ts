@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { eventsSince } from "../events/event-window.js";
 import { isNotifyFailure } from "../events/notify.js";
-import { humanSeconds } from "../text/datetime.js";
+import { humanAgo } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
 import { errorMessage, squash } from "../text/text.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
@@ -19,8 +19,7 @@ export function checkNotify(root: string, config: TumwaterConfig | undefined, no
     const failures = eventsSince(root, NOTIFY_CHECK_WINDOW_MS, now, isNotifyFailure);
     if (failures.length === 0) return okOutcome("configured — no failed pages in the last 24h");
     const latest = failures[failures.length - 1]!;
-    const age = humanSeconds(Math.max(0, Math.round((now - latest.ts) / 1000)));
-    return warnOutcome(`${plural(failures.length, "failed page")} in the last 24h; latest ${age} ago: ${squash(String(latest.message), 200)}`);
+    return warnOutcome(`${plural(failures.length, "failed page")} in the last 24h; latest ${humanAgo(latest.ts, now)}: ${squash(String(latest.message), 200)}`);
   } catch (err) {
     return warnOutcome(`could not read the event log for failed pages: ${errorMessage(err)}`);
   }

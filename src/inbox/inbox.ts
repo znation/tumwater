@@ -7,7 +7,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { knownRoleIdsCached } from "../config/config.js";
-import { humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
+import { humanAgo, humanSeconds, secondsUntil } from "../text/datetime.js";
 import { errorMessage, truncate } from "../text/text.js";
 import { warnEvent } from "../events/events.js";
 import { isPromptImageSibling } from "./inbox-attachments.js";
@@ -281,8 +281,7 @@ function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, 
     return ` (delivers in ${humanSeconds(seconds)})`;
   }
   if (queuedAtMs === null) return "";
-  const ageSeconds = secondsSince(queuedAtMs, now);
-  return ` (queued ${humanSeconds(ageSeconds)} ago)`;
+  return ` (queued ${humanAgo(queuedAtMs, now)})`;
 }
 
 /** Render the list-shaped queue view as the prose `prompt --list` prints and the TUI Queued
