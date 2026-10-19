@@ -3,12 +3,16 @@ import assert from "node:assert/strict";
 import {
   buildCheckEvent,
   buildCheckSkipWarning,
+  CHECK_WAIT_EVENT_MS,
+  logCheckWaitEvent,
   isPassingFullCheck,
   isRedFullCheck,
   MERGE_SCOPES,
   SCOPE_WORDS,
   timedOutPhrase,
 } from "../src/build/build-check-events.js";
+import { readEvents } from "../src/events/event-read.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import type { BuildCheckRun } from "../src/build/build-check.js";
 
@@ -151,4 +155,18 @@ test("isRedFullCheck counts failed merge/batch/baseline checks only", () => {
   assert.equal(isRedFullCheck(ev("failed", "gate")), false);
   for (const status of ["passed", "skipped"]) assert.equal(isRedFullCheck(ev(status, "merge")), false);
   assert.equal(isRedFullCheck({ ts: 0, source: "x", type: "run_end", run: 1, result: "changed" }), false);
+});
+
+test("logCheckWaitEvent logs one check_wait only at or past the threshold", () => {
+  const root = tmpdir("check-wait-");
+  logCheckWaitEvent(root, "feature", "merge", CHECK_WAIT_EVENT_MS - 1);
+  assert.equal(readEvents(root, 100).filter((e) => e.type === "check_wait").length, 0);
+  logCheckWaitEvent(root, "feature", "batch", CHECK_WAIT_EVENT_MS);
+  const events = readEvents(root, 100).filter((e) => e.type === "check_wait");
+  assert.equal(events.length, 1);
+  const ev = events[0] as unknown as Record<string, unknown>;
+  assert.equal(ev.source, "feature");
+  assert.equal(ev.role, "feature");
+  assert.equal(ev.scope, "batch");
+  assert.equal(ev.waitedMs, CHECK_WAIT_EVENT_MS);
 });

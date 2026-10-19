@@ -35,7 +35,11 @@ test("withCheckPermit bounds concurrency to the configured cap", async () => {
 test("withCheckPermit calls its wait hooks only when the permit is not free", async () => {
   const cfg = { maxConcurrentChecks: 1 };
   const calls: string[] = [];
-  const hooks = { waiting: () => calls.push("waiting"), granted: () => calls.push("granted") };
+  const hooks = {
+    waiting: () => calls.push("waiting"),
+    granted: () => calls.push("granted"),
+    waited: (ms: number) => calls.push(typeof ms === "number" && ms >= 0 ? "waited" : "bad-waited"),
+  };
   // A free permit: no wait, no hooks.
   await withCheckPermit(cfg, CHECK_TIER.other, async () => calls.push("ran-free"), hooks);
   assert.deepEqual(calls, ["ran-free"]);
@@ -49,7 +53,7 @@ test("withCheckPermit calls its wait hooks only when the permit is not free", as
   assert.deepEqual(calls, ["waiting"], "parked behind the held permit");
   releaseFirst();
   await Promise.all([first, second]);
-  assert.deepEqual(calls, ["waiting", "granted", "ran"]);
+  assert.deepEqual(calls, ["waiting", "granted", "waited", "ran"]);
 });
 
 test("a valid config raises the cap for the next checks", async () => {

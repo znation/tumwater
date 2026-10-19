@@ -567,6 +567,10 @@ export function eventMessage(e: HarnessEvent): string {
       // numbers in hand.
       return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} for a ${typeof e.key === "string" && e.key.length > 0 ? `${e.key} slot` : "run slot"} (${textOr(e.role)})`;
     }
+    case "check_wait":
+      // Routine-with-explanation, like slot_wait: waiting for a check permit is the cap working
+      // as designed, so no warning prefix.
+      return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} for a check slot (${textOr(e.role)} ${textOr(e.scope)} check)`;
     case "claim":
       // Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7):
       // the assignment/release is the harness working as designed, so no warning prefix.

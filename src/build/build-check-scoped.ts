@@ -22,6 +22,7 @@ import {
   loadedHostPhrase,
   timedOutPhrase,
   DEADLINE_LATE_TOLERANCE_MS,
+  logCheckWaitEvent,
   SLEEP_SPAN_TOLERANCE_MS,
   sleptPhrase,
   starvedDeadlineMs,
@@ -110,7 +111,11 @@ export async function runScopedBuildCheck(
       durationMs = d;
       return outcome;
     },
-    permitWait,
+    {
+      waiting: () => permitWait?.waiting?.(),
+      granted: () => permitWait?.granted?.(),
+      waited: (waitedMs) => logCheckWaitEvent(root, role, scope, waitedMs),
+    },
   );
   // A signal kill at a merge scope, or a timeout whose deadline fired on time (real slowness, a
   // genuinely hung or oversized suite), made no verdict about the tree — and this is the check

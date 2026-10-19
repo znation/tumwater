@@ -45,6 +45,9 @@ function checkCap(config: CheckConfigSlice | undefined): number {
 export interface PermitWaitHooks {
   waiting(): void;
   granted(): void;
+  /** Called once, after `granted`, with how long the wait took in ms — only when the permit was not
+   * free. Optional: hooks that only show a stage (merge-slot.ts) omit it. */
+  waited?(waitedMs: number): void;
 }
 
 /** Run `run` under one process-wide check permit (see checkPermits), resizing the cap from the
@@ -60,9 +63,11 @@ export async function withCheckPermit<T>(
   if (holdingPermit.getStore()) return run();
   checkPermits.setCapacity(checkCap(config));
   if (!checkPermits.tryAcquire()) {
+    const waitStarted = Date.now();
     hooks?.waiting();
     await checkPermits.acquire(tier);
     hooks?.granted();
+    hooks?.waited?.(Date.now() - waitStarted);
   }
   try {
     return await holdingPermit.run(true, run);

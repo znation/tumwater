@@ -1027,6 +1027,19 @@ test("formatEvent renders slot_wait with the wait, purpose, and pool shape", () 
   assert.match(line, /4 workspaces, 1 pinned/);
 });
 
+test("formatEvent renders check_wait with the wait and the role", () => {
+  const line = formatEvent({
+    ts: 0,
+    source: "feature",
+    type: "check_wait",
+    role: "feature",
+    scope: "merge",
+    waitedMs: 45_000,
+  } as never);
+  assert.match(line, /waited 45s for a check slot/);
+  assert.match(line, /feature merge check/);
+});
+
 test("formatEvent renders provider_wait naming the key and the run cap when none", () => {
   const keyed = formatEvent({
     ts: 0,

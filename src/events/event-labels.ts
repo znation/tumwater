@@ -66,6 +66,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   permit_reserve: "permits reserved",
   slot_wait: "waited to start",
   provider_wait: "waited for a provider slot",
+  check_wait: "waited for a check slot",
   rate_limit_hold: "waiting: provider limit",
   rate_limit_resumed: "provider limit lifted",
   claude_window_reserved: "claude usage window reserved",

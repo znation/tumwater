@@ -9,7 +9,7 @@
  * runScopedBuildCheck (build-check-scoped.ts) is the only caller that both runs a check and
  * uses this wording; the baseline surfaces use the event/warning helpers alone. */
 
-import type { HarnessEvent, HarnessEventInput } from "../events/events.js";
+import { type HarnessEvent, type HarnessEventInput, logEventBestEffort } from "../events/events.js";
 import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-check.js";
 
 /** The scopes named in a build_check event logged from runScopedBuildCheck. The red-main
@@ -307,6 +307,18 @@ export function buildCheckEvent(
         }
       : {}),
   };
+}
+
+/** A scoped check that waited at least this long for a process-wide check permit is worth an
+ * event: it is the operator's signal that `maxConcurrentChecks` is too small for the team. */
+export const CHECK_WAIT_EVENT_MS = 30_000;
+
+/** Log one `check_wait` when a scoped check waited at least CHECK_WAIT_EVENT_MS for a check
+ * permit; a shorter wait is ordinary queueing and stays silent. The one home of the event's
+ * shape, beside buildCheckEvent. Best-effort: an unwritable feed must not fail the check. */
+export function logCheckWaitEvent(root: string, role: string, scope: BuildCheckScope, waitedMs: number): void {
+  if (waitedMs < CHECK_WAIT_EVENT_MS) return;
+  logEventBestEffort(root, { source: role, type: "check_wait", role, scope, waitedMs });
 }
 
 /** One baseline check run as checkMainBaseline's onRun hook reports it: the outcome that ran
