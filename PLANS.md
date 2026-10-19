@@ -402,6 +402,10 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Plain terms code runner, part 6/14: Convert the TUI and the merge and review modules (planned 2026-10-16 by user; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/ui/tui/ + the other src/ui/*.ts + src/merge/ + src/review/ + src/verdict/ + their tests)
 
+**Needs replan 2026-10-19 by feature: rejected after 2 review rounds**
+
+1. (prior 1) A kept "loop" comment is still renamed to "role" against the plan's keep rule. `src/merge/merge-stack.ts:6` now reads "re-stack role for a main that moves mid-check", but it describes the `BATCH_RESTACK_ATTEMPTS` retry loop at `src/merge/merge-stack.ts:146`, a JavaScript retry loop the se…
+
 **Goal.** The TUI, the remaining src/ui/ modules, and the merge, review and verdict modules use role and runner names in identifiers, comments and test titles.
 
 **Approach.**
