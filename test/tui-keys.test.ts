@@ -3410,3 +3410,35 @@ test("Ctrl+P opens the provider-caps editor on Activity and the pause editor on 
   assert.equal(keys.state().pauseEditRole, "clean", "Ctrl+P on a Transcript opens the pause editor");
   assert.equal(keys.state().providerCapsMode, false, "the provider-caps editor does not open on a Transcript");
 });
+
+test("Ctrl+X opens the agent-backends editor on Activity and keeps its meaning off it", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  const roles = ["clean"];
+  keys.syncSnapshot(0, false, roles);
+
+  // Activity (view 0): Ctrl+X opens the agent-backends editor, pre-filled empty when the key
+  // is unset; a second Ctrl+X cancels it (the retire/notes/backlog/inbox X arms are all
+  // guarded to their own views).
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().backendsMode, true, "Ctrl+X on Activity opens the agent-backends editor");
+  assert.equal(keys.state().input, "", "unset backends pre-fills empty");
+  assert.match(keys.state().flash!, /backends/);
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().backendsMode, false, "Ctrl+X again cancels the agent-backends editor");
+
+  // On a role's Transcript (view 1), Ctrl+X keeps its existing meaning: the new arm falls
+  // through off view 0, so the backends editor stays closed.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature's transcript (view 1)
+  assert.equal(keys.state().view, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().backendsMode, false, "the backends editor does not open on a Transcript");
+
+  // On the Health view (roleIds.length + 7), Ctrl+X still opens the retire editor, not the
+  // backends editor.
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, roles.length + 7, "Health is roleIds.length + 7");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().retireMode, true, "Health keeps Ctrl+X for the retire editor");
+  assert.equal(keys.state().backendsMode, false, "the backends editor stays closed on Health");
+});

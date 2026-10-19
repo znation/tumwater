@@ -77,6 +77,8 @@ interface TuiKeysState {
   slotsMode: boolean;
   /** The Activity view's Ctrl+E notify-hook mode holds the prompt line. */
   notifyMode: boolean;
+  /** The Activity view's Ctrl+X agent-backends mode holds the prompt line. */
+  backendsMode: boolean;
   /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line: the
    * role whose `roles.<base>.instructions` override the prompt line is replacing from a typed
    * file path, or null when closed. */
