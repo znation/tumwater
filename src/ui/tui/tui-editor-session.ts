@@ -69,6 +69,8 @@ interface TuiHeld {
   backends: boolean;
   /** The Activity view's Ctrl+L team-fallback editor holds the prompt line. */
   fallback: boolean;
+  /** The Transcript view's Ctrl+X role-model editor holds the prompt line. */
+  roleModel: boolean;
   /** The Transcript view's Ctrl+G instance-count editor holds the prompt line. */
   instances: boolean;
 }
@@ -129,7 +131,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "instances"): string | null;
+  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "roleModel" | "instances"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -165,6 +167,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       notify: false,
       backends: false,
       fallback: false,
+      roleModel: false,
       instances: false,
     },
     root: deps.root,
@@ -215,6 +218,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.notify && entering !== "notify") return session.busyFlash("notify hook");
       if (h.backends && entering !== "backends") return session.busyFlash("agent backends");
       if (h.fallback && entering !== "fallback") return session.busyFlash("fallback edit");
+      if (h.roleModel && entering !== "roleModel") return session.busyFlash("role model edit");
       if (h.instances && entering !== "instances") return session.busyFlash("role instances");
       if (entering === "attach" && h.budget) return session.busyFlash("budget edit");
       if (entering === "notes" && (h.attach || h.budget)) return session.busyFlash(h.attach ? "image attach" : "budget edit");
@@ -228,12 +232,8 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (entering === "slots" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : "budget edit");
       if (entering === "notify" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "instructions edit");
       if (entering === "backends" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions || h.providerCaps || h.concurrency)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : h.providerCaps ? "provider caps" : h.concurrency ? "run cap edit" : "budget edit");
-      // The budget editor is a held flag like the rest, but the guard names it in these
-      // per-target bottom clauses rather than a `h.budget && entering !== "budget"` top clause,
-      // so every editor that takes the line must name `h.budget` itself — without it, entering
-      // the fallback editor over the budget editor would overwrite the budget draft instead of
-      // flashing the way out.
       if (entering === "fallback" && h.budget) return session.busyFlash("budget edit");
+      if (entering === "roleModel" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "instructions edit");
       if (entering === "instances" && h.budget) return session.busyFlash("budget edit");
       return null;
     },

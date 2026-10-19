@@ -3116,7 +3116,7 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false, intervalMode: false, instructionsEditFor: null };
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
   // exclusion every other mode enforces, or they would run over the retire modal.
@@ -3129,6 +3129,9 @@ test("promptLineFree is false while retire-edit mode holds the line, so the Heal
   es.intervalMode = true;
   assert.equal(promptLineFree(es), false, "the interval editor blocks the Transcript pane's own arms");
   es.intervalMode = false;
+  es.roleModelMode = true;
+  assert.equal(promptLineFree(es), false, "the role-model editor blocks the pane arms while it holds the line");
+  es.roleModelMode = false;
   es.instructionsEditFor = "clean";
   assert.equal(promptLineFree(es), false, "the instructions editor blocks the pane arms while it holds the line");
 });
@@ -3306,6 +3309,59 @@ test("Ctrl+S on a role's Transcript edits that role's min run interval; instance
   keys.handleKey(undefined, { name: "return" });
   assert.match(keys.state().flash!, /director: min run interval set to 30s/);
   assert.equal(intervalOf("director"), 30, "the director's override is written through the same core");
+});
+
+test("Ctrl+X edits a role's model override on its Transcript; instance writes the base key; the notes view keeps Ctrl+X for clearing notes", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "feature-2", "director"]);
+  const modelOf = (role: string): string | undefined => {
+    const file = path.join(root, "tumwater.json");
+    if (!fs.existsSync(file)) return undefined;
+    return (readJson(file) as { roles?: Record<string, { model?: string }> }).roles?.[role]?.model;
+  };
+
+  // A role's Transcript opens the editor pre-filled empty when the file sets nothing, and Esc
+  // restores the saved draft byte-for-byte with nothing written.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature's transcript (view 1)
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature");
+  for (const ch of "pending draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().roleModelMode, true, "Ctrl+X on a role's Transcript opens the role-model editor");
+  assert.equal(keys.state().input, "", "an override-less role pre-fills an empty line");
+  assert.match(keys.state().flash!, /edit feature's model override/);
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().roleModelMode, false);
+  assert.equal(keys.state().input, "pending draft", "Esc restores the saved draft");
+  assert.equal(modelOf("feature"), undefined, "Esc writes nothing");
+
+  // Enter on a model id writes the viewed role's `roles.feature.model` key.
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  for (const ch of "claude-3-7-sonnet") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().roleModelMode, false, "a saved model leaves edit mode");
+  assert.equal(keys.state().input, "pending draft", "Enter restores the saved draft");
+  assert.match(keys.state().flash!, /feature: model override set to claude-3-7-sonnet/);
+  assert.equal(modelOf("feature"), "claude-3-7-sonnet", "the override is written through setRoleModelFields");
+
+  // An instance id writes its base role's key — roles.feature, not roles.feature-2.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature-2's transcript (view 2)
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature-2");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().input, "claude-3-7-sonnet", "an instance re-opening pre-fills its base role's override");
+  for (let i = 0; i < "claude-3-7-sonnet".length; i++) keys.handleKey(undefined, { name: "backspace" });
+  for (const ch of "strong") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(modelOf("feature"), "strong", "an instance id writes its base role's key");
+  assert.equal(modelOf("feature-2"), undefined, "no per-instance entry is left behind");
+
+  // With the notes view up (Ctrl+N once), Ctrl+X still clears the notes and never opens the
+  // role-model editor — its open guard excludes noteMode so the clear-notes arm keeps the key.
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → feature-2's notes
+  assert.equal(keys.state().noteMode, true, "one Ctrl+N shows the notes view");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().roleModelMode, false, "on the notes view Ctrl+X does not open the role-model editor");
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // second press clears the notes
 });
 
 test("Ctrl+L on a role's Transcript replaces that role's instructions from a file; instance and director write the base key", () => {
