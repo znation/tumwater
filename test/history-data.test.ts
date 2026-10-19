@@ -358,7 +358,8 @@ test("a queued tick resolves past a rebased retriable failure to the recovery's 
   // verification's syncPinToMain rebased the ref before the gate, so recovery re-enqueues the
   // REBASED sha (sha2) while the failed attempt logged its authored sha (sha1), and the recovery's
   // `merged` logs sha2. The authoring tick's row must read the FINAL outcome ("changed"),
-  // not latch sha1's first, non-terminal failure.
+  // not latch sha1's first, non-terminal failure; the recovery run's row reads the attempt it
+  // re-queued (sha1's merge_blocked), so each attempt's verdict shows on exactly one row.
   writeEvents(root, [
     { ts: t(50), source: "feature", type: "run_start", run: 1 },
     { ts: t(49), source: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
@@ -373,18 +374,18 @@ test("a queued tick resolves past a rebased retriable failure to the recovery's 
   assert.deepEqual(
     rows.map((r) => [r.run, r.result]),
     [
-      [2, "changed"],
+      [2, "merge_blocked"],
       [1, "changed"],
     ],
   );
 });
 
-test("a retriable failure keeps its verdict while its recovery pin is still pending (BUGS.md 2026-10-10)", () => {
+test("while a re-queued attempt is pending, the recovery row shows the failure and the authoring row waits to merge", () => {
   const root = tmpdir();
   const t = (mins: number) => Date.now() - mins * MIN;
-  // The rebased recovery pin is enqueued but has no outcome yet, so the last verdict visible
-  // for the authoring change is still its retriable failure — the row keeps it (the behavior
-  // before the chain fix), not the recovery's raw "queued".
+  // The rebased recovery pin is enqueued but has no outcome yet. Its retriable failure shows
+  // once, on the recovery run's row (the attempt that run re-queued); the authoring row, whose
+  // change is waiting to merge again, keeps the raw "queued" label rather than repeating it.
   writeEvents(root, [
     { ts: t(50), source: "feature", type: "run_start", run: 1 },
     { ts: t(49), source: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
@@ -398,8 +399,87 @@ test("a retriable failure keeps its verdict while its recovery pin is still pend
   assert.deepEqual(
     rows.map((r) => [r.run, r.result]),
     [
-      [2, "queued"],
-      [1, "merge_blocked"],
+      [2, "merge_blocked"],
+      [1, "queued"],
+    ],
+  );
+});
+
+test("a change re-queued after seven review timeouts and then rejected reads each attempt once (feature-3, 2026-10-18)", () => {
+  // The live team's feature-3 runs 253–260: run 253 authored a change (204 min); its review
+  // timed out, and each of runs 254–259 — leftover recovery, a second of re-queueing and no
+  // work — re-queued it, only for that review to time out too; run 260's re-queue was finally
+  // rejected. Recovery rebased the ref twice (sha0 → sha1 → sha2) and then re-queued sha2
+  // unchanged four times. The rows used to read "rejected in review" on all eight runs; they
+  // must read the rejection once (the authoring run, the change's final verdict) and each of
+  // the seven timeouts once (the recovery run that re-queued it).
+  const subject = "resolve all remaining conflict markers in the 7 objection files, keeping main's content";
+  const recovered = `recovered leftover work from feature-3: ${subject}`;
+  const shas = ["sha0", "sha0", "sha1", "sha2", "sha2", "sha2", "sha2", "sha2"];
+  const events: HarnessEvent[] = [];
+  let ts = 1_000_000;
+  shas.forEach((sha, i) => {
+    const run = 253 + i;
+    const summary = i === 0 ? subject : recovered;
+    events.push({ ts: (ts += 1_000), source: "feature-3", type: "run_start", run } as HarnessEvent);
+    events.push({ ts: (ts += i === 0 ? 12_224_000 : 200), source: "feature-3", type: "merge_queued", commit: sha, summary } as HarnessEvent);
+    events.push({ ts: (ts += 50), source: "feature-3", type: "run_end", run, result: "queued", summary } as HarnessEvent);
+    const last = i === shas.length - 1;
+    events.push(
+      last
+        ? ({ ts: (ts += 1_700_000), source: "feature-3", type: "review_rejected", head: sha, reasons: ["stale archive duplicates"] } as HarnessEvent)
+        : ({ ts: (ts += 3_000_000), source: "feature-3", type: "review_failed", head: sha, message: "timed out after 1800s" } as HarnessEvent),
+    );
+    events.push({ ts: (ts += 100), source: "feature-3", type: "merge_failed", commit: sha, result: last ? "rejected" : "review_error", summary } as HarnessEvent);
+  });
+  const rows = tickRows(events, 20, "feature-3");
+  assert.deepEqual(
+    rows.map((r) => [r.run, r.result]),
+    [
+      [260, "review_error"],
+      [259, "review_error"],
+      [258, "review_error"],
+      [257, "review_error"],
+      [256, "review_error"],
+      [255, "review_error"],
+      [254, "review_error"],
+      [253, "rejected"],
+    ],
+  );
+  // What the CLI table and the dashboard drawer print: seven timeouts, one rejection.
+  const labels = rows.map((r) => tickRowCells(r).result);
+  assert.equal(labels.filter((l) => l === "review failed").length, 7);
+  assert.deepEqual(labels.filter((l) => l === "rejected in review"), ["rejected in review"]);
+  // The summary counts them the same way: eight problem runs, none of them merges.
+  const { total } = summarizeTickRows(rows);
+  assert.deepEqual([total.runs, total.problems, total.changes], [8, 8, 0]);
+});
+
+test("a recovery pin after a change that ended is a fresh change's first attempt, read by the authoring rule", () => {
+  // Leftover recovery also adopts a commit a crash left unpinned, so its re-queue can be a
+  // change's FIRST pin: the previous pin's attempt ended (rejected), so there is no kept
+  // attempt this run re-queued. Its row takes its own change's final verdict, never the
+  // previous change's rejection.
+  const events: HarnessEvent[] = [
+    { ts: 1_000, source: "feature", type: "run_start", run: 1 },
+    { ts: 1_100, source: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
+    { ts: 1_200, source: "feature", type: "run_end", run: 1, result: "queued", summary: "work one" },
+    { ts: 1_300, source: "feature", type: "merge_failed", commit: "sha1", result: "rejected" },
+    { ts: 2_000, source: "feature", type: "run_start", run: 2 },
+    { ts: 2_100, source: "feature", type: "merge_queued", commit: "sha2", summary: "recovered leftover work from feature: work two" },
+    { ts: 2_200, source: "feature", type: "run_end", run: 2, result: "queued", summary: "recovered leftover work from feature: work two" },
+    { ts: 2_300, source: "feature", type: "merge_failed", commit: "sha2", result: "merge_conflict" },
+    { ts: 3_000, source: "feature", type: "run_start", run: 3 },
+    { ts: 3_100, source: "feature", type: "merge_queued", commit: "sha3", summary: "recovered leftover work from feature: work two" },
+    { ts: 3_200, source: "feature", type: "run_end", run: 3, result: "queued", summary: "recovered leftover work from feature: work two" },
+    { ts: 3_300, source: "feature", type: "merge_done", commit: "sha3", result: "changed" },
+  ];
+  assert.deepEqual(
+    tickRows(events, 20, null).map((r) => [r.run, r.result]),
+    [
+      [3, "merge_conflict"],
+      [2, "changed"],
+      [1, "rejected"],
     ],
   );
 });

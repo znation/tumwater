@@ -194,6 +194,34 @@ test("a queued tick that failed retriably, was rebased, and recovered into a mer
   assert.deepEqual(lossCauses, []);
 });
 
+test("a recovery run prices under the review failure it re-queued, not once more under the change's rejection", () => {
+  // The authoring run's review timed out, a one-second leftover-recovery run re-queued it, and
+  // that attempt was rejected. The rejection owns the authoring span (one run), and the
+  // recovery run counts under the timeout it re-queued — the history row's rule — instead of
+  // adding a second run to the review-rejected cause.
+  const authoring = ev({ ts: 100, source: "feature", run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
+  const recovery = ev({ ts: 151, source: "feature", run: 2, result: "queued", durationMs: 300, summary: "recovered leftover work from feature: work" });
+  const { timeSpend, lossCauses } = timeAndSpend(
+    [authoring, recovery],
+    [
+      ev({ ts: 95, source: "feature", type: "merge_queued", commit: "sha1", summary: "work" }),
+      authoring,
+      ev({ ts: 110, source: "feature", type: "review_failed", head: "sha1", message: "timed out after 1800s" }),
+      ev({ ts: 120, source: "feature", type: "merge_failed", commit: "sha1", result: "review_error" }),
+      ev({ ts: 150, source: "feature", type: "merge_queued", commit: "sha1", summary: "recovered leftover work from feature: work" }),
+      recovery,
+      ev({ ts: 170, source: "feature", type: "review_rejected", head: "sha1", reasons: ["breaks the archive"] }),
+      ev({ ts: 180, source: "feature", type: "merge_failed", commit: "sha1", result: "rejected" }),
+    ],
+  );
+  assert.deepEqual(timeSpend[0]!.classes.error, { runs: 2, ms: 5300, costUsd: 0.25 });
+  const rejected = lossCauses.find((c) => c.kind === "review-rejected");
+  assert.deepEqual([rejected?.runs, rejected?.ms, rejected?.example], [1, 5000, "breaks the archive"]);
+  const timeout = lossCauses.find((c) => c.kind === "error-cluster");
+  assert.deepEqual([timeout?.runs, timeout?.ms], [1, 300]);
+  assert.match(timeout?.example ?? "", /^timed out after 1800s/);
+});
+
 test("an error cluster pools its members' time across roles and its example rides lastSeen", () => {
   const events = [
     ev({ source: "qa", ts: 100, result: "error", error: "pi exited 1: boom 3", durationMs: 1000 }),

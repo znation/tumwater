@@ -25,9 +25,10 @@ import type { HarnessEvent } from "../events/events.js";
  * timestamp falls inside the pair — the tick-less in-tick events (`review_verdict`,
  * `build_check`, `warning`) included, other loops' events excluded. A tick that ended `queued`
  * has its merge's verdict resolved the way history rows do: `result` becomes the merge's
- * result and `merge` the `merge_done`/`merge_failed` event that carries it (logged after the
- * block, so not in `events`); `merge` is null for every other tick, and for a queued tick
- * whose merge is still pending or whose outcome rotated out (`result` stays `queued`). */
+ * result and `merge` the `merge_done`/`merge_failed` event that carries it (not in `events`:
+ * logged after the block, or — for a leftover-recovery run, whose verdict is the failed
+ * attempt it re-queued — before it); `merge` is null for every other tick, and for a queued
+ * tick whose merge is still pending or whose outcome rotated out (`result` stays `queued`). */
 export interface TickDetail {
   role: string;
   run: number;

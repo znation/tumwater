@@ -375,3 +375,33 @@ test("renderTickDetail and cmdTick --json show a queued tick's resolved merge", 
   assert.equal(payload.merge?.type, "merge_done");
   assert.equal(renderTickDetail(readTickDetail(repo, "bugfix", 1)!), text.trimEnd());
 });
+
+test("a leftover-recovery run's detail shows the failed attempt it re-queued, leading its trail", () => {
+  // Run 2 only re-queued run 1's change after its review failed. Its verdict is that failure
+  // (the history row's rule), and the failure was logged before run 2 began, so the trail
+  // opens with it and stays in time order rather than ending on an earlier event.
+  const root = makeRepo();
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent;
+  const recovered = "recovered leftover work from bugfix: the fix";
+  writeEvents(root, [
+    start({ ts: 1000, run: 1 }),
+    ev({ ts: 1100, type: "merge_queued", commit: "sha1abcdef", summary: "the fix" }),
+    end({ ts: 1200, run: 1, result: "queued" }),
+    ev({ ts: 1500, type: "merge_failed", commit: "sha1abcdef", result: "review_error" }),
+    start({ ts: 2000, run: 2 }),
+    ev({ ts: 2100, type: "merge_queued", commit: "sha1abcdef", summary: recovered }),
+    end({ ts: 2200, run: 2, result: "queued", summary: recovered }),
+    ev({ ts: 3000, type: "merge_failed", commit: "sha1abcdef", result: "rejected" }),
+  ]);
+  const detail = readTickDetail(root, "bugfix", 2)!;
+  assert.equal(detail.result, "review_error");
+  assert.equal(detail.merge?.ts, 1500);
+  const lines = renderTickDetail(detail).split("\n");
+  assert.match(lines[0]!, /run #2 — review failed/);
+  assert.match(lines[1]!, /merge of sha1abc\w* failed \(review failed\)/);
+  assert.equal(lines.length, 5);
+  // The authoring run keeps the change's final verdict, its outcome line last.
+  const authoring = renderTickDetail(readTickDetail(root, "bugfix", 1)!).split("\n");
+  assert.match(authoring[0]!, /run #1 — rejected in review/);
+  assert.match(authoring.at(-1)!, /merge of sha1abc\w* failed \(rejected in review\)/);
+});

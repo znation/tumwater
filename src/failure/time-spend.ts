@@ -158,7 +158,10 @@ function tally(target: { runs: number; ms: number; costUsd: number }, durationMs
  * through its own merge_queued pin to the later merge_done/merge_failed outcome for the same
  * loop+sha — history-data.ts's exact join — so an authoring tick whose merge was rejected
  * prices into the error-class cell its contract names instead of the merged cell its
- * transient queued result suggested. A merge still in the pipeline, or an outcome event
+ * transient queued result suggested. A leftover-recovery run resolves to the failed attempt it
+ * re-queued (the history row's rule), so its near-zero span counts under that failure — a
+ * review timeout's cluster, say — rather than adding a run to the change's final
+ * review-rejected cause once per re-queue. A merge still in the pipeline, or an outcome event
  * matching no pin, keeps the queued→merged reading: the conservative fallback. */
 export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   timeSpend: TimeSpendRow[];

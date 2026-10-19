@@ -79,7 +79,10 @@ export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
  * marker), duration, usage, and the pinned commit sha when the block's `merge_queued`/`merge_done`
  * event carries one — then each event through formatEvent, the shared renderer `logs` and the
  * TUI use, so the trail reads exactly like the feed it came from. A queued tick whose merge
- * has finished shows that verdict in the header and ends with the merge's outcome line. */
+ * has finished shows that verdict in the header and ends with the merge's outcome line; a
+ * leftover-recovery run's verdict is the failed attempt it re-queued (resolveQueuedResult),
+ * logged before the run began, so that outcome line leads the trail instead — the trail stays
+ * in time order. */
 export function renderTickDetail(d: TickDetail): string {
   const summary: string[] = [];
   if (d.endTs === null) summary.push(d.startTs === null ? "unpaired" : "in flight");
@@ -89,9 +92,13 @@ export function renderTickDetail(d: TickDetail): string {
   const sha = tickCommitSha(d);
   let header = `${roleLabel(d.role)} run #${d.run} — ${summary.join(" · ")}`;
   if (sha !== null) header += ` · commit ${shortSha(sha)}`;
-  const lines = [header, ...d.events.map(formatEvent)];
-  if (d.merge !== null) lines.push(formatEvent(d.merge));
-  return lines.join("\n");
+  const trail = d.events.map(formatEvent);
+  if (d.merge !== null) {
+    const first = d.events[0];
+    if (first !== undefined && d.merge.ts < first.ts) trail.unshift(formatEvent(d.merge));
+    else trail.push(formatEvent(d.merge));
+  }
+  return [header, ...trail].join("\n");
 }
 
 /** `tumwater tick <role> [<n>] [--last] [--stat] [--json]`: print one completed tick's full event
