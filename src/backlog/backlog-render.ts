@@ -1,5 +1,5 @@
 import type { BacklogEntry } from "./backlog-md.js";
-import type { BacklogPayload } from "./backlog.js";
+import { type BacklogPayload, entryMatches } from "./backlog.js";
 import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
 import { holdMark, inProgressMark, type EntryHold } from "./backlog-eligibility.js";
 
@@ -114,6 +114,34 @@ export function readyBacklog(view: BacklogView): BacklogView {
     plans: pick(view.plans, plan),
     bugs: pick(view.bugs, bug),
     holds: { plans: pick(holds.plans, plan), bugs: pick(holds.bugs, bug) },
+    ...(view.inProgress
+      ? { inProgress: { plans: pick(view.inProgress.plans, plan), bugs: pick(view.inProgress.bugs, bug) } }
+      : {}),
+  };
+}
+
+/** The view with only the entries whose heading or body contains `pattern` (case-insensitively) —
+ * the active-entry twin of the finished-entry `--grep`, through the same one matcher
+ * (entryMatches, backlog.ts) the finished-entry lists use: keep plan `i`, bug `i` and question
+ * `i` only when entryMatches(entry, pattern), and filter `holds.plans`/`holds.bugs` and
+ * `inProgress.plans`/`inProgress.bugs` by the same kept indexes so the parallel arrays stay
+ * aligned (the `pick` shape readyBacklog reuses). Questions carry no holds and filter by
+ * entryMatches alone. A view without `holds`/`inProgress` only filters the entry arrays. */
+export function grepBacklog(view: BacklogView, pattern: string): BacklogView {
+  const keep = (xs: readonly BacklogEntry[]): number[] =>
+    Array.from({ length: xs.length }, (_, i) => i).filter((i) => entryMatches(xs[i]!, pattern));
+  const plan = keep(view.plans);
+  const bug = keep(view.bugs);
+  const question = keep(view.questions);
+  const pick = <T>(xs: readonly T[] | undefined, idx: number[]): T[] => idx.map((i) => xs?.[i] as T);
+  return {
+    ...view,
+    plans: pick(view.plans, plan),
+    bugs: pick(view.bugs, bug),
+    questions: pick(view.questions, question),
+    ...(view.holds
+      ? { holds: { plans: pick(view.holds.plans, plan), bugs: pick(view.holds.bugs, bug) } }
+      : {}),
     ...(view.inProgress
       ? { inProgress: { plans: pick(view.inProgress.plans, plan), bugs: pick(view.inProgress.bugs, bug) } }
       : {}),

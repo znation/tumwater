@@ -23,7 +23,6 @@ import {
 } from "./backlog.js";
 import { backlogHolds, backlogInProgress, holdMark, inProgressMark } from "./backlog-eligibility.js";
 import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
-import { numberedList } from "../text/markdown.js";
 import { collapseWhitespace } from "../text/text.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-repo-gate.js";
@@ -318,6 +317,11 @@ function positionRuns(positions: readonly number[]): string {
  * the two booleans this shell consumes (repeats refused), `--help`/`-h` is tolerated, and any
  * positional or other flag is refused through rejectUnknownArgs.
  *
+ * `--grep <text>` searches the active entries too: it keeps the entries whose heading or
+ * body contains the text (case-insensitive), each under its unfiltered number so a printed
+ * position still reaches `--show`/`--edit`/`--cancel` — the active twin of the finished
+ * entries' `--done --grep`.
+ *
  * `--done [-n <count>] [--grep <text>]` (each once; `-n` and `--grep` need `--done`) lists the
  * newest finished entries instead (BUGS.md ## Fixed or PLANS.md ## Done, numbered, default 10)
  * with `older` counting those left out; --json carries each entry's `position` and
@@ -344,7 +348,7 @@ export function listAndAnnounce(
       rejectRepeatFlag(grep !== null, "--grep");
       const text = args[++i];
       if (text === undefined || text === "") {
-        fail(`--grep needs text (usage: tumwater ${command} --list --done --grep <text>)`);
+        fail(`--grep needs text (usage: tumwater ${command} --list --grep <text>)`);
       }
       grep = text;
       continue;
@@ -377,7 +381,6 @@ export function listAndAnnounce(
   // both consumed above.
   rejectUnknownArgs(command, rest, []);
   if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
-  if (grep !== null && !done) fail("--grep needs --done (it searches the finished entries)");
   // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
   const bugSection = sectionTitle === "Open";
   if (done) {
@@ -419,16 +422,20 @@ export function listAndAnnounce(
   const entryHolds = bugSection ? holds.bugs : holds.plans;
   const inProgress = backlogInProgress(root);
   const entryRunners = bugSection ? inProgress.bugs : inProgress.plans;
+  // Numbering is the unfiltered 1-based position `--edit`/`--cancel`/`--show <n>` address;
+  // `--grep` keeps each match's original position so a printed number still reaches them.
+  const numbered = entries.map((entry, i) => ({ entry, position: i + 1 }));
+  const matches = grep === null ? numbered : numbered.filter((m) => entryMatches(m.entry, grep));
   if (json) {
     sayJson({
-      entries: entries.map((entry, i) => {
+      entries: matches.map(({ entry, position }) => {
         const since = filingDate(entry.title);
         return {
-          position: i + 1,
+          position,
           title: entry.title,
           body: entry.body,
-          hold: entryHolds[i] ?? null,
-          inProgress: entryRunners[i] ?? null,
+          hold: entryHolds[position - 1] ?? null,
+          inProgress: entryRunners[position - 1] ?? null,
           // The filing stamp the entry's own heading carries, and how many days it has waited
           // since then (both present only when the heading names a stamp — an undated entry
           // keeps the pre-existing shape with neither key).
@@ -439,23 +446,27 @@ export function listAndAnnounce(
     return;
   }
   const noun = sectionNoun(sectionTitle);
-  if (entries.length === 0) {
+  if (grep === null && entries.length === 0) {
     say(`no ${noun}s`);
+    return;
+  }
+  if (matches.length === 0) {
+    say(`no ${noun}s match "${grep}"`);
     return;
   }
   const line = (entry: { title: string }, i: number): string =>
     `${entry.title}${holdMark(entryHolds[i] ?? null)}${inProgressMark(entryRunners[i] ?? null)}${entryAgeSuffix(entry.title)}`;
   if (bugSection) {
-    say(`${noun}s in ${fileName}:\n${numberedList(entries.map(line))}`);
+    say(`${noun}s in ${fileName}:\n${matches.map(({ entry, position }) => `${position}. ${line(entry, position - 1)}`).join("\n")}`);
     return;
   }
   // Plans: a series' blocked parts show as one line naming their positions, as the prompt's
   // backlog index does; numbering is unchanged so --show/--edit/--cancel <n> reach every part.
-  const rows = entries.map((entry, i) => ({
-    position: i + 1,
+  const rows = matches.map(({ entry, position }) => ({
+    position,
     title: entry.title,
-    hold: entryHolds[i] ?? null,
-    claimer: entryRunners[i] ?? undefined,
+    hold: entryHolds[position - 1] ?? null,
+    claimer: entryRunners[position - 1] ?? undefined,
   }));
   let grouped = false;
   const lines = groupBlockedSeries(rows).map((g) => {

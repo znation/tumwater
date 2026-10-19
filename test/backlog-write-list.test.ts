@@ -187,10 +187,10 @@ test("help topics name the --list forms", async () => {
   const repo = makeRepo();
   let r = await cli(repo, "help", "bug");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /tumwater bug --list \[--json\]/);
+  assert.match(r.stdout, /tumwater bug --list \[--grep <text>\] \[--json\]/);
   r = await cli(repo, "help", "plan");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /tumwater plan --list \[--json\]/);
+  assert.match(r.stdout, /tumwater plan --list \[--grep <text>\] \[--json\]/);
   assert.match(r.stdout, /tumwater plan --list --done/);
   r = await cli(repo, "help", "bug");
   assert.match(r.stdout, /tumwater bug --list --done/);
@@ -227,17 +227,71 @@ test("plan|bug --list --done --grep keeps matches under their unfiltered numbers
   assert.equal(r.stdout, 'fixed bugs in BUGS.md matching "deref", newest first:\n1. Crash (fixed 2026-10-01)\n');
 });
 
-test("--grep needs --done, a value, and appears once", async () => {
+test("--grep needs a value and appears once, on the active list too", async () => {
   const repo = makeRepo();
-  let r = await cli(repo, "plan", "--list", "--grep", "x");
+  let r = await cli(repo, "plan", "--list", "--grep", "x", "--grep", "y");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--grep needs --done/);
+  assert.match(r.stderr, /--grep may only be given once/);
+  r = await cli(repo, "plan", "--list", "--grep");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--grep needs text/);
   r = await cli(repo, "plan", "--list", "--done", "--grep", "x", "--grep", "y");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--grep may only be given once/);
   r = await cli(repo, "plan", "--list", "--done", "--grep");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--grep needs text/);
+});
+
+test("plan|bug --list --grep searches the active entries under their unfiltered numbers", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  fs.writeFileSync(path.join(repo, "BUGS.md"), seededBugsForList());
+  let r = await cli(repo, "plan", "--list", "--grep", "import");
+  assert.equal(r.code, 0);
+  const p2 = "Export series, part 2/2: add import (planned 2026-10-02) (requires Export series 1/2 landed)";
+  assert.equal(
+    r.stdout,
+    ["planned features in PLANS.md:", `2. ${p2} [blocked: requires Export series 1/2]${entryAgeSuffix(p2)}`, ""].join("\n"),
+  );
+  // A printed position still reaches --show.
+  assert.match((await cli(repo, "plan", "--show", "2")).stdout, /Export series, part 2\/2: add import/);
+  // Case-insensitive, and a no-match pattern prints no-match prose without exiting 1.
+  r = await cli(repo, "plan", "--list", "--grep", "NOPE");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, 'no planned features match "NOPE"\n');
+  // --json keeps each match's original position and its parallel hold.
+  const doc = JSON.parse((await cli(repo, "plan", "--list", "--grep", "import", "--json")).stdout) as {
+    entries: { position: number; hold: unknown }[];
+  };
+  assert.deepEqual(doc.entries.map((e) => e.position), [2]);
+  assert.deepEqual(doc.entries[0]!.hold, { blockedBy: ["Export series 1/2"] });
+  // Bugs search too, likewise number-keeping.
+  r = await cli(repo, "bug", "--list", "--grep", "open bug");
+  const b2 = "open bug (reported by the operator 2026-10-02)";
+  assert.equal(r.stdout, ["open bugs in BUGS.md:", `2. ${b2}${entryAgeSuffix(b2)}`, ""].join("\n"));
+});
+
+test("plan --list --grep compresses a matching blocked series as one line", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    [
+      "# Plans", "", "## Planned", "",
+      "### Unrelated plan (planned 2026-10-01)", "", "b", "",
+      "### S, part 1/3: one (planned 2026-10-01)", "", "b", "",
+      "### S, part 2/3: two (planned 2026-10-01) (requires S 1/3 landed)", "", "b", "",
+      "### S, part 3/3: three (planned 2026-10-01) (requires S 2/3 landed)", "", "b", "",
+      "### Final plan (planned 2026-10-01)", "", "b", "", "",
+      "## Done", "", "_None yet._", "",
+    ].join("\n"),
+  );
+  const r = await cli(repo, "plan", "--list", "--grep", "S,");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.split("\n");
+  assert.match(lines[1]!, /^2\. S, part 1\/3: one/);
+  assert.equal(lines[2], "3–4. S, 2 blocked parts (2/3–3/3) [blocked: each waits on an earlier part]");
+  assert.equal(lines[3], "(each blocked series is one line; --show <n> prints a part, --json lists every entry)");
 });
 
 test("plan --list --done lists the newest done plans, and bug --list --done an empty Fixed", async () => {

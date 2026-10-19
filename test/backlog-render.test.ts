@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { backlogPayload } from "../src/backlog/backlog.js";
-import { readyBacklog, renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
+import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
@@ -101,11 +101,11 @@ test("tumwater backlog prints the backlog and rejects flags; works outside a rea
   assert.match(ok.out, /### Logs rotate too often \(reported 2026-09-25\)/);
   assert.match(ok.out, /## Planned features\n\n_\(none\)_/);
 
-  // --json and --ready are the command's only flags: an unknown one still fails fast like
-  // every other command, whether alone or beside a valid one.
+  // --json, --ready, and --grep are the command's only flags: an unknown one still fails fast
+  // like every other command, whether alone or beside a valid one.
   const bad = await runCli(root, "backlog", "--nope");
   assert.notEqual(bad.code, 0);
-  assert.match(bad.out, /unknown argument: --nope \(valid flags for tumwater backlog: --json, --ready\)/);
+  assert.match(bad.out, /unknown argument: --nope \(valid flags for tumwater backlog: --json, --ready, --grep <text>\)/);
   const badPair = await runCli(root, "backlog", "--json", "--nope");
   assert.notEqual(badPair.code, 0);
   assert.match(badPair.out, /unknown argument: --nope/);
@@ -245,7 +245,7 @@ test("tumwater backlog marks holds in Markdown and shapes holds arrays in --json
 
 test("tumwater help lists the backlog command", async () => {
   const help = await runCli(makeRepo(), "help");
-  assert.match(help.out, /^  tumwater backlog \[--ready\] \[--json\]\n {35}Show planned features, open bugs/m);
+  assert.match(help.out, /^  tumwater backlog \[--ready\] \[--grep <text>\] \[--json\]\n {35}Show planned features, open bugs/m);
 });
 
 test("renderBacklogMarkdown puts the working-on-it mark after the hold mark", () => {
@@ -302,6 +302,26 @@ test("readyBacklog keeps only unheld entries and their parallel arrays", () => {
   assert.deepEqual(readyBacklog(bare), bare);
 });
 
+test("grepBacklog keeps only entries matching the pattern, with parallel arrays", () => {
+  const e = (title: string, body = "b") => ({ title, body });
+  const view = {
+    plans: [e("One widget"), e("Two"), e("Widget three", "body with widget")],
+    bugs: [e("Widget bug"), e("Other")],
+    questions: [e("Q?"), e("Widget Q")],
+    holds: { plans: ["refused" as const, null, null], bugs: [null, null] },
+    inProgress: { plans: [null, "feature-2", null], bugs: [null, null] },
+  };
+  const out = grepBacklog(view, "widget");
+  assert.deepEqual(out.plans.map((p) => p.title), ["One widget", "Widget three"]);
+  assert.deepEqual(out.holds?.plans, ["refused", null]);
+  assert.deepEqual(out.inProgress?.plans, [null, null]);
+  assert.deepEqual(out.bugs.map((b) => b.title), ["Widget bug"]);
+  assert.deepEqual(out.questions.map((q) => q.title), ["Widget Q"]);
+  const bare = { plans: [e("No match")], bugs: [], questions: [] };
+  assert.deepEqual(grepBacklog(bare, "widget").plans, []);
+  assert.deepEqual(grepBacklog(bare, "No match"), bare);
+});
+
 test("tumwater backlog --ready hides held entries and counts them", async () => {
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), [
@@ -326,6 +346,62 @@ test("tumwater backlog --ready hides held entries and counts them", async () => 
   fs.writeFileSync(path.join(root, "PLANS.md"), "# Plans\n## Planned\n### Ready plan (planned 2026-10-04)\nbody\n## Done\n_None._\n");
   const none = await runCli(root, "backlog", "--ready");
   assert.doesNotMatch(none.out, /hidden/);
+});
+
+test("tumwater backlog --grep keeps only matching entries and composes with --ready and --json", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), [
+    "# Plans", "## Planned",
+    "### Refused plan (planned 2026-10-03)", "**Refused 2026-10-07 by feature: no**",
+    "### Ready plan with widget (planned 2026-10-04)", "body",
+    "## Done", "_None._",
+  ].join("\n"));
+  fs.writeFileSync(path.join(root, "BUGS.md"), [
+    "# Bugs", "## Open",
+    "### Real bug (reported 2026-10-02)", "repro",
+    "### Widget bug (reported 2026-10-03)", "repro",
+    "## Fixed", "_None._",
+  ].join("\n"));
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), [
+    "# Questions", "## Open",
+    "### Widget question (planned 2026-10-05)", "q",
+    "## Answered", "_None._",
+  ].join("\n"));
+  const md = await runCli(root, "backlog", "--grep", "widget");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /### Ready plan with widget/);
+  assert.match(md.out, /### Widget bug/);
+  assert.match(md.out, /### Widget question/);
+  assert.doesNotMatch(md.out, /Refused plan/);
+  assert.doesNotMatch(md.out, /Real bug/);
+  const doc = JSON.parse((await runCli(root, "backlog", "--grep", "widget", "--json")).out) as {
+    plans: { title: string }[]; bugs: { title: string }[]; questions: { title: string }[];
+  };
+  assert.deepEqual(doc.plans.map((p) => p.title), ["Ready plan with widget (planned 2026-10-04)"]);
+  assert.deepEqual(doc.bugs.map((b) => b.title), ["Widget bug (reported 2026-10-03)"]);
+  assert.deepEqual(doc.questions.map((q) => q.title), ["Widget question (planned 2026-10-05)"]);
+  // --grep composes with --ready: only the unheld match stays, and the hidden count counts it.
+  fs.writeFileSync(path.join(root, "PLANS.md"), [
+    "# Plans", "## Planned",
+    "### Refused widget (planned 2026-10-03)", "**Refused 2026-10-07 by feature: no**",
+    "### Ready widget (planned 2026-10-04)", "body",
+    "## Done", "_None._",
+  ].join("\n"));
+  const ready = await runCli(root, "backlog", "--grep", "widget", "--ready");
+  assert.equal(ready.code, 0);
+  assert.match(ready.out, /### Ready widget/);
+  assert.doesNotMatch(ready.out, /Refused widget/);
+  assert.ok(ready.out.trimEnd().endsWith("_(1 held entries hidden; run `tumwater backlog` to see them)_"));
+  // No value, a repeat, and an unknown flag each fail; the unknown names --grep in the list.
+  const noValue = await runCli(root, "backlog", "--grep");
+  assert.equal(noValue.code, 1);
+  assert.match(noValue.out, /backlog --grep needs text/);
+  const repeat = await runCli(root, "backlog", "--grep", "a", "--grep", "b");
+  assert.equal(repeat.code, 1);
+  assert.match(repeat.out, /--grep may only be given once/);
+  assert.match((await runCli(root, "backlog", "--bogus")).out, /--grep/);
+  // `tumwater help backlog` names --grep.
+  assert.match((await runCli(root, "help", "backlog")).out, /backlog \[--ready\] \[--grep <text>\] \[--json\]/);
 });
 
 test("renderBacklogMarkdown prints a blocked series as one heading", () => {
