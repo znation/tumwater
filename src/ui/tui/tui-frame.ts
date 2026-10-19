@@ -71,7 +71,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
 }
 
 /** The footer's key hints for what the keys do right now: keys bright, words dim. */
-export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number; retireMode?: boolean; quietMode?: boolean; quietTeam?: boolean; intervalMode?: boolean; providerCapsMode?: boolean; instructionsEditFor?: string | null; concurrencyMode?: boolean; slotsMode?: boolean }, width: number): StatusLine {
+export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number; retireMode?: boolean; quietMode?: boolean; quietTeam?: boolean; intervalMode?: boolean; providerCapsMode?: boolean; instructionsEditFor?: string | null; concurrencyMode?: boolean; slotsMode?: boolean; notifyMode?: boolean }, width: number): StatusLine {
   let keys: Array<[string, string]>;
   if (mode.entryEditFor?.position === null) keys = [["Enter", `file ${mode.entryEditFor.kind}`], ["Ctrl+N", `switch to ${mode.entryEditFor.kind === "plan" ? "bug" : "plan"}`], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.entryEditFor) keys = [["Enter", "save title"], ["Ctrl+E", "body file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -87,6 +87,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (mode.quietMode) keys = [["Enter", mode.quietTeam ? "save team quiet hours" : "save quiet hours"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.intervalMode) keys = [["Enter", "save interval"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.providerCapsMode) keys = [["Enter", "save provider caps"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.notifyMode) keys = [["Enter", "save the notify hook"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.instructionsEditFor) keys = [["Enter", "save instructions"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.slotsMode) keys = [["Enter", "save worktree slots"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -101,7 +102,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+X", "retire role"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+E", "edit brief"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+V", "top"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+P", "provider caps"], ["Ctrl+O", view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
+  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+E", "notify hook"], ["Ctrl+P", "provider caps"], ["Ctrl+O", view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
   // The mode branches above name their own keys and keep the line, so every remaining
   // view hint always shows the send affordance. This comment marks that ordering.
   const spans: StatusSpan[] = [];
@@ -113,13 +114,14 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
 }
 
 /** The prompt line's target, like the dashboard composer's: who Enter sends to. */
-export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number; retireMode?: boolean; quietMode?: boolean; quietTeam?: boolean; intervalMode?: boolean; providerCapsMode?: boolean; instructionsEditFor?: string | null; concurrencyMode?: boolean; slotsMode?: boolean }): StatusSpan[] {
+export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number; retireMode?: boolean; quietMode?: boolean; quietTeam?: boolean; intervalMode?: boolean; providerCapsMode?: boolean; instructionsEditFor?: string | null; concurrencyMode?: boolean; slotsMode?: boolean; notifyMode?: boolean }): StatusSpan[] {
   if (mode.budget) return [{ text: "daily cap $", tone: "brand" }, { text: " " }];
   if (mode.concurrencyMode) return [{ text: "run cap", tone: "brand" }, { text: " › " }];
   if (mode.quietMode) return [{ text: mode.quietTeam ? "team quiet hours" : "quiet hours", tone: "brand" }, { text: " › " }];
   if (mode.slotsMode) return [{ text: "worktree slots", tone: "brand" }, { text: " › " }];
   if (mode.intervalMode) return [{ text: "min run interval", tone: "brand" }, { text: " › " }];
   if (mode.providerCapsMode) return [{ text: "provider caps", tone: "brand" }, { text: " › " }];
+  if (mode.notifyMode) return [{ text: "notify hook", tone: "brand" }, { text: " › " }];
   if (mode.instructionsEditFor) return [{ text: `instructions for ${mode.instructionsEditFor}`, tone: "brand" }, { text: " › " }];
   if (mode.briefEditMode) return [{ text: "brief", tone: "brand" }, { text: " › " }];
   if (mode.retireMode) return [{ text: "retire", tone: "brand" }, { text: " › " }];

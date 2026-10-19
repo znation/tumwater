@@ -1334,16 +1334,21 @@ test("Ctrl+E is inert in the prompt-line modes and off the report views only mov
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
-  // Off the report views, Ctrl+E advances the window without computing a cache.
+  // On the Activity view (0) Ctrl+E opens the notify-hook editor (its new arm) rather than
+  // moving the report window, so reportSince stays null.
   keys.handleKey(undefined, { ctrl: true, name: "e" });
-  assert.equal(keys.state().reportSince, "1h");
-  assert.equal(keys.state().paneCache, null, "no report pane is showing");
+  assert.equal(keys.state().notifyMode, true, "Ctrl+E on Activity opens the notify editor");
+  assert.equal(keys.state().budgetMode, false);
+  assert.equal(keys.state().reportSince, null, "Ctrl+E does not move the report window on Activity");
+  keys.handleKey(undefined, { name: "escape" });
 
-  // Budget mode holds the prompt line: Ctrl+E leaves the window alone.
+  // Budget mode holds the prompt line: Ctrl+E (blocked by the busy guard) leaves the line
+  // and the window alone.
   keys.handleKey(undefined, { ctrl: true, name: "b" });
   assert.equal(keys.state().budgetMode, true);
   keys.handleKey(undefined, { ctrl: true, name: "e" });
-  assert.equal(keys.state().reportSince, "1h", "Ctrl+E does nothing in budget mode");
+  assert.equal(keys.state().notifyMode, false, "the notify editor cannot open over the budget editor");
+  assert.equal(keys.state().reportSince, null, "Ctrl+E does nothing in budget mode");
   keys.handleKey(undefined, { name: "escape" });
 
   // Role-prompt mode holds it too: open it on a transcript view and try Ctrl+E.
@@ -1352,7 +1357,7 @@ test("Ctrl+E is inert in the prompt-line modes and off the report views only mov
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(keys.state().rolePromptFor, "clean");
   keys.handleKey(undefined, { ctrl: true, name: "e" });
-  assert.equal(keys.state().reportSince, "1h", "Ctrl+E does nothing in role-prompt mode");
+  assert.equal(keys.state().reportSince, null, "Ctrl+E does nothing in role-prompt mode");
   keys.handleKey(undefined, { name: "escape" });
 
   // Retire-edit mode holds it too (the report window-cycle arm previously ran over the
@@ -1362,8 +1367,29 @@ test("Ctrl+E is inert in the prompt-line modes and off the report views only mov
   keys.handleKey(undefined, { ctrl: true, name: "x" });
   assert.equal(keys.state().retireMode, true, "the retire editor holds the line");
   keys.handleKey(undefined, { ctrl: true, name: "e" });
-  assert.equal(keys.state().reportSince, "1h", "Ctrl+E does nothing in retire-edit mode");
+  assert.equal(keys.state().reportSince, null, "Ctrl+E does nothing in retire-edit mode");
   keys.handleKey(undefined, { name: "escape" });
+});
+
+test("Ctrl+E on Activity opens the notify editor; on Usage it still cycles the report window", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+
+  // Activity (view 0): Ctrl+E opens the notify editor, not the report window.
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().notifyMode, true, "Ctrl+E on Activity opens the notify editor");
+  assert.equal(keys.state().budgetMode, false);
+  assert.equal(keys.state().reportSince, null);
+  keys.handleKey(undefined, { name: "escape" });
+
+  // Usage (roleIds.length + 2): the notify arm returns false off view 0, so Ctrl+E still
+  // cycles the report window.
+  for (let i = 0; i < 2; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
+  assert.equal(keys.state().view, 2, "Usage is roleIds.length + 2");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "1h", "on Usage Ctrl+E still cycles the trailing window");
+  assert.equal(keys.state().notifyMode, false);
 });
 
 test("Ctrl+O cycles the History pane's outcome class, filters rows by historyClass, and resets the scroll", () => {

@@ -81,7 +81,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       key.ctrl && key.name === "f" &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
       !session.held.queued && !session.held.answer && !session.held.entry &&
-      !session.held.attach && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.quiet && !session.held.interval && !session.held.instructions && !session.held.providerCaps && !session.held.concurrency && !session.held.slots
+      !session.held.attach && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.quiet && !session.held.interval && !session.held.instructions && !session.held.providerCaps && !session.held.concurrency && !session.held.slots && !session.held.notify
     ) {
       // Ctrl+F toggles the whole-team pause (mnemonic: **F**leet) through the same
       // pauseTeam/resumeTeam marker writers `tumwater pause`/`resume` and the dashboard's
@@ -113,7 +113,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       key.ctrl && key.name === "q" &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
       !session.held.queued && !session.held.answer && !session.held.entry &&
-      !session.held.attach && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.quiet && !session.held.interval && !session.held.instructions && !session.held.providerCaps && !session.held.concurrency && !session.held.slots
+      !session.held.attach && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.quiet && !session.held.interval && !session.held.instructions && !session.held.providerCaps && !session.held.concurrency && !session.held.slots && !session.held.notify
     ) {
       // Ctrl+Q (mnemonic: **q**uit later) schedules or cancels a graceful team stop through
       // the same requestScheduledStop/cancelScheduledStopMessage cores `tumwater stop --in` /
@@ -142,7 +142,8 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.attach && !session.held.notes && !session.held.brief &&
       !session.held.retire && !session.held.quiet && !session.held.interval &&
-      !session.held.instructions && !session.held.providerCaps && !session.held.concurrency && !session.held.slots
+      !session.held.instructions && !session.held.providerCaps && !session.held.concurrency && !session.held.slots &&
+      !session.held.notify
     ) {
       // Ctrl+R on the Activity view applies the pending self-redeploy now — the terminal twin
       // of `tumwater restart` and the dashboard update alert's restart button, all three
@@ -182,6 +183,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.notes && !session.held.retire && !session.held.quiet && !session.held.interval &&
       !session.held.instructions && !session.held.concurrency &&
+      !session.held.notify &&
       ctx.roleIds.length > 0 &&
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
       key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w" || key.name === "v")

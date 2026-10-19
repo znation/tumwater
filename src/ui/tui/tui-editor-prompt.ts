@@ -41,6 +41,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
       !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.notes && !session.held.quiet && !session.held.interval &&
       !session.held.instructions && !session.held.concurrency &&
+      !session.held.notify &&
       ctx.roleIds.length > 0 &&
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
       key.ctrl && key.name === "r"
