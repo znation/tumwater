@@ -6,7 +6,8 @@ import {
   resolveBacklogInsertConflicts,
   resolveInsertOnlyText,
 } from "../src/merge/backlog-conflicts.js";
-import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { conflictedFiles, rebaseOntoMainLeaveConflicts } from "../src/merge/merge-git.js";
+import { makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 
 // Coverage for the deterministic insert-only backlog resolver (plans/parallel-work-instances.md,
@@ -55,6 +56,114 @@ test("resolveInsertOnlyText refuses a hunk with an empty side", () => {
   const text = ["<<<<<<< HEAD", "main line", "||||||| parent of abc", "=======", ">>>>>>> abc"].join("\n");
   assert.equal(resolveInsertOnlyText(text), null);
 });
+
+/** A diff3 conflict hunk from its three sides' lines: main (ours), base, the change (theirs). */
+function diff3Hunk(ours: string[], base: string[], theirs: string[]): string {
+  return ["<<<<<<< HEAD", ...ours, "||||||| parent of abc", ...base, "=======", ...theirs, ">>>>>>> abc"].join("\n");
+}
+
+// The entry one side deleted, and the whole entry the other side inserted right above it.
+const OLD_ENTRY = ["### Old plan", "", "**Goal.** Old.", ""];
+const NEW_ENTRY = ["### New plan", "", "**Goal.** New.", ""];
+
+test("resolveInsertOnlyText keeps main's new entries above an entry the change deleted, in an open section", () => {
+  // The plan role prepended a plan on main while the change finished the plan below it.
+  const text = `## Planned\n\n${diff3Hunk([...NEW_ENTRY, ...OLD_ENTRY], OLD_ENTRY, [])}\n### Next plan\n`;
+  assert.equal(resolveInsertOnlyText(text), "## Planned\n\n### New plan\n\n**Goal.** New.\n\n### Next plan\n");
+});
+
+test("resolveInsertOnlyText keeps the change's new entries above an entry main deleted, in an open section", () => {
+  const text = `## Planned\n\n${diff3Hunk([], OLD_ENTRY, [...NEW_ENTRY, ...OLD_ENTRY])}\n### Next plan\n`;
+  assert.equal(resolveInsertOnlyText(text), "## Planned\n\n### New plan\n\n**Goal.** New.\n\n### Next plan\n");
+});
+
+test("resolveInsertOnlyText settles an entry above a deleted entry in any section, mixed with insert-only hunks", () => {
+  const text = [
+    "## Open",
+    "",
+    diff3Hunk([...NEW_ENTRY, ...OLD_ENTRY], OLD_ENTRY, []),
+    "## Fixed",
+    "",
+    insertOnlyHunk("### Fix A", "### Fix C"),
+    "### Fix Z",
+    "",
+  ].join("\n");
+  assert.equal(
+    resolveInsertOnlyText(text),
+    "## Open\n\n### New plan\n\n**Goal.** New.\n\n## Fixed\n\n### Fix A\n\n### Fix C\n### Fix Z\n",
+  );
+});
+
+test("resolveInsertOnlyText adds no separator to new entries whose other side is empty", () => {
+  // The inserting side's own lines, byte for byte: the deleting side supplies nothing to keep
+  // apart from them.
+  const tight = ["### New plan", "**Goal.** New."];
+  const text = `## Planned\n\n${diff3Hunk([...tight, ...OLD_ENTRY], OLD_ENTRY, [])}\n### Next plan\n`;
+  assert.equal(resolveInsertOnlyText(text), "## Planned\n\n### New plan\n**Goal.** New.\n### Next plan\n");
+});
+
+test("resolveInsertOnlyText leaves near misses of an entry above a deleted entry to the resolver", () => {
+  const planned = (hunk: string): string => `## Planned\n\n${hunk}\n### Next plan\n`;
+  const nearMisses: Record<string, string> = {
+    // Main inserted above the entry, and the change edited it rather than deleting it.
+    "a non-empty other side": diff3Hunk([...NEW_ENTRY, ...OLD_ENTRY], OLD_ENTRY, ["### Old plan", "", "**Goal.** Edited.", ""]),
+    // The mirror: the change inserted, and main kept part of the entry.
+    "a non-empty main side": diff3Hunk(["### Old plan", ""], OLD_ENTRY, [...NEW_ENTRY, ...OLD_ENTRY]),
+    // The inserting side also edited the entry it sat above.
+    "an edited base line": diff3Hunk([...NEW_ENTRY, "### Old plan", "", "**Goal.** Reworded.", ""], OLD_ENTRY, []),
+    // The inserting side kept only part of the base lines.
+    "a partial base": diff3Hunk([...NEW_ENTRY, ...OLD_ENTRY.slice(0, 2)], OLD_ENTRY, []),
+    "a partial base on the change's side": diff3Hunk([], OLD_ENTRY, [...NEW_ENTRY, ...OLD_ENTRY.slice(1)]),
+    // Added lines that are not whole entries.
+    "added prose, not a heading": diff3Hunk(["stray prose", "", ...OLD_ENTRY], OLD_ENTRY, []),
+    "an added `## ` heading": diff3Hunk([], OLD_ENTRY, ["## Later", "", ...OLD_ENTRY]),
+    "only added blank lines": diff3Hunk(["", "", ...OLD_ENTRY], OLD_ENTRY, []),
+    // The inserting side is no longer than the base: nothing was added above it.
+    "an unchanged side": diff3Hunk([...OLD_ENTRY], OLD_ENTRY, []),
+  };
+  for (const [name, hunk] of Object.entries(nearMisses)) {
+    assert.equal(resolveInsertOnlyText(planned(hunk)), null, name);
+  }
+  // One settleable hunk does not carry a near miss elsewhere in the file.
+  const mixed = `${planned(diff3Hunk([...NEW_ENTRY, ...OLD_ENTRY], OLD_ENTRY, []))}\n${nearMisses["a partial base"]}\n`;
+  assert.equal(resolveInsertOnlyText(mixed), null);
+});
+
+test("resolveInsertOnlyText keeps the change's entries above a rewritten history only in a finished section", () => {
+  // Main rewrote the lines below the change's insertion rather than deleting them: the change's
+  // entries stack on main's side under ## Done, and the same hunk elsewhere is the resolver's.
+  const text = `## Done\n\n${diff3Hunk(["### Old plan", "", "**Goal.** Reworded."], OLD_ENTRY, [...NEW_ENTRY, ...OLD_ENTRY])}\n`;
+  assert.equal(resolveInsertOnlyText(text), "## Done\n\n### New plan\n\n**Goal.** New.\n\n### Old plan\n\n**Goal.** Reworded.\n");
+  assert.equal(resolveInsertOnlyText(text.replace("## Done", "## Planned")), null);
+  // Main's mirror of it — main's new entries above lines the change rewrote — is not settled
+  // even under ## Done.
+  const mirror = `## Done\n\n${diff3Hunk([...NEW_ENTRY, ...OLD_ENTRY], OLD_ENTRY, ["### Old plan", "", "**Goal.** Reworded."])}\n`;
+  assert.equal(resolveInsertOnlyText(mirror), null);
+});
+
+for (const [prepender, finisher] of [["main", "the change"], ["the change", "main"]] as const) {
+  test(`resolveBacklogInsertConflicts settles a real rebase where ${prepender} prepended a plan above one ${finisher} finished`, async () => {
+    const root = makeRepo();
+    const plans = (...entries: string[]): string => `# Plans\n\n## Planned\n\n${entries.join("\n")}`;
+    const entry = (name: string): string => `### ${name} plan\n\n**Goal.** ${name}.\n`;
+    const [fresh, old, next] = [entry("New"), entry("Old"), entry("Next")];
+    const prepended = plans(fresh, old, next);
+    const finished = plans(next);
+    seedCommit(root, "PLANS.md", plans(old, next), "seed plans");
+    sh(root, "git", "checkout", "-q", "-b", "change");
+    seedCommit(root, "PLANS.md", prepender === "main" ? finished : prepended, "the change's edit");
+    sh(root, "git", "checkout", "-q", "main");
+    seedCommit(root, "PLANS.md", prepender === "main" ? prepended : finished, "main's edit");
+    sh(root, "git", "checkout", "-q", "change");
+    assert.equal(await rebaseOntoMainLeaveConflicts(root, "main"), "conflict");
+
+    const remaining = await resolveBacklogInsertConflicts(root, await conflictedFiles(root));
+
+    assert.deepEqual(remaining, []);
+    assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), plans(fresh, next));
+    assert.equal(sh(root, "git", "diff", "--cached", "--name-only"), "PLANS.md", "the resolved file is staged");
+  });
+}
 
 test("resolveInsertOnlyText refuses a malformed (non-diff3) conflict", () => {
   const text = ["<<<<<<< HEAD", "main line", "=======", "change line", ">>>>>>> abc"].join("\n");

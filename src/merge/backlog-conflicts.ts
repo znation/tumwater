@@ -7,13 +7,20 @@
  * for that shape has an empty base section and both sides non-empty; keeping both inserted sides
  * adds no authored bytes, so no model run is needed.
  *
- * One more shape settles the same way: inside a live `## Done`/`## Fixed` section, the change
- * added whole `### ` entries right above lines that main has since removed or rewritten — a
- * change committed before its repository's history moved to the archive, whose entries sat
- * right below the insertion point. The change's side is then its new entries followed by
- * exactly the base lines, and keeping those entries on top of main's side again adds no
- * authored bytes. Anything else — the same entry edited on both sides, a code file, a deleted
- * side — goes to the pi resolver untouched. */
+ * Two more shapes settle the same way:
+ * - Entries above a deleted entry, in any `## ` section: one side added whole `### ` entries
+ *   right above an entry the other side deleted. Typically the plan role prepends a plan on
+ *   main while the change finishes the plan below it into PLANS-DONE.md, or the other way
+ *   round. The inserting side is its new entries followed by exactly the base lines and the
+ *   deleting side is empty, so the new entries alone carry both sides' edits.
+ * - Entries above a rewritten history: inside a live `## Done`/`## Fixed` section, the change
+ *   added whole `### ` entries right above lines that main has since rewritten — a change
+ *   committed before its repository's history moved to the archive, whose entries sat right
+ *   below the insertion point. The change's side is then its new entries followed by exactly
+ *   the base lines, and keeping those entries on top of main's side again adds no authored
+ *   bytes.
+ * Anything else — the same entry edited on both sides, a code file, a file one side deleted —
+ * goes to the pi resolver untouched. */
 
 import fs from "node:fs";
 import path from "node:path";
@@ -31,19 +38,40 @@ interface ConflictHunk {
   theirs: string[];
 }
 
-/** The lines the change inserted in `hunk`, when it is one of the two shapes this pass settles,
- * or null. Insert-only: an empty base section and both sides carrying lines — all of the
- * change's side. Entries above a rewritten history (see the module comment): the hunk sits in a
- * finished section, and the change's side is whole `### ` entries followed by exactly the base
- * lines — the part before them. */
-function insertedLines(hunk: ConflictHunk, lines: readonly string[]): string[] | null {
-  if (hunk.base.length === 0) return hunk.ours.length > 0 && hunk.theirs.length > 0 ? hunk.theirs : null;
-  if (!inFinishedSection(lines, hunk.start) || hunk.theirs.length <= hunk.base.length) return null;
-  const cut = hunk.theirs.length - hunk.base.length;
-  if (hunk.theirs.slice(cut).some((line, i) => line !== hunk.base[i])) return null;
-  const inserted = hunk.theirs.slice(0, cut);
+/** The lines that replace `hunk`, when it is one of the shapes this pass settles (see the
+ * module comment), or null. Insert-only: an empty base section and both sides carrying lines —
+ * the change's side stacked on main's. Entries above a deleted entry: one side empty, the other
+ * whole `### ` entries followed by exactly the base lines — those entries alone. Entries above
+ * a rewritten history: the hunk sits in a finished section, and the change's side is whole
+ * `### ` entries followed by exactly the base lines — those entries stacked on main's side. */
+function settledLines(hunk: ConflictHunk, lines: readonly string[]): string[] | null {
+  if (hunk.base.length === 0) {
+    return hunk.ours.length > 0 && hunk.theirs.length > 0 ? stacked(hunk.theirs, hunk.ours) : null;
+  }
+  if (hunk.theirs.length === 0) return entriesAboveBase(hunk.ours, hunk.base);
+  if (hunk.ours.length === 0) return entriesAboveBase(hunk.theirs, hunk.base);
+  if (!inFinishedSection(lines, hunk.start)) return null;
+  const inserted = entriesAboveBase(hunk.theirs, hunk.base);
+  return inserted === null ? null : stacked(inserted, hunk.ours);
+}
+
+/** The lines `side` adds above the `base` lines, when `side` is whole `### ` entries followed
+ * by exactly those base lines, or null — a side no longer than the base, a base line changed or
+ * missing, or added lines that do not open at a `### ` heading. */
+function entriesAboveBase(side: readonly string[], base: readonly string[]): string[] | null {
+  if (side.length <= base.length) return null;
+  const cut = side.length - base.length;
+  if (side.slice(cut).some((line, i) => line !== base[i])) return null;
+  const inserted = side.slice(0, cut);
   const first = inserted.find((line) => line.trim() !== "");
   return first?.startsWith("### ") ? inserted : null;
+}
+
+/** `upper` then `lower`, with a blank separator when neither already supplies one, so the
+ * later merge (the change, `upper`) stays first. */
+function stacked(upper: readonly string[], lower: readonly string[]): string[] {
+  const separated = lower.length === 0 || upper[upper.length - 1] === "" || lower[0] === "";
+  return separated ? [...upper, ...lower] : [...upper, "", ...lower];
 }
 
 /** True when the nearest `## ` heading above line `at` is a finished section (`## Done` or
@@ -62,24 +90,19 @@ function inFinishedSection(lines: readonly string[], at: number): boolean {
 const FINISHED_SECTIONS = new Set<string>(FINISHED_ARCHIVES.map((a) => a.section));
 
 /** Rewrite every settleable conflict hunk in `text` and return the result, or null when any
- * hunk is neither shape insertedLines accepts (or the markers are malformed) — the caller then
- * leaves the file for the model resolver. Each hunk is replaced by the lines the change (theirs)
- * inserted, a blank separator when neither side already supplies one, then main's (ours)
- * lines, so the later merge stays first. */
+ * hunk is no shape settledLines accepts (or the markers are malformed) — the caller then
+ * leaves the file for the model resolver. Each hunk is replaced by settledLines' lines. */
 export function resolveInsertOnlyText(text: string): string | null {
   const lines = text.split("\n");
   const hunks = parseHunks(lines);
   if (hunks === null) return null;
   if (hunks.length === 0) return null;
-  const inserted = hunks.map((hunk) => insertedLines(hunk, lines));
-  if (inserted.some((ins) => ins === null)) return null;
+  const settled = hunks.map((hunk) => settledLines(hunk, lines));
+  if (settled.some((replacement) => replacement === null)) return null;
   // Replace from the end so earlier indices stay valid.
   for (let h = hunks.length - 1; h >= 0; h--) {
     const hunk = hunks[h]!;
-    const theirs = inserted[h]!;
-    const separated = hunk.ours.length === 0 || theirs[theirs.length - 1] === "" || hunk.ours[0] === "";
-    const replacement = separated ? [...theirs, ...hunk.ours] : [...theirs, "", ...hunk.ours];
-    lines.splice(hunk.start, hunk.end - hunk.start + 1, ...replacement);
+    lines.splice(hunk.start, hunk.end - hunk.start + 1, ...settled[h]!);
   }
   return lines.join("\n");
 }

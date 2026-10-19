@@ -372,8 +372,9 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
   const files = await conflictedFiles(wt);
   // Deterministic first pass (plans/parallel-work-instances.md, part 3/7): insert-only
   // conflicts in the backlog markdown — two merges pasting different entries as the first
-  // under ## Done — carry no authored bytes, so they are settled without a model run. Only the
-  // files it could not resolve (code, or a same-entry edit) reach the resolver below.
+  // under ## Done, or new entries above an entry the other side deleted — carry no authored
+  // bytes, so they are settled without a model run. Only the files it could not resolve (code,
+  // or a same-entry edit) reach the resolver below.
   const remaining = await resolveBacklogInsertConflicts(wt, files);
   if (remaining.length === 0) {
     // A second stop is only possible when the branch holds more than the one insert-only

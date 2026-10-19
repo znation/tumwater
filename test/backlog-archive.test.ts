@@ -289,9 +289,12 @@ test("the settler keeps a change's new entries above a finished section main rew
   const base = ["### D1 (done 2026-09-01)", "", "Old."];
   const doc = `## Done\n\n${hunk([], base, ["### X (done 2026-10-18)", "", "New.", "", ...base])}\n`;
   assert.equal(resolveInsertOnlyText(doc), "## Done\n\n### X (done 2026-10-18)\n\nNew.\n\n");
-  // The same shape under an open section is the resolver's: dropping base lines there could
-  // lose work.
-  assert.equal(resolveInsertOnlyText(doc.replace("## Done", "## Planned")), null);
+  // Against a main side that rewrote those lines rather than archiving them, the change's
+  // entries stack on main's rewrite, and the same hunk under an open section is the resolver's.
+  // (Main's deletion settles in any section — test/backlog-conflicts.test.ts.)
+  const rewritten = `## Done\n\n${hunk(["### D1 (done 2026-09-01)", "", "Reworded."], base, ["### X (done 2026-10-18)", "", "New.", "", ...base])}\n`;
+  assert.equal(resolveInsertOnlyText(rewritten), "## Done\n\n### X (done 2026-10-18)\n\nNew.\n\n### D1 (done 2026-09-01)\n\nReworded.\n");
+  assert.equal(resolveInsertOnlyText(rewritten.replace("## Done", "## Planned")), null);
   // A change side that edits the base lines rather than only adding above them is not this shape.
   assert.equal(resolveInsertOnlyText(`## Done\n\n${hunk([], base, ["### X", "", "### D1 (done 2026-09-01)", "", "Edited."])}\n`), null);
   // Lines that are not whole entries are not this shape either.
