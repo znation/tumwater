@@ -131,8 +131,10 @@ test("the Usage and Failures views fetch their window on activation, never on a 
   // Both views have a container and a sidebar link; the window pickers choose the days.
   assert.match(GUI_PAGE, /<section id="report" class="view" aria-label="Usage" hidden><\/section>/);
   assert.match(GUI_PAGE, /<section id="failures" class="view" aria-label="Failures" hidden><\/section>/);
-  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs\) => \(sinceMs \? "\/api\/report\?sinceMs=" \+ sinceMs : "\/api\/report\?days=" \+ days\)/);
-  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs\) => \(sinceMs \? "\/api\/failures\?sinceMs=" \+ sinceMs : "\/api\/failures\?days=" \+ days\)/);
+  // Both views build their URL from the shared reportEndpoint helper, so the ?sinceMs / ?days
+  // and &role= shapes cannot drift; each passes its own resource name.
+  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs\) => reportEndpoint\("report", days, role, sinceMs\)/);
+  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs\) => reportEndpoint\("failures", days, role, sinceMs\)/);
   assert.match(GUI_PAGE, /if \(v === "usage"\) fetchReport\(\)/);
   assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
   // The team view's "today" tiles read a one-day report, refreshed on new events.

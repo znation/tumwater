@@ -633,6 +633,13 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // and Failures share one set, so their segmented controls always offer the same windows.
   const REPORT_SINCE_CHOICES = [[3_600_000, "1h"], [21_600_000, "6h"], [86_400_000, "1d"]];
 
+  // The /api/report and /api/failures endpoints for one window and role scope, shared by the
+  // two window views so their URL shape cannot drift: a trailing window asks ?sinceMs=, the
+  // default asks ?days=, and a scope appends the same &role=.
+  const reportEndpoint = (resource, days, role, sinceMs) =>
+    (sinceMs ? "/api/" + resource + "?sinceMs=" + sinceMs : "/api/" + resource + "?days=" + days) +
+    (role ? "&role=" + encodeURIComponent(role) : "");
+
   const usage = windowView({
     panelId: "report", title: "Usage", bodyId: "usagebody",
     blurb: "What the team produced and what it cost, per day and per role.",
@@ -640,8 +647,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     key: "usage-days", defaultDays: 14, roleKey: "usage-role", rolePickerId: "usagerole",
     sinceKey: "usage-since", sinceChoices: REPORT_SINCE_CHOICES,
     errorTitle: "Usage report unavailable",
-    endpoint: (days, role, sinceMs) => (sinceMs ? "/api/report?sinceMs=" + sinceMs : "/api/report?days=" + days) +
-      (role ? "&role=" + encodeURIComponent(role) : ""),
+    endpoint: (days, role, sinceMs) => reportEndpoint("report", days, role, sinceMs),
     render: (d) => {
       // The since shape is a Markdown totals report (the CLI's report --since render), not a
       // series: draw it through the page's Markdown renderer as the Failures tab does, dropping
@@ -692,8 +698,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     key: "fail-days", defaultDays: 14, roleKey: "fail-role", rolePickerId: "failrole",
     sinceKey: "fail-since", sinceChoices: REPORT_SINCE_CHOICES,
     errorTitle: "Failure digest unavailable",
-    endpoint: (days, role, sinceMs) => (sinceMs ? "/api/failures?sinceMs=" + sinceMs : "/api/failures?days=" + days) +
-      (role ? "&role=" + encodeURIComponent(role) : ""),
+    endpoint: (days, role, sinceMs) => reportEndpoint("failures", days, role, sinceMs),
     render: (d) => {
       // The view head already titles the page, so the digest's own "# …" heading is dropped.
       const md = String(d.markdown || "").replace(/^# .*\n+/, "");
