@@ -58,8 +58,8 @@ maintenance roles until 5 plans are done; remove it from `tumwater.json` to end 
 From another terminal, `tumwater tui` or the browser dashboard watches the team, `tumwater status`
 and `tumwater logs -f` check it, `tumwater brief --file <path>` replaces the brief,
 `tumwater prompt "<text>"` sends a message to the director's inbox, `tumwater plan` and
-`tumwater bug` file backlog entries, and `tumwater pause`, `resume`, `wake`, and `stop` control
-the roles. `tumwater doctor` audits the team and `tumwater report` shows usage and cost. `gui
+`tumwater bug` file backlog entries, `tumwater revert <sha>` undoes one merged change on main,
+and `tumwater pause`, `resume`, `wake`, and `stop` control the roles. `tumwater doctor` audits the team and `tumwater report` shows usage and cost. `gui
 --all-interfaces` exposes the dashboard, and with it the director prompt, to your whole network,
 so pair it with `--token <secret>`.
 
