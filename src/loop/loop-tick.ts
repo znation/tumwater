@@ -38,6 +38,7 @@ import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickMerge, foldAgentCommitsSince } from "../tick/tick-stage.js";
 import { stageCheckFindings } from "../tick/stage-check.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
+import { briefStatusIncomplete } from "../brief/brief.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { errorMessage } from "../text/text.js";
@@ -160,11 +161,19 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   // overrides): resolved once so every interval-based scheduling branch honors a slow
   // clock (e.g. the steward's ~6 h) and a live-reloaded config applies from this tick on.
   // New-project bootstrap (plans/work-ratio.md, part 2/2): while active, plan schedules on the
-  // global min-tick gap rather than its 3600 s default. The shared verdict below is the same
-  // one the gate and isEligible read, and scheduleConfigForRole is the one home of the rule,
-  // so the scheduler that admits plan and the nextRunAt this tick writes cannot disagree.
+  // global min-tick gap rather than its 3600 s default. And while the brief's status section is
+  // still the placeholder (briefStatusIncomplete), plan schedules with a zero gap so a fresh
+  // project plans back-to-back until a run changes nothing. The shared verdict below is the
+  // same one the gate and isEligible read, and scheduleConfigForRole is the one home of the
+  // rule, so the scheduler that admits plan and the nextRunAt this tick writes cannot disagree.
   const bootstrapActive = bootstrapStatus(ctx.root, ctx.config)?.active === true;
-  const primaryCfg = scheduleConfigForRole(ctx.config, ctx.role, bootstrapActive);
+  const descriptionIncomplete = briefStatusIncomplete(ctx.root);
+  const primaryCfg = scheduleConfigForRole(
+    ctx.config,
+    ctx.role,
+    bootstrapActive,
+    descriptionIncomplete,
+  );
   // Model-fallback episode (src/loop/model-fallback.ts): while one is active the tick runs
   // on the role's tier fallback pair, and once the cooldown elapses it runs on the primary
   // as the probe. Resolved at tick start so the authoring run below and the end-of-tick fold

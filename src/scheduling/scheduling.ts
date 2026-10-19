@@ -37,6 +37,11 @@ interface EligibilityOptions {
    * (3600 s), so a fresh project gets a steady stream of plans for feature instead of one an
    * hour. Every other role's gap is unchanged. */
   bootstrapActive?: boolean;
+  /** The brief's status section is still the placeholder (docs/config.md): while a project's
+   * description is incomplete, the plan loop's min-tick gap is ZERO rather than its per-role
+   * default, so a fresh project plans back-to-back until a run changes nothing. Every other
+   * role's gap is unchanged. */
+  descriptionIncomplete?: boolean;
 }
 
 /** Should this loop tick now? `inboxCount` is the calling loop's own queued-prompt count
@@ -102,6 +107,7 @@ export function isEligible(
     runner.config,
     runner.role,
     opts.bootstrapActive === true,
+    opts.descriptionIncomplete === true,
   ).minRunIntervalSeconds;
   const minGap = opts.once ? 0 : minGapSeconds * 1000 * mult;
   const sinceLast = now - (s.lastRunEndedAt ?? 0);

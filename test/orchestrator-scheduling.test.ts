@@ -18,6 +18,7 @@ import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
+import { EMPTY_STATUS, readmeTemplate } from "../src/brief/brief.js";
 import { HOUR } from "./helpers/oracles.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
@@ -780,6 +781,33 @@ test("a held-only bugfix runner is still admitted on demand, startup, revision, 
   assert.equal(await admitted((_r, root) => { enqueueRolePrompt(root, "bugfix", "hi"); }), true, "queued prompt");
   assert.equal(await admitted((r) => { r.state.revision = { feedback: "fix" } as never; }), true, "revision");
   assert.equal(await admitted(() => {}, bugsFile(REFUSED_BUG, OPEN_BUG)), true, "an eligible bug");
+});
+
+test("a plan runner is admitted while the brief status is the placeholder, skipped once real", async () => {
+  const root = tmpdir("tumwater-scheduling-brief-");
+  fs.writeFileSync(path.join(root, "README.md"), readmeTemplate("p", "Build a thing."));
+  const r = fakeRunner("plan", defaultConfig());
+  // A just-finished productive tick under description-incomplete schedules nextRunAt at now
+  // (src/loop/loop-tick.ts): due-now, not an hour out, so the incomplete/complete admission
+  // difference is what the poll observes.
+  r.state.runs = 1;
+  r.state.lastRunEndedAt = T0;
+  r.state.nextRunAt = T0;
+
+  const admitted = await pollRunnerReasons(
+    schedulingCtx(root, [r], new Map([["plan", undefined]])),
+  );
+  assert.ok(admitted.has(r), "plan is admitted while the brief status is the placeholder");
+
+  // Replace the status body with a real line; the same due-now runner is now skipped.
+  fs.writeFileSync(
+    path.join(root, "README.md"),
+    readmeTemplate("p", "Build a thing.").replace(EMPTY_STATUS, "**v0.0.1**: a real status"),
+  );
+  const skipped = await pollRunnerReasons(
+    schedulingCtx(root, [r], new Map([["plan", undefined]])),
+  );
+  assert.ok(!skipped.has(r), "plan is skipped once the status is real");
 });
 
 test("a bugfix runner in search mode is not stood down", async () => {

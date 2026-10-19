@@ -18,6 +18,7 @@ import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/loop-ids.js";
 import { hasOutstandingWork, saveLoopState, type SkipReason } from "../loop/loop-state.js";
 import { inboxSize } from "../inbox/inbox.js";
+import { briefStatusIncomplete } from "../brief/brief.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
@@ -141,6 +142,10 @@ export async function pollRunnerReasons(
     workMergedSince,
   } = ctx;
   const reasons = new Map<LoopRunner, string | undefined>();
+  // Computed ONCE per poll (the plan tight-loop rule, src/brief/brief.ts): the flag means the
+  // brief's status section is still the placeholder, read once from the resolved brief so the
+  // whole pass agrees on it — the pass already holds root for its other per-poll reads.
+  const descriptionIncomplete = briefStatusIncomplete(root);
   // Merge-queue interlock data, listed ONCE per poll (was once per runner per poll — each
   // queuedMergeFiles() re-lists the merge-queue directory and re-stats every queued entry): the
   // check below only asks whether the runner's role has a queued entry. The queue changes
@@ -322,6 +327,7 @@ export async function pollRunnerReasons(
     const { run, reason } = isEligible(runner, now, mainHead, inboxSize(root, runner.role), {
       once: once.active,
       bootstrapActive,
+      descriptionIncomplete,
     });
     if (!run) {
       // Not due this poll: any deferral episode has ended (or never started). No event —

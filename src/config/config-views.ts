@@ -167,15 +167,24 @@ export function configForRole(config: TumwaterConfig, role: string): ResolvedMod
 /** The config a role's ticks SCHEDULE from: configForRole, except that while the new-project
  * bootstrap is active (plans/work-ratio.md, part 2/2) the plan role schedules on the GLOBAL
  * minRunIntervalSeconds rather than its per-role 3600 s slow clock, so a young project gets a
- * steady stream of plans for feature. One home for the rule: isEligible enforces the same gap
- * when it decides whether plan may start, and loop-tick.ts hands this config to applyTickOutcome so
- * nextRunAt is scheduled from the same figure instead of the role default. */
+ * steady stream of plans for feature; and while the brief still carries the placeholder status
+ * (descriptionIncomplete) the plan role schedules with a ZERO min gap, so a fresh project plans
+ * back-to-back until a run changes nothing — the zero gap is tighter than bootstrap. One home
+ * for the rule: isEligible enforces the same gap when it decides whether plan may start, and
+ * loop-tick.ts hands this config to applyTickOutcome so nextRunAt is scheduled from the same
+ * figure instead of the role default. `descriptionIncomplete` means the brief's status section
+ * is still the placeholder; the initial prompt half is always present (init rejects an empty
+ * one), so the placeholder status is the machine-detectable "description not yet complete". */
 export function scheduleConfigForRole(
   config: TumwaterConfig,
   role: string,
   bootstrapActive: boolean,
+  descriptionIncomplete = false,
 ): ResolvedModelConfig {
   const resolved = configForRole(config, role);
+  if (descriptionIncomplete && baseRoleOf(role) === "plan") {
+    return { ...resolved, minRunIntervalSeconds: 0 };
+  }
   if (bootstrapActive && baseRoleOf(role) === "plan") {
     return { ...resolved, minRunIntervalSeconds: config.minRunIntervalSeconds };
   }
