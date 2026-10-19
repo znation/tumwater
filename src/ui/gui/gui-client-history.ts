@@ -246,7 +246,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
           "<td><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span></td>" +
           "<td class='c-model'><span class='clamp1' title='" + esc(r.model || "") + "'>" + (r.model ? esc(r.model) : "<span class='muted'>—</span>") + "</span></td>" +
           "<td class='c-detail'><span class='clamp2' title='" + esc(r.detail) + "'>" + (r.detail ? esc(r.detail) : "<span class='muted'>—</span>") + "</span></td>" +
-          "<td class='num c-dur'>" + (r.durationMs === null || r.durationMs === undefined ? "—" : esc(fmtSpan(Number(r.durationMs)))) + "</td>" +
+          "<td class='num c-dur'>" + durCell(r.durationMs) + "</td>" +
           "<td class='num c-usage muted'>" + esc(r.usage || "—") + "</td></tr>";
         // The expanded card rides directly beneath its row, full width.
         return open ? row + "<tr class='detail-row'><td colspan='9'>" + histDetailCardHtml(histDetails.get(key)) + "</td></tr>" : row;
@@ -270,7 +270,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       "<td class='mono'>" + esc(r.role === "total" ? r.role : roleLabel(r.role)) + "</td>" +
       cell(r, "runs") + cell(r, "changes") + cell(r, "none") + cell(r, "problems") +
       cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
-      "<td class='num'>" + (r.durationMs === undefined || r.durationMs === null ? "—" : esc(fmtSpan(Number(r.durationMs)))) + "</td>" +
+      "<td class='num'>" + durCell(r.durationMs) + "</td>" +
       "<td>" + esc(r.lastChangeTs === null || r.lastChangeTs === undefined ? "—" : fmtAgo(Number(r.lastChangeTs))) + "</td></tr>").join("");
     return "<div class='table-wrap'><table class='table history'><thead><tr><th>Role</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th class='num'>Time</th><th>Last change</th></tr></thead><tbody>" +
       rowsHtml + "</tbody></table></div>";

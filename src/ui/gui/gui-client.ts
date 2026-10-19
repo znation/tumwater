@@ -231,6 +231,10 @@ const FORMAT_JS = String.raw`  // format:start
     if (min < 120) return min + "m";
     return (ms / 3600000).toFixed(1) + "h";
   };
+  // A run's wall-clock span cell: fmtSpan when a row carries a duration, a dash when it does not
+  // (a tick whose start sits outside the window). Shared by the History table and summary rows
+  // (and any future duration cell) so the null rule and its em-dash cannot drift between them.
+  const durCell = (ms) => (ms === null || ms === undefined ? "—" : esc(fmtSpan(Number(ms))));
   // Server text sometimes carries ISO instants (a restart cooldown's deadline); show them in
   // the viewer's local time.
   const localizeInstants = (s) => String(s).replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (iso) => fmtClock(Date.parse(iso)));
