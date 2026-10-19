@@ -90,7 +90,10 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
   const s = spawnCli(repo, ["run", "--for", "3s"]);
   try {
     let stopsAt: unknown;
-    const polled = Date.now() + 2500;
+    // Bound the wait by a generous boot allowance, not the 3s window: the deadline counts from the
+    // child's own start, so a slow boot under host load only shifts stopsAt later.
+    const bootAllowance = 20_000;
+    const polled = Date.now() + bootAllowance;
     while (stopsAt === undefined && Date.now() < polled) {
       try {
         stopsAt = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")).stopsAt;
@@ -98,7 +101,7 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
       if (stopsAt === undefined) await sleep(50);
     }
     assert.equal(typeof stopsAt, "number", "the info file publishes the window's deadline");
-    assert.ok(Math.abs((stopsAt as number) - (spawnedAt + 3000)) < 5000, `stopsAt ${String(stopsAt)} near spawn + 3s`);
+    assert.ok((stopsAt as number) >= spawnedAt + 3000 - 100 && (stopsAt as number) < spawnedAt + 3000 + bootAllowance, `stopsAt ${String(stopsAt)} near spawn + 3s`);
     const code = await exitCode(s.child);
     assert.equal(code, 0, `expected clean exit at the deadline; output so far:\n${s.out()}`);
     assert.match(s.out(), /tumwater running on branch main · for 3s ·/);
