@@ -69,6 +69,7 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
   assert.match(html, /id='set-notify' value=''/);
   // An object value renders as compact JSON (esc'd), so it can round-trip through the field.
   assert.match(html, /id='set-backends' value='\{&quot;pi&quot;:\{&quot;bin&quot;:&quot;pi&quot;\}\}'/);
+  assert.match(html, /<label for='set-maxConcurrentChecks'>Max concurrent checks<span class='settings-key'>maxConcurrentChecks<\/span><\/label>/);
   // The claudeWindowReserve row renders under its curated label.
   assert.match(html, /<label for='set-claudeWindowReserve'>Claude window reserve \(JSON\)<span class='settings-key'>claudeWindowReserve<\/span><\/label>/);
 });

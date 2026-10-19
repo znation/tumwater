@@ -22,6 +22,7 @@ import {
   checkNodeVersion,
   checkOpencodeVersion,
   checkProviderConcurrency,
+  checkCheckContention,
   checkProviderContention,
   checkRepo,
   checkStateDir,
@@ -1049,6 +1050,28 @@ test("checkProviderContention sums the last day of provider_wait events and warn
   const later = checkProviderContention(root, cfg, Date.now() + 48 * 3_600_000);
   assert.equal(later.level, "ok");
   assert.equal(later.detail, "no provider waits");
+});
+
+test("checkCheckContention sums the last day of check_wait events and warns at ten minutes", () => {
+  const root = readyRepo();
+  assert.equal(checkCheckContention(root, undefined).detail, "no check waits");
+  const wait = (waitedMs: number) =>
+    logEvent(root, { source: "feature", type: "check_wait", role: "feature", scope: "gate", waitedMs });
+  wait(240_000);
+  wait(60_000);
+  const quiet = checkCheckContention(root, undefined);
+  assert.equal(quiet.level, "ok");
+  assert.match(quiet.detail, /2 waits for a check slot in the last 24h, 5m total, longest 4m$/);
+
+  wait(600_000);
+  const busy = checkCheckContention(root, undefined);
+  assert.equal(busy.level, "warn");
+  assert.match(busy.detail, /15m total, longest 10m — raise maxConcurrentChecks above 2/);
+  const capped = checkCheckContention(root, { ...defaultConfig(), maxConcurrentChecks: 5 });
+  assert.match(capped.detail, /raise maxConcurrentChecks above 5/);
+
+  const later = checkCheckContention(root, undefined, Date.now() + 48 * 3_600_000);
+  assert.equal(later.detail, "no check waits");
 });
 
 test("checkProviderContention names every keyed provider that waited and its cap in rank order", () => {

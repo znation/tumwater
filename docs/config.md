@@ -66,7 +66,7 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 | `maxConcurrentPerProvider` | none | Per-provider caps on concurrent runs, beside `maxConcurrent`; an absent provider is uncapped. `maxConcurrentPerProvider.opencode` caps concurrent OpenCode runs (the rollout starts at 3). |
 | `claudeWindowReserve` | none | Per-window-type fraction (0–1] of the claude.ai subscription window left for you: at or past it the team counts the window as used up until it resets. The director is exempt. See [backends](backends.md). |
 | `mergeBatchMax` | `3` | The most vetted changes stacked into one merge and one shared check; 1 merges every change on its own. |
-| `maxConcurrentChecks` | `2` | The most runs of the project's check in flight at once across the whole team. |
+| `maxConcurrentChecks` | `2` | The most runs of the project's check in flight at once across the whole team (editable from the dashboard Settings card as `Max concurrent checks`). |
 | `worktreeSlots` | none | How many shared workspaces role runs and merge checks lease; unset means `maxConcurrent` + 1. |
 | `minRunIntervalSeconds` | `20` | The minimum seconds between two runs of the same role, even when woken early. |
 | `runTimeoutSeconds` | `14400` | The hard cap on one run, in seconds (four hours). |

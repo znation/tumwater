@@ -153,7 +153,8 @@ discards a role's in-flight merge.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: pipeline, merge, batch, and main-baseline checks share it, the rest queue, and merges go
   first. A scoped check whose permit wait reaches 30 s logs a `check_wait` event (role, scope,
-  waitedMs).
+  waitedMs), and `tumwater doctor`'s "check contention" row sums the last 24 h and warns at
+  10 minutes, naming `maxConcurrentChecks` to raise.
 - A bug that bugfix cannot reproduce is held by a `**Waiting for the next failure <date> by
   bugfix: …**` note, which bugfix writes once it has made the failure's message name the cause.
   The backlog index marks the entry `[blocked: waiting for the next failure]`, so bugfix skips it

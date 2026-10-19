@@ -8,6 +8,7 @@ import {
   parseJsonConfig,
   loadConfig,
   loadConfigSafe,
+  defaultConfig,
   slotCount,
 } from "../config/config.js";
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
@@ -681,6 +682,9 @@ const SLOT_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 const PROVIDER_WAIT_CHECK_WINDOW_MS = 24 * 3600_000;
 const PROVIDER_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 
+const CHECK_WAIT_CHECK_WINDOW_MS = 24 * 3600_000;
+const CHECK_WAIT_WARN_TOTAL_MS = 10 * 60_000;
+
 /** Worktree pool (plans/worktree-pool.md, part 5/5): report the pooled slots and warn on the
  * states an operator should act on — a legacy `<role>` or `_land-*` checkout the pool migration
  * left behind, a pin older than PIN_STALE_MS (a paused role holding a checkout), and the last
@@ -786,6 +790,32 @@ export function checkProviderContention(root: string, config: TumwaterConfig | u
     if (advice) detail += ` — ${advice}`;
   }
   return (contended ? warnOutcome : okOutcome)(detail);
+}
+
+/** Check-slot contention: sums the last 24 h of `check_wait` events (each a scoped check whose
+ * permit wait reached CHECK_WAIT_EVENT_MS, recorded in build-check-events.ts) and warns when
+ * the total reaches CHECK_WAIT_WARN_TOTAL_MS — maxConcurrentChecks is too small. The third
+ * sibling of checkWorktreePool's slot-wait half and checkProviderContention; read-only.
+ * `now` is a test seam for the window. */
+export function checkCheckContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
+  let count = 0;
+  let total = 0;
+  let longestMs = 0;
+  try {
+    for (const ev of eventsSince(root, CHECK_WAIT_CHECK_WINDOW_MS, now, (e) => e.type === "check_wait")) {
+      count += 1;
+      const waited = finiteNumber(ev.waitedMs, 0);
+      total += waited;
+      if (waited > longestMs) longestMs = waited;
+    }
+  } catch (err) {
+    return okOutcome(`could not read the event log for check waits: ${errorMessage(err)}`);
+  }
+  if (count === 0) return okOutcome("no check waits");
+  let detail = `${plural(count, "wait")} for a check slot in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(longestMs)}`;
+  if (total < CHECK_WAIT_WARN_TOTAL_MS) return okOutcome(detail);
+  detail += ` — raise maxConcurrentChecks above ${config?.maxConcurrentChecks ?? defaultConfig().maxConcurrentChecks}`;
+  return warnOutcome(detail);
 }
 
 /** The "leftover role branches" row: `tumwater/<id>` branches whose role is no longer enabled
