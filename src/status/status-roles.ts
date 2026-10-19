@@ -10,7 +10,9 @@ import {
 } from "../config/config-views.js";
 import { modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { isCustomRole } from "../config/config.js";
-import { baseRoleOf, loopIds } from "../roles/runner-ids.js";
+import { baseRoleOf, configuredInstances, instanceIndex, loopIds } from "../roles/runner-ids.js";
+import { queuedMergeRoles } from "../merge/merge-queue.js";
+import { hasOutstandingWork } from "../runner/runner-state.js";
 import { formatModelSelector } from "../config/model-selector.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { isJsonObject } from "../files/json-object.js";
@@ -57,7 +59,16 @@ export function collectRoleRows(
   slots: ReturnType<typeof readSlotsState>["slots"],
   modelsPath: string,
 ): StatusLoopRow[] {
-  const roles = loopIds(cfg);
+  // A surplus runner (index above `instances`, from the runner pool of plans/fast-merge.md
+  // "Lever 1") with nothing to show gets no row, so the table does not list idle extras.
+  const queued = queuedMergeRoles(root);
+  const roles = loopIds(cfg).filter((r) => {
+    if (instanceIndex(r) <= configuredInstances(cfg, r)) return true;
+    const s = loopStateForPoll(root, r);
+    return (
+      s.running || queued.has(r) || s.claim !== undefined || hasOutstandingWork(s)
+    );
+  });
   const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), root);
   // One probe-cache read per poll serves every row's image-input surface (same no-data policy
   // as every other degraded read: a missing cache is an empty one).

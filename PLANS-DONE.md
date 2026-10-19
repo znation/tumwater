@@ -5,6 +5,42 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 2/14: A runner waiting on its change no longer counts toward its role's `instances` (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 1: roles stop waiting on their own change"; touches src/roles/runner-ids.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/orchestrator.ts src/scheduling/claims.ts src/ui/status-model.ts src/status/status-roles.ts docs/config.md docs/how-it-works.md and their tests); done 2026-10-19 by the feature role
+
+**Goal.** A runner with a change in the merge pipeline never runs (plans/merge-queue.md invariant 3), so `instances: 5` means five runners that are each idle while their change merges. From 2026-10-17 to 2026-10-19 the five feature runners wrote code for 77.5 h and waited on their own changes for 129.5 h. On average only 1.4 of them were writing code at any moment. Keep the one-change-per-runner rule, and let the role use more runners: a runner waiting on its change no longer holds one of the role's `instances` places.
+
+**Approach.**
+- Only the roles in `INSTANCE_ROLES` (feature, bugfix) change. Single-runner roles stay exactly as they are.
+- src/roles/runner-ids.ts:
+  - `runnerIds` and `runnerEnabled` allow runner ids up to `2 × instances`: `feature` … `feature-10` at `instances: 5`. Name the factor once as `RUNNERS_PER_INSTANCE = 2`.
+  - `configuredInstances` keeps its meaning: the role's limit on concurrent runs.
+- Admission, in the poll (src/orchestrator/orchestrator-scheduling.ts):
+  - A runner of an instance role may start a run only while fewer than `instances` of that role's runners are running (a run in flight, not a queued change).
+  - A runner with a queued change is still skipped by the interlock.
+  - Among eligible runners, first admit one with a pending revision or conflict hand-back, then the lowest-index runner with neither.
+- Claims (src/scheduling/claims.ts):
+  - Each runner keeps its own claim. A waiting runner keeps the entry its change carries, and the next admitted runner is assigned the next eligible entry.
+  - The claim-group hold (`busy`, orchestrator-scheduling.ts ~176-180) and `workReserveCount` count running runners, not runner ids.
+- Lowering `instances` keeps today's resize behavior: surplus runners finish what is queued and start nothing new.
+- Status: a runner with index above `instances` that has no run, no queued change, no claim and no pending revision does not get its own row. This covers `tumwater status` (src/status/status-roles.ts), the dashboard and the TUI (src/ui/status-model.ts), so the table does not show ten idle feature rows.
+- docs/config.md `instances` row: the number of runs writing code at once; tumwater keeps up to twice as many runners, so a runner waiting on its change does not hold a place. docs/how-it-works.md: the same, in the parallel-instances paragraph.
+
+**Files touched.**
+- Source: src/roles/runner-ids.ts, src/orchestrator/orchestrator-scheduling.ts, src/orchestrator/orchestrator.ts, src/scheduling/claims.ts, src/ui/status-model.ts, src/status/status-roles.ts.
+- Docs: docs/config.md, docs/how-it-works.md.
+- Tests: test/runner-ids.test.ts (or wherever `runnerIds` is tested), the scheduling and claims tests, and an orchestrator e2e test with a fake agent.
+- Keep the interlock assertions in test/orchestrator-3.e2e.test.ts true per runner.
+
+**Acceptance criteria.**
+- With `instances: 2` and a fake reviewer that blocks: while one feature change waits in the pipeline, a second feature runner starts a run on the next planned entry. No third run starts while two are running.
+- A change rejected for revision runs on its own runner before a free runner starts new work, once a place is free.
+- No two runners ever hold the same claim.
+- An idle surplus runner does not appear in `tumwater status`.
+- plan, clean and every other single-runner role schedule exactly as before.
+- `npm test` passes.
+
+**Deviations.** `instances: 1` keeps its single bare runner (the 2× pool applies from `instances: 2`); src/ui/status-model.ts needed no change because the row filter lives in src/status/status-roles.ts, which feeds the TUI too.
+
 ### Fast merge, part 13/14: The run prompt names the gate command for verification and says tumwater runs the full check (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 6: agents run the tests for what they touched"; touches src/prompt/prompt.ts src/tick/tick-prompt.ts and their tests) — done 2026-10-19 by the feature role
 
 **Goal.** The run prompt says "verify with `npm run test` (the project's declared check) — run it after your change and fix what you broke" (src/prompt/prompt.ts ~147). From 2026-10-17 to 2026-10-19 agents ran the full suite in 70 of 162 sampled author runs, 12% of author run time. Tumwater runs the gate command on every change and the full check itself, so the agent only needs the gate command.

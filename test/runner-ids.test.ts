@@ -65,9 +65,11 @@ test("runnerEnabled reads the base role and its configured instance count", () =
 
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
   assert.equal(runnerEnabled(config, "feature-3"), true, "instance 3 runs at instances: 3");
-  assert.equal(runnerEnabled(config, "feature-4"), false, "index above the count stays off");
+  assert.equal(runnerEnabled(config, "feature-6"), true, "a role keeps twice as many runners as instances");
+  assert.equal(runnerEnabled(config, "feature-7"), false, "index above twice the count stays off");
   config.roles.feature = { ...config.roles.feature, instances: 2 };
-  assert.equal(runnerEnabled(config, "feature-3"), false, "a lowered count turns instance 3 off");
+  assert.equal(runnerEnabled(config, "feature-4"), true, "instances: 2 keeps four runners");
+  assert.equal(runnerEnabled(config, "feature-5"), false, "a lowered count turns surplus runners off");
 
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), enabled: false };
   assert.equal(runnerEnabled(config, "feature"), false);
@@ -83,9 +85,12 @@ test("runnerIds enumerates enabled roles and each instance base's extra runners"
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
   const ids = runnerIds(config);
   const feature = ids.indexOf("feature");
-  assert.deepEqual(ids.slice(feature, feature + 3), ["feature", "feature-2", "feature-3"],
-    "a feature base is followed by its extra instances");
-  assert.ok(!ids.includes("feature-4"));
+  assert.deepEqual(
+    ids.slice(feature, feature + 6),
+    ["feature", "feature-2", "feature-3", "feature-4", "feature-5", "feature-6"],
+    "a feature base is followed by runners up to twice its instances",
+  );
+  assert.ok(!ids.includes("feature-7"));
   // Only INSTANCE_ROLES split: a configured count on another role would be a validation
   // error, and here the bare id stays single regardless.
   config.roles.clean = { ...(config.roles.clean ?? { enabled: true }) };

@@ -91,6 +91,17 @@ test("status payload carries an instance's claim title and base role", async () 
   const bare = payload.roles.find((l) => l.role === "feature");
   assert.equal(bare?.claim, undefined);
   assert.equal(bare?.instanceOf, undefined);
+  // Runners above `instances` (the surplus pool) show only while they hold something.
+  const ids = payload.roles.map((l) => l.role);
+  assert.equal(ids.includes("feature-3"), false, "an idle surplus runner has no row");
+  assert.equal(ids.includes("feature-4"), false);
+  saveRunnerState(repo, {
+    ...freshRunnerState("feature-3"),
+    claim: { file: "PLANS.md", key: "plan b", title: "Plan B", at: Date.now(), source: "assigned" },
+  });
+  const later = statusPayload(repo) as typeof payload;
+  assert.equal(later.roles.some((l) => l.role === "feature-3"), true, "a surplus runner with a claim shows");
+  assert.equal(later.roles.some((l) => l.role === "feature-4"), false);
 });
 
 test("status payload marks user-defined roles with the custom flag", async () => {

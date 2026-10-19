@@ -603,6 +603,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         maxConcurrent: liveConfig.maxConcurrent,
         enabled: new Set(runners.filter((r) => loopEnabled(r.config, r.role)).map((r) => r.role)),
         queuedMergeRoles: queuedMergeRoles(root),
+        instancesOf: (base) => liveConfig.roles[base]?.instances ?? 1,
         // Per-provider headroom (plans/provider-concurrency.md §6): an idle work loop reserves a
         // permit only when its own provider could use it — capped and full, it would only idle
         // the slot another provider's maintenance tick could take. Read from the pool's live

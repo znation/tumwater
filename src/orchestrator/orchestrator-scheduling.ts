@@ -15,7 +15,7 @@ import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
-import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/runner-ids.js";
+import { baseRoleOf, configuredInstances, instanceIndex, loopEnabled, loopPaused } from "../roles/runner-ids.js";
 import { freshlyWoken, hasOutstandingWork, saveLoopState, type SkipReason } from "../runner/runner-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
@@ -260,10 +260,29 @@ export async function pollRunnerReasons(
   // the remaining `allowance - used` slots, reset every pass, so two due maintenance loops
   // cannot start in the same poll and overshoot the allowance.
   let maintenanceQuotaAdmitted = 0;
+  // Runs writing code per multi-runner base role (plans/fast-merge.md "Lever 1"): a runner in
+  // flight, not one whose change waits in the merge queue. `instances` limits this count, so the
+  // role's extra runner ids start work only while fewer than `instances` are running; admissions
+  // this poll count at once, so one pass cannot overshoot.
+  const writing = new Map<string, number>();
+  for (const r of runners) {
+    if (claimGroups.has(baseRoleOf(r.role)) && r.state.running && !queuedRoles.has(r.role)) {
+      increment(writing, baseRoleOf(r.role));
+    }
+  }
+  // Admission order: a runner of a multi-runner base with a pending revision or conflict
+  // hand-back comes first (its change came back; it holds no new claim), then the rest in runner
+  // order, so the lowest-index free runner takes new work. Other roles keep their place.
+  const ownsOutstanding = (r: LoopRunner): boolean =>
+    claimGroups.has(baseRoleOf(r.role)) && hasOutstandingWork(r.state);
+  const ordered = [
+    ...runners.filter((r) => ownsOutstanding(r)),
+    ...runners.filter((r) => !ownsOutstanding(r)),
+  ];
   // The stand-down's eligible lists per base role, read at most once per poll (see the check
   // below).
   const eligibleMemo = new Map<string, EligibleEntry[]>();
-  for (const runner of runners) {
+  for (const runner of ordered) {
     // Once mode: a paused role runs no tick this round and must be reported as skipped,
     // so it settles here — before the gates that would otherwise skip it silently (a
     // once round has to end even when a pause marker is left over; a later resume within
@@ -354,6 +373,16 @@ export async function pollRunnerReasons(
     if (queuedRoles.has(runner.role)) {
       noteSkip(root, runner, undefined);
       continue;
+    }
+    // The role's `instances` limit on concurrent runs: a multi-runner base admits a runner only
+    // while fewer than `instances` of its runners are running. A parked runner (queued change)
+    // was skipped by the interlock above and holds no place.
+    const writingBase = baseRoleOf(runner.role);
+    if (claimGroups.has(writingBase) && !runner.state.running) {
+      if ((writing.get(writingBase) ?? 0) >= configuredInstances(runner.config, runner.role)) {
+        noteSkip(root, runner, undefined);
+        continue;
+      }
     }
     // Need-based deferral: a due maintenance tick (scheduled or main-moved wake) whose last
     // tick did nothing stays deferred while the feature/bugfix backlog is open or no new
@@ -505,6 +534,7 @@ export async function pollRunnerReasons(
     }
     noteSkip(root, runner, undefined);
     reasons.set(runner, reason);
+    if (claimGroup && !runner.state.running) increment(writing, baseRoleOf(runner.role));
   }
   return reasons;
 }

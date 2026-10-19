@@ -182,6 +182,10 @@ export function workReserveCount(
      * pool's snapshot() — this policy stays free of the seams. Defaults to counting every idle
      * work loop, the pre-caps behavior. */
     providerHasHeadroom?: (runner: ClaimRunner) => boolean;
+    /** The base role's `instances`: the most runs writing code at once. A role may hold twice as
+     * many runner ids, so idle runners reserve only the places not already taken by running
+     * ones. Defaults to no limit. */
+    instancesOf?: (base: string) => number;
   },
 ): number {
   // Eligible keys per claim-taking base, read once.
@@ -206,7 +210,14 @@ export function workReserveCount(
     held.add(key);
     heldByBase.set(base, held);
   }
-  let count = 0;
+  const running = new Map<string, number>();
+  for (const r of runners) {
+    const base = baseRoleOf(r.role);
+    if (INSTANCE_ROLES.has(base) && r.state.running && !opts.queuedMergeRoles.has(r.role)) {
+      running.set(base, (running.get(base) ?? 0) + 1);
+    }
+  }
+  const idleByBase = new Map<string, number>();
   for (const r of runners) {
     const base = baseRoleOf(r.role);
     if (!INSTANCE_ROLES.has(base)) continue;
@@ -218,7 +229,12 @@ export function workReserveCount(
     const eligible = eligibleFor(base);
     const holdsClaim = r.state.claim !== undefined && eligible.has(r.state.claim.key);
     const hasFreeEntry = [...eligible].some((k) => !(heldByBase.get(base)?.has(k) ?? false));
-    if (holdsClaim || hasFreeEntry) count += 1;
+    if (holdsClaim || hasFreeEntry) idleByBase.set(base, (idleByBase.get(base) ?? 0) + 1);
+  }
+  let count = 0;
+  for (const [base, idle] of idleByBase) {
+    const places = Math.max(0, (opts.instancesOf?.(base) ?? Infinity) - (running.get(base) ?? 0));
+    count += Math.min(idle, places);
   }
   return Math.min(Math.floor(opts.maxConcurrent / 3), count);
 }

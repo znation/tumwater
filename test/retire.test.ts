@@ -258,31 +258,31 @@ function leftoverInstanceRepo() {
     const cfg = readJson(file) as { roles: Record<string, { instances?: number }> };
     cfg.roles.feature = { ...cfg.roles.feature, instances: 2 };
     fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
-    sh(root, "git", "branch", branchName("feature-4"));
+    sh(root, "git", "branch", branchName("feature-5"));
     return root;
   });
 }
 
 test("retire accepts a leftover instance id above the configured instances and removes its branch", async () => {
   const root = await leftoverInstanceRepo();
-  const dry = await cli(root, "retire", "--role", "feature-4", "--dry-run");
+  const dry = await cli(root, "retire", "--role", "feature-5", "--dry-run");
   assert.equal(dry.code, 0, dry.stderr);
-  assert.match(dry.stdout, /would remove the branch \(tumwater\/feature-4\)/);
-  const r = await cli(root, "retire", "--role", "feature-4", "--json");
+  assert.match(dry.stdout, /would remove the branch \(tumwater\/feature-5\)/);
+  const r = await cli(root, "retire", "--role", "feature-5", "--json");
   assert.equal(r.code, 0, r.stderr);
   assert.ok((JSON.parse(r.stdout) as { removed: string[] }).removed.includes("branch"));
-  assert.equal(await branchHead(root, branchName("feature-4")), null);
+  assert.equal(await branchHead(root, branchName("feature-5")), null);
 });
 
 test("retire still refuses a leftover id whose branch holds unmerged commits", async () => {
   const root = await leftoverInstanceRepo();
   const tree = sh(root, "git", "rev-parse", "HEAD^{tree}").trim();
   const commit = sh(root, "git", "commit-tree", tree, "-p", "HEAD", "-m", "unmerged").trim();
-  sh(root, "git", "update-ref", `refs/heads/${branchName("feature-4")}`, commit);
-  const r = await cli(root, "retire", "--role", "feature-4");
+  sh(root, "git", "update-ref", `refs/heads/${branchName("feature-5")}`, commit);
+  const r = await cli(root, "retire", "--role", "feature-5");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unmerged commit/);
-  assert.equal(await branchHead(root, branchName("feature-4")), commit);
+  assert.equal(await branchHead(root, branchName("feature-5")), commit);
 });
 
 test("hasRetirableLeftovers gates on a well-formed non-director id with a branch or merge ref", async () => {

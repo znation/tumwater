@@ -840,3 +840,67 @@ test("a bugfix runner in search mode is not stood down", async () => {
   await pollRunnerReasons(schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]])));
   assert.notEqual(bugfix.state.skipReason, "no-free-entry");
 });
+
+// `instances` limits runs writing code at once (plans/fast-merge.md "Lever 1", part 2/14): a
+// role holds twice as many runner ids, and a runner whose change waits in the merge queue holds
+// no place.
+function fourPlansDoc(): string {
+  const entry = (name: string) => `### ${name} (planned 2026-01-01 by operator)\n\nBody.`;
+  const body = ["Alpha", "Beta", "Gamma", "Delta"].map(entry).join("\n\n");
+  return `# Plans\n\n## Planned\n\n${body}\n\n## Done\n`;
+}
+
+function featureRunners(config: TumwaterConfig): LoopRunner[] {
+  return ["feature", "feature-2", "feature-3", "feature-4"].map((id) => fakeRunner(id, config));
+}
+
+function claimFor(key: string): NonNullable<LoopRunner["state"]["claim"]> {
+  return { file: "PLANS.md", key, title: key, at: Date.now(), source: "assigned" };
+}
+
+test("a runner waiting on its queued change holds no place: a second runner starts on the next entry", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), fourPlansDoc());
+  const config = twoFeatureInstances();
+  const [feature, feature2, feature3, feature4] = featureRunners(config) as [LoopRunner, LoopRunner, LoopRunner, LoopRunner];
+  feature.state.claim = claimFor("alpha");
+  enqueueMerge(root, { role: "feature", sha: mainSha(root), run: 1, summary: "waits", enqueuedAt: Date.now() });
+  const providers = new Map(["feature", "feature-2", "feature-3", "feature-4"].map((id) => [id, undefined]));
+  const reasons = await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3, feature4], providers));
+  assert.equal(reasons.has(feature), false, "the interlock still skips the waiting runner");
+  assert.equal(reasons.has(feature2), true);
+  assert.equal(reasons.has(feature3), true, "two runs are allowed while the first runner waits");
+  assert.equal(reasons.has(feature4), false, "no third run starts while two are running");
+  const keys = [feature2, feature3].map((r) => r.state.claim?.key);
+  assert.equal(new Set([...keys, feature.state.claim?.key]).size, 3, "no two runners hold one claim");
+  assert.equal(keys.includes("alpha"), false, "the new runs take other entries than the waiting one");
+});
+
+test("running runners count against instances, and admissions in one poll count too", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), fourPlansDoc());
+  const config = twoFeatureInstances();
+  const [feature, feature2, feature3, feature4] = featureRunners(config) as [LoopRunner, LoopRunner, LoopRunner, LoopRunner];
+  feature.state.running = true;
+  feature.state.claim = claimFor("alpha");
+  const providers = new Map(["feature", "feature-2", "feature-3", "feature-4"].map((id) => [id, undefined]));
+  const reasons = await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3, feature4], providers));
+  assert.equal(reasons.has(feature2), true, "the lowest-index free runner takes the open place");
+  assert.equal(reasons.has(feature3), false);
+  assert.equal(reasons.has(feature4), false);
+});
+
+test("a runner with a revision is admitted before a free runner when one place is open", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), fourPlansDoc());
+  const config = twoFeatureInstances();
+  const [feature, feature2, feature3, feature4] = featureRunners(config) as [LoopRunner, LoopRunner, LoopRunner, LoopRunner];
+  feature.state.running = true;
+  feature.state.claim = claimFor("alpha");
+  feature3.state.claim = claimFor("beta");
+  feature3.state.revision = { reason: "review asked for changes" } as unknown as NonNullable<LoopRunner["state"]["revision"]>;
+  const providers = new Map(["feature", "feature-2", "feature-3", "feature-4"].map((id) => [id, undefined]));
+  const reasons = await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3, feature4], providers));
+  assert.equal(reasons.has(feature3), true, "the returned change runs on its own runner");
+  assert.equal(reasons.has(feature2), false, "the free runner waits for another place");
+});

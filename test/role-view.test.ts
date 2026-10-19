@@ -973,8 +973,8 @@ test("daily cap sums instances, and is absent for cap 0, the director, or no cap
   const p = rolePayload(dir, "feature-2", NO_MODELS, now);
   assert.equal(p.dailyCap?.over, true);
   assert.equal(p.dailyCap?.spentUsd, 1.2);
-  assert.deepEqual(p.dailyCap?.roleIds, ["feature", "feature-2"]);
-  assert.match(renderRoleMarkdown(p), /· shared by feature, feature-2$/m);
+  assert.deepEqual(p.dailyCap?.roleIds, ["feature", "feature-2", "feature-3", "feature-4"]);
+  assert.match(renderRoleMarkdown(p), /· shared by feature, feature-2, feature-3, feature-4$/m);
   assert.equal("dailyCap" in rolePayload(dir, "coverage", NO_MODELS, now), false);
   assert.equal("dailyCap" in rolePayload(dir, "director", NO_MODELS, now), false);
 

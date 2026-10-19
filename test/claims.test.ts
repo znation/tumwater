@@ -304,3 +304,19 @@ test("planBacklogFull: eligible plans reach the target and no plan is marked", (
     "a plan blocked by a prerequisite does not count",
   );
 });
+
+test("workReserveCount counts only the places instances leaves free, not every idle runner id", () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "PLANS.md"), PLANNED);
+  const ids = ["feature", "feature-2", "feature-3", "feature-4"];
+  const opts = {
+    maxConcurrent: 30,
+    enabled: new Set(ids),
+    queuedMergeRoles: new Set<string>(),
+    instancesOf: () => 2,
+  };
+  const idle = ids.map((id) => runner(id, state()));
+  assert.equal(workReserveCount(repo, idle, opts), 2, "four idle runner ids, two places");
+  const oneRunning = [runner("feature", state(undefined, { running: true })), ...idle.slice(1)];
+  assert.equal(workReserveCount(repo, oneRunning, opts), 1, "a running runner takes one of the two places");
+});

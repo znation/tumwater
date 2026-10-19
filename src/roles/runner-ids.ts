@@ -12,6 +12,12 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 /** The base roles that may run more than one instance. */
 export const INSTANCE_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix"]);
 
+/** How many runner ids an instance role may hold per configured instance. `instances: N` limits the
+ * runs writing code at once; a runner whose change waits in the merge pipeline never runs
+ * (plans/merge-queue.md invariant 3), so tumwater keeps up to N × this many runner ids and the
+ * poll admits another while fewer than N are running (plans/fast-merge.md "Lever 1"). */
+const RUNNERS_PER_INSTANCE = 2;
+
 /** The instance-id shape: a base role, a dash, and an index of 2 or more (`-1` is not an
  * instance — the bare id already means instance 1). The source string is also interpolated into
  * the dashboard script (gui-client-labels.ts). */
@@ -40,20 +46,29 @@ export function configuredInstances(config: TumwaterConfig, id: string): number 
   return role?.instances ?? 1;
 }
 
+/** How many runner ids a base role holds: its configured instance count, times
+ * RUNNERS_PER_INSTANCE once it runs more than one instance. A role left at one instance keeps its
+ * single bare runner, so its scheduling is exactly the single-runner one. */
+function runnerCount(config: TumwaterConfig, base: string): number {
+  const count = config.roles[base]?.instances ?? 1;
+  return INSTANCE_ROLES.has(base) && count > 1 ? count * RUNNERS_PER_INSTANCE : count;
+}
+
 /** Is this runner id enabled? True when its base role is enabled in config and the id's instance
- * index is within that role's configured instance count (`roles.<id>.instances`, default 1). */
+ * index is within the role's runner count (runnerCount). */
 export function runnerEnabled(config: TumwaterConfig, id: string): boolean {
   const role = config.roles[baseRoleOf(id)];
   if (role?.enabled !== true) return false;
-  return instanceIndex(id) <= configuredInstances(config, id);
+  return instanceIndex(id) <= runnerCount(config, baseRoleOf(id));
 }
 
 /** @deprecated Use runnerEnabled. */
 export const loopEnabled = runnerEnabled;
 
 /** Every runner id the config says should exist, in `config.roles` order: each enabled role's
- * bare id, then `<id>-2`…`<id>-N` for the `INSTANCE_ROLES` at their configured instance
- * count. Other roles and custom roles stay bare — only feature and bugfix may split. The one
+ * bare id, then `<id>-2`…`<id>-M` for the `INSTANCE_ROLES` at their runner count
+ * (runnerCount: twice the configured instances once there is more than one). Other roles and
+ * custom roles stay bare — only feature and bugfix may split. The one
  * answer to "which runners should exist", so the orchestrator (part 5b/7) and live reload
  * enumerate the same set. At the default instance count this returns exactly the bare ids
  * `enabledRoleIds` returns. */
@@ -63,7 +78,7 @@ export function runnerIds(config: TumwaterConfig): string[] {
     if (!role.enabled) continue;
     ids.push(id);
     if (!INSTANCE_ROLES.has(id)) continue;
-    const count = role.instances ?? 1;
+    const count = runnerCount(config, id);
     for (let i = 2; i <= count; i++) ids.push(`${id}-${i}`);
   }
   return ids;
