@@ -3,7 +3,7 @@
  * `tumwater help <command>` and the unknown-command suggestion use, so a new command or flag
  * completes the moment it gains a help stanza and can never drift from the listing. */
 import { customLoopNames, knownRoleIds, loadConfig } from "../config/config.js";
-import { AGENT_IDS, AGENT_KEYS, CLAUDE_AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
+import { AGENT_IDS, AGENT_KEYS, CLAUDE_AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, THINKING_LEVELS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
 import { DOTTED_MAP_KEYS } from "../config/config-keys.js";
 import { HISTORY_RESULT_FLAG_NAMES } from "../history/history-data.js";
 import { templateIds } from "../init/init-templates.js";
@@ -111,6 +111,13 @@ const PATH_FLAGS = ["--file", "--attach", "--notes-file", "--instructions-file"]
  * `--result` complete their values. */
 const EVENT_TYPE_CODES = Object.keys(EVENT_TYPE_LABELS).sort();
 
+/** The pi `--thinking` levels `role <id> --thinking <level>` accepts: the canonical
+ * THINKING_LEVELS set, Set spread preserving its insertion order (= the order the
+ * role-help and config-field-checks message list them), so `--thinking` completes its
+ * vocabulary the way `--type` and `--result` complete theirs. One source, so a new level
+ * completes the moment THINKING_LEVELS grows. */
+const THINKING_LEVEL_WORDS = [...THINKING_LEVELS];
+
 function bashScript(help: string): string {
   const spec = completionSpec(help);
   const arms = spec.commands.map((command) => {
@@ -157,6 +164,10 @@ function bashScript(help: string): string {
     `    COMPREPLY=( $(compgen -W "${EVENT_TYPE_CODES.join(" ")}" -- "$cur") )`,
     `    return 0`,
     `  fi`,
+    `  if [ "$prev" = "--thinking" ]; then`,
+    `    COMPREPLY=( $(compgen -W "${THINKING_LEVEL_WORDS.join(" ")}" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
     `  if [ "$COMP_CWORD" -eq 3 ] && [ "\${COMP_WORDS[1]}" = config ] && [[ "\${COMP_WORDS[2]}" == get || "\${COMP_WORDS[2]}" == set || "\${COMP_WORDS[2]}" == unset ]] && [[ "$cur" != -* ]]; then`,
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --config-keys 2>/dev/null)" -- "$cur") )`,
     `    return 0`,
@@ -182,6 +193,7 @@ function fishFlagValue(flag: string): string {
   if (flag === "--template") return ` -x -a "${templateIds().join(" ")}"`;
   if (flag === "--result") return ` -x -a "${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}"`;
   if (flag === "--type") return ` -x -a "${EVENT_TYPE_CODES.join(" ")}"`;
+  if (flag === "--thinking") return ` -x -a "${THINKING_LEVEL_WORDS.join(" ")}"`;
   return "";
 }
 
