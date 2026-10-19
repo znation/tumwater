@@ -11,8 +11,8 @@ import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
 import { observeOpencodeRun, opencodeModelKey } from "../agent/opencode/opencode-catalog.js";
 import { dailyCost, teamDailyCost, pairDailyCost } from "../budget/budget.js";
-import { loadLoopState } from "./runner-state.js";
-import { baseRoleOf, loopIds } from "../roles/runner-ids.js";
+import { loadRunnerState } from "./runner-state.js";
+import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
 import { buildStageFixPrompt } from "../prompt/gate-prompts.js";
 import { logEventBestEffort } from "../events/events.js";
 import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
@@ -45,10 +45,10 @@ function sleepFor(ms: number): Promise<void> {
  * base role's own remaining cap when `maxDailyCostUsdPerRole` names it. The cap map and its
  * spend are keyed by BASE role, exactly as the scheduler's role-cap gate reads them
  * (src/gates/role-cap-gates.ts: `baseRoleOf` groups `feature`/`feature-2` and sums the
- * group's spend), so instance loop ids share their base's cap instead of silently falling
+ * group's spend), so instance runner ids share their base's cap instead of silently falling
  * through to the team budget. Returns undefined — no cap — for the director, a non-claude
  * seam, an account that is not API-billed, a disabled cap (0), or no remaining budget at all
- * (a non-positive cap is dropped by the argv builder). Spend is read from the persisted loop
+ * (a non-positive cap is dropped by the argv builder). Spend is read from the persisted runner
  * states: each role's daily window is what the budget gate and the dashboards sum, and this
  * runs before the authoring run records its own cost. A pair with a step cap of its own (a
  * priced fallback step, `fallbackStepCaps`) is also held to that step's remaining budget. */
@@ -62,7 +62,7 @@ function authoringBudgetCap(
   if (role === DIRECTOR_ROLE || agent !== "claude") return undefined;
   if (readClaudeAccount(root)?.billing !== "api") return undefined;
   const now = Date.now();
-  const states = loopIds(cfg).map((r) => loadLoopState(root, r));
+  const states = runnerIds(cfg).map((r) => loadRunnerState(root, r));
   let cap = cfg.maxDailyCostUsd - teamDailyCost(states, now);
   const base = baseRoleOf(role);
   const perRole = cfg.maxDailyCostUsdPerRole?.[base];
@@ -71,7 +71,7 @@ function authoringBudgetCap(
     const spent =
       members.length > 0
         ? members.reduce((sum, s) => sum + dailyCost(s, now), 0)
-        : dailyCost(loadLoopState(root, role), now);
+        : dailyCost(loadRunnerState(root, role), now);
     cap = Math.min(cap, perRole - spent);
   }
   // A fallback step with its own cap (applyFallbackModel's fallbackStepCaps, set only on the
@@ -83,11 +83,11 @@ function authoringBudgetCap(
   return cap > 0 ? cap : undefined;
 }
 
-/** What the extracted pi-run plumbing needs from its owning loop. The loop supplies live
+/** What the extracted pi-run plumbing needs from its owning runner. The runner supplies live
  * accessors, not copies: `config()` and `tickNumber()` are read at every call so the
- * orchestrator's live-reload (which swaps the config object under the loop) and the tick
+ * orchestrator's live-reload (which swaps the config object under the runner) and the tick
  * lifecycle stay authoritative without any notification path. */
-interface LoopPiHost {
+interface RunnerPiHost {
   readonly root: string;
   readonly role: string;
   config(): TumwaterConfig;
@@ -114,22 +114,23 @@ interface LoopPiHost {
   sleep?(ms: number): Promise<void>;
 }
 
-/** The pi-invocation plumbing of one role loop, extracted from LoopRunner (src/runner/runner.ts):
- * the shared per-loop wiring for every run (role config, session dir, raw log, abort
+/** The pi-invocation plumbing of one role's runner, extracted from RoleRunner
+ * (src/runner/runner.ts): the shared per-runner wiring for every run (role config, session dir,
+ * raw log, abort
  * signal), the one bounded transient-failure retry all runs share, the merge slot's
  * run (which watches only the shutdown signal), and the tick's SUMMARY follow-up turn.
- * It owns HOW a loop talks to pi; the LoopRunner tick state machine owns WHAT runs happen
+ * It owns HOW a runner talks to pi; the RoleRunner tick state machine owns WHAT runs happen
  * and folds every run's spend back through the host's foldUsage (authoring) or
  * foldMergeUsage (merge/review). */
-export class LoopPi {
-  constructor(private readonly host: LoopPiHost) {}
+export class RunnerPi {
+  constructor(private readonly host: RunnerPiHost) {}
 
-  /** The shared per-loop wiring for every pi run this tick makes in worktree `wt`: the
-   * role-resolved config, this loop's session dir and raw log, and the per-tick abort signal.
+  /** The shared per-runner wiring for every pi run this tick makes in worktree `wt`: the
+   * role-resolved config, this runner's session dir and raw log, and the per-tick abort signal.
    * One place for those derivations — a new PiRunOptions field touches only here instead of
    * drifting between the author run and the SUMMARY follow-up. Callers override what differs
    * (the follow-up's capped timeouts, the merge's shutdown-only signal). */
-  private loopPiOpts(
+  private runnerPiOpts(
     wt: string,
     prompt: string,
     sessionName: string,
@@ -174,7 +175,7 @@ export class LoopPi {
       onAgentWarning: (warning) => this.host.warn(`agent_unknown_event: ${warning}`),
       // A run that read an image its model cannot see (plans/image-input.md "Detecting a
       // blind read"): the runner killed the authoring run (action "fail") or a gate run
-      // merely recorded it ("logged") — each logged here with this loop's identity so the
+      // merely recorded it ("logged") — each logged here with this runner's identity so the
       // feed names who, on which tick, read which file on which blind model.
       onBlindRead: (path, action) =>
         logEventBestEffort(this.host.root, {
@@ -188,9 +189,9 @@ export class LoopPi {
     };
   }
 
-  /** Run the orchestrator's merge slot's pi (merge queue 3/5): the shared per-loop wiring
+  /** Run the orchestrator's merge slot's pi (merge queue 3/5): the shared per-runner wiring
    * of runRolePi — role config, session dir, raw log, transient-failure retry — with usage
-   * folded into the authoring loop's counters, but watching ONLY the harness shutdown signal
+   * folded into the authoring runner's counters, but watching ONLY the harness shutdown signal
    * (which may be undefined — PiRunOptions.signal is optional): a merge is outside any
    * tick, so `tumwater abort --role` (which targets a tick's per-tick abort controller) must
    * never reach it, and the stale per-tick controller of a finished tick must not abort it
@@ -206,7 +207,7 @@ export class LoopPi {
   ): Promise<PiRunResult> {
     return this.runWithTransientRetry(
       {
-        ...this.loopPiOpts(wt, prompt, sessionName, "gate", false, config),
+        ...this.runnerPiOpts(wt, prompt, sessionName, "gate", false, config),
         signal: this.host.signal,
       },
       { authoring: false },
@@ -220,14 +221,14 @@ export class LoopPi {
    * gate.run / gate.followUpRun), so only a RETRIED first attempt is folded here. That fold
    * is not optional: it stamps the team-wide rate-limit hold's input before the wait, and
    * it is the only record the failed attempt's spend would ever get.
-   * Takes full PiRunOptions because the gate's two runs differ in everything but the loop
+   * Takes full PiRunOptions because the gate's two runs differ in everything but the runner
    * they charge (config, session dir and name, label, tool-call callbacks, signal).
    */
   async runGatePi(opts: PiRunOptions): Promise<PiRunResult> {
     return this.runWithTransientRetry(opts, { foldFinal: false, authoring: false });
   }
 
-  /** The one bounded transient-failure retry shared by EVERY pi run this loop makes
+  /** The one bounded transient-failure retry shared by EVERY pi run this runner makes
    * (runRolePi, runMergePi, and runGatePi): two transient failures of the world (not of
    * the session) earn exactly one retry that continues the same session — the model server
    * timing out an idle predict stream, the provider severing that stream outright (undici's
@@ -244,12 +245,12 @@ export class LoopPi {
    * run is returned and its kept worktree resumes as a `handoff` on the next tick
    * (src/tick/tick-resume.ts).
    * Extracted verbatim from runRolePi so the rule lives in one place
-   * (574a14c's loopPiOpts move was the wiring half of the same single-source-of-truth).
+   * (574a14c's runnerPiOpts move was the wiring half of the same single-source-of-truth).
    */
   /** Part 6c/7: demote a catalog-free opencode model the first time a run bills it. Observed
-   * here — the fold chokepoint every run of the loop passes through — because it is the one
+   * here — the fold chokepoint every run of the runner passes through — because it is the one
    * place that has the run's resolved model (opts.config) and its cost (the run) together, and
-   * it holds the loop's root and role for the cache and the event feed. pi and claude runs
+   * it holds the runner's root and role for the cache and the event feed. pi and claude runs
    * have no opencode catalog entry and no-op. Best-effort like observeClaudeAccount: an
    * unwritable cache or event feed must not fail the run that observed it. */
   private observeFreeModelCost(run: PiRunResult, config: ResolvedModelConfig): void {
@@ -273,7 +274,7 @@ export class LoopPi {
      * authoring and merge behavior. */
     { foldFinal = true, authoring = true }: { foldFinal?: boolean; authoring?: boolean } = {},
   ): Promise<PiRunResult> {
-    // The fold every attempt takes: an authoring run charges the loop's tick counters
+    // The fold every attempt takes: an authoring run charges the runner's tick counters
     // (foldUsage); a merge, reviewer, or conflict-resolution run charges the same cost and
     // prompt-token totals but never the tick's pre-edit prefix (foldMergeUsage).
     // The seam this run actually ran on, as the team hold keys it (seamHoldKey): the fold
@@ -282,7 +283,7 @@ export class LoopPi {
     // is always the run's own resolved seam (reviewRunConfig for the reviewer, the role's
     // config or fallback pair for the author), so this names the backend that failed.
     const provider = seamHoldKey(opts.config);
-    // The run's model pair name, the key of the per-step daily spend (LoopState.dayCostByPair).
+    // The run's model pair name, the key of the per-step daily spend (RunnerState.dayCostByPair).
     const pair = seamPairName(opts.config);
     const fold = (run: PiRunResult): void =>
       authoring ? this.host.foldUsage(run, provider, pair) : this.host.foldMergeUsage(run, provider, pair);
@@ -290,7 +291,7 @@ export class LoopPi {
     // not already there (plans/provider-concurrency.md §5): a budget handback or a model-failure
     // switch that moved this run onto another seam moves the tick's lease with it, so a
     // claude-authored tick whose gate run lands on omlx is counted there. No-op when the tick
-    // carries no lease (a bare LoopPi unit test, `tumwater tick`).
+    // carries no lease (a bare RunnerPi unit test, `tumwater tick`).
     await ensureProviderLease(opts.config);
     const pi = await runPi(opts);
     this.warnFallbackClone(pi);
@@ -322,7 +323,7 @@ export class LoopPi {
                 : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the agent run once",
       );
       // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
-      // team-wide rate-limit hold's input (LoopRunner.lastRateLimit, stamped at fold time), and
+      // team-wide rate-limit hold's input (RoleRunner.lastRateLimit, stamped at fold time), and
       // folding after a retry that ran on for an hour would report the storm an hour late.
       fold(pi);
       // The pause is the rate-limit branch's, plus the timeout kind's: a server timeout or
@@ -406,7 +407,7 @@ export class LoopPi {
     );
   }
 
-  /** Run pi for this loop's authoring run in worktree `wt`: the shared per-loop wiring and
+  /** Run pi for this runner's authoring run in worktree `wt`: the shared per-runner wiring and
    * the transient-failure retry, with usage folded into the tick's counters. It is the ONE
    * entry point that carries the role notebook (PLANS.md "Role notebook": TUMWATER_NOTES_PATH,
    * read by the `tumwater-notes` command): every other run (runRolePi's merge/conflict path,
@@ -426,7 +427,7 @@ export class LoopPi {
     config?: ResolvedModelConfig,
   ): Promise<PiRunResult> {
     return this.runWithTransientRetry(
-      this.loopPiOpts(wt, prompt, sessionName, "author", resume, config, this.authorNotesPath()),
+      this.runnerPiOpts(wt, prompt, sessionName, "author", resume, config, this.authorNotesPath()),
     );
   }
 
@@ -455,7 +456,7 @@ export class LoopPi {
     // so its runs demux as author — exactly the verdict the pre-part-1/5 cwd test gave them.
     // The shared-worktree conflict resolver goes through runMergePi and demuxes as gate.
     return this.runWithTransientRetry(
-      this.loopPiOpts(wt, prompt, sessionName, "author", resume, config),
+      this.runnerPiOpts(wt, prompt, sessionName, "author", resume, config),
     );
   }
 
@@ -471,7 +472,7 @@ export class LoopPi {
 
   /** The shared body of the two `--continue` follow-up turns (requestSummary and
    * requestStageFix): guard on a resumable session, resolve the tick's effective config, and
-   * run one capped turn on the loop's shared transient-retry wiring. Both follow-ups must keep
+   * run one capped turn on the runner's shared transient-retry wiring. Both follow-ups must keep
    * the same session guard and capped-config discipline, so the two read one assembly here;
    * `suffix` names the turn in its session name and `timeoutS` is its hard cap, while both
    * share the quiet watchdog value (SUMMARY_REQUEST_QUIET_S). Null when there is no session to
@@ -480,8 +481,8 @@ export class LoopPi {
    * The follow-up continues this tick's own session, so it must run on the same pair that
    * session ran on: the caller passes the tick's effective config (the fallback pair while a
    * model-fallback episode is active). A caller without one rides the role's own config. The
-   * shared per-loop wiring (loopPiOpts) takes the follow-up's hard caps overriding the
-   * authoring run's budget: one short reply on a warm session. The run takes the loop's SHARED
+   * shared per-runner wiring (runnerPiOpts) takes the follow-up's hard caps overriding the
+   * authoring run's budget: one short reply on a warm session. The run takes the runner's SHARED
    * transient-failure retry (BUGS.md 2026-10-01): a 429 on the follow-up turn waits its
    * Retry-After hint out and retries once on the same session, exactly like the authoring run,
    * the merge slot's run, and the gate's reviewer runs it mirrors. The caps bound BOTH
@@ -512,7 +513,7 @@ export class LoopPi {
       return null;
     }
     return this.runWithTransientRetry({
-      ...this.loopPiOpts(
+      ...this.runnerPiOpts(
         wt,
         prompt,
         `tumwater-${this.host.role}-${this.host.tickNumber()}-${suffix}`,
@@ -523,7 +524,7 @@ export class LoopPi {
       ),
       config: {
         ...cfg,
-        ...cappedRequestTimeouts(cfg, timeoutS, LoopPi.SUMMARY_REQUEST_QUIET_S),
+        ...cappedRequestTimeouts(cfg, timeoutS, RunnerPi.SUMMARY_REQUEST_QUIET_S),
       },
     });
   }
@@ -537,7 +538,7 @@ export class LoopPi {
       wt,
       buildSummaryRequestPrompt(overLength),
       "summary",
-      LoopPi.SUMMARY_REQUEST_TIMEOUT_S,
+      RunnerPi.SUMMARY_REQUEST_TIMEOUT_S,
       config,
     );
   }
@@ -555,16 +556,19 @@ export class LoopPi {
       wt,
       buildStageFixPrompt(findings),
       "stagefix",
-      LoopPi.STAGE_FIX_TIMEOUT_S,
+      RunnerPi.STAGE_FIX_TIMEOUT_S,
       config,
     );
   }
 }
 
-/** The loop's shared pi wiring as merge code reaches it, split into the two halves the
- * merge contexts need. `RunsPi` is one pi run in `wt` through the loop's shared wiring
+/** @deprecated Use RunnerPi. */
+export { RunnerPi as LoopPi };
+
+/** The runner's shared pi wiring as merge code reaches it, split into the two halves the
+ * merge contexts need. `RunsPi` is one pi run in `wt` through the runner's shared wiring
  * (role config, session dir, raw log, transient-failure retry — src/runner/runner-pi.ts);
- * `FoldsUsage` adds one run's spend to the owning loop's counters exactly once (the reviewer
+ * `FoldsUsage` adds one run's spend to the owning runner's counters exactly once (the reviewer
  * and conflict-resolution runs charge to the authoring role). Declared once here so the contract
  * — and its wording — cannot drift apart across the four contexts that restate it:
  * MergerContext and BatchRoleWiring carry all three halves (PiRunWiring), MergeContext only
@@ -572,28 +576,28 @@ export class LoopPi {
  *
  * `runPi`'s optional fourth argument is the config that ONE run executes on (plans/
  * model-tiers.md part 4/8): the conflict resolver passes the strong tier's config there while
- * the authoring runs keep the role's own. The loop's wiring forwards it to runRolePi; a run
+ * the authoring runs keep the role's own. The runner's wiring forwards it to runRolePi; a run
  * without it rides the role's config unchanged. */
 export interface RunsPi {
   runPi(wt: string, prompt: string, sessionName: string, config?: ResolvedModelConfig): Promise<PiRunResult>;
 }
 
-/** The merge gate's reviewer runs through the loop's shared transient-retry wiring
+/** The merge gate's reviewer runs through the runner's shared transient-retry wiring
  * (src/runner/runner-pi.ts's runGatePi). Separate from RunsPi because the conflict resolver never
  * needs it and the gate never needs the three-arg resolver shape. */
 export interface GateRunsPi {
   runGatePi(opts: PiRunOptions): Promise<PiRunResult>;
 }
 
-/** One run's spend folded into the owning loop's usage counters exactly once — the
+/** One run's spend folded into the owning runner's usage counters exactly once — the
  * reviewer's and conflict-resolution's runs charge to the authoring role, so the folding
- * belongs to the loop, not to the run itself (the loop's runPi wiring,
+ * belongs to the runner, not to the run itself (the runner's runPi wiring,
  * src/runner/runner-run.ts). */
 export interface FoldsUsage {
   foldUsage(run: PiRunResult): void;
 }
 
-/** A merge context that runs pi through the loop's shared wiring and folds each run's
+/** A merge context that runs pi through the runner's shared wiring and folds each run's
  * usage: both halves (RunsPi + FoldsUsage). MergerContext and BatchRoleWiring extend this;
  * contexts needing only one half extend that half instead (MergeContext, ApprovedMerge). */
 export interface PiRunWiring extends RunsPi, GateRunsPi, FoldsUsage {}

@@ -5,15 +5,15 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  freshLoopState,
-  loadLoopState,
-  saveLoopState,
+  freshRunnerState,
+  loadRunnerState,
+  saveRunnerState,
   zeroCounters,
 } from "../src/runner/runner-state.js";
 import { isTeamPaused, pauseTeam, resumeTeam } from "../src/team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { dailyCost, todayStamp } from "../src/budget/budget.js";
-import type { LoopState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
@@ -26,20 +26,20 @@ import { ensureParentDir } from "../src/files/files.js";
  * tick-apply.ts scheduling policy's tests live in tick-apply.test.ts. */
 
 /** Every field a fresh state has must hold its default value (extra junk keys are allowed). */
-function assertFreshFields(s: LoopState, role: string): void {
-  const fresh = freshLoopState(role);
+function assertFreshFields(s: RunnerState, role: string): void {
+  const fresh = freshRunnerState(role);
   for (const key of Object.keys(fresh)) {
     assert.equal(
-      s[key as keyof LoopState],
-      fresh[key as keyof LoopState],
+      s[key as keyof RunnerState],
+      fresh[key as keyof RunnerState],
       `field ${key} should keep its default`,
     );
   }
 }
 
-test("loadLoopState returns fresh defaults when no file exists", () => {
+test("loadRunnerState returns fresh defaults when no file exists", () => {
   const dir = tmpdir();
-  assert.deepEqual(loadLoopState(dir, "clean"), freshLoopState("clean"));
+  assert.deepEqual(loadRunnerState(dir, "clean"), freshRunnerState("clean"));
 });
 
 test("pauseTeam and resumeTeam write the pause marker and report whether state changed", () => {
@@ -62,17 +62,17 @@ test("pauseTeam and resumeTeam write the pause marker and report whether state c
   assert.equal(resumeTeam(dir), false, "resume without a marker is a no-op");
 });
 
-test("saveLoopState creates the state dir and round-trips without leaving a temp file", () => {
+test("saveRunnerState creates the state dir and round-trips without leaving a temp file", () => {
   const dir = tmpdir();
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.runs = 7;
   s.generatedTokens = 123456;
   s.lastResult = "changed";
-  saveLoopState(dir, s); // .tumwater/ does not exist yet
+  saveRunnerState(dir, s); // .tumwater/ does not exist yet
   assert.ok(fs.existsSync(statePath(dir, "feature")));
   const stateDir = path.dirname(statePath(dir, "feature"));
   assert.deepEqual(fs.readdirSync(stateDir), ["feature.json"], "no .tmp leftovers");
-  assert.deepEqual(loadLoopState(dir, "feature"), s);
+  assert.deepEqual(loadRunnerState(dir, "feature"), s);
 });
 
 // Two processes hammering one role's state file concurrently — the real-world shape: the
@@ -80,7 +80,7 @@ test("saveLoopState creates the state dir and round-trips without leaving a temp
 // rewrites the same file from the CLI process. With per-pid tmp names each writer owns its
 // own tmp, so neither rename can ENOENT and the final file is always one complete state
 // (last writer wins), never bytes mixed from both writers.
-test("saveLoopState from two concurrent processes never tears the file or loses a rename", async () => {
+test("saveRunnerState from two concurrent processes never tears the file or loses a rename", async () => {
   const dir = tmpdir();
   // The child imports the BUILT module, like every other spawned-child test in this suite.
   // Resolved against this test's own file:// URL, so the child can import it from any cwd.
@@ -88,12 +88,12 @@ test("saveLoopState from two concurrent processes never tears the file or loses 
   // --input-type=module: top-level import in -e code needs explicit module syntax on Node
   // < 22.7 (engines declares >= 20); detection is not a portable default.
   const script = `
-    import { saveLoopState } from ${JSON.stringify(stateUrl)};
+    import { saveRunnerState } from ${JSON.stringify(stateUrl)};
     const [root, tag, n] = process.argv.slice(1);
     for (let i = 0; i < Number(n); i++) {
       const s = { role: "race", ticks: i, commits: 0, nextRunAt: 0, backoffSeconds: 0, lastMainHead: "", generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0, dayStamp: "", dayCostUsd: 0 };
       if (tag === "b") s.lastSummary = "writer-b padding ".repeat(16); // longer payload than writer a's
-      saveLoopState(root, s);
+      saveRunnerState(root, s);
     }`;
   const runWriter = (tag: string) =>
     new Promise<{ code: number | null; stderr: string }>((resolve) => {
@@ -125,23 +125,23 @@ test("saveLoopState from two concurrent processes never tears the file or loses 
   assert.deepEqual(fs.readdirSync(path.dirname(file)).filter((f) => f.includes(".tmp-")), [], "no tmp leftovers");
 });
 
-test("loadLoopState drops an unknown skipReason and keeps a known one", () => {
+test("loadRunnerState drops an unknown skipReason and keeps a known one", () => {
   const dir = tmpdir();
   const file = statePath(dir, "clean");
   ensureParentDir(file);
   fs.writeFileSync(file, JSON.stringify({ role: "clean", skipReason: "from-the-future" }));
-  assert.equal(loadLoopState(dir, "clean").skipReason, undefined);
+  assert.equal(loadRunnerState(dir, "clean").skipReason, undefined);
   fs.writeFileSync(file, JSON.stringify({ role: "clean", skipReason: "claim-hold" }));
-  assert.equal(loadLoopState(dir, "clean").skipReason, "claim-hold");
+  assert.equal(loadRunnerState(dir, "clean").skipReason, "claim-hold");
 });
 
-test("loadLoopState fills fields missing from an older or partial file", () => {
+test("loadRunnerState fills fields missing from an older or partial file", () => {
   const dir = tmpdir();
   const file = statePath(dir, "clean");
   ensureParentDir(file);
   // A state file written before generatedTokens/lastMainHead existed.
   fs.writeFileSync(file, JSON.stringify({ role: "clean", ticks: 3, commits: 1 }));
-  const s = loadLoopState(dir, "clean");
+  const s = loadRunnerState(dir, "clean");
   assert.equal(s.runs, 3);
   assert.equal(s.commits, 1);
   // tick-usage.ts folds generatedTokens/peakContextTokens; scheduling/backoff.ts advances
@@ -158,7 +158,7 @@ test("loadLoopState fills fields missing from an older or partial file", () => {
   assert.equal("lastRunStartedAt" in s, false);
 });
 
-test("loadLoopState heals a corrupt persisted numeric field", () => {
+test("loadRunnerState heals a corrupt persisted numeric field", () => {
   const dir = tmpdir();
   const file = statePath(dir, "dirty");
   ensureParentDir(file);
@@ -189,7 +189,7 @@ test("loadLoopState heals a corrupt persisted numeric field", () => {
       parkedSince: "soon",
     }),
   );
-  const s = loadLoopState(dir, "dirty");
+  const s = loadRunnerState(dir, "dirty");
   for (const key of [
     "runs",
     "commits",
@@ -213,7 +213,7 @@ test("loadLoopState heals a corrupt persisted numeric field", () => {
   assert.equal(s.dayCostUsd, 4);
 });
 
-test("loadLoopState heals corrupt numeric fields inside nested records", () => {
+test("loadRunnerState heals corrupt numeric fields inside nested records", () => {
   const dir = tmpdir();
   const file = statePath(dir, "nested");
   ensureParentDir(file);
@@ -234,7 +234,7 @@ test("loadLoopState heals corrupt numeric fields inside nested records", () => {
       modelFallback: { failures: "3", since: -1, probeAt: null, cooldownMs: "500", reason: "r" },
     }),
   );
-  const s = loadLoopState(dir, "nested");
+  const s = loadRunnerState(dir, "nested");
   assert.equal(s.lastReview?.at, 0);
   assert.equal(s.claim?.at, 0);
   assert.equal(s.revision?.round, 0);
@@ -252,7 +252,7 @@ test("loadLoopState heals corrupt numeric fields inside nested records", () => {
   assert.equal(s.modelFallback?.cooldownMs, 0);
 });
 
-test("loadLoopState heals a foreign-typed lastReview.reasons to an empty list", () => {
+test("loadRunnerState heals a foreign-typed lastReview.reasons to an empty list", () => {
   const dir = tmpdir();
   const file = statePath(dir, "reasons");
   ensureParentDir(file);
@@ -273,14 +273,14 @@ test("loadLoopState heals a foreign-typed lastReview.reasons to an empty list", 
         lastReview: { verdict: "reject", reasons: bad, at: 1 },
       }),
     );
-    const s = loadLoopState(dir, "reasons");
+    const s = loadRunnerState(dir, "reasons");
     assert.deepEqual(s.lastReview?.reasons, expected);
     assert.equal(s.lastReview?.verdict, "reject");
     assert.equal(s.lastReview?.at, 1);
   }
 });
 
-test("loadLoopState drops a nested record that is not a plain object, keeping real ones", () => {
+test("loadRunnerState drops a nested record that is not a plain object, keeping real ones", () => {
   const dir = tmpdir();
   const file = statePath(dir, "torn");
   ensureParentDir(file);
@@ -302,7 +302,7 @@ test("loadLoopState drops a nested record that is not a plain object, keeping re
       claim: { file: "BUGS.md", key: "k", title: "t", at: 42, source: "staged" }, // real record kept
     }),
   );
-  const s = loadLoopState(dir, "torn");
+  const s = loadRunnerState(dir, "torn");
   assert.equal(s.lastReview, undefined);
   assert.equal(s.revision, undefined);
   assert.equal(s.mergeConflicts, undefined);
@@ -315,7 +315,7 @@ test("loadLoopState drops a nested record that is not a plain object, keeping re
   assert.equal(s.claim?.key, "k");
 });
 
-test("loadLoopState heals and validates the reviewResume marker", () => {
+test("loadRunnerState heals and validates the reviewResume marker", () => {
   const dir = tmpdir();
   const file = statePath(dir, "resume");
   ensureParentDir(file);
@@ -328,7 +328,7 @@ test("loadLoopState heals and validates the reviewResume marker", () => {
       reviewResume: { patchId: 7, sessionDir: ["x"], attempts: 1, at: 2 },
     }),
   );
-  assert.equal(loadLoopState(dir, "resume").reviewResume, undefined);
+  assert.equal(loadRunnerState(dir, "resume").reviewResume, undefined);
 
   // A well-formed marker keeps its patch-id and session dir, and its numeric fields heal like
   // every other persisted count/stamp.
@@ -339,25 +339,25 @@ test("loadLoopState heals and validates the reviewResume marker", () => {
       reviewResume: { patchId: "p", sessionDir: "d", attempts: "2", at: null },
     }),
   );
-  const s = loadLoopState(dir, "resume");
+  const s = loadRunnerState(dir, "resume");
   assert.equal(s.reviewResume?.patchId, "p");
   assert.equal(s.reviewResume?.sessionDir, "d");
   assert.equal(s.reviewResume?.attempts, 0);
   assert.equal(s.reviewResume?.at, 0);
 });
 
-test("loadLoopState recovers from torn or non-object JSON", () => {
+test("loadRunnerState recovers from torn or non-object JSON", () => {
   const dir = tmpdir();
   const file = statePath(dir, "dedupe");
   ensureParentDir(file);
   for (const junk of ['{"ticks": 2', '"just a string"', "[1, 2]", "null"]) {
     fs.writeFileSync(file, junk);
-    assertFreshFields(loadLoopState(dir, "dedupe"), "dedupe"); // must not throw or lose defaults
+    assertFreshFields(loadRunnerState(dir, "dedupe"), "dedupe"); // must not throw or lose defaults
   }
 });
 
 test("zeroCounters zeroes the accumulated counters and preserves everything else", () => {
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.runs = 12;
   s.commits = 5;
   s.generatedTokens = 987654;
@@ -379,7 +379,7 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
   assert.equal(z.generatedTokens, 0);
   assert.equal(z.totalCostUsd, 0);
   // Per-tick semantics: peak ctx holds the last completed tick's peak, so a fresh
-  // observation window clears it — sleeping loops would otherwise keep showing their old
+  // observation window clears it — sleeping runners would otherwise keep showing their old
   // value until they next tick.
   assert.equal(z.peakContextTokens, 0);
   // Scheduling, wake tracking, and last-result fields are untouched.
@@ -423,7 +423,7 @@ test("readOrchestratorInfo and orchestratorAlive handle missing, valid, dead-pid
   assert.equal(orchestratorAlive(dir), false);
 });
 
-test("loadLoopState heals dayCostByPair: bad entries drop, a non-object becomes {}, __proto__ stays an own key", () => {
+test("loadRunnerState heals dayCostByPair: bad entries drop, a non-object becomes {}, __proto__ stays an own key", () => {
   const dir = tmpdir("runner-state-pair-");
   const write = (role: string, raw: string) => {
     const file = statePath(dir, role);
@@ -431,40 +431,40 @@ test("loadLoopState heals dayCostByPair: bad entries drop, a non-object becomes 
     fs.writeFileSync(file, raw);
   };
   write("a", JSON.stringify({ role: "a", dayCostByPair: { "hf/m": 2, bad: "x", neg: -1 } }));
-  assert.deepEqual(loadLoopState(dir, "a").dayCostByPair, { "hf/m": 2 });
+  assert.deepEqual(loadRunnerState(dir, "a").dayCostByPair, { "hf/m": 2 });
   write("b", JSON.stringify({ role: "b", dayCostByPair: "oops" }));
-  assert.deepEqual(loadLoopState(dir, "b").dayCostByPair, {});
+  assert.deepEqual(loadRunnerState(dir, "b").dayCostByPair, {});
   write("c", '{"role":"c","dayCostByPair":{"__proto__":3}}');
-  const c = loadLoopState(dir, "c").dayCostByPair!;
+  const c = loadRunnerState(dir, "c").dayCostByPair!;
   assert.ok(Object.hasOwn(c, "__proto__"));
   assert.equal(Object.getPrototypeOf(c), Object.prototype);
-  assert.equal(loadLoopState(dir, "fresh").dayCostByPair, undefined, "an absent map stays absent");
+  assert.equal(loadRunnerState(dir, "fresh").dayCostByPair, undefined, "an absent map stays absent");
 });
 
-test("loadLoopState maps a legacy `ticks` key to `runs`, and the next save writes only `runs`", () => {
+test("loadRunnerState maps a legacy `ticks` key to `runs`, and the next save writes only `runs`", () => {
   const dir = tmpdir();
   const file = statePath(dir, "qa");
   ensureParentDir(file);
   fs.writeFileSync(file, JSON.stringify({ role: "qa", ticks: 7 })); // vocabulary-ok: legacy state key read from old files
-  const s = loadLoopState(dir, "qa");
+  const s = loadRunnerState(dir, "qa");
   assert.equal(s.runs, 7);
-  saveLoopState(dir, s);
+  saveRunnerState(dir, s);
   const onDisk = readJson<Record<string, unknown>>(file);
   assert.equal(onDisk.runs, 7);
   assert.equal("ticks" in onDisk, false);
 });
 
-test("loadLoopState keeps `runs` and drops `ticks` when a file holds both", () => {
+test("loadRunnerState keeps `runs` and drops `ticks` when a file holds both", () => {
   const dir = tmpdir();
   const file = statePath(dir, "qa");
   ensureParentDir(file);
   fs.writeFileSync(file, JSON.stringify({ role: "qa", ticks: 3, runs: 9 })); // vocabulary-ok: legacy state key read from old files
-  const s = loadLoopState(dir, "qa");
+  const s = loadRunnerState(dir, "qa");
   assert.equal(s.runs, 9);
   assert.equal("ticks" in s, false);
 });
 
-test("loadLoopState maps the five legacy tick and merge keys, healing each as before", () => {
+test("loadRunnerState maps the five legacy tick and merge keys, healing each as before", () => {
   const dir = tmpdir();
   const file = statePath(dir, "qa");
   ensureParentDir(file);
@@ -481,13 +481,13 @@ test("loadLoopState maps the five legacy tick and merge keys, healing each as be
       // retired-name-ok:end
     }),
   );
-  const s = loadLoopState(dir, "qa");
+  const s = loadRunnerState(dir, "qa");
   assert.equal(s.lastRunStartedAt, 100);
   assert.equal(s.lastRunEndedAt, 200);
   assert.equal(s.lastMergedAt, 0);
   assert.equal(s.mergeReviewError?.selector, "bad/model");
   assert.equal(s.mergeCheckFailures, undefined);
-  saveLoopState(dir, s);
+  saveRunnerState(dir, s);
   const onDisk = readJson<Record<string, unknown>>(file);
   for (const old of ["lastTickStartedAt", "lastTickEndedAt", "lastLandedAt", "landingReviewError", "landingCheckFailures"]) // vocabulary-ok: legacy state keys
     assert.equal(old in onDisk, false);

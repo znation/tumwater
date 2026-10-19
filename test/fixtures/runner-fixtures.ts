@@ -1,5 +1,5 @@
-/** Fixtures around a LoopRunner and the build/baseline shapes its gates need: the constructor
- * call every loop test repeats, the counter-seeding and counter-reading pair, and the two
+/** Fixtures around a role's runner and the build/baseline shapes its gates need: the constructor
+ * call every runner test repeats, the counter-seeding and counter-reading pair, and the two
  * scratch-project shapes the build check and the main-baseline gate expect. The live
  * orchestrator tier has its own scaffolding in orchestrator-fixtures.ts; the fake toolchain
  * scripts these fixtures install come from fake-commands.ts. */
@@ -8,7 +8,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../../src/config/config.js";
 import { LoopRunner } from "../../src/runner/runner.js";
-import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState, type RunnerState } from "../../src/runner/runner-state.js";
 import { recordDailyCost } from "../../src/budget/budget.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
@@ -23,11 +23,11 @@ import { withPi } from "../fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { waitForFile } from "../helpers/wait.js";
 
-/** A real LoopRunner for one role — the constructor call every loop test repeats with the
+/** A real role runner for one role — the constructor call every runner test repeats with the
  * same `defaultConfig()` and `"main"` trailing arguments, so those stay implied here and a
  * test states only what differs (config, base branch, abort signal). Cheap by design: the
- * constructor only loads loop state from disk and starts no processes. */
-export function makeLoopRunner(
+ * constructor only loads runner state from disk and starts no processes. */
+export function makeRoleRunner(
   repo: string,
   role: string,
   config: TumwaterConfig = defaultConfig(),
@@ -37,6 +37,9 @@ export function makeLoopRunner(
 ): LoopRunner {
   return new LoopRunner(repo, role, config, mainBranch, signal, sleep);
 }
+
+/** @deprecated Use makeRoleRunner. */
+export const makeLoopRunner = makeRoleRunner;
 
 /** The directory a role's tick runs (or ran) in, resolving the pooled layout: the slot leased
  * for the role, else the slot pinned for it, else the free slot it released most recently,
@@ -58,7 +61,7 @@ export function roleWt(root: string, role: string): string {
  * appears: the tick commits and pins (result "queued"), the merge runs under its own
  * AbortSignal, and the abort kills the hung reviewer (the fake pi script loops on the
  * VERDICT review prompt and sleeps). Asserts the fail-closed shape a shutdown and
- * `tumwater abort` share at the loop level — nothing merged, the pin survives for next-start
+ * `tumwater abort` share at the runner level — nothing merged, the pin survives for next-start
  * recovery, the queue entry is dropped, and the completed tick consumed the prompt — so the
  * user-abort (runner-5.test.ts) and shutdown (runner-leftover-recovery.test.ts) tests state only
  * their framing. Only meaningful for a director tick, whose merge carries the review. */
@@ -73,7 +76,7 @@ export async function runAbortedDirectorMerge(repo: string): Promise<void> {
       const controller = new AbortController();
       try {
         enqueuePrompt(repo, "ship the hello file");
-        const runner = makeLoopRunner(repo, "director");
+        const runner = makeRoleRunner(repo, "director");
         const outcome = await runner.tick();
         assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the merge's");
         const head = headMerge(repo);
@@ -93,7 +96,7 @@ export async function runAbortedDirectorMerge(repo: string): Promise<void> {
         assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing merged on main");
         assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted merge");
         assert.equal(inboxSize(repo), 0);
-        const s = loadLoopState(repo, "director");
+        const s = loadRunnerState(repo, "director");
         assert.equal(s.lastResult, "aborted");
         assert.ok(!s.resumePending, "the director never resumes an author session");
         assert.ok(s.nextRunAt > Date.now(), "recovery runs at the role's normal cadence");
@@ -175,15 +178,18 @@ export function baselineFixture(role: string, testScript: string): { root: strin
 
 /** A fresh `role` state already carrying `usd` of today's spend, recorded at `at` (the real
  * clock by default, matching the gates' own Date.now() read) — the shared home of the
- * freshLoopState + recordDailyCost pair used by the gate-poll, budget-gate, role-cap-gate,
- * gate-event-best-effort, loop-id, and status-snapshot suites. A test that needs the state
- * persisted calls saveLoopState(root, state) itself; a suite whose subject is recordDailyCost
+ * freshRunnerState + recordDailyCost pair used by the gate-poll, budget-gate, role-cap-gate,
+ * gate-event-best-effort, runner-id, and status-snapshot suites. A test that needs the state
+ * persisted calls saveRunnerState(root, state) itself; a suite whose subject is recordDailyCost
  * itself still calls it directly. */
-export function spentLoopState(role: string, usd: number, at?: number): LoopState {
-  const state = freshLoopState(role);
+export function spentRunnerState(role: string, usd: number, at?: number): RunnerState {
+  const state = freshRunnerState(role);
   recordDailyCost(state, usd, at);
   return state;
 }
+
+/** @deprecated Use spentRunnerState. */
+export const spentLoopState = spentRunnerState;
 
 /** Seed each role's state file with non-zero counters plus scheduling fields. Variadic so a
  * multi-role test seeds all its runners through this one home (the reset tests do). */
@@ -192,7 +198,7 @@ export function seedCounters(repo: string, ...roles: string[]): void {
 }
 
 function seedOneCounter(repo: string, role: string): void {
-  const s = freshLoopState(role);
+  const s = freshRunnerState(role);
   s.runs = 7;
   s.commits = 3;
   s.generatedTokens = 424242;
@@ -201,7 +207,7 @@ function seedOneCounter(repo: string, role: string): void {
   s.nextRunAt = Date.now() + 60_000;
   s.backoffSeconds = 15;
   s.lastMainHead = "deadbeef";
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
 }
 
 /** How many times a fixture's test script actually ran (its appends to `counter`). Zero when

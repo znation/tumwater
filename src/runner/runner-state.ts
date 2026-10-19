@@ -10,7 +10,7 @@ import { statePath, STATE_DIR } from "../paths.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { allRoleIds } from "../roles/roles.js";
 
-/** The loop's persisted state file — one JSON object per role under .tumwater/ — and the
+/** The runner's persisted state file — one JSON object per role under .tumwater/ — and the
  * observation-window counter reset: fresh-state defaults, the tolerant load, the atomic
  * save, and zeroCounters. The scheduling POLICY that mutates this state from tick outcomes
  * and operator wakes — the outcome application and resume limits in tick-apply.ts, the
@@ -19,21 +19,21 @@ import { allRoleIds } from "../roles/roles.js";
  * itself is src/files/json-files.ts. */
 
 /** How many times a progressing-timeout review may be resumed before the next attempt
- * reviews the change from scratch (LoopState.reviewResume). The budget bounds a reviewer that
+ * reviews the change from scratch (RunnerState.reviewResume). The budget bounds a reviewer that
  * keeps timing out mid-progress, so a wedged review converges to a fresh run instead of
  * resuming the same session forever. */
 export const REVIEW_RESUME_LIMIT = 2;
 
-/** Persisted per-loop state in .tumwater/state/<role>.json. */
-export interface LoopState {
+/** Persisted per-runner state in .tumwater/state/<role>.json. */
+export interface RunnerState {
   role: string;
   runs: number;
   commits: number;
-  /** Epoch ms before which the loop must not run again. */
+  /** Epoch ms before which the runner must not run again. */
   nextRunAt: number;
   /** Current backoff in seconds (0 = not backing off). */
   backoffSeconds: number;
-  /** main HEAD observed at the end of the last tick; a different HEAD wakes the loop. */
+  /** main HEAD observed at the end of the last tick; a different HEAD wakes the runner. */
   lastMainHead: string;
   /** The role's recent yield as a ring of one-char codes, oldest first: `L` for a merge
    * (a `changed`/`queued` tick) and `n` for a counted empty tick — every result except the
@@ -61,7 +61,7 @@ export interface LoopState {
   lastRunEndedAt?: number;
   /** True while a tick is in flight (best-effort; cleared on orchestrator start). */
   running?: boolean;
-  /** Epoch ms since the orchestrator reserved this loop but its tick still waits in the
+  /** Epoch ms since the orchestrator reserved this runner but its tick still waits in the
    * semaphore queue: it holds no maxConcurrent permit and runs no pi yet. Transient — set
    * by the orchestrator, cleared the moment the permit is granted (and defensively on tick
    * outcome / orchestrator start) — and never persisted, so dashboards can render the
@@ -111,20 +111,20 @@ export interface LoopState {
    * same request twice. Cleared at every tick's start; reclaimed only by a tick that resumes. */
   resumePromptFile?: string;
   /** Epoch ms of the last operator wake (`tumwater wake`, or the auto-wake a queued
-   * per-role prompt sends) that cleared this loop's schedule. Scheduling input, not
+   * per-role prompt sends) that cleared this runner's schedule. Scheduling input, not
    * observation: isEligible exempts the role's min-tick interval when the wake is newer
-   * than the last tick's end, so an explicit "try again now" brings a slow-clock loop
+   * than the last tick's end, so an explicit "try again now" brings a slow-clock runner
    * (qa, steward) in within one poll instead of waiting out the interval it ticked inside
    * — the same exemption the director's inbox already grants user prompts. Self-clearing:
    * the next tick's end re-stamps lastRunEndedAt past the wake, restoring the ordinary
    * gap without a separate erase. */
   wokenAt?: number;
   /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
-   * past the limit the loop abandons the runaway task and falls back to a fresh tick. */
+   * past the limit the runner abandons the runaway task and falls back to a fresh tick. */
   cutOffStreak?: number;
   /** Consecutive ticks ended by the quiet watchdog (`quiet_killed`). Bounds quiet-kill
-   * resumes: while at or under the limit the loop resumes the starved session promptly,
-   * past it the loop abandons the session and takes a fresh tick on the idle ladder, so a
+   * resumes: while at or under the limit the runner resumes the starved session promptly,
+   * past it the runner abandons the session and takes a fresh tick on the idle ladder, so a
    * session the backend will not schedule cannot retry immediately forever (BUGS.md
    * 2026-09-18). Reset by any non-quiet-kill outcome. */
   quietKillStreak?: number;
@@ -139,18 +139,18 @@ export interface LoopState {
    * accumulation point; a merged change resets it. Reset by any other completed result. */
   consecutiveErrors?: number;
   /** Consecutive completed ticks that ended `no_change`. Observational only — the resting
-   * state cell's ` · no change ×N` suffix (status-model.ts loopPhase) — so a loop that keeps
+   * state cell's ` · no change ×N` suffix (status-model.ts rolePhase) — so a runner that keeps
    * waking and returning nothing to do stops reading as an ordinary idle; a legitimately idle
-   * maintenance loop with an empty backlog can hold a long streak and that is expected, so it
+   * maintenance runner with an empty backlog can hold a long streak and that is expected, so it
    * never warns (unlike consecutiveErrors/quietKillStreak). Reset by any completed result
    * other than `no_change`. Absent on states written before the field existed — reads as 0. */
   noChangeStreak?: number;
-  /** Where in its cycle the loop was when it last persisted state: "review" means the
+  /** Where in its cycle the runner was when it last persisted state: "review" means the
    * interruption hit during the review gate, so any uncommitted worktree edits are the
    * reviewer's stray output (discarded on resume), not author work. Set + saved around the
    * reviewer run; cleared at tick end alongside `running`. */
   phase?: "pi" | "review";
-  /** The most recent review-gate outcome for this loop: what was decided, why, and which
+  /** The most recent review-gate outcome for this runner: what was decided, why, and which
    * branch HEAD it covered. A reject's reasons are injected into the role's next tick prompt
    * — every tick starts a fresh session, so this is the only cross-tick memory of what was
    * built and why it failed. */
@@ -174,13 +174,13 @@ export interface LoopState {
   lastApprovedPatchId?: string;
   /** Consecutive failed reviews of the SAME branch HEAD (reset when the reviewed HEAD
    * changes or a review succeeds). Past the limit the leftover is discarded with a warning,
-   * so a misconfigured reviewer cannot wedge a loop re-reviewing one commit forever. */
+   * so a misconfigured reviewer cannot wedge a runner re-reviewing one commit forever. */
   unreviewFailures?: number;
   /** The reviewer session a progressing-timeout review left for the next attempt: the
    * patch-id it was judging (only the same diff may resume), the per-run session directory to
    * `--continue` in, how many resumes have already been attempted, and when the marker was
    * written. Set when a review run hits its time budget while still making progress; cleared
-   * by any verdict, any other failure, a discard, or a merge. Absent for a loop with no
+   * by any verdict, any other failure, a discard, or a merge. Absent for a runner with no
    * timed-out review, so existing state files read unchanged. */
   reviewResume?: { patchId: string; sessionDir: string; attempts: number; at: number };
   /** Consecutive merges of the SAME pinned sha that ended `merge_conflict` — each one a failed
@@ -205,7 +205,7 @@ export interface LoopState {
    * when that change merges or is rejected (tick-apply.ts), and when a tick neither commits the
    * marker edits nor leaves a session to resume them (no_change, a deliberate user_aborted, or
    * an error/quiet-kill with no resume), nor while a rejected change's revision still owes
-   * them. Absent for a loop with no hand-back, so older state files read unchanged. */
+   * them. Absent for a runner with no hand-back, so older state files read unchanged. */
   conflictHandback?: {
     sha: string;
     at: number;
@@ -225,7 +225,7 @@ export interface LoopState {
    * the model the blind run was on) and `path` (the image file it read). The next tick starts
    * directly on the target in a FRESH session over the kept worktree, never `--continue`;
    * the field is cleared at that tick's start. Persisted like modelFallback (healed); absent
-   * for a loop with no pending reroute, so older state files read unchanged. */
+   * for a runner with no pending reroute, so older state files read unchanged. */
   imageReroute?: {
     tier: "small" | "default" | "strong";
     provider?: string;
@@ -235,14 +235,14 @@ export interface LoopState {
     path?: string;
   };
   /** True while the CURRENT tick is an image-input reroute — it started on the image-capable
-   * target (from a blind-read handoff or an attachment preflight) instead of the loop's own
+   * target (from a blind-read handoff or an attachment preflight) instead of the runner's own
    * tier. Read by the verdict's one-hop guard, which fails a blind read during a rerouted
    * tick instead of rerouting it again. Transient: reset at every tick start. */
   imageRerouteActive?: boolean;
   /** The pinned change a merge failed to review on a permanent provider configuration error
    * (a 4xx other than 408/429): the request can never succeed until the model config changes,
    * so leftover recovery holds the pin instead of re-queuing it at suite speed (BUGS.md
-   * 2026-10-06). `selector` is the resolved reviewer selector that failed — when the loop's
+   * 2026-10-06). `selector` is the resolved reviewer selector that failed — when the runner's
    * current reviewer selector differs, the config has changed and recovery clears the hold and
    * re-queues. Cleared when the pin merges or is rejected. */
   mergeReviewError?: { sha: string; selector?: string; message: string };
@@ -258,10 +258,10 @@ export interface LoopState {
    * kept once per headline, and a repeat of the same headline is attributed. Cleared when the
    * change merges or is rejected. */
   mergeFlakeExcused?: string;
-  /** Tokens the model generated in this loop's current or last completed tick — a per-tick
+  /** Tokens the model generated in this runner's current or last completed tick — a per-tick
    * window (runner-run.ts resets it at tick start), not a lifetime total. */
   generatedTokens: number;
-  /** Largest single-request context of this loop's current or last completed tick (per-tick
+  /** Largest single-request context of this runner's current or last completed tick (per-tick
    * window, reset at tick start). */
   peakContextTokens: number;
   totalCostUsd: number;
@@ -269,7 +269,7 @@ export interface LoopState {
    * reads as $0 today — spend before this field existed is unknown, and a tick crossing local
    * midnight attributes its spend to the new day. See plans/daily-cost-budget.md. */
   dayStamp?: string;
-  /** This loop's spend for `dayStamp`'s local day (the daily cost budget window). Deliberately
+  /** This runner's spend for `dayStamp`'s local day (the daily cost budget window). Deliberately
    * NOT zeroed by reset-counters: the budget is a safety valve, not an observation window. */
   dayCostUsd?: number;
   /** Real USD spent for `dayStamp`'s local day per model pair name (`modelPairName`): the
@@ -277,7 +277,7 @@ export interface LoopState {
    * over with `dayCostUsd`; estimated (subscription) spend never folds in. */
   dayCostByPair?: Record<string, number>;
   lastError?: string;
-  /** Epoch ms (Date.now()) of the last time this loop merged a change on main (set only in
+  /** Epoch ms (Date.now()) of the last time this runner merged a change on main (set only in
    * applyMergeOutcome's `changed` branch, src/tick/tick-apply.ts). Absent until the first
    * merge, and absent on state files written before the field existed, so the last-merged
    * age reads "never" until then. Mirrors lastRunEndedAt: an observational timestamp that
@@ -288,9 +288,9 @@ export interface LoopState {
    * instances.md "Claims", part 4/7): its file, the stamp-free key (backlog-eligibility.ts's
    * entryKey) that survives a done stamp or a Refused note, the verbatim heading at
    * assignment, when it was assigned, and whether the harness assigned it (`assigned`) or an
-   * unassigned tick moved it at staging (`staged`). Persisted with the loop's state, so a
+   * unassigned tick moved it at staging (`staged`). Persisted with the runner's state, so a
    * crash, resume, revision or leftover recovery carries it with no extra store. Absent for a
-   * loop with no claim, so existing state files read unchanged. */
+   * runner with no claim, so existing state files read unchanged. */
   claim?: {
     file: "PLANS.md" | "BUGS.md";
     key: string;
@@ -303,23 +303,23 @@ export interface LoopState {
    * does not author an entry a sibling already holds. Cleared whenever the poll finds nothing
    * held or assigns a claim. */
   heldElsewhere?: string[];
-  /** Why the scheduling poll last skipped this loop while it was due: set by the poll for an idle
+  /** Why the scheduling poll last skipped this runner while it was due: set by the poll for an idle
    * extra instance with no free entry, the claim-group hold, or a need-based deferral, and
-   * cleared when the poll admits the loop or finds it not due. Absent otherwise. */
+   * cleared when the poll admits the runner or finds it not due. Absent otherwise. */
   skipReason?: SkipReason;
-  /** The rejected change this loop owes a revision to (plans/revise-rejected.md): its head, how
+  /** The rejected change this runner owes a revision to (plans/revise-rejected.md): its head, how
    * many revision rounds have been attempted, and when the rejection was recorded. Set at a gate
    * rejection that keeps revising; consumed when the revision stages, drops, or conflicts;
    * cleared when the rejected change is final (a repeated objection or the backstop, BUGS.md
    * 2026-10-14). `reasonCounts` holds each of that rejection's objections' persistence counts —
    * how many consecutive revisions each has survived — aligned with `lastReview.reasons`;
    * staging copies it onto the queued merge's PriorReview so the next rejection can resolve a
-   * `(prior N)` tag to a count. Absent for a loop with no outstanding rejection, so existing
+   * `(prior N)` tag to a count. Absent for a runner with no outstanding rejection, so existing
    * state files read unchanged (and an older file without `reasonCounts` reads as all-new). */
   revision?: { sha: string; round: number; at: number; reasonCounts?: number[] };
 }
 
-/** Why a due loop was skipped by the scheduling poll (LoopState.skipReason). */
+/** Why a due runner was skipped by the scheduling poll (RunnerState.skipReason). */
 export type SkipReason = "no-free-entry" | "claim-hold" | "deferred-backlog" | "deferred-no-work" | "deferred-plans-full";
 
 const SKIP_REASONS: readonly string[] = [
@@ -330,8 +330,8 @@ const SKIP_REASONS: readonly string[] = [
   "deferred-plans-full",
 ];
 
-/** A new LoopState for one role, before its first tick. */
-export function freshLoopState(role: string): LoopState {
+/** A new RunnerState for one role, before its first tick. */
+export function freshRunnerState(role: string): RunnerState {
   return {
     role,
     runs: 0,
@@ -347,8 +347,20 @@ export function freshLoopState(role: string): LoopState {
   };
 }
 
+/** @deprecated Use RunnerState. */
+export type LoopState = RunnerState;
+
+/** @deprecated Use freshRunnerState. */
+export const freshLoopState = freshRunnerState;
+
+/** @deprecated Use loadRunnerState. */
+export const loadLoopState = loadRunnerState;
+
+/** @deprecated Use saveRunnerState. */
+export const saveLoopState = saveRunnerState;
+
 /** A persisted numeric field, healed to a finite non-negative number (the fallback when it is
- * absent, foreign, NaN/±Infinity, or negative). Every numeric field on LoopState — top-level or
+ * absent, foreign, NaN/±Infinity, or negative). Every numeric field on RunnerState — top-level or
  * inside one of the nested records below — is a count, a duration, an epoch-ms stamp, or an
  * amount, so zero is the only sensible repair; the `tick-usage.ts` and `budget.ts` writers floor
  * the same three quantities they own. A guard count (mergeConflicts, mergeCheckFailures,
@@ -374,7 +386,7 @@ function healPairCosts(value: unknown): Record<string, number> {
 /** Heal one OPTIONAL numeric field of a persisted record in place, preserving the field's
  * absent shape: an absent field stays absent (an older state file with no such field reads
  * unchanged), while a present field heals by healNumber's rule. Every optional numeric field
- * loadLoopState repairs — the eight top-level stamps/streaks and conflictHandback.round —
+ * loadRunnerState repairs — the eight top-level stamps/streaks and conflictHandback.round —
  * goes through this one guard, so the "absent stays absent" repair cannot be dropped from
  * one field while another keeps it. */
 function healOptionalNumber<T extends object, K extends keyof T>(rec: T, key: K): void {
@@ -394,7 +406,7 @@ function healRecord<T extends object>(value: T | undefined, heal: (v: T) => void
   return value;
 }
 
-/** Keys an older build wrote, mapped to their current names. loadLoopState copies the old key's
+/** Keys an older build wrote, mapped to their current names. loadRunnerState copies the old key's
  * value to the new key when the new key is absent and always drops the old key, so a file holding
  * both keeps the new value and the next save writes only current keys. */
 const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
@@ -417,7 +429,7 @@ function migrateLegacyStateKeys(saved: Record<string, unknown>): void {
   }
 }
 
-/** Load the loop's persisted state; never throws — a missing or unreadable file yields a
+/** Load the runner's persisted state; never throws — a missing or unreadable file yields a
  * fresh state, fields absent from an older file fall back to defaults, and a numeric field
  * (top-level or nested) that is present but not a finite non-negative number is healed to 0,
  * a nested record that is present but not a plain object is dropped, and lastReview.reasons is
@@ -426,10 +438,10 @@ function migrateLegacyStateKeys(saved: Record<string, unknown>): void {
  * keeps a hand-edited string, null, or negative out of the schedulers and the dashboards'
  * arithmetic instead of relying on each reader to guard it. Optional fields that are absent
  * stay absent, so an older state file's shape is preserved. */
-export function loadLoopState(root: string, role: string): LoopState {
-  const saved = readJsonFile<Partial<LoopState>>(statePath(root, role));
+export function loadRunnerState(root: string, role: string): RunnerState {
+  const saved = readJsonFile<Partial<RunnerState>>(statePath(root, role));
   if (saved !== undefined && saved !== null && isJsonObject(saved)) migrateLegacyStateKeys(saved);
-  const s: LoopState = { ...freshLoopState(role), ...(saved ?? {}) };
+  const s: RunnerState = { ...freshRunnerState(role), ...(saved ?? {}) };
   s.runs = healNumber(s.runs, 0);
   s.commits = healNumber(s.commits, 0);
   s.nextRunAt = healNumber(s.nextRunAt, 0);
@@ -532,47 +544,47 @@ export function loadLoopState(root: string, role: string): LoopState {
   return s;
 }
 
-/** Persist the loop's state atomically via writeJsonAtomic, so a crash mid-write cannot
+/** Persist the runner's state atomically via writeJsonAtomic, so a crash mid-write cannot
  * leave a torn file behind. Its per-pid tmp name matters here: two processes can write one
  * role's state concurrently — the orchestrator saves at tick end and around its review gate
  * while `tumwater reset-counters` rewrites the same file from the CLI process — and per-pid
  * names give each writer its own tmp with a clean last-writer-wins. */
-export function saveLoopState(root: string, state: LoopState): void {
+export function saveRunnerState(root: string, state: RunnerState): void {
   writeJsonAtomic(statePath(root, state.role), state);
 }
 
 /** Zero the accumulated counters (runs, commits, tokens, cost) so a fresh observation
  * window can begin. Pure: returns a new state and preserves everything else — scheduling
  * fields (nextRunAt, backoffSeconds), wake tracking (lastMainHead), and the last-result
- * fields. peakContextTokens is zeroed too: under per-tick semantics it holds the loop's
- * last completed tick's peak, so a fresh window must clear it or sleeping loops keep
+ * fields. peakContextTokens is zeroed too: under per-tick semantics it holds the runner's
+ * last completed tick's peak, so a fresh window must clear it or sleeping runners keep
  * showing their old value until they next tick. The daily cost budget window (dayStamp/
  * dayCostUsd) is deliberately NOT zeroed: the budget is a safety valve, not an observation
  * window — zeroing today's spend would let the cap be bypassed by running reset-counters.
  */
-export function zeroCounters(s: LoopState): LoopState {
+export function zeroCounters(s: RunnerState): RunnerState {
   return { ...s, runs: 0, commits: 0, generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0 };
 }
 
-/** The skip reason a loop's persisted state yields when it does not run this round: a pending
+/** The skip reason a runner's persisted state yields when it does not run this round: a pending
  * resume wait outranks backoff, anything else is idle. The shared tail of the two skip
  * classifiers — once-round.ts's settleSkipped (which adds the disabled arm) and cli/cli-run.ts's
  * once-summary (which adds the team-pause arm) — so the two surfaces cannot drift on which
  * reason wins when several conditions hold at once. */
 export function stateSkipReason(
-  s: Pick<LoopState, "resumePending" | "backoffSeconds">,
+  s: Pick<RunnerState, "resumePending" | "backoffSeconds">,
 ): string {
   if (s.resumePending) return "resume pending";
   if (s.backoffSeconds > 0) return "backoff"; // vocabulary-ok: skip-reason code is a state value until the state rename
   return "idle";
 }
 
-/** True when the loop still owes follow-up work for its current task after a tick: a rejected
+/** True when the runner still owes follow-up work for its current task after a tick: a rejected
  * change it must revise (state.revision) or a session it must resume (state.resumePending).
  * Both keep the instance bound to the same task, so the claim-release rule
  * (tick/tick-finalize.ts), the conflict-handback rule (tick/tick-apply.ts), and claims.ts's
  * idle test all read this one predicate instead of repeating the revision/resume conjunction. */
-export function hasOutstandingWork(s: Pick<LoopState, "revision" | "resumePending">): boolean {
+export function hasOutstandingWork(s: Pick<RunnerState, "revision" | "resumePending">): boolean {
   return s.revision !== undefined || s.resumePending === true;
 }
 
@@ -581,7 +593,7 @@ export function hasOutstandingWork(s: Pick<LoopState, "revision" | "resumePendin
  * so a team poll's allLiveClaims does no read I/O once every claim is known. */
 const liveClaimCache = new Map<string, StatKeyedValue<{ role: string; key: string }>>();
 
-/** Every loop id whose persisted claim must be considered — the built-in catalog roles
+/** Every runner id whose persisted claim must be considered — the built-in catalog roles
  * (allRoleIds) plus the parallel-work instance ids (feature-2, bugfix-3, …) that have a state
  * file. Instances are not in the built-in catalog, so they are enumerated from the state
  * directory rather than the config: a claim lives in its role's state file, and reading the
@@ -590,7 +602,7 @@ const liveClaimCache = new Map<string, StatKeyedValue<{ role: string; key: strin
  * base). Any state file whose id resolves away from itself under baseRoleOf is an instance
  * id; the named non-role files in that directory (orchestrator.json, claude-account.json, …)
  * resolve to themselves and so are skipped, as are the base roles allRoleIds already names. */
-function liveClaimLoopIds(root: string): string[] {
+function liveClaimRunnerIds(root: string): string[] {
   const ids = new Set(allRoleIds());
   try {
     for (const name of readdirSync(path.join(root, STATE_DIR, "state"))) {
@@ -615,14 +627,14 @@ function liveClaimLoopIds(root: string): string[] {
  * under `feature-2`; callers fold it to its base. */
 export function allLiveClaims(root: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const id of liveClaimLoopIds(root)) {
+  for (const id of liveClaimRunnerIds(root)) {
     const file = statePath(root, id);
     const claim = cachedByStat(
       liveClaimCache,
       file,
       file,
       () => {
-        const s = loadLoopState(root, id);
+        const s = loadRunnerState(root, id);
         return s.claim ? { role: id, key: s.claim.key } : null;
       },
       (v) => ({ ...v }),

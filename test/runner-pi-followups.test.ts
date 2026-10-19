@@ -15,7 +15,7 @@ import { claudeInit, claudeResult } from "./fixtures/claude-events.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { makeHost, recordingFakePi, runArgs } from "./fixtures/runner-pi-fixtures.js";
 
-// LoopPi's one-reply follow-up turns (src/runner/runner-pi.ts): requestSummary asks the tick's
+// RunnerPi's one-reply follow-up turns (src/runner/runner-pi.ts): requestSummary asks the tick's
 // own session for the missing SUMMARY block, and requestStageFix asks it to address review
 // findings. Both resume the authoring session through the shared transient retry, carry the
 // role notebook like the authoring run, and fold their spend into the tick's counters.
@@ -25,8 +25,8 @@ test("requestSummary returns null when the role has no resumable session", async
   const args = path.join(root, "args");
   const restore = recordingFakePi(args);
   try {
-    const { loopPi } = makeHost(root);
-    const result = await loopPi.requestSummary(root);
+    const { runnerPi } = makeHost(root);
+    const result = await runnerPi.requestSummary(root);
     assert.equal(result, null);
     assert.ok(!fs.existsSync(args), "no pi run is spawned when there is no session to continue");
   } finally {
@@ -50,8 +50,8 @@ test("requestSummary refuses a session whose newest ledger line names another ag
       cwd: root,
       at: Date.now(),
     });
-    const { loopPi } = makeHost(root);
-    const result = await loopPi.requestSummary(root);
+    const { runnerPi } = makeHost(root);
+    const result = await runnerPi.requestSummary(root);
     assert.equal(result, null, "another agent's session is not ours to --continue");
     assert.ok(!fs.existsSync(args), "no pi run for another agent's session");
   } finally {
@@ -68,8 +68,8 @@ test("requestSummary resumes the tick's session and folds its usage", async () =
   try {
     fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
-    const { loopPi, usage } = makeHost(root);
-    const result = await loopPi.requestSummary(root);
+    const { runnerPi, usage } = makeHost(root);
+    const result = await runnerPi.requestSummary(root);
     assert.ok(result, "a resumable session produces a run");
     assert.equal(result!.ok, true);
     assert.match(result!.finalText, /tidied the parser/);
@@ -93,8 +93,8 @@ test("requestSummary carries the role notebook path, like the authoring run", as
     async () => {
       fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
       fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
-      const { loopPi } = makeHost(root);
-      const result = await loopPi.requestSummary(root);
+      const { runnerPi } = makeHost(root);
+      const result = await runnerPi.requestSummary(root);
       assert.ok(result);
       assert.equal(
         fs.readFileSync(envFile, "utf8"),
@@ -107,7 +107,7 @@ test("requestSummary carries the role notebook path, like the authoring run", as
 
 test("a follow-up that runs on a claude seam writes its native log under that seam's name", async () => {
   // PLANS.md "Mixed claude + pi fleets, part 2/4", gap 4: the follow-up (requestFollowUp)
-  // must pass its effective config to loopPiOpts, so a SUMMARY turn running on the claude
+  // must pass its effective config to runnerPiOpts, so a SUMMARY turn running on the claude
   // fallback during a model-failure episode writes its native log (and computes its
   // authoring budget) under the claude seam, never the pi primary.
   const root = tmpdir();
@@ -126,7 +126,7 @@ test("a follow-up that runs on a claude seam writes its native log under that se
       claudeCfg.agent = "claude";
       claudeCfg.model = "claude-sonnet-5-5";
       const claudeSeam = configForRole(claudeCfg, "feature");
-      const { loopPi } = makeHost(root, roleCfg);
+      const { runnerPi } = makeHost(root, roleCfg);
       // Seed a resumable claude author session exactly as a real claude authoring run would
       // leave one: the ledger record plus its transcript file under the temp $HOME (the fake
       // claude writes the transcript; seeding it ourselves keeps this test focused on the
@@ -137,7 +137,7 @@ test("a follow-up that runs on a claude seam writes its native log under that se
       fs.writeFileSync(claudeTranscriptPath(root, "followup-session"), "{}");
       assert.equal(agentSessionResumable(dir, { kind: "author", agent: "claude" }), true, "the seeded claude session is resumable");
       // The SUMMARY follow-up now continues that claude session.
-      const result = await loopPi.requestSummary(root, claudeSeam);
+      const result = await runnerPi.requestSummary(root, claudeSeam);
       assert.ok(result, "a resumable claude session produces a run");
       assert.match(fs.readFileSync(nativeLogPath(root, "feature", "claude"), "utf8"), /"type":"result"/, "the follow-up's native log lands at the claude seam path");
       assert.ok(!fs.existsSync(nativeLogPath(root, "feature", "pi")), "no pi native log for a claude follow-up");
@@ -147,7 +147,7 @@ test("a follow-up that runs on a claude seam writes its native log under that se
 
 test("requestSummary's 429 takes the shared transient retry: warns, waits the hint out, resumes, folds both", async () => {
   // BUGS.md 2026-10-01: the SUMMARY follow-up called bare runPi while the shared retry's own
-  // doc claimed it wires EVERY pi run the loop makes — so a 429 on the follow-up turn failed
+  // doc claimed it wires EVERY pi run the runner makes — so a 429 on the follow-up turn failed
   // it on first contact with no retry, no per-run warning, and no team-wide rate-limit hold
   // stamp, exactly the gate bypass the reviewer side fixed the same day. The follow-up now
   // takes the same runWithTransientRetry wiring (its capped budget applies to both attempts).
@@ -159,8 +159,8 @@ test("requestSummary's 429 takes the shared transient retry: warns, waits the hi
   try {
     fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
-    const { loopPi, warns, usage, sleeps } = makeHost(root);
-    const result = await loopPi.requestSummary(root);
+    const { runnerPi, warns, usage, sleeps } = makeHost(root);
+    const result = await runnerPi.requestSummary(root);
     assert.ok(result, "a resumable session produces a run");
     assert.equal(result!.ok, true, "the retry succeeds on the warm session");
     assert.match(result!.finalText, /SUMMARY: tidied src/, "the retry delivers the SUMMARY block");
@@ -190,8 +190,8 @@ test("requestSummary returns the run even when it failed and still folds its usa
   await withPi(`printf '%s\\n' "$*" >> "${args}"\nprintf '%s\\n' 'model exploded' >&2\nexit 1`, async () => {
     fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
-    const { loopPi, usage } = makeHost(root);
-    const result = await loopPi.requestSummary(root);
+    const { runnerPi, usage } = makeHost(root);
+    const result = await runnerPi.requestSummary(root);
     assert.ok(result, "a failed run is returned, not null — null means there was no session to ask");
     assert.equal(result!.ok, false);
     assert.match(result!.errorMessage ?? "", /model exploded/, "the failure's stderr names the cause");
@@ -208,8 +208,8 @@ test("requestStageFix returns null when the role has no resumable session", asyn
   const args = path.join(root, "args");
   const restore = recordingFakePi(args);
   try {
-    const { loopPi } = makeHost(root);
-    const result = await loopPi.requestStageFix(root, ["task id is missing"]);
+    const { runnerPi } = makeHost(root);
+    const result = await runnerPi.requestStageFix(root, ["task id is missing"]);
     assert.equal(result, null);
     assert.ok(!fs.existsSync(args), "no pi run is spawned when there is no session to continue");
   } finally {
@@ -226,8 +226,8 @@ test("requestStageFix resumes the tick's session with the findings and folds its
   try {
     fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
-    const { loopPi, usage } = makeHost(root);
-    const result = await loopPi.requestStageFix(root, [
+    const { runnerPi, usage } = makeHost(root);
+    const result = await runnerPi.requestStageFix(root, [
       "task id is missing",
       "stray file in the diff",
     ]);

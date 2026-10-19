@@ -6,33 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Plain terms code runner, part 2/14: Rename runner state and instance ids and the runner pi wrapper (planned 2026-10-16 by user; requires part 1/14 landed; design in plans/terminology.md "Code names"; touches src/runner/runner-state.ts + src/runner/runner-pi.ts + src/roles/runner-ids.ts + test/runner-state.test.ts + test/runner-ids.test.ts + test/runner-pi*.test.ts + test/fixtures/runner-*.ts)
-
-**Goal.** The most widely used runner exports take their new names, `RunnerState`, `freshRunnerState`, `loadRunnerState`, `saveRunnerState`, `runnerIds`, `runnerEnabled` and `RunnerPi`, behind deprecated aliases, so later parts migrate callers one directory at a time.
-
-**Approach.**
-- Series rules (every code-runner part):
-  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show (rows, cells, rank, phase, drawer).
-  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier (Plain terms code cleanup renames them), and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
-  - Serialized names are out of scope: state-file fields, event fields, `--json` and `/api` keys, config keys and env vars were renamed by earlier series with legacy readers. If one still says "loop", leave it and name it in the commit message.
-  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
-  - A bare `loop`/`loops` binding becomes `runner`/`runners`, or `role`/`roles` when it holds role ids or display rows. If that name is already bound in an enclosing scope of the same file, pick a distinct one (`roleRunner`, `runnerId`): never shadow.
-  - Comments and test titles: "loop" → "role" ("the feature role", "per-role", "custom role"), or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Never edit a quoted PLANS.md or BUGS.md title, a `plans/*.md` name or a quoted commit subject (test/plan-citations.test.ts checks cited titles). Rewrap any comment line pushed past 100 columns (test/comment-width.test.ts). If docs/invariants.md quotes a test title you change, update the quote.
-  - An export used by files outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. A member (method, property, interface field) gets no alias: rename all its uses in this part. Migrate every use, in this part's files, of a name an earlier part renamed (`grep -rn '@deprecated Use' src test` lists the live aliases). Delete any alias whose old name no other file mentions any more, because test/exports.test.ts fails an export nothing else names.
-- src/runner/runner-state.ts: `LoopState` → `RunnerState`, `freshLoopState` → `freshRunnerState`, `loadLoopState` → `loadRunnerState`, `saveLoopState` → `saveRunnerState`, each with a two-line alias (`/** @deprecated Use RunnerState. */` then `export type LoopState = RunnerState;`; `/** @deprecated Use freshRunnerState. */` then `export const freshLoopState = freshRunnerState;`; …). The private `liveClaimLoopIds` → `liveClaimRunnerIds`. Do not touch the persisted field names inside `RunnerState`.
-- src/roles/runner-ids.ts: `loopIds` → `runnerIds`, `loopEnabled` → `runnerEnabled`, with aliases.
-- src/runner/runner-pi.ts: `LoopPi` → `RunnerPi` (alias), `LoopPiHost` → `RunnerPiHost`.
-- test/fixtures/runner-fixtures.ts: `makeLoopRunner` → `makeRoleRunner`, `spentLoopState` → `spentRunnerState`, with aliases (25 and 8 test files use them). test/fixtures/runner-pi-fixtures.ts and the runner-pi tests: `loopPi` → `runnerPi`, `loopPiOpts` → `runnerPiOpts`.
-- Comments and test titles in all files of this part, per the series rules.
-
-**Files touched.** src/runner/runner-state.ts, src/runner/runner-pi.ts, src/roles/runner-ids.ts, test/runner-state.test.ts, test/runner-ids.test.ts, test/runner-pi.test.ts, test/runner-pi-claude.test.ts, test/runner-pi-followups.test.ts, test/runner-pi-retry.test.ts, test/fixtures/runner-fixtures.ts, test/fixtures/runner-pi-fixtures.ts.
-
-**Acceptance criteria.**
-- `RunnerState`, `freshRunnerState`, `loadRunnerState`, `saveRunnerState`, `runnerIds`, `runnerEnabled`, `RunnerPi`, `makeRoleRunner` and `spentRunnerState` are the declared names; each old name exists only as a `@deprecated` alias.
-- `grep -nE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' ` over this part's files lists only the aliases.
-- No behavior change: the suite's test count is unchanged and no assertion changed except renamed identifiers and test titles.
-- `npm run test` passes.
-
 ### Plain terms code runner, part 3/14: Rename RoleRunner and the run pipeline context (planned 2026-10-16 by user; requires part 2/14 landed; design in plans/terminology.md "Code names"; touches src/runner/ + test/runner*.test.ts + test/revision.test.ts + test/leftover.test.ts + test/model-fallback.test.ts)
 
 **Goal.** `LoopRunner` becomes `RoleRunner` and `LoopTickContext` becomes `RunnerRunContext`; the rest of src/runner/ and its tests read "runner" and "role" instead of "loop".

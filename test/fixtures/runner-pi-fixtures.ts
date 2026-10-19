@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { LoopPi } from "../../src/runner/runner-pi.js";
+import { RunnerPi } from "../../src/runner/runner-pi.js";
 import { defaultConfig } from "../../src/config/config.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
@@ -7,7 +7,7 @@ import { fakePi } from "../fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 
 /** Shared scaffolding for the runner-pi test files (runner-pi.test.ts and its siblings):
- * a recording LoopPi host, a fake pi that shapes the first (and optionally second)
+ * a recording RunnerPi host, a fake pi that shapes the first (and optionally second)
  * invocation, and argv readers. Kept here so the per-surface test files share one copy. */
 export interface Recording {
   warns: string[];
@@ -33,7 +33,7 @@ export function makeHost(
   root: string,
   config: TumwaterConfig = defaultConfig(),
   role = "feature",
-): Recording & { loopPi: LoopPi; config: TumwaterConfig } {
+): Recording & { runnerPi: RunnerPi; config: TumwaterConfig } {
   const warns: string[] = [];
   const usage: PiRunResult[] = [];
   const foldProviders: (string | undefined)[] = [];
@@ -68,8 +68,8 @@ export function makeHost(
     },
     abortRunSignal: () => ctl.abort(),
   };
-  const loopPi = new LoopPi(host as unknown as ConstructorParameters<typeof LoopPi>[0]);
-  return { loopPi, warns, usage, foldProviders, mergeUsage, mergeFoldProviders, foldTimes, sleeps, sleepAts, abortRunSignal: ctl.abort.bind(ctl), config };
+  const runnerPi = new RunnerPi(host as unknown as ConstructorParameters<typeof RunnerPi>[0]);
+  return { runnerPi, warns, usage, foldProviders, mergeUsage, mergeFoldProviders, foldTimes, sleeps, sleepAts, abortRunSignal: ctl.abort.bind(ctl), config };
 }
 
 /** A fake pi that records each invocation's argv. `firstRun` runs only on the first

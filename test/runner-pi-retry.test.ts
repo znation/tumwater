@@ -15,7 +15,7 @@ import { mergeUsage } from "../src/merge/merge-slot.js";
 // bounded retry every pi run takes — the 429 branch with its Retry-After wait and cap, the
 // timeout and stream-severed backend kinds, the pi-crash and idle-server-timeout kinds, and
 // the backend-kind floor warning. Tested through a fake pi on PATH, so real spawning and
-// parsing are in the loop. (The retry's policy end to end through a whole tick is pinned in
+// parsing are in the runner. (The retry's policy end to end through a whole tick is pinned in
 // runner-2.test.ts.)
 test("a rate-limited run earns exactly one retry that waits out the Retry-After hint and continues the session", async () => {
   const root = tmpdir();
@@ -25,8 +25,8 @@ test("a rate-limited run earns exactly one retry that waits out the Retry-After 
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
   });
   try {
-    const { loopPi, warns, usage, foldTimes, sleeps, sleepAts } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-3-author");
+    const { runnerPi, warns, usage, foldTimes, sleeps, sleepAts } = makeHost(root);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-3-author");
     assert.equal(result.ok, true, "the retry succeeds");
     assert.match(result.finalText, /^done/);
     assert.equal(usage.length, 2, "BOTH attempts are folded into the tick's spend");
@@ -64,8 +64,8 @@ test("a 429 run folds its seam hold key (the provider it ran on), not just the r
     cfg.agent = "pi";
     cfg.provider = "omlx";
     cfg.model = "qwen";
-    const { loopPi, usage, foldProviders } = makeHost(root, cfg);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-3-author");
+    const { runnerPi, usage, foldProviders } = makeHost(root, cfg);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-3-author");
     assert.equal(result.ok, true, "the retry succeeds");
     assert.equal(usage.length, 2, "both attempts fold");
     assert.deepEqual(foldProviders, ["omlx", "omlx"], "both attempt folds name the omlx seam");
@@ -89,8 +89,8 @@ test("a 429 on a non-default reviewer seam folds that seam's hold key through fo
     cfg.agent = "pi";
     cfg.provider = "omlx";
     cfg.model = "qwen";
-    const { loopPi, mergeUsage, mergeFoldProviders } = makeHost(root, cfg);
-    const result = await loopPi.runGatePi({
+    const { runnerPi, mergeUsage, mergeFoldProviders } = makeHost(root, cfg);
+    const result = await runnerPi.runGatePi({
       cwd: root,
       kind: "gate",
       prompt: "review the change",
@@ -139,8 +139,8 @@ test("a rate-limited run with no Retry-After hint waits the minute-scale refill 
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded"')}'`,
   });
   try {
-    const { loopPi, warns, usage, sleeps } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-4-author");
+    const { runnerPi, warns, usage, sleeps } = makeHost(root);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-4-author");
     assert.equal(result.ok, true);
     assert.equal(usage.length, 2);
     // The provider sent no hint, so the wait defaults to the team's own refill physics — the
@@ -161,8 +161,8 @@ test("a Retry-After hint of 0 counts as no hint and waits the minute-scale refil
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 0s')}'`,
   });
   try {
-    const { loopPi, warns, sleeps } = makeHost(root);
-    await loopPi.runRolePi(root, "work", "tumwater-feature-6-author");
+    const { runnerPi, warns, sleeps } = makeHost(root);
+    await runnerPi.runRolePi(root, "work", "tumwater-feature-6-author");
     // A zero-second hint must not sneak the fixed 2026-09-25 bug back in through the side
     // door: a hint that asks for no wait is treated as no hint, so the refill pause applies.
     assert.deepEqual(sleeps, [60_000], "a 0-second hint waits the refill pause, not 0");
@@ -179,8 +179,8 @@ test("a Retry-After hint larger than the cap is waited out only to the cap", asy
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 300s')}'`,
   });
   try {
-    const { loopPi, sleeps } = makeHost(root);
-    await loopPi.runRolePi(root, "work", "tumwater-feature-5-author");
+    const { runnerPi, sleeps } = makeHost(root);
+    await runnerPi.runRolePi(root, "work", "tumwater-feature-5-author");
     assert.deepEqual(sleeps, [120_000], "one generous hint cannot eat the tick's own run budget");
   } finally {
     restore();
@@ -200,8 +200,8 @@ test("runGatePi gives the reviewer the same 429 retry, folding only the failed a
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
   });
   try {
-    const { loopPi, warns, usage, mergeUsage, sleeps } = makeHost(root);
-    const result = await loopPi.runGatePi({
+    const { runnerPi, warns, usage, mergeUsage, sleeps } = makeHost(root);
+    const result = await runnerPi.runGatePi({
       cwd: root,
       kind: "gate",
       prompt: "review the change",
@@ -234,8 +234,8 @@ test("a backend-kind failure the retry does not cover warns once and earns no re
     firstRun: `printf '%s\\n' '${errorLine("Connection error.")}'`,
   });
   try {
-    const { loopPi, warns, usage } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-7-author");
+    const { runnerPi, warns, usage } = makeHost(root);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-7-author");
     assert.equal(result.ok, false, "the run fails — a dead backend is not retried");
     assert.equal(result.transientBackend, true);
     assert.equal(result.backendKind, "connection");
@@ -250,10 +250,10 @@ test("a backend-kind failure the retry does not cover warns once and earns no re
   }
 });
 
-test("a fallback-clone warning from pi surfaces as one loop warning", async () => {
+test("a fallback-clone warning from pi surfaces as one runner warning", async () => {
   const root = tmpdir();
   // The run itself succeeds; only stderr carries the undefined-id warning pi emits before it
-  // falls back to the provider default (BUGS.md 2026-10-06). The loop must surface it so a
+  // falls back to the provider default (BUGS.md 2026-10-06). The runner must surface it so a
   // silently mispriced id is visible from the feed alone.
   await withPi(
     [
@@ -261,8 +261,8 @@ test("a fallback-clone warning from pi surfaces as one loop warning", async () =
       `printf '%s\\n' '${assistantLine("done", { tokens: 5 })}'`,
     ].join("\n"),
     async () => {
-      const { loopPi, warns, usage } = makeHost(root);
-      const result = await loopPi.runRolePi(root, "work", "tumwater-feature-10-author");
+      const { runnerPi, warns, usage } = makeHost(root);
+      const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-10-author");
       assert.equal(result.ok, true);
       assert.equal(warns.length, 1, "one warning for the one run");
       assert.match(warns[0]!, /could not resolve the model id exactly/);
@@ -281,8 +281,8 @@ test("a severed stream (terminated) warns and earns the one retry like the other
     firstRun: `printf '%s\\n' '${errorLine("terminated")}'`,
   });
   try {
-    const { loopPi, warns, usage } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-8-author");
+    const { runnerPi, warns, usage } = makeHost(root);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-8-author");
     assert.equal(result.ok, true, "the retry succeeds — a fresh attempt on the intact session");
     assert.equal(runArgs(args).length, 2, "the severed-stream run is retried once");
     assert.equal(usage.length, 2, "both attempts fold — the failed one before the wait");
@@ -305,8 +305,8 @@ test("a provider request timeout (Request timed out.) warns and earns the one re
     firstRun: `printf '%s\\n' '${errorLine("Request timed out.")}'`,
   });
   try {
-    const { loopPi, warns, usage, sleeps } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-9-author");
+    const { runnerPi, warns, usage, sleeps } = makeHost(root);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-9-author");
     assert.equal(result.ok, true, "the retry succeeds — a fresh attempt on the intact session");
     assert.equal(runArgs(args).length, 2, "the request-timeout run is retried once");
     const [, retryLine] = runArgs(args);
@@ -341,8 +341,8 @@ test("a provider request timeout on pi's stderr earns the same retry and warning
     firstRun: `printf '%s\\n' 'Request timed out.' >&2\nexit 1`,
   });
   try {
-    const { loopPi, warns, usage, sleeps } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-10-author");
+    const { runnerPi, warns, usage, sleeps } = makeHost(root);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-10-author");
     assert.equal(result.ok, true, "the retry succeeds — a fresh attempt on the intact session");
     assert.equal(runArgs(args).length, 2, "the stderr-arrived timeout is retried once");
     assert.match(runArgs(args)[1]!, /--continue/, "the retry resumes the first attempt's session");
@@ -369,8 +369,8 @@ test("a retry that ends on an uncovered backend kind still issues its own floor 
     retryRun: `echo '${errorLine("Connection error.")}'`,
   });
   try {
-    const { loopPi, warns, usage } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-11-author");
+    const { runnerPi, warns, usage } = makeHost(root);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-11-author");
     assert.equal(result.ok, false, "the retry's connection failure is the returned run");
     assert.equal(result.transientBackend, true);
     assert.equal(result.backendKind, "connection");
@@ -407,8 +407,8 @@ test("a retry that ends on a covered backend kind emits no false floor warning",
     retryRun: `echo '${errorLine("terminated")}'`,
   });
   try {
-    const { loopPi, warns, usage } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-12-author");
+    const { runnerPi, warns, usage } = makeHost(root);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-12-author");
     assert.equal(result.ok, false, "the retry's severed stream is the returned run");
     assert.equal(result.backendKind, "stream-severed");
     assert.equal(runArgs(args).length, 2, "the covered timeout earned exactly one retry");
@@ -435,8 +435,8 @@ test("a successful run that merely saw a backend error mid-stream stays silent",
     firstRun: `printf '%s\\n' '${errorLine("Connection error.")}' '${assistantLine("done\\nSUMMARY: tidied src")}'`,
   });
   try {
-    const { loopPi, warns, usage } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-8-author");
+    const { runnerPi, warns, usage } = makeHost(root);
+    const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-8-author");
     assert.equal(result.ok, true);
     assert.equal(warns.length, 0, "a recovered run raises no alarm");
     assert.equal(usage.length, 1);

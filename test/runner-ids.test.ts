@@ -1,4 +1,4 @@
-/** src/roles/runner-ids.ts — the loop-id/base-role arithmetic of parallel work instances
+/** src/roles/runner-ids.ts — the runner-id/base-role arithmetic of parallel work instances
  * (plans/parallel-work-instances.md, part 1/7) — plus the base-role normalization it drives in
  * roles.ts, config-views.ts, role-cap-gates.ts and config-validation.ts. */
 
@@ -10,9 +10,9 @@ import {
   baseRoleOf,
   instanceIndex,
   instancePauseKey,
-  loopEnabled,
-  loopPaused,
-  loopIds,
+  runnerEnabled,
+  runnerPaused,
+  runnerIds,
 } from "../src/roles/runner-ids.js";
 import { baselineBlocked, roleById, roleTier, yieldScaledRole } from "../src/roles/roles.js";
 import { configForRole } from "../src/config/config-views.js";
@@ -24,9 +24,9 @@ import { newRoleCapGateState, pollRoleCapGate } from "../src/gates/role-cap-gate
 import { readEvents } from "../src/events/event-read.js";
 import { commitTrailer, stampedSubject } from "../src/git/commit-message.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { spentLoopState } from "./fixtures/runner-fixtures.js";
+import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 
-test("instancePauseKey and loopPaused give instance 1 its own pause key only while the role has siblings", () => {
+test("instancePauseKey and runnerPaused give instance 1 its own pause key only while the role has siblings", () => {
   const two = defaultConfig();
   two.roles.feature!.instances = 2;
   const one = defaultConfig();
@@ -34,9 +34,9 @@ test("instancePauseKey and loopPaused give instance 1 its own pause key only whi
   assert.equal(instancePauseKey(one, "feature"), "feature");
   assert.equal(instancePauseKey(two, "feature-2"), "feature-2");
   assert.equal(instancePauseKey(two, "qa"), "qa");
-  assert.equal(loopPaused(new Set(["feature-1"]), "feature"), true);
-  assert.equal(loopPaused(new Set(["feature-1"]), "feature-2"), false);
-  assert.equal(loopPaused(new Set(["feature"]), "feature-2"), true);
+  assert.equal(runnerPaused(new Set(["feature-1"]), "feature"), true);
+  assert.equal(runnerPaused(new Set(["feature-1"]), "feature-2"), false);
+  assert.equal(runnerPaused(new Set(["feature"]), "feature-2"), true);
 });
 
 test("baseRoleOf and instanceIndex map only a base role's -N ids", () => {
@@ -58,30 +58,30 @@ test("baseRoleOf and instanceIndex map only a base role's -N ids", () => {
   assert.equal(instanceIndex("clean-2"), 1);
 });
 
-test("loopEnabled reads the base role and its configured instance count", () => {
+test("runnerEnabled reads the base role and its configured instance count", () => {
   const config = defaultConfig();
-  assert.equal(loopEnabled(config, "feature"), true, "a bare enabled role runs");
-  assert.equal(loopEnabled(config, "feature-2"), false, "the default instance count keeps index 2 off");
+  assert.equal(runnerEnabled(config, "feature"), true, "a bare enabled role runs");
+  assert.equal(runnerEnabled(config, "feature-2"), false, "the default instance count keeps index 2 off");
 
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
-  assert.equal(loopEnabled(config, "feature-3"), true, "instance 3 runs at instances: 3");
-  assert.equal(loopEnabled(config, "feature-4"), false, "index above the count stays off");
+  assert.equal(runnerEnabled(config, "feature-3"), true, "instance 3 runs at instances: 3");
+  assert.equal(runnerEnabled(config, "feature-4"), false, "index above the count stays off");
   config.roles.feature = { ...config.roles.feature, instances: 2 };
-  assert.equal(loopEnabled(config, "feature-3"), false, "a lowered count turns instance 3 off");
+  assert.equal(runnerEnabled(config, "feature-3"), false, "a lowered count turns instance 3 off");
 
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), enabled: false };
-  assert.equal(loopEnabled(config, "feature"), false);
-  assert.equal(loopEnabled(config, "feature-2"), false, "a disabled base role disables its instances");
-  assert.equal(loopEnabled(config, "my-loop"), false, "an unknown id has no enabled base entry");
+  assert.equal(runnerEnabled(config, "feature"), false);
+  assert.equal(runnerEnabled(config, "feature-2"), false, "a disabled base role disables its instances");
+  assert.equal(runnerEnabled(config, "my-loop"), false, "an unknown id has no enabled base entry");
 });
 
-test("loopIds enumerates enabled roles and each instance base's extra runners", () => {
+test("runnerIds enumerates enabled roles and each instance base's extra runners", () => {
   const config = defaultConfig();
-  assert.deepEqual(loopIds(config), Object.keys(config.roles).filter((id) => config.roles[id]?.enabled),
+  assert.deepEqual(runnerIds(config), Object.keys(config.roles).filter((id) => config.roles[id]?.enabled),
     "at the default count it is exactly the enabled bare ids, in config.roles order");
 
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
-  const ids = loopIds(config);
+  const ids = runnerIds(config);
   const feature = ids.indexOf("feature");
   assert.deepEqual(ids.slice(feature, feature + 3), ["feature", "feature-2", "feature-3"],
     "a feature base is followed by its extra instances");
@@ -89,13 +89,13 @@ test("loopIds enumerates enabled roles and each instance base's extra runners", 
   // Only INSTANCE_ROLES split: a configured count on another role would be a validation
   // error, and here the bare id stays single regardless.
   config.roles.clean = { ...(config.roles.clean ?? { enabled: true }) };
-  assert.equal(loopIds(config).filter((id) => id.startsWith("clean")).length, 1);
+  assert.equal(runnerIds(config).filter((id) => id.startsWith("clean")).length, 1);
 });
 
-test("loopIds omits disabled roles and their instances", () => {
+test("runnerIds omits disabled roles and their instances", () => {
   const config = defaultConfig();
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), enabled: false, instances: 3 };
-  const ids = loopIds(config);
+  const ids = runnerIds(config);
   assert.ok(!ids.includes("feature"), "a disabled base is absent");
   assert.ok(!ids.includes("feature-2"), "and so are its instances");
 });
@@ -118,7 +118,7 @@ test("configForRole resolves an instance id's model through its base role", () =
   assert.deepEqual(configForRole(config, "feature-2"), configForRole(config, "feature"));
 });
 
-test("a custom loop name shaped like an instance id is a validation error", () => {
+test("a custom role name shaped like an instance id is a validation error", () => {
   assert.throws(
     () => validateConfig({ customRoles: [{ name: "feature-2", task: "do a thing" }] }),
     (err: unknown) => errorMessage(err).includes('would shadow the feature role\'s instance ids'),
@@ -126,15 +126,15 @@ test("a custom loop name shaped like an instance id is a validation error", () =
   assert.doesNotThrow(() => validateConfig({ customRoles: [{ name: "my-loop", task: "do a thing" }] }));
 });
 
-test("a commit stamps the base role and still trailers the loop id", () => {
+test("a commit stamps the base role and still trailers the runner id", () => {
   assert.equal(stampedSubject(baseRoleOf("feature-2"), "land it"), "tumwater(feature): land it");
   assert.match(commitTrailer("feature-2", 1, 3, 1000), /^Run: feature-2 #1/);
 });
 
 test("the per-role cap groups instances: their spend sums against the base role's cap", () => {
   const root = tmpdir("runner-ids-cap-");
-  const a = spentLoopState("feature", 0.6);
-  const b = spentLoopState("feature-2", 0.6);
+  const a = spentRunnerState("feature", 0.6);
+  const b = spentRunnerState("feature-2", 0.6);
   assert.ok(dailyCost(a) > 0.5 && dailyCost(b) > 0.5);
 
   const paused = pollRoleCapGate(

@@ -441,7 +441,7 @@ blind image read fails the tick with an error naming the file and the model";
 **Guarantee.** A blind read on a role whose tier has an image-capable reroute target (a peer
 tier in the borrow order — the free fallback pairs only while the budget gate is on fallback
 or the role is in a model-fallback episode) ends the run `aborted` with the `image-reroute`
-resume cause and records a one-shot `LoopState.imageReroute` marker naming the target model and backend
+resume cause and records a one-shot `RunnerState.imageReroute` marker naming the target model and backend
 and the image. The next run starts directly on the target in a FRESH session over the kept
 worktree — never `--continue` — carrying the handoff note that names the prior model and the
 image, and its `run_start` is stamped `reroute: "image"`. A run that already started on the
