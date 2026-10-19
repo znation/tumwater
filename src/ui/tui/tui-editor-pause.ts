@@ -234,30 +234,36 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       if (stopParsed) {
         if (!stopParsed.ok) {
           session.flashMessage(stopParsed.error);
-        } else {
-          try {
-            const result = requestScheduledStop(session.root, stopParsed.inMs);
-            exitPauseEditMode();
-            session.flashMessage(result.ok ? result.message : `error: ${result.error}`);
-          } catch (err) {
-            session.flashError(err);
-          }
+          return true;
         }
-      } else if (wakeParsed) {
+        try {
+          const result = requestScheduledStop(session.root, stopParsed.inMs);
+          exitPauseEditMode();
+          session.flashMessage(result.ok ? result.message : `error: ${result.error}`);
+        } catch (err) {
+          session.flashError(err);
+        }
+        return true;
+      }
+      if (wakeParsed) {
         if (!wakeParsed.ok) {
           session.flashMessage(wakeParsed.error);
-        } else {
-          try {
-            const message = wakeParsed.cancel ? cancelWakes(session.root, target!) : requestWake(session.root, [target!], wakeParsed.inMs);
-            exitPauseEditMode();
-            session.flashMessage(message);
-          } catch (err) {
-            session.flashError(err);
-          }
+          return true;
         }
-      } else if (!parsed.ok) {
+        try {
+          const message = wakeParsed.cancel ? cancelWakes(session.root, target!) : requestWake(session.root, [target!], wakeParsed.inMs);
+          exitPauseEditMode();
+          session.flashMessage(message);
+        } catch (err) {
+          session.flashError(err);
+        }
+        return true;
+      }
+      if (!parsed.ok) {
         session.flashMessage(parsed.error);
-      } else if (target !== null) {
+        return true;
+      }
+      if (target !== null) {
         try {
           const at = session.now();
           const until = parsed.forMs === undefined ? undefined : at + parsed.forMs;
@@ -275,21 +281,21 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
         } catch (err) {
           session.flashError(err);
         }
-      } else {
-        const team = parsed as Extract<ReturnType<typeof parsePauseInput>, { ok: true }>;
-        try {
-          const until = team.forMs === undefined ? undefined : session.now() + team.forMs;
-          const changed = pauseTeam(session.root, until, team.reason);
-          exitPauseEditMode();
-          const forSuffix = team.forMs === undefined ? "" : ` for ${durationLabel(team.forMs)}`;
-          session.flashMessage(
-            changed || until !== undefined
-              ? `${teamPausePhrase()}${forSuffix}${changed && team.reason ? `: ${team.reason}` : ""}`
-              : "team is already paused",
-          );
-        } catch (err) {
-          session.flashError(err);
-        }
+        return true;
+      }
+      const team = parsed as Extract<ReturnType<typeof parsePauseInput>, { ok: true }>;
+      try {
+        const until = team.forMs === undefined ? undefined : session.now() + team.forMs;
+        const changed = pauseTeam(session.root, until, team.reason);
+        exitPauseEditMode();
+        const forSuffix = team.forMs === undefined ? "" : ` for ${durationLabel(team.forMs)}`;
+        session.flashMessage(
+          changed || until !== undefined
+            ? `${teamPausePhrase()}${forSuffix}${changed && team.reason ? `: ${team.reason}` : ""}`
+            : "team is already paused",
+        );
+      } catch (err) {
+        session.flashError(err);
       }
       return true;
     }
