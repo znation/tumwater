@@ -5,6 +5,23 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 13/14: The run prompt names the gate command for verification and says tumwater runs the full check (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 6: agents run the tests for what they touched"; touches src/prompt/prompt.ts src/tick/tick-prompt.ts and their tests) — done 2026-10-19 by the feature role
+
+**Goal.** The run prompt says "verify with `npm run test` (the project's declared check) — run it after your change and fix what you broke" (src/prompt/prompt.ts ~147). From 2026-10-17 to 2026-10-19 agents ran the full suite in 70 of 162 sampled author runs, 12% of author run time. Tumwater runs the gate command on every change and the full check itself, so the agent only needs the gate command.
+
+**Approach.**
+- src/tick/tick-prompt.ts (~127): pass `gateCommandOf(config)` to the prompt builder alongside the detected check.
+- src/prompt/prompt.ts: with a gate command, the verify text becomes: "verify with `<gate>` (lint, compile and the tests your change affects) — run it after your change and fix what you broke. Tumwater runs the full check (`<check>`) itself; do not run it." The "Leave the project working" rule's scratch-file advice names the gate command. Without a gate command the wording is unchanged.
+
+**Files touched.**
+- Source: src/prompt/prompt.ts, src/tick/tick-prompt.ts.
+- Tests: test/prompt.test.ts (~125, ~129, ~411), test/tick-prompt.test.ts (~117), plus a new case with `check.gateCommand` set.
+
+**Acceptance criteria.**
+- With `check.gateCommand: "npm run test:gate"`, a feature prompt names `npm run test:gate` and does not contain "verify with `npm run test`".
+- Without a gate command, the existing wording tests (`pytest -q`, `make check`, the fallback) pass unchanged.
+- `npm test` passes.
+
 ### Fast merge, part 10/14: An approval survives a rebase, a requeue and a restart while the change's own lines are unchanged (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/git/git.ts src/review/review.ts src/runner/runner-state.ts src/tick/tick-apply.ts and their tests) — done 2026-10-19
 
 **Goal.** 42% of review time from 2026-10-17 to 2026-10-19 went to reviewing a diff that had not changed: 66 reviews after a requeue (14.3 h) and 40 after a clean rebase (3.5 h). The approval key is a patch-id that hashes context lines (src/git/git.ts ~487-513), so main moving next to a hunk invalidates it. PLANS.md and BUGS.md hunks, in nearly every change, are the usual case. Only one approval is remembered per role (`lastApprovedPatchId`, src/runner/runner-state.ts).

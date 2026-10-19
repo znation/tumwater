@@ -14,7 +14,7 @@ import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
 import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-prompts.js";
 import { eligibleEntries, mergedPrerequisiteRanges, waitingPartRanges } from "../backlog/backlog-eligibility.js";
-import { detectBuildCheck } from "../build/build-check-detect.js";
+import { detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 import { readEventsSince } from "../events/event-window.js";
 import { telemetryDigest } from "./telemetry-digest.js";
@@ -228,6 +228,7 @@ export function assembleTickPrompt(
       flakyChecks,
       extraInstructions: config.roles[base]?.instructions,
       check,
+      gateCommand: gateCommandOf(config),
       briefFile: brief,
       agent: agent ?? configForRole(config, role).agent,
       assigned,

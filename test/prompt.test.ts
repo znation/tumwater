@@ -125,6 +125,17 @@ test("every run prompt keeps its commands inside the worktree and out of the pri
   assert.match(configured, /verify with `pytest -q`/);
   assert.ok(!configured.includes("node_modules"), "no npm assertion in a non-npm repo's prompt");
 
+  // A gate command: the verify rule names it and tells the agent tumwater runs the full check.
+  const gated = buildTickPrompt({
+    role,
+    check: { kind: "npm", rootDir: ".", script: "test" },
+    gateCommand: "npm run test:gate",
+  });
+  assert.match(gated, /verify with `npm run test:gate`/);
+  assert.ok(!gated.includes("verify with `npm run test`"));
+  assert.match(oneLine(gated), /Tumwater runs the full check \(`npm run test`\) itself; do not run it\./);
+  assert.match(gated, /`<gate> > <scratch-dir>\/check\.log 2>&1`/);
+
   // No check at all: the generic wording stays, and the npm-only sentence still disappears.
   const none = buildTickPrompt({ role });
   assert.match(none, /if it has a build or test command/);

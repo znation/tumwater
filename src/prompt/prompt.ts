@@ -143,8 +143,13 @@ function commonRules(
   scope: string = DEFAULT_SCOPE,
   dialect: PromptDialect = PI_DIALECT,
   assigned = false,
+  gateCommand?: string,
 ): string {
-  const verify = check
+  const verify = check && gateCommand
+    ? `verify with \`${gateCommand}\` (lint, compile and the tests your change affects) — run it
+  after your change and fix what you broke. Tumwater runs the full check (${describeCheck(check)})
+  itself; do not run it.`
+    : check
     ? `verify with ${describeCheck(check)} (the project's declared check) — run it after your
   change and fix what you broke.`
     : `if it has a build or test command, run it after your change and fix what you broke.`;
@@ -193,7 +198,7 @@ Where you work:
   30 minutes) and never give it a real TTY.
 - ${KILL_BY_PID_RULE} A pattern also kills other agents' runs and checks.
 - Leave the project working: ${verify} Write the check's full output to a scratch file once
-  (\`<check> > <scratch-dir>/check.log 2>&1\`) and \`tail\` it; grep that file for anything else, and
+  (\`${gateCommand ? "<gate>" : "<check>"} > <scratch-dir>/check.log 2>&1\`) and \`tail\` it; grep that file for anything else, and
   re-run the check only after an edit changes the tree.
 ${TEST_RUNNER_RULE}
 
@@ -328,6 +333,9 @@ interface TickPromptInput {
    * configured or detected (plans/portability.md §6/7) — names the verify command in the
    * rules instead of asserting npm. Omitted: no check — generic wording, no npm assertion. */
   check?: BuildCheck;
+  /** The configured `check.gateCommand` (gateCommandOf), when set: the verify rule names it and
+   * says tumwater runs the full check. Omitted: the verify rule names the check itself. */
+  gateCommand?: string;
   /** The file the project brief (the managed initial prompt + status) is read from —
    * TUMWATER.md when it owns the sections, else README.md (plans/portability.md §7a/7).
    * Omitted: the README.md compatibility default, exactly as prompts read before the brief
@@ -371,7 +379,7 @@ from the repo.`,
 
 /** The prompt for one role run. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, briefFile, today, userRequest, agent, assigned } = input;
+  const { role, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
   const parts = [
@@ -395,7 +403,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (flakyChecks) parts.push(flakyChecks.trim());
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   parts.push(roleNotesInstruction());
-  parts.push(commonRules(check, briefFile, role.scope, dialect, assigned).trim());
+  parts.push(commonRules(check, briefFile, role.scope, dialect, assigned, gateCommand).trim());
   return parts.join("\n\n");
 }
 

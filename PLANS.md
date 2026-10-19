@@ -281,23 +281,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - With no free slot, the two run in sequence.
 - `npm test` passes.
 
-### Fast merge, part 13/14: The run prompt names the gate command for verification and says tumwater runs the full check (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 6: agents run the tests for what they touched"; touches src/prompt/prompt.ts src/tick/tick-prompt.ts and their tests)
-
-**Goal.** The run prompt says "verify with `npm run test` (the project's declared check) — run it after your change and fix what you broke" (src/prompt/prompt.ts ~147). From 2026-10-17 to 2026-10-19 agents ran the full suite in 70 of 162 sampled author runs, 12% of author run time. Tumwater runs the gate command on every change and the full check itself, so the agent only needs the gate command.
-
-**Approach.**
-- src/tick/tick-prompt.ts (~127): pass `gateCommandOf(config)` to the prompt builder alongside the detected check.
-- src/prompt/prompt.ts: with a gate command, the verify text becomes: "verify with `<gate>` (lint, compile and the tests your change affects) — run it after your change and fix what you broke. Tumwater runs the full check (`<check>`) itself; do not run it." The "Leave the project working" rule's scratch-file advice names the gate command. Without a gate command the wording is unchanged.
-
-**Files touched.**
-- Source: src/prompt/prompt.ts, src/tick/tick-prompt.ts.
-- Tests: test/prompt.test.ts (~125, ~129, ~411), test/tick-prompt.test.ts (~117), plus a new case with `check.gateCommand` set.
-
-**Acceptance criteria.**
-- With `check.gateCommand: "npm run test:gate"`, a feature prompt names `npm run test:gate` and does not contain "verify with `npm run test`".
-- Without a gate command, the existing wording tests (`pytest -q`, `make check`, the fallback) pass unchanged.
-- `npm test` passes.
-
 ### Fast merge, part 14/14: Roles listed in `review.afterMerge` merge once the gate passes and are reviewed after merging (planned 2026-10-19 by user; requires parts 4c/14 and 6/14 landed; design in plans/fast-merge.md "Lever 7: maintenance roles reviewed after merging"; touches src/config/config-schema.ts src/config/config-validation.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-drain.ts src/merge/merge-core.ts tumwater.json docs/config.md docs/how-it-works.md and their tests)
 
 **Goal.** clean, dedupe and coverage merge many small code changes, and each one waits for a review before it can merge. For those roles a review after the merge, with the power to revert, keeps the quality bar at a fraction of the wait.
