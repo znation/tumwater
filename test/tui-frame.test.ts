@@ -328,3 +328,14 @@ test("the transcript Ctrl+L instructions mode names its save/cancel keys and an 
   assert.equal(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, edit, 300)), "Enter save instructions · Esc cancel · Ctrl+D quit");
   assert.equal(plain(promptPrefix(edit)), "instructions for qa › ");
 });
+
+test("the Activity team quiet-hours mode names its save/cancel keys and a `team quiet hours ›` prefix", () => {
+  const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null };
+  const team = { ...base, quietMode: true, quietTeam: true };
+  assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, team, 300)), "Enter save team quiet hours · Esc cancel · Ctrl+D quit");
+  assert.equal(plain(promptPrefix(team)), "team quiet hours › ");
+  // The per-role (Ctrl+O) scope keeps its own wording — the team branch is opt-in.
+  const role = { ...base, quietMode: true, quietTeam: false };
+  assert.equal(plain(promptPrefix(role)), "quiet hours › ");
+  assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, role, 300)), "Enter save quiet hours · Esc cancel · Ctrl+D quit");
+});

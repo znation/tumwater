@@ -6,27 +6,36 @@ import { baseRoleOf } from "../../roles/runner-ids.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
-/** The Ctrl+O quiet-hours editor on the shared prompt line, the terminal twin of the dashboard
- * role drawer's `Quiet hours` row and `tumwater role <id> --quiet-hours`. It owns its mode
- * flag, its saved-draft pair, and the role pinned when it opened, so a roster shift cannot
- * redirect the write. Enter writes through the shared setConfigKey/unsetConfigKey family the
- * CLI and the drawer use — so checkQuietHours (naming `quietHoursPerRole.<id>`) and
- * validateConfig own the window's truth — and Esc, Ctrl+O again, and Ctrl+T cancel by
- * restoring the prompt draft. Mutually exclusive with the other editors on the one prompt
- * line via the session's held registry. */
+/** The Ctrl+O per-role / Ctrl+S team-wide quiet-hours editor on the shared prompt line, the
+ * terminal twin of the dashboard's `Quiet hours` rows and `tumwater role <id> --quiet-hours`
+ * / `tumwater config set quietHours`. It owns its mode flags, its saved-draft pair, and the
+ * role pinned when it opened (per-role scope only), so a roster shift cannot redirect the
+ * write. Enter writes through the shared setConfigKey/unsetConfigKey family the CLI and the
+ * drawer use — so checkQuietHours (naming `quietHoursPerRole.<id>`) and validateConfig (naming
+ * `quietHours` for the team key) own the window's truth — and Esc, the matching Ctrl again,
+ * and Ctrl+T cancel by restoring the prompt draft. Mutually exclusive with the other editors
+ * on the one prompt line via the session's held registry. The two scopes never overlap: Ctrl+O
+ * opens only on a role's Transcript and toggles only the per-role scope, Ctrl+S only on the
+ * Activity view and toggles only the team scope, so a view change cannot leave a half-open
+ * editor pointing at the wrong window. */
 export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
   let quietMode = false;
+  let quietTeam = false;
   let savedInput = "";
   let savedCursor = 0;
-  // The role scope pinned when the editor opened, so Enter writes the same role's window even
-  // if syncRoster shrinks or reorders the roster while the editor is open.
+  // The role scope pinned when the editor opened (per-role scope only), so Enter writes the
+  // same role's window even if syncRoster shrinks or reorders the roster while the editor is
+  // open. The team scope pins no role: it writes the top-level `quietHours` key.
   let lockedRole: string | null = null;
 
-  // Leave quiet-edit mode (Esc, Ctrl+O again, or Ctrl+T): restore the saved prompt text.
+  // Leave quiet-edit mode (Esc, the matching Ctrl again, or Ctrl+T): restore the saved prompt
+  // text. Clears both scope flags; the caller's arm decides which scope to wake next.
   const exitQuietMode = (): void => {
     if (!quietMode) return;
     quietMode = false;
+    quietTeam = false;
     session.held.quiet = false;
+    session.held.quietTeam = false;
     session.restorePromptFrom(savedInput, savedCursor);
     lockedRole = null;
   };
@@ -41,11 +50,18 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
       // hours) on its Transcript view. Every non-transcript view keeps Ctrl+O — the guard
       // lets the key fall through to the pane arms (Activity's event-type cycle, History's
       // outcome cycle, Health's problems-only toggle) unless the quiet editor already holds
-      // the line, in which case Ctrl+O is the toggle-out arm below. Entering pre-fills the
-      // window from `quietHoursPerRole.<base>` (empty when unset — empty means "off" on
-      // save) and saves the prompt text; leaving restores it. The director is exempt — its
+      // the line. While a scope is open, Ctrl+O toggles only the per-role scope out; in the
+      // team scope it is consumed and does nothing. Entering pre-fills the window from
+      // `quietHoursPerRole.<base>` (empty when unset — empty means "off" on save) and saves
+      // the prompt text; leaving restores it. The director is exempt — its
       // quietHoursPerRole.director entry is inert (the gate and doctor both exempt it).
-      if (!quietMode && !(ctx.view >= 1 && ctx.view <= ctx.roleIds.length)) return false;
+      if (quietMode) {
+        // Consumed either way: in the per-role scope it toggles the editor out, in the team
+        // scope Ctrl+O leaves the team editor open.
+        if (!quietTeam) exitQuietMode();
+        return true;
+      }
+      if (!(ctx.view >= 1 && ctx.view <= ctx.roleIds.length)) return false;
       const role = ctx.roleIds[ctx.view - 1]!;
       const held = session.heldEditorFlash("quiet");
       if (held) {
@@ -58,10 +74,6 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
         session.flashMessage("the director has no quiet hours");
         return true;
       }
-      if (quietMode) {
-        exitQuietMode();
-        return true;
-      }
       // Pin the role first so the write below is safe against a mid-edit roster shift, then
       // pre-fill from the file's own entry — one fresh read per open is the smallest honest
       // source; a broken config degrades to no pre-fill and the write reports the error.
@@ -70,11 +82,54 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
         loadConfigSafe(session.root).config?.quietHoursPerRole?.[baseRoleOf(role)] ?? "";
       session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
       quietMode = true;
+      quietTeam = false;
       session.held.quiet = true;
+      session.held.quietTeam = false;
       session.input = existing;
       session.cursor = session.input.length;
       session.flashMessage(
         `edit ${role}'s quiet hours (e.g. 23:00-07:00, empty clears): Enter to save, Esc to cancel`,
+      );
+      return true;
+    }
+    if (key.ctrl && key.name === "s") {
+      // Ctrl+S edits the team-wide quiet-hours window on the Activity view (view 0) — the
+      // terminal twin of the dashboard Settings `quietHours` row and `tumwater config set
+      // quietHours`, so an operator can put the whole team to sleep for a nightly window. On
+      // every non-Activity view Ctrl+S keeps its other meaning — the guard lets the key fall
+      // through to the interval editor (a role's Transcript) and the pane arms (History's
+      // trailing-window cycle). While a scope is open, Ctrl+S toggles only the team scope out;
+      // in the per-role scope it is consumed and does nothing (so it never opens the interval
+      // editor over the quiet editor). Entering pre-fills the window from the FILE's top-level
+      // `quietHours` (empty when unset — empty means "off" on save) and saves the prompt text;
+      // leaving restores it. The team window owns no role, so lockedRole stays null.
+      if (quietMode) {
+        // In the team scope Ctrl+S toggles the editor out. In the per-role scope it must not
+        // touch the per-role editor, but it also must not silently vanish: fall through so the
+        // interval editor (the other Ctrl+S arm, which runs after this one) flashes the way out,
+        // naming the per-role quiet editor as the holder.
+        if (!quietTeam) return false;
+        exitQuietMode();
+        return true;
+      }
+      if (ctx.view !== 0) return false;
+      const held = session.heldEditorFlash("quiet");
+      if (held) {
+        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
+        // not enter while another holds it. Flash the way out first.
+        session.flashMessage(held);
+        return true;
+      }
+      const existing = loadConfigSafe(session.root).config?.quietHours ?? "";
+      session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
+      quietMode = true;
+      quietTeam = true;
+      session.held.quiet = true;
+      session.held.quietTeam = true;
+      session.input = existing;
+      session.cursor = session.input.length;
+      session.flashMessage(
+        "edit the team's quiet hours (e.g. 23:00-07:00, empty clears): Enter to save, Esc to cancel",
       );
       return true;
     }
@@ -85,24 +140,32 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
     }
     if (key.name === "return" && quietMode) {
       // Enter commits the window through the shared setter family the CLI's `--quiet-hours`
-      // and the dashboard drawer use: an empty or whitespace-only line clears the key
-      // (`unsetConfigKey`), otherwise `setConfigKey` writes the dotted `quietHoursPerRole
-      // .<base>` entry as a JSON string. checkQuietHours (naming the dotted key) rejects a
-      // malformed window and validateConfig guards the write; both write tumwater.json
-      // atomically and the running orchestrator picks the change up on its next poll. An
-      // invalid window flashes and STAYS in edit mode so the operator can fix it; success
-      // restores the saved prompt text.
-      const role = lockedRole!;
-      const cfgKey = `quietHoursPerRole.${baseRoleOf(role)}`;
+      // and `tumwater config set quietHours` / the dashboard rows use: an empty or
+      // whitespace-only line clears the key (`unsetConfigKey`), otherwise `setConfigKey` writes
+      // the dotted `quietHoursPerRole.<base>` entry (per-role scope) or the top-level
+      // `quietHours` (team scope) as a JSON string. checkQuietHours (naming the dotted key)
+      // rejects a malformed per-role window and validateConfig guards the team write; both
+      // write tumwater.json atomically and the running orchestrator picks the change up on its
+      // next poll. An invalid window flashes and STAYS in edit mode so the operator can fix
+      // it; success restores the saved prompt text.
+      const cfgKey = quietTeam ? "quietHours" : `quietHoursPerRole.${baseRoleOf(lockedRole!)}`;
       const text = session.input.trim();
       const result =
         text === ""
           ? unsetConfigKey(session.root, cfgKey)
           : setConfigKey(session.root, cfgKey, JSON.stringify(text));
       if (result.ok) {
+        const team = quietTeam;
+        const role = lockedRole;
         exitQuietMode();
         session.flashMessage(
-          text === "" ? `${role}: quiet hours cleared` : `${role}: quiet hours set to ${text}`,
+          team
+            ? text === ""
+              ? "team: quiet hours cleared"
+              : `team: quiet hours set to ${text}`
+            : text === ""
+              ? `${role}: quiet hours cleared`
+              : `${role}: quiet hours set to ${text}`,
         );
       } else {
         session.flashMessage(result.error); // broken config or write failure — stay in edit mode

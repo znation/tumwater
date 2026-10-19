@@ -64,6 +64,9 @@ interface TuiKeysState {
   retireMode: boolean;
   /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
   quietMode: boolean;
+  /** Whether the open quiet editor edits the team-wide `quietHours` window (Ctrl+S on the
+   * Activity view) rather than a role's own `quietHoursPerRole.<base>` window (Ctrl+O). */
+  quietTeam: boolean;
   /** The Transcript view's Ctrl+S min-run-interval mode holds the prompt line. */
   intervalMode: boolean;
   /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line: the

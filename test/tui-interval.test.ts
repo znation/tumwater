@@ -151,10 +151,13 @@ test("Ctrl+R, Ctrl+F, Ctrl+P and Ctrl+W stay inert while the interval editor hol
 test("Ctrl+S on History keeps its trailing-window cycle, not the interval editor", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
-    // Activity (the start view): Ctrl+S is inert (only History and Transcript own it).
+    // Activity (the start view): Ctrl+S opens the team-wide quiet-hours editor, not the
+    // interval one — the interval editor only takes the line on a role's Transcript.
     for (const ch of "prompt") tui.key(ch, ch);
     tui.key(undefined, "s", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "director › prompt", "Ctrl+S on Activity never opens the editor");
+    assert.equal(tui.lines().at(-1), "team quiet hours ›", "Ctrl+S on Activity opens the team quiet editor, not the interval one");
+    tui.key(undefined, "escape"); // cancel back to the prompt
+    assert.equal(tui.lines().at(-1), "director › prompt");
 
     // History (after 5 Ctrl+T: activity → clean transcript → backlog → usage → failures → history).
     for (let i = 0; i < 5; i++) tui.key(undefined, "t", { ctrl: true });

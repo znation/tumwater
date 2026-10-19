@@ -157,3 +157,91 @@ test("Ctrl+O on Activity, History and Health keeps their own meaning, not the qu
     assert.equal(tui.lines().at(-1), "director › prompt", "Health's Ctrl+O toggle keeps the prompt");
   });
 });
+
+// Ctrl+S edits the team-wide top-level `quietHours` window on the Activity view (view 0) —
+// the terminal twin of the dashboard Settings `quietHours` row and `tumwater config set
+// quietHours` — while a role's Transcript keeps Ctrl+S as the min-run-interval editor. It
+// pre-fills from the file's `quietHours`, Enter persists it through setConfigKey, an empty
+// line clears it, and Ctrl+S again / Esc cancel by restoring the prompt draft.
+test("Ctrl+S on Activity edits the team-wide quietHours window; Enter saves, empty clears, and Ctrl+S again exits", async () => {
+  const repo = await makeTuiRepo(); // one enabled role: clean; start view is Activity
+  const cfgPath = path.join(repo, "tumwater.json");
+  await withTui(repo, async (tui) => {
+    // A draft prompt first — leaving quiet mode must restore it byte-for-byte.
+    for (const ch of "draft prompt") tui.key(ch, ch);
+
+    // Ctrl+S opens pre-filled with the (unset) team window and flashes the hint; the footer's
+    // hint branch names the mode's own save/cancel keys and the `team quiet hours ›` prefix.
+    tui.key(undefined, "s", { ctrl: true });
+    assert.match(tui.lastFrame(), /edit the team's quiet hours/);
+    assert.equal(tui.lines().at(-1), "team quiet hours ›");
+    assert.match(tui.lastFrame(), /Enter save team quiet hours/);
+
+    // Enter on a valid window persists top-level quietHours and returns to prompt mode.
+    for (const ch of "23:00-07:00") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /team: quiet hours set to 23:00-07:00/);
+    let cfg = readJson(cfgPath) as { quietHours?: string };
+    assert.equal(cfg.quietHours, "23:00-07:00");
+    assert.equal(tui.lines().at(-1), "director › draft prompt"); // previous prompt restored
+
+    // Re-entering pre-fills the saved team window.
+    tui.key(undefined, "s", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "team quiet hours › 23:00-07:00");
+
+    // An empty line on Enter clears the key and flashes the team cleared wording.
+    for (let i = 0; i < 11; i++) tui.key(undefined, "backspace");
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /team: quiet hours cleared/);
+    cfg = readJson(cfgPath) as { quietHours?: string };
+    assert.equal(cfg.quietHours, undefined, "the key is removed");
+
+    // Ctrl+S again while the team editor is open cancels it and restores the draft.
+    tui.key(undefined, "s", { ctrl: true });
+    tui.key(undefined, "s", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+
+    // A malformed window flashes the quietHours parse error (naming the top-level key), STAYS
+    // in edit mode with the text kept, and writes nothing.
+    tui.key(undefined, "s", { ctrl: true });
+    for (const ch of "nope") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /quietHours must be/);
+    assert.equal(tui.lines().at(-1), "team quiet hours › nope", "still in team edit mode with the text kept");
+    assert.equal(fs.readFileSync(cfgPath, "utf8").includes("nope"), false, "a malformed team window is not written");
+    tui.key(undefined, "escape");
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+  });
+});
+
+// The two quiet scopes never overlap: Ctrl+O leaves the team scope open (it is consumed), the
+// team scope is mutually exclusive with the other prompt-line editors, and Esc / Ctrl+T
+// cancel it by restoring the draft.
+test("Ctrl+S team editor: Ctrl+O leaves it open, other editors flash the way out, Esc and Ctrl+T cancel", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    for (const ch of "draft prompt") tui.key(ch, ch);
+    tui.key(undefined, "s", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "team quiet hours ›");
+
+    // Ctrl+O while the team editor is open is consumed and does nothing.
+    tui.key(undefined, "o", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "team quiet hours ›", "Ctrl+O leaves the team editor open");
+
+    // Ctrl+B flashes the way out and leaves the team editor open.
+    tui.key(undefined, "b", { ctrl: true });
+    assert.match(tui.lastFrame(), /finish or cancel the quiet hours first/);
+    assert.equal(tui.lines().at(-1), "team quiet hours ›", "the team editor keeps the line");
+
+    // Ctrl+T exits the team editor (restoring the draft) and cycles away from the view.
+    tui.key(undefined, "t", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+    assert.match(tui.lastFrame(), /\[Transcript/, "the view cycled away");
+
+    // Esc also cancels the team editor, restoring the draft byte-for-byte.
+    tui.key(undefined, "s", { ctrl: true });
+    for (const ch of "x") tui.key(ch, ch);
+    tui.key(undefined, "escape");
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+  });
+});

@@ -67,7 +67,7 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+V` | Activity | attach an image path to the next prompt to the director (the terminal twin of `tumwater prompt --attach <path>` and the dashboard composer's drop/paste) |
 | `Ctrl+G` | Activity, History, Usage, Failures | cycle the role scope |
 | `/` | Activity, History, Backlog | search (on Backlog, filter the active entries by heading or body) |
-| `Ctrl+S` | History, Transcript | cycle the trailing window on History; edit the viewed role's `roles.<base>.minRunIntervalSeconds` override on a Transcript |
+| `Ctrl+S` | Activity, History, Transcript | edit the team's quiet-hours window (`quietHours`; an empty line clears it); cycle the trailing window on History; edit the viewed role's `roles.<base>.minRunIntervalSeconds` override on a Transcript |
 | `Ctrl+O` | Activity, Transcript, History, Health | cycle the event type on Activity; cycle the outcome filter on History; on Health, toggle the problems-only (warn and fail) view; on a role's Transcript, edit that role's own quiet-hours window (`quietHoursPerRole.<base>`; an empty line clears it) |
 | `Ctrl+L` | Transcript | replace the viewed role's standing-instructions override, `roles.<base>.instructions`, from a file — the terminal twin of `tumwater role <id> --instructions-file` and the dashboard drawer's Instructions editor (an empty file clears it; an instance id writes its base role's key) |
 | `Ctrl+Y` | History | toggle the per-role Summary table |

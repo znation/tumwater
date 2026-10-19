@@ -47,6 +47,10 @@ interface TuiHeld {
   retire: boolean;
   /** The Transcript view's Ctrl+O quiet-hours editor holds the prompt line. */
   quiet: boolean;
+  /** Whether the open quiet editor is editing the team-wide `quietHours` window (Ctrl+S on the
+   * Activity view) rather than a role's own `quietHoursPerRole.<base>` window (Ctrl+O). Only
+   * meaningful while `quiet` is true. */
+  quietTeam: boolean;
   /** The Transcript view's Ctrl+S min-run-interval editor holds the prompt line. */
   interval: boolean;
   /** The Transcript view's Ctrl+L replace-standing-instructions editor: the role whose
@@ -138,6 +142,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       brief: false,
       retire: false,
       quiet: false,
+      quietTeam: false,
       interval: false,
       instructions: null,
     },

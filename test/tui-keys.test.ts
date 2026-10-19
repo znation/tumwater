@@ -1241,7 +1241,26 @@ test("Ctrl+S is inert in the prompt-line modes and off the History view only mov
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
-  // Off the History view, Ctrl+S advances the window without computing a cache.
+  // Activity (view 0) now owns Ctrl+S as the team-wide quiet-hours editor (docs/cli.md), so it
+  // consumes Ctrl+S rather than advancing the History window.
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().quietTeam, true, "Ctrl+S on Activity opens the team quiet editor");
+  assert.equal(keys.state().historySince, null, "the team editor consumed Ctrl+S, not the window");
+  keys.handleKey(undefined, { name: "escape" }); // close the team editor
+
+  // Role-prompt mode holds it too: open it on a transcript view and try Ctrl+S.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript clean
+  assert.equal(keys.state().view, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().rolePromptFor, "clean");
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, null, "Ctrl+S does nothing in role-prompt mode");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // Off the History view, Ctrl+S advances the window without computing a cache — the pane arm
+  // runs on any non-Activity, non-Transcript view; use the Backlog (view 2).
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // transcript → backlog
+  assert.equal(keys.state().view, 2, "on the Backlog view");
   keys.handleKey(undefined, { ctrl: true, name: "s" });
   assert.equal(keys.state().historySince, "1h");
   assert.equal(keys.state().paneCache, null, "no History pane is showing");
@@ -1251,15 +1270,6 @@ test("Ctrl+S is inert in the prompt-line modes and off the History view only mov
   assert.equal(keys.state().budgetMode, true);
   keys.handleKey(undefined, { ctrl: true, name: "s" });
   assert.equal(keys.state().historySince, "1h", "Ctrl+S does nothing in budget mode");
-  keys.handleKey(undefined, { name: "escape" });
-
-  // Role-prompt mode holds it too: open it on a transcript view and try Ctrl+S.
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript clean
-  assert.equal(keys.state().view, 1);
-  keys.handleKey(undefined, { ctrl: true, name: "r" });
-  assert.equal(keys.state().rolePromptFor, "clean");
-  keys.handleKey(undefined, { ctrl: true, name: "s" });
-  assert.equal(keys.state().historySince, "1h", "Ctrl+S does nothing in role-prompt mode");
   keys.handleKey(undefined, { name: "escape" });
 });
 
