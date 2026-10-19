@@ -810,3 +810,15 @@ test("a Claude step is marked extraUsage when a Claude model comes earlier in it
   const mapped = { ...pi, fallback: { default: ["claude/claude-sonnet-5-5"], strong: ["omlx/qwen", "claude/claude-sonnet-5-5"] } };
   assert.deepEqual(chain(mapped), [false, false, false], "each tier's chain marks by its own order, so a second chain's first Claude step is unmarked");
 });
+
+test("teamModelLabel does not double-prefix a namespaced model", () => {
+  for (const [backend, model, want] of [
+    ["opencode", "opencode/deepseek-v4.1-flash-free", "opencode/deepseek-v4.1-flash-free"],
+    ["claude", "claude/claude-sonnet-5-5", "claude/claude-sonnet-5-5"],
+  ] as const) {
+    const cfg: TumwaterConfig = defaultConfig();
+    cfg.backend = backend;
+    cfg.model = model;
+    assert.equal(teamModelLabel(cfg), want);
+  }
+});

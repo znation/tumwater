@@ -347,7 +347,10 @@ export function teamModelLabel(config: TumwaterConfig): string | null {
     const sel = tierModel(config, tier);
     if (!sel) return null;
     const { agent } = routeModel(sel.provider, sel.model, config.backend ?? "pi", tier);
-    return { tier, label: agentQualifiedSelector({ ...sel, agent }) };
+    // routeModel consumed an agent-naming provider as the namespace; drop it so the label
+    // doesn't prefix the agent twice.
+    const provider = sel.provider !== undefined && isAgentId(sel.provider) ? undefined : sel.provider;
+    return { tier, label: agentQualifiedSelector({ ...sel, provider, agent }) };
   }).filter((e): e is { tier: ModelTier; label: string } => e !== null);
   if (entries.length === 0) return null;
   if (entries.every((e) => e.label === entries[0]!.label)) return entries[0]!.label;

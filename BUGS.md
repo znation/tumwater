@@ -47,16 +47,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Waiting for the next failure 2026-10-19 by bugfix: a `fail orphans` line for a leaked `logs -f` will end with `(run <pid>-…; tumwater <pid> exited)` when it inherited a run's mark, naming the run that spawned it; a line with no such suffix means the process escaped the mark (detached with a cleared environment) and the spawner is still unknown.**
 
-### `teamModelLabel` double-prefixes a namespaced model, so `model_changed` logs `opencode/opencode/<id>` and `claude/claude/<id>` (found by operator session 2026-10-19 from a user's report on another machine, build f715ac6c)
-
-- **Symptom:** with `{ "backend": "opencode", "model": "opencode/deepseek-v4.1-flash-free" }`, an edit to tumwater.json makes the running team log `{"type":"model_changed","from":null,"to":"opencode/opencode/deepseek-v4.1-flash-free"}`. The label should be `opencode/deepseek-v4.1-flash-free`, the string doctor's routing table prints. This is display-only: routing, argv, pricing and doctor are unaffected.
-- **Reproduce:** confirmed on main da634d2a0 by calling `teamModelLabel(defaultConfig() + { backend, model })` from a fresh `tsc` build:
-  - `claude` + `claude/claude-sonnet-5-5` → `claude/claude/claude-sonnet-5-5` (wrong);
-  - `opencode` + `opencode/deepseek-v4.1-flash-free` → `opencode/opencode/deepseek-v4.1-flash-free` (wrong);
-  - `claude` + `claude-sonnet-5-5` → `claude/claude-sonnet-5-5`, `opencode` + `deepseek-v4.1-flash-free` → `opencode/deepseek-v4.1-flash-free`, and `pi` + `local-model` → `local-model` (all correct).
-- **Cause:** `teamModelLabel` (src/config/config-views.ts:345) passes the raw parsed selector to `agentQualifiedSelector({ ...sel, agent })` (:350). `routeModel` (src/config/model-selector.ts:97) treats a provider that names an agent backend as a namespace and returns only `{ agent, model }`. The label spreads `sel`, though, so `provider: "opencode"` survives. `agentQualifiedSelector` then formats `opencode/<id>` and prefixes the agent again (:295). Its other two callers pass a resolved seam whose provider is already cleared: `modelSelectorField` (:276-280) and doctor's routing row (src/doctor/doctor.ts:89). test/config-views.test.ts:233 only covers bare ids (`local-model` over pi and over claude). It never tests the namespaced form that docs/backends.md shows (:182, :228).
-- **Expected / fix sketch:** make the label agree with the resolved seam by construction: drop `sel.provider` when `isAgentId(sel.provider)` before qualifying the label. Add the `opencode/<id>` and `claude/<id>` cases beside the bare-id ones in test/config-views.test.ts. The PLANS.md entry "Split the backend from the model in tumwater.json" rewrites this same function. It retires `claude/<id>` as a load error and makes `opencode/<id>` OpenCode's own provider-qualified id. If the split lands first, its `model_changed` test should assert the single-prefix label instead of carrying this fix.
-
 ## Fixed
 
 ## Verified
