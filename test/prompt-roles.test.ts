@@ -434,6 +434,7 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.ok(!find.includes("{{"), "the plan charter carries no unresolved placeholder");
   assert.ok(find.includes(NOTHING_TO_DO), "plan embeds the nothing-to-do sentinel");
   assert.match(find, /refined by the feature run that picks it up/);
+  assert.match(find, /at the END of `## Planned`, after every existing entry/);
 });
 test("the director routes a user ruling on a marked plan", () => {
   const prompt = oneLine(buildDirectorPrompt("split plan X"));

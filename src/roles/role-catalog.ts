@@ -11,6 +11,7 @@ import {
   DECOMPOSITION_GUIDANCE,
   NEEDS_REPLAN_NOTE,
   NEEDS_REVIEW_NOTE,
+  PLAN_QUEUE_GUIDANCE,
   PLAN_SIZING,
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
@@ -153,6 +154,7 @@ within that budget, there is nothing to do.`,
       at them in ranges.
    5. Write it as a short markdown section under \`## Planned\` in PLANS.md: goal, approach, files
       touched, acceptance criteria.
+${PLAN_QUEUE_GUIDANCE}
 ${PLAN_SIZING}
 ${DECOMPOSITION_GUIDANCE}`,
   },
@@ -203,7 +205,8 @@ edit the brief between the tumwater:prompt markers.`,
       file of similar size: a test file's shape follows the module it covers. An outlier that is
       mostly one large function or closure cannot be split in one run: do not start the split,
       write it as a plan in PLANS.md under ## Planned that states the target structure (which
-      state and handlers move into which module). Then look for other minor improvements to
+      state and handlers move into which module).
+${PLAN_QUEUE_GUIDANCE} Then look for other minor improvements to
       the existing structure: a module in the wrong directory, a missing separation between
       layers, or inconsistent file naming.
    2. When the minor improvements are exhausted, a major refactor — new directories, a
@@ -501,6 +504,7 @@ arguments, config files, environment), and rough edges you meet while running th
       - promote a recurring non-\`none\` \`gap:\` tag — three or more Fixed entries carrying it —
         into a PLANS.md entry for the infrastructure that would retire it, citing those entries.
         ${VALIDATION_GAP_TALLY}
+        ${PLAN_QUEUE_GUIDANCE}
 You edit only markdown — never source.
 
 Reading the backlog files: PLANS.md and BUGS.md hold open work, so read them whole when your move

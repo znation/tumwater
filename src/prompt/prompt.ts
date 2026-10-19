@@ -3,7 +3,7 @@ import path from "node:path";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { Role } from "../roles/roles.js";
-import { DECOMPOSITION_GUIDANCE, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "../roles/role-guidance.js";
+import { DECOMPOSITION_GUIDANCE, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, PLAN_QUEUE_GUIDANCE, PLAN_SIZING } from "../roles/role-guidance.js";
 import { CLAIMS_RULE, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";
 import { daysBetween } from "../text/datetime.js";
@@ -434,7 +434,7 @@ implement planned features from PLANS.md and fix bugs from BUGS.md.`,
 work yourself:
 - A feature request or substantial change: write a concrete plan for it in PLANS.md (goal,
   approach, files touched, acceptance criteria) so the feature role implements it. Do not build
-  it now. ${PLAN_SIZING}
+  it now. ${PLAN_SIZING} ${PLAN_QUEUE_GUIDANCE}
 - A bug report: record it in BUGS.md (symptom, how to reproduce, suspected cause — investigate
   briefly to sharpen the report) so the bugfix role fixes it. Do not fix it now.
 - Guidance, a decision, or a constraint (e.g. "prefer X", "drop feature Y"): record it durably

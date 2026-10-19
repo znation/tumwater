@@ -8,6 +8,7 @@ import {
   DECOMPOSITION_GUIDANCE,
   NEEDS_REPLAN_NOTE,
   NEEDS_REVIEW_NOTE,
+  PLAN_QUEUE_GUIDANCE,
   PLAN_SIZING,
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
@@ -205,6 +206,17 @@ test("the plan role and the director size plans to one implementation run via th
   const find = oneLine(roleById("plan")!.find);
   assert.match(find, /confirm with grep that the capability does not already exist/);
   assert.match(find, /name the actual files and functions it touches, having looked at them in ranges/);
+});
+
+test("plan, organize, steward, and the director embed the back-of-queue guidance for writing a plan", () => {
+  assert.ok(roleById("plan")!.find.includes(PLAN_QUEUE_GUIDANCE), "plan role embeds PLAN_QUEUE_GUIDANCE");
+  assert.ok(roleById("organize")!.find.includes(PLAN_QUEUE_GUIDANCE), "organize role embeds PLAN_QUEUE_GUIDANCE");
+  assert.ok(roleById("steward")!.find.includes(PLAN_QUEUE_GUIDANCE), "steward role embeds PLAN_QUEUE_GUIDANCE");
+  assert.ok(buildDirectorPrompt("add dark mode").includes(PLAN_QUEUE_GUIDANCE), "director embeds PLAN_QUEUE_GUIDANCE");
+  const queue = oneLine(PLAN_QUEUE_GUIDANCE);
+  assert.match(queue, /append the entry at the END of `## Planned`, after every existing entry/);
+  assert.match(queue, /File order under `## Planned` is the work queue/);
+  assert.ok(PLAN_QUEUE_GUIDANCE.length > 100, "the guidance is longer than one sentence");
 });
 
 test("the search guidance says a small, clearly useful change clears the bar", () => {

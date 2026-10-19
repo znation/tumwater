@@ -63,6 +63,18 @@ every commit merges under the build that predates it, so a
 change to how merges behave and any step that depends on it are separate sub-plans, the second
 merge only once the first is the running build.`;
 
+/** Shared guidance for anyone writing a plan (the plan role, the organize role, and the
+ * director): a new plan joins the BACK of the `## Planned` queue, never the top. Part of the
+ * define-once pattern of DECOMPOSITION_GUIDANCE/PLAN_SIZING — file order under `## Planned` IS
+ * the work queue: claim assignment takes the first free entry in file order (`assignNext`,
+ * src/scheduling/claims.ts), so an entry set at the top jumps ahead of work already waiting.
+ * Lives here because three role `find` texts and the director's routing bullet embed it. */
+export const PLAN_QUEUE_GUIDANCE = `A new plan joins the queue at the BACK: append the entry at the
+END of \`## Planned\`, after every existing entry, never at the top. File order under
+\`## Planned\` is the work queue — claim assignment takes the first free entry in that order
+(\`assignNext\`, src/scheduling/claims.ts) — so an entry inserted at the top jumps ahead of work
+already waiting.`;
+
 /** The closed vocabulary for the validation-gap trace (plans/repair-traces.md): what made a bug
  * hard to *confirm*, which is the only evidence of where this project's test infrastructure is
  * weakest. Closed on purpose so the traces aggregate, and `none` is a written value rather than an
