@@ -1,5 +1,5 @@
-/** Fifth slice of the loop e2e suite (after runner.test.ts, runner-2.test.ts, runner-3.test.ts and
- * runner-4.test.ts) — split so node --test runs the slices in parallel processes: top-level
+/** Fifth slice of the runner e2e suite (after runner.test.ts, runner-2.test.ts, runner-3.test.ts
+ * and runner-4.test.ts) — split so node --test runs the slices in parallel processes: top-level
  * tests within one file run sequentially, while each test FILE gets its own process (and its
  * own PATH, which fakePi's global PATH swap requires). The slices are balanced by measured
  * per-test duration (~51 s and ~43 s at 2026-09-25); keep them roughly equal when moving
@@ -12,12 +12,12 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { refSha } from "../src/git/git.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { mergeRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { queueDepth } from "../src/merge/merge-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/runner-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
@@ -43,7 +43,7 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
 
   const ran = path.join(tmpdir(), "ran-pin");
   await withPi(`touch "${ran}"`, async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error", "a failed pin adoption fails the tick");
     assert.match(
@@ -67,7 +67,7 @@ test("resume falls back to a fresh tick when there is no session to continue", a
   await withPi(
     [logFlagsTo(argsFile), `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       runner.state.resumePending = true; // e.g. the sessions were pruned since the abort
       assert.equal((await runner.tick()).result, "no_change");
       const run = fs.readFileSync(argsFile, "utf8").trim();
@@ -81,18 +81,18 @@ test("resume falls back to a fresh tick when there is no session to continue", a
 
 test("a crashed process (stale running flag) resumes like a graceful abort", async () => {
   const repo = await initializedRepo();
-  const s = freshLoopState("improve");
+  const s = freshRunnerState("improve");
   s.running = true; // Persisted at tick start; a crash never cleared it.
-  saveLoopState(repo, s);
-  const runner = makeLoopRunner(repo, "improve");
+  saveRunnerState(repo, s);
+  const runner = makeRoleRunner(repo, "improve");
   assert.equal(runner.state.resumePending, true, "a crash mid-tick is resumed too");
   assert.equal(runner.state.running, false);
 
   // The director never resumes: its recovery is re-queuing the user prompt.
-  const d = freshLoopState("director");
+  const d = freshRunnerState("director");
   d.running = true;
-  saveLoopState(repo, d);
-  const director = makeLoopRunner(repo, "director");
+  saveRunnerState(repo, d);
+  const director = makeRoleRunner(repo, "director");
   assert.ok(!director.state.resumePending);
 });
 
@@ -102,7 +102,7 @@ test("an aborted director tick re-queues the user prompt", async () => {
     enqueuePrompt(repo, "important request");
     assert.equal(inboxSize(repo), 1);
     const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "director", defaultConfig(), "main", controller.signal);
+    const runner = makeRoleRunner(repo, "director", defaultConfig(), "main", controller.signal);
     setTimeout(() => controller.abort(), 300);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "aborted");
@@ -115,14 +115,14 @@ test("an aborted director tick re-queues the user prompt", async () => {
 // User-initiated abort (tumwater abort --role <id>) vs harness shutdown: both kill the pi
 // child, but a deliberate stop discards the half-done work and backs off like an unproductive
 // tick instead of leaving it resumable. The marker-file plumbing that reaches here is covered
-// by the orchestrator tests; these pin LoopRunner's own contract (the abort plan's loop e2e
+// by the orchestrator tests; these pin RoleRunner's own contract (the abort plan's runner e2e
 // acceptance criterion).
 test("a user-aborted tick discards work, backs off, and does not resume", async () => {
   const repo = await initializedRepo();
   // Writes a half-done change, then hangs until killed. `exec` so SIGTERM reaches sleep.
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     const config = defaultConfig();
-    const runner = makeLoopRunner(repo, "improve", config);
+    const runner = makeRoleRunner(repo, "improve", config);
     const before = mainSha(repo);
     const tick = runner.tick();
     // Abort only once the half-done edit has landed: a fixed timer can fire before the
@@ -145,9 +145,9 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     assert.ok(!fs.existsSync(path.join(wt, "partial.txt")), "the half-done edit is discarded");
     assertClean(wt, "no uncommitted edits remain");
 
-    // A deliberate stop is not an interruption: no resume flag, and the loop backs off like
+    // A deliberate stop is not an interruption: no resume flag, and the runner backs off like
     // an unproductive tick instead of retrying immediately.
-    const s = loadLoopState(repo, "improve");
+    const s = loadRunnerState(repo, "improve");
     assert.ok(!s.resumePending, "nothing to resume — the work was discarded");
     assert.equal(s.backoffSeconds, config.idleBackoff.initialSeconds);
     assert.ok(s.nextRunAt > Date.now(), "backed off, not immediate");
@@ -165,7 +165,7 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     enqueuePrompt(repo, "important request");
     assert.equal(inboxSize(repo), 1);
-    const runner = makeLoopRunner(repo, "director");
+    const runner = makeRoleRunner(repo, "director");
     const tick = runner.tick();
     try {
       await waitForFile(path.join(worktreePath(repo, "director"), "partial.txt"));
@@ -180,7 +180,7 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
     // Contrast with a shutdown abort (which re-queues): an explicit stop IS the answer to
     // that request — the prompt is deliberately dropped, not retried.
     assert.equal(inboxSize(repo), 0, "the aborted prompt was not re-queued");
-    const s = loadLoopState(repo, "director");
+    const s = loadRunnerState(repo, "director");
     assert.ok(!s.resumePending, "the director never resumes an author session");
 
     // The discard is explicit, not accidental: the dequeued prompt is cleared on the live
@@ -199,7 +199,7 @@ test("a user-abort mid-review discards the committed work too", async () => {
   // VERDICT): hang until the abort kills it — simulating `tumwater abort` while under review.
   // Since merge queue 3/5 the gate runs in the MERGE, not the tick: the abort below hits
   // the merge's signal (the same wiring the orchestrator's pipeline hands its verifications). At
-  // the loop level an aborted merge KEEPS the pin — the drain adds the deliberate-stop ref
+  // the runner level an aborted merge KEEPS the pin — the drain adds the deliberate-stop ref
   // deletion on top (pinned in the orchestrator tests). The queue entry itself is dropped:
   // retry rides the pin, never the queue.
   await runAbortedDirectorMerge(repo);
@@ -210,7 +210,7 @@ test("a failing director tick re-queues the user prompt (regression)", async () 
   // pi fails hard: non-zero exit, no assistant text, and no file changes.
   await withPi(`echo 'pi exploded' >&2\nexit 1`, async () => {
     enqueuePrompt(repo, "please do the thing");
-    const runner = makeLoopRunner(repo, "director");
+    const runner = makeRoleRunner(repo, "director");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
@@ -224,7 +224,7 @@ test("a timed-out director tick re-queues the user prompt (regression)", async (
     enqueuePrompt(repo, "important request");
     const config = defaultConfig();
     config.runTimeoutSeconds = 1;
-    const runner = makeLoopRunner(repo, "director", config);
+    const runner = makeRoleRunner(repo, "director", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.match(runner.state.lastError ?? "", /timed out/);
@@ -238,7 +238,7 @@ test("a director tick that handles a prompt with no file changes does not re-que
   // pi answers the question in its reply and changes nothing: that IS fulfillment.
   await withPi(`printf '%s\n' '${assistantLine("The answer is 42.")}'`, async () => {
     enqueuePrompt(repo, "what is the answer?");
-    const runner = makeLoopRunner(repo, "director");
+    const runner = makeRoleRunner(repo, "director");
     assert.equal((await runner.tick()).result, "no_change");
     assert.equal(inboxSize(repo), 0, "a handled prompt must not loop back into the inbox");
   });
@@ -249,7 +249,7 @@ test("a timed-out tick reports an error and never commits partial work", async (
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     const config = defaultConfig();
     config.runTimeoutSeconds = 1;
-    const runner = makeLoopRunner(repo, "improve", config);
+    const runner = makeRoleRunner(repo, "improve", config);
     const before = mainSha(repo);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
@@ -277,7 +277,7 @@ test("a tick timeout that fires on a run still making progress is resumed like a
     async () => {
       const config = defaultConfig();
       config.runTimeoutSeconds = 2;
-      const runner = makeLoopRunner(repo, "improve", config);
+      const runner = makeRoleRunner(repo, "improve", config);
       const before = mainSha(repo);
       const outcome = await runner.tick();
       assert.equal(outcome.result, "quiet_killed");
@@ -301,7 +301,7 @@ test("a timed-out run that emitted bytes but no progress event still discards (r
   await withPi(`echo just bytes\nexec sleep 30`, async () => {
     const config = defaultConfig();
     config.runTimeoutSeconds = 1;
-    const runner = makeLoopRunner(repo, "improve", config);
+    const runner = makeRoleRunner(repo, "improve", config);
     const before = mainSha(repo);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
@@ -328,7 +328,7 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     const fallback = defaultConfig();
     fallback.provider = "local";
     fallback.model = "local-free";
-    const runner = makeLoopRunner(repo, "improve", fallback);
+    const runner = makeRoleRunner(repo, "improve", fallback);
     const tick = runner.tick();
     try {
       await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
@@ -345,8 +345,8 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     assert.equal(outcome.resumeCause, "budget-resumed");
 
     // Session and worktree edits kept, resume pending with the handback's own cause, and the
-    // loop scheduled to run again immediately — an interruption, not a verdict to back off on.
-    const s = loadLoopState(repo, "improve");
+    // runner scheduled to run again immediately — an interruption, not a verdict to back off on.
+    const s = loadRunnerState(repo, "improve");
     assert.ok(s.resumePending, "the interrupted session is kept for a resume");
     assert.equal(s.resumeCause, "budget-resumed");
     assert.ok(
@@ -371,7 +371,7 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     // The kept half-done edit is committed by the resume tick like any resumed session's
     // leftover work — the point is the session and the model, not the file's fate.
     assert.equal(outcome2.result, "queued");
-    const s2 = loadLoopState(repo, "improve");
+    const s2 = loadRunnerState(repo, "improve");
     assert.ok(!s2.resumePending, "the resume consumed the pending flag");
     assert.equal(s2.resumeCause, undefined, "the cause rode the resume and was consumed");
     const runs = readRunBlocks(promptsFile);
@@ -401,7 +401,7 @@ test("role ticks lease pooled slots; no legacy role worktree is created", async 
   await withPi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
     const roles = ["improve", "clean", "perf"];
     for (const role of roles) {
-      const runner = makeLoopRunner(repo, role);
+      const runner = makeRoleRunner(repo, role);
       const outcome = await runner.tick();
       assert.equal(outcome.result, "no_change", `${role}: ${runner.state.lastError ?? ""}`);
     }
@@ -418,7 +418,7 @@ test("role ticks lease pooled slots; no legacy role worktree is created", async 
     }
     // The director still ticks in its dedicated checkout.
     enqueuePrompt(repo, "say hello");
-    assert.equal((await makeLoopRunner(repo, "director").tick()).result, "no_change");
+    assert.equal((await makeRoleRunner(repo, "director").tick()).result, "no_change");
     assert.ok(fs.existsSync(path.join(wtDir, "director")), "the director keeps its dedicated worktree");
   });
 });

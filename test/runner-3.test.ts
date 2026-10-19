@@ -1,4 +1,4 @@
-/** Third slice of the loop e2e suite (after runner.test.ts and runner-2.test.ts) — split so
+/** Third slice of the runner e2e suite (after runner.test.ts and runner-2.test.ts) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
  * sequentially, while each test FILE gets its own process (and its own PATH, which fakePi's
  * global PATH swap requires). The slices are balanced by measured per-test duration; keep them
@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { makeLoopRunner, roleWt } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { mergeHead, mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { firstRunThenIdle, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
@@ -36,7 +36,7 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
     ]),
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     // Tick 1: the change is committed and enqueued, then the MERGE rejects it — nothing
     // merges on main.
     assert.equal((await runner.tick()).result, "queued");
@@ -68,7 +68,7 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
 
 test("concurrent-main-advance still merges (rebase path, linear history)", async () => {
   const repo = await initializedRepo();
-  // The fake pi advances main itself mid-tick, simulating another loop merging work.
+  // The fake pi advances main itself mid-tick, simulating another runner merging work.
   const script = [
     // The tick's commit goes through the review gate before the (rebased) merge.
     APPROVE_PI,
@@ -77,7 +77,7 @@ test("concurrent-main-advance still merges (rebase path, linear history)", async
     `git -C "${repo}" -c user.name=t -c user.email=t@t commit --allow-empty -m "someone else"`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "organize");
+    const runner = makeRoleRunner(repo, "organize");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "organize"), "changed");
@@ -109,7 +109,7 @@ test("a clean resolution of a conflicted file with setext underlines merges (reg
     `fi`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(

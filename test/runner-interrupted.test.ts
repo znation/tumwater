@@ -1,4 +1,4 @@
-/** The loop e2e suite's interrupted-tick slice — ticks that end without a normal commit:
+/** The runner e2e suite's interrupted-tick slice — ticks that end without a normal commit:
  * cut-offs at the context ceiling (and their resume-streak limit), aborted runs, the resumes
  * that continue their sessions, and quiet-killed hangs. Extracted from runner.test.ts
  * (2026-09-30) so the topic has a name instead of a row in a grab-bag. The suite's slices run
@@ -16,7 +16,7 @@ import { recordSession } from "../src/agent/session-ledger.js";
 import { setRef } from "../src/git/git.js";
 import { queuedMerges } from "../src/merge/merge-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, mainSha, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
@@ -32,7 +32,7 @@ async function abortHungImproveTick(repo: string): Promise<void> {
   const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
   try {
     const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
+    const runner = makeRoleRunner(repo, "improve", defaultConfig(), "main", controller.signal);
     const tick = runner.tick();
     try {
       await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
@@ -81,7 +81,7 @@ test("a run cut off at the context ceiling warns, skips backoff, and resumes", a
       `printf '%s\n' '${thinkingOnlyLine("git.ts looks clean. Next", { output: 16 })}'\n` +
       `printf '%s\n' '${JSON.stringify({ type: "compaction_start", reason: "threshold" })}'`,
     async () => {
-      const runner = makeLoopRunner(repo, "clean");
+      const runner = makeRoleRunner(repo, "clean");
       assert.equal((await runner.tick()).result, "no_change");
       const [warning] = eventsOfType(repo, "warning");
       assert.ok(warning, "expected exactly one warning");
@@ -107,7 +107,7 @@ test("cut-off resumes stop after the streak limit and fall back to backoff", asy
     async () => {
       fs.mkdirSync(sessionDir(repo, "perf"), { recursive: true });
       fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
-      const runner = makeLoopRunner(repo, "perf");
+      const runner = makeRoleRunner(repo, "perf");
       for (let i = 1; i <= 3; i++) {
         assert.equal((await runner.tick()).result, "no_change");
         assert.equal(runner.state.resumePending, true, `cut-off ${i} still resumes`);
@@ -129,7 +129,7 @@ test("a cut-off director run re-queues the user prompt instead of resuming", asy
   const repo = await initializedRepo();
   await withPi(`printf '%s\n' '${thinkingOnlyLine("was routing the request", { output: 16 })}'`, async () => {
     enqueuePrompt(repo, "add a widget");
-    const runner = makeLoopRunner(repo, "director");
+    const runner = makeRoleRunner(repo, "director");
     assert.equal((await runner.tick()).result, "no_change");
     assert.equal(inboxSize(repo), 1, "the truncated prompt was not fulfilled: back in the inbox");
     assert.equal(dequeuePrompt(repo), "add a widget");
@@ -142,7 +142,7 @@ test("an aborted run merges nothing, does not back off, and marks itself resumab
   // Writes a half-done change, then hangs until killed. `exec` so SIGTERM reaches sleep.
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
+    const runner = makeRoleRunner(repo, "improve", defaultConfig(), "main", controller.signal);
     const before = mainSha(repo);
     setTimeout(() => controller.abort(), 300);
     const outcome = await runner.tick();
@@ -173,7 +173,7 @@ test("a resumed run continues the interrupted session and keeps the worktree edi
         `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'`,
       ].join("\n"),
     );
-    const resumed = makeLoopRunner(repo, "improve");
+    const resumed = makeRoleRunner(repo, "improve");
     assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
     const outcome = await resumed.tick();
     assert.equal(outcome.result, "queued");
@@ -212,7 +212,7 @@ test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits"
         `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'`,
       ].join("\n"),
     );
-    const resumed = makeLoopRunner(repo, "improve");
+    const resumed = makeRoleRunner(repo, "improve");
     assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
     const outcome = await resumed.tick();
     assert.equal(outcome.result, "queued");
@@ -260,7 +260,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
         `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the interrupted revision")}'`,
       ].join("\n"),
     );
-    const resumed = makeLoopRunner(repo, "improve");
+    const resumed = makeRoleRunner(repo, "improve");
     resumed.state.resumePending = true;
     resumed.state.revision = { sha, round: 1, at: Date.now() };
     resumed.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
@@ -300,7 +300,7 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
     restore = fakePi(
       [APPROVE_PI, `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the interrupted work")}'`].join("\n"),
     );
-    const resumed = makeLoopRunner(repo, "improve");
+    const resumed = makeRoleRunner(repo, "improve");
     resumed.state.resumePending = true;
     resumed.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: false };
     assert.equal((await resumed.tick()).result, "queued");
@@ -353,7 +353,7 @@ test("a cross-agent handoff re-sends an already-applied merge hand-back note", a
         `printf '%s\n' '${assistantLine("done\nSUMMARY: resolve the hand-back")}'`,
       ].join("\n"),
     );
-    const resumed = makeLoopRunner(repo, "improve");
+    const resumed = makeRoleRunner(repo, "improve");
     resumed.state.resumePending = true;
     resumed.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: true };
     assert.equal((await resumed.tick()).result, "queued");
@@ -392,7 +392,7 @@ test("a cross-agent handoff over an applied revision conflict carries both notes
         `printf '%s\n' '${assistantLine("done\nSUMMARY: resolve the revision conflict")}'`,
       ].join("\n"),
     );
-    const resumed = makeLoopRunner(repo, "improve");
+    const resumed = makeRoleRunner(repo, "improve");
     resumed.state.resumePending = true;
     resumed.state.revision = { sha, round: 1, at: Date.now() };
     resumed.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
@@ -436,7 +436,7 @@ test("a quiet-killed run keeps its edits and resumes promptly instead of discard
     ].join("\n"),
   );
   try {
-    const runner = makeLoopRunner(repo, "improve", config);
+    const runner = makeRoleRunner(repo, "improve", config);
     const tick = runner.tick();
     // Wait for the half-done edit to land: a fixed timer can fire before the fake pi even
     // starts under parallel load. The watchdog kills the run itself — no abort controller.
@@ -467,7 +467,7 @@ test("a quiet-killed run keeps its edits and resumes promptly instead of discard
         `exec sleep 30`,
       ].join("\n"),
     );
-    const resumed = makeLoopRunner(repo, "improve", config);
+    const resumed = makeRoleRunner(repo, "improve", config);
     assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
     const outcome = await resumed.tick();
     assert.equal(outcome.result, "queued");

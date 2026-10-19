@@ -8,7 +8,7 @@ import { verifyRequest } from "../src/merge/merge-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, mergeRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
@@ -24,7 +24,7 @@ import { eventsOfType, unwritableEvents } from "./fixtures/log-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { batchWiring, makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/merger-fixtures.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
@@ -49,7 +49,7 @@ function commitOffMain(file: string, content: string, message = "the rejected wo
 function verdictCtx(
   root: string,
   wt: string,
-  state: ReturnType<typeof freshLoopState>,
+  state: ReturnType<typeof freshRunnerState>,
   userPrompt: string | null,
   revisionRound?: number,
 ): Parameters<typeof resolveTickVerdict>[0] {
@@ -266,7 +266,7 @@ test("applyWithConflicts settles the archive and hands back markers only in the 
 test("a gate rejection points the rejected ref at the judged head and records round 1", async () => {
   await withPi(reviewerPi("VERDICT: reject\n1. breaks the rules"), async () => {
     const { root, sha } = await pinnedFixture();
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
     const w = batchWiring(ctx);
     const verdict = await verifyRequest(ctx, request(sha), w);
@@ -280,7 +280,7 @@ test("a gate rejection points the rejected ref at the judged head and records ro
 test("a rejection whose objection has survived two revisions is final and deletes the rejected ref", async () => {
   await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {
     const { root, sha } = await pinnedFixture();
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
     const w = batchWiring(ctx);
     // The rejected ref exists from the earlier rounds; a repeated objection clears it. This is
@@ -304,7 +304,7 @@ test("a rejection whose objection has survived two revisions is final and delete
 test("a converging chain whose revisions raise only new objections keeps revising", async () => {
   await withPi(reviewerPi("VERDICT: reject\n1. a brand-new concern"), async () => {
     const { root, sha } = await pinnedFixture();
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
     const w = batchWiring(ctx);
     // This is the chain's third rejection (revisionRound 2 → round 3), where the old
@@ -326,7 +326,7 @@ test("a converging chain whose revisions raise only new objections keeps revisin
 test("a chain whose objections never repeat ends at the backstop", async () => {
   await withPi(reviewerPi("VERDICT: reject\n1. a brand-new concern"), async () => {
     const { root, sha } = await pinnedFixture();
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
     const w = batchWiring(ctx);
     await setRef(root, rejectedRefName(ROLE), sha);
@@ -346,7 +346,7 @@ test("exhausting a revision still records the outcome when the events feed is un
   // into a thrown verification error after the ref is already gone.
   await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {
     const { root, sha } = await pinnedFixture();
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
     const w = batchWiring(ctx);
     await setRef(root, rejectedRefName(ROLE), sha);
@@ -371,7 +371,7 @@ test("a permanent reviewer config error still holds the pin when the events feed
   const configErrorPi = `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '400 model_not_supported' >&2; exit 1;; esac; done`;
   await withPi(configErrorPi, async () => {
     const { root, sha } = await pinnedFixture();
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
     ctx.config.review.model = "bad/model";
     const w = batchWiring(ctx);
@@ -387,7 +387,7 @@ test("a permanent reviewer config error still holds the pin when the events feed
   });
 });
 
-/** The `stageTickMerge` context the two staging tests share: the loop wiring every tick
+/** The `stageTickMerge` context the two staging tests share: the runner wiring every tick
  * supplies, with `overrides` layered on for per-test state, prompt, and reply text. */
 function stageCtx(
   root: string,
@@ -397,7 +397,7 @@ function stageCtx(
   return {
     root,
     role: "improve",
-    state: freshLoopState("improve"),
+    state: freshRunnerState("improve"),
     config: defaultConfig(),
     tickTurns: 4,
     userPrompt: null,
@@ -419,7 +419,7 @@ test("stageTickMerge carries the revision round onto the entry and clears state.
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
   const state = {
-    ...freshLoopState("improve"),
+    ...freshRunnerState("improve"),
     runs: 5,
     revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
   };
@@ -440,7 +440,7 @@ test("a user-request run that leaves a pending revision stages no round and keep
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "user-change.ts"), "export const userChange = true;\n");
   const revision = { sha: "a".repeat(40), round: 1, at: Date.now() };
-  const state = { ...freshLoopState("improve"), runs: 5, revision };
+  const state = { ...freshRunnerState("improve"), runs: 5, revision };
   const ctx = stageCtx(root, wt, {
     state,
     userPrompt: "please do the user thing",
@@ -458,7 +458,7 @@ test("a non-revision dirty nothing-to-do run does not drop a pending revision", 
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "user-change.ts"), "export const userChange = true;\n");
   const state = {
-    ...freshLoopState("improve"),
+    ...freshRunnerState("improve"),
     revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
   };
   const ctx = verdictCtx(root, wt, state, "please do the user thing");
@@ -473,7 +473,7 @@ test("a revision run that declares nothing-to-do drops the change and ends no_ch
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
   const state = {
-    ...freshLoopState("improve"),
+    ...freshRunnerState("improve"),
     revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
   };
   const ctx = verdictCtx(root, wt, state, null, 1);
@@ -490,7 +490,7 @@ test("a revision run drops the change when the events feed is unwritable", async
   const { root, wt } = await initializedWorktree("improve");
   await setRef(root, rejectedRefName("improve"), "a".repeat(40));
   const state = {
-    ...freshLoopState("improve"),
+    ...freshRunnerState("improve"),
     revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
   };
   const ctx = verdictCtx(root, wt, state, null, 1);
@@ -513,7 +513,7 @@ test("a revision run that declares nothing-to-do drops the change with a clean w
   // the same rejected diff and the change loops without ever reaching its limit.
   await setRef(root, rejectedRefName("improve"), "a".repeat(40));
   const state = {
-    ...freshLoopState("improve"),
+    ...freshRunnerState("improve"),
     revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
   };
   const ctx = verdictCtx(root, wt, state, null, 1);
@@ -535,7 +535,7 @@ test("the run prompt skips the plain rejection note while a revision is due", ()
     root: dir,
     config: defaultConfig(),
     role: "coverage",
-    state: { ...freshLoopState("coverage"), lastReview, revision: { sha: "b".repeat(40), round: 1, at: Date.now() } },
+    state: { ...freshRunnerState("coverage"), lastReview, revision: { sha: "b".repeat(40), round: 1, at: Date.now() } },
   });
   assert.ok(withRevision);
   assert.doesNotMatch(withRevision.prompt, /previous change was rejected/);
@@ -544,7 +544,7 @@ test("the run prompt skips the plain rejection note while a revision is due", ()
     root: dir,
     config: defaultConfig(),
     role: "coverage",
-    state: { ...freshLoopState("coverage"), lastReview },
+    state: { ...freshRunnerState("coverage"), lastReview },
   });
   assert.ok(withoutRevision);
   assert.match(withoutRevision.prompt, /previous change was rejected/);
@@ -554,7 +554,7 @@ test("the director never gets a revision: a rejection leaves no revision state",
   await withPi(reviewerPi("VERDICT: reject\n1. no good"), async () => {
     const { root, sha } = commitOffMain("seed.txt", "director work\n", "director work");
     await setRef(root, mergeRefName(DIRECTOR_ROLE), sha);
-    const state = freshLoopState(DIRECTOR_ROLE);
+    const state = freshRunnerState(DIRECTOR_ROLE);
     const { ctx } = makeCtx(root, state);
     const w = batchWiring(ctx);
     const verdict = await verifyRequest(ctx, request(sha, { role: DIRECTOR_ROLE }), w);
@@ -631,7 +631,7 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
       `echo new > new.txt`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       runner.state.revision = { sha, round: 1, at: Date.now() };
       runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
       const outcome = await runner.tick();
@@ -668,7 +668,7 @@ test("a revision whose diff no longer applies falls back to the plain rejection"
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: redid the change")}'`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       runner.state.revision = { sha: "0".repeat(40), round: 1, at: Date.now() };
       runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: rejected, at: Date.now() };
       const outcome = await runner.tick();
@@ -692,7 +692,7 @@ test("a merged revision deletes the rejected ref", async () => {
   const role = "improve";
   const rejected = headSha(root);
   assert.equal(await setRef(root, rejectedRefName(role), rejected), true, "the rejected ref is set");
-  const state = freshLoopState(role);
+  const state = freshRunnerState(role);
   const revision = {
     role,
     sha: "b".repeat(40),
@@ -712,7 +712,7 @@ test("a fresh merge leaves a pending revision's rejected ref alone", async () =>
   const role = "improve";
   const rejected = headSha(root);
   assert.equal(await setRef(root, rejectedRefName(role), rejected), true, "the rejected ref is set");
-  const state = freshLoopState(role);
+  const state = freshRunnerState(role);
   const fresh = { role, sha: "b".repeat(40), run: 3, summary: "fresh work", enqueuedAt: Date.now() };
 
   await settleMergeOutcome(root, fresh, state, "changed", 1, { tokens: 0, cost: 0, providerCost: {} }, path.join(root, "no-such-queue-file.json"));

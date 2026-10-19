@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
-import { makeLoopRunner, pinWorktreeAsSlot } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, pinWorktreeAsSlot } from "./fixtures/runner-fixtures.js";
 import { sessionDir } from "../src/paths.js";
 import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
@@ -27,7 +27,7 @@ test("a role prompt queued while main is red survives the blocked tick", async (
   enqueueRolePrompt(repo, "feature", "check the flow");
   const marker = path.join(tmpdir(), "pi-invoked-role-prompt");
   await withPi(`touch '${marker}'`, async () => {
-    const runner = makeLoopRunner(repo, "feature");
+    const runner = makeRoleRunner(repo, "feature");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "main_red");
     assert.ok(!fs.existsSync(marker), "no pi run starts while main is red");
@@ -58,7 +58,7 @@ test("a cut-off tick's requeued role prompt is reclaimed by the resume, not run 
     ].join("\n"),
     async () => {
       enqueueRolePrompt(repo, "perf", "fix the flubbernator");
-      const runner = makeLoopRunner(repo, "perf");
+      const runner = makeRoleRunner(repo, "perf");
       const first = await runner.tick();
       assert.equal(first.result, "no_change");
       assert.equal(first.cutOff, true, "run 1 was cut off at the context ceiling");
@@ -99,7 +99,7 @@ test("a failed resume re-queues the reclaimed prompt, so the request is not lost
     ].join("\n"),
     async () => {
       enqueueRolePrompt(repo, "perf", "fix the flubbernator");
-      const runner = makeLoopRunner(repo, "perf");
+      const runner = makeRoleRunner(repo, "perf");
       assert.equal((await runner.tick()).result, "no_change");
       assert.equal((await runner.tick()).result, "error", "the resume failed");
       // The reclaim took the queue copy and the failed resume put it back: the request survives.
@@ -139,7 +139,7 @@ test("a resume that fails on the provider's error turn keeps the edits and reque
       `if [ "$n" = 1 ]; then printf '%s\\n' '${errorLine("400: the provider or policy you attempted to specify 'DeepInfra' is not valid — model_not_supported")}'; exit 1; else printf '%s\\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'; fi`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(root, "perf");
+      const runner = makeRoleRunner(root, "perf");
       runner.state.resumePending = true; // what the interrupted tick left behind
       runner.state.resumePromptFile = queuedFile;
       const first = await runner.tick();
@@ -173,7 +173,7 @@ test("a tick that throws after dequeuing the prompt re-queues it instead of losi
   const marker = path.join(tmpdir(), "pi-invoked-crash");
   await withPi(`touch '${marker}'`, async () => {
     enqueueRolePrompt(repo, "perf", "fix the flubbernator");
-    const runner = makeLoopRunner(repo, "perf");
+    const runner = makeRoleRunner(repo, "perf");
     // Corrupt the repo's HEAD so ensureWorktree throws after the dequeue — an environment
     // failure, not a pi outcome the outcome handlers could re-queue from.
     fs.rmSync(path.join(repo, ".git", "HEAD"));
@@ -193,7 +193,7 @@ test("a tick that dequeues a role prompt logs one prompt_taken naming the tick",
   const repo = await initializedRepo();
   await withPi(`printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
     enqueueRolePrompt(repo, "perf", "fix the flubbernator");
-    const runner = makeLoopRunner(repo, "perf");
+    const runner = makeRoleRunner(repo, "perf");
     await runner.tick();
     const taken = eventsOfType(repo, "prompt_taken");
     assert.equal(taken.length, 1);
@@ -209,7 +209,7 @@ test("a tick that dequeues a role prompt logs one prompt_taken naming the tick",
 test("assembling the preview leaves the prompt queued and logs no prompt_taken", async () => {
   const repo = await initializedRepo();
   enqueueRolePrompt(repo, "perf", "fix the flubbernator");
-  const runner = makeLoopRunner(repo, "perf");
+  const runner = makeRoleRunner(repo, "perf");
   assembleTickPrompt({ root: repo, config: defaultConfig(), role: "perf", state: runner.state, preview: true });
   assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
   assert.deepEqual(queuedRolePrompts(repo, "perf"), ["fix the flubbernator"]);

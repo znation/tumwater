@@ -1,4 +1,4 @@
-/** The loop e2e suite's leftover-recovery slice — how a committed-but-unmerged change (the
+/** The runner e2e suite's leftover-recovery slice — how a committed-but-unmerged change (the
  * merge pin) is recovered by a later tick: re-merged through the gate, dropped with an
  * author-facing reason once it exhausts the merge-conflict cap, or failed closed so a
  * shutdown mid-merge survives for next-start recovery. Extracted from runner-3.test.ts
@@ -22,7 +22,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/runner-fixtures.js";
 import { mergeHead, mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -64,7 +64,7 @@ test("a merge pin left behind by an interrupted tick is re-merged through the ga
       `echo new > new.txt`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       const outcome = await runner.tick();
 
       // Merge-queue speed 3c — main has one writer: the tick QUEUES the leftover like a fresh
@@ -124,7 +124,7 @@ test("a pin at the merge-conflict cap is handed back and the tick resolves it in
       `echo new > new.txt`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
       const outcome = await runner.tick();
 
@@ -169,7 +169,7 @@ test("a pin at the cap whose lineage already used its hand-back is discarded and
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: redid the change on current main")}'`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
       // A hand-back is already on record for this lineage, so the cap means discard, not hand back.
       runner.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: false };
@@ -208,7 +208,7 @@ test("a hand-back whose diff no longer applies is dropped and the author starts 
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: started fresh")}'`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       runner.state.conflictHandback = { sha: missing, at: Date.now(), reason: "merge", applied: false };
       const outcome = await runner.tick();
 
@@ -257,7 +257,7 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
       `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued", "recovery queued the pin");
       assert.equal(outcome.highFriction, true, "the queued outcome keeps the recovered flag");
@@ -282,7 +282,7 @@ test("a director tick that ends on leftover recovery puts its user prompt back",
   const ran = path.join(tmpdir(), "ran");
   await withPi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
     enqueuePrompt(repo, "important request");
-    const runner = makeLoopRunner(repo, "director");
+    const runner = makeRoleRunner(repo, "director");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the director's leftover went on the merge queue");
     assert.equal(headMerge(repo)?.entry.sha, sha);
@@ -312,7 +312,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       assert.equal((await runner.tick()).result, "queued", "recovery adopted and queued the tip");
       // The role worktree is freed as soon as the adopted pin holds the commit.
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
@@ -356,7 +356,7 @@ test("an unmergeable leftover is retried on the next tick and keeps its merge pi
       `fi`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
 
@@ -396,7 +396,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
       ...firstRunThenIdle(m1, seedBranchEdit()),
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
       // The merge's commit is pinned for recovery; the role worktree is clean at main.
@@ -450,7 +450,7 @@ test("a persistent recovery review failure feeds the error streak and reads fail
       ...firstRunThenIdle(m1, seedBranchEdit()),
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
 
@@ -502,13 +502,13 @@ test("a permanent reviewer config error holds the pin instead of re-queuing it",
     async () => {
       const config = defaultConfig();
       config.review.model = "bad/model";
-      const runner = makeLoopRunner(repo, "improve", config);
+      const runner = makeRoleRunner(repo, "improve", config);
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, config, "improve"), "review_error");
       assert.equal(runner.state.mergeReviewError?.selector, "bad/model", "the hold names the failed reviewer selector");
 
       // The next tick holds the pin: no re-queue and no second merge (which would pay another
-      // full gate check for a request that can never succeed), and an error outcome so the loop
+      // full gate check for a request that can never succeed), and an error outcome so the runner
       // backs off on the error ladder instead of re-queuing at suite speed.
       assert.equal((await runner.tick()).result, "error", "the held tick backs off instead of re-queuing");
       assert.equal(queueDepth(repo), 0, "nothing was re-queued while the config stayed bad");

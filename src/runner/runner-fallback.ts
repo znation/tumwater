@@ -1,16 +1,16 @@
-import type { LoopState } from "./runner-state.js";
+import type { RunnerState } from "./runner-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { logEventBestEffort } from "../events/events.js";
 import { modelFallbackVerdict, providerFailureReason, recordModelFallback } from "./model-fallback.js";
 import type { FallbackRunContext } from "./runner-run.js";
 
-/** What the fallback fold needs from its `LoopRunner` host: the loop identity for the event,
+/** What the fallback fold needs from its `RoleRunner` host: the runner identity for the event,
  * the shared state it reads/writes, and the runner's save. */
 interface FallbackContext {
   root: string;
   role: string;
-  state: LoopState;
+  state: RunnerState;
   save(): void;
 }
 
@@ -71,7 +71,7 @@ export function foldModelFallbackPhase(
  * pair and duration the same way. A pre-trip state (no episode) has no ended event. */
 function emitFallbackEnded(
   ctx: FallbackContext,
-  prior: NonNullable<LoopState["modelFallback"]>,
+  prior: NonNullable<RunnerState["modelFallback"]>,
   primary: ResolvedModelConfig,
   now: number,
   wasIn: boolean,

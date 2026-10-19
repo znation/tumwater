@@ -1,6 +1,6 @@
 /** The model-fallback state machine, tested at both levels.
  *
- * The whole-tick loop-wiring tests first (PLANS.md "Model failure fallback, part 1/2"):
+ * The whole-tick runner-wiring tests first (PLANS.md "Model failure fallback, part 1/2"):
  * consecutive provider-class failures trip the episode and the next tick runs the role's tier
  * fallback pair, a clean probe tick after the cooldown returns to the primary and emits the
  * ended event, and a role with no fallback configured never trips. The regression tests in the
@@ -9,21 +9,21 @@
  *
  * The FOLD tests at the very bottom unit-test src/runner/runner-fallback.ts's
  * foldModelFallbackPhase directly — the started/ended event payloads and the clear-on-config-drop
- * paths only exercised indirectly by the whole-tick loop runner tests above. */
+ * paths only exercised indirectly by the whole-tick runner tests above. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { eventsLogPath } from "../src/paths.js";
 import { readRunLines, withPi, withIdlePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { transientErrorText } from "./fakes/transient.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
-import type { LoopState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state.js";
 import type { ModelFallbackState } from "../src/runner/model-fallback.js";
 import type { ResolvedModelConfig } from "../src/config/config-views.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
@@ -51,7 +51,7 @@ test("three provider failures trip fallback; the next tick runs the fallback pai
   config.model = "primary/m1";
   config.fallback = "backup/f1";
   await withPi(failingRecorder(argsFile), async () => {
-    const runner = makeLoopRunner(repo, "clean", config);
+    const runner = makeRoleRunner(repo, "clean", config);
     for (let i = 0; i < 4; i++) assert.equal((await runner.tick()).result, "error");
     assert.ok(runner.state.modelFallback, "the episode is persisted");
     assert.ok(runner.state.modelFallback.since > 0);
@@ -74,7 +74,7 @@ test("a clean probe tick after the cooldown returns to primary and ends the epis
   const config = defaultConfig();
   config.model = "primary/m1";
   config.fallback = "backup/f1";
-  const runner = makeLoopRunner(repo, "clean", config);
+  const runner = makeRoleRunner(repo, "clean", config);
   // Three recorded 503s trip the episode; the fourth run idles so the probe succeeds.
   const script = [
     `m=""; p=""; n=""`,
@@ -115,7 +115,7 @@ test("a role with no fallback configured never trips and keeps its primary argv"
   const config = defaultConfig();
   config.model = "primary/m1";
   await withPi(failingRecorder(argsFile), async () => {
-    const runner = makeLoopRunner(repo, "clean", config);
+    const runner = makeRoleRunner(repo, "clean", config);
     for (let i = 0; i < 3; i++) assert.equal((await runner.tick()).result, "error");
     assert.equal(runner.state.modelFallback, undefined);
     assert.equal(eventsOfType(repo, "model_fallback_started").length, 0);
@@ -151,7 +151,7 @@ test("a fallback-episode tick's missing-SUMMARY follow-up runs on the fallback p
     `printf '%s\\n' '${assistantLine("did it, no summary")}'`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "clean", config);
+    const runner = makeRoleRunner(repo, "clean", config);
     for (let i = 0; i < 3; i++) assert.equal((await runner.tick()).result, "error");
     assert.ok(runner.state.modelFallback?.since, "the episode is active");
     assert.equal((await runner.tick()).result, "queued");
@@ -167,7 +167,7 @@ test("removing the fallback config mid-episode clears the episode on the next pr
   const config = defaultConfig();
   config.model = "primary/m1";
   config.fallback = "backup/f1";
-  const runner = makeLoopRunner(repo, "clean", config);
+  const runner = makeRoleRunner(repo, "clean", config);
   runner.state.modelFallback = {
     failures: 0,
     since: Date.now() - 1000,
@@ -193,7 +193,7 @@ test("runProvider and runConfig name the pair the next tick will actually use", 
   const config = defaultConfig();
   config.model = "primary/m1";
   config.fallback = "backup/f1";
-  const runner = makeLoopRunner(repo, "clean", config);
+  const runner = makeRoleRunner(repo, "clean", config);
   const now = Date.now();
   assert.equal(runner.runProvider(now), "primary");
   assert.equal(runner.runConfig(now).model, "m1");
@@ -216,7 +216,7 @@ test("a due probe tick that never invokes pi leaves the episode active", async (
   const config = defaultConfig();
   config.model = "primary/m1";
   config.fallback = "backup/f1";
-  const runner = makeLoopRunner(repo, "director", config);
+  const runner = makeRoleRunner(repo, "director", config);
   runner.state.modelFallback = {
     failures: 0,
     since: Date.now() - 1000,
@@ -251,7 +251,7 @@ test("a provider failure the transient retry recovers does not count against the
     `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "clean", config);
+    const runner = makeRoleRunner(repo, "clean", config);
     for (let i = 0; i < 3; i++) assert.equal((await runner.tick()).result, "no_change");
     assert.equal(runner.lastBackendFailure?.kind, "stream-severed", "the failed attempts did stamp the tick");
     assert.equal(runner.state.modelFallback, undefined, "the authoring run answered, so no trip");
@@ -264,7 +264,7 @@ test("an unwritable events feed cannot reject a tick — its fallback verdict st
   const config = defaultConfig();
   config.model = "primary/m1";
   config.fallback = "backup/f1";
-  const runner = makeLoopRunner(repo, "clean", config);
+  const runner = makeRoleRunner(repo, "clean", config);
   // An active episode whose probe is due: the next successful idle run on the primary ends it.
   runner.state.modelFallback = {
     failures: 0,
@@ -281,7 +281,7 @@ test("an unwritable events feed cannot reject a tick — its fallback verdict st
     assert.equal((await runner.tick()).result, "no_change");
   });
   assert.equal(runner.state.modelFallback, undefined, "the probe verdict folded despite the dead feed");
-  assert.equal(loadLoopState(repo, "clean").running, false, "the end-of-tick save ran");
+  assert.equal(loadRunnerState(repo, "clean").running, false, "the end-of-tick save ran");
 });
 
 // --- foldModelFallbackPhase unit tests ------------------------------------------------------
@@ -333,12 +333,12 @@ const inFallback: ModelFallbackState = {
 
 function harness(prior?: ModelFallbackState): {
   root: string;
-  state: LoopState;
+  state: RunnerState;
   saves: number;
   fold(fallback: ResolvedModelConfig | null, probe: boolean, pi: PiRunResult): void;
 } {
   const root = tmpdir();
-  const state = { modelFallback: prior } as unknown as LoopState;
+  const state = { modelFallback: prior } as unknown as RunnerState;
   const out = {
     root,
     state,

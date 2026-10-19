@@ -5,7 +5,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
  *
  * When a role's primary model keeps failing with provider-class errors (a 429 or a
  * connection/timeout/server/model-load/stream-severed backend failure — the classes a pi run
- * reports as `transientRateLimit`/`transientBackend`), the loop temporarily runs the role's
+ * reports as `transientRateLimit`/`transientBackend`), the runner temporarily runs the role's
  * ticks on its tier's resolved fallback pair instead of burning the error ladder until the
  * streak breaker pauses it. Once the cooldown elapses the next tick runs on the primary as a
  * probe; a probe that ANSWERS without a provider failure ends the episode.
@@ -14,7 +14,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
  * empty inbox, a recovered leftover, a red-main block) leaves the state untouched, and a run
  * that was aborted, quiet-killed, or timed out gives no verdict either. The module is pure:
  * every function takes `now` from the caller, so the scheduling rules are unit-testable
- * without a real clock. The loop owns the persistence (LoopState.modelFallback). */
+ * without a real clock. The runner owns the persistence (RunnerState.modelFallback). */
 
 /** Persisted state of one role's model-fallback episode. */
 export interface ModelFallbackState {
@@ -31,7 +31,7 @@ export interface ModelFallbackState {
    * MODEL_FALLBACK_MAX_COOLDOWN_MS. */
   cooldownMs: number;
   /** The provider-class failure that tripped the episode, for the started event and the
-   * surfaces that render why a loop is off-model. */
+   * surfaces that render why a runner is off-model. */
   reason: string;
 }
 
@@ -123,7 +123,7 @@ export function recordModelFallback(
 }
 
 /** The reason label one run's provider evidence yields: "rate-limit" for a 429, else the
- * backend-failure kind. Exported so the loop's evidence assembly and tests share one
+ * backend-failure kind. Exported so the runner's evidence assembly and tests share one
  * spelling. */
 export function providerFailureReason(
   rateLimit: boolean,

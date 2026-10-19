@@ -2,7 +2,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { LoopState } from "./runner-state.js";
+import type { RunnerState } from "./runner-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { branchExists, deleteRef, commitMessage, changeBaseRev, headOf } from "../git/git.js";
 import { git, gitTry } from "../git/git-run.js";
@@ -18,7 +18,7 @@ import {
   buildRevisionNote,
   buildRejectedReviewNote,
 } from "../prompt/gate-prompts.js";
-import type { LoopPi } from "./runner-pi.js";
+import type { RunnerPi } from "./runner-pi.js";
 import {
   modelSelectorField,
   resolvedAgentConfig,
@@ -61,22 +61,22 @@ export interface FallbackRunContext {
   primary: ResolvedModelConfig;
 }
 
-/** Everything the tick-pipeline phases need from their `LoopRunner` host. The runner builds one
+/** Everything the tick-pipeline phases need from their `RoleRunner` host. The runner builds one
  * per tick (before its `runTick` override point) from its readonly fields and live config, plus
  * bound callbacks back into the runner for the work whose body stays there (the merge,
  * recovery phases, the fallback fold). Splitting the pipeline out of the class keeps each phase
  * a plain function of this context. */
-export interface LoopTickContext {
+export interface RunnerRunContext {
   root: string;
   role: string;
   mainBranch: string;
-  /** This loop's base role (`feature-2` → `feature`) — the red-main gate reads it. */
+  /** This runner's base role (`feature-2` → `feature`) — the red-main gate reads it. */
   baseRole: string;
   config: TumwaterConfig;
-  state: LoopState;
+  state: RunnerState;
   usage: TickUsage;
   pending: PendingPrompt;
-  pi: LoopPi;
+  pi: RunnerPi;
   save(): void;
   warn(message: string): void;
   /** The signal a tick's pi runs watch: harness shutdown OR this tick's abort controller. */
@@ -150,11 +150,11 @@ async function markerBearingFiles(wt: string): Promise<string[]> {
   return files.filter((f) => hasConflictMarkers(wt, [f]));
 }
 
-/** Run one full tick of a role loop: resolve the config (including the model-fallback probe),
+/** Run one full tick of a role runner: resolve the config (including the model-fallback probe),
  * log the start, run the pipeline, then let finalizeTick schedule the next run. Never throws: a
- * failed tick is an "error" result, saved and logged like any other so the loop stays resumable
- * and observable. */
-export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
+ * failed tick is an "error" result, saved and logged like any other so the runner stays
+ * resumable and observable. */
+export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
   const s = ctx.state;
   // This role's view of the config (per-role provider/model/thinking + minRunIntervalSeconds
   // overrides): resolved once so every interval-based scheduling branch honors a slow
@@ -176,7 +176,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   const probing = fallback !== null && modelFallbackProbe(s.modelFallback, now);
   const onFallback = fallback !== null && modelFallbackActive(s.modelFallback, now);
   // The fallback pair keeps primaryCfg's gap (they resolve the same one outside the plan
-  // loop's zero-gap window), so a plan on its model fallback still schedules the same gap.
+  // schedule's zero-gap window), so a plan on its model fallback still schedules the same gap.
   let cfg =
     onFallback && fallback !== null
       ? { ...fallback, minRunIntervalSeconds: primaryCfg.minRunIntervalSeconds }
@@ -234,7 +234,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   }
   // Capture what this tick runs on (the orchestrator's budget handback matches it against
   // the fallback pair) and clear any stale handback flag: an abort request that lands while
-  // the loop is idle must not name a later tick's resume.
+  // the runner is idle must not name a later tick's resume.
   // The pair is keyed by the seam that ran (seamHoldKey), not the pi provider: a claude
   // fallback tick carries `claude`, matching the configured fallback pair that tickOnPair
   // (src/gates/budget-gates.ts) compares against, so a tick on a claude fallback is handed
@@ -243,8 +243,8 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   ctx.setHandedBack(false);
   s.runs += 1;
   // gen / peak ctx are per-tick windows, not lifetime totals (user decision 2026-08-25):
-  // reset before the start-of-tick save so a working loop's columns grow live from 0 and
-  // an idle loop's show its last completed tick. The loop's pi plumbing accumulates every pi
+  // reset before the start-of-tick save so a working runner's columns grow live from 0 and
+  // an idle runner's show its last completed tick. The runner's pi plumbing accumulates every pi
   // run of this tick (main + transient-timeout retry + conflict resolution) into them, and the
   // end-of-tick save persists the finished run's totals.
   s.generatedTokens = 0;
@@ -252,7 +252,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   ctx.usage.reset();
   ctx.setRecoveryFailure(undefined);
   // A fresh per-tick abort controller and a cleared user-abort flag: an abort request that
-  // lands while the loop is idle must not leak into the next tick.
+  // lands while the runner is idle must not leak into the next tick.
   ctx.resetTickAbort();
   s.running = true;
   s.lastRunStartedAt = Date.now();
@@ -275,7 +275,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
 
   let outcome: TickOutcome;
   try {
-    // The preflight can end the tick before any pi spawns: a text-only loop with an image
+    // The preflight can end the tick before any pi spawns: a text-only runner with an image
     // attachment and no image-capable target has nothing to run, so it errors without
     // spending a model call. Everything else runs the pipeline as usual.
     outcome = preflightBlocked
@@ -316,7 +316,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
     recoveryFailure: ctx.recoveryFailure,
   });
   // The tick is over: the captured pair must not outlive it (a later poll must never match
-  // an idle loop's stale pair against a resumed fallback).
+  // an idle runner's stale pair against a resumed fallback).
   ctx.setTickPair(undefined);
   return finalizeResult;
 }
@@ -325,7 +325,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
  * worktree or on a leased pool slot. Returns the setup's outcome; a null plan means nothing to
  * run. */
 export async function runTickPhase(
-  ctx: LoopTickContext,
+  ctx: RunnerRunContext,
   cfg: ResolvedModelConfig,
   fallbackCtx: FallbackRunContext,
 ): Promise<TickOutcome> {
@@ -333,7 +333,7 @@ export async function runTickPhase(
   // How this tick starts — resume the interrupted session or run fresh, and which prompt —
   // is the resume policy, not runner mechanics: it lives in src/tick/tick-resume.ts, which also
   // consumes the resume flags and reclaims the interrupted tick's re-queued prompt. A null
-  // plan means the loop has nothing to run.
+  // plan means the runner has nothing to run.
   const plan = planTickStart({
     root: ctx.root,
     role: ctx.role,
@@ -348,7 +348,7 @@ export async function runTickPhase(
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {
     // The image-reroute one-shot marker routes exactly ONE tick onto the image-capable
-    // target (plans/image-input.md part 4/5, INV-J2): for a role loop, planTickStart consumes
+    // target (plans/image-input.md part 4/5, INV-J2): for a role runner, planTickStart consumes
     // it after reading its handoff-note facts. The director never resumes, so planTickStart's
     // image-reroute branch never runs for it and the marker would otherwise linger and
     // re-route every later director tick off its own tier. It is cleared here — after this
@@ -374,7 +374,7 @@ export async function runTickPhase(
  * uses: a resume flag set only later, by applyTickOutcome, is too late to keep the worktree. A
  * user abort discards its work and is never pinned. */
 export function slotPinnedForResume(
-  state: Pick<LoopState, "resumePending">,
+  state: Pick<RunnerState, "resumePending">,
   outcome: TickOutcome | undefined,
 ): boolean {
   return (
@@ -392,7 +392,7 @@ export function slotPinnedForResume(
  * needs; every other release detaches first so the branch is free for whichever slot the role
  * leases next. */
 async function runTickInLeasePhase(
-  ctx: LoopTickContext,
+  ctx: RunnerRunContext,
   plan: TickStartPlan,
   cfg: ResolvedModelConfig,
   fallbackCtx: FallbackRunContext,
@@ -432,7 +432,7 @@ async function runTickInLeasePhase(
  * legacy `.tumwater/worktrees/<role>` still holds it (the ordering that merges this part
  * before part 4c, which retires those directories); the stale checkout is never used again.
  * Untracked files are cleaned so the checkout is pristine. */
-async function checkoutRoleBranchPhase(ctx: LoopTickContext, dir: string): Promise<void> {
+async function checkoutRoleBranchPhase(ctx: RunnerRunContext, dir: string): Promise<void> {
   const branch = branchName(ctx.role);
   if (await branchExists(ctx.root, branch)) {
     await git(dir, "checkout", "-f", "--ignore-other-worktrees", branch);
@@ -443,7 +443,7 @@ async function checkoutRoleBranchPhase(ctx: LoopTickContext, dir: string): Promi
 }
 
 async function tickWithWorktreePhase(
-  ctx: LoopTickContext,
+  ctx: RunnerRunContext,
   plan: TickStartPlan,
   cfg: ResolvedModelConfig,
   fallbackCtx: FallbackRunContext,
@@ -580,8 +580,8 @@ async function tickWithWorktreePhase(
   let revisionRound: number | undefined;
   if (s.revision && ctx.role !== DIRECTOR_ROLE && userPrompt === null) {
     const { sha, round } = s.revision;
-    // The prompt's rejected/revision notes read the loop's most recent rejection; an absent
-    // one (a fresh loop or a hand-edited state) reads the empty reasons list. Computed once
+    // The prompt's rejected/revision notes read the runner's most recent rejection; an absent
+    // one (a fresh runner or a hand-edited state) reads the empty reasons list. Computed once
     // for the three revision-append sites and the rejected-note fallback below, so the
     // get-or-default idiom cannot drift between them.
     const lastReviewOrEmpty = s.lastReview ?? { reasons: [] };
@@ -666,13 +666,13 @@ async function tickWithWorktreePhase(
 }
 
 /** Merge the worktree branch on main (see src/merge/merge-to-main.ts for the
- * rebase → verify → ff-merge → conflict-retry flow): delegates with the loop identity, tick
+ * rebase → verify → ff-merge → conflict-retry flow): delegates with the runner identity, tick
  * number, and shared pi wiring so a conflict-resolution run folds into this tick's counters
  * like any other pi run. Only the refusal-note merge (src/verdict/refusal.ts) still uses it —
  * reviewed changes merge through the merge pipeline's leased verification slot instead; md-only
  * notes are review-exempt by construction, so they keep this branch path (plans/merge-queue.md
  * 2/5). */
-async function mergePhase(ctx: LoopTickContext, wt: string, summary: string): Promise<TickResult> {
+async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): Promise<TickResult> {
   return mergeToMain(
     {
       root: ctx.root,
@@ -693,11 +693,11 @@ async function mergePhase(ctx: LoopTickContext, wt: string, summary: string): Pr
  * classification (abort, config request, quiet kill, timeout, refusal, failure, no-change) lives
  * in resolveTickVerdict (src/tick/tick-verdict.ts), and the fulfillable path — staging —
  * stays here. `userPrompt` is the raw director prompt this tick is executing (null for role
- * loops) so unfulfilled outcomes can re-queue it; `revisionRound` is the revision this tick holds
+ * runners) so unfulfilled outcomes can re-queue it; `revisionRound` is the revision this tick holds
  * (undefined when it is not a revision); `flow` is the qa observer's FLOW line (null for every
  * other role). */
 export async function handlePiResultPhase(
-  ctx: LoopTickContext,
+  ctx: RunnerRunContext,
   pi: PiRunResult,
   userPrompt: string | null,
   revisionRound: number | undefined,

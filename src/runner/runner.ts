@@ -2,13 +2,13 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome } from "../tick/tick-outcome.js";
 import type { BackendFailureKind, PiRunOptions } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { loadLoopState, saveLoopState, zeroCounters, type LoopState } from "./runner-state.js";
+import { loadRunnerState, saveRunnerState, zeroCounters, type RunnerState } from "./runner-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { promptPreview } from "../inbox/inbox.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
-import { LoopPi } from "./runner-pi.js";
+import { RunnerPi } from "./runner-pi.js";
 import {
   configForRole,
   seamHoldKey,
@@ -24,7 +24,7 @@ import {
   runTickPhase,
   tickPhase,
   type FallbackRunContext,
-  type LoopTickContext,
+  type RunnerRunContext,
 } from "./runner-run.js";
 import {
   finishAbortedTickPhase,
@@ -34,15 +34,15 @@ import {
 import { foldModelFallbackPhase } from "./runner-fallback.js";
 import type { LeftoverRecovery } from "./leftover.js";
 
-/** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
-export class LoopRunner {
-  state: LoopState;
+/** One role runner: owns a persistent worktree + branch and runs one tick at a time. */
+export class RoleRunner {
+  state: RunnerState;
   /** The current tumwater.json config. Not readonly on purpose: the orchestrator pushes a
    * freshly loaded config in here every poll cycle (live-reload), and every downstream read
    * goes through this, so one assignment steers provider/model/thinking/instructions,
    * tick intervals, backoff, and role enablement for subsequent ticks. */
   config: TumwaterConfig;
-  /** The 429 observation from this loop's usage accounting (TickUsage.lastRateLimit,
+  /** The 429 observation from this runner's usage accounting (TickUsage.lastRateLimit,
    * src/tick/tick-usage.ts): the orchestrator's team-wide hold wiring reads it through the
    * runner (src/team/team-polls.ts), so the field keeps its place on the runner's surface. */
   get lastRateLimit(): { at: number; retryAfterSeconds?: number; provider?: string } | undefined {
@@ -91,7 +91,7 @@ export class LoopRunner {
    * budget-gates.ts onFallback, set alongside `config` by the orchestrator's poll): an
    * image reroute may then look only among the free fallback pairs, never a priced primary
    * (plans/image-input.md "Reroute target" "Regime"). Pure scheduler input, never whether
-   * the LOOP itself is mid-fallback; defaults false, so standalone-loop tests stay on the
+   * the runner itself is mid-fallback; defaults false, so standalone-runner tests stay on the
    * primary regime unless they set it. */
   budgetFallbackActive = false;
   /** The merge failure this tick's leftover recovery is retrying, if any (a retriable merger
@@ -99,13 +99,13 @@ export class LoopRunner {
    * attached to the returned TickOutcome so applyTickOutcome can feed it into the error streak
    * even though the tick itself ends `queued` (BUGS.md 2026-09-21). Reset at every tick start. */
   private recoveryFailure?: string;
-  /** This loop's pi-run plumbing (src/runner/runner-pi.ts): shared per-run wiring, the transient
+  /** This runner's pi-run plumbing (src/runner/runner-pi.ts): shared per-run wiring, the transient
    * retry policy, and the SUMMARY follow-up. Host accessors are read live at every call, so
    * the orchestrator's config live-reload and the tick lifecycle need no notification path. */
-  private readonly pi: LoopPi;
-  /** This loop's base role: `feature-2` → `feature`. Every identity lookup that is ABOUT the
+  private readonly pi: RunnerPi;
+  /** This runner's base role: `feature-2` → `feature`. Every identity lookup that is ABOUT the
    * role (its catalog charter, model, tier, red-main class) reads this, while state, branch,
-   * refs, inbox and notebook key the loop id. Equal to `role` until instances exist. */
+   * refs, inbox and notebook key the runner id. Equal to `role` until instances exist. */
   readonly baseRole: string;
 
   constructor(
@@ -120,8 +120,8 @@ export class LoopRunner {
     this.config = config;
     this.baseRole = baseRoleOf(role);
     this.pending = new PendingPrompt(root, role);
-    this.state = loadLoopState(root, role);
-    this.pi = new LoopPi({
+    this.state = loadRunnerState(root, role);
+    this.pi = new RunnerPi({
       root: this.root,
       role: this.role,
       config: () => this.config,
@@ -143,12 +143,13 @@ export class LoopRunner {
   }
 
   private save(): void {
-    saveLoopState(this.root, this.state);
+    saveRunnerState(this.root, this.state);
   }
 
-  /** Log one warning event for this loop — the single home of the warning-event shape, so every
-   * warning site (pin failure, transient retry, error/quiet-kill streak, no-change diagnosis,
-   * missing SUMMARY, high friction) stamps this loop and the "warning" type in one place. */
+  /** Log one warning event for this runner — the single home of the warning-event shape, so
+   * every warning site (pin failure, transient retry, error/quiet-kill streak, no-change
+   * diagnosis, missing SUMMARY, high friction) stamps this runner and the "warning" type in
+   * one place. */
   private warn(message: string): void {
     warnEventBestEffort(this.root, this.role, message);
   }
@@ -162,7 +163,7 @@ export class LoopRunner {
     this.save();
   }
 
-  /** Clear this loop's backoff in memory and persist (the orchestrator's `tumwater wake`
+  /** Clear this runner's backoff in memory and persist (the orchestrator's `tumwater wake`
    * request). Eligibility reads the IN-MEMORY state; the mutation is in place on the EXISTING
    * object, as with resetCounters, so an in-flight tick's saves stay authoritative. */
   wake(): void {
@@ -170,11 +171,11 @@ export class LoopRunner {
     this.save();
   }
 
-  /** Kill this loop's in-flight tick on user request (`tumwater abort --role <id>`). No-op
+  /** Kill this runner's in-flight tick on user request (`tumwater abort --role <id>`). No-op
    * when no tick is running — the orchestrator checks `state.running` before calling, and a
    * direct call must not arm a stale flag. Otherwise set the userAborted flag and abort the
    * per-tick controller: runPi terminates the in-flight pi child (SIGTERM → SIGKILL
-   * escalation) exactly like a harness shutdown, but only this loop's run dies — the team
+   * escalation) exactly like a harness shutdown, but only this runner's run dies — the team
    * keeps running. */
   abortTick(): void {
     if (!this.state.running) return;
@@ -182,7 +183,7 @@ export class LoopRunner {
     this.tickAbort.abort();
   }
 
-  /** Hand this loop's in-flight tick back to the primary model after the budget gate reopens
+  /** Hand this runner's in-flight tick back to the primary model after the budget gate reopens
    * (PLANS.md 2026-09-30): abort the per-tick controller WITHOUT the user-abort flag, so
    * finishAbortedTick takes its shutdown branch — pi session and worktree edits kept — and
    * the tick ends `aborted`, which applyTickOutcome schedules to resume promptly. The
@@ -249,7 +250,7 @@ export class LoopRunner {
   /** Assemble this tick's prompt via src/tick/tick-prompt.ts (the prompt-content concern lives
    * there); the dequeued user request — the director's, or a per-role one — rides back so the
    * runner records it as pending — re-queued if the tick ends without fulfilling it. Null when
-   * the loop has nothing to run (an empty director inbox); a role loop's assembly never
+   * the runner has nothing to run (an empty director inbox); a role runner's assembly never
    * returns null. */
   private tickPrompt(agent?: string): string | null {
     const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
@@ -283,14 +284,14 @@ export class LoopRunner {
 
   /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
    * accounting itself lives in TickUsage.fold (src/tick/tick-usage.ts); this keeps the once-per-run
-   * choke point and the foldMergeUsage face on the runner, where LoopPi and the merge
+   * choke point and the foldMergeUsage face on the runner, where RunnerPi and the merge
    * wiring (src/merge/merge-slot.ts) reach them. */
   private foldUsage(run: PiRunResult, provider?: string, pair?: string): void {
     this.usage.fold(this.state, run, true, provider, pair);
   }
 
   /** Run pi for the orchestrator's merge slot (merge queue 3/5): runRolePi's shared wiring
-   * with usage folded into this loop's counters, watching ONLY the harness shutdown signal
+   * with usage folded into this runner's counters, watching ONLY the harness shutdown signal
    * (`this.signal`) — a merge is outside any tick, so `tumwater abort --role` must never
    * reach it. The plumbing lives in src/runner/runner-pi.ts; this is the merge slot's public
    * face. */
@@ -299,7 +300,7 @@ export class LoopRunner {
   }
 
   /** Run pi for the merge gate's reviewer (the review run and its verdict follow-up)
-   * through the loop's shared transient-retry wiring — the same retry an authoring run gets,
+   * through the runner's shared transient-retry wiring — the same retry an authoring run gets,
    * so a 429 in the gate is waited out and retried once instead of failing the review on
    * first contact (BUGS.md 2026-10-01). A retried first attempt is folded here at retry time
    * (the team-wide rate-limit hold's input); the FINAL run's usage is folded by the gate's
@@ -319,7 +320,7 @@ export class LoopRunner {
     this.usage.fold(this.state, run, false, provider, pair);
   }
 
-  /** Run one full tick of this role loop (the pipeline lives in src/runner/runner-run.ts):
+  /** Run one full tick of this role runner (the pipeline lives in src/runner/runner-run.ts):
    * `tickPhase` resolves the config and fallback episode, logs run_start, runs the pipeline,
    * and finalizes. Never throws: a failed tick is an "error" result, saved and logged. */
   async tick(): Promise<TickOutcome> {
@@ -343,7 +344,7 @@ export class LoopRunner {
   /** Assemble the tick pipeline's host context (src/runner/runner-run.ts) from this runner's
    * fields. `config` and `recoveryFailure` are live getters, so a mid-tick change is seen as
    * the pre-split methods saw it; every callback is bound to this runner. */
-  private tickContext(): LoopTickContext {
+  private tickContext(): RunnerRunContext {
     const self = this;
     return {
       root: this.root,
@@ -387,3 +388,8 @@ export class LoopRunner {
     };
   }
 }
+
+/** @deprecated Use RoleRunner. */
+export const LoopRunner = RoleRunner;
+/** @deprecated Use RoleRunner. */
+export type LoopRunner = RoleRunner;

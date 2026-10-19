@@ -1,7 +1,7 @@
-/** The red-main/baseline slice of the loop e2e suite, extracted from runner-2.test.ts: while
+/** The red-main/baseline slice of the runner e2e suite, extracted from runner-2.test.ts: while
  * main's own suite is known red, code-producing roles skip authoring entirely instead of
  * burning runs the merge gate would reject deterministically (with the healer, exempt-role,
- * and unverifiable-main counter-cases). Like every loop suite file it runs in its own process
+ * and unverifiable-main counter-cases). Like every runner suite file it runs in its own process
  * (fakePi's global PATH swap requires it) and its top-level tests run sequentially within it.
  */
 import test from "node:test";
@@ -11,7 +11,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType, mainRedHolds } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { pathReplace, projManifest } from "./fakes/fake-commands.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -40,7 +40,7 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
   makeMainRed(repo, counter);
   const marker = path.join(tmpdir(), "pi-invoked");
   await withPi(`touch '${marker}'`, async () => {
-    const runner = makeLoopRunner(repo, "feature");
+    const runner = makeRoleRunner(repo, "feature");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "main_red");
     assert.equal(outcome.summary, "code merges blocked until main is green");
@@ -98,7 +98,7 @@ test("a green main passes the baseline check and authoring proceeds normally", a
   const marker = path.join(tmpdir(), "pi-invoked");
   const restore = approvingPi(marker);
   try {
-    const runner = makeLoopRunner(repo, "feature");
+    const runner = makeRoleRunner(repo, "feature");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "feature"), "changed");
@@ -123,7 +123,7 @@ test("an exempt role ticks normally while main is red — its markdown-only diff
       `touch '${marker}'`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "readme");
+      const runner = makeRoleRunner(repo, "readme");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued");
       assert.equal(
@@ -151,7 +151,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
       `touch '${marker}'`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "bugfix");
+      const runner = makeRoleRunner(repo, "bugfix");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued", "the healer authors on a red main (never blocked)");
       assert.ok(fs.existsSync(marker), "its pi run started");
@@ -179,7 +179,7 @@ test("after a fix merges on main, the next tick re-checks the new SHA and author
   const marker = path.join(tmpdir(), "pi-invoked");
   const restore = approvingPi(marker);
   try {
-    const runner = makeLoopRunner(repo, "feature");
+    const runner = makeRoleRunner(repo, "feature");
     assert.equal((await runner.tick()).result, "main_red");
 
     // The bugfix role (exempt) merges a fix on main — the suite is green at the new SHA.
@@ -236,7 +236,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
 
   const restorePath = pathReplace(`${piDir}:${gitBin}`); // pi + git only — no npm anywhere
   try {
-    const runner = makeLoopRunner(repo, "feature");
+    const runner = makeRoleRunner(repo, "feature");
     const outcome = await runner.tick();
 
     // Authoring proceeded and merged: the skip is environmental (warn-and-proceed), not a block.

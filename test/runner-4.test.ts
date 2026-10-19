@@ -1,4 +1,4 @@
-/** Fourth slice of the loop e2e suite (after runner.test.ts, runner-2.test.ts and
+/** Fourth slice of the runner e2e suite (after runner.test.ts, runner-2.test.ts and
  * runner-3.test.ts) — split so node --test runs the slices in parallel processes:
  * top-level tests within one file run sequentially, while each test FILE gets its own
  * process (and its own PATH, which fakePi's
@@ -14,7 +14,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -34,7 +34,7 @@ test("a run that recovers from a predict-stream timeout internally is not re-run
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "clean");
+      const runner = makeRoleRunner(repo, "clean");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "no_change", "the recovered run's verdict stands");
       assert.ok(!runner.state.lastError);
@@ -69,7 +69,7 @@ test("a transient timeout that also hits the harness timeout is not retried", as
       // (the regression) prints a second line and is timed out in turn, so the run count below
       // names it rather than the test hanging on a clock nobody advances.
       const clock = watchdogClock(t, { timeouts: true });
-      const runner = makeLoopRunner(repo, "clean", config);
+      const runner = makeRoleRunner(repo, "clean", config);
       let settled = false;
       const tick = runner.tick().finally(() => (settled = true));
       const log = piLogPath(repo, "clean");
@@ -93,7 +93,7 @@ test("a transient timeout on both attempts errors with the real cause (regressio
   await withPi(
     `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'\nexit 1`,
     async () => {
-      const runner = makeLoopRunner(repo, "clean");
+      const runner = makeRoleRunner(repo, "clean");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "error");
       assert.match(runner.state.lastError ?? "", /predict stream timed out/);
@@ -138,7 +138,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
       ]),
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       // Tick 1: the change is committed and enqueued; the MERGE's build pre-check rejects it
       // (red twice, on a main that is green) — no pi run at all, reviewer or otherwise.
       assert.equal((await runner.tick()).result, "queued");
@@ -178,12 +178,12 @@ test("a tick that posts a question merges it and emits question_posted with the 
     [
       `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'`,
       // Replace the first _None yet._ placeholder (the one under ## Open — the seeded file
-      // has one per section) with a real entry, as a loop would.
+      // has one per section) with a real entry, as a runner would.
       `awk '!done && /^_None yet\\._$/ { print "### Q1: which database?"; done=1; next } { print }' QUESTIONS.md > .q.tmp && mv .q.tmp QUESTIONS.md`,
       `printf '%s\\n' '${assistantLine("asked the user about the database\nSUMMARY: post a question", { tokens: 42, output: 42, cost: 0.05 })}'`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -224,7 +224,7 @@ test("a tick that changes other files emits no question_posted event", async () 
       `echo hello > hello.txt`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
       // The seeded QUESTIONS.md has no Open entries before or after: nothing to emit.
@@ -235,7 +235,7 @@ test("a tick that changes other files emits no question_posted event", async () 
   );
 });
 
-test("the merge slot is the only merge-lock holder: another loop ticks and queues behind it", async () => {
+test("the merge slot is the only merge-lock holder: another runner ticks and queues behind it", async () => {
   const repo = await initializedRepo();
   // A's MERGE (drained right after its tick) touches the marker in its reviewer run, then
   // holds — A holds the merge lock (the merger's run) until B's tick is done, bounded at
@@ -274,8 +274,8 @@ test("the merge slot is the only merge-lock holder: another loop ticks and queue
       `esac`,
     ].join("\n"),
     async () => {
-      const a = makeLoopRunner(repo, "improve");
-      const b = makeLoopRunner(repo, "organize");
+      const a = makeRoleRunner(repo, "improve");
+      const b = makeRoleRunner(repo, "organize");
       let bEndAt = 0;
       let aMergeEndAt = 0;
       const pa = (async () => {

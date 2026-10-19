@@ -1,23 +1,23 @@
-/** Unit coverage for LoopRunner's operator-command methods — resetCounters() (the engine of
+/** Unit coverage for RoleRunner's operator-command methods — resetCounters() (the engine of
  * `tumwater reset-counters`) and wake() (of `tumwater wake`). Both are plain state mutations
  * with no pi involvement, so they need no fake shim and live in their own small file rather
- * than the duration-balanced loop halves. Their invariants are anything but trivial: both
+ * than the duration-balanced runner halves. Their invariants are anything but trivial: both
  * must mutate the EXISTING state object in place (a tick in flight holds the same reference,
- * and a swap here wedges the loop until restart — the bug orchestrator.e2e.test.ts records),
+ * and a swap here wedges the runner until restart — the bug orchestrator.e2e.test.ts records),
  * zero/persist exactly their own fields, and leave the result visible on disk. */
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { LoopRunner } from "../src/runner/runner.js";
+import type { RoleRunner } from "../src/runner/runner.js";
 import { initProject } from "../src/init/init.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
-async function runnerInRepo(role = "clean"): Promise<LoopRunner> {
+async function runnerInRepo(role = "clean"): Promise<RoleRunner> {
   const repo = makeRepo();
   await initProject(repo, "A test project.");
-  return makeLoopRunner(repo, role);
+  return makeRoleRunner(repo, role);
 }
 
 test("resetCounters zeroes the observation counters, preserves scheduling and wake fields, and persists both", async () => {
@@ -43,13 +43,13 @@ test("resetCounters zeroes the observation counters, preserves scheduling and wa
   assert.equal(s.generatedTokens, 0);
   assert.equal(s.peakContextTokens, 0, "the stale peak must not outlive the window");
   assert.equal(s.totalCostUsd, 0);
-  assert.equal(s.nextRunAt, 1234567890, "the reset must not reschedule the loop");
+  assert.equal(s.nextRunAt, 1234567890, "the reset must not reschedule the runner");
   assert.equal(s.backoffSeconds, 300);
   assert.equal(s.lastMainHead, "deadbeef");
   assert.equal(s.lastResult, "no_change");
   assert.equal(s.running, true, "an in-flight tick's running flag must survive");
 
-  const disk = loadLoopState(runner.root, runner.role);
+  const disk = loadRunnerState(runner.root, runner.role);
   assert.equal(disk.runs, 0, "the zeroed counters are persisted, not just in-memory");
   assert.equal(disk.nextRunAt, 1234567890, "the preserved scheduling fields are persisted too");
 });
@@ -66,11 +66,11 @@ test("resetCounters mutates the existing state object, so an in-flight tick's en
 
   // Now the in-flight tick ends and saves ITS bookkeeping over the same object: the counter
   // it wrote and its own schedule must both reach disk, and the pre-reset values must not
-  // resurrect (the documented wedged-loop failure mode).
+  // resurrect (the documented wedged-runner failure mode).
   inflight.runs = 8;
   inflight.nextRunAt = 42;
-  saveLoopState(runner.root, inflight);
-  const disk = loadLoopState(runner.root, runner.role);
+  saveRunnerState(runner.root, inflight);
+  const disk = loadRunnerState(runner.root, runner.role);
   assert.equal(disk.runs, 8);
   assert.equal(disk.nextRunAt, 42);
 });
@@ -94,7 +94,7 @@ test("wake clears backoff in memory and on disk, and only the backoff", async ()
 
   // The orchestrator reads eligibility from the IN-MEMORY state, but the next save comes
   // from the same object — the cleared backoff must already be on disk.
-  const disk = loadLoopState(runner.root, runner.role);
+  const disk = loadRunnerState(runner.root, runner.role);
   assert.equal(disk.backoffSeconds, 0);
   assert.equal(disk.nextRunAt, s.nextRunAt);
 

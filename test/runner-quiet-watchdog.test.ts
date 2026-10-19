@@ -1,4 +1,4 @@
-/** The loop e2e suite's quiet-watchdog slice — the tick's hang detection and its kill
+/** The runner e2e suite's quiet-watchdog slice — the tick's hang detection and its kill
  * semantics, extracted from runner-4.test.ts (2026-09-29) so the topic has a name instead of a
  * row in a numbered grab-bag. The suite's slices run one test FILE per process (each file gets
  * its own process and PATH, which fakePi's global PATH swap requires — see runner-4.test.ts's
@@ -13,7 +13,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
@@ -39,7 +39,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
       config.quietTimeoutSeconds = 3;
       config.runTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
       const clock = watchdogClock(t);
-      const runner = makeLoopRunner(repo, "improve", config);
+      const runner = makeRoleRunner(repo, "improve", config);
       const before = mainSha(repo);
       const tick = runner.tick();
       // The kill must come only once the shim has spoken and reached `echo partial` — the
@@ -82,7 +82,7 @@ test("a stalled tool call warns in the event feed with the command named", async
       config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
       config.toolCallStallSeconds = 2; // ...but the warning lands first, 3s ahead of it
       const clock = watchdogClock(t);
-      const runner = makeLoopRunner(repo, "improve", config);
+      const runner = makeRoleRunner(repo, "improve", config);
       const tick = runner.tick();
       await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
       clock.advance(30_000); // past the stall threshold, then past the quiet window
@@ -119,7 +119,7 @@ test("a slow but talkative pi run is not killed by the quiet watchdog", async (t
     const config = defaultConfig();
     config.quietTimeoutSeconds = 10;
     const clock = watchdogClock(t);
-    const runner = makeLoopRunner(repo, "improve", config);
+    const runner = makeRoleRunner(repo, "improve", config);
     let settled = false;
     const tick = runner.tick().finally(() => (settled = true));
     const log = piLogPath(repo, "improve");
@@ -157,7 +157,7 @@ test("a run whose only output is content-bearing deltas is not killed by the qui
     const config = defaultConfig();
     config.quietTimeoutSeconds = 10;
     const clock = watchdogClock(t);
-    const runner = makeLoopRunner(repo, "improve", config);
+    const runner = makeRoleRunner(repo, "improve", config);
     let settled = false;
     const tick = runner.tick().finally(() => (settled = true));
     const log = piLogPath(repo, "improve");
@@ -186,7 +186,7 @@ test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
       const config = defaultConfig();
       config.quietTimeoutSeconds = 0;
       const clock = watchdogClock(t);
-      const runner = makeLoopRunner(repo, "improve", config);
+      const runner = makeRoleRunner(repo, "improve", config);
       const tick = runner.tick();
       await waitForLogLines(piLogPath(repo, "improve"), "turn_start");
       clock.advance(120_000); // two minutes of silence: any window at all would have fired
@@ -221,7 +221,7 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
       config.runTimeoutSeconds = 3600;
       const clock = watchdogClock(t);
       const controller = new AbortController();
-      const runner = makeLoopRunner(repo, "improve", config, "main", controller.signal);
+      const runner = makeRoleRunner(repo, "improve", config, "main", controller.signal);
       let settled = false;
       const tick = runner.tick().finally(() => (settled = true));
       // Half a second of watchdog time per fresh keepalive, so bytes keep landing as the clock

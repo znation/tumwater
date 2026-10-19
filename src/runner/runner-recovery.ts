@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TickOutcome } from "../tick/tick-outcome.js";
-import type { LoopState } from "./runner-state.js";
+import type { RunnerState } from "./runner-state.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { setRef } from "../git/git.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
@@ -8,14 +8,14 @@ import { mergeRefName } from "../paths.js";
 import { shortSha } from "../text/format.js";
 import type { LeftoverRecovery } from "./leftover.js";
 
-/** What the recovery phases need from their `LoopRunner` host. `setRecoveryFailure` writes the
+/** What the recovery phases need from their `RoleRunner` host. `setRecoveryFailure` writes the
  * merge failure back to the runner's field (which `tick` reads at finalize time) instead of
  * the phase reaching into a runner instance. */
 interface RecoveryContext {
   root: string;
   role: string;
   mainBranch: string;
-  state: LoopState;
+  state: RunnerState;
   pending: PendingPrompt;
   warn(message: string): void;
   setRecoveryFailure(message: string | undefined): void;

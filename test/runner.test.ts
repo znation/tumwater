@@ -1,4 +1,4 @@
-/** First slice of the loop e2e suite (runner-2…5.test.ts and runner-red-main.test.ts
+/** First slice of the runner e2e suite (runner-2…5.test.ts and runner-red-main.test.ts
  * are the others)
  * —
  * split so node --test runs the slices in parallel processes: top-level tests within one file
@@ -12,11 +12,11 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { defaultConfig, customLoopNames, loadConfig } from "../src/config/config.js";
 import { enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { configRequestPath, piLogPath, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/tick/qa-coverage.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi, withIdlePi, logFlagsTo, TOUCH_SESSION } from "./fakes/fake-pi.js";
@@ -33,7 +33,7 @@ test("a tick that changes files commits and merges to main", async () => {
     `echo hello > hello.txt`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.tick();
     // Merge queue 3/5: the tick ends at commit + pin — the merge is the orchestrator's
     // separate step, and mergeHead drives it through the merge pipeline's own verification and
@@ -66,7 +66,7 @@ test("run_start and review_start record the model each run starts on", async () 
     const config = defaultConfig();
     config.model = "prov/m1";
     config.review.model = "prov/r1";
-    const runner = makeLoopRunner(repo, "improve", config);
+    const runner = makeRoleRunner(repo, "improve", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     // The review gate runs in the merge slot (mergeHead), not inside tick().
@@ -86,7 +86,7 @@ test("run_start and review_start omit model when none is configured (pi's own de
     `echo hello > hello.txt`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -111,7 +111,7 @@ test("a full tick → review → merge cycle merges on a repo whose only branch 
   ].join("\n");
   await withPi(script, async () => {
     const config = defaultConfig();
-    const runner = makeLoopRunner(repo, "improve", config, "trunk");
+    const runner = makeRoleRunner(repo, "improve", config, "trunk");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(
@@ -141,10 +141,10 @@ test("a changed tick schedules its next run at the role's own interval, not the 
     const config = defaultConfig();
     assert.equal(config.minRunIntervalSeconds, 20, "the global stays fast");
     config.roles.improve = { enabled: true, minRunIntervalSeconds: 3600 };
-    const runner = makeLoopRunner(repo, "improve", config);
+    const runner = makeRoleRunner(repo, "improve", config);
     assert.equal((await runner.tick()).result, "queued");
     // The persisted state — what a restarted process would read — schedules ~1 h out.
-    const s = loadLoopState(repo, "improve");
+    const s = loadRunnerState(repo, "improve");
     const ended = s.lastRunEndedAt;
     assert.ok(ended !== undefined, "the tick recorded its end time");
     const gapMs = s.nextRunAt - ended;
@@ -167,13 +167,13 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
     `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
     `[ "$n" -eq 1 ] && { printf '%s\n' '${line1}'; echo one > t.txt; } || { printf '%s\n' '${line2}'; echo two >> t.txt; }`;
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
     // After the first completed tick + its merge the state file holds that tick's usage only.
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.equal(runner.state.generatedTokens, 42);
     assert.equal(runner.state.peakContextTokens, 42);
-    assert.equal(loadLoopState(repo, "improve").generatedTokens, 42);
+    assert.equal(loadRunnerState(repo, "improve").generatedTokens, 42);
 
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -181,7 +181,7 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
     // bug showed 49 here). Peak ctx is a per-tick window too: 7, not max(42, 7).
     assert.equal(runner.state.generatedTokens, 7);
     assert.equal(runner.state.peakContextTokens, 7);
-    const onDisk = loadLoopState(repo, "improve");
+    const onDisk = loadRunnerState(repo, "improve");
     assert.equal(onDisk.generatedTokens, 7);
     assert.equal(onDisk.peakContextTokens, 7);
     // Lifetime counters are untouched by the per-tick reset.
@@ -194,7 +194,7 @@ test("a nothing-to-do tick backs off without committing", async () => {
   const repo = await initializedRepo();
   await withIdlePi(async () => {
     const config = defaultConfig();
-    const runner = makeLoopRunner(repo, "clean", config);
+    const runner = makeRoleRunner(repo, "clean", config);
     const before = mainSha(repo);
     const first = await runner.tick();
     assert.equal(first.result, "no_change");
@@ -218,7 +218,7 @@ test("a nothing-to-do tick backs off without committing", async () => {
 test("a qa no_change tick records the FLOW line it emitted", async () => {
   const repo = await initializedRepo();
   await withPi(`printf '%s\n' '${assistantLine("checked status\nFLOW: status — passed\nTUMWATER_NOTHING_TO_DO")}'`, async () => {
-    const runner = makeLoopRunner(repo, "qa");
+    const runner = makeRoleRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "no_change");
     const coverage = readQaCoverage(repo);
     assert.equal(coverage.status?.result, "passed");
@@ -230,7 +230,7 @@ test("a qa no_change tick records the FLOW line it emitted", async () => {
 test("a qa tick with no FLOW line records nothing and still completes", async () => {
   const repo = await initializedRepo();
   await withIdlePi(async () => {
-    const runner = makeLoopRunner(repo, "qa");
+    const runner = makeRoleRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "no_change");
     assert.deepEqual(readQaCoverage(repo), {});
   });
@@ -244,7 +244,7 @@ test("a qa tick cut off before declaring its outcome does not advance the flow r
   const script = `printf '%s\n' '${assistantLine("checking status\nFLOW: status — passed")}'\n` +
     `printf '%s\n' '${thinkingOnlyLine("status looks", { output: 16 })}'`;
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "qa");
+    const runner = makeRoleRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "no_change");
     assert.deepEqual(readQaCoverage(repo), {});
   });
@@ -257,7 +257,7 @@ test("a qa tick that files a bug records the bug result and its headline", async
     `printf '%s\n' '- status --json omits the fallback badge' >> BUGS.md`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "qa");
+    const runner = makeRoleRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "queued");
     const coverage = readQaCoverage(repo);
     assert.equal(coverage.status?.result, "bug");
@@ -274,7 +274,7 @@ test("a qa tick's prompt carries the rendered coverage block from the ledger", a
     `printf '%s\n' '${assistantLine("checked logs\nFLOW: logs — passed\nTUMWATER_NOTHING_TO_DO")}'; exit 0;; esac; done\n` +
     `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`;
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "qa");
+    const runner = makeRoleRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "no_change");
     assert.equal(readQaCoverage(repo).logs?.result, "passed", "the coverage block reached the qa prompt");
   });
@@ -286,7 +286,7 @@ test("a nothing-to-do declaration in an intermediate turn does not warn (regress
   const script = `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'\n` +
     `printf '%s\n' '${assistantLine("all done")}'`;
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "clean");
+    const runner = makeRoleRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
     const warnings = eventsOfType(repo, "warning");
     assert.deepEqual(warnings, [], "no spurious warning when the sentinel was declared mid-run");
@@ -296,7 +296,7 @@ test("a nothing-to-do declaration in an intermediate turn does not warn (regress
 test("a non-compliant tick warns and notes a truncated final message", async () => {
   const repo = await initializedRepo();
   await withPi(`printf '%s\n' '${assistantLine("hmm, let me think", { stopReason: "length" })}'`, async () => {
-    const runner = makeLoopRunner(repo, "clean");
+    const runner = makeRoleRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
     const [warning] = eventsOfType(repo, "warning");
     assert.ok(warning, "expected exactly one warning");
@@ -307,7 +307,7 @@ test("a non-compliant tick warns and notes a truncated final message", async () 
 test("a silent tick warns that no assistant text was captured", async () => {
   const repo = await initializedRepo();
   await withPi(`exit 0`, async () => {
-    const runner = makeLoopRunner(repo, "clean");
+    const runner = makeRoleRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
     const [warning] = eventsOfType(repo, "warning");
     assert.ok(warning, "expected exactly one warning");
@@ -318,7 +318,7 @@ test("a silent tick warns that no assistant text was captured", async () => {
 test("a failing pi run records an error and backs off", async () => {
   const repo = await initializedRepo();
   await withPi(`echo 'pi exploded' >&2\nexit 1`, async () => {
-    const runner = makeLoopRunner(repo, "clean");
+    const runner = makeRoleRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.ok(runner.state.lastError);
@@ -327,12 +327,12 @@ test("a failing pi run records an error and backs off", async () => {
 });
 
 test("consecutive error ticks raise one warning per episode, not one per tick", async () => {
-  // BUGS.md 2026-09-15: 44 identical error ticks across every loop raised no alarm. The
+  // BUGS.md 2026-09-15: 44 identical error ticks across every runner raised no alarm. The
   // streak crossing fires exactly one warning per episode — the fourth failure deepens the
   // episode without re-warniing, and a healthy tick re-arms it for the next episode.
   const repo = await initializedRepo();
   await withPi(`echo 'git is broken' >&2\nexit 1`, async () => {
-    const runner = makeLoopRunner(repo, "clean");
+    const runner = makeRoleRunner(repo, "clean");
     const warnings = () => eventsOfType(repo, "warning");
     assert.equal((await runner.tick()).result, "error");
     assert.equal((await runner.tick()).result, "error");
@@ -347,7 +347,7 @@ test("consecutive error ticks raise one warning per episode, not one per tick", 
     assert.equal(runner.state.consecutiveErrors, 4);
     assert.equal(warnings().length, 1);
     // The persisted state carries the streak, so a restarted observer reads "failing" too.
-    const saved = loadLoopState(repo, "clean");
+    const saved = loadRunnerState(repo, "clean");
     assert.equal(saved.lastResult, "error");
     assert.equal(saved.consecutiveErrors, 4);
   });
@@ -364,7 +364,7 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
     config.quietTimeoutSeconds = 1;
     config.runTimeoutSeconds = 3600;
     const clock = watchdogClock(t);
-    const runner = makeLoopRunner(repo, "improve", config);
+    const runner = makeRoleRunner(repo, "improve", config);
     const warnings = () => eventsOfType(repo, "warning");
     // Each tick's run speaks once and then hangs; the kill is the watchdog's, on logical time.
     const quietKilledTick = async (n: number) => {
@@ -379,7 +379,7 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
     assert.equal(runner.state.quietKillStreak, 3);
     assert.equal(warnings().length, 1, "one warning at the threshold");
     assert.match(String(warnings()[0]?.message), /3 consecutive stalls \(no progress\)/);
-    // Past the limit: no resume, and the loop climbs the idle ladder rather than retrying now.
+    // Past the limit: no resume, and the runner climbs the idle ladder rather than retrying now.
     runner.state.quietKillStreak = 3;
     runner.state.resumePending = false;
     assert.equal(await quietKilledTick(2), "quiet_killed");
@@ -394,10 +394,10 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
 // any unexpected exception (a bug in a new code path, a failed git call, …) must be caught
 // by tick()'s defensive branch and degrade the same way. Without it the rejection would
 // escape into the orchestrator's task wrapper as an unhandled rejection — crashing the whole
-// team over one loop's surprise.
+// team over one runner's surprise.
 test("an unexpected throw inside runTick degrades to an error result instead of escaping", async () => {
   const repo = await initializedRepo();
-  const runner = makeLoopRunner(repo, "clean");
+  const runner = makeRoleRunner(repo, "clean");
   const stubRunTick = (impl: () => Promise<unknown>) => {
     (runner as unknown as { runTick: () => Promise<unknown> }).runTick = impl;
   };
@@ -410,7 +410,7 @@ test("an unexpected throw inside runTick degrades to an error result instead of 
   assert.equal(outcome.result, "error");
   assert.equal(runner.state.lastError, "simulated internal failure");
 
-  // Scheduling continues as for any error tick: the loop backs off (no hot-looping), the
+  // Scheduling continues as for any error tick: the runner backs off (no hot-looping), the
   // running flag clears so the next poll can pick it up, and the result is persisted.
   assert.equal(runner.state.running, false);
   assert.equal(runner.state.lastResult, "error");
@@ -444,7 +444,7 @@ test("an unexpected throw inside runTick degrades to an error result instead of 
 // span deterministically: the field must survive a 0 ms tick.
 test("a run_end carries durationMs even when the tick spans no measurable time", async (t) => {
   const repo = await initializedRepo();
-  const runner = makeLoopRunner(repo, "clean");
+  const runner = makeRoleRunner(repo, "clean");
   (runner as unknown as { runTick: () => Promise<unknown> }).runTick = async () => {
     throw new Error("simulated internal failure");
   };
@@ -470,7 +470,7 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
     `echo req > request.txt`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "director");
+    const runner = makeRoleRunner(repo, "director");
     assert.equal((await runner.tick()).result, "skipped");
     enqueuePrompt(repo, "please add request.txt");
     const outcome = await runner.tick();
@@ -482,19 +482,19 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
 });
 
 // Harness-mediated config writes (plans/portability.md §3/7): the director's config request is
-// consumed before any commit path — the loop is live on the ~2 s reload, no commit exists, and
+// consumed before any commit path — the runner is live on the ~2 s reload, no commit exists, and
 // the request file never enters a diff.
 test("a director tick applies a config request without producing a commit", async () => {
   const repo = await initializedRepo();
   const script = [
-    `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs role")}'`,
     `printf '%s' '{"customRoles":[{"name":"docs","task":"Keep the examples current."}]}' > .tumwater-config-request.json`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "director");
-    enqueuePrompt(repo, "add a loop named docs that keeps the examples current");
+    const runner = makeRoleRunner(repo, "director");
+    enqueuePrompt(repo, "add a role named docs that keeps the examples current");
     // The request is not a worktree change: consumed and deleted before the dirty check, the
-    // tick is a fulfillment with nothing to commit (the orchestrator's reload starts the loop).
+    // tick is a fulfillment with nothing to commit (the orchestrator's reload starts the runner).
     assert.equal((await runner.tick()).result, "no_change");
     assert.deepEqual(customLoopNames(loadConfig(repo)), ["docs"]);
     assert.ok(!fs.existsSync(configRequestPath(worktreePath(repo, "director"))), "request consumed");
@@ -509,11 +509,11 @@ test("a director tick applies a config request without producing a commit", asyn
 test("a config request naming a disallowed key applies customRoles and warns naming the key", async () => {
   const repo = await initializedRepo();
   const script = [
-    `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs role")}'`,
     `printf '%s' '{"customRoles":[{"name":"docs","task":"t"}],"maxDailyCostUsd":1}' > .tumwater-config-request.json`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "director");
+    const runner = makeRoleRunner(repo, "director");
     enqueuePrompt(repo, "add docs and set the budget to 1");
     await runner.tick();
     // The good half still applies…
@@ -538,7 +538,7 @@ test("worktree changes commit even when pi forgets the summary line: the subject
     `echo x > x.txt`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "dedupe");
+    const runner = makeRoleRunner(repo, "dedupe");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "dedupe"), "changed");
@@ -565,7 +565,7 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
     `printf '%s\n' '${thinkingOnlyLine("almost done", { output: 5 })}'`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "dedupe");
+    const runner = makeRoleRunner(repo, "dedupe");
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "dedupe"), "changed");
     const message = sh(repo, "git", "log", "-1", "--format=%B");

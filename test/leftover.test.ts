@@ -18,7 +18,7 @@ import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 // previous tick left unmerged back on the durable merge queue (merge-queue speed 3c: the slot is
 // main's one writer): normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch
 // when a crash landed in the commit→pin window. The queue and the ref mechanics are real; no
-// merge runs here. The loop e2e tests (test/runner-leftover-recovery.test.ts) drive the queued
+// merge runs here. The runner e2e tests (test/runner-leftover-recovery.test.ts) drive the queued
 // entry through
 // the merge slot end-to-end.
 

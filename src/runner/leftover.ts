@@ -5,7 +5,7 @@ import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { enqueueMerge, queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
 import { mergeRefName } from "../paths.js";
 import { shortSha } from "../text/format.js";
-import type { LoopState } from "./runner-state.js";
+import type { RunnerState } from "./runner-state.js";
 
 /** Salvaging a commit a previous tick left unmerged (plans/merge-queue.md). Since merge queue
  * 2/5 the role's branch is reset to main the moment its commit is pinned, so the leftover
@@ -18,19 +18,19 @@ import type { LoopState } from "./runner-state.js";
  * ahead of main; recovery adopts that tip into the pin scheme and queues it, so invariant 1
  * holds whether or not the pin survived. Split out of runner.ts — which keeps the tick lifecycle
  * around it — because this is a self-contained concern with its own entry condition and git
- * surface; the only things it borrows from the loop are identity, the tick number, the
+ * surface; the only things it borrows from the runner are identity, the tick number, the
  * worktree (for the no-pin fallback), and three pieces of the role's merge state: its
  * conflict streak, outstanding hand-back, and permanent-reviewer hold. */
 
 /** Consecutive merges of one pinned sha that may end `merge_conflict` before recovery stops
- * re-queuing it (LoopState.mergeConflicts). Each attempt costs a conflict-resolution run, and
+ * re-queuing it (RunnerState.mergeConflicts). Each attempt costs a conflict-resolution run, and
  * a role holding a pin never authors: without a cap an unmergeable change would re-queue
  * forever, burning one resolution run per drain. At the cap the pin is handed back to its
  * author with the markers in place rather than discarded (PLANS.md "Robust conflict landing,
  * part 2/2"); a lineage already handed back once is discarded instead. */
 export const MERGE_CONFLICT_LIMIT = 2;
 
-/** What recoverLeftover needs from its owning loop: identity, the current tick number, the
+/** What recoverLeftover needs from its owning runner: identity, the current tick number, the
  * role's worktree (needed only for the no-pin ahead-of-main fallback), and the role's merge
  * state — its conflict streak, outstanding hand-back, and permanent-reviewer hold. */
 export interface LeftoverContext {
@@ -42,16 +42,16 @@ export interface LeftoverContext {
   tick: number;
   /** The role's worktree — read for the no-pin fallback only. */
   wt: string;
-  /** The role's conflict streak (LoopState.mergeConflicts): a pin at MERGE_CONFLICT_LIMIT is
+  /** The role's conflict streak (RunnerState.mergeConflicts): a pin at MERGE_CONFLICT_LIMIT is
    * handed back to its author (or discarded, when a hand-back already happened). */
-  mergeConflicts?: LoopState["mergeConflicts"];
-  /** The role's outstanding hand-back (LoopState.conflictHandback): when one exists, a pin at
+  mergeConflicts?: RunnerState["mergeConflicts"];
+  /** The role's outstanding hand-back (RunnerState.conflictHandback): when one exists, a pin at
    * the cap means this lineage already used its one hand-back, so it is discarded. */
-  conflictHandback?: LoopState["conflictHandback"];
-  /** The role's permanent-reviewer-config hold (LoopState.mergeReviewError): while it names
+  conflictHandback?: RunnerState["conflictHandback"];
+  /** The role's permanent-reviewer-config hold (RunnerState.mergeReviewError): while it names
    * this pin's sha, recovery returns `held` instead of re-queueing, so a 4xx config error is
    * not retried at suite speed (BUGS.md 2026-10-06). */
-  mergeReviewError?: LoopState["mergeReviewError"];
+  mergeReviewError?: RunnerState["mergeReviewError"];
 }
 
 /** What recovery did with a leftover, for the tick to end on:
@@ -149,8 +149,8 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     }
     // Main has moved too far under this change for the resolver to reconcile it: keep the pin
     // and hand it back to its author, who re-applies it over current main with the markers in
-    // place and resolves them. The loop's next step logs the conflict_handback event and sets
-    // LoopState.conflictHandback (the pin survives until that re-apply).
+    // place and resolves them. The runner's next step logs the conflict_handback event and sets
+    // RunnerState.conflictHandback (the pin survives until that re-apply).
     return { kind: "handback", sha, summary, attempts };
   }
   const entry: MergeEntry = {

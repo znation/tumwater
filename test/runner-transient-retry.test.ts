@@ -1,4 +1,4 @@
-/** The loop's transient-retry topic: when a tick's pi run dies on a retriable backend
+/** The runner's transient-retry topic: when a tick's pi run dies on a retriable backend
  * failure (a predict-stream timeout, a provider 429), the harness retries the run once
  * and the retry's verdict stands in for the tick. Split out of runner-3.test.ts
  * (2026-09-30) so the file name says what it pins, like runner-refusal.test.ts and
@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
@@ -24,7 +24,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
   // on the timeout class, attempt 2 — the harness's one retry — idles.
   const script = failingThenIdle(path.join(tmpdir(), "phase"), 1, "timeout").join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "clean");
+    const runner = makeRoleRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError);
@@ -53,7 +53,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     // instead of living through the minute. The injectable sleep collector lives in the
     // shared test-fake catalog too (test/fakes/time.ts).
     const { sleeps, sleep } = sleepRecorder();
-    const runner = makeLoopRunner(repo, "clean", defaultConfig(), "main", undefined, sleep);
+    const runner = makeRoleRunner(repo, "clean", defaultConfig(), "main", undefined, sleep);
     const before = Date.now();
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
@@ -101,7 +101,7 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
     `fi`,
   ].join("\n");
   await withPi(script, async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the retry's work is committed and enqueued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");

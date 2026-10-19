@@ -1,5 +1,5 @@
-/** The loop e2e suite's refusal tests, in their own topic file (spun out of runner-4.test.ts
- * 2026-09-30): the TUMWATER_REFUSED sentinel's routing regressions. Like the other loop
+/** The runner e2e suite's refusal tests, in their own topic file (spun out of runner-4.test.ts
+ * 2026-09-30): the TUMWATER_REFUSED sentinel's routing regressions. Like the other runner
  * slices, each test FILE gets its own process (and its own PATH, which fakePi's global PATH
  * swap requires); top-level tests within one file run sequentially. */
 import test from "node:test";
@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { warningMessages } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -38,7 +38,7 @@ test("a refused tick merges only its markdown note, discards code changes, and s
       `echo bad > broken.ts`,
     ].join("\n"),
     async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "refused");
     assert.equal(outcome.summary, "it would delete user data");
@@ -68,7 +68,7 @@ test("a bare sentinel over work is not a refusal: the tick runs the normal flow 
       `echo bad > broken.ts`,
     ].join("\n"),
     async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the work is not discarded as a refusal");
     // The edit survived — committed on the branch, headed for the normal gate, no refusal note.
@@ -87,7 +87,7 @@ test("a reply ending TUMWATER_REFUSED: none merges its work instead of refusing 
       `echo fixed > src-fix.ts`,
     ].join("\n"),
     async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "a negated refusal never discards the work");
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
@@ -105,7 +105,7 @@ test("a refusal contradicted by its own SUMMARY beside work keeps the work behin
       `echo bad >> seed.txt`,
     ].join("\n"),
     async () => {
-    const runner = makeLoopRunner(repo, "improve");
+    const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "contradicted work runs the normal flow");
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");

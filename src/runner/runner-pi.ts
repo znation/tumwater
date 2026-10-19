@@ -562,8 +562,6 @@ export class RunnerPi {
   }
 }
 
-/** @deprecated Use RunnerPi. */
-export { RunnerPi as LoopPi };
 
 /** The runner's shared pi wiring as merge code reaches it, split into the two halves the
  * merge contexts need. `RunsPi` is one pi run in `wt` through the runner's shared wiring

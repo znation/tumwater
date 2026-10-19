@@ -1,5 +1,5 @@
 /** Direct unit tests for src/runner/runner-recovery.ts — the three recovery phases split out of
- * LoopRunner's tick lifecycle. The loop suites drive them end-to-end, but no test file imports
+ * RoleRunner's tick lifecycle. The runner suites drive them end-to-end, but no test file imports
  * the module, so the contract each arm is chosen on (which pending-prompt policy runs, which
  * leftover kind maps to which outcome, and what survives a failed pin) has no direct
  * assertions. These pin those arms with a recording context; a real initialized worktree is
@@ -18,7 +18,7 @@ import {
   finishRecoveryTickPhase,
   pinAndResetPhase,
 } from "../src/runner/runner-recovery.js";
-import type { LoopState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state.js";
 import { mergeRefName } from "../src/paths.js";
 import { shortSha } from "../src/text/format.js";
 import { commitIn, headSha, initializedRepo, initializedWorktree, mainSha, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -27,7 +27,7 @@ import { commitIn, headSha, initializedRepo, initializedWorktree, mainSha, tmpdi
  * PendingPrompt so clear/requeue policy is observed against the inbox, and arrays for the
  * warn/setRecoveryFailure callbacks. `state` is the phase's scratch object (lastError). */
 function makeCtx(root: string, role = "improve", mainBranch = "main") {
-  const state = {} as LoopState;
+  const state = {} as RunnerState;
   const pending = new PendingPrompt(root, role);
   const warns: string[] = [];
   const failures: Array<string | undefined> = [];

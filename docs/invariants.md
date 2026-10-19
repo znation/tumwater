@@ -459,7 +459,7 @@ image-reroute handoff), `src/prompt/prompt-followup.ts` (`buildHandoffPrompt`'s 
 note), `src/events/event-format.ts` (the `image_reroute` and image-reroute resume lines).
 
 **Pinned by.** `test/tick-verdict.test.ts` — the reroute verdict tests (target + one-hop);
-`test/runner-2.test.ts` — "a blind read on a text-only loop reroutes to the vision target, then
+`test/runner-2.test.ts` — "a blind read on a text-only role reroutes to the vision target, then
 back to its own tier" and "a rerouted director prompt runs fresh on the vision target and is
 delivered once"; `test/prompt-followup.test.ts` — the handoff-note test;
 `test/event-format.test.ts` — the `image_reroute` and image-reroute resume rendering tests.

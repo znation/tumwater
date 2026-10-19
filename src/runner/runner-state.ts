@@ -588,9 +588,9 @@ export function hasOutstandingWork(s: Pick<RunnerState, "revision" | "resumePend
   return s.revision !== undefined || s.resumePending === true;
 }
 
-/** True when the loop got an explicit operator wake after its last completed run
+/** True when the runner got an explicit operator wake after its last completed run
  * (state.wokenAt newer than lastRunEndedAt), so the scheduler ships its min-interval gap and
- * the need-based deferral stands the loop down. The single home of the "freshly woken since
+ * the need-based deferral stands the runner down. The single home of the "freshly woken since
  * the last run end" test, previously repeated inline by the due-check, plan deferral, and
  * need-based deferral (scheduling.ts's isEligible, planDeferral, and deferTickReason) and by
  * the orchestrator's fresh-demand and plans-full stand-down tests

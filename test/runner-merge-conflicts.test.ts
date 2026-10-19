@@ -1,4 +1,4 @@
-/** The loop e2e suite's merge-conflict slice — what happens when a merge meets
+/** The runner e2e suite's merge-conflict slice — what happens when a merge meets
  * resistance: a rebase conflict the resolution run clears, one it cannot, a stray pi commit
  * that stops the rebase twice, a dirty primary checkout that blocks the fast-forward, and
  * the pinned leftover a later tick recovers from a failed merge. Extracted from
@@ -14,7 +14,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { mergeRefName } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { conflictingMainEdit, seedBranchEdit, withPi } from "./fakes/fake-pi.js";
@@ -42,7 +42,7 @@ test("a rebase conflict is resolved by a second pi run and merges with linear hi
       `fi`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       const outcome = await runner.tick();
       // The tick commits and enqueues; the MERGE is where the conflict is resolved now —
       // phase 2 (the resolution run) runs inside mergeHead.
@@ -82,7 +82,7 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
       `fi`, // Phase 2 does nothing: the conflict markers stay.
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
@@ -111,7 +111,7 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
     ].join("\n"),
     async () => {
       fs.writeFileSync(path.join(repo, "seed.txt"), "user's uncommitted edit\n");
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_blocked");
@@ -158,7 +158,7 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
       `fi`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "improve");
+      const runner = makeRoleRunner(repo, "improve");
       // Tick 1 commits and enqueues; its merge hits the conflict and fails (the m2 phase
       // leaves the markers): that conflict state is what tick 2's recovery must salvage.
       assert.equal((await runner.tick()).result, "queued");
