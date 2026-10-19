@@ -63,8 +63,8 @@ export function cachedByStat<T>(
  * reads it, and a null (no data) propagates through so a render path never throws on the file's
  * state. `parse` runs only on a cache miss and receives the file's text (never null); `clone`
  * hands each caller its own copy. The callers: backlog.ts's sectionEntries and
- * sectionCompletionDates, and backlog-structure.ts's strandedPlanEntriesFor,
- * actionableEntryRangesFor, and renderBacklogIndexBlock. */
+ * sectionCompletionDates, and backlog-structure.ts's strandedPlanEntriesFor and
+ * actionableEntryRangesFor, and backlog-index.ts's renderBacklogIndexBlock. */
 export function cachedTextByStat<T>(
   cache: Map<string, StatKeyedValue<T>>,
   key: string,

@@ -11,11 +11,11 @@ import {
   strandedPlanEntries,
   renderBacklogStructureBlock,
   actionableEntryRanges,
-  renderBacklogIndexBlock,
   groupBlockedSeries,
   readdedHeadings,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
+import { renderBacklogIndexBlock } from "../src/backlog/backlog-index.js";
 import { DONE_DATE_RE, FIXED_DATE_RE } from "../src/backlog/backlog.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";

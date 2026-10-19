@@ -300,7 +300,7 @@ interface TickPromptInput {
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */
   backlogStructure?: string;
-  /** Rendered actionable backlog index (see backlog-structure.ts); every tick carries it. */
+  /** Rendered actionable backlog index (see backlog-index.ts); every tick carries it. */
   backlogIndex?: string;
   /** The role's notebook (roleNotesPath, read by tick-prompt.ts): the note its own earlier
    * ticks wrote. A missing/empty/whitespace-only note is passed as undefined, so the
@@ -410,7 +410,7 @@ export function buildDirectorPrompt(
   briefFile?: string,
   /** Today's local date (see dateLine). Omitted: todayStamp() — tests pin it. */
   today?: string,
-  /** Rendered actionable backlog index (see backlog-structure.ts); the tick prompt carries it
+  /** Rendered actionable backlog index (see backlog-index.ts); the tick prompt carries it
    * too, so the director can route against the same bounded view of the backlog. */
   backlogIndex?: string,
   /** The agent backend the director resolves to, selecting the prompt dialect (./dialect.ts).

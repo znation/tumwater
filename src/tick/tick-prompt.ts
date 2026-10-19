@@ -27,7 +27,8 @@ import { dayKey } from "../text/datetime.js";
 import { appendPromptNote } from "../text/format.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
-import { renderBacklogIndexBlock, renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
+import { renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
+import { renderBacklogIndexBlock } from "../backlog/backlog-index.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
  * holds, so the assembly stays a pure function of (root, config, role, state). */
