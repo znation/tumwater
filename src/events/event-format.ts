@@ -383,6 +383,8 @@ export function eventMessage(e: HarnessEvent): string {
       const by = typeof e.runner === "string" && e.runner !== "" ? ` (merged by ${e.runner})` : "";
       return `main turned red at ${shortSha(String(e.commit ?? ""))}${by}; last green ${shortSha(String(e.green ?? ""))}`;
     }
+    case "main_revert":
+      return `reverted ${shortSha(String(e.commit ?? ""))} (merged by ${textOr(e.runner)}) as ${shortSha(String(e.revert ?? ""))}`;
     case "main_red_hold":
       // The message already names the SHA, script, and consequence; the problem tone comes
       // from PROBLEM_EVENTS.

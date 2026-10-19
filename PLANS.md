@@ -6,36 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Fast merge, part 4b/14: A merge-slot task reverts the named culprit of a red main (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 4a/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/operator/revert.ts src/merge/merge-drain.ts src/merge/merge-git.ts src/baseline/main-watch.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md and their tests)
-
-**Goal.** When part 4a/14 names a culprit, main should lose that commit within minutes instead of staying red while roles pile up fixes. Bugfix keeps fix-forward for what a revert cannot handle. Part 4c/14 hands the reverted change back to its role.
-
-**Approach.**
-- Shared git steps: factor the revert-and-commit body of `revertMergedCommit` (src/operator/revert.ts) into an exported helper `revertCommitIn(wt, sha, message)`. It runs `git revert --no-commit`, `--abort` on a conflict, and the `--only` path commit. It returns `{ ok: true, sha } | { ok: false, error }`. `revertMergedCommit` keeps its lock, branch and clean-tree checks and calls the helper; test/operator-revert.test.ts must still pass unchanged.
-- Trigger: the watch, where it logs `main_culprit` with a `runner`, also hands `{ commit, runner, failingTests }` to a callback that `createMainWatch` takes (a new optional parameter). The orchestrator (src/orchestrator/orchestrator.ts, where it calls `createMainWatch`) wires it to queue a revert on the merge pipeline.
-- Skip the revert and go to the heal prompt when:
-  - the runner's base role is the director;
-  - there is no `runner`;
-  - the commit's subject is a revert (`tumwater(operator): Revert` or this part's own subject);
-  - a revert of this same commit already landed.
-- Revert task: a new pending-revert slot on `MergePipeline`, which `drainMerge` (src/merge/merge-drain.ts) starts before any merge pick while `p.merge` is null, so it is serialized with merges. The task:
-  - checks out main's tip in the `_merge` worktree;
-  - calls `revertCommitIn` with the subject `stampedSubject("tumwater", "Revert <short C>")` and a body naming C's subject and the failing tests;
-  - runs `check.gateCommand` on the result when one is set (grep `gateCommandOf`), where red aborts;
-  - lands with `ffMainToOrWhy` (src/merge/merge-git.ts) under the merge lock.
-  - Log `main_revert` `{ commit, revert, runner, failingTests }` and register it in src/events/events.ts.
-- Heal fallback: on a skip, a conflict, a red gate, a refused fast-forward, or a watch that finds main still red with the same failing tests after a landed revert, queue bugfix's heal prompt. Extend `mainRedHealPrompt` (src/baseline/main-red.ts) with an optional `{ culprit, failingTests, outputTail }` that names C, the tests and the clipped output. The existing one-argument calls keep their text.
-- docs/invariants.md: add an entry under the merge or baseline section saying an automatic revert only reverts a commit a non-director role runner merged, whose red reproduced and whose parent side (G) is green. Pin it to this part's test. docs/how-it-works.md: describe the revert flow.
-
-**Files touched.** src/operator/revert.ts, src/merge/merge-drain.ts (and the `MergePipeline` type where it is declared), src/merge/merge-git.ts only if a helper is needed, src/baseline/main-watch.ts, src/baseline/main-red.ts, src/orchestrator/orchestrator.ts (wiring), src/events/events.ts, docs/how-it-works.md, docs/invariants.md, test/main-watch.test.ts or a new test/main-revert.test.ts, test/operator-revert.test.ts (unchanged, must pass).
-
-**Acceptance criteria.**
-- The 4a/14 fake repo (G, A, B red, D doc-only): main gets a revert of B, `main_revert` is logged, and the next watch verdict is green.
-- A revert that conflicts: main is unchanged, and bugfix's inbox holds a heal prompt naming B and the failing test.
-- A director-merged culprit is not reverted, and bugfix gets the heal prompt.
-- `tumwater revert` behaves as before (test/operator-revert.test.ts passes).
-- `npm test` passes.
-
 ### Fast merge, part 4c/14: A reverted change goes back to its role as a revision (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 4b/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/merge/merge-core.ts src/merge/merge-drain.ts src/paths.ts src/git/commit-message.ts docs/how-it-works.md and their tests)
 
 **Goal.** After part 4b/14 reverts a culprit, its author should revise the same change with the failing tests in hand rather than start over. This closes the loop the old part 4/14 described.

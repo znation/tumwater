@@ -110,8 +110,25 @@ function warnMainRedOnce(
  * red. The self-limiting wording is the green race's whole handling: if main turned green
  * before the healer consumes the prompt, bugfixMainRedNote returns undefined (no `<main-red>`
  * note is appended) and the "verify green" clause makes the tick a no-op. */
-export function mainRedHealPrompt(sha: string): string {
-  return `Main was reported red at commit ${shortSha(sha)}. Verify main is green now; if it is still red, reproduce the failure and land the fix.`;
+export function mainRedHealPrompt(
+  sha: string,
+  detail?: { culprit: string; failingTests: readonly string[]; outputTail?: readonly string[] },
+): string {
+  const base = `Main was reported red at commit ${shortSha(sha)}. Verify main is green now; if it is still red, reproduce the failure and land the fix.`;
+  if (!detail) return base;
+  const tests = detail.failingTests.length > 0 ? ` Failing: ${detail.failingTests.join("; ")}.` : "";
+  const tail = detail.outputTail && detail.outputTail.length > 0 ? ` Output tail: ${detail.outputTail.join(" | ")}` : "";
+  return `${base} The watch named ${shortSha(detail.culprit)} as the commit that turned it red.${tests}${tail}`;
+}
+
+/** Queue the heal prompt for bugfix with the culprit's detail: the fallback when the automatic
+ * revert (src/baseline/main-revert.ts) is skipped or fails. */
+export function queueCulpritHeal(
+  root: string,
+  tip: string,
+  detail: { culprit: string; failingTests: readonly string[]; outputTail?: readonly string[] },
+): void {
+  enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(tip, detail));
 }
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role

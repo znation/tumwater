@@ -39,6 +39,8 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
 import { createMainWatch } from "../baseline/main-watch.js";
+import { revertSkipReason } from "../baseline/main-revert.js";
+import { queueCulpritHeal } from "../baseline/main-red.js";
 import { redeployTarget } from "../baseline/main-baseline.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
@@ -284,7 +286,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // Need-based deferral: whether qualifying work has merged
   // since a role's last-seen main head, cached per head (see scheduling/work-merged-cache.ts).
   const workMergedSince = new WorkMergedCache(root, mainBranch);
-  const mainWatch = createMainWatch(root, mainBranch);
+  const mainWatch = createMainWatch(root, mainBranch, (culprit) => {
+    void revertSkipReason(root, mainBranch, culprit).then((skip) => {
+      if (skip === null) merges.revert = culprit;
+      else queueCulpritHeal(root, culprit.tip, { culprit: culprit.commit, failingTests: culprit.failingTests });
+    });
+  });
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
   // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode
   // logs exactly once — on the transition in, never while merely not-due and never on exit.

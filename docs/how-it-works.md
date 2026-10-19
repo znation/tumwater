@@ -195,8 +195,14 @@ discards a role's in-flight merge.
   a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and
   saves reds beside the greens in `.tumwater/state/baseline-verdicts.json`. On a red tip it also
   bisects the first-parent commits since the last green and logs a `main_culprit` event naming the
-  commit, its merging runner and the failing tests (or a warning when it cannot name one). Nothing
-  acts on these yet, and no run or merge waits for it.
+  commit, its merging runner and the failing tests (or a warning when it cannot name one). No run or
+  merge waits for the watch. It hands the named commit to the merge slot, which reverts it before
+  any merge pick (serialized with merges): it checks out main's tip in the `_merge` worktree,
+  commits the inverse as `tumwater(tumwater): Revert <short sha>`, runs `check.gateCommand` on it
+  when one is set, fast-forwards main under the merge lock and logs `main_revert`. A commit with no
+  merging runner, one the director merged, a revert itself, or one already reverted is not
+  reverted, and a revert that conflicts, fails its gate or loses the fast-forward is abandoned with
+  main unchanged; each of those queues bugfix's heal prompt naming the commit and the failing tests.
 - Failed runs retry on a shorter ladder, capped at ten minutes. Three failures in a row mark a
   role `failing` until it has a healthy run.
 - A search role's own recent yield stretches its clock: after ten consecutive counted runs

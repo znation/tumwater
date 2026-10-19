@@ -15,6 +15,34 @@ import { shortSha } from "../text/format.js";
  * Fail-closed: an unknown ref, a ref not on the base branch, or a revert that conflicts writes
  * no commit and leaves the checkout as it was. */
 
+/** The shared git steps of a revert: `git revert --no-commit <sha>` in `wt`, then commit just the
+ * inverse as `message`. `wt` must have a clean tracked tree (so `--abort` after a conflict has
+ * nothing to discard). Never throws; a conflict or a failed commit aborts the revert and comes
+ * back as `{ ok: false, error }` with `wt` as it was. */
+export async function revertCommitIn(
+  wt: string,
+  sha: string,
+  message: string,
+): Promise<{ ok: true; sha: string } | { ok: false; error: string }> {
+  if ((await gitTry(wt, "revert", "--no-commit", sha)) === null) {
+    // The tree was clean when the revert started, so --abort restores exactly that state.
+    await gitTry(wt, "revert", "--abort");
+    return { ok: false, error: `reverting ${shortSha(sha)} conflicted; nothing was committed and the checkout is unchanged` };
+  }
+  // `--only` with the revert's own staged paths commits just the inverse, so it cannot pick up any
+  // unrelated change of another path staged after the clean check. `--no-renames` keeps a rename's
+  // two halves as separate path lines: the default name-only collapses a detected rename to its
+  // destination, which would commit only half and leave the other half staged with a dirty tree.
+  const pathsSpec = ((await gitTry(wt, "diff", "--cached", "--name-only", "--no-renames")) ?? "")
+    .split("\n")
+    .filter((p) => p.length > 0);
+  if ((await gitTry(wt, ...(await committerIdentArgs(wt)), "commit", ...commitAuthorArgs(), "--only", "-m", message, "--", ...pathsSpec)) === null) {
+    await gitTry(wt, "revert", "--abort");
+    return { ok: false, error: `the revert of ${shortSha(sha)} did not commit; nothing was committed` };
+  }
+  return { ok: true, sha: await headOf(wt, "HEAD") };
+}
+
 /** Revert one already-merged commit (`ref` resolved to a commit) and commit the inverse on the
  * primary checkout under the primary-worktree lock. Never throws; every refusal and every git
  * failure comes back as `{ ok: false, error }` after restoring the checkout. `head` is captured
@@ -52,25 +80,8 @@ export async function revertMergedCommit(
       if ((await gitTry(root, "status", "--porcelain", "--untracked-files=no")) !== "")
         return { ok: false, error: "the worktree has staged or unstaged changes; commit or stash them first, nothing was committed" };
 
-      if ((await gitTry(root, "revert", "--no-commit", full)) === null) {
-        // The tree was clean when the revert started, so --abort restores exactly that state.
-        await gitTry(root, "revert", "--abort");
-        return { ok: false, error: `reverting ${shortSha(full)} conflicted; nothing was committed and the checkout is unchanged` };
-      }
-
-      const commitMsg = stampedSubject("operator", "Revert " + shortSha(full)); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-      // Mirror commitOperatorBacklogEdit: `--only` with the revert's own staged paths commits
-      // just the inverse, so it cannot pick up any unrelated change of another path staged
-      // after the clean check above. `--no-renames` keeps a rename's two halves as separate
-      // path lines: the default name-only collapses a detected rename to its destination, which
-      // would commit only half and leave the other half staged with a dirty tree.
-      const pathsSpec = ((await gitTry(root, "diff", "--cached", "--name-only", "--no-renames")) ?? "")
-        .split("\n")
-        .filter((p) => p.length > 0);
-      if ((await gitTry(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", commitMsg, "--", ...pathsSpec)) === null) {
-        await gitTry(root, "revert", "--abort");
-        return { ok: false, error: `the revert of ${shortSha(full)} did not commit; nothing was committed` };
-      }
+      const reverted = await revertCommitIn(root, full, stampedSubject("operator", "Revert " + shortSha(full))); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
+      if (!reverted.ok) return reverted;
 
       return { ok: true, headSha: await headOf(root, "HEAD"), beforeSha: head };
     });

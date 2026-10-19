@@ -1,4 +1,5 @@
 // vocabulary: plain
+import { runMainRevert, type MainCulprit } from "../baseline/main-revert.js";
 import { mergeApproved, type BatchRoleWiring } from "./merge-batch.js";
 import { removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
@@ -71,7 +72,13 @@ export async function settleAbortedApproved(root: string, p: MergePipeline): Pro
  * (a slow review) does not hold them back. An approved change whose queue entry is gone is
  * forgotten (nothing in-process drops one; defensive). */
 export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
-  if (p.merge !== null || p.approved.size === 0) return;
+  if (p.merge !== null) return;
+  if (p.revert !== null) {
+    p.merge = startRevert(ctx, p, p.revert);
+    p.revert = null;
+    return;
+  }
+  if (p.approved.size === 0) return;
   const queued = queuedMergeFiles(ctx.root);
   const files = new Set(queued.map((q) => q.file));
   for (const [role, v] of [...p.approved]) {
@@ -87,6 +94,23 @@ export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
   if (picks.length === 0) return;
   for (const v of picks) p.approved.delete(v.entry.role);
   p.merge = startMerge(ctx, p, picks);
+}
+
+/** The revert task: a culprit the main watch named is reverted in the merge slot, before any merge
+ * pick, so it is serialized with merges (runMainRevert, src/baseline/main-revert.ts). It holds no
+ * role, so a user abort has nothing of it to reach; a shutdown waits for it like any merge task. */
+function startRevert(ctx: MergePipelineContext, p: MergePipeline, culprit: MainCulprit): InFlightMerge {
+  const merge: InFlightMerge = {
+    promise: Promise.resolve(),
+    controller: new AbortController(),
+    roles: [],
+    userAborted: false,
+  };
+  const task = runMainRevert(ctx.root, ctx.mainBranch, ctx.liveConfig, culprit).finally(() => {
+    p.merge = null;
+  });
+  merge.promise = guardMergeTask(ctx.root, "main revert", task);
+  return merge;
 }
 
 /** The merge task — main's one writer in the pipeline: merge `picks` through mergeApproved on

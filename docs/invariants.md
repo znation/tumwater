@@ -480,3 +480,21 @@ verdict cache holds only full-check verdicts.
 **Pinned by.** `test/redeploy-wiring.test.ts` — "redeployTarget picks main's newest green commit
 newer than the running build, never a red or unverified-green one" and "redeployTarget never
 targets an older commit that no check has called green".
+
+## Main's red culprit
+
+### INV-L1: an automatic revert only reverts a commit a non-director role merged, whose red reproduced and whose parent side is green
+
+**Guarantee.** The revert task queued from a `main_culprit` event reverts only a commit that a
+`merged` event credits to a runner whose base role is not the director, that is not itself a
+revert, and whose revert has not already merged. The watch names a culprit only after its red
+reproduced (the confirming re-run) and the last green commit below it is still green. Any other
+culprit, and any revert that conflicts, fails its gate or loses the fast-forward, leaves main
+unchanged and queues bugfix's heal prompt.
+
+**Binds.** `src/baseline/main-revert.ts`, `src/baseline/main-culprit.ts`, `src/merge/merge-drain.ts`,
+`src/orchestrator/orchestrator.ts`.
+
+**Pinned by.** `test/main-revert.test.ts` — "a named culprit is reverted on main…", "a revert that
+conflicts leaves main alone…" and "a director-merged, runnerless or revert culprit is skipped";
+`test/main-watch.test.ts` — the culprit cases.

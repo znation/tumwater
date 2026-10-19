@@ -1,6 +1,7 @@
 // vocabulary: plain
 import { checkMainBaseline } from "./main-baseline.js";
 import { findRedCulprit } from "./main-culprit.js";
+import type { MainCulprit } from "./main-revert.js";
 import { baselineCheckLogger, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
@@ -14,9 +15,9 @@ import { shortSha } from "../text/format.js";
 /** The main watch: after main's head moves, run the full check on the new tip in the `_gate-main`
  * mirror and record the verdict — a `main_check` event, and the failing tests on the red baseline
  * (which persists beside the greens). On a red tip it also names the first-parent commit that
- * turned main red (a `main_culprit` event, or a warning when none can be named). It records only:
- * no run, gate or merge waits on it, and nothing acts on what it sees yet (plans/fast-merge.md,
- * Lever 2, parts 3 and 4a).
+ * turned main red (a `main_culprit` event, or a warning when none can be named). No run, gate or
+ * merge waits on it; the culprit goes to the optional `onCulprit` callback, which the orchestrator
+ * wires to the merge slot's revert (plans/fast-merge.md, Lever 2, parts 3, 4a and 4b).
  *
  * One watch run is in flight at a time, and it covers every commit since the last watched head; a
  * head that moves during a run is watched next. The run goes through checkMainBaseline, so a
@@ -51,7 +52,11 @@ export function onlyKnownMainFailures(root: string, failingTests: readonly strin
   return failingTests.every((t) => known.has(t)) ? [...failingTests] : null;
 }
 
-export function createMainWatch(root: string, mainBranch: string): MainWatch {
+export function createMainWatch(
+  root: string,
+  mainBranch: string,
+  onCulprit?: (culprit: MainCulprit) => void,
+): MainWatch {
   let lastWatched: string | undefined;
   let inFlight: Promise<void> | null = null;
 
@@ -104,6 +109,12 @@ export function createMainWatch(root: string, mainBranch: string): MainWatch {
           ...(found.runner !== undefined ? { runner: found.runner } : {}),
           failingTests: found.failingTests,
           green: found.green,
+        });
+        onCulprit?.({
+          commit: found.commit,
+          ...(found.runner !== undefined ? { runner: found.runner } : {}),
+          failingTests: found.failingTests,
+          tip: baseline.sha,
         });
       } else {
         logEventBestEffort(root, {

@@ -55,6 +55,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   role_cap_resumed: "role budget resumed",
   main_check: "main checked",
   main_culprit: "main red culprit",
+  main_revert: "main red reverted",
   main_red_hold: "main's check is failing",
   maintenance_quota_hold: "waiting: maintenance allowance used",
   maintenance_quota_resumed: "maintenance allowance reopened",
