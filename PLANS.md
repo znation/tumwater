@@ -71,45 +71,81 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - plan, clean and every other single-runner role schedule exactly as before.
 - `npm test` passes.
 
-### Fast merge, part 4/14: A commit that turned main red is bisected, reverted and handed back to its role (planned 2026-10-19 by user; requires part 3/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-watch.ts src/merge/merge-drain.ts src/merge/merge-git.ts src/merge/merge-core.ts src/operator/revert.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md and their tests)
+### Fast merge, part 4a/14: The main watch names the first-parent commit that turned main red (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 3/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-watch.ts src/baseline/main-culprit.ts src/events/events.ts and their tests)
 
-**Needs review 2026-10-19 by feature: too large for one run**
-
-**Goal.** When main goes red, the commit that did it should leave main in minutes and go back to its author as a revision. It should not hold a red main open while N roles try to fix the same break. Tumwater's own code does this, with no new role: bugfix keeps fix-forward for what a revert cannot handle.
+**Goal.** Part 3's watch records a red tip but not which commit broke it. This part finds that commit and records it, without acting on it yet. Parts 4b/14 (revert) and 4c/14 (hand-back) act on this event. Splitting the search out keeps each part one run.
 
 **Approach.**
-- Trigger: the watch (part 3) confirms a red tip T, and the newest earlier green verdict is on commit G.
-- Environment guard: re-check G with a fresh run. If G is red now too, the cause is the environment, not a commit. Warn `main's last green commit <G> is red now too — not reverting` and stop.
-- Bisect:
-  - Over the first-parent commits in G..T whose diff is not exempt-only (`review.exemptPaths`), binary-search for the first red commit C, reusing cached verdicts. Runs go through `gateMainQueue` in `_gate-main`.
-  - Confirm C's red once, and that C's parent is green.
-  - The new failures are T's failing tests minus G's.
-- Owner: the `merged` event whose `commit` is C names the runner. Revert only when that runner's base role is not the director. Do not revert a commit with no `merged` event (an operator or hand commit) or a revert commit.
-- Revert, as a new merge-slot task kind serialized with merges in `drainMerge` (src/merge/merge-drain.ts):
-  - Factor the git steps of `revertMergedCommit` (src/operator/revert.ts) into a helper that takes a worktree, used by both.
-  - In `_merge` at main's tip, run `git revert --no-edit C`; a conflict aborts it.
-  - Run `check.gateCommand` on the result when one is set; red aborts.
-  - Commit with the subject `tumwater revert` uses and a body naming C's subject and the failing tests.
-  - Land it with `ffMainToOrWhy` (src/merge/merge-git.ts) under the merge lock.
-  - Log `main_revert` `{ commit, revert, runner, failingTests }` and register it in src/events/events.ts.
-- Hand back, like `recordRejectedChange` (src/merge/merge-core.ts):
-  - Set the rejected ref to C and `state.revision` (round from C's `Revision` trailer, plus one).
-  - Set `lastReview` reasons to `reverted after merge: turned main red — <failing tests>` plus the clipped output. `REVISION_BACKSTOP` applies.
-  - Give it to C's own runner when that runner has no queued change and no pending revision, else to the first free runner of the same base role.
-  - If none is free, keep it pending in `.tumwater/state/reverted.json` and assign it on a later poll.
-- No revert: a revert that conflicts or fails its check, a director, operator or hand commit, or main still red with the same new failures after a revert. In each case send bugfix the heal prompt (`mainRedHealPrompt`, src/baseline/main-red.ts), extended to name C, the failing tests and the clipped output.
-- docs/invariants.md: an entry stating that an automatic revert only reverts a commit a role runner merged, whose red reproduced and whose parent is green. Pin it with this part's test. docs/how-it-works.md: the revert flow.
+- New module src/baseline/main-culprit.ts exporting `findRedCulprit(root, wt, config, red)`, where `red` is the watch's confirmed red `MainBaseline` at tip T. It runs inside the watch's existing `withMainTipWorktree` callback, so every check goes through `gateMainQueue` in `_gate-main`. Re-point the mirror per candidate with `ensureDetachedWorktree(root, gateMainWorktreePath(root), sha)`, and re-point it back at T before returning.
+- Last green G: walk `git rev-list --first-parent T` (T excluded) and take the newest commit whose `cachedBaselineVerdict` (src/baseline/main-baseline.ts) is `"green"`. Cap the walk at a constant `CULPRIT_SEARCH_MAX = 50`. When none is found, return `{ kind: "unattributed", reason: "no green commit within 50 first-parent commits" }`.
+- Environment guard: check G with `checkMainBaseline(…, forceFresh = true, …, CHECK_TIER.merge)`. If G is red now, return `{ kind: "environment", green: G }`.
+- Bisect: the candidates are the first-parent commits in G..T, minus those whose diff touches only `review.exemptPaths` (`isExemptDiff`, src/review/exemptions.ts). Binary-search for the first red candidate C. Use `checkMainBaseline` with observedOnly = true, so cached verdicts answer without a run. Then confirm C once with `reverifyRed = true`; if it comes back green, return `unattributed` ("red did not reproduce at <C>").
+- New failures: T's `failingTests` minus G's (G's are empty when its cached verdict is green, so this is T's list; keep the subtraction for a G that carried known failures).
+- Owner: the newest `merged` event whose `commit` is C (src/merge/merge-to-main.ts and src/merge/merge-stack.ts log it; its `source` is the runner). Read it with `readEvents` (src/events/event-read.ts); a commit whose `merged` event has left the read tail counts as having none. Return `{ kind: "culprit", commit: C, runner?: string, failingTests }`. `runner` is absent for a commit with no `merged` event (an operator or hand commit).
+- `createMainWatch` (src/baseline/main-watch.ts): after it logs a `main_check` with status `failed`, it calls `findRedCulprit` and logs exactly one event:
+  - culprit → `main_culprit` `{ commit, runner?, failingTests, green }`. Register `main_culprit` in the event-type union in src/events/events.ts with a comment in the style of `main_check`'s.
+  - environment → a `warning` `main's last green commit <short G> is red now too — not attributing`.
+  - unattributed → a `warning` naming the reason.
+- Search only once per red head: a later poll on the same T does not search again. Update the module comment ("nothing acts on what it sees yet" still holds; add that the watch names the culprit).
 
-**Files touched.**
-- Source: src/baseline/main-watch.ts, src/merge/merge-drain.ts, src/merge/merge-git.ts, src/merge/merge-core.ts, src/operator/revert.ts, src/baseline/main-red.ts, src/events/events.ts.
-- Docs: docs/how-it-works.md, docs/invariants.md.
-- Tests: test/main-watch.test.ts, the revert CLI tests (they must still pass on the shared helper), and an orchestrator test with a fake check.
+**Files touched.** src/baseline/main-culprit.ts (new), src/baseline/main-watch.ts, src/events/events.ts, test/main-culprit.test.ts (new), test/main-watch.test.ts.
 
 **Acceptance criteria.**
-- In a fake repo: G is green, A merges green, B makes a test fail, D is doc-only. The watch finds the tip red, the bisect names B, and main gets a revert of B. The next watch verdict is green, and B's runner holds a revision whose reasons name the failing test.
-- With G red on its re-check, nothing is reverted and the warning is logged.
-- A revert that conflicts: nothing is reverted, and bugfix's inbox holds a heal prompt naming B.
+- In a fake repo with a fake check: G is green, A merges green, B makes a test fail, D is doc-only. The watch on D logs `main_culprit` with commit B, B's `merged` runner, and the failing test.
+- With the check made red at G too, no `main_culprit` is logged and the "red now too" warning is.
+- A red culprit with no `merged` event yields `main_culprit` with no `runner`.
+- No green within the cap gives the unattributed warning.
+- `npm test` passes.
+
+### Fast merge, part 4b/14: A merge-slot task reverts the named culprit of a red main (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 4a/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/operator/revert.ts src/merge/merge-drain.ts src/merge/merge-git.ts src/baseline/main-watch.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md and their tests)
+
+**Goal.** When part 4a/14 names a culprit, main should lose that commit within minutes instead of staying red while roles pile up fixes. Bugfix keeps fix-forward for what a revert cannot handle. Part 4c/14 hands the reverted change back to its role.
+
+**Approach.**
+- Shared git steps: factor the revert-and-commit body of `revertMergedCommit` (src/operator/revert.ts) into an exported helper `revertCommitIn(wt, sha, message)`. It runs `git revert --no-commit`, `--abort` on a conflict, and the `--only` path commit. It returns `{ ok: true, sha } | { ok: false, error }`. `revertMergedCommit` keeps its lock, branch and clean-tree checks and calls the helper; test/operator-revert.test.ts must still pass unchanged.
+- Trigger: the watch, where it logs `main_culprit` with a `runner`, also hands `{ commit, runner, failingTests }` to a callback that `createMainWatch` takes (a new optional parameter). The orchestrator (src/orchestrator/orchestrator.ts, where it calls `createMainWatch`) wires it to queue a revert on the merge pipeline.
+- Skip the revert and go to the heal prompt when:
+  - the runner's base role is the director;
+  - there is no `runner`;
+  - the commit's subject is a revert (`tumwater(operator): Revert` or this part's own subject);
+  - a revert of this same commit already landed.
+- Revert task: a new pending-revert slot on `MergePipeline`, which `drainMerge` (src/merge/merge-drain.ts) starts before any merge pick while `p.merge` is null, so it is serialized with merges. The task:
+  - checks out main's tip in the `_merge` worktree;
+  - calls `revertCommitIn` with the subject `stampedSubject("tumwater", "Revert <short C>")` and a body naming C's subject and the failing tests;
+  - runs `check.gateCommand` on the result when one is set (grep `gateCommandOf`), where red aborts;
+  - lands with `ffMainToOrWhy` (src/merge/merge-git.ts) under the merge lock.
+  - Log `main_revert` `{ commit, revert, runner, failingTests }` and register it in src/events/events.ts.
+- Heal fallback: on a skip, a conflict, a red gate, a refused fast-forward, or a watch that finds main still red with the same failing tests after a landed revert, queue bugfix's heal prompt. Extend `mainRedHealPrompt` (src/baseline/main-red.ts) with an optional `{ culprit, failingTests, outputTail }` that names C, the tests and the clipped output. The existing one-argument calls keep their text.
+- docs/invariants.md: add an entry under the merge or baseline section saying an automatic revert only reverts a commit a non-director role runner merged, whose red reproduced and whose parent side (G) is green. Pin it to this part's test. docs/how-it-works.md: describe the revert flow.
+
+**Files touched.** src/operator/revert.ts, src/merge/merge-drain.ts (and the `MergePipeline` type where it is declared), src/merge/merge-git.ts only if a helper is needed, src/baseline/main-watch.ts, src/baseline/main-red.ts, src/orchestrator/orchestrator.ts (wiring), src/events/events.ts, docs/how-it-works.md, docs/invariants.md, test/main-watch.test.ts or a new test/main-revert.test.ts, test/operator-revert.test.ts (unchanged, must pass).
+
+**Acceptance criteria.**
+- The 4a/14 fake repo (G, A, B red, D doc-only): main gets a revert of B, `main_revert` is logged, and the next watch verdict is green.
+- A revert that conflicts: main is unchanged, and bugfix's inbox holds a heal prompt naming B and the failing test.
 - A director-merged culprit is not reverted, and bugfix gets the heal prompt.
+- `tumwater revert` behaves as before (test/operator-revert.test.ts passes).
+- `npm test` passes.
+
+### Fast merge, part 4c/14: A reverted change goes back to its role as a revision (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 4b/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/merge/merge-core.ts src/merge/merge-drain.ts src/paths.ts src/git/commit-message.ts docs/how-it-works.md and their tests)
+
+**Goal.** After part 4b/14 reverts a culprit, its author should revise the same change with the failing tests in hand rather than start over. This closes the loop the old part 4/14 described.
+
+**Approach.**
+- Hand back like `recordRejectedChange` (src/merge/merge-core.ts): export a sibling `recordRevertedChange(root, role, state, commit, reasons)` that:
+  - points `refs/tumwater/rejected/<role>` at C;
+  - sets `state.revision` with the round from C's `Revision` trailer plus one (`revisionRoundOf` in src/git/commit-message.ts, exported for this);
+  - sets `lastReview` reasons to `reverted after merge: turned main red — <failing tests>` plus the clipped output;
+  - ends the chain with `exhausted` at `REVISION_BACKSTOP`, as a rejection does.
+- Recipient: C's own runner when it has no queued change and no pending revision. Otherwise, the first free runner of the same base role. If none is free, append `{ commit, role, reasons }` to `.tumwater/state/reverted.json` (path helper beside the other state paths in src/paths.ts). The merge pipeline's poll (`drainMerge`'s caller) assigns pending entries on a later poll and drops each one once assigned.
+- Call it from the 4b/14 revert task right after `main_revert` is logged.
+- docs/how-it-works.md: extend the revert flow with the hand-back.
+
+**Files touched.** src/merge/merge-core.ts, src/merge/merge-drain.ts, src/paths.ts, src/git/commit-message.ts, docs/how-it-works.md, and the revert test from part 4b/14.
+
+**Acceptance criteria.**
+- After B is reverted in the 4b/14 scenario, B's runner holds a revision whose reasons name the failing test, and its rejected ref points at B.
+- With B's runner holding a queued change, the revision goes to another free runner of the same base role. With none free, it waits in `reverted.json` and is assigned once one frees.
 - `npm test` passes.
 
 ### Fast merge, part 5/14: Self-redeploy runs main's newest green commit, not only a green tip (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/redeploy/redeployer.ts src/redeploy/redeploy.ts src/redeploy/redeploy-policy.ts src/redeploy/redeploy-probes.ts src/orchestrator/orchestrator.ts src/baseline/main-baseline.ts docs/how-it-works.md docs/invariants.md and their tests)
@@ -138,7 +174,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A commit with only a non-full-check green is never deployed.
 - `npm test` passes.
 
-### Fast merge, part 6/14: `check.mergeCommand` runs a cheaper check inside the merge lock and moves the full check after the merge (planned 2026-10-19 by user; requires parts 3/14, 4/14 and 5/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/config/config-schema.ts src/config/config-validation.ts src/build/build-check-detect.ts src/build/build-check-scoped.ts src/build/build-check-events.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/baseline/main-red.ts src/review/review-precheck.ts tumwater.json docs/config.md docs/how-it-works.md DEVELOPMENT.md test/affected-tests.ts and their tests)
+### Fast merge, part 6/14: `check.mergeCommand` runs a cheaper check inside the merge lock and moves the full check after the merge (planned 2026-10-19 by user; requires parts 3/14, 4c/14 and 5/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/config/config-schema.ts src/config/config-validation.ts src/build/build-check-detect.ts src/build/build-check-scoped.ts src/build/build-check-events.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/baseline/main-red.ts src/review/review-precheck.ts tumwater.json docs/config.md docs/how-it-works.md DEVELOPMENT.md test/affected-tests.ts and their tests)
 
 **Goal.** Every code merge runs the full `npm test` inside the merge lock: `verifyMerge`'s no-op-rebase and inherited-green skips are both off while `check.gateCommand` is set (src/merge/merge-to-main.ts ~266-349). That is 96 s at p50 per merge on the serial slot. A first red there sends the change back through the whole pipeline. With parts 3–5 catching and reverting a break after the merge, the lock only needs what must never reach main: lint, compile and the change's affected tests. Those stay before every merge (decided 2026-10-19 by you).
 
@@ -165,7 +201,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Tests: test/config-validation-check.test.ts, test/build-check-detect.test.ts, test/build-check.test.ts, test/merge-to-main.test.ts, test/main-red.test.ts.
 
 **Acceptance criteria.**
-- With `mergeCommand` set to a passing fake command and a full check that would fail, a change merges. The watch then reports the tip red and part 4 reverts the change.
+- With `mergeCommand` set to a passing fake command and a full check that would fail, a change merges. The watch then reports the tip red and part 4b/14 reverts the change.
 - When the rebased head equals the verified head, no in-lock `build_check` runs.
 - A `mergeCommand` green never appears among the persisted greens.
 - A fresh run on main with a watch verdict starts without running a full check.
@@ -196,7 +232,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Fast merge, part 8/14: Every role runs on a red main, with a note listing main's known failures (planned 2026-10-19 by user; requires part 7/14 landed; design in plans/fast-merge.md "Lever 3: main's known failures instead of a team-wide hold"; touches src/baseline/main-red.ts src/runner/runner-run.ts src/prompt/gate-prompts.ts src/roles/roles.ts docs/how-it-works.md and their tests)
 
-**Goal.** On a red main, feature and every code maintenance role (`BASELINE_BLOCKED_ROLES`, src/roles/roles.ts) end their runs `main_red` and wait, and each red commit logs "code merges blocked until main is green". Once part 7 lets changes through on known failures, the team should keep working on a red main. Only the owner (part 4's revert, then bugfix) deals with the red.
+**Goal.** On a red main, feature and every code maintenance role (`BASELINE_BLOCKED_ROLES`, src/roles/roles.ts) end their runs `main_red` and wait, and each red commit logs "code merges blocked until main is green". Once part 7 lets changes through on known failures, the team should keep working on a red main. Only the owner (part 4b/14's revert, then bugfix) deals with the red.
 
 **Approach.**
 - `mainRedGate` (src/baseline/main-red.ts): when main's red verdict names its failing tests, every role proceeds. When it names none, the block stays as today.
@@ -232,7 +268,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A quarantined test counts as a known failure everywhere:
   - in part 7's subset rule;
   - in the watch: a red that names only quarantined tests counts as green for the bisect and for redeploy, recorded with `quarantined: [tests]`;
-  - in part 4's culprit search.
+  - in part 4a/14's culprit search.
 - Filing: one BUGS.md `## Open` entry per newly quarantined test, via `fileBugFromText`/`appendEntry` (src/backlog/backlog-write.ts).
   - Title it "`<test>` failed, then passed on the same tree (quarantined by tumwater YYYY-MM-DD)", with the failing output tail.
   - Commit it on main under the merge lock and the primary-worktree lock, as `archiveFinishedOnMain` does (src/backlog/backlog-archive.ts).
@@ -342,7 +378,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Without a gate command, the existing wording tests (`pytest -q`, `make check`, the fallback) pass unchanged.
 - `npm test` passes.
 
-### Fast merge, part 14/14: Roles listed in `review.afterMerge` merge once the gate passes and are reviewed after merging (planned 2026-10-19 by user; requires parts 4/14 and 6/14 landed; design in plans/fast-merge.md "Lever 7: maintenance roles reviewed after merging"; touches src/config/config-schema.ts src/config/config-validation.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-drain.ts src/merge/merge-core.ts tumwater.json docs/config.md docs/how-it-works.md and their tests)
+### Fast merge, part 14/14: Roles listed in `review.afterMerge` merge once the gate passes and are reviewed after merging (planned 2026-10-19 by user; requires parts 4c/14 and 6/14 landed; design in plans/fast-merge.md "Lever 7: maintenance roles reviewed after merging"; touches src/config/config-schema.ts src/config/config-validation.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-drain.ts src/merge/merge-core.ts tumwater.json docs/config.md docs/how-it-works.md and their tests)
 
 **Goal.** clean, dedupe and coverage merge many small code changes, and each one waits for a review before it can merge. For those roles a review after the merge, with the power to revert, keeps the quality bar at a fraction of the wait.
 
@@ -352,7 +388,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - After the merge:
   - Record a post-merge review for the merged commit C in `.tumwater/state/post-review.json`. The verify drain runs it at `VERIFY_TIER` when permits allow, with the usual reviewer prompt over `git diff C^ C`.
   - An approval ends it. `review_verdict` and `review_rejected` carry `afterMerge: true`.
-  - A rejection reverts C through part 4's revert task and hands it back as a revision with the reviewer's reasons.
+  - A rejection reverts C through part 4b/14's revert task and hands it back through part 4c/14 as a revision with the reviewer's reasons.
   - A revert that conflicts leaves C on main and sends the reasons to the role's inbox (`enqueueRolePrompt`).
 - tumwater.json: `"afterMerge": ["clean", "dedupe", "coverage"]`.
 - docs/config.md (the `review` row) and docs/how-it-works.md.
