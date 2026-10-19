@@ -36,7 +36,7 @@ import { renderTickDetail, tickDetailStat, tickNotFoundMessage } from "../tick/t
 import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
-import { intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
+import { clampCount, intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
 import { readBrief } from "../brief/brief.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
@@ -239,7 +239,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   }
   const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_TICKS);
   if (parsed === null) return;
-  const n = Math.min(HISTORY_MAX_TICKS, Math.max(1, parsed));
+  const n = clampCount(parsed, HISTORY_MAX_TICKS);
   let rows = readTickRows(root, n, role);
   if (grep !== null) rows = tickRowsMatchingGrep(rows, grep);
   sendJson(res, 200, summary ? { rows, summary: summarizeTickRows(rows) } : { rows });
@@ -269,7 +269,7 @@ const LOGS_SEARCH_MAX_EVENTS = 5000;
 export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const parsed = intQuery(q, res, "n", "non-negative", LOGS_SEARCH_EVENTS);
   if (parsed === null) return;
-  const n = Math.min(LOGS_SEARCH_MAX_EVENTS, Math.max(1, parsed));
+  const n = clampCount(parsed, LOGS_SEARCH_MAX_EVENTS);
   const role = q.get("role") || null; // "" and absent both read all loops
   const grep = q.get("grep") || null; // "" and absent both filter nothing
   const needle = grep === null ? null : grep.toLowerCase();

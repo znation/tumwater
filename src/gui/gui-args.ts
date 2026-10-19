@@ -102,6 +102,12 @@ export function intQuery(
   return parsed;
 }
 
+/** Clamp a parsed count into 1..max: the bound every GUI count query (`n`, `days`) applies after
+ * its parse, so a request never asks for zero or more than the endpoint's cap. */
+export function clampCount(n: number, max: number): number {
+  return Math.min(max, Math.max(1, n));
+}
+
 /** The window both report endpoints serve, from ?days=N on the request. One exact rule,
  * shared so /api/report and /api/failures cannot drift: missing or non-decimal →
  * REPORT_DEFAULT_DAYS, out-of-range clamped to 1..REPORT_MAX_DAYS (the same bounds the CLI's
@@ -112,7 +118,7 @@ export function intQuery(
  * coerced value — raw Number.parseInt would read "1e3" as 1, "0x10" as 0, and "-5" as -5. */
 export function windowDays(q: URLSearchParams): number {
   const n = parseNonNegativeInt(q.get("days") ?? "");
-  return n === null ? REPORT_DEFAULT_DAYS : Math.min(REPORT_MAX_DAYS, Math.max(1, n));
+  return n === null ? REPORT_DEFAULT_DAYS : clampCount(n, REPORT_MAX_DAYS);
 }
 
 /** Pull the prompt text out of a prompt endpoint's body — the shared validator for
