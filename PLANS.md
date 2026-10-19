@@ -148,32 +148,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - With B's runner holding a queued change, the revision goes to another free runner of the same base role. With none free, it waits in `reverted.json` and is assigned once one frees.
 - `npm test` passes.
 
-### Fast merge, part 5/14: Self-redeploy runs main's newest green commit, not only a green tip (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/redeploy/redeployer.ts src/redeploy/redeploy.ts src/redeploy/redeploy-policy.ts src/redeploy/redeploy-probes.ts src/orchestrator/orchestrator.ts src/baseline/main-baseline.ts docs/how-it-works.md docs/invariants.md and their tests)
-
-**Goal.** Self-redeploy only ever runs a commit whose full check is green (decided 2026-10-19 by you). Today it targets only main's tip (`mainHead`, src/orchestrator/orchestrator.ts ~355). When the tip is red it deploys nothing until main moves (`blockedHead`, src/redeploy/redeployer.ts ~317 and ~411). Once part 6 lets main be briefly red between merges, that would stall redeploys. The target should be the newest green commit instead.
-
-**Approach.**
-- Choose the target before `redeploy.poll`, or as a `RedeployDeps` method (src/redeploy/redeploy-policy.ts):
-  - Walk main's first-parent history from the tip back to the running build's commit, at most 64 commits.
-  - Take the newest commit with a green full-check verdict in the cache; observed and inherited greens both count.
-  - An unchecked tip is checked as today (`mainIsGreen`, src/redeploy/redeploy.ts). If it is red, fall back to the newest older green commit that is newer than the running build.
-- `staleness`, `mainGreen`, `compile`, `swap` and the prewarm probe (src/redeploy/redeploy-probes.ts) already take a sha; pass the target.
-- `blockedHead` blocks only the red commit itself.
-- Only full-check verdicts count. A green from a cheaper command (part 6's `check.mergeCommand`) never makes a commit deployable.
-- docs/invariants.md: an entry stating that self-redeploy only runs a commit with a green full-check verdict, pinned by this part's test. docs/how-it-works.md: the redeploy paragraph.
-
-**Files touched.**
-- Source: src/redeploy/redeployer.ts, src/redeploy/redeploy.ts, src/redeploy/redeploy-policy.ts, src/redeploy/redeploy-probes.ts, src/orchestrator/orchestrator.ts, src/baseline/main-baseline.ts.
-- Docs: docs/how-it-works.md, docs/invariants.md.
-- Tests: test/redeployer.test.ts, test/redeploy-wiring.test.ts.
-
-**Acceptance criteria.**
-- Running build A, main A → B (green) → C (red): the redeploy targets B.
-- Running build A, main A → B (red): no redeploy.
-- A green tip is deployed as today.
-- A commit with only a non-full-check green is never deployed.
-- `npm test` passes.
-
 ### Fast merge, part 6/14: `check.mergeCommand` runs a cheaper check inside the merge lock and moves the full check after the merge (planned 2026-10-19 by user; requires parts 3/14, 4c/14 and 5/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/config/config-schema.ts src/config/config-validation.ts src/build/build-check-detect.ts src/build/build-check-scoped.ts src/build/build-check-events.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/baseline/main-red.ts src/review/review-precheck.ts tumwater.json docs/config.md docs/how-it-works.md DEVELOPMENT.md test/affected-tests.ts and their tests)
 
 **Goal.** Every code merge runs the full `npm test` inside the merge lock: `verifyMerge`'s no-op-rebase and inherited-green skips are both off while `check.gateCommand` is set (src/merge/merge-to-main.ts ~266-349). That is 96 s at p50 per merge on the serial slot. A first red there sends the change back through the whole pipeline. With parts 3–5 catching and reverting a break after the merge, the lock only needs what must never reach main: lint, compile and the change's affected tests. Those stay before every merge (decided 2026-10-19 by you).

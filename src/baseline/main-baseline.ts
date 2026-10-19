@@ -15,7 +15,7 @@ import { isExemptDiff } from "../review/exemptions.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
-import { baselineVerdictsPath } from "../paths.js";
+import { baselineVerdictsPath, mirrorWorktreePath } from "../paths.js";
 import { memoSetLru } from "../collections.js";
 
 /** The team-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
@@ -293,6 +293,31 @@ function exemptPathsOf(config: CheckConfigSlice): string[] {
  * answers every later consult. Read-only: deciding a SHA's verdict is checkMainBaseline's alone. */
 export function cachedBaselineVerdict(sha: string): "green" | "red" | undefined {
   return baselineCache.get(sha)?.status;
+}
+
+/** How many first-parent commits below main's tip redeployTarget looks at. */
+const REDEPLOY_WALK_MAX = 64;
+
+/** The commit self-redeploy should run: main's newest first-parent commit with a green full-check
+ * verdict in the cache (observed or inherited) that is newer than the running build `buildSha`,
+ * looking at most REDEPLOY_WALK_MAX commits down from `tip`. A tip the cache has no verdict for
+ * is the target as is — the redeployer checks it. A tip whose cached red was observed in the
+ * redeployer's mirror worktree (mirrorWorktreePath of `wt`) falls back to the newest older green
+ * above the build. Any other red may be another worktree's environmental one, which the redeployer
+ * re-verifies; a build that is not a first-parent ancestor of `tip`, or no green, also leaves the
+ * tip the target, and the redeployer blocks that commit alone. The cache holds only full-check
+ * verdicts, so a cheaper command's green never makes a commit deployable.
+ * Never throws: a git failure leaves the tip as the target. */
+export async function redeployTarget(wt: string, tip: string, buildSha: string): Promise<string> {
+  const red = baselineCache.get(tip);
+  if (tip === "" || red?.status !== "red" || !(red.redFrom ?? []).includes(mirrorWorktreePath(wt))) return tip;
+  const walk = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${REDEPLOY_WALK_MAX}`, tip));
+  const buildAt = walk.indexOf(buildSha);
+  if (buildAt === -1) return tip;
+  for (const sha of walk.slice(0, buildAt)) {
+    if (baselineCache.get(sha)?.status === "green") return sha;
+  }
+  return tip;
 }
 
 /** Verify main's own build/test suite at `wt`'s HEAD — which must be pristine main (the caller

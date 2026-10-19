@@ -5,6 +5,7 @@ import path from "node:path";
 import type { HarnessEventInput } from "../src/events/events.js";
 import { readBuildInfo } from "../src/build/build-info.js";
 import { createRedeployer, redeployDeps } from "../src/redeploy/redeploy.js";
+import { noteGreenBaseline, redeployTarget } from "../src/baseline/main-baseline.js";
 import { Redeployer } from "../src/redeploy/redeployer.js";
 import { IDLE } from "./fixtures/redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../src/paths.js";
@@ -279,4 +280,75 @@ test("the staleness, compile, and swap closures drive the real mechanics in a fi
   // The swap guard fires through the closure too: with nothing staged for the head it names
   // the head rather than leaking a bare ENOENT from the rename below it.
   assert.throws(() => deps.swap(newHead), /no staged update for/);
+});
+
+test("redeployTarget picks main's newest green commit newer than the running build, never a red or unverified-green one", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(0)'" }));
+  fs.mkdirSync(path.join(root, "node_modules"));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "A");
+  const a = headSha(root);
+  fs.writeFileSync(path.join(root, "b.txt"), "b");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "B");
+  const b = headSha(root);
+  noteGreenBaseline(b);
+  const deps = redeployDeps(root, { sha: a, builtAt: 1, root }, () => {}, async () => null);
+
+  // Running A, main A -> B (green): the green tip deploys as today.
+  assert.equal(await redeployTarget(root, b, a), b);
+
+  // A -> B (green) -> C (red): the target falls back to B.
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(1)'" }));
+  sh(root, "git", "commit", "-aqm", "C");
+  const c = headSha(root);
+  assert.equal(await redeployTarget(root, c, a), c, "an unchecked tip is the target (the redeployer checks it)");
+  assert.equal(await deps.mainGreen(c), false);
+  assert.equal(await redeployTarget(root, c, a), b, "a red tip falls back to the newest green");
+
+  // Running B, main B -> C (red): nothing newer is green, so the red tip stays the target and
+  // the redeployer blocks that commit alone.
+  assert.equal(await redeployTarget(root, c, b), c);
+});
+
+test("redeployTarget never targets an older commit that no check has called green", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(1)'" }));
+  fs.mkdirSync(path.join(root, "node_modules"));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "A");
+  const a = headSha(root);
+  fs.writeFileSync(path.join(root, "b.txt"), "b");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "B (no verdict)");
+  const b = headSha(root);
+  fs.writeFileSync(path.join(root, "c.txt"), "c");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "C");
+  const c = headSha(root);
+  const deps = redeployDeps(root, { sha: a, builtAt: 1, root }, () => {}, async () => null);
+  assert.equal(await deps.mainGreen(c), false);
+  assert.equal(await redeployTarget(root, c, a), c, "B has no verdict, so it is not a fallback");
+  assert.notEqual(b, c);
+});
+
+test("redeployTarget keeps the tip when the build is not a first-parent ancestor of it", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(0)'" }));
+  fs.mkdirSync(path.join(root, "node_modules"));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "A");
+  const a = headSha(root);
+  fs.writeFileSync(path.join(root, "b.txt"), "b");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "B");
+  const b = headSha(root);
+  noteGreenBaseline(b);
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(1)'" }));
+  sh(root, "git", "commit", "-aqm", "C");
+  const c = headSha(root);
+  const deps = redeployDeps(root, { sha: a, builtAt: 1, root }, () => {}, async () => null);
+  assert.equal(await deps.mainGreen(c), false);
+  assert.equal(await redeployTarget(root, c, "f".repeat(40)), c, "an unknown build is no bound for a fallback");
 });

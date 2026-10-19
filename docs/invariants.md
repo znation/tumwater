@@ -463,3 +463,20 @@ note), `src/events/event-format.ts` (the `image_reroute` and image-reroute resum
 back to its own tier" and "a rerouted director prompt runs fresh on the vision target and is
 delivered once"; `test/prompt-followup.test.ts` — the handoff-note test;
 `test/event-format.test.ts` — the `image_reroute` and image-reroute resume rendering tests.
+
+## Self-redeploy runs only verified code
+
+### INV-K1: self-redeploy only runs a commit with a green full-check verdict
+
+**Guarantee.** The commit self-redeploy targets is main's newest first-parent commit newer than
+the running build whose full-check verdict is green (observed or inherited), looking at most 64
+commits down. A cached-red tip falls back to the newest older green; with none the red tip stays the
+target and is blocked alone. An older commit with no green verdict is never a fallback, and the
+verdict cache holds only full-check verdicts.
+
+**Binds.** `src/baseline/main-baseline.ts` (`redeployTarget`), `src/orchestrator/orchestrator.ts`
+(the target passed to `Redeployer.poll`), `src/redeploy/redeployer.ts`.
+
+**Pinned by.** `test/redeploy-wiring.test.ts` — "redeployTarget picks main's newest green commit
+newer than the running build, never a red or unverified-green one" and "redeployTarget never
+targets an older commit that no check has called green".

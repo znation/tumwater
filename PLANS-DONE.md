@@ -5,6 +5,34 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 5/14: Self-redeploy runs main's newest green commit, not only a green tip (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/redeploy/redeployer.ts src/redeploy/redeploy.ts src/redeploy/redeploy-policy.ts src/redeploy/redeploy-probes.ts src/orchestrator/orchestrator.ts src/baseline/main-baseline.ts docs/how-it-works.md docs/invariants.md and their tests); done 2026-10-19 by the feature role
+
+**Goal.** Self-redeploy only ever runs a commit whose full check is green (decided 2026-10-19 by you). Today it targets only main's tip (`mainHead`, src/orchestrator/orchestrator.ts ~355). When the tip is red it deploys nothing until main moves (`blockedHead`, src/redeploy/redeployer.ts ~317 and ~411). Once part 6 lets main be briefly red between merges, that would stall redeploys. The target should be the newest green commit instead.
+
+**Approach.**
+- Choose the target before `redeploy.poll`, or as a `RedeployDeps` method (src/redeploy/redeploy-policy.ts):
+  - Walk main's first-parent history from the tip back to the running build's commit, at most 64 commits.
+  - Take the newest commit with a green full-check verdict in the cache; observed and inherited greens both count.
+  - An unchecked tip is checked as today (`mainIsGreen`, src/redeploy/redeploy.ts). If it is red, fall back to the newest older green commit that is newer than the running build.
+- `staleness`, `mainGreen`, `compile`, `swap` and the prewarm probe (src/redeploy/redeploy-probes.ts) already take a sha; pass the target.
+- `blockedHead` blocks only the red commit itself.
+- Only full-check verdicts count. A green from a cheaper command (part 6's `check.mergeCommand`) never makes a commit deployable.
+- docs/invariants.md: an entry stating that self-redeploy only runs a commit with a green full-check verdict, pinned by this part's test. docs/how-it-works.md: the redeploy paragraph.
+
+**Files touched.**
+- Source: src/redeploy/redeployer.ts, src/redeploy/redeploy.ts, src/redeploy/redeploy-policy.ts, src/redeploy/redeploy-probes.ts, src/orchestrator/orchestrator.ts, src/baseline/main-baseline.ts.
+- Docs: docs/how-it-works.md, docs/invariants.md.
+- Tests: test/redeployer.test.ts, test/redeploy-wiring.test.ts.
+
+**As built.** `redeployTarget` (src/baseline/main-baseline.ts) picks the target and src/orchestrator/orchestrator.ts passes it to `redeploy.poll` as the head, so the redeployer, probes and policy files needed no change; tests are in test/redeploy-wiring.test.ts.
+
+**Acceptance criteria.**
+- Running build A, main A → B (green) → C (red): the redeploy targets B.
+- Running build A, main A → B (red): no redeploy.
+- A green tip is deployed as today.
+- A commit with only a non-full-check green is never deployed.
+- `npm test` passes.
+
 ### Fast merge, part 3/14: Main watch runs the full check on main's tip after merges and records each verdict with its failing tests (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-baseline.ts src/baseline/main-red.ts src/build/build-check-report.ts src/build/build-check.ts src/orchestrator/orchestrator.ts src/events/events.ts docs/how-it-works.md and their tests, plus a new src/baseline/main-watch.ts) — done 2026-10-19 by the feature role
 
 **Goal.** Parts 4–8 need a full-check verdict for main's commits, with the names of the failing tests, without any run or merge waiting for it. Today a full check runs on main only when something needs one right away: a fresh run's red-main gate, the gate's re-attribution, a merge's attribution, or the redeployer. A red verdict keeps only its script and a clipped output tail. This part adds the watch and records what it sees. Nothing acts on it yet.

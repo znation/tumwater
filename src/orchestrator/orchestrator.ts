@@ -38,6 +38,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
 import { createMainWatch } from "../baseline/main-watch.js";
+import { redeployTarget } from "../baseline/main-baseline.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import { RetentionPruner } from "./retention.js";
@@ -451,7 +452,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       if (!opts.once) mainWatch.poll(mainHead, holdForRestart || diskHeld, liveConfig);
       if (redeploy) {
         const action = await redeploy.poll(
-          mainHead,
+          await redeployTarget(root, mainHead, redeploy.build.sha),
           {
             roleInFlight: rolePermitHolders.size,
             directorInFlight: directorInFlight.size,
