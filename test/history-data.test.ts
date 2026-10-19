@@ -404,6 +404,33 @@ test("a retriable failure keeps its verdict while its recovery pin is still pend
   );
 });
 
+test("a retriable verdict is not swept up by the next FRESH change's merge (BUGS.md 2026-10-10)", () => {
+  const root = tmpdir();
+  const t = (mins: number) => Date.now() - mins * MIN;
+  // A retriable failure keeps the pin, but the same loop can queue a fresh change before the
+  // recovery re-enqueue lands (e.g. a conflict-cap discard starts new work). The walk must stop
+  // at that fresh, non-recovery pin and keep the retriable verdict — never crediting the fresh
+  // change's later merge to the authoring tick.
+  writeEvents(root, [
+    { ts: t(50), source: "feature", type: "run_start", run: 1 },
+    { ts: t(49), source: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
+    { ts: t(48), source: "feature", type: "run_end", run: 1, result: "queued", summary: "work one" },
+    { ts: t(40), source: "feature", type: "merge_failed", commit: "sha1", result: "merge_blocked" },
+    { ts: t(30), source: "feature", type: "run_start", run: 2 },
+    { ts: t(29), source: "feature", type: "merge_queued", commit: "sha2", summary: "work two" },
+    { ts: t(28), source: "feature", type: "run_end", run: 2, result: "queued", summary: "work two" },
+    { ts: t(20), source: "feature", type: "merge_done", commit: "sha2", result: "changed" },
+  ]);
+  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  assert.deepEqual(
+    rows.map((r) => [r.run, r.result]),
+    [
+      [2, "changed"],
+      [1, "merge_blocked"],
+    ],
+  );
+});
+
 test("a queued tick whose pin sits before the --since cutoff still resolves (BUGS.md 2026-09-30)", () => {
   const root = tmpdir();
   // Tick 1 SPANS the cutoff: its run_start and merge_queued pin sit before it, its run_end
