@@ -125,39 +125,40 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
       const parsed = parseBudgetInput(session.input);
       if (!parsed.ok) {
         session.flashMessage(parsed.error);
+        return true;
+      }
+      // The role scope is the one pinned when the editor opened: syncRoster may shrink or
+      // reorder the roster while it is open, and Enter must still write the same role's cap.
+      const role = lockedRole;
+      const result =
+        role !== null
+          ? setConfigKey(
+              session.root,
+              `maxDailyCostUsdPerRole.${baseRoleOf(role)}`,
+              JSON.stringify(parsed.value),
+            )
+          : setDailyBudgetUsd(session.root, parsed.value);
+      if (!result.ok) {
+        // Broken config or write failure — stay in edit mode.
+        session.flashMessage(result.error);
+        return true;
+      }
+      exitBudgetMode();
+      if (role !== null) {
+        // A role-cap write does not move the team cap the snapshot feeds, so the
+        // currentCapUsd next-render hint stays put.
+        session.flashMessage(
+          parsed.value === 0
+            ? `${role}: cap removed`
+            : `${role}: cap set to ${usdCap(parsed.value)}`,
+        );
       } else {
-        // The role scope is the one pinned when the editor opened: syncRoster may shrink or
-        // reorder the roster while it is open, and Enter must still write the same role's cap.
-        const role = lockedRole;
-        const result =
-          role !== null
-            ? setConfigKey(
-                session.root,
-                `maxDailyCostUsdPerRole.${baseRoleOf(role)}`,
-                JSON.stringify(parsed.value),
-              )
-            : setDailyBudgetUsd(session.root, parsed.value);
-        if (result.ok) {
-          exitBudgetMode();
-          if (role !== null) {
-            // A role-cap write does not move the team cap the snapshot feeds, so the
-            // currentCapUsd next-render hint stays put.
-            session.flashMessage(
-              parsed.value === 0
-                ? `${role}: cap removed`
-                : `${role}: cap set to ${usdCap(parsed.value)}`,
-            );
-          } else {
-            currentCapUsd = parsed.value; // the next render's snapshot agrees within ~2 s
-            session.flashMessage(
-              parsed.value === 0
-                ? "budget disabled"
-                : `budget set to ${usdCap(parsed.value)}`,
-            );
-          }
-        } else {
-          session.flashMessage(result.error); // broken config or write failure — stay in edit mode
-        }
+        currentCapUsd = parsed.value; // the next render's snapshot agrees within ~2 s
+        session.flashMessage(
+          parsed.value === 0
+            ? "budget disabled"
+            : `budget set to ${usdCap(parsed.value)}`,
+        );
       }
       return true;
     }
