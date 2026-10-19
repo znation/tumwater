@@ -48,6 +48,8 @@ interface TuiKeysState {
   input: string;
   cursor: number;
   budgetMode: boolean;
+  /** The Activity view's Ctrl+N run-cap (`maxConcurrent`) editor holds the prompt line. */
+  concurrencyMode: boolean;
   rolePromptFor: string | null;
   /** Whether the prompt line is editing an image path to attach to the next director prompt
    * (Ctrl+V on the Activity view). */

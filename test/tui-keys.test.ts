@@ -2640,6 +2640,23 @@ test("Ctrl+N off the Backlog view does not open the new-entry editor", () => {
   assert.equal(keys.state().entryEditFor, null);
 });
 
+test("Ctrl+N opens the run-cap editor on Activity, and still files a new entry on the Backlog view", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  // Activity (view 0): Ctrl+N opens the run-cap editor, not the new-entry form.
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().concurrencyMode, true, "Ctrl+N on Activity opens the run-cap editor");
+  assert.equal(keys.state().entryEditFor, null);
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().concurrencyMode, false, "Esc closes the run-cap editor");
+  // One Ctrl+T (no roles) reaches the Backlog view: Ctrl+N files a new plan there.
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.deepEqual(keys.state().entryEditFor, { kind: "plan", position: null, title: "" }, "on Backlog, Ctrl+N still opens the new-entry form");
+  assert.equal(keys.state().concurrencyMode, false, "the backlog Ctrl+N does not open the run-cap editor");
+});
+
 test("the Health tab caches renderDoctor of the seam's report, ignores a late resolution, and flashes a rejection", async () => {
   const root = makeRoot();
   const report: DoctorReport = { header: "doctor", checks: [{ level: "ok", name: "node", detail: "fine" }], routing: [], verdict: "healthy" } as DoctorReport;

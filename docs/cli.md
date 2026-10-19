@@ -74,6 +74,7 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+Y` | History | toggle the per-role Summary table |
 | `Ctrl+N` | History | the newest completed run's event trail, and back |
 | `Ctrl+N` | Health | run the configured notify hook once with a synthetic event (the terminal twin of `tumwater notify --test` and the dashboard Settings card's Send test) |
+| `Ctrl+N` | Activity | edit the team's run cap (`maxConcurrent`, an integer ≥ 1; empty restores the default) — the terminal twin of `tumwater config set maxConcurrent` and the dashboard Settings card's `Max concurrent runs` field |
 | `Ctrl+E` | Usage, Failures, Health, Transcript, Brief | cycle the trailing window on Usage/Failures; on Health, run one manual reclaim pass now (the terminal twin of the dashboard disk row's reclaim button); on a role's notes view, replace the notes from a file (the terminal twin of `tumwater role <id> --notes-file <path>`); on the Brief view, replace the brief from a file (the terminal twin of `tumwater brief --file <path>`) |
 | `Ctrl+X` | Health | retire a disabled role's leftovers by role id (the terminal twin of `tumwater retire --role <id>` and the dashboard Settings card's Retire button) |
 | `Ctrl+R` | Transcript, Backlog, Pending, Health | send a prompt to that role; release the selected refused or waiting entry; refresh the merge queue and change roster on Pending / re-run the doctor checks on Health |
