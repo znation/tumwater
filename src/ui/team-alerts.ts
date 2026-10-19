@@ -20,6 +20,15 @@ import { formatGB, usd, usdCap } from "../text/format.js";
 import { formatTimestamp, humanUntil } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 
+/** The alert detail head for a bounded entry list (open questions, refused entries): the
+ * first title stripped of its stamp, plus ` — and N more` when others await, so the two
+ * alert kinds cannot drift on the separator or the count. The caller appends its own
+ * action suffix (the refused alert's " · no role takes it…" clause). */
+function entryListDetail(titles: readonly string[]): string {
+  const first = titles[0] === undefined ? "" : stripEntryStamp(titles[0]);
+  return titles.length > 1 ? `${first} — and ${titles.length - 1} more` : first;
+}
+
 /** Something that needs the operator — or that they should know — about the team as a whole,
  * phrased once for both observer surfaces: the dashboard's alert banners (shipped in the status
  * payload as `alerts`) and the TUI's attention lines. `tone` ranks it (red and amber ask for
@@ -286,7 +295,7 @@ export function teamAlerts(
       key: "questions",
       tone: "indigo",
       title: `${plural(questions.length, "question needs", "questions need")} your answer`,
-      detail: `${stripEntryStamp(questions[0]!)}${questions.length > 1 ? ` — and ${questions.length - 1} more` : ""}`,
+      detail: entryListDetail(questions),
       actions: [{ label: "Answer", act: "questions" }],
     });
   }
@@ -296,7 +305,7 @@ export function teamAlerts(
       key: "refused",
       tone: "amber",
       title: `${plural(refused.length, "refused entry waits", "refused entries wait")} on your decision`,
-      detail: `${stripEntryStamp(refused[0]!)}${refused.length > 1 ? ` — and ${refused.length - 1} more` : ""} · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it`,
+      detail: entryListDetail(refused) + " · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it",
       actions: [{ label: "Open backlog", act: "backlog" }],
     });
   }
