@@ -5,6 +5,7 @@ import { recordReview } from "../tick/tick-apply.js";
 import { saveLoopState, type LoopState } from "../runner/runner-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
+import { onlyKnownMainFailures } from "../baseline/main-watch.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { mainRedNotMine } from "../text/phrases.js";
@@ -107,6 +108,24 @@ function firstCheckReason(red: { check: BuildCheck; outcome: BuildCheckOutcome }
   return checkFailureReasons(red.check, red.outcome)[0]!;
 }
 
+/** Keep the pin when a red check fails only main's known failures (onlyKnownMainFailures): not
+ * the change's failure and not a strike, so recovery's re-merge — whose verifyMerge lets such a
+ * check through — lands it. Null when the red names a test outside the known set. */
+function keepForKnownFailures(
+  ctx: { root: string },
+  role: string,
+  label: string,
+  red: { outcome: BuildCheckOutcome },
+  state: LoopState,
+): TickResult | null {
+  const known = onlyKnownMainFailures(ctx.root, red.outcome.failingTests);
+  if (!known) return null;
+  state.lastError = `${label} failed only main's known failures, merge kept: ${known.join(", ")}`;
+  warnEventBestEffort(ctx.root, role, `${label} fails only main's known failures: ${known.join(", ")}`);
+  saveLoopState(ctx.root, state);
+  return "merge_blocked";
+}
+
 /** A merge blocked because its in-lock check went red on the rebased tree (merge-to-main.ts's
  * verifyMerge). The count is keyed by the patch-id; under MERGE_CHECK_FAILURE_LIMIT the
  * pin is kept (merge_blocked) for recovery's re-merge; at the limit the red is attributed like
@@ -125,6 +144,8 @@ export async function mergeCheckRed(
     ctx.state.lastError = `merge failed: ${firstCheckReason(red)}`;
     return "merge_blocked";
   }
+  const kept = keepForKnownFailures(ctx, role, "merge check", red, ctx.state);
+  if (kept) return kept;
   const reason = firstCheckReason(red);
   let attributed = false;
   const result = await keepPinOrAttribute(ctx, wt, reason, (head) => {
@@ -213,6 +234,8 @@ export async function attributeRedCheck(
     saveLoopState(ctx.root, state);
     return "merge_blocked";
   }
+  const kept = keepForKnownFailures(ctx, role, label, red, state);
+  if (kept) return kept;
   const headline = failureHeadline(red.outcome.outputTail) ?? describeCheck(red.check);
   const key = normalizeClusterKey(headline);
   if (isKnownFlake(ctx.root, headline) && state.mergeFlakeExcused !== key) {

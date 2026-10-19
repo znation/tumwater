@@ -2,6 +2,7 @@
 import { checkMainBaseline } from "./main-baseline.js";
 import { baselineCheckLogger, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
+import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { gitTry } from "../git/git-run.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -25,6 +26,25 @@ interface MainWatch {
   poll(mainHead: string, held: boolean, config: TumwaterConfig): void;
   /** Resolves when no watch run is in flight — a test seam. */
   idle(): Promise<void>;
+}
+
+/** The failing tests of each root's newest watch verdict, keyed by root. */
+const knownFailures = new Map<string, string[]>();
+
+/** Main's known failures: the failing tests of the watch's newest verdict — main's tip, or the
+ * nearest tip it checked while the newest head waits. Empty when that verdict is green, red with
+ * no parsed test, or none has been recorded yet in this process. */
+export function knownMainFailures(root: string): string[] {
+  return knownFailures.get(root) ?? [];
+}
+
+/** The failing tests of a failed check when every one of them is a known main failure; null when
+ * the output names no test, any test is outside the known set, or none is known. A list at
+ * FAILING_TESTS_MAX may have been cut short, so it never counts as complete. */
+export function onlyKnownMainFailures(root: string, failingTests: readonly string[] | undefined): string[] | null {
+  if (!failingTests || failingTests.length === 0 || failingTests.length >= FAILING_TESTS_MAX) return null;
+  const known = new Set(knownMainFailures(root));
+  return failingTests.every((t) => known.has(t)) ? [...failingTests] : null;
 }
 
 export function createMainWatch(root: string, mainBranch: string): MainWatch {
@@ -54,6 +74,7 @@ export function createMainWatch(root: string, mainBranch: string): MainWatch {
       // next poll does not start another run for it.
       if (!baseline) return void (lastWatched = await headOf(wt));
       lastWatched = baseline.sha;
+      knownFailures.set(root, baseline.status === "red" ? (baseline.failingTests ?? []) : []);
       const counted =
         previous === undefined
           ? 1

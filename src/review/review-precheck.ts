@@ -19,6 +19,7 @@ import { mainRedNotMine } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { checkWaitStage, setMergeStage } from "../merge/merge-slot.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
+import { onlyKnownMainFailures } from "../baseline/main-watch.js";
 import { FLAKY_WARNING_PREFIX, isKnownFlake } from "./known-flakes.js";
 
 /** What the pre-check decided: either the gate is resolved without a reviewer run
@@ -36,6 +37,10 @@ interface GatePrecheckResult {
    * of re-running `npm test` itself (the prompt's no-re-run rule, and the suite-rerun tripwire
    * after the reviewer run, both key on it). */
   verifiedByHarness?: string;
+  /** Set when the gate check failed only main's known failures (the watch's, via
+   * onlyKnownMainFailures): the change goes on to review unverified by a green run, and the
+   * reviewer's prompt names these as main's. */
+  knownMainFailures?: string[];
 }
 
 /** Run the gate's deterministic build pre-check. `reject` is the gate's one shared rejection
@@ -121,6 +126,14 @@ export async function gateBuildPrecheck(
       if (isKnownFlake(root, flaky)) {
         warnEventBestEffort(root, role, `known-flaky failure, merge kept: ${flaky}`);
         return {};
+      }
+      // A failure that names only tests main already fails is main's, not this change's: it goes
+      // on to review with no fresh run on main. No verifiedHead — the tree did not pass, so the
+      // merge path must not seed a green for it — and the merge check judges it by the same rule.
+      const known = onlyKnownMainFailures(root, outcome.failingTests);
+      if (known) {
+        warnEventBestEffort(root, role, `gate check fails only main's known failures: ${known.join(", ")}`);
+        return { knownMainFailures: known };
       }
       const reasons = checkFailureReasons(check, outcome);
       // A failure that reproduced is attributed, never fixed here: the one merge slot the

@@ -19,6 +19,8 @@ import { abortSync } from "../git/worktree.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
+import { onlyKnownMainFailures } from "../baseline/main-watch.js";
+import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { noteGreenBaseline, noteInheritedGreen } from "../baseline/main-baseline.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
@@ -312,6 +314,13 @@ async function verifyMerge(
   setMergeStage(ctx.root, ctx.role, "merging");
   if (!check) return true; // No declared check: nothing to run, exactly like the gate skipping its pre-check.
   if (check.outcome.status === "failed") {
+    // Failing only what main already fails is not a red change: the fast-forward goes ahead, with
+    // no strike and no green seeded for a tree that did not pass.
+    const known = unverifiedTreeOutcome(check.outcome) ? null : onlyKnownMainFailures(ctx.root, check.outcome.failingTests);
+    if (known) {
+      warnEventBestEffort(ctx.root, ctx.role, `merge check fails only main's known failures: ${known.join(", ")}`);
+      return true;
+    }
     ctx.onMergeCheckRed?.(check.check, check.outcome);
     return false;
   }

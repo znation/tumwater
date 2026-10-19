@@ -23,6 +23,8 @@ import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { noteGreenBaseline } from "../baseline/main-baseline.js";
+import { onlyKnownMainFailures } from "../baseline/main-watch.js";
+import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { checkWaitStage, setMergeStage } from "./merge-slot.js";
 import type { MergeScopeContext } from "./merge-core.js";
@@ -194,7 +196,12 @@ async function mergeStackIn(ctx: MergeScopeContext, wtPath: string, entries: rea
           checkWaitStage(ctx.root, roles),
         );
         for (const e of entries) setMergeStage(ctx.root, e.role, "merging");
-        if (check !== null && check.outcome.status === "failed") return { kind: "red", ...check };
+        // Failing only main's known failures is not a red stack (verifyMerge's rule): the ff goes
+        // ahead, and no green seeds for a tree that did not pass.
+        const knownOnly = check !== null && check.outcome.status === "failed" &&
+          !unverifiedTreeOutcome(check.outcome) &&
+          onlyKnownMainFailures(ctx.root, check.outcome.failingTests) !== null;
+        if (check !== null && check.outcome.status === "failed" && !knownOnly) return { kind: "red", ...check };
         checkedTip = tip;
         if (check !== null && check.outcome.status === "passed") seed = tip;
       }

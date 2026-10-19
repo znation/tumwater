@@ -6,6 +6,8 @@ import { refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { createMainWatch } from "../src/baseline/main-watch.js";
+import { defaultConfig } from "../src/config/config.js";
 import { mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withApprovePi, withPi } from "./fakes/fake-pi.js";
 import {
@@ -85,6 +87,22 @@ test("a stack whose every change passes still takes exactly one batch check", as
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed", "changed"]);
     assert.deepEqual(batchChecks(root).map((e) => e.status), ["passed"], "one check over the whole stack");
     assert.equal(eventsOfType(root, "merged").length, 3);
+  });
+});
+
+test("a stack check that fails only main's known failures merges the whole stack in one check", async () => {
+  const roles = ["alpha", "beta"];
+  const { root, shas, wiringFor } = await batchFixture(roles);
+  declareCheck(root, `#!/bin/sh\necho '✖ X (1ms)'\nexit 1\n`);
+  const watch = createMainWatch(root, "main");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  await withApprovePi(async () => {
+    const results = await runBatch(root, shas, roles, wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+    assert.equal(batchChecks(root).length, 1, "one check over the whole stack, no bisect");
+    assert.equal(eventsOfType(root, "merged").length, 2);
   });
 });
 

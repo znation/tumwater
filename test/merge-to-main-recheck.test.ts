@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkMainBaseline } from "../src/baseline/main-baseline.js";
+import { createMainWatch } from "../src/baseline/main-watch.js";
 import { defaultConfig } from "../src/config/config.js";
 import { mergeToMain } from "../src/merge/merge-to-main.js";
 import { aheadOfMain } from "../src/git/git.js";
@@ -412,3 +413,36 @@ test("a code diff that duplicates ## Done is blocked by the structure check befo
   assertWorktreeSettled(wt);
 });
 
+
+test("a post-rebase check that fails only main's known failures merges with a warning and seeds no green", async () => {
+  const { root, wt } = await initializedWorktree();
+  declareBuildCheck(root, wt, "echo '✖ X (1ms)'; exit 1");
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  const watch = createMainWatch(root, "main");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  advanceMain(root, "mainfile.txt", "from main\n");
+  const { ctx } = makeCtx(root);
+
+  const result = await mergeToMain(ctx, wt, "branch work");
+
+  assert.equal(result, "changed");
+  assert.ok(fs.existsSync(path.join(root, "app.js")), "the change reached main");
+  assert.ok(warningMessages(root).includes("merge check fails only main's known failures: X"));
+});
+
+test("a post-rebase check that fails a test beyond main's known failures still blocks the merge", async () => {
+  const { root, wt } = await initializedWorktree();
+  declareBuildCheck(root, wt, "echo '✖ X (1ms)'; [ -f app.js ] && echo '✖ Y (1ms)'; exit 1");
+  const watch = createMainWatch(root, "main");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  advanceMain(root, "mainfile.txt", "from main\n");
+  const { ctx } = makeCtx(root);
+
+  assert.equal(await mergeToMain(ctx, wt, "branch work"), "merge_blocked");
+  assert.ok(!warningMessages(root).some((m) => m.includes("known failures")));
+});

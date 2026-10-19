@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { createMainWatch } from "../src/baseline/main-watch.js";
 import { attributeRedCheck } from "../src/merge/merge-check-failures.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/runner/runner-state.js";
@@ -262,4 +263,22 @@ test("attributeRedCheck still reports main_red when the events feed is unwritabl
   } finally {
     restore();
   }
+});
+
+test("attributeRedCheck keeps the ref, with no strike, for a red that fails only main's known failures", async () => {
+  const { root } = baselineFixture(ROLE, "printf '✖ known one\\n'; exit 1");
+  const watch = createMainWatch(root, "main");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  const known = {
+    check: red().check,
+    outcome: { status: "failed", script: "test", outputTail: [CHANGE_REASON], failingTests: ["known one"] },
+  } as { check: BuildCheck; outcome: BuildCheckOutcome };
+  const { head, state, result } = await attribute(root, "merge check", known);
+  assert.equal(result, "merge_blocked");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), head, "the pin was kept");
+  assert.equal(state.lastReview, undefined, "no reject was recorded");
+  assert.match(state.lastError ?? "", /only main's known failures/);
+  const other = { ...known, outcome: { ...known.outcome, failingTests: ["known one", "new one"] } } as typeof known;
+  assert.equal((await attribute(root, "merge check", other, state)).result, "main_red");
 });

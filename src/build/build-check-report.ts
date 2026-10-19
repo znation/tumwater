@@ -38,8 +38,8 @@ const ERROR_MESSAGE_LINE = /^\S*Error\b[^:]*:\s/;
  * detail ends the output, so it names the test the tail's message and stack belong to. */
 const FAILED_TEST_LINE = /^✖ (?!failing tests:)/;
 
-/** How many failing test titles parseFailingTests keeps. */
-const FAILING_TESTS_MAX = 50;
+/** How many failing test titles parseFailingTests keeps; a list that long may be cut short. */
+export const FAILING_TESTS_MAX = 50;
 
 /** The titles of the tests a check's COMPLETE output reports failed: every line FAILED_TEST_LINE
  * matches, its trailing duration stripped, deduplicated (node:test prints a failure in the tree and

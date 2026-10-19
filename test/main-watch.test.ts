@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { createMainWatch } from "../src/baseline/main-watch.js";
+import { createMainWatch, knownMainFailures, onlyKnownMainFailures } from "../src/baseline/main-watch.js";
+import { FAILING_TESTS_MAX } from "../src/build/build-check-report.js";
 import { persistBaselineVerdicts } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
 import { baselineVerdictsPath } from "../src/paths.js";
@@ -95,4 +96,32 @@ test("a held team starts no watch run", async () => {
   await watchAt(watch, root, true);
   assert.equal(eventsOfType(root, "main_check").length, 0);
   assert.equal(runsOf(counter), 0);
+});
+
+test("the newest verdict's failing tests are main's known failures; a later green clears them", async () => {
+  const flag = path.join(tmpdir(), "red");
+  fs.writeFileSync(flag, "");
+  const { root } = baselineFixture("improve", `if [ -f ${flag} ]; then ${FAILING_OUTPUT}; exit 1; fi; echo ok`);
+  const watch = createMainWatch(root, "main");
+  assert.deepEqual(knownMainFailures(root), []);
+  await watchAt(watch, root);
+  assert.deepEqual(knownMainFailures(root), ["first", "second", "third"]);
+  assert.deepEqual(onlyKnownMainFailures(root, ["second", "first"]), ["second", "first"]);
+  assert.equal(onlyKnownMainFailures(root, ["first", "other"]), null);
+  assert.equal(onlyKnownMainFailures(root, []), null);
+  assert.equal(onlyKnownMainFailures(root, undefined), null);
+  fs.rmSync(flag);
+  change(root, "a.txt", "a");
+  await watchAt(watch, root);
+  assert.deepEqual(knownMainFailures(root), []);
+});
+
+test("a failing list at the parser's cap is never counted as only known failures", async () => {
+  const names = Array.from({ length: FAILING_TESTS_MAX }, (_, i) => `t${i}`);
+  const script = `printf '${names.map((n) => `✖ ${n}\\n`).join("")}'; exit 1`;
+  const { root } = baselineFixture("improve", script);
+  await watchAt(createMainWatch(root, "main"), root);
+  assert.equal(knownMainFailures(root).length, FAILING_TESTS_MAX);
+  assert.equal(onlyKnownMainFailures(root, names.slice(0, FAILING_TESTS_MAX - 1))?.length, FAILING_TESTS_MAX - 1);
+  assert.equal(onlyKnownMainFailures(root, names), null);
 });

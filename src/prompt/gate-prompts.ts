@@ -179,6 +179,7 @@ export function buildReviewPrompt(
   baseRev?: string,
   today?: string,
   priorReview?: PriorReviewPrompt,
+  knownMainFailures?: string[],
 ): string {
   const parts = [
     `You are an adversarial code reviewer for tumwater, which runs a team of AI roles on this project. ${OLDER_NAMES_SENTENCE} A
@@ -219,6 +220,12 @@ excluded):\n<interdiff>\n${priorReview.interdiff}\n</interdiff>`,
       `Tumwater already ran the project's own check on this exact tree and it passed:
 ${verifiedByHarness}. Spend your run on what a green check cannot show: wrong behavior the tests
 never exercise, claims the diff does not back, work left half-done.`,
+    );
+  if (knownMainFailures && knownMainFailures.length > 0)
+    parts.push(
+      `Tumwater ran the project's own check on this tree and it failed, but only on tests main already
+fails — main's known failures, not this change's:\n${knownMainFailures.map((t) => `- ${t}`).join("\n")}
+Do not count them against the change unless the diff touches what they test.`,
     );
   if (principles) {
     parts.push(

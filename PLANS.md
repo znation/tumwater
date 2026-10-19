@@ -117,28 +117,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - With `mergeCommand` unset, the existing merge tests pass unchanged.
 - `npm test` passes.
 
-### Fast merge, part 7/14: A gate or merge check that fails only main's known failures lets the change go on (planned 2026-10-19 by user; requires part 3/14 landed; design in plans/fast-merge.md "Lever 3: main's known failures instead of a team-wide hold"; touches src/review/review-precheck.ts src/merge/merge-check-failures.ts src/merge/merge-to-main.ts src/baseline/main-watch.ts src/baseline/main-red.ts src/prompt/gate-prompts.ts and their tests)
-
-**Goal.** A change should not be held for a failure main already has. Today a repeated gate failure runs a fresh full check on main (`mainTipVerdict(…, true)`, src/review/review-precheck.ts ~135). If main is red, the change ends `main_red` and waits, even when its only failure is main's.
-
-**Approach.**
-- Add `knownMainFailures(root)` in src/baseline/main-watch.ts: the failing tests of the watch's newest verdict for main's tip or its nearest checked ancestor. It is empty when that verdict is green.
-- A red check's failing tests come from part 3's parser, over the complete output. They are `undefined` when nothing parses.
-- Gate, after its one re-run: if the failing tests parse and every one of them is a known failure, the change goes on to review as verified. Log the warning `gate check fails only main's known failures: <tests>`. This replaces the fresh full run on main and the `main_red` outcome for that case.
-- In the merge lock (`mergeCheckRed`, src/merge/merge-check-failures.ts, and `verifyMerge`): the same subset rule counts as passed. The fast-forward goes ahead with a warning and no `merge_blocked` strike.
-- When the gate passed on known failures, the reviewer prompt names those failures as main's (`buildReviewPrompt`, src/prompt/gate-prompts.ts).
-- Unparsed output, or any failure outside the known set, keeps today's handling.
-
-**Files touched.**
-- Source: src/review/review-precheck.ts, src/merge/merge-check-failures.ts, src/merge/merge-to-main.ts, src/baseline/main-watch.ts, src/baseline/main-red.ts, src/prompt/gate-prompts.ts.
-- Tests: test/review-precheck.test.ts, test/merge-to-main.test.ts, test/main-watch.test.ts.
-
-**Acceptance criteria.**
-- The watch's verdict is red with test X. A change whose gate fails only X goes on to review and merges. A change failing X and Y is handled as today.
-- Output that names no test is handled as today.
-- No fresh full check of main runs for a gate failure that only repeats main's failures.
-- `npm test` passes.
-
 ### Fast merge, part 8/14: Every role runs on a red main, with a note listing main's known failures (planned 2026-10-19 by user; requires part 7/14 landed; design in plans/fast-merge.md "Lever 3: main's known failures instead of a team-wide hold"; touches src/baseline/main-red.ts src/runner/runner-run.ts src/prompt/gate-prompts.ts src/roles/roles.ts docs/how-it-works.md and their tests)
 
 **Goal.** On a red main, feature and every code maintenance role (`BASELINE_BLOCKED_ROLES`, src/roles/roles.ts) end their runs `main_red` and wait, and each red commit logs "code merges blocked until main is green". Once part 7 lets changes through on known failures, the team should keep working on a red main. Only the owner (part 4b/14's revert, then bugfix) deals with the red.

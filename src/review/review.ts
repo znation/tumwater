@@ -264,7 +264,7 @@ export async function reviewAheadOfMain(
     state.reviewResume = undefined;
     return pre.resolved;
   }
-  const { verifiedHead, verifiedByHarness } = pre;
+  const { verifiedHead, verifiedByHarness, knownMainFailures } = pre;
 
   // A review judges a diff, not a sha: a head carrying exactly the patch this role's last
   // approval judged (the approved head cleanly rebased onto a moved main) reuses that verdict
@@ -375,6 +375,7 @@ export async function reviewAheadOfMain(
           base,
           undefined,
           priorReview,
+          knownMainFailures,
         ),
     // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a
     // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend

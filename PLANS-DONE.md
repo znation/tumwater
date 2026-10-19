@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 7/14: A gate or merge check that fails only main's known failures lets the change go on — done 2026-10-19 (planned 2026-10-19 by user; requires part 3/14 landed; design in plans/fast-merge.md "Lever 3: main's known failures instead of a team-wide hold"; touches src/review/review-precheck.ts src/merge/merge-check-failures.ts src/merge/merge-to-main.ts src/baseline/main-watch.ts src/baseline/main-red.ts src/prompt/gate-prompts.ts and their tests)
+
+**Goal.** A change should not be held for a failure main already has. Today a repeated gate failure runs a fresh full check on main (`mainTipVerdict(…, true)`, src/review/review-precheck.ts ~135). If main is red, the change ends `main_red` and waits, even when its only failure is main's.
+
+**Approach.**
+- Add `knownMainFailures(root)` in src/baseline/main-watch.ts: the failing tests of the watch's newest verdict for main's tip or its nearest checked ancestor. It is empty when that verdict is green.
+- A red check's failing tests come from part 3's parser, over the complete output. They are `undefined` when nothing parses.
+- Gate, after its one re-run: if the failing tests parse and every one of them is a known failure, the change goes on to review as verified. Log the warning `gate check fails only main's known failures: <tests>`. This replaces the fresh full run on main and the `main_red` outcome for that case.
+- In the merge lock (`mergeCheckRed`, src/merge/merge-check-failures.ts, and `verifyMerge`): the same subset rule counts as passed. The fast-forward goes ahead with a warning and no `merge_blocked` strike.
+- When the gate passed on known failures, the reviewer prompt names those failures as main's (`buildReviewPrompt`, src/prompt/gate-prompts.ts).
+- Unparsed output, or any failure outside the known set, keeps today's handling.
+
+**Files touched.**
+- Source: src/review/review-precheck.ts, src/merge/merge-check-failures.ts, src/merge/merge-to-main.ts, src/baseline/main-watch.ts, src/baseline/main-red.ts, src/prompt/gate-prompts.ts.
+- Tests: test/review-precheck.test.ts, test/merge-to-main.test.ts, test/main-watch.test.ts.
+
+**Acceptance criteria.**
+- The watch's verdict is red with test X. A change whose gate fails only X goes on to review and merges. A change failing X and Y is handled as today.
+- Output that names no test is handled as today.
+- No fresh full check of main runs for a gate failure that only repeats main's failures.
+- `npm test` passes.
+
+**Changed from the plan.** The subset rule lives in `onlyKnownMainFailures` beside `knownMainFailures` (src/baseline/main-watch.ts, which keeps the newest verdict's failing tests per root in memory); the merge-lock rule sits in `verifyMerge` (src/merge/merge-to-main.ts) and, for a batch, in `mergeStack` (src/merge/merge-stack.ts), so a known-only red stack merges in its one check instead of bisecting. src/merge/merge-check-failures.ts also changed: `mergeCheckRed` and `attributeRedCheck` keep the pin (`merge_blocked`, no strike) for a red naming only known failures, covering a main whose known set grew after the check ran. src/baseline/main-red.ts needed no change. A change that passes on known failures carries no `verifiedHead`, so no green is seeded for its tree. The tests also live in test/merge-to-main-recheck.test.ts. After a restart the set is empty until the watch's first verdict, so today's handling applies.
+
 ### Fast merge, part 2/14: A runner waiting on its change no longer counts toward its role's `instances` (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 1: roles stop waiting on their own change"; touches src/roles/runner-ids.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/orchestrator.ts src/scheduling/claims.ts src/ui/status-model.ts src/status/status-roles.ts docs/config.md docs/how-it-works.md and their tests); done 2026-10-19 by the feature role
 
 **Goal.** A runner with a change in the merge pipeline never runs (plans/merge-queue.md invariant 3), so `instances: 5` means five runners that are each idle while their change merges. From 2026-10-17 to 2026-10-19 the five feature runners wrote code for 77.5 h and waited on their own changes for 129.5 h. On average only 1.4 of them were writing code at any moment. Keep the one-change-per-runner rule, and let the role use more runners: a runner waiting on its change no longer holds one of the role's `instances` places.

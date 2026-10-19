@@ -18,6 +18,7 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runn
 import { readEvents } from "../src/events/event-read.js";
 import { logEvent } from "../src/events/events.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
+import { createMainWatch } from "../src/baseline/main-watch.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType, warningMessages, warningMessagesOf } from "./fixtures/log-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
@@ -902,4 +903,52 @@ test("a slept pre-check failure that passes its re-run verifies the tree and nam
       ]);
     },
   );
+});
+
+// A gate failure that names only tests main already fails (the main watch's newest red verdict)
+// goes on to review with no fresh run on main; any other failing test keeps the attribution path.
+
+const KNOWN_FAILURE_TOOL =
+  "#!/bin/sh\necho '✖ X (1ms)'\n[ -f y.txt ] && echo '✖ Y (1ms)'\nexit 1\n";
+
+/** A gate fixture whose check fails test X on main and on the change; `alsoY` makes the change
+ * fail Y too. The main watch has recorded main's red verdict, so X is a known failure. */
+async function knownRedFixture(alsoY: boolean): Promise<{ root: string; wt: string }> {
+  const { root, wt } = await gateBuildFixture("buildcheck-tool", KNOWN_FAILURE_TOOL);
+  uniqueMain(root);
+  const watch = createMainWatch(root, "main");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  if (alsoY) {
+    fs.writeFileSync(path.join(wt, "y.txt"), "y\n");
+    commitIn(wt, "add y");
+  }
+  return { root, wt };
+}
+
+test("a gate failure of only main's known failures goes on to review with no fresh run on main", async () => {
+  const { root, wt } = await knownRedFixture(false);
+  const marker = piRanMarker();
+  const baselineRuns = () => buildCheckEvents(root).filter((e) => e.startsWith("baseline:")).length;
+  const watched = baselineRuns(); // the main watch's own runs, before the gate
+  await withPi(reviewerStub(marker), async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "approved");
+    assert.ok(fs.existsSync(marker), "the reviewer ran");
+    assert.equal(result.verifiedHead, undefined, "a red tree is not attested as verified");
+    assert.ok(warningMessages(root).includes("gate check fails only main's known failures: X"));
+    const gateRuns = buildCheckEvents(root).filter((e) => e.startsWith("gate:"));
+    assert.deepEqual(gateRuns, ["gate:failed", "gate:failed"]);
+    assert.equal(baselineRuns(), watched, "no fresh run on main");
+  });
+});
+
+test("a gate failure of a known failure plus another test is handled as before", async () => {
+  const { root, wt } = await knownRedFixture(true);
+  await withPi(reviewerStub(), async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "failed");
+    assert.equal(result.mainRed, true);
+    assert.ok(!warningMessages(root).some((m) => m.includes("known failures")));
+  });
 });
