@@ -1,5 +1,6 @@
 // vocabulary: plain
 import { asTestCounts, type TestCounts } from "../build/build-check-counts.js";
+import { isFullCheckScope } from "../build/build-check-events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { isMergeChange, readMergeMarker, type MergeInFlight } from "../merge/merge-slot.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
@@ -125,7 +126,7 @@ function scanMainCheck(root: string): MainCheckScan {
     // every merged event. The merges are re-read against the check's ts below — a pass
     // over the merges alone, not a second pass over every event in the window.
     for (const e of events) {
-      if (e.type === "build_check" && (e.scope === "merge" || e.scope === "batch" || e.scope === "baseline")) {
+      if (e.type === "build_check" && isFullCheckScope(e.scope)) {
         check = e;
       } else if (e.type === "merge_done" && typeof e.ts === "number") { 
         mergeDone.push(e);

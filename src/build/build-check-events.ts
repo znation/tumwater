@@ -18,19 +18,31 @@ import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-
  * the onRun hook. */
 export type BuildCheckScope = "gate" | "merge" | "batch";
 
-/** Is this a passing build_check over the full suite? The scopes doctor's check row counts —
- * merge, batch and the red-main baseline; a gate check can run a subset, so it is left out. */
-export function isPassingFullCheck(ev: HarnessEvent): boolean {
-  return ev.type === "build_check" && ev.status === "passed" && ["merge", "batch", "baseline"].includes(String(ev.scope));
+/** Does this build_check scope stand for a full-suite verdict — merge, batch, or the red-main
+ * baseline? A gate check can run a subset of the tree, so a scope outside this set is never a
+ * full-suite check. The one vocabulary the three predicates that recognize a full-suite check
+ * select on — isPassingFullCheck, isRedFullCheck, and the status polls' newest-merge-check
+ * scan (status-polls.ts) — so they cannot drift on which scopes count. The deadline-killed
+ * failure costing in time-spend.ts is a narrower pair (merge/batch only, with a status and a
+ * timeout required), so it keeps its own check. */
+export function isFullCheckScope(scope: unknown): boolean {
+  return scope === "merge" || scope === "batch" || scope === "baseline";
 }
 
-/** The red sibling of isPassingFullCheck: a failed build_check over the same three scopes —
- * merge, batch and the red-main baseline. A `skipped` check made no verdict about the tree,
- * and a merge-scope timeout is already remapped to `failed` by runScopedBuildCheck
- * (`MERGE_SCOPES`), so `failed` alone is the rule. The two predicates are mutually exclusive
- * on `status`, so a fold branch on them never sees the other's events. */
+/** Is this a passing build_check over the full suite? The scopes doctor's check row counts —
+ * merge, batch and the red-main baseline — are isFullCheckScope's set; a gate check can run a
+ * subset, so it is left out. */
+export function isPassingFullCheck(ev: HarnessEvent): boolean {
+  return ev.type === "build_check" && ev.status === "passed" && isFullCheckScope(ev.scope);
+}
+
+/** The red sibling of isPassingFullCheck: a failed build_check over the same three scopes
+ * (isFullCheckScope's set). A `skipped` check made no verdict about the tree, and a merge-scope
+ * timeout is already remapped to `failed` by runScopedBuildCheck (`MERGE_SCOPES`), so `failed`
+ * alone is the rule. The two predicates are mutually exclusive on `status`, so a fold branch on
+ * them never sees the other's events. */
 export function isRedFullCheck(ev: HarnessEvent): boolean {
-  return ev.type === "build_check" && ev.status === "failed" && ["merge", "batch", "baseline"].includes(String(ev.scope));
+  return ev.type === "build_check" && ev.status === "failed" && isFullCheckScope(ev.scope);
 }
 
 /** How late a check's deadline timer may fire before the timeout's wording stops naming the
