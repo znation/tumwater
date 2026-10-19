@@ -61,6 +61,7 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Enter`, `↑`/`↓`, `PgUp`/`PgDn`, `Esc` | prompt line, panes | send the prompt, prompt history (or move through entries on Backlog), scroll, cancel an editor |
 | `Ctrl+U` / `Ctrl+K` | prompt line | delete to the start / to the end of the line |
 | `Ctrl+B` | Activity, Transcript | edit the daily cost cap: the team's on Activity, the viewed role's (`maxDailyCostUsdPerRole.<role>`) on its Transcript; empty means no cap |
+| `Ctrl+P` | Activity | edit the team's per-provider concurrency caps (`maxConcurrentPerProvider`, a JSON object like `{"anthropic":2}`; empty clears it) |
 | `Ctrl+F` | Activity | pause the team (`[duration] [reason]`), or resume it when paused |
 | `Ctrl+Q` | Activity | stop the team later (a duration), or cancel a scheduled stop |
 | `Ctrl+R` | Activity | apply the pending self-redeploy now (the terminal twin of `tumwater restart` and the dashboard update alert's restart button) |

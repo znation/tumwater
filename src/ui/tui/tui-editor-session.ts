@@ -57,6 +57,8 @@ interface TuiHeld {
    * `roles.<base>.instructions` override the prompt line is replacing from a typed file path,
    * or null when closed. */
   instructions: string | null;
+  /** The Activity view's Ctrl+P provider-concurrency-caps editor holds the prompt line. */
+  providerCaps: boolean;
 }
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
@@ -115,7 +117,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions"): string | null;
+  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -145,6 +147,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       quietTeam: false,
       interval: false,
       instructions: null,
+      providerCaps: false,
     },
     root: deps.root,
     now: deps.now,
@@ -188,6 +191,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.quiet && entering !== "quiet") return session.busyFlash("quiet hours");
       if (h.interval && entering !== "interval") return session.busyFlash("min run interval");
       if (h.instructions && entering !== "instructions") return session.busyFlash("instructions edit");
+      if (h.providerCaps && entering !== "providerCaps") return session.busyFlash("provider caps");
       if (entering === "attach" && h.budget) return session.busyFlash("budget edit");
       if (entering === "notes" && (h.attach || h.budget)) return session.busyFlash(h.attach ? "image attach" : "budget edit");
       if (entering === "brief" && h.budget) return session.busyFlash("budget edit");
@@ -195,6 +199,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (entering === "quiet" && (h.attach || h.notes || h.budget || h.brief || h.retire)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : "budget edit");
       if (entering === "interval" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : "budget edit");
       if (entering === "instructions" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "budget edit");
+      if (entering === "providerCaps" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : "budget edit");
       return null;
     },
   };
