@@ -195,3 +195,19 @@ test("questions answer --file - reads stdin", async () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8"), /by the user:\*\*\n\n- keep A\n/);
 });
+
+test("questions typos the only subcommand with a did-you-mean hint", async () => {
+  // The questions command's one subcommand is `answer`; a near-miss spelling gets the same
+  // hint `logs --type`/`history --result`/`completion <shell>` attach, while a far-off word
+  // (a different subcommand, not a typo) stays hint-free and just names the valid form.
+  const repo = makeRepo();
+  await initProject(repo, "cli questions subcommand typo");
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), OPEN_ONE);
+  const near = await cli(repo, "questions", "anser", "1", "no");
+  assert.equal(near.code, 1);
+  assert.match(near.stderr, /unknown questions subcommand: anser .*did you mean `answer`\?/);
+  const far = await cli(repo, "questions", "refresh", "1", "no");
+  assert.equal(far.code, 1);
+  assert.match(far.stderr, /unknown questions subcommand: refresh/);
+  assert.doesNotMatch(far.stderr, /did you mean/);
+});

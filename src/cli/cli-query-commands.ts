@@ -11,6 +11,7 @@ import { JSON_FLAG, READY_FLAG, grepFlagSpec, rejectEqualsForm, rejectUnknownArg
 import { requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
+import { typoSuffix } from "../text/suggest.js";
 import { snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
@@ -330,7 +331,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   }
   if (words[0] !== "answer")
     fail(
-      `unknown questions subcommand: ${words[0]} (use "answer <n> <decision>", or run \`tumwater questions\` with no subcommand to list them)`,
+      `unknown questions subcommand: ${words[0]} (use "answer <n> <decision>", or run \`tumwater questions\` with no subcommand to list them)${typoSuffix(words[0]!, ["answer"])}`,
     );
   // The offending token carries the same ` (got "...")` suffix every sibling number parser
   // adds (parsePositiveInt's flag callers, --cancel); the bare `answer` form names none.
