@@ -8,6 +8,7 @@ import {
   moveEntrySelection,
   planListLines,
   stepEntryScroll,
+  visibleBacklogIndexes,
 } from "../src/ui/tui/tui-backlog.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { backlogMarks, holdMark } from "../src/backlog/backlog-eligibility.js";
@@ -87,6 +88,36 @@ test("moveEntrySelection with no entries stays in list mode", () => {
   assert.equal(moveEntrySelection(0, null, "down"), null);
   assert.equal(moveEntrySelection(0, null, "up"), null);
   assert.equal(moveEntrySelection(0, 5, "down"), null); // a stale selection also clears
+});
+
+test("moveEntrySelection with a visible list steps only through the matches and wraps at their ends", () => {
+  // Visible = the `/` search's matching indexes [1, 3] over a 5-entry flat list.
+  assert.equal(moveEntrySelection(5, null, "down", [1, 3]), 1, "down from list mode opens the first match");
+  assert.equal(moveEntrySelection(5, null, "up", [1, 3]), 3, "up from list mode opens the last match");
+  assert.equal(moveEntrySelection(5, 1, "down", [1, 3]), 3);
+  assert.equal(moveEntrySelection(5, 3, "down", [1, 3]), 1, "wraps past the last match");
+  assert.equal(moveEntrySelection(5, 3, "up", [1, 3]), 1);
+  assert.equal(moveEntrySelection(5, 1, "up", [1, 3]), 3, "wraps past the first match");
+  assert.equal(moveEntrySelection(5, 0, "down", [1, 3]), 1, "a stale selection outside restarts at the first match");
+  assert.equal(moveEntrySelection(5, 4, "up", [1, 3]), 3, "a stale selection outside on up restarts at the last match");
+  assert.equal(moveEntrySelection(5, 1, "down", []), null, "an empty visible list selects nothing");
+  assert.equal(moveEntrySelection(0, 1, "down", [1]), null, "no entries at all stays in list mode");
+});
+
+test("visibleBacklogIndexes returns only open entries, matching heading or body case-insensitively", () => {
+  const entries = [
+    { label: "plan", title: "Volume slider", body: "Body A" },
+    { label: "plan", title: "Widget", body: "second" },
+    { label: "bug", title: "zoom", body: "a widget in the body" },
+    { label: "question", title: "Which shape?", body: "" },
+    { label: "done", title: "Done thing", body: "widget done" },
+    { label: "fixed", title: "Fixed bug", body: "widget" },
+    { label: "answered", title: "Q done", body: "" },
+  ] as Array<{ label: string; title: string; body: string }>;
+  assert.deepEqual(visibleBacklogIndexes(entries, null), [0, 1, 2, 3], "no pattern keeps every open entry");
+  assert.deepEqual(visibleBacklogIndexes(entries, "widget"), [1, 2], "matches open entries by heading or body, never a finished index");
+  assert.deepEqual(visibleBacklogIndexes(entries, "WiDgEt"), [1, 2], "matching is case-insensitive");
+  assert.deepEqual(visibleBacklogIndexes(entries, "gizmo"), [], "a term matching nothing returns none");
 });
 
 test("entryBodyWindow at offset zero clips each line and keeps the head within budget", () => {
@@ -397,6 +428,37 @@ test("paneBody's backlog list shows the newest done plans and fixed bugs, read-o
   assert.deepEqual(line(1).slice(0, 2), ["done: D6 (planned 2026-09-01, done 2026-10-06)", "Body."]);
   assert.equal(line(6)[0], "fixed: Old bug (fixed 2026-10-02)");
   assert.equal(line(99)[0], "fixed: Old bug (fixed 2026-10-02)");
+});
+
+test("paneBody's backlog list filters active entries under a / search and hides the finished sections", () => {
+  const dir = tmpdir();
+  writeBacklogFile(dir, "PLANS.md", [
+    { heading: "## Planned", body: "### Volume slider (planned 2026-10-01)\n\nBody.\n\n### Widget (planned 2026-10-02)\n\nBody." },
+    { heading: "## Done", body: "### Volume done (planned 2026-09-01, done 2026-10-01)\n\nBody." },
+  ]);
+  writeBacklogFile(dir, "BUGS.md", [
+    { heading: "## Open", body: "### zoom bug (reported 2026-10-01)\n\nBody." },
+    { heading: "## Fixed", body: "### Old fixed (fixed 2026-10-02)\n\nx" },
+  ]);
+  writeBacklogFile(dir, "QUESTIONS.md", [{ heading: "## Open" }, { heading: "## Answered" }]);
+  const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
+  const opts = { root: dir, width: 300, eventBudget: 30, entryBudget: 5 };
+  const text = (grep: string | null, selectedEntry: number | null = null) =>
+    paneBody({ kind: "backlog" }, { ...opts, state: { ...state, backlogGrep: grep, selectedEntry } }).body.map((l) => l.map((s) => s.text).join(""));
+
+  const filtered = text("volume");
+  assert.equal(filtered[0], 'search: "volume"', "the search opens under a search header");
+  assert.ok(filtered.includes("Volume slider (planned 2026-10-01)"), "the matching open entry is kept");
+  assert.ok(!filtered.some((l) => l.includes("Widget")), "a non-matching open entry is hidden");
+  assert.ok(!filtered.some((l) => l.startsWith("done recently") || l.startsWith("fixed recently")), "the finished sections are hidden while searching");
+
+  const none = text("gizmo");
+  assert.equal(none[0], 'search: "gizmo"');
+  assert.ok(none.includes('(no entries match "gizmo")'), "nothing matching paints a self-explanatory line");
+
+  // Entry mode still opens the unfiltered flat index: Volume slider is the first open entry.
+  const entry = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, backlogGrep: "volume", selectedEntry: 0 } }).body;
+  assert.equal(entry[0]!.map((s) => s.text).join(""), "plan: Volume slider (planned 2026-10-01)");
 });
 
 test("browsableBacklogEntries appends the newest answered questions, then done plans, then fixed bugs, after the open entries", () => {

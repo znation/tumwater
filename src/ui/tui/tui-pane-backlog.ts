@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { tryCancelEntry, tryMoveEntryToTop, tryReleaseEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
 import { requestWake } from "../../operator/operator-intent.js";
-import { moveEntrySelection, pageMarkdownBody, type labeledBacklogEntries } from "./tui-backlog.js";
+import { moveEntrySelection, pageMarkdownBody, visibleBacklogIndexes, type labeledBacklogEntries } from "./tui-backlog.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
@@ -54,6 +54,11 @@ export function createBacklogPane(
   // entry's body — PgDn/PgUp in project-status entry mode. Reset whenever the selection
   // changes or clears, so every newly opened entry starts at its head.
   let entryScroll = 0;
+  // The pane's active free-text search (the `/` editor's applied pattern), like historyGrep on
+  // the History pane: it persists across view cycling, and a non-null value filters the open
+  // entries the up/down arms and the list render show. Cleared when the operator applies an
+  // empty pattern.
+  let backlogGrep: string | null = null;
 
   const clearBacklogSelection = (): void => {
     // Clear the project-status pane's selection and its body scroll after a recorded answer or
@@ -195,8 +200,12 @@ export function createBacklogPane(
       // prompt; every other view keeps today's behavior (arrows are ignored by applyKey).
       // An open answer editor pins the selection (its position was taken from it).
       if (!ctx.es.answerFor && !ctx.es.entryEditFor) {
-        const count = session.flat().length;
-        selectedEntry = moveEntrySelection(count, selectedEntry, arrow);
+        const entries = session.flat();
+        // With a search applied, up/down step only through the matching open entries (their
+        // unfiltered indexes), wrapping at that list's ends; without one, they keep browsing
+        // the whole flat list (open entries plus the read-only answered/done/fixed rows).
+        const visible = backlogGrep === null ? undefined : visibleBacklogIndexes(entries, backlogGrep);
+        selectedEntry = moveEntrySelection(entries.length, selectedEntry, arrow, visible);
         entryScroll = 0; // a newly opened entry starts at its body's head
       }
       session.requestRender();
@@ -222,13 +231,25 @@ export function createBacklogPane(
     handleKey,
     reset() {
       // Leaving a view drops any entry selection and its within-body scroll, so re-entering
-      // starts at the list/head.
+      // starts at the list/head. The applied search pattern persists, like historyGrep.
       selectedEntry = null;
       entryScroll = 0;
     },
     clearBacklogSelection,
-    state() {
-      return { selectedEntry, entryScroll, releaseArmed: session.releaseArmed };
+    grep(): string | null {
+      return backlogGrep;
     },
-  } satisfies TuiPaneModule & { clearBacklogSelection(): void };
+    applySearch(pattern: string | null): void {
+      // The `/` editor's Enter: sets the applied pattern, clears the selection and its body
+      // scroll so the next frame starts in list mode, and leaves the pattern applied across
+      // view cycles (like historyGrep).
+      backlogGrep = pattern;
+      selectedEntry = null;
+      entryScroll = 0;
+      session.requestRender();
+    },
+    state() {
+      return { selectedEntry, entryScroll, releaseArmed: session.releaseArmed, backlogGrep };
+    },
+  } satisfies TuiPaneModule & { clearBacklogSelection(): void; grep(): string | null; applySearch(pattern: string | null): void }; 
 }

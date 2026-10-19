@@ -12,10 +12,10 @@ import { readTranscript } from "../transcript.js";
 import { eventRole, readEvents } from "../../events/event-read.js";
 import { eventMatchesGrep, formatEvent } from "../../events/event-format.js";
 import type { HarnessEvent } from "../../events/events.js";
-import { backlogLines, entryBodyWindow, browsableBacklogEntries, planListLines } from "./tui-backlog.js";
+import { backlogLines, entryBodyWindow, browsableBacklogEntries, isOpenBacklogLabel, planListLines } from "./tui-backlog.js";
 import { answeredQuestionSummaries } from "../../backlog/question-answer.js";
 import { DASHBOARD_ANSWERED_QUESTIONS, recentFinished } from "../status-payload.js";
-import { donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries } from "../../backlog/backlog.js";
+import { donePlanEntries, DONE_DATE_RE, entryMatches, FIXED_DATE_RE, fixedBugEntries } from "../../backlog/backlog.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { rolePayload } from "../../roles/role-view.js";
 import { inspectMarkdownLines } from "../../roles/role-render.js";
@@ -27,6 +27,9 @@ import { eventTone, toneLine, transcriptTone, type TuiView } from "./tui-frame.j
 interface TuiPaneState {
   selectedEntry: number | null;
   entryScroll: number;
+  /** The Backlog pane's active `/` search pattern (null = no filter). */
+  backlogGrep?: string | null;
+
   /** The Queued pane's row selection (null = list mode) and the rows it indexes (the same
    * renderQueuedList traversal `tumwater prompt --list` prints). A set selection shows the
    * row's full prompt under a cancel header instead of the numbered list. */
@@ -134,16 +137,38 @@ export function paneBody(
     // entry mode used to read the three sections and derive the holds directly and
     // then again inside the flat list, so every render paid twice for the same reads and verdicts.
     const flat = browsableBacklogEntries(root);
+    // A `/` search narrows the browsable list to the matching open entries (the answered/done/
+    // fixed rows are read-only and hidden while a search is applied); entry mode still opens
+    // `flat[sel]`, the unfiltered index the selection holds.
+    const grep = state.backlogGrep ?? null;
+    const shown = grep === null
+      ? flat
+      : flat.filter((e) => isOpenBacklogLabel(e.label) && entryMatches(e, grep));
     // A stale selection (an entry removed since the last render) clamps to the last; no
     // entries at all falls back to list mode.
     const sel = state.selectedEntry === null || flat.length === 0 ? null : Math.min(state.selectedEntry, flat.length - 1);
     if (sel === null) {
       // List mode: section headings stand out, empty sections read dim. Keeps the HEAD of the
       // list when it overflows — file order is newest-first, unlike events which keep the tail.
-      const listed = (label: string) => flat.filter((e) => e.label === label).map((e) => e.title + e.mark);
+      const listed = (label: string) => shown.filter((e) => e.label === label).map((e) => e.title + e.mark);
       // Plans list a series' blocked parts as one line (as `plan --list` does); the selection
       // below still walks the flat list, one entry per part.
-      const plans = flat.filter((e) => e.label === "plan");
+      const plans = shown.filter((e) => e.label === "plan");
+      // A `/` search active: the answered/done/fixed sections are hidden, the sections build
+      // only from the matching open entries under a `search: "<grep>"` header, and nothing
+      // matching paints a self-explanatory line.
+      if (grep !== null) {
+        const prefix = [`search: "${grep}"`];
+        const rest = shown.length === 0
+          ? [`(no entries match "${grep}")`]
+          : backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length);
+        return {
+          body: [...prefix, ...rest]
+            .slice(0, eventBudget)
+            .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
+          emptyNote: "(no events yet)",
+        };
+      }
       // The newest answered questions follow the open ones: they are in `flat` (up/down open
       // their bodies), but no edit key acts on them.
       const answered = answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>

@@ -66,7 +66,7 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+R` | Activity | apply the pending self-redeploy now (the terminal twin of `tumwater restart` and the dashboard update alert's restart button) |
 | `Ctrl+V` | Activity | attach an image path to the next prompt to the director (the terminal twin of `tumwater prompt --attach <path>` and the dashboard composer's drop/paste) |
 | `Ctrl+G` | Activity, History, Usage, Failures | cycle the role scope |
-| `/` | Activity, History | search |
+| `/` | Activity, History, Backlog | search (on Backlog, filter the active entries by heading or body) |
 | `Ctrl+S` | History, Transcript | cycle the trailing window on History; edit the viewed role's `roles.<base>.minRunIntervalSeconds` override on a Transcript |
 | `Ctrl+O` | Activity, Transcript, History, Health | cycle the event type on Activity; cycle the outcome filter on History; on Health, toggle the problems-only (warn and fail) view; on a role's Transcript, edit that role's own quiet-hours window (`quietHoursPerRole.<base>`; an empty line clears it) |
 | `Ctrl+L` | Transcript | replace the viewed role's standing-instructions override, `roles.<base>.instructions`, from a file — the terminal twin of `tumwater role <id> --instructions-file` and the dashboard drawer's Instructions editor (an empty file clears it; an instance id writes its base role's key) |
@@ -78,5 +78,5 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+R` | Transcript, Backlog, Pending, Health | send a prompt to that role; release the selected refused or waiting entry; refresh the merge queue and change roster on Pending / re-run the doctor checks on Health |
 | `Ctrl+P` / `Ctrl+W` / `Ctrl+A` / `Ctrl+V` | Transcript | pause or resume the role / wake it (a duration schedules it, `cancel` drops scheduled wakes) / stop its in-flight run / zero the role's counters |
 | `Ctrl+N` | Transcript | cycle transcript, notes, and pending change; on notes, `Ctrl+X` pressed twice clears them and `Ctrl+E` replaces them from a file |
-| `Ctrl+X` (twice) / `Ctrl+V` / `Ctrl+E` / `Ctrl+N` / `Ctrl+A` | Backlog | cancel the selected entry / move it to the head of its section / edit its title (Ctrl+E again replaces title and body from a file) / file a new plan or bug / answer the selected question |
+| `Ctrl+X` (twice) / `Ctrl+V` / `Ctrl+E` / `Ctrl+N` / `Ctrl+A` / `/` | Backlog | cancel the selected entry / move it to the head of its section / edit its title (Ctrl+E again replaces title and body from a file) / file a new plan or bug / answer the selected question / filter the active entries by heading or body |
 | `Ctrl+V` / `Ctrl+E` / `Ctrl+X` | Inbox | move the selected queued prompt to the head of its role's queue / edit / cancel it |

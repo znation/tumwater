@@ -770,6 +770,64 @@ test("the Activity and History `/` searches are independent, and `/` elsewhere t
   assert.equal(keys.state().historyGrep, "clean", "the Activity search does not touch the History filter");
 });
 
+test("the `/` search filters the Backlog pane's active entries, clears, and persists across view cycling", () => {
+  const root = makeRoot();
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    "## Planned\n\n### Volume slider (planned 2026-10-02 by test)\n\nbody\n\n### Widget (planned 2026-10-02 by test)\n\nbody\n",
+  );
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(10, 4);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → backlog (roleIds.length+1 = 1)
+  assert.equal(keys.state().view, 1);
+  assert.equal(keys.state().backlogGrep, null, "the Backlog pane opens unsearched");
+
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "", "an empty Backlog search opens blank");
+  for (const ch of "volume") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().backlogGrep, "volume");
+  assert.equal(keys.state().selectedEntry, null, "applying a search clears the selection to list mode");
+  assert.equal(keys.state().flash, 'search: "volume"');
+
+  // Up/down step only through the matching entry (Volume slider is the only match).
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedEntry, 0, "Down opens the first matching entry");
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedEntry, 0, "a single match steps nowhere");
+
+  // Re-opening pre-fills the applied pattern; Esc leaves it unchanged.
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "volume", "re-opening pre-fills the applied pattern");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().backlogGrep, "volume", "Esc leaves the applied pattern unchanged");
+  assert.equal(keys.state().input, "", "Esc restores the pre-search draft");
+
+  // Cycling away and back keeps the applied search (the selection drops, the pattern stays).
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage (view 2)
+  assert.equal(keys.state().selectedEntry, null, "cycling away drops the selection");
+  assert.equal(keys.state().backlogGrep, "volume", "cycling away keeps the applied pattern");
+  for (let i = 0; i < 8; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → back to backlog (view 1)
+  assert.equal(keys.state().view, 1);
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "volume", "returning reopens the search pre-filled");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // An empty line clears the search.
+  keys.handleKey("/", { name: "/" });
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().backlogGrep, null, "an empty line clears the search");
+  assert.equal(keys.state().flash, "search cleared");
+
+  // Off Backlog, `/` types into the prompt: it is not a search view.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage (view 2)
+  assert.equal(keys.state().view, 2);
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "/", "`/` on a non-search view types into the prompt");
+});
+
 test("Ctrl+T cycles on through Usage and Failures to History, which caches and pages the tick rows", () => {
   const root = makeRoot();
   // Twelve completed runs so the history pane's rows overflow the pane budget and page.

@@ -2,6 +2,7 @@
 import {
   answeredQuestionEntries,
   donePlanEntries,
+  entryMatches,
   fixedBugEntries,
   openBugEntries,
   openQuestionEntries,
@@ -130,24 +131,64 @@ export function backlogLines(
   return lines;
 }
 
+/** The project-status pane's open-entry labels — plans, bugs and questions — the labels a `/`
+ * text search can select. The answered/done/fixed rows the pane shows are read-only and are
+ * hidden while a search is applied. Pure. */
+export function isOpenBacklogLabel(label: string): boolean {
+  return label === "plan" || label === "bug" || label === "question";
+}
+
+/** The flat entries a `/` text search keeps visible: with no pattern, every open entry's index
+ * (label plan, bug or question); with a pattern, only the open entries whose heading or body
+ * matches it case-insensitively (the exported entryMatches, the same rule the finished-entry
+ * listings use). It never returns an answered/done/fixed index. Pure, so it is unit-testable
+ * without a TTY — the pane calls it before moveEntrySelection so up/down step within the
+ * matching indexes. */
+export function visibleBacklogIndexes(
+  entries: ReadonlyArray<{ label: string } & BacklogEntry>,
+  pattern: string | null,
+): number[] {
+  const open = (e: { label: string }): boolean => isOpenBacklogLabel(e.label);
+  const out: number[] = [];
+  entries.forEach((e, i) => {
+    if (open(e) && (pattern === null || entryMatches(e, pattern))) out.push(i);
+  });
+  return out;
+}
+
 /** Move the project-status entry selection one step in `dir` across the flat entry list
  * (plans, then bugs, then questions), wrapping at both ends. A null cursor means "list mode":
  * the first down opens the first entry and the first up opens the last; with no entries there
- * is nothing to select (a stale selection clears too). Pure, so it is unit-testable without a
- * TTY — runTui feeds it the three sections' lengths. */
+ * is nothing to select (a stale selection clears too). An optional `visible` list (the `/`
+ * search's matching indexes, ascending) restricts the steps to those entries and wraps at that
+ * list's ends, returning an unfiltered index into the full flat list; a stale selection
+ * outside `visible` restarts at its first (down) or last (up) match, and an empty list returns
+ * null. The two-argument callers (and their behavior) are unchanged. Pure, so it is
+ * unit-testable without a TTY — runTui feeds it the three sections' lengths. */
 export function moveEntrySelection(
   count: number,
   selected: number | null,
   dir: "up" | "down",
+  visible?: ReadonlyArray<number>,
 ): number | null {
   if (count <= 0) return null;
-  if (selected === null) return dir === "down" ? 0 : count - 1;
-  // A stale index past the new count (the backlog shrank between renders) clamps to the
-  // last entry first, so the wrap moves from where the pane actually shows the selection —
-  // (selected + 1) % count on an unclamped stale index lands on an arbitrary entry (BUGS.md
-  // 2026-10-02 latent-bug hunt over tui-backlog's extraction).
-  const sel = Math.min(selected, count - 1);
-  return dir === "down" ? (sel + 1) % count : (sel - 1 + count) % count;
+  if (visible === undefined) {
+    if (selected === null) return dir === "down" ? 0 : count - 1;
+    // A stale index past the new count (the backlog shrank between renders) clamps to the
+    // last entry first, so the wrap moves from where the pane actually shows the selection —
+    // (selected + 1) % count on an unclamped stale index lands on an arbitrary entry (BUGS.md
+    // 2026-10-02 latent-bug hunt over tui-backlog's extraction).
+    const sel = Math.min(selected, count - 1);
+    return dir === "down" ? (sel + 1) % count : (sel - 1 + count) % count;
+  }
+  // Filtered (search) selection: step within the matching indexes and wrap at their ends. A
+  // null cursor or a stale selection outside the matches restarts at the first (down) or last
+  // (up) match; an empty match list has nothing to select.
+  if (visible.length === 0) return null;
+  if (selected === null) return dir === "down" ? visible[0]! : visible[visible.length - 1]!;
+  const pos = visible.indexOf(selected);
+  if (pos === -1) return dir === "down" ? visible[0]! : visible[visible.length - 1]!;
+  return dir === "down" ? visible[(pos + 1) % visible.length]! : visible[(pos - 1 + visible.length) % visible.length]!;
 }
 
 /** The visible window of one backlog entry's body for the TUI pane: `budget` lines starting at

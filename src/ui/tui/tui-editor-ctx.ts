@@ -18,6 +18,8 @@ export interface TuiEditorCtx {
   historyGrep: string | null;
   /** The Activity pane's active free-text search (the `/` editor's applied pattern). */
   activityGrep: string | null;
+  /** The Backlog pane's active free-text search (the `/` editor's applied pattern). */
+  backlogGrep: string | null;
   /** Whether the viewed loop's pane shows its notebook (Ctrl+N) instead of the live
    * transcript — the notes Ctrl+E editor's open guard: it may only take the prompt line
    * while the notes view is up, so the Report window arm keeps Ctrl+E on its own views. */

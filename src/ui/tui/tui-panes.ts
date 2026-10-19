@@ -58,6 +58,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       queuedRows: s.queuedRows,
       historyGrep: s.historyGrep,
       activityGrep: s.activityGrep,
+      backlogGrep: s.backlogGrep,
       noteMode: s.noteMode,
       briefMode: s.view === s.roleIds.length + 8,
     };
@@ -248,6 +249,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       changeCache: tra.changeCache,
       selectedEntry: back.selectedEntry,
       entryScroll: back.entryScroll,
+      backlogGrep: back.backlogGrep,
       scopeRole: rep.scopeRole,
       reportSince: rep.reportSince,
       historyRole: hist.historyRole,
@@ -270,6 +272,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     clearBacklogSelection: backlog.clearBacklogSelection,
     applyHistorySearch: history.applySearch,
     applyActivitySearch: activity.applySearch,
+    applyBacklogSearch: backlog.applySearch,
     beginKey,
     editorCtx,
     cycleView,

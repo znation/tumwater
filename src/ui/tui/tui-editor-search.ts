@@ -8,9 +8,10 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * exclusive with the other editors via the session's held registry. */
 export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
   let searchMode = false;
-  // Which pane the shared `/` editor feeds: History's tick search or Activity's event search.
-  // The target is captured when `/` opens so a roster change mid-edit cannot retarget Enter.
-  let searchFor: "history" | "activity" = "history";
+  // Which pane the shared `/` editor feeds: History's tick search, Activity's event search, or
+  // the Backlog pane's entry search. The target is captured when `/` opens so a roster change
+  // mid-edit cannot retarget Enter.
+  let searchFor: "history" | "activity" | "backlog" = "history";
   let searchSavedInput = "";
   let searchSavedCursor = 0;
 
@@ -35,21 +36,21 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
       !session.held.rolePromptFor && !session.held.pause &&
       !session.held.queued && !session.held.answer && !session.held.entry &&
       !session.held.attach && !session.held.retire &&
-      (ctx.view === 0 || ctx.view === ctx.roleIds.length + 4) && session.input === ""
+      (ctx.view === 0 || ctx.view === ctx.roleIds.length + 1 || ctx.view === ctx.roleIds.length + 4) && session.input === ""
     ) {
       // `/` opens a free-text search on the prompt line (the pager's search key; this project
       // already reserves `/` for a meta action): over the History pane's tick rows on History,
-      // over the Activity feed's events on Activity. Guarded to those two views and to an empty
-      // line, so elsewhere it types into the prompt as today and a director draft is never
-      // disturbed. Pre-fills the applied pattern so Enter re-submits it and the operator can
-      // edit it; Esc cancels without applying.
+      // over the Activity feed's events on Activity, and over the Backlog pane's active entries
+      // on Backlog. Guarded to those three views and to an empty line, so elsewhere it types
+      // into the prompt as today and a director draft is never disturbed. Pre-fills the applied
+      // pattern so Enter re-submits it and the operator can edit it; Esc cancels without applying.
       session.settleDraft((t) => (searchSavedInput = t), (n) => (searchSavedCursor = n));
-      searchFor = ctx.view === 0 ? "activity" : "history";
+      searchFor = ctx.view === 0 ? "activity" : ctx.view === ctx.roleIds.length + 1 ? "backlog" : "history";
       searchMode = true;
       session.held.search = true;
-      session.input = (searchFor === "activity" ? ctx.activityGrep : ctx.historyGrep) ?? "";
+      session.input = (searchFor === "activity" ? ctx.activityGrep : searchFor === "history" ? ctx.historyGrep : ctx.backlogGrep) ?? "";
       session.cursor = session.input.length;
-      session.flashMessage(searchFor === "activity" ? "search events: Enter to filter, Esc to cancel" : "search runs: Enter to filter, Esc to cancel");
+      session.flashMessage(searchFor === "activity" ? "search events: Enter to filter, Esc to cancel" : searchFor === "backlog" ? "search backlog: Enter to filter, Esc to cancel" : "search runs: Enter to filter, Esc to cancel");
       return true;
     }
     if (key.name === "escape" && searchMode) {
@@ -61,20 +62,15 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
       // Enter applies the trimmed line to the pane the editor opened over: Activity sets
       // activityGrep (an empty line clears it) and resets the scroll to the live tail — the
       // offset indexed the old filtered list; History recomputes its row cache now (the pane
-      // is showing) and re-enters at its head. A successful apply restores the saved prompt
-      // draft through exitHistorySearch, the shared editor's exit.
-      const pattern = session.input.trim();
-      if (searchFor === "activity") {
-        const applied = pattern === "" ? null : pattern;
-        session.applyActivitySearch(applied);
-        exitHistorySearch();
-        session.flashMessage(applied === null ? "search cleared" : `search: "${applied}"`);
-      } else {
-        const applied = pattern === "" ? null : pattern;
-        session.applyHistorySearch(applied);
-        exitHistorySearch();
-        session.flashMessage(applied === null ? "search cleared" : `search: "${applied}"`);
-      }
+      // is showing) and re-enters at its head; Backlog sets backlogGrep and clears its entry
+      // selection so the next frame starts in list mode. A successful apply restores the saved
+      // prompt draft through exitHistorySearch, the shared editor's exit.
+      const applied = session.input.trim() === "" ? null : session.input.trim();
+      if (searchFor === "activity") session.applyActivitySearch(applied);
+      else if (searchFor === "history") session.applyHistorySearch(applied);
+      else session.applyBacklogSearch(applied);
+      exitHistorySearch();
+      session.flashMessage(applied === null ? "search cleared" : `search: "${applied}"`);
       return true;
     }
     return false;

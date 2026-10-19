@@ -92,6 +92,8 @@ export interface TuiEditorSession {
   applyHistorySearch(pattern: string | null): void;
   /** Apply a finished Activity search on the pane. */
   applyActivitySearch(pattern: string | null): void;
+  /** Apply a finished Backlog search on the pane. */
+  applyBacklogSearch(pattern: string | null): void;
   /** Flash a one-line notice on the prompt line. */
   flashMessage(message: string): void;
   /** Flash a caught failure as `error: <message>`. */
@@ -148,6 +150,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     clearBacklogSelection: deps.clearBacklogSelection,
     applyHistorySearch: deps.applyHistorySearch,
     applyActivitySearch: deps.applyActivitySearch,
+    applyBacklogSearch: deps.applyBacklogSearch,
     flashMessage: deps.flashMessage,
     flashError: deps.flashError,
     commitBacklogEdit: deps.commitBacklogEdit,

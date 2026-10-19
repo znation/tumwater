@@ -168,6 +168,9 @@ interface TuiKeysState {
   /** The History pane's active free-text search (the `/` editor), or null when none; named in
    * the pane's own `search:` header and in the hint line. */
   historyGrep: string | null;
+  /** The Backlog pane's active free-text search (the `/` editor), or null when none; names the
+   * filtered active entries under the pane's `search:` header. */
+  backlogGrep: string | null;
   /** The History pane's session Summary toggle (Ctrl+Y): false shows the per-run row list, true
    * the per-loop tally (`history --summary`); named in the hint line. */
   historySummary: boolean;
@@ -276,6 +279,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     clearBacklogSelection: panes.clearBacklogSelection,
     applyHistorySearch: panes.applyHistorySearch,
     applyActivitySearch: panes.applyActivitySearch,
+    applyBacklogSearch: panes.applyBacklogSearch,
     flashMessage,
     flashError,
     commitBacklogEdit,

@@ -134,7 +134,7 @@ test("the hint line says what the keys do in each view and mode", () => {
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: true }),
     "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+T next view · Ctrl+D quit",
   ); // the cycle's last step names the way back
-  assert.match(hint({ kind: "backlog" }), /↑↓ open entries · Ctrl\+X cancel entry · Ctrl\+R release entry · Ctrl\+V top entry · Ctrl\+E edit entry · Ctrl\+N new plan\/bug · Ctrl\+A answer question · PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "backlog" }), /↑↓ open entries · \/ search entries · Ctrl\+X cancel entry · Ctrl\+R release entry · Ctrl\+V top entry · Ctrl\+E edit entry · Ctrl\+N new plan\/bug · Ctrl\+A answer question · PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "usage", scope: "feature", window: null }), /Ctrl\+G scope: feature/);
   assert.match(hint({ kind: "failures", scope: "clean", window: "1h" }), /Ctrl\+G scope: clean/);
