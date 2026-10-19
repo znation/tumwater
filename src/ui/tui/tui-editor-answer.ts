@@ -3,6 +3,7 @@ import {
   questionAsker,
   tryAnswerQuestion,
   UNCLOSED_FENCE_MESSAGE,
+  type AnswerOutcome,
 } from "../../backlog/question-answer.js";
 import { wakeQuestionAsker } from "../../operator/operator-intent.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
@@ -76,29 +77,31 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
       const target = answerFor;
       if (!session.input.trim()) {
         session.flashMessage("questions answer needs a decision");
-      } else {
-        try {
-          const outcome = tryAnswerQuestion(session.root, target.position, session.input, target.title);
-          if (outcome.status === "fenced") {
-            session.flashMessage(UNCLOSED_FENCE_MESSAGE);
-          } else {
-            let woke = "";
-            if (outcome.status === "answered") {
-              session.commitBacklogEdit("QUESTIONS.md", `Answer question: ${outcome.title}`);
-              if (wakeQuestionAsker(session.root, outcome.title) !== null) woke = ` · woke ${questionAsker(outcome.title)}`;
-            }
-            exitAnswerMode();
-            session.clearBacklogSelection();
-            session.flashMessage(
-              outcome.status === "answered"
-                ? `answered question #${target.position}: ${outcome.title}${woke}`
-                : "that question was already answered or moved — nothing recorded",
-            );
-          }
-        } catch (err) {
-          session.flashError(err);
-        }
+        return true;
       }
+      let outcome: AnswerOutcome;
+      try {
+        outcome = tryAnswerQuestion(session.root, target.position, session.input, target.title);
+      } catch (err) {
+        session.flashError(err);
+        return true;
+      }
+      if (outcome.status === "fenced") {
+        session.flashMessage(UNCLOSED_FENCE_MESSAGE);
+        return true;
+      }
+      let woke = "";
+      if (outcome.status === "answered") {
+        session.commitBacklogEdit("QUESTIONS.md", `Answer question: ${outcome.title}`);
+        if (wakeQuestionAsker(session.root, outcome.title) !== null) woke = ` · woke ${questionAsker(outcome.title)}`;
+      }
+      exitAnswerMode();
+      session.clearBacklogSelection();
+      session.flashMessage(
+        outcome.status === "answered"
+          ? `answered question #${target.position}: ${outcome.title}${woke}`
+          : "that question was already answered or moved — nothing recorded",
+      );
       return true;
     }
     return false;
