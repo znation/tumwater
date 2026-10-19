@@ -292,6 +292,49 @@ test("a director tick that ends on leftover recovery puts its user prompt back",
   });
 });
 
+test("a promptless director with a kept pin re-queues it, runs no pi, and keeps a pending image reroute", async () => {
+  const repo = await initializedRepo();
+  const sha = await pinLeftover(repo, "crash.txt", "interrupted work\n", "interrupted director commit", "director");
+  const ran = path.join(tmpdir(), "ran");
+  await withPi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
+    const runner = makeRoleRunner(repo, "director");
+    runner.state.imageReroute = { tier: "default" };
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued");
+    assert.equal(headMerge(repo)?.entry.sha, sha);
+    assert.ok(!fs.existsSync(ran), "no pi run");
+    assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
+    assert.deepEqual(runner.state.imageReroute, { tier: "default" }, "the reroute waits for a prompt");
+  });
+});
+
+test("a promptless director whose pin hit the conflict cap keeps it untouched and skips, owing the hand-back to its next prompt", async () => {
+  const repo = await initializedRepo();
+  const sha = await pinLeftover(repo, "seed.txt", "branch version\n", "director work main outgrew", "director");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
+  sh(repo, "git", "commit", "-am", "main moved the same line");
+  const ran = path.join(tmpdir(), "ran");
+  await withPi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
+    const runner = makeRoleRunner(repo, "director");
+    runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "skipped");
+    assert.ok(!fs.existsSync(ran), "no pi run");
+    assert.ok(mergeRefExists(repo, "director"), "the pin is kept for its hand-back");
+    assert.deepEqual(runner.state.mergeConflicts, { sha, count: MERGE_CONFLICT_LIMIT });
+    assert.equal(runner.state.conflictHandback, undefined, "the hand-back is still owed");
+    assert.equal(headMerge(repo), null, "nothing was queued");
+  });
+});
+
+test("a promptless director with no pin skips and touches nothing", async () => {
+  const repo = await initializedRepo();
+  const runner = makeRoleRunner(repo, "director");
+  const outcome = await runner.tick();
+  assert.equal(outcome.result, "skipped");
+  assert.equal(headMerge(repo), null);
+});
+
 // The no-pin crash window: a shutdown between the tick's commitAll and its pin write leaves the
 // commit on the role branch with NO merge ref. Recovery must fall back to the branch tip so
 // invariant 1 (a shutdown between commit and merge loses nothing) holds whether or not the

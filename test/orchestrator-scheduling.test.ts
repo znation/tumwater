@@ -15,7 +15,10 @@ import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
-import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
+import { enqueueMerge } from "../src/merge/merge-queue.js";
+import { setRef } from "../src/git/git.js";
+import { mergeRefName } from "../src/paths.js";
+import { initializedRepo, mainSha, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { HOUR } from "./helpers/oracles.js";
@@ -146,6 +149,33 @@ test("a subscription-window hold stops the director too, while a 429-storm hold 
   storm.heldProviders = heldProviders(hold("rate-limit"));
   storm.windowHeldProviders = windowHeldProviders(hold("rate-limit"));
   assert.equal((await pollRunnerReasons(storm)).has(runners[0]!), true, "429 hold: director keeps running");
+});
+
+test("a director holding a kept merge pin with an empty inbox is due as leftover, unless its pin is already queued", async () => {
+  const repo = await initializedRepo();
+  const runners = [fakeRunner("director", defaultConfig())];
+  const roleProviders = new Map<string, string | undefined>();
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!), false, "no pin, no prompt: idle");
+
+  const sha = mainSha(repo);
+  await setRef(repo, mergeRefName("director"), sha);
+  const due = await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders));
+  assert.equal(due.get(runners[0]!), "leftover");
+
+  enqueueMerge(repo, { role: "director", sha, run: 1, summary: "kept", enqueuedAt: Date.now() });
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!), false, "a queued pin is the interlock's to hold");
+});
+
+test("a director whose pin sits at the conflict cap awaiting hand-back is not offered leftover", async () => {
+  const repo = await initializedRepo();
+  const runners = [fakeRunner("director", defaultConfig())];
+  const sha = mainSha(repo);
+  await setRef(repo, mergeRefName("director"), sha);
+  runners[0]!.state.mergeConflicts = { sha, count: 2 };
+  const roleProviders = new Map<string, string | undefined>();
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!), false, "only a prompt owes the hand-back");
+  runners[0]!.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: false };
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(runners[0]!), "leftover", "a handed-back lineage at the cap is discarded promptlessly");
 });
 
 /** A config whose feature role runs two instances, set through the schema field part 5a/7

@@ -174,6 +174,8 @@ discards a role's in-flight merge.
   and `questions answer` edits count) (a deferral only holds while no qualifying work has merged),
   and that one open bug puts it back on the every-wake schedule.
 - The director runs your prompts immediately, outside `maxConcurrent` and ahead of every role.
+  With no prompt, a director holding a kept merge pin is also due on its own min-run clock (20 s
+  by default) and wakes as `woke (leftover)`; that run re-queues the pin and authors nothing.
 - `tumwater prompt --role <id>` puts a prompt in one role's inbox for its next run instead of the
   director's, and wakes it. `--list` shows the inboxes grouped by role; per-role prompts
   wait behind a paused role like the director's wait behind a team pause.
@@ -282,7 +284,8 @@ recover the same way, and so do runs the watchdog stops as stalled, up to three 
 interrupted merge goes back through the pipeline, and an interrupted director prompt goes back to
 its inbox. A commit left unmerged (a merge error that kept it, or a crash before it was queued)
 goes back in the merge queue at the role's next run, which ends there instead of authoring, so the
-one merge step stays main's only writer. A commit whose last three merges all hit conflicts that
+one merge step stays main's only writer. The director's next run is otherwise only ever your prompt, so while it holds a kept commit it is
+also due on its own min-run clock. A commit whose last three merges all hit conflicts that
 conflict resolution could not settle is dropped instead, and the role's next prompt says so.
 
 ## Updates

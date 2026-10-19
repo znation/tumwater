@@ -35,9 +35,9 @@ export interface TickStartPlan {
   resumeCause: ResumeCause;
   /** The prompt this tick runs: the resume bridge when resuming, the assembled tick prompt
    * otherwise (runTick may still append notes — a conflict-discard note, a main-red note —
-   * before the run). Never null: a null prompt means nothing to run and planTickStart
-   * returns null instead. */
-  prompt: string;
+   * before the run). Null only for a promptless recovery run (`recoveryOnly`): the tick
+   * re-enqueues a kept merge pin and authors nothing. */
+  prompt: string | null;
   /** The raw user prompt this tick is executing (null for role loops), so an unfulfilled
    * outcome can re-queue it. */
   userPrompt: string | null;
@@ -68,6 +68,9 @@ export function planTickStart(opts: {
    * claude tick's resume guard looks under the same dir its run writes transcripts to.
    * Absent for a pi team or one that sets no config dir. */
   claudeConfigDir?: string;
+  /** The loop has no prompt but holds a kept merge pin: instead of the null plan (skip), return
+   * a promptless plan so the tick's leftover recovery runs. Ignored when a prompt exists. */
+  recoveryOnly?: boolean;
 }): TickStartPlan | null {
   const s = opts.state;
   // The last merge's failure, read before the clear below: a merge that failed
@@ -184,7 +187,10 @@ export function planTickStart(opts: {
           ? buildHandoffPrompt(opts.role, assembled, resumeCause, rerouteFacts)
           : assembled;
   }
-  if (prompt === null) return null;
+  if (prompt === null) {
+    if (!opts.recoveryOnly) return null;
+    return { priorMergeFailure, resuming: false, handoff: false, resumeCause, prompt: null, userPrompt: null };
+  }
   // The raw user prompt a director tick is executing (null for role loops), so an
   // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
   const userPrompt = opts.pending.get();

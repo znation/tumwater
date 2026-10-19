@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { MERGE_CONFLICT_LIMIT, recoverLeftover, type LeftoverContext } from "../src/runner/leftover.js";
+import { MERGE_CONFLICT_LIMIT, hasUnmergedPin, recoverLeftover, type LeftoverContext } from "../src/runner/leftover.js";
 import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
@@ -51,6 +51,13 @@ test("no merge ref and nothing ahead of main: no-op, nothing queued", async () =
   assert.equal(await recoverLeftover(makeCtx(root, wt)), null);
 
   assert.deepEqual(queuedMerges(root), [], "nothing is queued when there is no pin and nothing ahead");
+});
+
+test("hasUnmergedPin is false with no merge ref and true with one", async () => {
+  const root = makeRepo();
+  assert.equal(await hasUnmergedPin(root, ROLE), false);
+  const { root: pinned } = await pinnedFixture();
+  assert.equal(await hasUnmergedPin(pinned, ROLE), true);
 });
 
 test("a pinned commit not in main is put on the merge queue, not merged", async () => {
@@ -181,7 +188,9 @@ test("a stale ref already contained in main is deleted without queuing anything"
   assert.ok(await isMergedInto(root, sha, "main"), "fixture sanity: the pin is now contained in main");
   const wt = await ensureWorktree(root, ROLE, "main");
 
+  assert.equal(await hasUnmergedPin(root, ROLE), true, "a stale pin reads as pinned until recovery deletes it");
   assert.equal(await recoverLeftover(makeCtx(root, wt)), null);
+  assert.equal(await hasUnmergedPin(root, ROLE), false);
 
   assert.deepEqual(queuedMerges(root), [], "contained work is never re-queued");
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the stale pin was cleaned up");

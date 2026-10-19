@@ -19,6 +19,7 @@ import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/run
 import { freshlyWoken, hasOutstandingWork, saveLoopState, type SkipReason } from "../runner/runner-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
+import { hasUnmergedPin, MERGE_CONFLICT_LIMIT } from "../runner/leftover.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {
@@ -145,6 +146,10 @@ export async function pollRunnerReasons(
   // observes on its next poll — so one snapshot is as fresh as per-runner reads, and a
   // merge that completes mid-pass just keeps its role blocked one extra poll (conservative).
   const queuedRoles = queuedMergeRoles(root);
+  // The director's kept merge pin (a non-terminal merge failure kept it): due on its own min-run
+  // clock, since its only other run is an operator prompt. A queued or in-flight pin is the
+  // merge-queue interlock's to hold, so the leftover reason is not offered then.
+  const pinnedDirector = !queuedRoles.has(DIRECTOR_ROLE) && (await hasUnmergedPin(root, DIRECTOR_ROLE));
   // Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
   // with more than one runner assigns each due instance a distinct eligible entry, and releases
   // the claims whose entry left, turned ineligible, was disabled or went stale. Computed once
@@ -318,6 +323,14 @@ export async function pollRunnerReasons(
     const { run, reason } = isEligible(runner, now, mainHead, inboxSize(root, runner.role), {
       once: once.active,
       planBacklogOpen: !planBacklogFull,
+      // A pin at the conflict cap whose lineage is not yet handed back is owed an authoring run
+      // (the promptless path would skip it unchanged every poll), so only a prompt makes it due.
+      leftoverPending:
+        pinnedDirector &&
+        !(
+          (runner.state.mergeConflicts?.count ?? 0) >= MERGE_CONFLICT_LIMIT &&
+          runner.state.conflictHandback === undefined
+        ),
     });
     if (!run) {
       // Not due this poll: any deferral episode has ended (or never started). No event —

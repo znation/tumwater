@@ -39,7 +39,9 @@ import {
   startLiveOrchestrator,
   stopOrchestrator,
 } from "./fixtures/orchestrator-fixtures.js";
-import { headSha, mergeWork, makeRepo, seedOpenBug, sh, tmpdir, twoPlansDoc, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { setRef } from "../src/git/git.js";
+import { mergeRefName } from "../src/paths.js";
+import { headSha, mergeWork, pinOffMain, makeRepo, seedOpenBug, sh, tmpdir, twoPlansDoc, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -311,6 +313,40 @@ test("a main move and a queued prompt each log exactly one wake event with their
         ["director", "inbox"],
       ],
     );
+  } finally {
+    await stopOrchestrator(orch, restore);
+  }
+});
+
+test("a director holding a kept merge pin wakes on its own clock (reason: leftover), re-queues it, and runs no pi", async () => {
+  const repo = await makeFastRepo("director leftover", ["director"]);
+  const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "kept.txt"), "kept\n"), "kept director change");
+  await setRef(repo, mergeRefName("director"), sha);
+  const argsFile = path.join(tmpdir(), "pi-args.txt");
+  const restore = recordingFakePi(argsFile);
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "wake" && e.source === "director" && e.reason === "leftover"),
+      "a leftover wake for the director",
+    );
+    await waitFor(
+      () => eventsOfType(repo, "merge_queued").some((e) => e.source === "director" && e.commit === sha),
+      "the director's pin re-queued",
+    );
+    assert.equal(eventsOfType(repo, "prompt_taken").length, 0, "no prompt was taken");
+    assert.equal(fs.existsSync(argsFile), false, "the fake pi was never invoked");
+  } finally {
+    await stopOrchestrator(orch, restore);
+  }
+});
+
+test("a director with neither a prompt nor a kept pin never ticks", async () => {
+  const repo = await makeFastRepo("director idle control", ["director"]);
+  const { restore, orch } = startIdleOrchestrator(repo);
+  try {
+    await sleep(FAST_POLL_MS * 8);
+    assert.equal(readEvents(repo).some((e) => e.source === "director" && e.type === "wake"), false);
   } finally {
     await stopOrchestrator(orch, restore);
   }

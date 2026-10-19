@@ -324,6 +324,21 @@ test("the director only runs when the inbox has work", () => {
   assert.equal(eligible.reason, "inbox");
 });
 
+test("a director holding a kept merge pin is due on the min-run clock, never before it", () => {
+  const r = runner("director");
+  const now = Date.now();
+  r.state.nextRunAt = now + 5000;
+  assert.deepEqual(isEligible(r, now, "abc", 0, { leftoverPending: true }), { run: false });
+  assert.deepEqual(isEligible(r, now + 5000, "abc", 0, { leftoverPending: true }), { run: true, reason: "leftover" });
+  assert.deepEqual(isEligible(r, now + 9000, "abc", 0, { leftoverPending: true }), { run: true, reason: "leftover" });
+  r.state.nextRunAt = 0;
+  assert.deepEqual(isEligible(r, now, "abc", 0, { leftoverPending: false }), { run: false });
+  // A queued prompt never waits the clock, whatever the pin says.
+  r.state.nextRunAt = now + 5000;
+  assert.deepEqual(isEligible(r, now, "abc", 1, { leftoverPending: true }), { run: true, reason: "inbox" });
+  assert.deepEqual(isEligible(r, now, "abc", 1, { leftoverPending: false }), { run: true, reason: "inbox" });
+});
+
 test("the director ignores the min gap and backoff: queued prompts run back to back", () => {
   const r = runner("director");
   const now = Date.now();

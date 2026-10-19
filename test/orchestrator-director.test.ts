@@ -35,6 +35,7 @@ import {
   FAST_POLL_MS,
   awaitSettledTick,
   makeFastRepo,
+  onceRound,
   scriptedRedeployer,
   startLiveOrchestrator,
   startRedeployRun,
@@ -44,7 +45,10 @@ import { fakePi, fakePiIdle, logPromptsTo, readRunBlocks } from "./fakes/fake-pi
 import { assistantLine } from "./fixtures/pi-events.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
-import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { setRef } from "../src/git/git.js";
+import { mergeRefName } from "../src/paths.js";
+import { pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { withIdlePi } from "./fakes/fake-pi.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
 /** The session name (pi's `-n` value) of a run block recorded by logPromptsTo: the line after
@@ -131,6 +135,20 @@ test("director: a queued prompt runs without a permit even while the only slot i
   } finally {
     await stopOrchestrator(orch, restore);
   }
+});
+
+test("director: once recovers a kept merge pin and drains the queue before exit", async () => {
+  const repo = await makeFastRepo("once director leftover", ["director"]);
+  const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "kept.txt"), "kept\n"), "kept director change");
+  await setRef(repo, mergeRefName("director"), sha);
+  await withIdlePi(async () => {
+    const exit = await onceRound(repo);
+    assert.equal(exit.restart, false);
+    assert.equal(exit.ticksRun?.get("director"), 1, "the director's recovery tick ran");
+    assert.ok(eventsOfType(repo, "merge_queued").some((e) => e.commit === sha), "the pin was re-queued");
+    assert.equal(queueDepth(repo), 0, "the merge queue drained before exit");
+    assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
+  });
 });
 
 test("director: a team pause holds role ticks but not the director's queued prompt", async () => {

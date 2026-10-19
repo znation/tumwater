@@ -89,7 +89,7 @@ test("a fresh run takes the assembled prompt and derives the restart cause", () 
   assert.equal(p.resuming, false);
   assert.equal(p.handoff, false);
   assert.equal(p.resumeCause, "restart");
-  assert.equal(p.prompt, "assembled run prompt");
+  assert.equal(String(p.prompt), "assembled run prompt");
   assert.equal(p.userPrompt, null);
   assert.equal(p.priorMergeFailure, undefined);
   // The flags are consumed even on the fresh path, so a stale record never survives.
@@ -127,8 +127,8 @@ test("a resumable session resumes with the restart bridge and skips the assemble
   assert.equal(assembled, false, "a resume must not assemble a fresh prompt");
   assert.equal(p.resuming, true);
   assert.equal(p.resumeCause, "restart");
-  assert.match(p.prompt, /the "feature" role/);
-  assert.match(p.prompt, /was restarted/);
+  assert.match(String(p.prompt), /the "feature" role/);
+  assert.match(String(p.prompt), /was restarted/);
   // Consumed: the next tick must not resume again unless another shutdown sets the flag.
   assert.equal(s.resumePending, false);
   assert.equal(s.resumeCause, undefined);
@@ -141,7 +141,7 @@ test("a cut-off streak derives the cut-off bridge", () => {
   const p = plan(dir, s);
   assert.ok(p);
   assert.equal(p.resumeCause, "cut-off");
-  assert.match(p.prompt, /ran out of context/);
+  assert.match(String(p.prompt), /ran out of context/);
 });
 
 test("a named resumeCause wins over the derived one and reaches the bridge", () => {
@@ -151,7 +151,7 @@ test("a named resumeCause wins over the derived one and reaches the bridge", () 
   const p = plan(dir, s);
   assert.ok(p);
   assert.equal(p.resumeCause, "hung-tool");
-  assert.match(p.prompt, /do not re-run it unchanged/);
+  assert.match(String(p.prompt), /do not re-run it unchanged/);
 });
 
 test("a review-phase interruption never resumes — the author's work is already committed", () => {
@@ -162,7 +162,7 @@ test("a review-phase interruption never resumes — the author's work is already
   assert.ok(p);
   assert.equal(p.resuming, false, "a review-phase flag must fall back to a fresh run");
   assert.equal(p.handoff, false, "a review-phase flag never hands off either");
-  assert.equal(p.prompt, "assembled run prompt");
+  assert.equal(String(p.prompt), "assembled run prompt");
   assert.equal(s.resumePending, false);
 });
 
@@ -183,8 +183,8 @@ test("a resume whose newest author line names another agent hands off with the b
   assert.equal(p.resuming, false, "a cross-agent resume must not --continue another agent's session");
   assert.equal(p.handoff, true);
   assert.equal(p.resumeCause, "handoff");
-  assert.match(p.prompt, /assembled run prompt/, "the handoff carries the assembled run prompt");
-  assert.match(p.prompt, /uncommitted edits are in your worktree/);
+  assert.match(String(p.prompt), /assembled run prompt/, "the handoff carries the assembled run prompt");
+  assert.match(String(p.prompt), /uncommitted edits are in your worktree/);
   assert.equal(s.resumePending, false);
 });
 
@@ -199,7 +199,7 @@ test("a newer gate session in the author dir hands off instead of resuming the r
   assert.ok(p);
   assert.equal(p.resuming, false, "the newest file is the resolver's, so a continue would reach it");
   assert.equal(p.handoff, true);
-  assert.match(p.prompt, /uncommitted edits are in your worktree/);
+  assert.match(String(p.prompt), /uncommitted edits are in your worktree/);
 });
 
 // PLANS.md part 4d/7 ("Mixed seams"): the resolver is routed to another agent, so its ledger
@@ -286,8 +286,8 @@ test("a claude author whose transcript is gone handoffs over the kept worktree",
     assert.equal(p.resuming, false, "there is no session left to continue");
     assert.equal(p.handoff, true, "the interrupted edits deserve a handoff, not a reset");
     assert.equal(p.resumeCause, "handoff");
-    assert.match(p.prompt, /assembled run prompt/, "the handoff carries the assembled task");
-    assert.match(p.prompt, /uncommitted edits are in your worktree/);
+    assert.match(String(p.prompt), /assembled run prompt/, "the handoff carries the assembled task");
+    assert.match(String(p.prompt), /uncommitted edits are in your worktree/);
   } finally {
     restoreHome();
   }
@@ -355,7 +355,7 @@ test("a fake-claude resumeMissing run arms resumePending, and the next run hands
     assert.equal(p.resuming, false, "a resumeMissing session is not resumable");
     assert.equal(p.handoff, true, "the kept worktree is handed off, not reset");
     assert.equal(p.resumeCause, "handoff");
-    assert.match(p.prompt, /uncommitted edits are in your worktree/);
+    assert.match(String(p.prompt), /uncommitted edits are in your worktree/);
   });
 });
 
@@ -418,7 +418,7 @@ test("a claude resume whose only ledger line names another agent hands off", () 
     assert.ok(p);
     assert.equal(p.resuming, false);
     assert.equal(p.handoff, true, "another agent's session is not claude's to resume");
-    assert.match(p.prompt, /uncommitted edits are in your worktree/);
+    assert.match(String(p.prompt), /uncommitted edits are in your worktree/);
   } finally {
     restoreHome();
   }
@@ -445,7 +445,7 @@ test("the fallback view's routed agent drives the resume check", () => {
     assert.equal(p.resuming, false, "the pi fallback cannot --continue a claude session");
     assert.equal(p.handoff, true);
     assert.equal(p.resumeCause, "handoff");
-    assert.match(p.prompt, /uncommitted edits are in your worktree/);
+    assert.match(String(p.prompt), /uncommitted edits are in your worktree/);
   } finally {
     restoreHome();
   }
@@ -457,7 +457,7 @@ test("resumePending without a session file falls back to a fresh run", () => {
   const p = plan(dir, s);
   assert.ok(p);
   assert.equal(p.resuming, false);
-  assert.equal(p.prompt, "assembled run prompt");
+  assert.equal(String(p.prompt), "assembled run prompt");
   assert.equal(s.resumePending, false);
 });
 
@@ -587,7 +587,7 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
     assert.equal(p.resuming, true, "the same claude session resumes");
     assert.equal(p.handoff, false);
     assert.equal(p.resumeCause, "rate-limit");
-    assert.match(p.prompt, /usage window/);
+    assert.match(String(p.prompt), /usage window/);
   });
 });
 
@@ -640,7 +640,7 @@ test("a budgetCapped claude run keeps the worktree and hands off to the fallback
     assert.equal(p.resuming, false, "a budget-capped session is not resumed");
     assert.equal(p.handoff, true, "the kept worktree is handed off");
     assert.equal(p.resumeCause, "budget-capped");
-    assert.match(p.prompt, /per-run budget cap/);
+    assert.match(String(p.prompt), /per-run budget cap/);
   } finally {
     restoreHome();
   }

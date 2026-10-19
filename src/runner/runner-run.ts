@@ -43,7 +43,7 @@ import { finalizeTick } from "../tick/tick-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { appendPromptNote } from "../text/format.js";
 import type { TickUsage } from "../tick/tick-usage.js";
-import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
+import { hasUnmergedPin, recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { applyRevision, applyWithConflicts } from "./revision.js";
 import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
@@ -344,6 +344,9 @@ export async function runTickPhase(
     // The team's configured claude config dir, so planTickStart's claude resume guard looks
     // under the same dir the run's env writes its transcript to (note 4/4). Unset → undefined.
     claudeConfigDir: resolvedAgentConfig(cfg, "claude").configDir,
+    // A director with no prompt but a kept merge pin still runs the tick, for its recovery.
+    recoveryOnly:
+      ctx.role === DIRECTOR_ROLE && ctx.pending.get() === null && (await hasUnmergedPin(ctx.root, ctx.role)),
   });
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {
@@ -355,7 +358,8 @@ export async function runTickPhase(
     // tick is confirmed to run (an empty-inbox skip above returns before this, leaving the
     // reroute pending for the next eligible tick) — so the rerouted director prompt is
     // delivered exactly once and the director is back on its own tier next.
-    s.imageReroute = undefined;
+    // A promptless recovery run delivers no prompt, so it leaves a pending reroute for the next.
+    if (plan.prompt !== null) s.imageReroute = undefined;
     // The director keeps its dedicated worktree (it runs outside the permit, consumes its
     // config-request file at that exact path, and never resumes). Hold it from before
     // ensureWorktree — creating or resetting it is part of the use — to the tick's end
@@ -452,7 +456,8 @@ async function tickWithWorktreePhase(
 ): Promise<TickOutcome> {
   const s = ctx.state;
   const { priorMergeFailure, resuming, handoff, resumeCause, userPrompt } = plan;
-  let prompt = plan.prompt;
+  // Empty only for a promptless recovery run, which ends before any use of it (see below).
+  let prompt = plan.prompt ?? "";
 
   const wt = leasedDir ?? (await ensureWorktree(ctx.root, ctx.role, ctx.mainBranch));
   if (resuming || handoff) {
@@ -484,6 +489,13 @@ async function tickWithWorktreePhase(
       conflictHandback: s.conflictHandback,
       mergeReviewError: s.mergeReviewError,
     });
+    if (recovered?.kind === "handback" && plan.prompt === null) {
+      // A promptless recovery run has no authoring run to hand the pin back to: leave the pin and
+      // the conflict state exactly as they are, so the one hand-back the lineage is owed happens on
+      // the director's next prompt-driven run.
+      await resetWorktreeToMain(wt, ctx.mainBranch);
+      return { result: "skipped" };
+    }
     if (recovered?.kind === "handback") {
       // The pin hit the conflict cap and its lineage has not been handed back yet: keep the
       // pin, record the hand-back, and fall through to author the resolution on current main.
@@ -505,6 +517,9 @@ async function tickWithWorktreePhase(
       prompt = appendPromptNote(prompt, buildConflictDiscardNote(recovered.summary, recovered.attempts));
     } else if (recovered) return ctx.finishRecoveryTick(recovered, userPrompt, wt, priorMergeFailure);
     await resetWorktreeToMain(wt, ctx.mainBranch);
+    // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
+    // nothing, so it ends here rather than reach the authoring run with a null prompt.
+    if (plan.prompt === null) return { result: "skipped" };
     // Red-main baseline gate (src/baseline/main-red.ts): the worktree is pristine main right
     // now — verify main's own suite before spending an authoring run on top of it. Only roles
     // whose diff can carry code changes are blocked; resume ticks skip this by construction

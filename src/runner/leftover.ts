@@ -81,6 +81,12 @@ export type LeftoverRecovery =
   | { kind: "handback"; sha: string; summary: string; attempts: number }
   | { kind: "discarded"; sha: string; summary: string; attempts: number };
 
+/** Whether the role holds a kept merge pin — the ref `recoverLeftover` reads. Ref presence is the
+ * whole answer: a pin main already holds is left to `recoverLeftover`, which deletes it. */
+export async function hasUnmergedPin(root: string, role: string): Promise<boolean> {
+  return (await refSha(root, mergeRefName(role)).catch(() => null)) !== null;
+}
+
 /** Queue a commit a previous tick left unmerged. Entry condition: the merge ref exists and
  * its sha is not yet contained in main — or, with no pin at all, the role's branch is ahead of
  * main (crash between the commit and the pin). A present-but-contained ref is stale — a crash

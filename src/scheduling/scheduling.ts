@@ -37,6 +37,12 @@ interface EligibilityOptions {
    * reruns on the next poll and an unproductive one drops to the idle backoff. Every other
    * role's gap is unchanged. */
   planBacklogOpen?: boolean;
+  /** The role holds a kept merge pin a previous merge failed to land. Reaches only the
+   * director arm: its next run is otherwise only ever an operator prompt, so a pin kept by a
+   * non-terminal merge failure would never be retried. The run is due on `nextRunAt` (the
+   * min-interval clock a `queued` outcome wrote), never earlier, so a persistently blocked
+   * fast-forward cannot spin the merge queue. */
+  leftoverPending?: boolean;
 }
 
 /** Should this loop tick now? `inboxCount` is the calling loop's own queued-prompt count
@@ -58,7 +64,9 @@ export function isEligible(
   // The director carries the user's own requests: no min-gap, no backoff — a queued
   // prompt runs as soon as the previous one finishes.
   if (runner.role === DIRECTOR_ROLE) {
-    return inboxCount > 0 ? { run: true, reason: "inbox" } : { run: false };
+    if (inboxCount > 0) return { run: true, reason: "inbox" };
+    if (opts.leftoverPending) return now >= s.nextRunAt ? { run: true, reason: "leftover" } : { run: false };
+    return { run: false };
   }
 
   // An interrupted tick (graceful abort or crash) leaves half-finished work in its pi
