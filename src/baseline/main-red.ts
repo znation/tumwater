@@ -1,5 +1,7 @@
 // vocabulary: plain
-import { baselineBlocked } from "../roles/roles.js";
+import { baselineBlocked, BUGFIX_ROLE } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
+import { enqueueRolePrompt } from "../inbox/inbox.js";
 import { isCustomRole, liveConfig } from "../config/config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { failureHeadline } from "../build/build-check-report.js";
@@ -11,6 +13,7 @@ import type { TickOutcome } from "../tick/tick-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
 import { mainRedPhrase } from "../text/phrases.js";
+import { shortSha } from "../text/format.js";
 import { branchHead } from "../git/git.js";
 import { gateMainWorktreePath } from "../paths.js";
 import { useWorktree } from "../git/worktree-use.js";
@@ -22,7 +25,8 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * and "Tests red on main" entries), so while a SHA is known red the blocked roles skip authoring
  * instead of burning runs that are guaranteed to fail. Split out of loop.ts — which keeps the
  * tick lifecycle around it — because this is a self-contained policy with its own per-process
- * state (one harness-level `main_red_hold` event per newly-discovered red SHA) and its own
+ * state (one harness-level `main_red_hold` event AND one queued healer prompt per
+ * newly-discovered red SHA) and its own
  * event contract; what it borrows from the loop is identity and the role's worktree, and it
  * consumes
  * build/build-check.ts's checkMainBaseline machinery (detection + execution + per-SHA cache),
@@ -43,9 +47,22 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
 }
 
 /** Log the team-wide `main_red_hold` event (the notify hook pages it) for `red`'s SHA at
- * most once per process. Module-level (with lastMainRedSha) so the gate and the bugfix
- * handoff share one guard: whichever observes the red first logs it, the other stays silent. */
-function warnMainRedOnce(root: string, red: { sha: string; script?: string; outputTail?: string[] }): void {
+ * most once per process, and hand the red suite to the healer. Module-level (with
+ * lastMainRedSha) so the gate and the bugfix handoff share one guard: whichever observes the
+ * red first logs it, the other stays silent. `foundBy` is the role whose path verified the
+ * red — when that role is not bugfix itself, one prompt is enqueued to bugfix's own inbox so
+ * the healer ticks on the orchestrator's next poll instead of waiting out its own interval or
+ * deferral; bugfix finding its own red skips the enqueue because its running tick already
+ * carries the note and IS the heal (and enqueuing from inside it would queue a second run). A
+ * queued per-role prompt makes the loop due by itself (`isEligible`, scheduling.ts, returns
+ * `{ run: true, reason: "inbox" }` on a non-empty inbox before any interval, backoff, or
+ * deferral check), and `pollRunnerReasons` skips the need-based deferral block for reason
+ * `inbox`, so no scheduler change is needed. */
+function warnMainRedOnce(
+  root: string,
+  red: { sha: string; script?: string; outputTail?: string[] },
+  foundBy: string,
+): void {
   if (lastMainRedSha === red.sha) return;
   lastMainRedSha = red.sha;
   logEventBestEffort(root, {
@@ -55,6 +72,24 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
     script: red.script,
     message: redMainMessage(red, "code merges blocked until main is green"),
   });
+  // Bugfix is the only repairer, and it is exempt from mainRedGate — but it is a work role
+  // that with no open bugs defers like a maintenance role, so a red main discovered by any
+  // other path could sit unrepaired until bugfix's own interval or a coincidental wake.
+  // Queue the heal: one prompt per newly-verified red SHA per process (a restart re-queues
+  // once, desirable because the cache is cold then too).
+  if (baseRoleOf(foundBy) !== BUGFIX_ROLE) {
+    enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(red.sha));
+  }
+}
+
+/** The one-line, self-limiting directive queued for the bugfix healer when a non-bugfix path
+ * newly verifies a red main. It names the short SHA the check was reported red at, tells the
+ * healer to verify main is green now, and to reproduce and land the fix only if it is still
+ * red. The self-limiting wording is the green race's whole handling: if main turned green
+ * before the healer consumes the prompt, bugfixMainRedNote returns undefined (no `<main-red>`
+ * note is appended) and the "verify green" clause makes the tick a no-op. */
+export function mainRedHealPrompt(sha: string): string {
+  return `Main was reported red at commit ${shortSha(sha)}. Verify main is green now; if it is still red, reproduce the failure and land the fix.`;
 }
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
@@ -84,7 +119,7 @@ export async function bugfixMainRedNote(root: string, role: string, wt: string):
   const baseline = await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
   const red = baseline.baseline;
   if (red?.status !== "red") return undefined;
-  warnMainRedOnce(root, red);
+  warnMainRedOnce(root, red, role);
   return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail), red.outputTail);
 }
 
@@ -136,7 +171,7 @@ export async function mainRedGate(
   }
   if (baseline.baseline?.status === "red") {
     const red = baseline.baseline;
-    warnMainRedOnce(root, red);
+    warnMainRedOnce(root, red, role);
     return {
       result: "main_red",
       summary: "code merges blocked until main is green",
@@ -224,7 +259,7 @@ async function verdictAtMainTipIn(
     const baseline = check.baseline;
     if (baseline?.status === "green") return { status: "green", sha: baseline.sha };
     if (baseline?.status === "red") {
-      warnMainRedOnce(root, baseline);
+      warnMainRedOnce(root, baseline, role);
       return { status: "red", sha: baseline.sha };
     }
     return {

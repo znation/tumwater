@@ -176,7 +176,9 @@ discards a role's in-flight merge.
   director's, and wakes it. `--list` shows the inboxes grouped by role; per-role prompts
   wait behind a paused role like the director's wait behind a team pause.
 - While main's check is failing, code-producing roles pause authoring (the status shows "main's check is failing") until
-  it passes again. Bugfix, the director, and markdown-only roles keep going.
+  it passes again. Bugfix, the director, and markdown-only roles keep going. A newly-verified red main also
+  queues a bugfix healer, so the healer starts on the next poll instead of waiting out its interval or deferral —
+  and that queued prompt no-ops (a "verify green" clause) if main turned green before it ran.
 - Failed runs retry on a shorter ladder, capped at ten minutes. Three failures in a row mark a
   role `failing` until it has a healthy run.
 - A search role's own recent yield stretches its clock: after ten consecutive counted runs

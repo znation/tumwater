@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/baseline/main-red.js";
+import { bugfixMainRedNote, mainRedGate, mainRedHealPrompt, mainTipVerdict } from "../src/baseline/main-red.js";
+import { queuedRolePrompts } from "../src/inbox/inbox.js";
+import { isEligible } from "../src/scheduling/scheduling.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType, mainRedHolds, warningEvents } from "./fixtures/log-fixtures.js";
-import { baselineFixture, fakeNpm, runsOf } from "./fixtures/loop-fixtures.js";
+import { baselineFixture, fakeNpm, makeLoopRunner, runsOf } from "./fixtures/loop-fixtures.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
@@ -113,6 +115,11 @@ test("mainRedGate warns once per red SHA: a repeat tick on the same HEAD re-bloc
     assert.equal(runsOf(counter), 1, "the verdict is cached per SHA — no second run");
     const holds = mainRedHolds(root);
     assert.equal(holds.length, 1, "one main_red_hold for the red SHA, not one per blocked tick");
+    // The red discovery by a non-bugfix path queues exactly one healer prompt naming the
+    // short SHA; the second blocked role on the same SHA adds no second prompt.
+    const prompts = queuedRolePrompts(root, "bugfix");
+    assert.equal(prompts.length, 1, "one healer prompt per newly-verified red SHA");
+    assert.ok(prompts[0]?.includes(shortSha(mainSha(root))), `prompt names the red SHA: ${prompts[0]}`);
   } finally {
     restore();
   }
@@ -448,4 +455,64 @@ test("mainTipVerdict runs the suite over a green inherited across doc commits, a
   } finally {
     restore();
   }
+});
+
+// The healer handoff (PLANS.md 2026-10-19): a verified-red main discovered by any path other
+// than bugfix's own tick queues one bugfix prompt, so the healer becomes due on the next poll
+// instead of waiting out its own interval or deferral. bugfix finding its own red (via
+// bugfixMainRedNote) is the heal and queues nothing; green, non-blocked, and bugfix-own paths
+// all leave bugfix's inbox empty.
+
+test("bugfix's own red-main note queues nothing and still returns the note and warning", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const script = `echo self-healer-failure; echo run >> ${counter}; exit 1`;
+  const { root, wt } = baselineFixture(ROLE, script);
+  const restore = fakeNpm(script);
+  try {
+    const note = await bugfixMainRedNote(root, "bugfix", wt);
+    assert.ok(note, "the healer's own note still hands it the failure");
+    assert.equal(queuedRolePrompts(root, "bugfix").length, 0, "bugfix finding its own red queues no second run");
+    assert.equal(mainRedHolds(root).length, 1, "the team-wide warning still logs once");
+  } finally {
+    restore();
+  }
+});
+
+test("green main and a non-blocked role leave bugfix's inbox empty", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root, wt } = baselineFixture(ROLE, `echo ok >> ${counter}; exit 0`);
+  const restore = fakeNpm(`echo ok >> ${counter}; exit 0`);
+  try {
+    assert.equal(await mainRedGate(root, ROLE, wt), null, "green main never blocks");
+    assert.equal(queuedRolePrompts(root, "bugfix").length, 0, "no red, no healer prompt");
+    assert.equal(await mainRedGate(root, "steward", wt), null, "non-blocked role passes through");
+    assert.equal(queuedRolePrompts(root, "bugfix").length, 0, "a non-blocked role never queues the healer");
+  } finally {
+    restore();
+  }
+});
+
+test("mainRedHealPrompt returns one self-limiting line naming the short SHA", () => {
+  const sha = "0123456789abcdef";
+  const prompt = mainRedHealPrompt(sha);
+  assert.ok(prompt.includes(shortSha(sha)), `prompt names the short SHA: ${prompt}`);
+  assert.equal((prompt.match(/\n/g) ?? []).length, 0, "one line, no newlines");
+  assert.match(prompt, /Verify main is green now/);
+  assert.match(prompt, /if it is still red, reproduce the failure and land the fix/);
+});
+
+test("a queued healer prompt makes a bugfix runner due on the next poll despite a future clock", () => {
+  // A fresh bugfix runner with an empty BUGS.md backlog, a future nextRunAt, and a no_change
+  // last result is not due on its own — but a non-empty inbox makes it due for reason "inbox"
+  // before any interval, backoff, or deferral check (isEligible, scheduling.ts).
+  const r = makeLoopRunner(makeRepo(), "bugfix");
+  const now = Date.now();
+  r.state.nextRunAt = now + 60 * 60 * 1000; // an hour out — not due on the clock
+  r.state.lastRunEndedAt = now - 1000;
+  r.state.lastResult = "no_change";
+  r.state.recentOutcomes = "nnnn"; // a streak of empty ticks, so yield scaling stretches the gap
+  assert.deepEqual(isEligible(r, now, "abc", 1, { descriptionIncomplete: false }), {
+    run: true,
+    reason: "inbox",
+  });
 });
