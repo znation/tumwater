@@ -16,7 +16,8 @@ import { resolveBacklogInsertConflicts, resolveInsertOnlyText } from "../src/mer
 import { falseFixReason } from "../src/verdict/fix-claim.js";
 import { backlogStructureReason } from "../src/backlog/backlog-structure.js";
 import { checkLiveFinished } from "../src/doctor/doctor-backlog.js";
-import { makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
+import { makeRepo, seedCommit, sh, initializedRepo } from "./fixtures/repo-fixtures.js";
+import { cli } from "./helpers/cli-harness.js";
 
 // The backlog archive (plans/backlog-archive.md): finished entries move from the live files'
 // `## Done` / `## Fixed` to PLANS-DONE.md / BUGS-FIXED.md — a commit-time sweep of the entries a
@@ -135,6 +136,28 @@ test("archiveFinishedOnMain commits the bulk move on the base branch, and refuse
   assert.match(fs.readFileSync(path.join(root, "BUGS-FIXED.md"), "utf8"), /### B1[^]*Fix\.\n$/);
   assert.equal(checkLiveFinished(root).level, "ok");
   assert.deepEqual(await archiveFinishedOnMain(root), { status: "nothing" });
+});
+
+test("tumwater archive dispatches through the CLI to archive finished entries and commit, then finds nothing", async () => {
+  // cli.ts's `case \"archive\"` glue (arg rejection, ready-repo gate, cmdArchive dispatch) was
+  // reached only through the archiveFinishedOnMain unit tests, never by a spawned `tumwater`
+  // command; a dispatch regression (a wrong import or gate) would pass those yet break the CLI.
+  const root = await initializedRepo();
+  ignoreInRepo(root, ".tumwater/");
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"));
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### B1 (found 2026-10-01; fixed 2026-10-02)\n\nFix.\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed finished entries");
+
+  const moved = await cli(root, "archive");
+  assert.equal(moved.code, 0, moved.stderr);
+  assert.match(moved.stdout, /PLANS\.md → .*PLANS-DONE\.md: 1 entry/);
+  assert.match(moved.stdout, /BUGS\.md → .*BUGS-FIXED\.md: 1 entry/);
+  assert.match(sh(root, "git", "log", "-1", "--format=%s"), /^tumwater\(operator\): Archive 2 finished entries/);
+
+  const again = await cli(root, "archive");
+  assert.equal(again.code, 0, again.stderr);
+  assert.match(again.stdout, /nothing to archive/);
 });
 
 test("a change committed before the archive rebases onto it: its new entry stays, the history it sat above does not return", async () => {
