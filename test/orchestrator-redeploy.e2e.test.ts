@@ -18,6 +18,7 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
+import type { HarnessEvent } from "../src/events/events.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { worktreePath } from "../src/paths.js";
@@ -177,7 +178,7 @@ test("a tick parked through a restart hold does not start when the permit frees,
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running tick");
     await waitFor(() => readOrchestratorInfo(repo)?.build?.restartPending === true, "the restart hold");
     fs.writeFileSync(go, "");
-    const isRed = (e: ReturnType<typeof readEvents>[number]) => e.type === "warning" && String(e.message).includes('fails its check');
+    const isRed = (e: HarnessEvent) => e.type === "warning" && String(e.message).includes("is red — holding the restart");
     await waitFor(() => readEvents(repo).some(isRed), "the red verdict that lifts the hold", 20_000);
     await waitFor(
       () => readEvents(repo).some((e) => e.type === "run_start" && e.source === parked),

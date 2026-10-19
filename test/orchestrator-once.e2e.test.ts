@@ -177,7 +177,7 @@ test("once: the summary reports a deferred role as deferred, not idle", async ()
   await withIdlePi(async () => {
     const r = await cli(repo, "run", "--once");
     assert.equal(r.code, 0, `exit 0 (stderr: ${r.stderr})`);
-    assert.match(r.stdout, /once: 0 ticks — nothing ran, 1 skipped \(deferred\)/,
+    assert.match(r.stdout, /once: 0 runs — nothing ran, 1 skipped \(deferred\)/,
       `summary names the deferral: ${r.stdout}`);
   });
 });
@@ -206,7 +206,7 @@ test("once: a typo'd flag fails fast with the unknown-argument wording", async (
     const r = await cli(repo, "run", "--onc");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /unknown argument: --onc/);
-    assert.match(r.stderr, /valid flags for tumwater start: --branch <name>, --once, --gui, --for <duration>, --role <id>/);
+    assert.match(r.stderr, /valid flags for tumwater start: --branch <name>, --once, --gui, --tui, --for <duration>, --role <id>/);
   });
 });
 

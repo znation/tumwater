@@ -814,7 +814,9 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     // abort and dies only when the lapse fires its abort — after the lapse warning, half a
     // window (~500 ms) late — while a correctly wired one died long before it.
     assert.ok(restartAt >= 0, "the restart fired");
-    assert.equal((events[restartAt] as unknown as { abortedTicks: number }).abortedTicks, 1, "the drain counted clean's cut-off tick");
+    const restartEvent = events[restartAt];
+    assert.ok(restartEvent !== undefined && "abortedRuns" in restartEvent, "the restart event carries abortedRuns");
+    assert.equal(restartEvent.abortedRuns, 1, "the drain counted clean's cut-off run");
     assert.ok(cleanAbortedAt > -1, "clean's in-flight tick ended aborted");
     assert.ok(cleanAbortedAt < lapseAt, "clean's tick was cut off by the drain at the swap, not at the hand-off's lapse");
     assert.ok(waitAt > restartAt && lapseAt > waitAt && dryFailedAt > lapseAt && stopAt > dryFailedAt, "the merge got the announced window: wait, lapse, abort, stop — in that order");
