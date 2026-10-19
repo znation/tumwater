@@ -13,6 +13,7 @@ import {
   actionableEntryRanges,
   renderBacklogIndexBlock,
   groupBlockedSeries,
+  readdedHeadings,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
 import { DONE_DATE_RE, FIXED_DATE_RE } from "../src/backlog/backlog.js";
@@ -355,6 +356,59 @@ test("backlogStructureReason passes a first-time backlog file whose headings the
 
 test("backlogStructureReason ignores files outside the backlog set", async () => {
   assert.equal(await backlogStructureReason(".", "main", ["docs/notes.md", "src/foo.ts"]), undefined);
+});
+
+// ── backlogStructureReason — an archive file only grows by new headings ──────────────────
+// (plans/backlog-archive.md; 2026-10-19: a conflict hand-back re-pasted 383 + 310 archived
+// entries and the commit-time sweep prepended them to PLANS-DONE.md and BUGS-FIXED.md again.)
+
+const archivedA = "### A (planned 2026-09-01, done 2026-09-02)\n\nA.\n";
+const archivedB = "### B (planned 2026-09-03, done 2026-09-04)\n\nB.\n";
+const doneArchive = (body: string): string => `# Done plans\n\nIntro.\n\n## Done\n\n${body}`;
+
+test("backlogStructureReason rejects a PLANS-DONE.md that adds copies of headings the base archive carries", async () => {
+  const fresh = "### C (planned 2026-10-01, done 2026-10-19)\n\nC.\n";
+  // The second copy of A spells its heading with a double space: the same entry all the same.
+  const wt = await structureFixture(
+    "PLANS-DONE.md",
+    doneArchive(`${archivedA}\n${archivedB}`),
+    doneArchive(`${fresh}\n${archivedA.replace("A (", "A  (")}\n${archivedB}\n${archivedA}\n${archivedB}`),
+  );
+  const reason = await backlogStructureReason(wt, "main", ["PLANS-DONE.md"]);
+  assert.match(
+    reason ?? "",
+    /^PLANS-DONE\.md adds 2 "### " headings it already carries \(first: "A {2}\(planned 2026-09-01, done 2026-09-02\)"\)/,
+  );
+});
+
+test("backlogStructureReason rejects one re-added BUGS-FIXED.md heading and names it", async () => {
+  const fixed = "### Old bug (found 2026-09-01; fixed 2026-09-02)\n\n**Fix:** done.\n";
+  const archive = (body: string): string => `# Fixed bugs\n\nIntro.\n\n## Fixed\n\n${body}`;
+  const wt = await structureFixture("BUGS-FIXED.md", archive(fixed), archive(`${fixed}\n${fixed}`));
+  assert.match(
+    (await backlogStructureReason(wt, "main", ["BUGS-FIXED.md"])) ?? "",
+    /^BUGS-FIXED\.md adds 1 "### " heading it already carries \(first: "Old bug \(found 2026-09-01; fixed 2026-09-02\)"\)/,
+  );
+});
+
+test("backlogStructureReason passes a new archived entry, an in-place edit and a duplicate the base already had", async () => {
+  const fresh = "### C (planned 2026-10-01, done 2026-10-19)\n\nC.\n";
+  const wt = await structureFixture(
+    "PLANS-DONE.md",
+    doneArchive(`${archivedA}\n${archivedB}\n${archivedB}`),
+    doneArchive(`${fresh}\n${archivedA.replace("A.", "A, edited.")}\n${archivedB}\n${archivedB}`),
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS-DONE.md"]), undefined);
+});
+
+test("readdedHeadings counts each added copy once and ignores headings quoted in a fence", () => {
+  const base = `${archivedA}\n${archivedB}`;
+  assert.deepEqual(readdedHeadings(base, `${archivedA}\n${archivedA}\n${archivedA}\n${archivedB}`), [
+    "A (planned 2026-09-01, done 2026-09-02)",
+    "A (planned 2026-09-01, done 2026-09-02)",
+  ]);
+  assert.deepEqual(readdedHeadings(base, `${archivedA}\n${archivedB}\n\`\`\`md\n${archivedA}\`\`\`\n`), []);
+  assert.deepEqual(readdedHeadings("", `${archivedA}\n${archivedA}`), [], "a heading the base never had is not re-added");
 });
 
 // ── backlogStructureReason — the new-plan-under-Done rule (plans, part 4/4) ─────────────

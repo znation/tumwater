@@ -88,6 +88,107 @@ test("the bulk archive moves the whole body, one-line records included, or all b
   assert.equal(archiveFinishedText(plans("### Only (planned 2026-10-01, done 2026-10-02)\n"), null, PLANS, { keep: 1 }), null);
 });
 
+// An entry whose heading the archive already holds is never archived twice (2026-10-19: a conflict
+// hand-back of a change written before the archive re-pasted the old history under the live
+// headings, and the sweep prepended all 383 + 310 entries to the archives again).
+
+const oldEntry = "### Old (planned 2026-09-01, done 2026-09-02)\n\nOld.\n";
+const keptEntry = "### Kept (planned 2026-09-03, done 2026-09-04)\n\nKept.\n";
+const newEntry = "### New (planned 2026-10-01, done 2026-10-19)\n\nNew.\n";
+const keptEdited = keptEntry.replace("Kept.", "Kept, edited.");
+const archiveOf = (body: string): string => `${archiveTemplate(PLANS)}\n${body}`;
+
+test("the sweep drops an added entry the archive holds verbatim and leaves an edited copy in the live section", () => {
+  const archive = archiveOf(`${oldEntry}\n${keptEntry}`);
+  // Trailing whitespace on a line is no difference.
+  const live = plans(`${newEntry}\n${oldEntry.replace("Old.", "Old.  ")}\n${keptEdited}`);
+  const move = archiveFinishedText(live, archive, PLANS, { baseKeys: new Set() });
+  assert.ok(move);
+  assert.deepEqual(move.titles, ["New (planned 2026-10-01, done 2026-10-19)"]);
+  assert.deepEqual(move.dropped, ["Old (planned 2026-09-01, done 2026-09-02)"]);
+  assert.equal(move.live, plans(keptEdited), "the edited copy stays where the author put it");
+  assert.equal(move.archive, archiveOf(`${newEntry}\n${oldEntry}\n${keptEntry}`), "each heading once, the new one on top");
+});
+
+test("a sweep that only finds re-pasted entries empties the live section and leaves the archive as it was", () => {
+  const archive = archiveOf(`${oldEntry}\n${keptEntry}`);
+  const move = archiveFinishedText(plans(`${oldEntry}\n${keptEntry}`), archive, PLANS, { baseKeys: new Set() });
+  assert.ok(move);
+  assert.deepEqual(move.titles, []);
+  assert.equal(move.dropped.length, 2);
+  assert.match(move.live, /## Done\n$/);
+  assert.equal(move.archive, archive);
+  assert.equal(archiveFinishedText(plans(keptEdited), archive, PLANS, { baseKeys: new Set() }), null, "an edited copy alone moves nothing");
+});
+
+test("the bulk archive skips entries the archive already holds, whatever it keeps", () => {
+  const archive = archiveOf(`${oldEntry}\n${keptEntry}`);
+  const body = `${newEntry}\n${oldEntry}\n${keptEdited}- One-line record (planned 2026-08-01, done 2026-08-02)\n`;
+  const all = archiveFinishedText(plans(body), archive, PLANS, { keep: 0 });
+  assert.ok(all);
+  assert.deepEqual(all.titles, ["New (planned 2026-10-01, done 2026-10-19)"]);
+  assert.deepEqual(all.dropped, ["Old (planned 2026-09-01, done 2026-09-02)"]);
+  // The record line is part of the edited entry's body, so it stays with it.
+  assert.equal(all.live, plans(`${keptEdited}- One-line record (planned 2026-08-01, done 2026-08-02)\n`));
+  assert.equal(all.archive, archiveOf(`${newEntry}\n${oldEntry}\n${keptEntry}`));
+  const kept = archiveFinishedText(plans(body), archive, PLANS, { keep: 1 });
+  assert.ok(kept);
+  assert.deepEqual(kept.titles, []);
+  assert.deepEqual(kept.dropped, ["Old (planned 2026-09-01, done 2026-09-02)"]);
+  assert.equal(kept.live, plans(`${newEntry}\n${keptEdited}- One-line record (planned 2026-08-01, done 2026-08-02)\n`));
+  assert.equal(kept.archive, archive);
+});
+
+test("a change that re-pastes archived history under ## Done archives only its new entry, and passes the structure check", async () => {
+  const root = makeRepo();
+  const history = Array.from({ length: 3 }, (_, i) => `### D${i} (planned 2026-09-0${i + 1}, done 2026-09-1${i})\n\nBody ${i}.\n`).join("\n");
+  seedCommit(root, "PLANS.md", plans(""), "seed plans");
+  seedCommit(root, "PLANS-DONE.md", archiveOf(history), "seed archive");
+  sh(root, "git", "checkout", "-q", "-b", "work");
+  // The hand-back's shape: the whole old history pasted back under the live heading, the
+  // change's own finished entry on top.
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans(`${newEntry}\n${history}`));
+  const moved = await archiveNewFinishedEntries(root, "main");
+  assert.deepEqual(moved, [
+    {
+      file: "PLANS.md",
+      archive: "PLANS-DONE.md",
+      titles: ["New (planned 2026-10-01, done 2026-10-19)"],
+      dropped: ["D0 (planned 2026-09-01, done 2026-09-10)", "D1 (planned 2026-09-02, done 2026-09-11)", "D2 (planned 2026-09-03, done 2026-09-12)"],
+    },
+  ]);
+  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /## Done\n$/);
+  assert.equal(fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8"), archiveOf(`${newEntry}\n${history}`));
+  assert.equal(await backlogStructureReason(root, "main", ["PLANS.md", "PLANS-DONE.md"]), undefined);
+  // What the sweep wrote before the guard — every pasted entry prepended again — is rejected.
+  fs.writeFileSync(path.join(root, "PLANS-DONE.md"), archiveOf(`${newEntry}\n${history}\n${history}`));
+  assert.match(
+    (await backlogStructureReason(root, "main", ["PLANS.md", "PLANS-DONE.md"])) ?? "",
+    /^PLANS-DONE\.md adds 3 "### " headings it already carries \(first: "D0 \(planned 2026-09-01, done 2026-09-10\)"\)/,
+  );
+});
+
+test("archiveFinishedOnMain drops a hand commit's re-pasted entries instead of archiving them twice", async () => {
+  const root = makeRepo();
+  seedCommit(root, "PLANS-DONE.md", archiveOf(`${oldEntry}\n${keptEntry}`), "seed archive");
+  seedCommit(root, "PLANS.md", plans(`${newEntry}\n${oldEntry}`), "a hand commit re-pastes Old");
+  ignoreInRepo(root, ".tumwater/");
+  assert.deepEqual(liveFinishedHistory(root).map((l) => [l.file, l.entries]), [["PLANS.md", 2]]);
+  const done = await archiveFinishedOnMain(root);
+  assert.equal(done.status, "archived");
+  assert.match(
+    sh(root, "git", "log", "-1", "--format=%s"),
+    /^tumwater\(operator\): Archive 1 finished entry to PLANS-DONE\.md; drop 1 already-archived entry$/,
+  );
+  assert.equal(fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8"), archiveOf(`${newEntry}\n${oldEntry}\n${keptEntry}`));
+  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /## Done\n$/);
+  // A re-paste alone is dropped with its own subject, the archive untouched.
+  seedCommit(root, "PLANS.md", plans(keptEntry), "a hand commit re-pastes Kept");
+  assert.equal((await archiveFinishedOnMain(root)).status, "archived");
+  assert.match(sh(root, "git", "log", "-1", "--format=%s"), /^tumwater\(operator\): Drop 1 already-archived entry from PLANS\.md$/);
+  assert.equal(sh(root, "git", "diff", "--name-only", "HEAD~1", "HEAD"), "PLANS.md");
+});
+
 test("archiveNewFinishedEntries writes the move in a worktree against its merge-base", async () => {
   const root = makeRepo();
   seedCommit(root, "PLANS.md", plans("_None yet._\n").replace("## Done\n\n_None yet._\n", "## Done\n"), "seed plans");
@@ -97,7 +198,9 @@ test("archiveNewFinishedEntries writes the move in a worktree against its merge-
     "# Plans\n\nIntro.\n\n## Planned\n\n_None yet._\n\n## Done\n\n### Open plan (planned 2026-10-01, done 2026-10-18)\n\nBody.\n",
   );
   const moved = await archiveNewFinishedEntries(root, "main");
-  assert.deepEqual(moved, [{ file: "PLANS.md", archive: "PLANS-DONE.md", titles: ["Open plan (planned 2026-10-01, done 2026-10-18)"] }]);
+  assert.deepEqual(moved, [
+    { file: "PLANS.md", archive: "PLANS-DONE.md", titles: ["Open plan (planned 2026-10-01, done 2026-10-18)"], dropped: [] },
+  ]);
   assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), "# Plans\n\nIntro.\n\n## Planned\n\n_None yet._\n\n## Done\n");
   assert.match(fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8"), /## Done\n\n### Open plan[^]*Body\.\n$/);
   assert.deepEqual(await archiveNewFinishedEntries(root, "main"), [], "a second sweep finds nothing new");

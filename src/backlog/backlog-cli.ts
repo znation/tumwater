@@ -33,8 +33,7 @@ import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { commitOperatorBacklogEdit } from "./backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { type FiledEntry, sectionNoun, showEntry, splitEntryFile } from "./backlog-write.js";
-import { archiveFinishedOnMain } from "./backlog-archive.js";
-import { plural } from "../text/phrases.js";
+import { archiveFinishedOnMain, describeArchivedFile } from "./backlog-archive.js";
 
 /** The title each file command derives from the CLI positionals, exported so the CLI case
  * can hand fileAndAnnounce the same derivation the write will carry: fileAndAnnounce
@@ -602,6 +601,6 @@ export async function cmdArchive(root: string): Promise<void> {
     return;
   }
   if (outcome.status === "skipped") fail(`nothing archived: ${outcome.reason}`);
-  for (const f of outcome.moved) say(`${f.file} → ${f.archive}: ${plural(f.titles.length, "entry", "entries")}`);
+  for (const f of outcome.moved) say(describeArchivedFile(f));
   say(`committed ${outcome.commit.slice(0, 8)}`);
 }

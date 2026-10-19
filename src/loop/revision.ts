@@ -1,5 +1,8 @@
+import path from "node:path";
+import { readTextOrNull } from "../files/files.js";
 import { gitTry } from "../git/git-run.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
+import { resolveBacklogInsertConflicts } from "../merge/backlog-conflicts.js";
 import { conflictedFiles } from "../merge/merge-git.js";
 
 /** What applying a hand-back diff with markers left in place did: whether the diff is now in
@@ -27,20 +30,67 @@ export const REVISION_FINAL_ON_REPEAT = 2;
  * round raised a new objection. */
 export const REVISION_BACKSTOP = 6;
 
+/** What pickSettlingBacklog did: the whole range is in the worktree with no markers (`clean`),
+ * it stopped on conflicts the backlog settler could not settle (`conflicted`, those files still
+ * unmerged in the index and carrying markers, the sequencer state already quit), or git failed
+ * for another reason (`failed`: a missing object, an empty range, a pick already in progress). */
+type PickOutcome = { status: "clean" } | { status: "conflicted"; files: string[] } | { status: "failed" };
+
+/** The picks a stopped `cherry-pick` sequence still owes after the one it stopped on, oldest
+ * first — read from the sequencer's todo, whose first line is the stopped pick. null when the
+ * todo cannot be read, so the caller never settles a stop it cannot finish. */
+async function picksAfterStop(wt: string): Promise<string[] | null> {
+  const todo = await gitTry(wt, "rev-parse", "--git-path", "sequencer/todo");
+  const text = todo === null ? null : readTextOrNull(path.resolve(wt, todo));
+  if (text === null) return null;
+  const picks = text.split("\n").flatMap((line) => /^(?:p|pick)\s+(\S+)/.exec(line)?.[1] ?? []);
+  return picks.slice(1);
+}
+
+/** Cherry-pick `<base>..<sha>` onto `wt` as uncommitted edits, settling backlog conflicts
+ * without a model run on the way. A rejected or handed-back diff that prepends to PLANS-DONE.md
+ * or BUGS-FIXED.md conflicts with every entry main archived since, the same insert-only shape the
+ * merge's first pass settles (resolveBacklogInsertConflicts); left alone, its author got markers
+ * in a 1.9 MB file (feature-5, 2026-10-19). On a stop whose conflicted files all settle, the
+ * sequencer is quit (`--continue` refuses in `--no-commit` mode) and the picks it still owed are
+ * replayed the same way onto the settled index. */
+async function pickSettlingBacklog(wt: string, base: string, sha: string): Promise<PickOutcome> {
+  let picks = [`${base}..${sha}`];
+  for (;;) {
+    // diff3 carries the base section of every conflict, which the backlog settler reads; the
+    // markers an author is handed keep it too.
+    const picked = await gitTry(wt, "-c", "merge.conflictStyle=diff3", "cherry-pick", "--no-commit", ...picks);
+    if (picked !== null) return { status: "clean" };
+    // conflictedFiles, not a raw diff: it decodes git's C-quoted names, so a non-ASCII
+    // conflicted path is the on-disk name the prompt and hasConflictMarkers can use.
+    const conflicted = await conflictedFiles(wt);
+    if (conflicted.length === 0) return { status: "failed" };
+    const rest = await picksAfterStop(wt);
+    // A settler that fails part-way (a failed `git add`) leaves every file to the author.
+    const remaining =
+      rest === null ? conflicted : await resolveBacklogInsertConflicts(wt, conflicted).catch(() => conflicted);
+    await gitTry(wt, "cherry-pick", "--quit");
+    if (remaining.length > 0) return { status: "conflicted", files: remaining };
+    if (rest === null || rest.length === 0) return { status: "clean" };
+    picks = rest;
+  }
+}
+
 /** Re-apply a rejected change `sha` onto current main as uncommitted edits in `wt`
  * (plans/revise-rejected.md): the author's next tick starts from the rejected diff instead of
  * re-deriving it. `git cherry-pick --no-commit <merge-base>..<sha>` leaves the edits in the
- * worktree without committing. On any git failure — most often a conflict with what main merged
- * since the rejection, but also a missing object — the cherry-pick is aborted and the worktree
- * reset to main, and false is returned so the caller falls back to a plain rejection note. */
+ * worktree without committing; a conflict confined to the backlog's insert-only shape is settled
+ * on the way (pickSettlingBacklog). On any other git failure — most often a conflict with what
+ * main merged since the rejection, but also a missing object — the cherry-pick is aborted and
+ * the worktree reset to main, and false is returned so the caller falls back to a plain
+ * rejection note. */
 export async function applyRevision(wt: string, mainBranch: string, sha: string): Promise<boolean> {
   const base = await gitTry(wt, "merge-base", mainBranch, sha);
   if (base === null) {
     await resetWorktreeToMain(wt, mainBranch);
     return false;
   }
-  const picked = await gitTry(wt, "cherry-pick", "--no-commit", `${base}..${sha}`);
-  if (picked === null) {
+  if ((await pickSettlingBacklog(wt, base, sha)).status !== "clean") {
     await gitTry(wt, "cherry-pick", "--abort");
     await resetWorktreeToMain(wt, mainBranch);
     return false;
@@ -51,12 +101,14 @@ export async function applyRevision(wt: string, mainBranch: string, sha: string)
 /** Re-apply a handed-back change's diff onto current main with the conflict markers left in
  * place as ordinary uncommitted edits, so its author can resolve them (PLANS.md "Robust
  * conflict landing, part 2/2"). Like applyRevision it cherry-picks
- * `<merge-base>..<sha> --no-commit` onto the worktree's current main. A conflicted pick is NOT
- * aborted: the unmerged paths are read off the index, a mixed `git reset` drops the index state
- * so the marker-bearing files are plain working-tree edits the tick can commit normally, and
- * `{ applied: true, conflicted }` is returned. A failure with no unmerged paths (a missing
- * object, a bad revision) aborts, resets to main, and returns `{ applied: false }` so the
- * caller falls back to a fresh start. Never throws for a git-level failure. */
+ * `<merge-base>..<sha> --no-commit` onto the worktree's current main, settling backlog
+ * insert-only conflicts on the way (pickSettlingBacklog), so only files that settler cannot
+ * settle keep markers. A conflicted pick is NOT aborted: its sequencer state is quit, a mixed
+ * `git reset` drops the index's unmerged entries so the marker-bearing files are plain
+ * working-tree edits the tick can commit normally, and `{ applied: true, conflicted }` is
+ * returned. A failure with no unmerged paths (a missing object, a bad revision) aborts, resets
+ * to main, and returns `{ applied: false }` so the caller falls back to a fresh start. Never
+ * throws for a git-level failure. */
 export async function applyWithConflicts(
   wt: string,
   mainBranch: string,
@@ -67,18 +119,15 @@ export async function applyWithConflicts(
     await resetWorktreeToMain(wt, mainBranch);
     return { applied: false, conflicted: [] };
   }
-  const picked = await gitTry(wt, "cherry-pick", "--no-commit", `${base}..${sha}`);
-  // conflictedFiles, not a raw diff: it decodes git's C-quoted names, so a non-ASCII
-  // conflicted path is the on-disk name the prompt and hasConflictMarkers can use.
-  const conflicted = await conflictedFiles(wt);
-  if (conflicted.length > 0) {
+  const picked = await pickSettlingBacklog(wt, base, sha);
+  if (picked.status === "conflicted") {
     // Keep the marker-bearing files, drop only the index's unmerged stage entries: a mixed
     // reset leaves the working tree untouched, so the markers are uncommitted edits the tick
     // stages and commits like any other author work.
     await gitTry(wt, "reset");
-    return { applied: true, conflicted };
+    return { applied: true, conflicted: picked.files };
   }
-  if (picked === null) {
+  if (picked.status === "failed") {
     await gitTry(wt, "cherry-pick", "--abort");
     await resetWorktreeToMain(wt, mainBranch);
     return { applied: false, conflicted: [] };

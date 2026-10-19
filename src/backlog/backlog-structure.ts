@@ -15,6 +15,7 @@ import {
 } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { allLiveClaims } from "../loop/loop-state.js";
+import { plural } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import {
   entryHoldAgainst,
@@ -190,6 +191,33 @@ export function duplicateHeadings(md: string): string[] {
   return [...sectionTitleCounts(md)].filter(([, n]) => n > 1).map(([title]) => title);
 }
 
+/** The `### ` headings `head` adds that `base` already carries, as extra copies: for each
+ * heading (whitespace-collapsed, every `## ` section, fence-aware) present in `base` and more
+ * often in `head`, one entry per added copy, in the head's first-appearance order. The archive
+ * files' re-pasted-history signal: on 2026-10-19 a conflict hand-back re-pasted 383 + 310 archived
+ * entries, and the commit-time sweep prepended them to PLANS-DONE.md and BUGS-FIXED.md again. A
+ * heading the base already duplicates never counts unless the head adds yet another copy. */
+export function readdedHeadings(base: string, head: string): string[] {
+  const count = (md: string): Map<string, { n: number; title: string }> => {
+    const out = new Map<string, { n: number; title: string }>();
+    for (const line of fenceAwareHeadingLines(md, "### ")) {
+      const title = headingTitle(line, "### ");
+      const key = collapseWhitespace(title);
+      const seen = out.get(key);
+      if (seen) seen.n++;
+      else out.set(key, { n: 1, title });
+    }
+    return out;
+  };
+  const baseCounts = count(base);
+  const readded: string[] = [];
+  for (const [key, { n, title }] of count(head)) {
+    const had = baseCounts.get(key)?.n ?? 0;
+    if (had > 0 && n > had) for (let i = had; i < n; i++) readded.push(title);
+  }
+  return readded;
+}
+
 /** The `## Fixed` entry headings whose body holds more than one `**Symptom:**` or
  * `**Fix:**` block — the shape a record with no `### ` heading leaves when parseEntryDetails
  * absorbs it into the entry above (an entry opens only at a `### ` line, so the headingless
@@ -234,7 +262,10 @@ export function doubleBlockFixedEntries(md: string): string[] {
  * (part 3/4) owns those. BUGS.md has one more: a head `## Fixed` entry that holds more than one
  * `**Symptom:**` or `**Fix:**` block (doubleBlockFixedEntries) absorbed a headingless record into
  * its body; a base body that already had the shape is never re-flagged, so only a newly merged
- * record is rejected (BUGS.md 2026-10-08). Detection is deterministic markdown reading — no pi — so
+ * record is rejected (BUGS.md 2026-10-08). The archive files (PLANS-DONE.md, BUGS-FIXED.md) have
+ * one more: a head that adds a copy of a `### ` heading the base archive already carries
+ * (readdedHeadings) is pasting finished history back, rejected with the count and the first
+ * heading. Detection is deterministic markdown reading — no pi — so
  * both the review gate (exempt and code diffs alike) and the in-lock merge re-check can afford it
  * on every merge (plans: "Backlog structure check", part 2/4). */
 export async function backlogStructureReason(
@@ -263,6 +294,17 @@ export async function backlogStructureReason(
           `${file} drops the "## ${title}" section the base had — entries filed under it would ` +
           `be invisible to every section reader; restore "## ${title}"`
         );
+    // An archive only grows by new headings: a copy of one the base archive already carries is
+    // finished history pasted back (readdedHeadings), never a new finished entry.
+    if (file === PLANS_ARCHIVE || file === BUGS_ARCHIVE) {
+      const readded = readdedHeadings(base, head);
+      if (readded.length > 0)
+        return (
+          `${file} adds ${plural(readded.length, '"### " heading', '"### " headings')} it already carries ` +
+          `(first: "${truncate(readded[0]!, 160)}") — the archive holds each finished entry once, so the ` +
+          `copies duplicate its history; remove them, and edit an archived entry in place instead`
+        );
+    }
     // Part 4/4's rule, PLANS.md and its archive (see this function's doc comment): a NEW plan
     // filed directly under ## Done with no done date. strandedPlanEntries already does the
     // fence-aware, joined-metadata reading the first two conditions need; the base's key set —

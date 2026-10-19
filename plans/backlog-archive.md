@@ -37,6 +37,12 @@ review and the merge all see the entry in the archive.
 - The move runs only when the archive file exists, or when the live section would be left
   empty. A repository that still has legacy entries and no archive keeps today's behavior until
   it is archived (see below), so the archive never sits above older live entries.
+- An entry whose heading the archive already holds never moves (added 2026-10-19). With the
+  same text it is dropped from the live section; with other text it stays there for the author
+  and the reviewer. The bulk archive below follows the same rule. A conflict hand-back of a change
+  written before the archive had re-pasted the old history under the live headings, and the sweep
+  prepended all 383 + 310 entries to the archives again (rejected 04ab808ca). The structure check
+  also rejects a change that adds a `### ` heading the base archive already carries.
 - Concurrent merges insert at the same spot (the top of the archive) exactly as they insert at
   the top of `## Done` today. The deterministic insert-only conflict pass already settles that
   shape. The archive files join `BACKLOG_FILES`, so that pass, the heading-set check and doctor's
@@ -123,6 +129,10 @@ against an archived main.
    build) meet a deleted live section. For that one shape the conflict pass gains a rule: inside
    a finished section, when the change's side is whole new `### ` entries followed by exactly
    the base lines, keep those entries on top of main's side. The next start sweeps them.
+4. A rejected or handed-back change is re-applied onto main by cherry-pick (src/loop/revision.ts).
+   When its diff prepends to an archive that main has prepended to since, the same insert-only
+   pass settles that conflict first (added 2026-10-19), so only files it cannot settle reach the
+   author with markers.
 
 If a restart is unwelcome, step 2 can wait for the self-redeploy. A partial archive by hand in
 the meantime is also safe: move everything except the newest entry of each live section

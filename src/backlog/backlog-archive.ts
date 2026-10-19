@@ -16,6 +16,8 @@
  * - archiveFinishedOnMain, at team start and from `tumwater archive`: the whole live section —
  *   legacy entries, compressed one-line records, a hand commit's move — goes to the archive in
  *   one commit on main.
+ * Neither archives an entry twice: one whose heading the archive already holds is dropped from
+ * the live section when its text matches, and left there when it does not (archiveFinishedText).
  * Readers of finished entries read the live section first, then the archive (backlog.ts). */
 
 import fs from "node:fs";
@@ -100,11 +102,13 @@ function entriesIn(md: string, span: { heading: number; end: number }, section: 
   return actionableEntryRanges(md, section).filter((e) => e.start - 1 > span.heading && e.start - 1 < span.end);
 }
 
-/** One file's move: the live and archive texts after it, and the headings that moved. */
+/** One file's move: the live and archive texts after it, the headings that moved, and the
+ * headings dropped from the live section because the archive already held them verbatim. */
 interface ArchiveMove {
   live: string;
   archive: string;
   titles: string[];
+  dropped: string[];
 }
 
 /** Which part of the live finished section moves: the entries whose keys the change's base did
@@ -112,9 +116,59 @@ interface ArchiveMove {
  * entries (the bulk archive; `keep` 0 moves everything). */
 type ArchiveSelection = { baseKeys: ReadonlySet<string> } | { keep: number };
 
+/** An entry's text for the already-archived comparison: its lines without the blank lines around
+ * them, each without trailing whitespace. */
+function entryText(lines: readonly string[], e: ActionableEntryRange): string {
+  return trimBlank(lines.slice(e.start - 1, e.end)).map((l) => l.trimEnd()).join("\n");
+}
+
+/** What happens to one selected live entry, judged against the archive by its heading key:
+ * `move` when the archive lacks the heading; `drop` when the archive holds the same heading and
+ * text — an old entry pasted back (a conflict hand-back of a change written before the archive
+ * re-pasted 383 + 310 of them on 2026-10-19), which moving would duplicate; `stay` when the
+ * archive holds the heading with other text — an edit to an archived entry, left in the live
+ * section where the author and the reviewer see it. */
+type EntryFate = "move" | "drop" | "stay";
+
+/** The fate of each of `selected` (entries of `lines`), in order, against the archive's entries:
+ * every text the archive holds under each heading key. */
+function entryFates(
+  lines: readonly string[],
+  selected: readonly ActionableEntryRange[],
+  archiveMd: string,
+  archiveSpan: { heading: number; end: number },
+  section: string,
+): EntryFate[] {
+  if (selected.length === 0) return [];
+  const wanted = new Set(selected.map((e) => archiveKey(e.title)));
+  const archiveLines = archiveMd.split("\n");
+  const archived = new Map<string, string[]>();
+  for (const e of entriesIn(archiveMd, archiveSpan, section)) {
+    const key = archiveKey(e.title);
+    if (wanted.has(key)) archived.set(key, [...(archived.get(key) ?? []), entryText(archiveLines, e)]);
+  }
+  return selected.map((e) => {
+    const held = archived.get(archiveKey(e.title));
+    if (held === undefined) return "move";
+    return held.includes(entryText(lines, e)) ? "drop" : "stay";
+  });
+}
+
+/** The trimmed lines of `entries`, one blank line between entries. */
+function entryBlocks(lines: readonly string[], entries: readonly ActionableEntryRange[]): string[] {
+  const out: string[] = [];
+  for (const e of entries) {
+    if (out.length > 0) out.push("");
+    out.push(...trimBlank(lines.slice(e.start - 1, e.end)));
+  }
+  return out;
+}
+
 /** Move the selected part of `liveMd`'s finished section to the top of `archiveMd`'s (a new
- * archive starts from archiveTemplate), keeping the moved lines' order. null when nothing moves,
- * when either file lacks the section heading, or — for the commit-time sweep — when there is no
+ * archive starts from archiveTemplate), keeping the moved lines' order. A selected entry whose
+ * heading the archive already holds never moves (EntryFate): with the same text it is dropped
+ * from the live section, with other text it stays there. null when nothing moves or drops, when
+ * either file lacks the section heading, or — for the commit-time sweep — when there is no
  * archive yet and the live section holds other content: a repository that has not been archived
  * keeps today's layout until `tumwater archive` (or the next team start) moves its history, so an
  * archive never sits above older live entries. Pure. */
@@ -128,50 +182,66 @@ export function archiveFinishedText(
   const span = sectionSpan(lines, spec.section);
   if (span === null) return null;
   const entries = entriesIn(liveMd, span, spec.section);
+  const selected =
+    "keep" in select
+      ? entries.slice(Math.max(0, select.keep))
+      : entries.filter((e) => !select.baseKeys.has(archiveKey(e.title)));
+  if (!("keep" in select) && selected.length === 0) return null;
+  const archiveText = archiveMd ?? archiveTemplate(spec);
+  const archiveLines = archiveText.split("\n");
+  const archiveSpan = sectionSpan(archiveLines, spec.section);
+  if (archiveSpan === null) return null;
+  const fates = entryFates(lines, selected, archiveText, archiveSpan, spec.section);
+  const withFate = (fate: EntryFate): ActionableEntryRange[] => selected.filter((_, i) => fates[i] === fate);
+  // The 0-based live lines of the entries that leave the live section without moving.
+  const droppedLine = new Set<number>();
+  for (const e of withFate("drop")) for (let i = e.start - 1; i < e.end; i++) droppedLine.add(i);
   let moved: string[];
   let kept: string[];
-  let titles: string[];
   if ("keep" in select) {
     const from = select.keep <= 0 ? span.heading + 1 : (entries[select.keep]?.start ?? 0) - 1;
     if (from < 0) return null; // no entry past the kept ones
-    // A `_None yet._` placeholder stays in the live section, never in the archive.
-    const tail = lines.slice(from, span.end);
+    // The tail moves but for the dropped and staying entries; a `_None yet._` placeholder stays
+    // in the live section, never in the archive. Staying entries follow the kept ones.
+    const stayLine = new Set<number>();
+    for (const e of withFate("stay")) for (let i = e.start - 1; i < e.end; i++) stayLine.add(i);
+    const tail: string[] = [];
+    for (let i = from; i < span.end; i++) if (!droppedLine.has(i) && !stayLine.has(i)) tail.push(lines[i] ?? "");
     moved = trimBlank(tail.filter((l) => !PLACEHOLDER.test(l.trim())));
-    kept = select.keep <= 0 ? [] : trimBlank(lines.slice(span.heading + 1, from));
+    const staying = entryBlocks(lines, withFate("stay"));
+    const head = select.keep <= 0 ? [] : trimBlank(lines.slice(span.heading + 1, from));
+    kept = head.length > 0 && staying.length > 0 ? [...head, "", ...staying] : [...head, ...staying];
     if (kept.length === 0) kept = tail.filter((l) => PLACEHOLDER.test(l.trim())).slice(0, 1);
-    titles = entries.slice(Math.max(0, select.keep)).map((e) => e.title);
   } else {
-    const fresh = entries.filter((e) => !select.baseKeys.has(archiveKey(e.title)));
-    if (fresh.length === 0) return null;
-    const inFresh = (i: number): boolean => fresh.some((e) => i >= e.start - 1 && i < e.end);
+    const leaves = new Set(droppedLine);
+    for (const e of withFate("move")) for (let i = e.start - 1; i < e.end; i++) leaves.add(i);
     kept = [];
-    for (let i = span.heading + 1; i < span.end; i++) if (!inFresh(i)) kept.push(lines[i] ?? "");
+    for (let i = span.heading + 1; i < span.end; i++) if (!leaves.has(i)) kept.push(lines[i] ?? "");
     kept = trimBlank(kept);
     if (archiveMd === null && kept.some((l) => l.trim() !== "" && !PLACEHOLDER.test(l.trim()))) return null;
-    moved = [];
-    for (const e of fresh) {
-      if (moved.length > 0) moved.push("");
-      moved.push(...trimBlank(lines.slice(e.start - 1, e.end)));
-    }
-    titles = fresh.map((e) => e.title);
+    moved = entryBlocks(lines, withFate("move"));
   }
-  if (moved.length === 0) return null;
-  const archiveLines = (archiveMd ?? archiveTemplate(spec)).split("\n");
-  const archiveSpan = sectionSpan(archiveLines, spec.section);
-  if (archiveSpan === null) return null;
+  const dropped = withFate("drop").map((e) => e.title);
+  if (moved.length === 0 && dropped.length === 0) return null;
   const existing = trimBlank(archiveLines.slice(archiveSpan.heading + 1, archiveSpan.end));
   return {
     live: withSectionBody(lines, span, kept),
-    archive: withSectionBody(archiveLines, archiveSpan, existing.length > 0 ? [...moved, "", ...existing] : moved),
-    titles,
+    archive:
+      moved.length === 0
+        ? archiveText
+        : withSectionBody(archiveLines, archiveSpan, existing.length > 0 ? [...moved, "", ...existing] : moved),
+    titles: withFate("move").map((e) => e.title),
+    dropped,
   };
 }
 
-/** One archived file: the live file, its archive, and the headings that moved. */
+/** One archived file: the live file, its archive, the headings that moved, and the ones dropped
+ * because the archive already held them (ArchiveMove). */
 interface ArchivedFile {
   file: string;
   archive: string;
   titles: string[];
+  dropped: string[];
 }
 
 /** Write one move: the archive first, so a crash in between leaves the entries in both files —
@@ -184,8 +254,9 @@ function writeMove(root: string, spec: FinishedArchive, move: ArchiveMove): void
 /** The commit-time sweep: move the entries this change added to a live finished section of the
  * worktree `wt` — those whose heading its merge-base with `mainBranch` did not hold there — to
  * the top of the archive file, writing both files. Runs right before a run's commit, so the
- * commit, the review and the merge see the archived form. Returns what moved; a file whose
- * section is missing, or a repository not yet archived (archiveFinishedText), moves nothing. */
+ * commit, the review and the merge see the archived form. An added entry the archive already
+ * holds is dropped or left in place instead (archiveFinishedText), never archived twice. Returns
+ * what moved; a file whose section is missing, or a repository not yet archived, moves nothing. */
 export async function archiveNewFinishedEntries(wt: string, mainBranch: string): Promise<ArchivedFile[]> {
   const baseRev = await changeBaseRev(wt, mainBranch);
   const out: ArchivedFile[] = [];
@@ -197,7 +268,7 @@ export async function archiveNewFinishedEntries(wt: string, mainBranch: string):
     const move = archiveFinishedText(live, readTextOrNull(path.join(wt, spec.archive)), spec, { baseKeys });
     if (move === null) continue;
     writeMove(wt, spec, move);
-    out.push({ file: spec.file, archive: spec.archive, titles: move.titles });
+    out.push({ file: spec.file, archive: spec.archive, titles: move.titles, dropped: move.dropped });
   }
   return out;
 }
@@ -226,11 +297,31 @@ export function liveFinishedHistory(root: string): { file: string; section: stri
       file: spec.file,
       section: spec.section,
       archive: spec.archive,
-      entries: move.titles.length,
+      entries: move.titles.length + move.dropped.length,
       bytes: Buffer.byteLength(live) - Buffer.byteLength(move.live),
     });
   }
   return out;
+}
+
+/** The bulk archive's commit subject after its `tumwater(operator):` prefix: how many entries
+ * moved to which archives, and how many already-archived ones left the live files (ArchiveMove). */
+function archiveCommitWhat(plan: readonly { spec: FinishedArchive; move: ArchiveMove }[]): string {
+  const count = plan.reduce((n, { move }) => n + move.titles.length, 0);
+  const dropped = plan.reduce((n, { move }) => n + move.dropped.length, 0);
+  const drop = plural(dropped, "already-archived entry", "already-archived entries");
+  if (count === 0 && dropped > 0) return `Drop ${drop} from ${plan.map(({ spec }) => spec.file).join(" and ")}`;
+  // A file that only dropped entries left its archive untouched.
+  const archives = plan.filter(({ move }) => move.titles.length > 0 || move.dropped.length === 0).map(({ spec }) => spec.archive);
+  const archived = `Archive ${plural(count, "finished entry", "finished entries")} to ${archives.join(" and ")}`;
+  return dropped > 0 ? `${archived}; drop ${drop}` : archived;
+}
+
+/** One archived file as a line of `tumwater archive`'s output and the team-start event: what
+ * moved where, and what was dropped because the archive already held it. */
+export function describeArchivedFile(f: ArchivedFile): string {
+  const dropped = f.dropped.length > 0 ? ` (${plural(f.dropped.length, "already-archived entry", "already-archived entries")} dropped)` : "";
+  return `${f.file} → ${f.archive}: ${plural(f.titles.length, "entry", "entries")}${dropped}`;
 }
 
 /** What archiveFinishedOnMain did. `skipped` names why nothing was written. */
@@ -274,10 +365,9 @@ export async function archiveFinishedOnMain(
         const touched: string[] = plan.flatMap(({ spec }) => [spec.file, spec.archive]);
         const created: string[] = plan.map(({ spec }) => spec.archive).filter((f) => !fs.existsSync(path.join(root, f)));
         for (const { spec, move } of plan) writeMove(root, spec, move);
-        const count = plan.reduce((n, { move }) => n + move.titles.length, 0);
         const subject = stampedSubject(
           "operator", // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-          `Archive ${plural(count, "finished entry", "finished entries")} to ${plan.map(({ spec }) => spec.archive).join(" and ")}`,
+          archiveCommitWhat(plan),
         );
         try {
           await git(root, "add", "--", ...touched);
@@ -292,7 +382,7 @@ export async function archiveFinishedOnMain(
         return {
           status: "archived",
           commit: await headOf(root, "HEAD"),
-          moved: plan.map(({ spec, move }) => ({ file: spec.file, archive: spec.archive, titles: move.titles })),
+          moved: plan.map(({ spec, move }) => ({ file: spec.file, archive: spec.archive, titles: move.titles, dropped: move.dropped })),
         };
       }),
     opts.lockTimeoutMs,
@@ -314,7 +404,7 @@ export async function archiveAtTeamStart(root: string): Promise<void> {
         type: "state_migrated",
         step: "backlogArchive",
         moved: outcome.moved.reduce((n, f) => n + f.titles.length, 0),
-        detail: outcome.moved.map((f) => `${f.file} → ${f.archive}: ${plural(f.titles.length, "entry", "entries")}`).join("; "),
+        detail: outcome.moved.map(describeArchivedFile).join("; "),
       });
     } else if (outcome.status === "skipped") {
       warnEventBestEffort(

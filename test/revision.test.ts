@@ -167,6 +167,102 @@ test("applyWithConflicts resets to main when the cherry-pick fails without confl
   assert.equal(await isDirty(root), false, "clean main after a failed apply");
 });
 
+// A rejected or handed-back diff that prepends to an archive file conflicts with every entry main
+// archived since — the insert-only shape the merge settles without a model run. The re-apply
+// settles it the same way (2026-10-19: feature-5 was handed markers in the 1.9 MB PLANS-DONE.md).
+
+const doneArchive = (body: string): string => `# Done plans\n\nIntro.\n\n## Done\n\n${body}`;
+const archivedOld = "### Old (planned 2026-09-01, done 2026-09-02)\n\nOld.\n";
+
+/** A repo whose PLANS-DONE.md holds one archived entry, a change off main whose commits are
+ * `commits` (each writes its edits into the dir), and a main that has since archived an entry of
+ * its own (plus `mainAlso`'s edits) at the same top-of-archive spot. */
+function archiveTopRepo(
+  commits: ((dir: string) => void)[],
+  mainAlso: (dir: string) => void = () => {},
+): { root: string; sha: string } {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "PLANS-DONE.md"), doneArchive(archivedOld));
+  commitIn(root, "seed archive");
+  sh(root, "git", "checkout", "--detach");
+  commits.forEach((write, i) => {
+    write(root);
+    commitIn(root, `the rejected work ${i + 1}`);
+  });
+  const sha = headSha(root);
+  sh(root, "git", "checkout", "main");
+  fs.writeFileSync(path.join(root, "PLANS-DONE.md"), doneArchive(`### Main's (planned 2026-10-01, done 2026-10-19)\n\nMain's.\n\n${archivedOld}`));
+  mainAlso(root);
+  commitIn(root, "main archives another entry");
+  return { root, sha };
+}
+
+/** The change's own finished entry, prepended to the archive. */
+const archiveMine = (dir: string): void =>
+  fs.writeFileSync(path.join(dir, "PLANS-DONE.md"), doneArchive(`### Mine (planned 2026-09-30, done 2026-10-19)\n\nMine.\n\n${archivedOld}`));
+
+/** The settled archive: the change's entry above main's, nothing lost, no markers. */
+function assertSettledArchive(root: string): void {
+  const archive = fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8");
+  assert.match(archive, /## Done\n\n### Mine [^]*Mine\.\n\n### Main's [^]*Main's\.\n\n### Old [^]*Old\.\n$/);
+  assert.doesNotMatch(archive, /^(<{7}|\|{7}|={7}|>{7})/m);
+}
+
+/** True when `root` still carries cherry-pick sequencer state, which would make its next
+ * cherry-pick fail as "already in progress". */
+function sequencerLeft(root: string): boolean {
+  return fs.existsSync(path.resolve(root, sh(root, "git", "rev-parse", "--git-path", "sequencer")));
+}
+
+test("applyRevision settles an archive-top conflict and applies the rest of the diff", async () => {
+  const { root, sha } = archiveTopRepo([
+    (d) => {
+      archiveMine(d);
+      fs.writeFileSync(path.join(d, "feature.ts"), "export const feature = true;\n");
+    },
+  ]);
+  assert.equal(await applyRevision(root, "main", sha), true);
+  assertSettledArchive(root);
+  assert.equal(fs.readFileSync(path.join(root, "feature.ts"), "utf8"), "export const feature = true;\n");
+  assert.equal(sh(root, "git", "diff", "--name-only", "--diff-filter=U"), "");
+  assert.equal(await isDirty(root), true, "the diff is uncommitted");
+  assert.equal(sequencerLeft(root), false);
+});
+
+test("applyRevision settles a stop part-way through a multi-commit change and applies the commits after it", async () => {
+  const { root, sha } = archiveTopRepo([
+    archiveMine,
+    (d) => fs.writeFileSync(path.join(d, "feature.ts"), "export const feature = true;\n"),
+  ]);
+  assert.equal(await applyRevision(root, "main", sha), true);
+  assertSettledArchive(root);
+  assert.equal(fs.readFileSync(path.join(root, "feature.ts"), "utf8"), "export const feature = true;\n", "the second commit is applied");
+  assert.equal(sequencerLeft(root), false);
+});
+
+test("applyWithConflicts settles the archive and hands back markers only in the files it cannot settle", async () => {
+  const { root, sha } = archiveTopRepo(
+    [
+      (d) => {
+        archiveMine(d);
+        fs.writeFileSync(path.join(d, "seed.txt"), "theirs\n");
+      },
+    ],
+    (d) => fs.writeFileSync(path.join(d, "seed.txt"), "main version\n"),
+  );
+  // The clean re-apply cannot settle a code conflict: it resets to main for the hand-back.
+  assert.equal(await applyRevision(root, "main", sha), false);
+  assert.equal(await isDirty(root), false);
+  assert.equal(sequencerLeft(root), false);
+
+  const result = await applyWithConflicts(root, "main", sha);
+  assert.deepEqual(result, { applied: true, conflicted: ["seed.txt"] });
+  assertSettledArchive(root);
+  assert.match(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), /<<<<<<<[^]*>>>>>>>/);
+  assert.equal(sh(root, "git", "diff", "--name-only", "--diff-filter=U"), "", "no unmerged index entries");
+  assert.equal(sequencerLeft(root), false, "a later cherry-pick in this worktree is not refused as in progress");
+});
+
 test("a gate rejection points the rejected ref at the judged head and records round 1", async () => {
   await withPi(reviewerPi("VERDICT: reject\n1. breaks the rules"), async () => {
     const { root, sha } = await pinnedFixture();
