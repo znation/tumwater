@@ -125,12 +125,10 @@ export interface TuiEditorSession {
   flashError(err: unknown): void;
   /** Commit an operator's backlog edit to main and flash when the commit did not land. */
   commitBacklogEdit(file: string, subject: string): void;
-  /** Restore the prompt line's saved draft and reset its recall state — the shared tail of every
-   * editor's exit. */
-  restorePromptFrom(text: string, pos: number): void;
-  /** Hand the recall line's current draft back into a caller's editor save slot and reset the
-   * recall state — the shared preamble of every editor that takes the prompt line. */
-  settleDraft(saveInput: (text: string) => void, saveCursor: (pos: number) => void): void;
+  /** Take the prompt line's current draft (settling the recall state) and return the function that
+   * restores it and resets the recall state — the shared entry and exit of every editor that takes
+   * the prompt line. */
+  takeDraft(): () => void;
   /** The one-line editor's busy-guard wording. */
   busyFlash(subject: string): string;
   /** Whether any prompt-line editor other than `except` holds the line — the guard for a key that
@@ -217,16 +215,14 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     flashMessage: deps.flashMessage,
     flashError: deps.flashError,
     commitBacklogEdit: deps.commitBacklogEdit,
-    restorePromptFrom(text, pos) {
-      session.input = text;
-      session.cursor = pos;
-      session.promptHistory = resetPromptRecall(session.promptHistory);
-    },
-    settleDraft(saveInput, saveCursor) {
+    takeDraft() {
       const settled = settlePromptRecall(session.promptHistory, session.input, session.cursor);
       session.promptHistory = settled.history;
-      saveInput(settled.text);
-      saveCursor(settled.cursor);
+      return () => {
+        session.input = settled.text;
+        session.cursor = settled.cursor;
+        session.promptHistory = resetPromptRecall(session.promptHistory);
+      };
     },
     busyFlash(subject) {
       return `finish or cancel the ${subject} first (Esc cancels)`;

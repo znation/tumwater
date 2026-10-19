@@ -18,8 +18,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * session's held registry. */
 export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule {
   let intervalMode = false;
-  let savedInput = "";
-  let savedCursor = 0;
+  let restoreDraft: () => void = () => {};
   // The role pinned when the editor opened, so Enter writes the same role's override even if
   // syncRoster shrinks or reorders the roster while the editor is open.
   let lockedRole: string | null = null;
@@ -29,7 +28,7 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
     if (!intervalMode) return;
     intervalMode = false;
     session.held.interval = false;
-    session.restorePromptFrom(savedInput, savedCursor);
+    restoreDraft();
     lockedRole = null;
   };
 
@@ -70,7 +69,7 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
       lockedRole = role;
       const base = baseRoleOf(role);
       const existing = rawRoleField(session.root, base, "minRunIntervalSeconds");
-      session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
+      restoreDraft = session.takeDraft();
       intervalMode = true;
       session.held.interval = true;
       session.input = typeof existing === "number" ? String(existing) : "";

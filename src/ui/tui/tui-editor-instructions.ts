@@ -26,8 +26,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * dashboard editor and `--instructions-file` both accept the director, so it edits too. */
 export function createInstructionsEditor(session: TuiEditorSession): TuiEditorModule {
   let instructionsFor: string | null = null;
-  let savedInput = "";
-  let savedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave the instructions editor (Esc, Ctrl+L again, or Ctrl+T): restore the saved prompt
   // text with no override written.
@@ -35,7 +34,7 @@ export function createInstructionsEditor(session: TuiEditorSession): TuiEditorMo
     if (instructionsFor === null) return;
     instructionsFor = null;
     session.held.instructions = null;
-    session.restorePromptFrom(savedInput, savedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -70,7 +69,7 @@ export function createInstructionsEditor(session: TuiEditorSession): TuiEditorMo
         // the line — the same settle the role editors do — so leaving restores the draft, not
         // a history entry, with no stale recall state riding along.
         const role = ctx.roleIds[ctx.view - 1]!; // defined: the open-arm range guard above pins the view into roleIds
-        session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
+        restoreDraft = session.takeDraft();
         instructionsFor = role;
         session.held.instructions = role;
         session.input = "";

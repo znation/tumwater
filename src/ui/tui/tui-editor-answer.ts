@@ -15,8 +15,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * editors via the session's held registry. */
 export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
   let answerFor: { position: number; title: string } | null = null;
-  let answerSavedInput = "";
-  let answerSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave the backlog pane's answer editor (Esc, a recorded answer, or Ctrl+T): restore the
   // saved prompt text and reset the recall state, mirroring exitQueuedEdit.
@@ -24,7 +23,7 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
     if (!answerFor) return;
     answerFor = null;
     session.held.answer = null;
-    session.restorePromptFrom(answerSavedInput, answerSavedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -51,7 +50,7 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
           session.flashMessage("only an open question can be answered here");
         } else {
           const position = sel - entries.filter((e) => e.label === "plan" || e.label === "bug").length + 1;
-          session.settleDraft((t) => (answerSavedInput = t), (n) => (answerSavedCursor = n));
+          restoreDraft = session.takeDraft();
           answerFor = { position, title: entry.title };
           session.held.answer = answerFor;
           session.input = "";

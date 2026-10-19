@@ -15,8 +15,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * the one prompt line via the session's held registry. */
 export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
   let budgetMode = false;
-  let savedInput = "";
-  let savedCursor = 0;
+  let restoreDraft: () => void = () => {};
   // The last snapshot's cap, synced by render so the Ctrl+B handler can pre-fill without
   // re-reading config itself (render already polls snapshot every second).
   let currentCapUsd = 0;
@@ -33,7 +32,7 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
     if (!budgetMode) return;
     budgetMode = false;
     session.held.budget = false;
-    session.restorePromptFrom(savedInput, savedCursor);
+    restoreDraft();
     lockedRole = null;
   };
 
@@ -42,7 +41,7 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
   // pre-fill the line from the cap (empty string when disabled — empty means "no cap"), and
   // announce the mode. Only the cap source and the announcement differ between the two scopes.
   const enterBudgetMode = (cap: number, message: string): void => {
-    session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
+    restoreDraft = session.takeDraft();
     budgetMode = true;
     session.held.budget = true;
     session.input = cap > 0 ? String(cap) : "";

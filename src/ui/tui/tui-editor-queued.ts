@@ -10,8 +10,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * other editors via the session's held registry. */
 export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
   let queuedEditFor: { role: string; file: string } | null = null;
-  let queuedSavedInput = "";
-  let queuedSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave the Queued pane's in-place editor (Esc, a saved edit, or Ctrl+T): restore the saved
   // prompt text, and reset the recall state with it — the same settle contract the other
@@ -20,7 +19,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
     if (!queuedEditFor) return;
     queuedEditFor = null;
     session.held.queued = null;
-    session.restorePromptFrom(queuedSavedInput, queuedSavedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -55,7 +54,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
             // Mid-recall, the line holds a history entry while the real draft sits in the
             // recall state: settle first, so the queued editor saves (and later restores)
             // the draft the operator was writing.
-            session.settleDraft((t) => (queuedSavedInput = t), (n) => (queuedSavedCursor = n));
+            restoreDraft = session.takeDraft();
             queuedEditFor = { role: row.role, file: row.file };
             session.held.queued = queuedEditFor;
             session.input = body;

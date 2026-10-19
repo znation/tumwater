@@ -48,15 +48,14 @@ export function createTeamConfigKeyEditor(
   spec: TeamConfigKeySpec,
 ): TuiEditorModule {
   let mode = false;
-  let savedInput = "";
-  let savedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave the editor (Esc, the key again, or Ctrl+T): restore the saved prompt text.
   const exit = (): void => {
     if (!mode) return;
     mode = false;
     session.held[spec.mode] = false;
-    session.restorePromptFrom(savedInput, savedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -82,7 +81,7 @@ export function createTeamConfigKeyEditor(
         return true;
       }
       const existing = spec.prefill(session);
-      session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
+      restoreDraft = session.takeDraft();
       mode = true;
       session.held[spec.mode] = true;
       session.input = existing;

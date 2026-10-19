@@ -16,8 +16,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * their views. */
 export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
   let attachMode = false;
-  let attachSavedInput = "";
-  let attachSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave attach mode (Esc, Ctrl+V again, or Ctrl+T): restore the saved prompt text. The
   // pending session.images are untouched — Esc cancels the path edit, not an attachment
@@ -26,7 +25,7 @@ export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
     if (!attachMode) return;
     attachMode = false;
     session.held.attach = false;
-    session.restorePromptFrom(attachSavedInput, attachSavedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -55,7 +54,7 @@ export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
         // Mid-recall, hand the arrows' saved draft back before the attach editor takes the
         // line — the same settle the role editors do — so leaving restores the
         // draft, not a history entry, with no stale recall state riding along.
-        session.settleDraft((t) => (attachSavedInput = t), (n) => (attachSavedCursor = n));
+        restoreDraft = session.takeDraft();
         attachMode = true;
         session.held.attach = true;
         session.input = "";

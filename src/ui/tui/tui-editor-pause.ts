@@ -40,8 +40,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   let pauseEditRole: string | null = null;
   let pauseEditWake = false;
   let pauseEditStop = false;
-  let pauseSavedInput = "";
-  let pauseSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave pause-edit mode (Esc, Ctrl+F again, a written pause, or Ctrl+T): restore the draft.
   const exitPauseEditMode = (): void => {
@@ -54,11 +53,11 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     session.held.pauseEditRole = null;
     session.held.pauseEditWake = false;
     session.held.pauseEditStop = false;
-    session.restorePromptFrom(pauseSavedInput, pauseSavedCursor);
+    restoreDraft();
   };
 
   const openPauseEditor = (role: string | null, wake: boolean, stop: boolean, hint: string): void => {
-    session.settleDraft((t) => (pauseSavedInput = t), (n) => (pauseSavedCursor = n));
+    restoreDraft = session.takeDraft();
     pauseEditMode = true;
     pauseEditRole = role;
     pauseEditWake = wake;

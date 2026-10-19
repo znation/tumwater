@@ -16,8 +16,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * the session's held registry. */
 export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
   let entryEditFor: { kind: "plan" | "bug"; position: number | null; title: string } | null = null;
-  let entryEditSavedInput = "";
-  let entryEditSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
   // The triple state of the entry editor's prompt line: false (the title field), true (the
   // file-path field whose contents replace the whole entry), and the draft the toggle parks
   // when it hands the line to a different field.
@@ -33,7 +32,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
     entryEditFor = null;
     entryBodyFile = false;
     session.held.entry = null;
-    session.restorePromptFrom(entryEditSavedInput, entryEditSavedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -60,7 +59,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
         !session.held.pause && !session.held.queued &&
         !session.held.answer && !entryEditFor && !session.held.retire
       ) {
-        session.settleDraft((t) => (entryEditSavedInput = t), (n) => (entryEditSavedCursor = n));
+        restoreDraft = session.takeDraft();
         entryEditFor = { kind: "plan", position: null, title: "" };
         session.held.entry = entryEditFor;
         session.input = "";
@@ -104,7 +103,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
         if (selected !== null) {
           const kind = selected.kind;
           const position = selected.position;
-          session.settleDraft((t) => (entryEditSavedInput = t), (n) => (entryEditSavedCursor = n));
+          restoreDraft = session.takeDraft();
           entryEditFor = { kind, position, title: selected.picked.title };
           session.held.entry = entryEditFor;
           session.input = stripEntryStamp(selected.picked.title);

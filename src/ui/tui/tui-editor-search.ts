@@ -12,8 +12,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
   // the Backlog pane's entry search. The target is captured when `/` opens so a roster change
   // mid-edit cannot retarget Enter.
   let searchFor: "history" | "activity" | "backlog" = "history";
-  let searchSavedInput = "";
-  let searchSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave the shared search editor (Enter applies, Esc cancels, Ctrl+T cycles): restore the
   // saved prompt text, and reset the recall state with it — the same settle contract the budget
@@ -23,7 +22,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
     if (!searchMode) return;
     searchMode = false;
     session.held.search = false;
-    session.restorePromptFrom(searchSavedInput, searchSavedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -41,7 +40,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
       // on Backlog. Guarded to those three views and to an empty line, so elsewhere it types
       // into the prompt as today and a director draft is never disturbed. Pre-fills the applied
       // pattern so Enter re-submits it and the operator can edit it; Esc cancels without applying.
-      session.settleDraft((t) => (searchSavedInput = t), (n) => (searchSavedCursor = n));
+      restoreDraft = session.takeDraft();
       searchFor = ctx.view === 0 ? "activity" : ctx.view === ctx.roleIds.length + 1 ? "backlog" : "history";
       searchMode = true;
       session.held.search = true;

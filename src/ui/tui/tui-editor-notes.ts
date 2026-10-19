@@ -19,8 +19,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * session's refreshNotes seam. */
 export function createNotesEditor(session: TuiEditorSession): TuiEditorModule {
   let notesEditFor: string | null = null;
-  let notesSavedInput = "";
-  let notesSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave the notes editor (Esc, Ctrl+E again, or Ctrl+T): restore the saved prompt text with
   // no note written.
@@ -28,7 +27,7 @@ export function createNotesEditor(session: TuiEditorSession): TuiEditorModule {
     if (notesEditFor === null) return;
     notesEditFor = null;
     session.held.notes = null;
-    session.restorePromptFrom(notesSavedInput, notesSavedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -64,7 +63,7 @@ export function createNotesEditor(session: TuiEditorSession): TuiEditorModule {
         // line — the same settle the role editors do — so leaving restores the
         // draft, not a history entry, with no stale recall state riding along.
         const role = ctx.roleIds[ctx.view - 1]!; // defined: the open-arm range guard above pins the view into roleIds
-        session.settleDraft((t) => (notesSavedInput = t), (n) => (notesSavedCursor = n));
+        restoreDraft = session.takeDraft();
         notesEditFor = role;
         session.held.notes = role;
         session.input = "";

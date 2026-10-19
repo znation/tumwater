@@ -11,8 +11,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * leaves. Mutually exclusive with the other editors via the session's held registry. */
 export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
   let rolePromptFor: string | null = null;
-  let roleSavedInput = "";
-  let roleSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave role-prompt mode (Esc, Ctrl+R again, or Ctrl+T): restore the saved prompt text,
   // and reset the recall state with it — the saved draft was saved settled (see the Ctrl+R
@@ -22,7 +21,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
     if (!rolePromptFor) return;
     rolePromptFor = null;
     session.held.rolePromptFor = null;
-    session.restorePromptFrom(roleSavedInput, roleSavedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -56,7 +55,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
           // recall state: settle first, so the role editor saves (and later restores) the
           // draft the operator was writing, and no stale index/draft crosses modes —
           // otherwise Esc here would surface role-mode recalls on the director line.
-          session.settleDraft((t) => (roleSavedInput = t), (n) => (roleSavedCursor = n));
+          restoreDraft = session.takeDraft();
           rolePromptFor = role;
           session.held.rolePromptFor = role;
           session.input = "";

@@ -18,15 +18,14 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * re-entering. */
 export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
   let briefEdit = false;
-  let briefSavedInput = "";
-  let briefSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave the brief editor (Esc or a successful Enter): restore the saved prompt text.
   const exitBriefMode = (): void => {
     if (!briefEdit) return;
     briefEdit = false;
     session.held.brief = false;
-    session.restorePromptFrom(briefSavedInput, briefSavedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -52,7 +51,7 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
       // Mid-recall, hand the arrows' saved draft back before the brief editor takes the line —
       // the same settle the other editors do — so leaving restores the draft, not a history
       // entry, with no stale recall state riding along.
-      session.settleDraft((t) => (briefSavedInput = t), (n) => (briefSavedCursor = n));
+      restoreDraft = session.takeDraft();
       briefEdit = true;
       session.held.brief = true;
       session.input = "";

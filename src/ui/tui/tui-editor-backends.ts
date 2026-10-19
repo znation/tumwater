@@ -22,15 +22,14 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * arm. */
 export function createBackendsEditor(session: TuiEditorSession): TuiEditorModule {
   let backendsMode = false;
-  let savedInput = "";
-  let savedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave backends mode (Esc, Ctrl+X again, or Ctrl+T): restore the saved prompt text.
   const exitBackendsMode = (): void => {
     if (!backendsMode) return;
     backendsMode = false;
     session.held.backends = false;
-    session.restorePromptFrom(savedInput, savedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -62,7 +61,7 @@ export function createBackendsEditor(session: TuiEditorSession): TuiEditorModule
         return true;
       }
       const existing = rawBackends(session.root);
-      session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
+      restoreDraft = session.takeDraft();
       backendsMode = true;
       session.held.backends = true;
       session.input = existing !== undefined ? JSON.stringify(existing) : "";

@@ -15,15 +15,14 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * so the operator can fix the id, Esc cancels and restores the draft. */
 export function createRetireEditor(session: TuiEditorSession): TuiEditorModule {
   let retireMode = false;
-  let retireSavedInput = "";
-  let retireSavedCursor = 0;
+  let restoreDraft: () => void = () => {};
 
   // Leave retire-edit mode (Esc, Enter's success path, or Ctrl+T): restore the saved prompt text.
   const exitRetireMode = (): void => {
     if (!retireMode) return;
     retireMode = false;
     session.held.retire = false;
-    session.restorePromptFrom(retireSavedInput, retireSavedCursor);
+    restoreDraft();
   };
 
   const handleKey = (
@@ -49,7 +48,7 @@ export function createRetireEditor(session: TuiEditorSession): TuiEditorModule {
       // Mid-recall, hand the arrows' saved draft back before the retire editor takes the line —
       // the same settle the role editors do — so leaving restores the draft, not a
       // history entry, with no stale recall state riding along.
-      session.settleDraft((t) => (retireSavedInput = t), (n) => (retireSavedCursor = n));
+      restoreDraft = session.takeDraft();
       retireMode = true;
       session.held.retire = true;
       session.input = "";

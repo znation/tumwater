@@ -43,8 +43,7 @@ export function createRoleKeyEditor(
   spec: RoleKeySpec,
 ): TuiEditorModule {
   let mode = false;
-  let savedInput = "";
-  let savedCursor = 0;
+  let restoreDraft: () => void = () => {};
   // The role pinned when the editor opened, so Enter writes the same role's key even if
   // syncRoster shrinks or reorders the roster while the editor is open.
   let lockedRole: string | null = null;
@@ -54,7 +53,7 @@ export function createRoleKeyEditor(
     if (!mode) return;
     mode = false;
     session.held[spec.mode] = false;
-    session.restorePromptFrom(savedInput, savedCursor);
+    restoreDraft();
     lockedRole = null;
   };
 
@@ -84,7 +83,7 @@ export function createRoleKeyEditor(
       // source; a broken config degrades to no pre-fill and the write reports the error.
       lockedRole = role;
       const existing = spec.prefill(session, baseRoleOf(role));
-      session.settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
+      restoreDraft = session.takeDraft();
       mode = true;
       session.held[spec.mode] = true;
       session.input = existing;
