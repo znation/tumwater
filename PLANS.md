@@ -402,10 +402,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Plain terms code runner, part 6/14: Convert the TUI and the merge and review modules (planned 2026-10-16 by user; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/ui/tui/ + the other src/ui/*.ts + src/merge/ + src/review/ + src/verdict/ + their tests)
 
-**Needs replan 2026-10-19 by feature: rejected after 2 review rounds**
-
-1. (prior 1) A kept "loop" comment is still renamed to "role" against the plan's keep rule. `src/merge/merge-stack.ts:6` now reads "re-stack role for a main that moves mid-check", but it describes the `BATCH_RESTACK_ATTEMPTS` retry loop at `src/merge/merge-stack.ts:146`, a JavaScript retry loop the se…
-
 **Goal.** The TUI, the remaining src/ui/ modules, and the merge, review and verdict modules use role and runner names in identifiers, comments and test titles.
 
 **Approach.**
@@ -420,13 +416,21 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - This part declares nothing new. It migrates uses of `RoleRunner`, `RunnerState`, `freshRunnerState`, `loadRunnerState`, `saveRunnerState`, `RunnerPi`, `makeRoleRunner` and `rolePhase`, and converts comments. Most hits are comments: src/ui/tui/tui-keys.ts (about 45 lines), tui-editors.ts, tui.tsx, tui-pane.ts and tui-input.ts.
 - src/ui/tick-progress-model.ts, progress-data.ts, transcript.ts and transcript-tail.ts: comments and `LoopState` uses. The tick words in tick-progress-model.ts are Plain terms code run's; leave them.
 - src/merge/, src/review/ and src/verdict/: `LoopState`/`saveLoopState`/`LoopRunner`/`LoopPi`/`loopPhase` uses and comments ("the authoring loop" → "the authoring role").
+- Classify every hit by hand; never run a blanket `loop`→`role` substitution over a file. In these files the following phrases name a JavaScript loop or another kept loop, and they stay word for word (replanned 2026-10-19 by the plan role, after two review rounds rejected a renamed re-stack loop):
+  - src/merge/merge-stack.ts file header: "re-stack loop for a main that moves mid-check" (the `BATCH_RESTACK_ATTEMPTS` retry loop in `mergeStack`).
+  - src/merge/merge-drain.ts: "the end-of-batch loop" and "the settle loop".
+  - src/merge/merge-batch.ts: "caller's end-of-batch loop".
+  - src/merge/merge-pipeline.ts: "resolved once by the poll loop".
+  - src/review/suite-rerun.ts: "a for loop" (a shell `for` loop in a test command).
+  - src/ui/tui/tui.tsx: "read loop" and "ink's input loop".
+  Every other bare "loop" in src/merge/, src/review/ and src/verdict/ means the owning role or its runner (for example "the owning loop" in merge-core.ts, merge-queue.ts and refusal.ts becomes "the owning runner", "a loop emits" in reply-contract.ts becomes "a role emits"). When a hit is not on this list and its sense is unclear, read the code it describes: a loop statement, a retry or a re-run keeps "loop".
 - Tests: test/tui*.test.ts, test/progress.test.ts, test/fixtures/tui-fixtures.ts, the merge tests and fixtures (test/merge-*.test.ts, test/merge-to-main*.test.ts, test/merge-drain-verify.test.ts, test/merger*.test.ts, test/work-merged-cache.test.ts, test/fixtures/merge-fixtures.ts, merger-fixtures.ts and merge-to-main-fixtures.ts), test/review*.test.ts, test/refusal.test.ts, test/reply-contract.test.ts, test/no-change.test.ts and test/attribute-red-check.test.ts. Leave test/tui-notebook.test.ts's file name to Plain terms code cleanup; convert only its loop words.
 
 **Files touched.** src/ui/tui/*.ts(x), src/ui/tick-progress-model.ts, src/ui/progress-data.ts, src/ui/transcript.ts, src/ui/transcript-tail.ts, src/merge/*.ts, src/review/*.ts, src/verdict/*.ts, and the tests listed above.
 
 **Acceptance criteria.**
 - `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_'` over this part's files lists only `customLoop*` identifiers.
-- `grep -rnwiE 'loops?'` over the same files lists only kept senses and serialized names.
+- `grep -rnwiE 'loops?'` over the same files lists only kept senses and serialized names, and every phrase in the kept-loop list above still appears word for word in its file (for example `grep -n 're-stack loop' src/merge/merge-stack.ts` still matches).
 - No behavior change: TUI frames and merge outcomes in the tests are unchanged, and the suite's test count is unchanged.
 - `npm run test` passes.
 
