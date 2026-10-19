@@ -4,10 +4,11 @@ import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
 /** The team-scope config-key editor arm (Ctrl+N run cap, Ctrl+W worktree slots, Ctrl+E
- * notify hook, Ctrl+P provider concurrency caps, Ctrl+L fallback) on the shared prompt line —
+ * notify hook, Ctrl+P provider concurrency caps, Ctrl+L fallback, Ctrl+Y claude window reserve,
+ * Ctrl+A team model) on the shared prompt line —
  * the terminal twins of the dashboard Settings fields and their `tumwater config set <key>`
  * commands.
- * One factory serves the five team-scope editors because they share the whole shape: a mode
+ * One factory serves the team-scope editors because they share the whole shape: a mode
  * flag plus a saved-draft pair, the mutually-exclusive held registry, the Activity-view
  * (view 0, the team scope) scope pin, a pre-fill read from the file, and an Enter that
  * writes through the shared setConfigKey/unsetConfigKey family (so validateConfig owns the
@@ -17,7 +18,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
 interface TeamConfigKeySpec {
   /** The session's mutually-exclusive-held registry name this editor owns (and toggles on
    * the `held` object as it enters and leaves). */
-  mode: "concurrency" | "slots" | "notify" | "providerCaps" | "fallback" | "claudeReserve";
+  mode: "concurrency" | "slots" | "notify" | "providerCaps" | "fallback" | "claudeReserve" | "model";
   /** The Ctrl+<key> arm that opens (and, while open, toggles out of) the editor. */
   openCtrl: string;
   /** The tumwater.json key the editor writes on Enter — cleared (`unsetConfigKey`) on an
