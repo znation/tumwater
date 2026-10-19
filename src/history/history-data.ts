@@ -238,9 +238,10 @@ export function tickRowsMatchingGrep(rows: TickRow[], pattern: string): TickRow[
 
 /** The merge bookkeeping resolveQueuedResult joins over: per loop, the `merge_queued` pins
  * and the `merge_done`/`merge_failed` outcomes, each list oldest-first (the scan order). Exported
- * as one helper with exactly two call sites — readTickRows' history-row join and the failure
- * digest's time-and-spend fold (time-spend.ts) — so the two collectors cannot disagree about
- * which events feed the join or in what order they sit: a third merge-bookkeeping event
+ * as one helper with exactly three call sites — readTickRows' history-row join, the failure
+ * digest's time-and-spend fold (time-spend.ts), and tick-detail-data.ts — so the collectors
+ * cannot disagree about which events feed the join or in what order they sit: a fourth
+ * merge-bookkeeping event
  * type, or a changed order rule, is edited once here. Callers bucket only the events they
  * need; the digest folds its `review_rejected` reasons with its own pass.
  * Roles or cutoffs are the caller's concern: pass a role-scoped or wider-read event list and

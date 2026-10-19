@@ -80,9 +80,10 @@ function readPromptFile(file: string): string {
 }
 
 /** A `--file <path>` value that must be present: the one home of the missing-value refusal
- * shared by the init and prompt parsers (two call sites — parseInitArgs' and parsePromptArgs'
- * --file branches), so the wording cannot drift between them. The flag token itself is
- * claimed by each parser's stray-argument accounting; this helper only owns the value. */
+ * shared by every `--file`-taking parser — init, prompt's edit and enqueue branches, plan/bug
+ * add and edit (fileAndAnnounce / editAndAnnounce), and the questions command — so the wording
+ * cannot drift between them. The flag token itself is claimed by each parser's stray-argument
+ * accounting; this helper only owns the value. */
 export function promptFileValue(file: string | undefined): string {
   if (!file) fail("--file needs a path");
   return file;

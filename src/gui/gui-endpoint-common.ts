@@ -32,10 +32,10 @@ export async function readPostBody(
  * wake/abort/prompt-role/pause-role family states the body-discipline-and-role-check pairing
  * once instead of two guard lines per handler. Its null return means the response is already
  * written and the handler must stop; callers keep their own `if (!body) return` bail. Exactly
- * seven call sites — handlePromptRole, handleWake, handleWakeCancel and handleResetCounters
- * (allowMissing, the {} → all-roles default), handleAbort, handlePauseRole, and
- * handleRoleNotes; handlePromptCancel deliberately does not ride it, since its role is
- * optional and validates only when present. */
+ * eight call sites — handlePromptRole, handleWake, handleWakeCancel and handleResetCounters
+ * (allowMissing, the {} → all-roles default), handleAbort, handlePauseRole,
+ * handleRoleNotes, and handleRetire; handlePromptCancel deliberately does not ride it, since
+ * its role is optional and validates only when present. */
 export async function readRoleBody(
   req: http.IncomingMessage,
   res: http.ServerResponse,
