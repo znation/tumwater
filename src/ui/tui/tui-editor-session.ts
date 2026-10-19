@@ -139,6 +139,29 @@ export interface TuiEditorSession {
   heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "roleModel" | "model" | "instances" | "claudeReserve"): string | null;
 }
 
+/** The prompt-line editors a keypress can be refused for, each with its busy-guard subject, in
+ * the order `heldEditorFlash` reports them when more than one flag reads held. */
+const HOLDER_SUBJECTS: ReadonlyArray<readonly [Parameters<TuiEditorSession["heldEditorFlash"]>[0], string]> = [
+  ["attach", "image attach"],
+  ["notes", "notes edit"],
+  ["brief", "brief edit"],
+  ["retire", "retire role"],
+  ["quiet", "quiet hours"],
+  ["model", "model edit"],
+  ["interval", "min run interval"],
+  ["instructions", "instructions edit"],
+  ["providerCaps", "provider caps"],
+  ["concurrency", "run cap edit"],
+  ["slots", "worktree slots"],
+  ["notify", "notify hook"],
+  ["backends", "agent backends"],
+  ["fallback", "fallback edit"],
+  ["roleModel", "role model edit"],
+  ["instances", "role instances"],
+  ["claudeReserve", "claude reserve"],
+  ["budget", "budget edit"],
+];
+
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
  * editor modules then take this session plus each keypress's `TuiEditorCtx`. */
 export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
@@ -212,40 +235,9 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.answer) return session.busyFlash("answer");
       if (h.entry) return session.busyFlash("entry edit");
       if (h.rolePromptFor) return session.busyFlash(`prompt for ${h.rolePromptFor}`);
-      if (h.attach && entering !== "attach") return session.busyFlash("image attach");
-      if (h.notes && entering !== "notes") return session.busyFlash("notes edit");
-      if (h.brief && entering !== "brief") return session.busyFlash("brief edit");
-      if (h.retire && entering !== "retire") return session.busyFlash("retire role");
-      if (h.quiet && entering !== "quiet") return session.busyFlash("quiet hours");
-      if (h.model && entering !== "model") return session.busyFlash("model edit");
-      if (h.interval && entering !== "interval") return session.busyFlash("min run interval");
-      if (h.instructions && entering !== "instructions") return session.busyFlash("instructions edit");
-      if (h.providerCaps && entering !== "providerCaps") return session.busyFlash("provider caps");
-      if (h.concurrency && entering !== "concurrency") return session.busyFlash("run cap edit");
-      if (h.slots && entering !== "slots") return session.busyFlash("worktree slots");
-      if (h.notify && entering !== "notify") return session.busyFlash("notify hook");
-      if (h.backends && entering !== "backends") return session.busyFlash("agent backends");
-      if (h.fallback && entering !== "fallback") return session.busyFlash("fallback edit");
-      if (h.roleModel && entering !== "roleModel") return session.busyFlash("role model edit");
-      if (h.instances && entering !== "instances") return session.busyFlash("role instances");
-      if (h.claudeReserve && entering !== "claudeReserve") return session.busyFlash("claude reserve");
-      if (entering === "attach" && h.budget) return session.busyFlash("budget edit");
-      if (entering === "notes" && (h.attach || h.budget)) return session.busyFlash(h.attach ? "image attach" : "budget edit");
-      if (entering === "brief" && h.budget) return session.busyFlash("budget edit");
-      if (entering === "retire" && (h.attach || h.notes || h.budget)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : "budget edit");
-      if (entering === "quiet" && (h.attach || h.notes || h.budget || h.brief || h.retire)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : "budget edit");
-      if (entering === "interval" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : "budget edit");
-      if (entering === "instructions" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "budget edit");
-      if (entering === "providerCaps" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions || h.model)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : h.model ? "model edit" : "budget edit");
-      if (entering === "model" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions || h.providerCaps)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : h.providerCaps ? "provider caps" : "budget edit");
-      if (entering === "concurrency" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "instructions edit");
-      if (entering === "slots" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : "budget edit");
-      if (entering === "notify" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "instructions edit");
-      if (entering === "backends" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions || h.providerCaps || h.concurrency)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : h.providerCaps ? "provider caps" : h.concurrency ? "run cap edit" : "budget edit");
-      if (entering === "fallback" && h.budget) return session.busyFlash("budget edit");
-      if (entering === "roleModel" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "instructions edit");
-      if (entering === "instances" && h.budget) return session.busyFlash("budget edit");
-      if (entering === "claudeReserve" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions || h.providerCaps || h.concurrency || h.slots || h.notify || h.backends)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : h.providerCaps ? "provider caps" : h.concurrency ? "run cap edit" : h.slots ? "worktree slots" : h.notify ? "notify hook" : h.backends ? "agent backends" : "budget edit");
+      for (const [mode, subject] of HOLDER_SUBJECTS) {
+        if (h[mode] && entering !== mode) return session.busyFlash(subject);
+      }
       return null;
     },
   };
