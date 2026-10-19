@@ -125,24 +125,38 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
   sendJson(res, 200, await collectRoleChange(root, role));
 }
 
+/** Parse and validate the role-scoped, sinceMs-or-days query the report and failures endpoints
+ * both take: the `?role=` filter (rejectBadRole — unknown or empty id → 400) and, when
+ * `?sinceMs=` is present, the trailing-window length (reportSinceMs, which 400s a simultaneous
+ * `?days=`). Returns null once a 400 is sent. `sinceMs` is defined exactly when the caller
+ * should use the since shape; otherwise it falls through to the days shape with `windowDays(q)`.
+ * The one home of that shared scaffolding, so the two endpoints cannot drift on the role rule or
+ * the days-vs-sinceMs mutual exclusion (the server twin of reportEndpoint on the GUI client). */
+function reportScope(q: URLSearchParams, res: http.ServerResponse, root: string): { role?: string; sinceMs?: number } | null {
+  const role = q.get("role");
+  if (role !== null && rejectBadRole(root, res, role)) return null;
+  if (q.get("sinceMs") !== null) {
+    const sinceMs = reportSinceMs(q, res);
+    if (sinceMs === null) return null;
+    return { role: role ?? undefined, sinceMs };
+  }
+  return { role: role ?? undefined };
+}
+
 /** Handle GET /api/report?days=N[&role=<id>] or /api/report?sinceMs=<ms>[&role=<id>]: the
  * usage report — the day series (collectReport's ReportData) as JSON the dashboard's report tab
  * charts, or, when sinceMs is set, the trailing-window totals rendered through
- * renderSinceReportMarkdown as { markdown } (the CLI's `report --since` shape), bounded by the
- * reportSinceMs helper. The day window follows windowDays. An absent role is the team-wide
- * report exactly as before; a present one is a filter, validated through rejectBadRole (unknown,
- * including the empty string → 400 naming the valid ids) and handed to the collector's role
- * scope. Reads files directly, so it works whether or not the team is running. */
+ * renderSinceReportMarkdown as { markdown } (the CLI's `report --since` shape). The day window
+ * follows windowDays. An absent role is the team-wide report; a present one is the filter
+ * reportScope validated. Reads files directly, so it works whether or not the team is running. */
 export function handleReport(q: URLSearchParams, res: http.ServerResponse, root: string): void {
-  const role = q.get("role");
-  if (role !== null && rejectBadRole(root, res, role)) return;
-  if (q.get("sinceMs") !== null) {
-    const sinceMs = reportSinceMs(q, res);
-    if (sinceMs === null) return;
-    sendJson(res, 200, { markdown: renderSinceReportMarkdown(collectReportSince(root, sinceMs, role ?? undefined)) });
+  const scope = reportScope(q, res, root);
+  if (scope === null) return;
+  if (scope.sinceMs !== undefined) {
+    sendJson(res, 200, { markdown: renderSinceReportMarkdown(collectReportSince(root, scope.sinceMs, scope.role)) });
     return;
   }
-  sendJson(res, 200, collectReport(root, windowDays(q), role ?? undefined));
+  sendJson(res, 200, collectReport(root, windowDays(q), scope.role));
 }
 
 /** Parse and bound the report endpoints' `?sinceMs=` trailing-window length: a simultaneous
@@ -168,15 +182,13 @@ function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | n
  * handleReport: absent → the team digest, present → validated and scoped. Reads files
  * directly, so it works with no team running. */
 export function handleFailures(q: URLSearchParams, res: http.ServerResponse, root: string): void {
-  const role = q.get("role");
-  if (role !== null && rejectBadRole(root, res, role)) return;
-  if (q.get("sinceMs") !== null) {
-    const sinceMs = reportSinceMs(q, res);
-    if (sinceMs === null) return;
-    sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReportSince(root, sinceMs, role ?? undefined)) });
+  const scope = reportScope(q, res, root);
+  if (scope === null) return;
+  if (scope.sinceMs !== undefined) {
+    sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReportSince(root, scope.sinceMs, scope.role)) });
     return;
   }
-  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), role ?? undefined)) });
+  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), scope.role)) });
 }
 
 /** Handle GET /api/history?role=<id>&n=N[&grep=<text>] — or ?role=<id>&sinceMs=<ms> for a
