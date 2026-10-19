@@ -40,7 +40,9 @@ export function selectedEditableEntry(
 
 /** The project-status pane (view roleIds.length + 1) of the TUI (src/ui/tui/tui.tsx): the
  * entry browser's selection/scroll state, the up/down and PgUp/PgDn entry arms, and the
- * two-step Ctrl+X cancel arm (plus the answer/title-edit selection clear the editors call back).
+ * three entry-action arms (Ctrl+X cancel, Ctrl+V move-to-top and Ctrl+R release) — each
+ * two-step arming except the one-press move — plus the answer/title-edit selection clear the
+ * editors call back.
  * Split out of the pane-navigation monolith; it owns the pane's selection/scroll state and
  * the arms that touch them. */
 export function createBacklogPane(

@@ -18,12 +18,12 @@ import type { TuiPaneCtx, TuiPaneEditorState } from "./tui-pane-ctx.js";
  * per-pane factories live beside it in tui-pane-session.ts and the tui-pane-*.ts modules, each
  * owning the state and the handler arms of the views it serves. This factory builds the session
  * and the modules, then owns the cross-cutting seams the shell calls: beginKey (the armed
- * two-step Ctrl+X targets), editorCtx (the per-keypress pane read the editors' open arms use),
- * cycleView (routing each view's enter in today's view order), handleKey (routing each key to
- * the matching pane module in today's dispatch order), syncRoster (the roster shift/clamp and
- * the per-module scope drops), setLineBudgets, and state (merging each module's slice in view
- * order). Export names and TuiPanesDeps are unchanged, so tui-keys.ts and tui-editors.ts keep
- * their call sites. */
+ * two-step Ctrl+X and Ctrl+R targets), editorCtx (the per-keypress pane read the editors'
+ * open arms use), cycleView (routing each view's enter in today's view order), handleKey
+ * (routing each key to the matching pane module in today's dispatch order), syncRoster (the
+ * roster shift/clamp and the per-module scope drops), setLineBudgets, and state (merging each
+ * module's slice in view order). Export names and TuiPanesDeps are unchanged, so tui-keys.ts
+ * and tui-editors.ts keep their call sites. */
 export function createTuiPanes(deps: TuiPanesDeps) {
   const session = createTuiPaneSession(deps);
   const activity = createActivityPane(session);

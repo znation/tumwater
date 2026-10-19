@@ -8,9 +8,9 @@ import type { HistoryResultClass } from "../../history/history-data.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import type { labeledBacklogEntries } from "./tui-backlog.js";
 
-/** A backlog-entry cancel target (plan or bug position + title), shared by the backlog pane's
- * two-step Ctrl+X arm and the shell's beginKey. Internal to the pane session module: the armed
- * targets ride on the session only. */
+/** A backlog-entry cancel or release target (plan or bug position + title), shared by the
+ * backlog pane's two-step Ctrl+X arm, its two-step Ctrl+R release arm, and the shell's
+ * beginKey. Internal to the pane session module: the armed targets ride on the session only. */
 interface CancelTarget {
   kind: "plan" | "bug";
   position: number;
@@ -111,9 +111,9 @@ export const REPORT_WINDOWS: ReadonlyArray<[number | null, string]> = [
 /** The shared cross-pane session and seams every pane module takes (the analog of
  * `TuiEditorSession`): the state `createTuiKeys` and the pane arms all share — the view index,
  * the roster, the shared pane scroll/budget state, the active pane's cache slot, and the armed
- * two-step Ctrl+X targets — plus every seam (`TuiPanesDeps`) and the shared cycle helpers,
- * single-homed here so the panes cannot drift. Per-pane state and arms live in each pane module
- * beside this session. */
+ * two-step Ctrl+X and Ctrl+R targets — plus every seam (`TuiPanesDeps`) and the shared cycle
+ * helpers, single-homed here so the panes cannot drift. Per-pane state and arms live in each
+ * pane module beside this session. */
 export interface TuiPaneSession {
   /** The current pane index (the transcript/view window). */
   view: number;
