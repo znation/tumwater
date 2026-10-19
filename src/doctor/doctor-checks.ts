@@ -47,7 +47,7 @@ import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, config
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage, textOr } from "../text/text.js";
 import { lowerMedian } from "../collections.js";
-import { formatGB, shortSha } from "../text/format.js";
+import { formatBytes, formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { eventLogState, eventsSince, readEventsSince, type EventLogState } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
@@ -310,14 +310,6 @@ function treeBytes(dir: string): number {
     }
   }
   return total;
-}
-
-/** A human-readable byte count for the transcript-size line. */
-function formatBytes(n: number): string {
-  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;
-  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${n} B`;
 }
 
 /** claude transcript disk — the total size of the claude config dir's `projects/`

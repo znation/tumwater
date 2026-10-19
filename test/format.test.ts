@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactTokens, formatGB, shortSha, usd, usdCap } from "../src/text/format.js";
+import { compactTokens, formatBytes, formatGB, shortSha, usd, usdCap } from "../src/text/format.js";
 
 // format.ts is the single home of the number, money, and hash formats every display surface
 // (status table, event feed, usage report, commit trailers) renders through. These tests pin
@@ -49,6 +49,19 @@ test("formatGB renders one decimal and the unit", () => {
   assert.equal(formatGB(30), "30.0 GB"); // whole values keep the decimal
   assert.equal(formatGB(3.24), "3.2 GB"); // rounds to one decimal
 });
+
+test("formatBytes picks the largest of the B/KB/MB/GB tiers, one decimal each", () => {
+  assert.equal(formatBytes(0), "0 B");
+  assert.equal(formatBytes(512), "512 B"); // below the KB threshold stays bytes
+  assert.equal(formatBytes(1536), "1.5 KB");
+  assert.equal(formatBytes(1024), "1.0 KB"); // KB keeps one decimal, whole values included
+  assert.equal(formatBytes(1536 * 1024), "1.5 MB");
+  assert.equal(formatBytes(1536 * 1024 * 1024), "1.5 GB"); // GB tier is covered, not dead
+  assert.equal(formatBytes(1024 ** 3), "1.0 GB");
+});
+
+// standalone unit pins for doctor-checks's claude transcript size and
+// doctor-model-checks's opencode db/spill sizes, which route through formatBytes now.
 
 test("usd always keeps two decimals; usdCap drops a whole-dollar .00", () => {
   assert.equal(usd(12.3), "$12.30");

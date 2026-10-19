@@ -71,3 +71,17 @@ export function usdCap(n: number): string {
 export function formatGB(n: number): string {
   return `${n.toFixed(1)} GB`;
 }
+
+/** A byte count for display, picking the largest of the B/KB/MB/GB tiers so the unit keeps the
+ * number small (`2.0 KB`, `1.5 MB`) — one decimal everywhere. The single home of the tiered
+ * byte format shared by the doctor's claude transcript size (doctor-checks.ts's `formatBytes`)
+ * and the opencode db/spill sizes (doctor-model-checks.ts's `opencodeBytes`), so the tiers and
+ * decimal width cannot drift per consumer. Distinct from `formatGB` above, which always renders
+ * a disk size in GB regardless of magnitude. The GUI's file-size label still formats from its
+ * own inline JS in gui-client-composer.ts: a separate runtime that cannot import TypeScript. */
+export function formatBytes(n: number): string {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;
+  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}

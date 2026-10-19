@@ -31,7 +31,7 @@ import { claudeEnv } from "../agent/claude/claude-env.js";
 import { parseJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
 import { modelPairName, pairDailyCost } from "../budget/budget.js";
-import { usd, usdCap } from "../text/format.js";
+import { formatBytes, usd, usdCap } from "../text/format.js";
 import { loadLoopStates } from "./doctor-holds.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
 import { agree } from "../text/phrases.js";
@@ -817,13 +817,6 @@ function opencodeDirBytes(dir: string): number {
   }
 }
 
-/** A byte count for display: MB, KB, or bytes. */
-function opencodeBytes(n: number): string {
-  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  if (n >= 1024) return `${Math.round(n / 1024)} KB`;
-  return `${n} B`;
-}
-
 /** OpenCode model, credential and leak readiness (plans/opencode-backend.md §7, part 7/7):
  * every model routed to opencode must be in the catalog cache — an unknown model fails, a
  * cached one reads "free" or its per-M prices and context window, and a thinking level with no
@@ -878,7 +871,7 @@ export async function checkOpencode(
   const db = statOrNull(opencodeDbPath(root));
   const spillDir = opencodeSpillDir(root);
   const spill = spillDir !== "" && statOrNull(spillDir)?.isDirectory() === true ? opencodeDirBytes(spillDir) : null;
-  const sizeNotes = `db ${opencodeBytes(db?.size ?? 0)}${spill !== null ? `, spill ${opencodeBytes(spill)}` : ", no spill dir"}`;
+  const sizeNotes = `db ${formatBytes(db?.size ?? 0)}${spill !== null ? `, spill ${formatBytes(spill)}` : ", no spill dir"}`;
   const found = [...fails, ...warns];
   const base =
     found.length === 0 ? `opencode ready — ${notes.join("; ")}; ${sizeNotes}` : found.join("; ");

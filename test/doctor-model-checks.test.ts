@@ -943,6 +943,17 @@ test("checkOpencode stands down on a pi-only config and reads the free model as 
   const free = await checkOpencode(root, empty, empty);
   assert.equal(free.level, "ok");
   assert.match(free.detail, /deepseek-v4\.1-flash-free — free/);
+  // The sizeNotes line routes through formatBytes, so the db/spill render is pinned here, and a
+  // kb-sized db exercises the KB tier (one decimal) via the real checkOpencode path, not only
+  // formatBytes's unit tests.
+  assert.match(free.detail, /db 0 B, no spill dir/);
+  const dbBytes = 1536;
+  const dbPath = path.join(root, ".tumwater", "opencode", "opencode.db");
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  fs.writeFileSync(dbPath, "x".repeat(dbBytes));
+  const withDb = await checkOpencode(root, empty, empty);
+  assert.match(withDb.detail, /db 1\.5 KB, no spill dir/);
+  assert.equal(withDb.level, "ok");
 });
 
 test("checkOpencode fails a model missing from the catalog cache", async () => {
