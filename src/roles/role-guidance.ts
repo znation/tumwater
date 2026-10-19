@@ -90,7 +90,7 @@ made the bug hard to CONFIRM — not to fix — as one line, \`**Validation gap:
    - real-run-needed — no offline path covered it; a real bounded run was required
    - no-observability — the failure left no trace
    - slow-check — the only verification was slow enough to shape the fix
-   - unclear-invariant — had to reconstruct what the code was supposed to guarantee first
+   - unclear-invariant — had to reconstruct what the code was supposed to guarantee first; record the reconstructed invariant in docs/invariants.md in the same commit so a later bug in that area does not reconstruct it again
 When nothing fits exactly, use the closest tag and say so in the sentence — never invent a
 tag. \`none\` is written, never omitted, so a tally has an honest denominator.`;
 

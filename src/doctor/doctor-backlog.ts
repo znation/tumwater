@@ -143,21 +143,35 @@ export function checkFixClaims(root: string): CheckOutcome {
  * closed-vocabulary consumer that enumerates the six non-`none` tags, and an entry with no line at
  * all is invisible to every one of them. Re-reads the newest Fixed records with the same
  * FIX_CLAIMS_CHECKED bound (pre-convention history would otherwise warn forever) and warns on a
- * missing or unrecognized tag. A warn, never a fail, like its sibling: a suspect record is
+ * missing or unrecognized tag. An entry declaring `unclear-invariant` should also have pinned the
+ * reconstructed guarantee in docs/invariants.md in the same commit — a fix that names no such
+ * section warns with that nudge (informational: code-pinned or prose-that-skips-the-filename fixes
+ * may spuriously warn). A warn, never a fail, like its sibling: a suspect record is
  * operator signal, not a broken environment. */
 export function checkValidationGaps(root: string): CheckOutcome {
   const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
   if (typeof doc !== "string") return doc;
   const records = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED);
   const suspects: Array<{ title: string; problem: string; tag?: string }> = [];
+  const unpinned: Array<{ title: string }> = [];
   for (const { title, body } of records) {
     const tag = validationGapTag(body);
     if (tag === null) suspects.push({ title, problem: "missing" });
     else if (!VALIDATION_GAP_TAGS.includes(tag)) suspects.push({ title, problem: "unrecognized", tag });
+    else if (tag === "unclear-invariant" && !body.toLowerCase().includes("docs/invariants.md"))
+      unpinned.push({ title });
   }
   const [first, ...rest] = suspects;
-  if (!first)
+  if (!first) {
+    if (unpinned.length > 0) {
+      const up = unpinned[0]!;
+      const more = andMore(unpinned.slice(1), (s) => `"${truncate(s.title, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
+      return warnOutcome(`BUGS.md record "${up.title}" is an \`unclear-invariant\` fix but names no ` +
+        `docs/invariants.md section — record the reconstructed guarantee there (a "Pinned by" line) in the ` +
+        `same commit so the next bug in that area does not reconstruct it again${more}`);
+    }
     return okOutcome(`newest ${records.length} Fixed record(s) carry a known Validation gap tag`);
+  }
   const more = andMore(rest, (s) => `"${truncate(s.title, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
   const what = first.problem === "missing"
     ? `BUGS.md record "${first.title}" has no **Validation gap:** line`

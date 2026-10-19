@@ -108,8 +108,9 @@ test("checkFixClaims warns instead of throwing when BUGS.md vanishes between the
 // must each carry exactly one `**Validation gap:**` line whose tag is one of the closed
 // vocabulary, `none` written rather than omitted (plans/repair-traces.md invariant 2). A missing
 // line or an unrecognized tag warns the operator, bounded to the newest FIX_CLAIMS_CHECKED so
-// pre-convention history never warns forever. Reads through validationGapTag, which is
-// fence-aware.
+// pre-convention history never warns forever, and a recent `unclear-invariant` fix that names no
+// docs/invariants.md section gets the pin-the-invariant nudge. Reads through
+// validationGapTag, which is fence-aware.
 
 /** A fixture tree whose BUGS.md Fixed section holds one full-body `### Entry N` record per given
  * tag (newest first, the template convention); a `null` item writes no **Validation gap:** line at
@@ -133,6 +134,41 @@ test("checkValidationGaps reads ok when the newest Fixed entries carry known tag
   const r = checkValidationGaps(validationGapsRepo(["none", "no-fake"]));
   assert.equal(r.level, "ok", r.detail);
   assert.match(r.detail, /newest 2 Fixed record\(s\) carry a known Validation gap tag/);
+});
+
+test("checkValidationGaps nudges an unclear-invariant fix that names no invariants section", () => {
+  // An `unclear-invariant` fix should pin the reconstructed guarantee in docs/invariants.md in
+  // the same commit; a recent one whose body never names that file warns with the nudge.
+  const root = tmpdir("doctor-validation-gaps-unclear-");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n### Entry 0: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n- **Validation gap:** unclear-invariant — had to reconstruct the guarantee first.\n`,
+  );
+  const r = checkValidationGaps(root);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /"Entry 0: details/);
+  assert.match(r.detail, /unclear-invariant.*docs\/invariants\.md/);
+  assert.match(r.detail, /Pinned by/);
+});
+
+test("checkValidationGaps stays silent when an unclear-invariant fix names the section", () => {
+  const root = tmpdir("doctor-validation-gaps-unclear-pinned-");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n### Entry 0: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n- **Validation gap:** unclear-invariant — had to reconstruct the guarantee first.\n\nPinned the invariant as a "Pinned by" line in docs/invariants.md.\n`,
+  );
+  const r = checkValidationGaps(root);
+  assert.equal(r.level, "ok", r.detail);
+  assert.match(r.detail, /newest 1 Fixed record\(s\) carry a known Validation gap tag/);
+});
+
+test("checkValidationGaps ignores an unclear-invariant fix outside the newest 10 window", () => {
+  // The pinned-invariant nudge is bounded like every other validation-gap concern: a pre-window
+  // record predating the convention must not warn forever.
+  const tagged = Array.from({ length: 10 }, () => "no-fake");
+  const r = checkValidationGaps(validationGapsRepo([...tagged, "unclear-invariant"]));
+  assert.equal(r.level, "ok", r.detail);
+  assert.match(r.detail, /newest 10 Fixed record/);
 });
 
 test("checkValidationGaps warns naming the heading and an unrecognized tag", () => {
