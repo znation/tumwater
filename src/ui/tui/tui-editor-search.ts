@@ -32,13 +32,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
     ctx: TuiEditorCtx,
   ): boolean => {
     if (
-      !key.ctrl && str === "/" && !searchMode && !session.held.budget &&
-      !session.held.rolePromptFor && !session.held.pause &&
-      !session.held.queued && !session.held.answer && !session.held.entry &&
-      !session.held.attach && !session.held.notes && !session.held.brief &&
-      !session.held.retire && !session.held.quiet && !session.held.interval &&
-      !session.held.instructions && !session.held.providerCaps && !session.held.concurrency && !session.held.slots &&
-      !session.held.notify && !session.held.backends && !session.held.fallback && !session.held.roleModel && !session.held.model &&
+      !key.ctrl && str === "/" && !searchMode && !session.anyEditorHeld() &&
       (ctx.view === 0 || ctx.view === ctx.roleIds.length + 1 || ctx.view === ctx.roleIds.length + 4) && session.input === ""
     ) {
       // `/` opens a free-text search on the prompt line (the pager's search key; this project

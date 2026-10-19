@@ -133,15 +133,19 @@ export interface TuiEditorSession {
   settleDraft(saveInput: (text: string) => void, saveCursor: (pos: number) => void): void;
   /** The one-line editor's busy-guard wording. */
   busyFlash(subject: string): string;
+  /** Whether any prompt-line editor other than `except` holds the line — the guard for a key that
+   * must never disturb an editor's pre-filled text. */
+  anyEditorHeld(except?: "pause"): boolean;
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
-   * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "roleModel" | "model" | "instances" | "claudeReserve"): string | null;
+   * its own key while it already holds the line must toggle/exit it, not flash the way out; null
+   * means no editor is entering, so any held editor flashes. */
+  heldEditorFlash(entering: null | "pause" | "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "roleModel" | "model" | "instances" | "claudeReserve"): string | null;
 }
 
 /** The prompt-line editors a keypress can be refused for, each with its busy-guard subject, in
  * the order `heldEditorFlash` reports them when more than one flag reads held. */
-const HOLDER_SUBJECTS: ReadonlyArray<readonly [Parameters<TuiEditorSession["heldEditorFlash"]>[0], string]> = [
+const HOLDER_SUBJECTS: ReadonlyArray<readonly [Exclude<NonNullable<Parameters<TuiEditorSession["heldEditorFlash"]>[0]>, "pause">, string]> = [
   ["attach", "image attach"],
   ["notes", "notes edit"],
   ["brief", "brief edit"],
@@ -227,10 +231,13 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     busyFlash(subject) {
       return `finish or cancel the ${subject} first (Esc cancels)`;
     },
+    anyEditorHeld(except) {
+      return session.heldEditorFlash(except ?? null) !== null;
+    },
     heldEditorFlash(entering) {
       const h = session.held;
       if (h.search) return session.busyFlash("search");
-      if (h.pause) return session.busyFlash("pause");
+      if (h.pause && entering !== "pause") return session.busyFlash("pause");
       if (h.queued) return session.busyFlash("inbox edit");
       if (h.answer) return session.busyFlash("answer");
       if (h.entry) return session.busyFlash("entry edit");
