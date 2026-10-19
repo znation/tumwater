@@ -8,7 +8,7 @@ import { heldByMainRed } from "../status/status-polls.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.js";
 import { readLiveProgress, type LiveProgress } from "./progress-data.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import { humanSeconds, secondsUntil } from "../text/datetime.js";
+import { humanSeconds, humanUntil, secondsUntil } from "../text/datetime.js";
 import {
   duration,
   inFlightDetail,
@@ -195,7 +195,7 @@ export function loopPhase(
     // `· resumes in <s>` — an indefinite per-role pause or a team-wide pause (deadline
     // absent) keeps today's bare `paused`, so the surfaces cannot drift.
     if (pausedUntilMs !== undefined && pausedUntilMs > Date.now()) {
-      return `paused · resumes in ${humanSeconds(Math.max(0, Math.round((pausedUntilMs - Date.now()) / 1000)))}`;
+      return `paused · resumes in ${humanUntil(pausedUntilMs, Date.now())}`;
     }
     // An absent deadline (indefinite per-role pause, team-wide pause) or an expired one
     // (the marker team-state already reads as unpaused) keeps today's bare `paused` — never
