@@ -5,6 +5,7 @@ import { pushPromptHistory, recallPromptHistory } from "./tui-prompt-history.js"
 import { createTuiEditorSession } from "./tui-editor-session.js";
 import { createBudgetEditor } from "./tui-editor-budget.js";
 import { createQuietEditor } from "./tui-editor-quiet.js";
+import { createIntervalEditor } from "./tui-editor-interval.js";
 import { createAttachEditor } from "./tui-editor-attach.js";
 import { createNotesEditor } from "./tui-editor-notes.js";
 import { createBriefEditor } from "./tui-editor-brief.js";
@@ -95,6 +96,8 @@ interface TuiEditorState {
   retireMode: boolean;
   /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
   quietMode: boolean;
+  /** The Transcript view's Ctrl+S min-run-interval mode holds the prompt line. */
+  intervalMode: boolean;
 }
 
 /** The prompt-line editor subsystem `createTuiKeys` constructs: the aggregator that owns the
@@ -135,6 +138,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const editors: TuiEditorModule[] = [
     createBudgetEditor(session),
     createQuietEditor(session),
+    createIntervalEditor(session),
     createAttachEditor(session),
     createNotesEditor(session),
     createPauseEditor(session),
@@ -197,7 +201,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, pause and search modes keep them out —
     // recalling a prompt into the cap/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.quiet && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire) {
+    if (!session.held.budget && !session.held.quiet && !session.held.interval && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -257,6 +261,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         briefEditMode: session.held.brief,
         retireMode: session.held.retire,
         quietMode: session.held.quiet,
+        intervalMode: session.held.interval,
       };
     },
   };

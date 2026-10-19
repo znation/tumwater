@@ -2994,7 +2994,7 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false };
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false, intervalMode: false };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
   // exclusion every other mode enforces, or they would run over the retire modal.
@@ -3004,6 +3004,8 @@ test("promptLineFree is false while retire-edit mode holds the line, so the Heal
   es.quietMode = true;
   assert.equal(promptLineFree(es), false, "the quiet editor blocks the Transcript pane's own arms");
   es.quietMode = false;
+  es.intervalMode = true;
+  assert.equal(promptLineFree(es), false, "the interval editor blocks the Transcript pane's own arms");
 });
 
 test("Ctrl+O on a role's Transcript edits that role's quiet-hours window, not another's or the team's", () => {
@@ -3099,4 +3101,62 @@ test("Ctrl+X retire refuses a role the safety rails object to and removes nothin
   assert.equal(keys.state().retireMode, true, "a refusal stays in the editor");
   assert.notEqual(sh(root, "git", "branch", "--list", branchName("improve")).trim(), "", "the branch survives");
   keys.handleKey(undefined, { name: "escape" });
+});
+
+test("Ctrl+S on a role's Transcript edits that role's min run interval; instance and director write the base key", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "feature-2", "director"]);
+  const intervalOf = (role: string): number | undefined => {
+    const file = path.join(root, "tumwater.json");
+    if (!fs.existsSync(file)) return undefined;
+    return (readJson(file) as { roles?: Record<string, { minRunIntervalSeconds?: number }> })
+      .roles?.[role]?.minRunIntervalSeconds;
+  };
+
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature's transcript
+  assert.equal(keys.state().view, 1);
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature");
+
+  // Open: an override-less role pre-fills an empty line (no draft saved), and Esc restores the
+  // saved draft byte-for-byte with nothing written.
+  for (const ch of "pending draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().intervalMode, true);
+  assert.equal(keys.state().input, "", "an override-less role pre-fills an empty line");
+  assert.match(keys.state().flash!, /edit feature's min run interval/);
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().intervalMode, false);
+  assert.equal(keys.state().input, "pending draft", "Esc restores the saved draft");
+  assert.equal(intervalOf("feature"), undefined, "Esc writes nothing");
+
+  // Enter on a valid number writes the dotted key for the VIEWED role through setConfigKey.
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  for (const ch of "90") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().intervalMode, false, "a saved interval leaves edit mode");
+  assert.equal(keys.state().input, "pending draft", "Enter restores the saved draft");
+  assert.match(keys.state().flash!, /feature: min run interval set to 90s/);
+  assert.equal(intervalOf("feature"), 90, "the override is written as a JSON number");
+
+  // An instance id writes its base role's key — roles.feature, not roles.feature-2 — and the
+  // director (which has no exemption) writes roles.director.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature-2's transcript (view 2)
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "feature-2");
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().input, "90", "an instance re-opening pre-fills its base role's override");
+  for (let i = 0; i < 2; i++) keys.handleKey(undefined, { name: "backspace" });
+  for (const ch of "45") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(intervalOf("feature"), 45, "an instance id writes its base role's key");
+  assert.equal(intervalOf("feature-2"), undefined, "no per-instance entry is left behind");
+
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → director's transcript (view 3)
+  assert.equal(keys.state().roleIds[keys.state().view - 1], "director");
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().input, "", "the director opens pre-filled empty when its file sets nothing");
+  for (const ch of "30") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash!, /director: min run interval set to 30s/);
+  assert.equal(intervalOf("director"), 30, "the director's override is written through the same core");
 });

@@ -64,6 +64,8 @@ interface TuiKeysState {
   retireMode: boolean;
   /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
   quietMode: boolean;
+  /** The Transcript view's Ctrl+S min-run-interval mode holds the prompt line. */
+  intervalMode: boolean;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
   /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */

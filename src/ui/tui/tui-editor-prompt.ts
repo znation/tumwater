@@ -39,7 +39,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
       !session.held.budget &&
       !session.held.pause &&
       !session.held.queued && !session.held.answer && !session.held.entry &&
-      !session.held.notes && !session.held.quiet &&
+      !session.held.notes && !session.held.quiet && !session.held.interval &&
       ctx.roleIds.length > 0 &&
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
       key.ctrl && key.name === "r"

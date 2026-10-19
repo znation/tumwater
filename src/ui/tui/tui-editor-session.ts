@@ -47,6 +47,8 @@ interface TuiHeld {
   retire: boolean;
   /** The Transcript view's Ctrl+O quiet-hours editor holds the prompt line. */
   quiet: boolean;
+  /** The Transcript view's Ctrl+S min-run-interval editor holds the prompt line. */
+  interval: boolean;
 }
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
@@ -103,7 +105,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet"): string | null;
+  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -130,6 +132,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       brief: false,
       retire: false,
       quiet: false,
+      interval: false,
     },
     root: deps.root,
     now: deps.now,
@@ -170,11 +173,13 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.brief && entering !== "brief") return session.busyFlash("brief edit");
       if (h.retire && entering !== "retire") return session.busyFlash("retire role");
       if (h.quiet && entering !== "quiet") return session.busyFlash("quiet hours");
+      if (h.interval && entering !== "interval") return session.busyFlash("min run interval");
       if (entering === "attach" && h.budget) return session.busyFlash("budget edit");
       if (entering === "notes" && (h.attach || h.budget)) return session.busyFlash(h.attach ? "image attach" : "budget edit");
       if (entering === "brief" && h.budget) return session.busyFlash("budget edit");
       if (entering === "retire" && (h.attach || h.notes || h.budget)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : "budget edit");
       if (entering === "quiet" && (h.attach || h.notes || h.budget || h.brief || h.retire)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : "budget edit");
+      if (entering === "interval" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : "budget edit");
       return null;
     },
   };

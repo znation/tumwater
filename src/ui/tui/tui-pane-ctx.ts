@@ -21,6 +21,8 @@ export interface TuiPaneEditorState {
   retireMode: boolean;
   /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
   quietMode: boolean;
+  /** The Transcript view's Ctrl+S min-run-interval mode holds the prompt line. */
+  intervalMode: boolean;
 }
 
 /** The per-keypress read `createTuiKeys` passes to every pane arm — the editor flags the
@@ -40,7 +42,7 @@ export function promptLineFree(es: TuiPaneEditorState): boolean {
   return (
     !es.budgetMode && !es.rolePromptFor && !es.searchMode &&
     !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
-    !es.notesEditFor && !es.briefEditMode && !es.retireMode && !es.quietMode
+    !es.notesEditFor && !es.briefEditMode && !es.retireMode && !es.quietMode && !es.intervalMode
   );
 }
 

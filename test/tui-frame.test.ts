@@ -314,3 +314,10 @@ test("the activity hint names Ctrl+Q and the stop editor reads `stop in ›` wit
   assert.match(plain(promptPrefix(edit)), /stop in/);
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, edit, 300)), /schedule stop/);
 });
+
+test("the transcript Ctrl+S interval mode names its save/cancel keys and a `min run interval ›` prefix", () => {
+  const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null };
+  const edit = { ...base, intervalMode: true };
+  assert.equal(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, edit, 300)), "Enter save interval · Esc cancel · Ctrl+D quit");
+  assert.equal(plain(promptPrefix(edit)), "min run interval › ");
+});

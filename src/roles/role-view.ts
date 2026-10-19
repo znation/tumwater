@@ -188,7 +188,7 @@ export interface RoleViewPayload {
  * tell an operator-set override from a seeded default. This reads the same raw file view
  * unsetConfigKey judges presence against (configPath + CONFIG_BASENAME + objectOrEmpty), so
  * the override tag and the drawer's clear path agree with what unsetting can actually remove. */
-function rawRoleField(root: string, roleId: string, field: string): unknown {
+export function rawRoleField(root: string, roleId: string, field: string): unknown {
   const { raw } = parseJsonConfig(configPath(root), CONFIG_BASENAME);
   const rawRoles = objectOrEmpty(raw).roles as Record<string, unknown> | undefined;
   const entry = rawRoles && typeof rawRoles === "object" ? rawRoles[roleId] : undefined;
