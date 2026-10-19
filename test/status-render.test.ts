@@ -1,7 +1,7 @@
 /** The rendered status table suite: renderStatus's table-level behavior (totals, clipping,
  * work items, pauses, ordering). The per-cell suites (lastTickCell, today, last result,
  * next run) live beside it in status-render-cells.test.ts, the status-model suite
- * (loopPhase, workingDetail) in status-model.test.ts, the header badges' in
+ * (rolePhase, workingDetail) in status-model.test.ts, the header badges' in
  * status-header.test.ts, and the badges' in badges.test.ts; the fixtures both assemble
  * snapshots from are in status-fixtures.ts. */
 import test from "node:test";
@@ -12,9 +12,9 @@ import { say } from "../src/cli/cli-output.js";
 import { sanitizeFrameLines } from "../src/ui/tui/tui-frame.js";
 import { attempt } from "./helpers/exit-capture.js";
 import { displayWidth } from "../src/text/text-width.js";
-import { loopPhase } from "../src/ui/status-model.js";
+import { rolePhase } from "../src/ui/status-model.js";
 import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { initProject } from "../src/init/init.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { tmpdir, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
@@ -43,7 +43,7 @@ test("status table ends with a totals row summing tokens and cost", () => {
   // 900,000 + 350,000 = 1,250,000: the row must use the same k/M magnitude rule as the rest
   // of the surface (regression 2026-09-20 — it used to print "1250.0k").
   assert.match(totals, /1\.3M/, "generated sum is compact-formatted with M past a million");
-  assert.match(totals, /120\.0k/, "peak ctx totals cell is the max across loops");
+  assert.match(totals, /120\.0k/, "peak ctx totals cell is the max across roles");
   assert.match(totals, /\$1\.75/);
   assert.match(separator, /^-+( +-+)+\s*$/, "totals row sits below a separator");
 });
@@ -57,7 +57,7 @@ test("totals row shows zeros without breaking alignment", () => {
   assert.match(totals, /\$0\.00/);
 });
 
-// User-defined loops (tumwater.json's customRoles) are marked with an asterisk beside their
+// User-defined roles (tumwater.json's customRoles) are marked with an asterisk beside their
 // name plus one footnote line under the table — and a team without any of them renders the
 // exact same table as before the marker existed.
 
@@ -66,7 +66,7 @@ test("status table marks custom roles with an asterisk and a footnote", () => {
   const text = renderStatus(tmpdir(), snap);
   assert.match(text, /nightly\*/);
   assert.doesNotMatch(text, /clean\*/, "built-ins stay unmarked");
-  // The footnote is the line under the table — one per team, not per loop.
+  // The footnote is the line under the table — one per team, not per role.
   const lines = text.split("\n");
   assert.equal(lines[lines.length - 1], "* custom role");
   // The title column is gone, so "custom role" appears once, in the footnote explaining the
@@ -79,10 +79,10 @@ test("status table marks custom roles with an asterisk and a footnote", () => {
   assert.match((plain.split("\n") as string[]).at(-1) ?? "", /^total\b/);
 });
 
-// Model failure fallback, part 2/2: a loop whose episode is active is tagged on its name
-// cell, and only that loop — the common table stays byte-identical.
+// Model failure fallback, part 2/2: a role whose episode is active is tagged on its name
+// cell, and only that role — the common table stays byte-identical.
 
-test("status table tags the loops running on a model-fallback episode", () => {
+test("status table tags the roles running on a model-fallback episode", () => {
   const snap = snapshotWith([
     { role: "feature", fallback: { provider: "prov-fb", model: "model-fb", since: 1, reason: "Request timed out." } },
     { role: "clean" },
@@ -107,7 +107,7 @@ test("status table leads an idle instance row with its claimed entry", () => {
   assert.doesNotMatch(renderStatus(tmpdir(), snapshotWith([{ role: "feature" }])), /Plan A/);
 });
 
-test("narrow-width clipping still holds when a custom loop is marked", () => {
+test("narrow-width clipping still holds when a custom role is marked", () => {
   const snap = snapshotWith([
     { role: "nightly", custom: true, lastResult: "changed", lastSummary: "x".repeat(120), runs: 7 },
     { role: "clean" },
@@ -150,7 +150,7 @@ test("narrow terminals never receive a wrapping line even below column minimums"
   }
 });
 
-test("gen/peak ctx combine persisted totals with live in-tick progress for running loops only", () => {
+test("gen/peak ctx combine persisted totals with live in-tick progress for running roles only", () => {
   const root = tmpdir();
   // In-flight tick: this run's session plus two completed turns (800 output, peak 12k).
   writePiLog(root, "clean", [
@@ -158,7 +158,7 @@ test("gen/peak ctx combine persisted totals with live in-tick progress for runni
     assistantLine("turn one", { tokens: 8_000, output: 300 }),
     assistantLine("turn two", { tokens: 12_000, output: 500 }),
   ]);
-  // Idle loop whose log tail is its last COMPLETED tick (already in the persisted totals).
+  // Idle role whose log tail is its last COMPLETED tick (already in the persisted totals).
   writePiLog(root, "dedupe", [SESSION, assistantLine("done tick", { tokens: 5_000, output: 500 })]);
   const snap = snapshotWith([
     { role: "clean", generatedTokens: 1_000, peakContextTokens: 6_000, running: true },
@@ -166,10 +166,10 @@ test("gen/peak ctx combine persisted totals with live in-tick progress for runni
   ]);
   const out = renderStatus(root, snap);
   const cleanRow = out.split("\n").find((l) => l.startsWith("clean")) ?? "";
-  assert.match(cleanRow, /\b1800\b/, "running loop gen = persisted + live output (1000+300+500)");
-  assert.match(cleanRow, /12\.0k/, "running loop peak ctx = max(persisted, live) = 12000");
+  assert.match(cleanRow, /\b1800\b/, "running role gen = persisted + live output (1000+300+500)");
+  assert.match(cleanRow, /12\.0k/, "running role peak ctx = max(persisted, live) = 12000");
   const dryRow = out.split("\n").find((l) => l.startsWith("dedupe")) ?? "";
-  assert.match(dryRow, /\b2000\b/, "idle loop gen stays persisted — its log tail is not double-counted");
+  assert.match(dryRow, /\b2000\b/, "idle role gen stays persisted — its log tail is not double-counted");
   assert.match(dryRow, /\b4000\b/);
   const totals = out.split("\n").at(-1) ?? "";
   assert.match(totals, /\b3800\b/, "totals row sums the displayed (combined) values");
@@ -177,7 +177,7 @@ test("gen/peak ctx combine persisted totals with live in-tick progress for runni
 
 // Current work item in the table's state cell (renderStatus row level).
 
-test("renderStatus prepends the current work item to a working loop's state cell", () => {
+test("renderStatus prepends the current work item to a working role's state cell", () => {
   const root = tmpdir();
   writePiLog(root, "feature", [
     SESSION,
@@ -190,10 +190,10 @@ test("renderStatus prepends the current work item to a working loop's state cell
   assert.match(out, /implement plan "Linear history on main" · working \ds · turn 2/);
 });
 
-test("renderStatus does not leak a finished tick's work item into an idle loop's state cell", () => {
+test("renderStatus does not leak a finished tick's work item into an idle role's state cell", () => {
   const root = tmpdir();
   writePiLog(root, "feature", [SESSION, assistantLine("old finished work")]);
-  // Orchestrator running but the loop itself is idle (queued/sleeping).
+  // Orchestrator running but the role itself is idle (queued/sleeping).
   const snap = { ...snapshotWith([{ role: "feature" }]), running: true };
   const out = renderStatus(root, snap);
   assert.doesNotMatch(out, /old finished work/);
@@ -225,45 +225,45 @@ test("work items survive narrow-terminal clipping at the head of the state cell"
   assert.match(narrow, /^feature\s+implement p…/);
 });
 
-test("loopPhase shows failing for idle loops stuck on an error streak, not sleeping", () => {
-  // BUGS.md 2026-09-15: a team whose every loop is failing must read as failing, not as
+test("rolePhase shows failing for idle roles stuck on an error streak, not sleeping", () => {
+  // BUGS.md 2026-09-15: a team whose every role is failing must read as failing, not as
   // an ordinary quiet/sleeping team.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.lastResult = "error";
   s.consecutiveErrors = 3;
   s.nextRunAt = Date.now() + 1_800_000;
-  assert.equal(loopPhase(s, true), "failing", "the streak at the threshold outranks sleep");
+  assert.equal(rolePhase(s, true), "failing", "the streak at the threshold outranks sleep");
 
-  // Below the threshold the loop keeps its ordinary label — a few failed ticks are
+  // Below the threshold the role keeps its ordinary label — a few failed ticks are
   // retryable transients, not a health state.
-  const shallow = freshLoopState("feature");
+  const shallow = freshRunnerState("feature");
   shallow.lastResult = "error";
   shallow.consecutiveErrors = 2;
   shallow.nextRunAt = Date.now() + 1_800_000;
-  assert.match(loopPhase(shallow, true), /^sleeping/);
+  assert.match(rolePhase(shallow, true), /^sleeping/);
 
   // A deeper streak stays failing, even queued.
-  const deep = freshLoopState("feature");
+  const deep = freshRunnerState("feature");
   deep.lastResult = "error";
   deep.consecutiveErrors = 4;
-  assert.equal(loopPhase(deep, true), "failing");
+  assert.equal(rolePhase(deep, true), "failing");
 
   // A streak fed by leftover-recovery merge failures reads failing even though the tick's
   // own result is healthy (BUGS.md 2026-09-21): the merge failure, not `lastResult`, is the
   // tell. Before the fix this cell showed "sleeping" while a dead reviewer backend wedged the
   // pin forever.
-  const recovered = freshLoopState("feature");
+  const recovered = freshRunnerState("feature");
   recovered.lastResult = "no_change";
   recovered.consecutiveErrors = 3;
   recovered.nextRunAt = Date.now() + 1_800_000;
-  assert.equal(loopPhase(recovered, true), "failing", "a recovery-failure streak outranks sleep");
+  assert.equal(rolePhase(recovered, true), "failing", "a recovery-failure streak outranks sleep");
 
   // In-flight ticks are untouched (the label describes the finished tick only).
-  const running = freshLoopState("feature");
+  const running = freshRunnerState("feature");
   running.running = true;
   running.lastResult = "error";
   running.consecutiveErrors = 3;
-  assert.equal(loopPhase(running, true), "working");
+  assert.equal(rolePhase(running, true), "working");
 
   // The table's state cell carries the label through to status output.
   const snap = snapshotWith([{ role: "feature", lastResult: "error", consecutiveErrors: 3 }]);
@@ -271,7 +271,7 @@ test("loopPhase shows failing for idle loops stuck on an error streak, not sleep
   assert.match(out, /feature\s+failing/);
 });
 
-test("renderStatus shows the main-red blockage in a blocked loop's state cell and last-result line", () => {
+test("renderStatus shows the main-red blockage in a blocked role's state cell and last-result line", () => {
   const snap = snapshotWith([
     { role: "feature", lastResult: "main_red", lastSummary: "code merges blocked until main is green" },
     { role: "bugfix" }, // exempt roles keep their ordinary phase
@@ -282,7 +282,7 @@ test("renderStatus shows the main-red blockage in a blocked loop's state cell an
   assert.match(out, /bugfix\s+due/);
 });
 
-test("renderStatus shows waiting: budget spent in idle role loops' state cells while the cap is reached", () => {
+test("renderStatus shows waiting: budget spent in idle roles' state cells while the cap is reached", () => {
   const root = tmpdir();
   // Spend below the cap: ordinary labels.
   const under = renderStatus(
@@ -292,7 +292,7 @@ test("renderStatus shows waiting: budget spent in idle role loops' state cells w
   assert.match(under, /feature\s+due/);
   assert.doesNotMatch(under, /waiting: budget spent/);
 
-  // Spend at the cap: idle role loops whose tier resolved to pause read `waiting: budget spent`;
+  // Spend at the cap: idle roles whose tier resolved to pause read `waiting: budget spent`;
   // the director keeps its own phase.
   const reached = renderStatus(
     root,
@@ -333,7 +333,7 @@ test("renderStatus shows paused only for the individually paused idle role", () 
 
 // Regression (review of the editable-budget feature): the snapshot's budget object is now
 // unconditional, so a DISABLED cap (capUsd 0) must not read as reached — spend ≥ 0 would
-// otherwise flag every idle loop `waiting: budget spent` on a team with no cap at all.
+// otherwise flag every idle role `waiting: budget spent` on a team with no cap at all.
 test("renderStatus never reads waiting: budget spent while the cap is disabled, even past any spend", () => {
   const root = tmpdir();
   // Cap disabled (0) with today's spend far above zero: the gate is off by definition.
@@ -341,14 +341,14 @@ test("renderStatus never reads waiting: budget spent while the cap is disabled, 
     root,
     { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 999, capUsd: 0, capHitAt: null, free: false, fallback: null }), running: true },
   );
-  assert.doesNotMatch(out, /waiting: budget spent/, "no loop reads waiting: budget spent with the cap disabled");
+  assert.doesNotMatch(out, /waiting: budget spent/, "no role reads waiting: budget spent with the cap disabled");
   assert.match(out, /feature\s+due/);
   assert.match(out, /director\s+ready for messages/);
   // The badge stays standing and says no cap.
   assert.match(headerOf(out), /· budget: \$999\.00 today · no cap$/);
 });
 
-test("renderStatus shows paused in idle role loops' state cells ahead of waiting: budget spent and main red", () => {
+test("renderStatus shows paused in idle roles' state cells ahead of waiting: budget spent and main red", () => {
   const root = tmpdir();
   // No pause: ordinary labels.
   const unpaused = renderStatus(
@@ -358,7 +358,7 @@ test("renderStatus shows paused in idle role loops' state cells ahead of waiting
   assert.match(unpaused, /feature\s+due/);
   assert.doesNotMatch(unpaused, /\bpaused\b/);
 
-  // Marker present with the cap also reached and main red: idle role loops read `paused`
+  // Marker present with the cap also reached and main red: idle roles read `paused`
   // ahead of both; the director keeps its own phase. (The last-result column still carries
   // the raw main_red string — only the state cell is overridden.)
   const paused = renderStatus(
@@ -378,23 +378,23 @@ test("renderStatus shows paused in idle role loops' state cells ahead of waiting
   assert.match(paused, /director\s+ready for messages/);
 });
 
-test("renderStatus keeps role loops working under the fallback and pauses them without one", () => {
+test("renderStatus keeps roles working under the fallback and pauses them without one", () => {
   const root = tmpdir();
-  const loops = [{ role: "feature" }, { role: "director" }];
-  // At the cap WITH a usable free fallback: the loops keep ticking on it, so no row reads
+  const roles = [{ role: "feature" }, { role: "director" }];
+  // At the cap WITH a usable free fallback: the roles keep ticking on it, so no row reads
   // `waiting: budget spent` — the header badge is where the operator learns the cap is spent.
   const degraded = renderStatus(root, {
-    ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" } }),
+    ...snapshotWith(roles, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" } }),
     running: true,
   });
   assert.doesNotMatch(degraded, /waiting: budget spent/, "a fallback team is not a stopped team");
   assert.match(degraded, /feature\s+due/);
   assert.match(headerOf(degraded), /· budget: \$50\.00\/\$50 today · over-cap model: local-free \(cost n\/a\)$/);
 
-  // The same spend with no usable fallback pauses the role loops, exactly as before — per
+  // The same spend with no usable fallback pauses the roles, exactly as before — per
   // role now (part 5c/8): the snapshot's budgetPausedRoles set, not a team-wide verdict.
   const stopped = renderStatus(root, {
-    ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }),
+    ...snapshotWith(roles, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }),
     budgetPausedRoles: ["feature"],
     running: true,
   });
@@ -407,12 +407,12 @@ test("status table groups a merge role above queued/sleeping rows with newer las
   // A sleeping role and a queued role, both with a NEWER last tick than the merge role —
   // grouping must still put the merge role first, the same active-first rule as the GUI
   // table. Before the fix renderStatus emitted payload order, so merge sank with the idles.
-  const sleeping = freshLoopState("sleepy");
+  const sleeping = freshRunnerState("sleepy");
   sleeping.nextRunAt = Date.now() + 5 * 60_000;
   sleeping.lastRunEndedAt = t(5);
-  const queued = freshLoopState("queued-z");
+  const queued = freshRunnerState("queued-z");
   queued.lastRunEndedAt = t(4);
-  const mergeCell = freshLoopState("landing-r");
+  const mergeCell = freshRunnerState("landing-r");
   mergeCell.lastRunEndedAt = t(0);
   const snap: StatusSnapshot = {
     ...snapshotWith([sleeping, queued, mergeCell]),
@@ -440,7 +440,7 @@ function columns(line: string): string[] {
 }
 
 test("status table keeps every column boundary aligned when a cell holds a wide character", () => {
-  // A custom loop's summary carries CJK text (two terminal columns per code point): widths
+  // A custom role's summary carries CJK text (two terminal columns per code point): widths
   // derived from UTF-16 code units under-measure it, and code-unit padding leaves that row's
   // later columns shifted left against the header and every ASCII row.
   const snap = snapshotWith([
@@ -477,7 +477,7 @@ test("status table keeps every column boundary aligned when a cell holds a wide 
   }
 });
 
-test("a loop with queued prompts carries a p:N marker on its state cell", () => {
+test("a role with queued prompts carries a p:N marker on its state cell", () => {
   const snap = snapshotWith([{ role: "clean" }, { role: "dedupe" }], DEFAULT_BUDGET, false, [], { clean: 2 });
   const lines = renderStatus(tmpdir(), snap).split("\n");
   const cleanRow = lines.find((l) => l.startsWith("clean")) ?? "";
@@ -487,7 +487,7 @@ test("a loop with queued prompts carries a p:N marker on its state cell", () => 
   assert.doesNotMatch(lines[lines.length - 1] ?? "", /p:/, "the totals row stays marker-free");
 });
 
-test("a loop named by a pending scheduled wake carries a wake marker on its state cell", () => {
+test("a role named by a pending scheduled wake carries a wake marker on its state cell", () => {
   const snap = snapshotWith([{ role: "clean" }, { role: "dedupe" }]);
   snap.scheduledWakes = [{ roles: ["dedupe"], atMs: Date.now() + 2 * 3_600_000 }];
   const lines = renderStatus(tmpdir(), snap).split("\n");
@@ -496,15 +496,15 @@ test("a loop named by a pending scheduled wake carries a wake marker on its stat
   assert.doesNotMatch(lines[lines.length - 1] ?? "", /wake in/, "the totals row stays marker-free");
 });
 
-test("snapshot and renderStatus cover all enabled loops", async () => {
+test("snapshot and renderStatus cover all enabled roles", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
-  const state = freshLoopState("clean");
+  const state = freshRunnerState("clean");
   state.runs = 3;
   state.commits = 2;
   state.lastResult = "changed";
   state.lastSummary = "tidy something";
-  saveLoopState(repo, state);
+  saveRunnerState(repo, state);
 
   const snap = snapshot(repo);
   assert.equal(snap.running, false);
@@ -536,18 +536,18 @@ test("no rendered line carries trailing padding, blank trailing cells included",
 test("a rendered team shows active rows equal to permit holders: parked waiters read `waiting to start`", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
-  // A live-looking orchestrator (this process's pid) so loopPhase renders in-flight states.
+  // A live-looking orchestrator (this process's pid) so rolePhase renders in-flight states.
   writeOrchestratorMarker(repo, []);
   // One permit-holding tick (running, no parkedSince) and two parked waiters.
-  const holder = freshLoopState("feature");
+  const holder = freshRunnerState("feature");
   holder.running = true;
   holder.lastRunStartedAt = Date.now() - 5_000; // renders the elapsed working detail
-  saveLoopState(repo, holder);
+  saveRunnerState(repo, holder);
   for (const role of ["clean", "organize"]) {
-    const parked = freshLoopState(role);
+    const parked = freshRunnerState(role);
     parked.running = true;
     parked.parkedSince = Date.now() - 5_000;
-    saveLoopState(repo, parked);
+    saveRunnerState(repo, parked);
   }
   const text = renderStatus(repo, snapshot(repo));
   // The waiters show their true state, not `working`.
@@ -557,7 +557,7 @@ test("a rendered team shows active rows equal to permit holders: parked waiters 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
 
-test("the loop name cell appends the seam tier and selector when a tier map is declared", () => {
+test("the role name cell appends the seam tier and selector when a tier map is declared", () => {
   const snap = snapshotWith([
     { role: "plan", modelTier: "strong", model: "prov-s/model-s:high" } as never,
     { role: "clean" },
@@ -568,7 +568,7 @@ test("the loop name cell appends the seam tier and selector when a tier map is d
   assert.doesNotMatch(text, /clean \(/);
 });
 
-test("the loop name cell appends a lone selector when no tier map is declared", () => {
+test("the role name cell appends a lone selector when no tier map is declared", () => {
   const snap = snapshotWith([
     { role: "clean", model: "prov-a/model-a" } as never,
     { role: "plan" },
@@ -579,7 +579,7 @@ test("the loop name cell appends a lone selector when no tier map is declared", 
   assert.doesNotMatch(text, /plan \(/);
 });
 
-test("the loop name cell names pi's own default and marks it", () => {
+test("the role name cell names pi's own default and marks it", () => {
   const snap = snapshotWith([
     { role: "feature", model: "prov/org/m:route:low", modelFromPi: true } as never,
     { role: "clean" },
@@ -601,9 +601,9 @@ test("the state cell hides the pooled worktree slot and its pin", () => {
 });
 
 // The disk floor (plans/disk-floor.md, part 4/4): a published hold reads in the header badge
-// AND in each idle loop's state cell, so the rendered table explains the stopped team
+// AND in each idle role's state cell, so the rendered table explains the stopped team
 // itself.
-test("renderStatus shows a waiting: low disk in the header and the loop's state cell", () => {
+test("renderStatus shows a waiting: low disk in the header and the role's state cell", () => {
   const held = snapshotWith([{ role: "clean" }]);
   held.running = true;
   held.disk = { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true };
@@ -613,7 +613,7 @@ test("renderStatus shows a waiting: low disk in the header and the loop's state 
 });
 
 // New-project bootstrap (plans/work-ratio.md, part 2/2): the progress badge rides the header
-// and each held idle loop's state cell reads `waiting: bootstrap`.
+// and each held idle role's state cell reads `waiting: bootstrap`.
 test("renderStatus shows the bootstrap progress and hold in the header and state cell", () => {
   const snap = snapshotWith(
     [{ role: "clean" }],
@@ -633,7 +633,7 @@ test("renderStatus shows the bootstrap progress and hold in the header and state
   assert.match(rowOf(text, "clean"), /waiting: bootstrap/);
 });
 
-/** A running feature loop whose currentWork is a hostile OSC 52 sequence plus a C1 byte: the
+/** A running feature role whose currentWork is a hostile OSC 52 sequence plus a C1 byte: the
  * status table's state cell prepends it, so both terminal consumers must strip it. */
 function hostileWorkItem(): { root: string; snap: StatusSnapshot } {
   const root = tmpdir();

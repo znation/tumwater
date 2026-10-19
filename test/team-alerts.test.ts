@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alertNeedsYou, teamAlerts, type AlertLoop } from "../src/ui/team-alerts.js";
+import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 
@@ -36,7 +36,7 @@ test("a tier on a fallback step raises one informational alert", () => {
   assert.deepEqual(teamAlerts({ ...base, chain: {} }, [], [], Date.now()), []);
 });
 
-test("a spent budget pauses the loops, or hands them to the free fallback", () => {
+test("a spent budget pauses the roles, or hands them to the free fallback", () => {
   const spent: Snap = {
     ...base,
     budget: { spentUsd: 10.5, capUsd: 10, capHitAt: null, free: false, fallback: null },
@@ -129,9 +129,9 @@ test("quiet hours raise one informational alert only while the window holds", ()
   assert.equal(alertNeedsYou(quiet!), false, "a schedule is information, not a request");
 });
 
-test("loop trouble, a stale build, questions, and a pause, most urgent first", () => {
+test("role trouble, a stale build, questions, and a pause, most urgent first", () => {
   const now = Date.now();
-  const loops: AlertLoop[] = [
+  const roles: AlertRole[] = [
     { role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "429 Rate limit exceeded" },
     { role: "qa", phase: "failing", errorStreak: true, inFlight: false },
     { role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash", errorStreak: false, inFlight: true, stuckMs: 720_000 },
@@ -143,7 +143,7 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
     { ...base, paused: true, pausedUntil: now + 12 * 60_000,
       build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 3, restartBlocked: "cooldown until 2026-09-30T10:00:54.269Z" } },
     ["Q1: which database? (asked 2026-09-29)", "Q2: tabs or spaces?"],
-    loops,
+    roles,
     now,
   );
   assert.deepEqual(alerts.map((a) => a.key), ["mainred", "failing", "stuck", "build", "questions", "paused"]);
@@ -151,7 +151,7 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
   assert.equal(by.mainred?.title, "main's check is failing — 1 role is blocked");
   assert.equal(by.failing?.title, "bugfix and qa are failing run after run");
   assert.equal(by.failing?.detail, "bugfix: 429 Rate limit exceeded · qa: see its transcript");
-  assert.deepEqual(by.failing?.actions.map((a) => [a.act, a.arg]), [["role", "bugfix"], ["role", "qa"]], "each failing loop opens from the alert");
+  assert.deepEqual(by.failing?.actions.map((a) => [a.act, a.arg]), [["role", "bugfix"], ["role", "qa"]], "each failing role opens from the alert");
   assert.equal(by.stuck?.title, "feature and docs look stuck");
   // The tool-call stall gains the honest silence span from stuckMs (" for 12m00s"); the
   // "no agent output for 6m00s" phrase already carries its duration, so it does not double even
@@ -178,15 +178,15 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
   assert.equal(timedWhy[0]?.title, "The team is paused and resumes in 12m — \"deploying to prod\"");
 });
 
-// The alert copy's count forms beyond the two-loop case above: a lone loop reads singular,
-// three or more list as "a, b, and c", and a failing set where no loop recorded an error
+// The alert copy's count forms beyond the two-role case above: a lone role reads singular,
+// three or more list as "a, b, and c", and a failing set where no role recorded an error
 // points at the transcripts instead of repeating an empty error list.
-test("a lone failing or stuck loop reads singular; three loops list as a, b, and c", () => {
+test("a lone failing or stuck role reads singular; three roles list as a, b, and c", () => {
   const now = Date.now();
   const [one] = teamAlerts(base, [], [{ role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "pi exited null" }], now);
   assert.equal(one?.title, "bugfix is failing run after run");
   assert.equal(one?.detail, "bugfix: pi exited null");
-  const three: AlertLoop[] = [
+  const three: AlertRole[] = [
     { role: "bugfix", phase: "failing", errorStreak: true, inFlight: false },
     { role: "qa", phase: "failing", errorStreak: true, inFlight: false },
     { role: "docs", phase: "failing", errorStreak: true, inFlight: false },
@@ -207,13 +207,13 @@ test("a lone failing or stuck loop reads singular; three loops list as a, b, and
   assert.equal(stuckOne?.detail, "feature: tool call stalled: bash");
 });
 
-// A failing streak is the alert's tell, not the rendered phase: while a loop's own tick runs
+// A failing streak is the alert's tell, not the rendered phase: while a role's own tick runs
 // the phase reads "working"/"merging", but the red "failing run after run" banner must stay
-// up (it clears only when the streak resets) — BUGS.md 2026-10-14. A plain working loop with no
+// up (it clears only when the streak resets) — BUGS.md 2026-10-14. A plain working role with no
 // streak raises nothing.
-test("a streak behind a working label still raises the failing alert; a healthily working loop raises none", () => {
+test("a streak behind a working label still raises the failing alert; a healthily working role raises none", () => {
   const now = Date.now();
-  const streakWorking: AlertLoop[] = [
+  const streakWorking: AlertRole[] = [
     { role: "bugfix", phase: "working 30s · turn 2 · reading BUGS.md", errorStreak: true, inFlight: true, lastError: "review rejected: not converging" },
   ];
   const [alert] = teamAlerts(base, [], streakWorking, now);
@@ -223,14 +223,14 @@ test("a streak behind a working label still raises the failing alert; a healthil
   assert.equal(alert?.detail, "bugfix: review rejected: not converging");
   assert.deepEqual(alert?.actions.map((a) => [a.act, a.arg]), [["role", "bugfix"]]);
 
-  const healthyWorking: AlertLoop[] = [
+  const healthyWorking: AlertRole[] = [
     { role: "feature", phase: "working 30s · turn 1", errorStreak: false, inFlight: true },
     { role: "qa", phase: "merging 1s · build-check", errorStreak: false, inFlight: true },
   ];
   assert.equal(teamAlerts(base, [], healthyWorking, now).filter((a) => a.key === "failing").length, 0);
 });
 
-// The detail arms the two-loop case above cannot reach: a fallback named by provider alone
+// The detail arms the two-role case above cannot reach: a fallback named by provider alone
 // (model unset) or by nothing at all, and a stale build that is neither restart-blocked nor
 // already restarting — the operator has to restart the team by hand, so the alert says so.
 test("a fallback names its provider or nothing; a plain stale build asks for a manual restart", () => {
@@ -277,7 +277,7 @@ test("a role over its daily cap raises one amber role-cap alert; an empty hold r
     teamAlerts({ ...base, capPaused: [] }, [], [], Date.now()).filter((a) => a.key === "role-cap"),
     [],
   );
-  // A stale id no live loop matches still names the held role in the copy.
+  // A stale id no live role matches still names the held role in the copy.
   const stale = teamAlerts({ ...base, capPaused: ["gremlin"] }, [], [], Date.now()).filter((a) => a.key === "role-cap");
   assert.equal(stale.length, 1);
   assert.match(stale[0]?.detail ?? "", /gremlin/);
@@ -307,7 +307,7 @@ test("the maintenance allowance hold raises one gray maintenance alert; an empty
 
 // A standing provider failure hold (src/team/team-hold.ts `standingHolds`, published through
 // the orchestrator info file): a provider storm holds roles on that provider, so an operator
-// watching idle loops with no log open sees why. Self-clearing by design, so it informs (blue,
+// watching idle roles with no log open sees why. Self-clearing by design, so it informs (blue,
 // no actions) like the quiet and maintenance alerts rather than asking.
 test("a standing provider failure hold raises one blue provider-hold alert; an empty hold raises none", () => {
   const now = Date.now();
@@ -393,23 +393,23 @@ test("a waiting: low disk raises one amber alert naming the free space and the f
 });
 
 // Image input, part 5/5 (plans/image-input.md "Surfaces"): the images alert. No alert when
-// every enabled loop reads images (or capability is unknown — an unknown seam is not counted
-// as text-only). Blue when every text-only loop has a reroute target (a blind read reruns — an
-// inform, not an ask); amber when some text-only loop has none (a blind read fails and image
+// every enabled role reads images (or capability is unknown — an unknown seam is not counted
+// as text-only). Blue when every text-only role has a reroute target (a blind read reruns — an
+// inform, not an ask); amber when some text-only role has none (a blind read fails and image
 // submissions are refused). A separate amber when a claimed model failed doctor's live probe.
 test("images alert: parity needs no alert; a text-only team with targets is blue", () => {
-  const vision: AlertLoop[] = [
+  const vision: AlertRole[] = [
     { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: true, imageReroute: null },
     { role: "plan", phase: "idle", errorStreak: false, inFlight: false, imageInput: true, imageReroute: null },
   ];
   assert.deepEqual(teamAlerts(base, [], vision, Date.now()).filter((a) => a.key === "images"), []);
   // Unknown capability is not counted as text-only — no alert, matching the doctor's stance.
-  const unknown: AlertLoop[] = [
+  const unknown: AlertRole[] = [
     { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: null, imageReroute: null },
   ];
   assert.deepEqual(teamAlerts(base, [], unknown, Date.now()).filter((a) => a.key === "images"), []);
 
-  const rerouting: AlertLoop[] = [
+  const rerouting: AlertRole[] = [
     { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
     { role: "organize", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
   ];
@@ -420,8 +420,8 @@ test("images alert: parity needs no alert; a text-only team with targets is blue
   assert.equal(alertNeedsYou(images!), false, "a rerun means nothing fails — it informs");
 });
 
-test("images alert: a text-only loop with no target is amber and asks", () => {
-  const noTarget: AlertLoop[] = [
+test("images alert: a text-only role with no target is amber and asks", () => {
+  const noTarget: AlertRole[] = [
     { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: null },
     { role: "bugfix", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
   ];
@@ -433,7 +433,7 @@ test("images alert: a text-only loop with no target is amber and asks", () => {
   assert.equal(alertNeedsYou(images!), true, "a blind read fails — it asks");
 });
 
-test("images alert: a cached probe failure is amber, whatever the loops resolved to", () => {
+test("images alert: a cached probe failure is amber, whatever the roles resolved to", () => {
   const over = teamAlerts({ ...base, imageProbeFailures: ["local/vision"] }, [], [], Date.now());
   const [probe] = over.filter((a) => a.key === "images-probe");
   assert.equal(probe?.tone, "amber");

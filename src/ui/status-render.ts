@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { dailyCost } from "../budget/budget.js";
 import type { LiveProgress } from "./progress-data.js";
@@ -7,8 +7,8 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, permitsBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
-import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByState } from "./status-model.js";
+import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, roleWakeMarker, permitsBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
+import { idleClaimText, isActivePhase, roleRowCells, onErrorStreak, sortRolesByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
@@ -32,7 +32,7 @@ function ago(ts: number | undefined): string {
 
 /** The table's `last tick` cell: the absolute local time of the last tick end alongside its
  * relative age ("14:32:05 · 3m ago"). Zero-padded HH:MM:SS in local time, prefixed `MM-DD `
- * once older than a day so multi-day runs stay unambiguous; "-" for loops that never ticked.
+ * once older than a day so multi-day runs stay unambiguous; "-" for roles that never ticked.
  * The GUI renders the same cell (absolute stamp plus relative age) from its own JS copy in
  * gui-client.ts — formatting at each surface, per the fmtTokens precedent. */
 export function lastTickCell(ts: number | undefined): string {
@@ -43,26 +43,26 @@ export function lastTickCell(ts: number | undefined): string {
   return `${s} · ${ago(ts)}`;
 }
 
-/** The table's `last merged` cell: when the loop last merged a change on main, in the SAME
+/** The table's `last merged` cell: when the role last merged a change on main, in the SAME
  * absolute-time-plus-relative-age shape as the `last tick` cell (lastTickCell), so the two
- * columns cannot drift on what "ago" means. A loop that has never merged shows the same dash
- * lastTickCell uses for a never-ticked loop. */
+ * columns cannot drift on what "ago" means. A role that has never merged shows the same dash
+ * lastTickCell uses for a never-ticked role. */
 export function lastMergedCell(ts: number | undefined): string {
   return lastTickCell(ts);
 }
 
-/** The table's `next run` cell: when the loop may tick again, or `-` when that is not the
- * operator's question — a loop in flight (an active rendered phase: working/reviewing/merge,
+/** The table's `next run` cell: when the role may tick again, or `-` when that is not the
+ * operator's question — a role in flight (an active rendered phase: working/reviewing/merge,
  * or `s.running`) has no next run to speak of, and a stopped team renders no schedule at all
- * (its `nextRunAt`s are stale leftovers, not plans). A due idle loop reads `now`; a future one
+ * (its `nextRunAt`s are stale leftovers, not plans). A due idle role reads `now`; a future one
  * reads its remaining time through humanSeconds (the same bucketing the sleeping phase label
  * uses, so the two cannot drift), prefixed `backoff ` while `backoffSeconds > 0` — the wake
  * row-action clears exactly that, so the prefix is what makes waking meaningful. The GUI
  * renders the same rules from its own JS copy in gui-client.ts (fmtNextRun). The `phase` and
- * `teamRunning` arguments come from the caller because neither fact lives on LoopState: the
+ * `teamRunning` arguments come from the caller because neither fact lives on RunnerState: the
  * active-phase check needs the rendered label (a merge is visible only there), and the
- * team's running flag lives on the snapshot, not the loop. */
-export function nextRunCell(s: LoopState, phase: string, now: number, teamRunning: boolean): string {
+ * team's running flag lives on the snapshot, not the role. */
+export function nextRunCell(s: RunnerState, phase: string, now: number, teamRunning: boolean): string {
   if (!teamRunning || s.running || isActivePhase(phase)) return "-";
   const remain = secondsUntil(s.nextRunAt, now);
   // The yield multiplier rides the cell as `×N` (yield-scaled clocks, PLANS.md): a scalable
@@ -74,14 +74,14 @@ export function nextRunCell(s: LoopState, phase: string, now: number, teamRunnin
   return nextRunPhrase(remain, s.backoffSeconds > 0, "now", false) + suffix;
 }
 
-/** The table's state cell: a loop's phase label (loopPhase, computed once per row by
+/** The table's state cell: a role's phase label (rolePhase, computed once per row by
  * renderStatus so the same label drives the row order), with the current work item prepended
  * while a tick is in flight ("implement plan X · working 3m · turn 2"). Prepending — not
  * appending — so the item survives ellipsis clipping on narrow terminals; the live detail
- * after it is what gets clipped first. Idle loops are untouched: their log tail describes a
+ * after it is what gets clipped first. Idle roles are untouched: their log tail describes a
  * finished tick and must not leak its work item into the state cell. (The GUI shows the same
  * item in its own `current` column instead, so its state cell stays clean.) */
-function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgress | null): string {
+function stateCell(root: string, s: RunnerState, phase: string, live?: LiveProgress | null): string {
   // While under review the log tail's "current work" is the reviewer's own output, not the
   // author's task — don't prepend it; the phase cell already carries the reviewer's live
   // detail. The merge label rides the same guard: the merge role is not running, so its
@@ -203,8 +203,8 @@ function budgetTone(
   return share >= 1 ? "red" : share >= 0.85 ? "yellow" : undefined;
 }
 
-/** The loop facts one status render computed, for callers that build more on them (the TUI's
- * attention lines): each loop's rendered phase, whether its own failure streak is at the
+/** The role facts one status render computed, for callers that build more on them (the TUI's
+ * attention lines): each role's rendered phase, whether its own failure streak is at the
  * alarm threshold (onErrorStreak — the red "failing tick after tick" alert keys on this, not
  * the phase, so it stays up while a streak stands behind a `working` label; BUGS.md
  * 2026-10-14), whether it is in flight, its last error. */
@@ -217,7 +217,7 @@ interface StatusLoopRow {
 }
 
 /** Render the status table shared by `tumwater status` and the TUI as lines of toned spans,
- * plus the per-loop facts it computed (see StatusLoopRow). When `maxWidth` is given, wide cells
+ * plus the per-role facts it computed (see StatusLoopRow). When `maxWidth` is given, wide cells
  * are clipped so no line exceeds it (terminal rows never wrap). */
 export function renderStatusSpans(
   root: string,
@@ -276,31 +276,31 @@ export function renderStatusSpans(
     ...badgeSpans(quietBadge(snap.quietHours, snap.inQuietHours), snap.inQuietHours ? "yellow" : undefined),
   ]);
   lines.push([]);
-  // `today` is the loop's daily budget window (dailyCost): $0.00 while its stamp is stale
-  // or missing, so loops that never ticked — or last ticked yesterday — read zero without a
+  // `today` is the role's daily budget window (dailyCost): $0.00 while its stamp is stale
+  // or missing, so roles that never ticked — or last ticked yesterday — read zero without a
   // save. It renders whether or not the cap is enabled: spend observability does not depend
   // on it.
   // `next run` is a short fixed-width cell like `today`, never flexible: the columns that
   // give way when the table is wider than the terminal are `last result`, then `state`, then
   // `last tick`, in FLEXIBLE_COLUMNS' order.
   const cols = ["role", "state", "runs", "commits", "output", "peak ctx", "cost", "today", "last run", "last merged", "last result", "next run"];
-  // One live tail read per running loop per frame, threaded through every cell that shows
+  // One live tail read per running role per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
-  // its own, up to three stats + reads per loop per second. The phase is computed once per
-  // row (in loopRowCells, shared with the GUI payload) and carried on the row: the same
-  // label drives the state cell and the shared row order (sortLoopsByState).
-  // Per-role prompts 2/2 — a loop with queued prompts carries a small `p:N` marker on its
+  // its own, up to three stats + reads per role per second. The phase is computed once per
+  // row (in roleRowCells, shared with the GUI payload) and carried on the row: the same
+  // label drives the state cell and the shared row order (sortRolesByState).
+  // Per-role prompts 2/2 — a role with queued prompts carries a small `p:N` marker on its
   // state cell (appended, so the work-item prefix survives clipping ahead of it), telling the
-  // operator steering one loop that something is waiting for it. A pending scheduled wake
-  // naming the loop adds a blue ` · wake in …` marker after it.
+  // operator steering one role that something is waiting for it. A pending scheduled wake
+  // naming the role adds a blue ` · wake in …` marker after it.
   const roleQueued = (role: string): string => {
     const n = snap.roleInbox[role] ?? 0;
     return n > 0 ? ` p:${n}` : "";
   };
   const withMetrics = snap.loops.map((s) => {
-    // loopRowCells single-homes the per-loop tail read + metrics + phase derivation the GUI
+    // roleRowCells single-homes the per-role tail read + metrics + phase derivation the GUI
     // payload (status-payload.ts) repeats, so the two dashboards cannot drift apart.
-    const cells = loopRowCells(snap, root, s);
+    const cells = roleRowCells(snap, root, s);
     return {
       s,
       m: { generated: cells.generated, peakCtx: cells.peakCtx },
@@ -310,15 +310,15 @@ export function renderStatusSpans(
       lastRunEndedAt: s.lastRunEndedAt,
     };
   });
-  // User-defined loops (snapshot's `custom` flag) get an asterisk beside their name — the
+  // User-defined roles (snapshot's `custom` flag) get an asterisk beside their name — the
   // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS and
   // its width derives from row content, so the extra character widens it automatically.
-  // Rows are ordered by the shared display rule (status-model's loopRank, then last tick most
-  // recent first) so the TUI/status table groups loops the way the GUI table does.
+  // Rows are ordered by the shared display rule (status-model's roleRank, then last tick most
+  // recent first) so the TUI/status table groups roles the way the GUI table does.
   // Each cell is spans: the state cell takes its phase's tone (the p:N marker stays plain), the
   // last result tones its outcome word, a backoff countdown reads yellow.
   const cell = (text: string, tone?: StatusSpan["tone"]): StatusSpan[] => [{ text, ...(tone ? { tone } : {}) }];
-  const rows = sortLoopsByState(withMetrics).map(({ s, m, live, phase }): StatusSpan[][] => {
+  const rows = sortRolesByState(withMetrics).map(({ s, m, live, phase }): StatusSpan[][] => {
     // The name cell appends the selector the role resolves to; with a top-level tier map
     // declared it additionally names the seam tier (model-tiers.md part 7a,
     // "Observability"). No model resolved and no tier keeps the name byte-identical to
@@ -328,8 +328,8 @@ export function renderStatusSpans(
       : s.model
         ? ` (${s.model}${s.modelFromPi ? ", pi default" : ""})`
         : "";
-    // Model failure fallback, part 2/2: while the loop runs off-model its name cell says so,
-    // so the operator can see which loops the fallback pair is carrying without reading logs.
+    // Model failure fallback, part 2/2: while the role runs off-model its name cell says so,
+    // so the operator can see which roles the fallback pair is carrying without reading logs.
     const fallbackSuffix = s.fallback ? " (over-cap model)" : "";
     const name = (s.custom ? `${roleLabel(s.role)}*` : roleLabel(s.role)) + modelSuffix + fallbackSuffix;
     const state = stateCell(root, s, phase, live);
@@ -338,12 +338,12 @@ export function renderStatusSpans(
     // survives clipping), and clipping often leaves only it — the color still tells the state.
     const stateSpans: StatusSpan[] = [{ text: state, ...(tone ? { tone } : {}) }];
     const next = nextRunCell(s, phase, now, snap.running);
-    const wakeMark = loopWakeMarker(snap.scheduledWakes, s.role, s.instanceOf, now);
+    const wakeMark = roleWakeMarker(snap.scheduledWakes, s.role, s.instanceOf, now);
     const resultT = resultTone(s.lastResult);
     return [
       cell(name),
       // Merge queue 4/5 — the merge role's phase label (the marker-driven record, filtered to
-      // this role by loopPhase's `merge` argument above) rides this same phase string.
+      // this role by rolePhase's `merge` argument above) rides this same phase string.
       [...stateSpans, { text: roleQueued(s.role) }, ...(wakeMark ? [{ text: wakeMark, tone: "blue" as const }] : [])],
       cell(String(s.runs)),
       cell(String(s.commits)),
@@ -369,11 +369,11 @@ export function renderStatusSpans(
     usd(snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0)),
     // The team's today-spend, from the snapshot's budget block — the same number the header
     // badge reads, so table and badge cannot drift. While the orchestrator runs that figure is
-    // the scheduler's live sum over its in-memory states, which can sit ABOVE the per-loop
-    // `today` cells above (each loop's persisted copy, written only at its saves): the gap is
+    // the scheduler's live sum over its in-memory states, which can sit ABOVE the per-role
+    // `today` cells above (each role's persisted copy, written only at its saves): the gap is
     // exactly the in-flight charge the budget gate has already counted, and displaying it is
     // the point (BUGS.md 2026-09-30). Not running, the snapshot derives the block from these
-    // same loops, so cells and total agree by construction.
+    // same roles, so cells and total agree by construction.
     usd(snap.budget.spentUsd),
     "",
     "",
@@ -426,14 +426,14 @@ export function renderStatusSpans(
     }
     return out;
   };
-  const loops = withMetrics.map(({ s, phase, live }) => ({
+  const roles = withMetrics.map(({ s, phase, live }) => ({
     role: s.role,
     phase,
     errorStreak: onErrorStreak(s),
     inFlight: isActivePhase(phase),
     ...(live?.quietMs !== undefined ? { stuckMs: live.quietMs } : {}),
     ...(s.lastError ? { lastError: s.lastError } : {}),
-    // The loop's image-input surface (plans/image-input.md "Surfaces", part 5/5): always
+    // The role's image-input surface (plans/image-input.md "Surfaces", part 5/5): always
     // present, so the TUI's images attention line keys on it like the dashboard's.
     imageInput: s.imageInput,
     imageReroute: s.imageRerouteLabel,
@@ -444,19 +444,19 @@ export function renderStatusSpans(
   for (const r of rows) lines.push(fmt(r));
   lines.push(separator);
   lines.push(fmt(totalsRow, "bold"));
-  // One footnote under the table when any custom loop exists — explains the asterisk without
-  // taking a column. Absent (byte-identical table) on a team with no user-defined loops.
+  // One footnote under the table when any custom role exists — explains the asterisk without
+  // taking a column. Absent (byte-identical table) on a team with no user-defined roles.
   if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* custom role", tone: "dim" }]);
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.
-  return { lines: maxWidth === undefined ? lines : lines.map((l) => clipSpans(l, maxWidth)), loops };
+  return { lines: maxWidth === undefined ? lines : lines.map((l) => clipSpans(l, maxWidth)), loops: roles };
 }
 
 /** Render the status table shared by `tumwater status` and the TUI as plain text (see
  * renderStatusSpans). When `maxWidth` is given, wide cells are clipped so no line exceeds it
  * (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
-  const { lines, loops } = renderStatusSpans(root, snap, maxWidth);
+  const { lines, loops: roles } = renderStatusSpans(root, snap, maxWidth);
   // The team-attention banners (team-alerts.ts) drop under the header's blank line here, on
   // the CLI-only plain-text surface — the same spelled-out banners the dashboard and TUI draw,
   // from the one shared source, so the CLI/GUI/TUI cannot drift on wording. One QUESTIONS.md
@@ -466,7 +466,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // Composed here, NOT inside renderStatusSpans: the TUI re-slices that function's shared
   // `lines` (lines[0], its own attention block, then lines.slice(1)), so a banner embedded
   // there would render twice in the TUI.
-  const alerts = teamAlerts(snap, openQuestions(root), loops, Date.now(), refusedEntryTitles(root)).filter((a) => a.key !== "stopped");
+  const alerts = teamAlerts(snap, openQuestions(root), roles, Date.now(), refusedEntryTitles(root)).filter((a) => a.key !== "stopped");
   const banner = alertLines(alerts, maxWidth ?? Number.MAX_SAFE_INTEGER, alerts.length).map(plainText);
   const text = lines.map(plainText);
   return [...text.slice(0, 2), ...banner, ...text.slice(2)].join("\n");

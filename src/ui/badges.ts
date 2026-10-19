@@ -372,6 +372,3 @@ export function permitsBadge(permits: StatusSnapshot["permits"]): string {
   if (providers.length === 0) return "";
   return ` · running ${permits.inUse} of ${permits.limit} · ${providers}`;
 }
-
-/** @deprecated Use roleWakeMarker. */
-export const loopWakeMarker = roleWakeMarker;

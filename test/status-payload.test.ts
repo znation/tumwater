@@ -19,7 +19,7 @@ import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { slotWorktreePath } from "../src/paths.js";
 import { todayStamp } from "../src/budget/budget.js";
@@ -29,7 +29,7 @@ import { assistantLine } from "./fixtures/pi-events.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
-test("status payload carries the pooled worktree slot a loop holds or is pinned to", async () => {
+test("status payload carries the pooled worktree slot a role holds or is pinned to", async () => {
   const repo = makeRepo();
   await initProject(repo, "pool slot test");
   // A live tick lease: the row names the slot, unpinned.
@@ -49,7 +49,7 @@ test("status payload carries the pooled worktree slot a loop holds or is pinned 
   assert.equal(held?.slot, "_slot-1");
   assert.equal(held?.slotPinned, false);
 
-  // A pin with no lease: the same slot, marked pinned. A loop with no slot carries neither field.
+  // A pin with no lease: the same slot, marked pinned. A role with no slot carries neither field.
   writeSlotsState(repo, {
     slots: [
       {
@@ -77,8 +77,8 @@ test("status payload carries an instance's claim title and base role", async () 
   assert.ok(feature, "the default config carries the feature role");
   feature.instances = 2;
   saveConfig(repo, cfg);
-  saveLoopState(repo, {
-    ...freshLoopState("feature-2"),
+  saveRunnerState(repo, {
+    ...freshRunnerState("feature-2"),
     claim: { file: "PLANS.md", key: "plan a", title: "Plan A", at: Date.now(), source: "assigned" },
   });
   const payload = statusPayload(repo) as {
@@ -93,7 +93,7 @@ test("status payload carries an instance's claim title and base role", async () 
   assert.equal(bare?.instanceOf, undefined);
 });
 
-test("status payload marks user-defined loops with the custom flag", async () => {
+test("status payload marks user-defined roles with the custom flag", async () => {
   const repo = makeRepo();
   await initProject(repo, "payload custom test");
   const cfg = loadConfig(repo);
@@ -109,15 +109,15 @@ test("status payload marks user-defined loops with the custom flag", async () =>
   );
 });
 
-test("status payload combines persisted + live token metrics for running loops only", async () => {
+test("status payload combines persisted + live token metrics for running roles only", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui metrics test");
   // Persisted totals from completed ticks…
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.generatedTokens = 1_000;
   s.peakContextTokens = 6_000;
   s.running = true; // a tick is in flight
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
   // …and the in-flight tick's log tail (800 output so far, peak context 12k).
   const file = piLogPath(repo, "feature");
   writeLogLines(file, [SESSION, assistantLine("turn one", { tokens: 8_000, output: 300 }), assistantLine("turn two", { tokens: 12_000, output: 500 })]);
@@ -125,22 +125,22 @@ test("status payload combines persisted + live token metrics for running loops o
     roles: Array<{ role: string; generated: number; peakCtx: number }>;
   };
   const feature = payload.roles.find((l) => l.role === "feature");
-  assert.ok(feature, "feature loop present in payload");
-  assert.equal(feature.generated, 1_800, "running loop gen = persisted + live output (1000+300+500)");
-  assert.equal(feature.peakCtx, 12_000, "running loop peak ctx = max(persisted, live)");
+  assert.ok(feature, "feature role present in payload");
+  assert.equal(feature.generated, 1_800, "running role gen = persisted + live output (1000+300+500)");
+  assert.equal(feature.peakCtx, 12_000, "running role peak ctx = max(persisted, live)");
 });
 
-test("status payload carries the current work item for running loops only", async () => {
+test("status payload carries the current work item for running roles only", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui work item test");
-  // A running loop whose in-flight tick has spoken its work item…
-  const s = freshLoopState("feature");
+  // A running role whose in-flight tick has spoken its work item…
+  const s = freshRunnerState("feature");
   s.running = true;
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
   const file = piLogPath(repo, "feature");
   writeLogLines(file, [SESSION, assistantLine('implement plan "Linear history on main"')]);
-  // …and an idle loop whose log tail is a finished tick (must not leak its item).
-  saveLoopState(repo, freshLoopState("clean"));
+  // …and an idle role whose log tail is a finished tick (must not leak its item).
+  saveRunnerState(repo, freshRunnerState("clean"));
   const file2 = piLogPath(repo, "clean");
   writeLogLines(file2, [SESSION, assistantLine("old finished work")]);
 
@@ -150,49 +150,49 @@ test("status payload carries the current work item for running loops only", asyn
   assert.equal(
     payload.roles.find((l) => l.role === "feature")?.currentWork,
     'implement plan "Linear history on main"',
-    "running loop shows its in-flight work item",
+    "running role shows its in-flight work item",
   );
-  assert.equal(payload.roles.find((l) => l.role === "clean")?.currentWork, null, "idle loop never shows a stale item");
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.currentWork, null, "idle role never shows a stale item");
 });
 
-// The per-loop today spend on the GUI surface: /api/status
-// carries todayUsd per loop — the daily budget window, 0 while its stamp is stale or missing,
+// The per-role today spend on the GUI surface: /api/status
+// carries todayUsd per role — the daily budget window, 0 while its stamp is stale or missing,
 // same helper and semantics as the TUI's `today` column — and the page renders its cell
 // client-side from that field.
 
-test("status payload carries todayUsd per loop from its daily window", async () => {
+test("status payload carries todayUsd per role from its daily window", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui today spend test");
   // A state file with today's stamp rides the payload…
-  const fresh = freshLoopState("clean");
+  const fresh = freshRunnerState("clean");
   fresh.dayStamp = todayStamp();
   fresh.dayCostUsd = 12.34;
-  saveLoopState(repo, fresh);
+  saveRunnerState(repo, fresh);
   // …a stale-stamp file with positive spend reads zero (dailyCost's rule)…
-  const stale = freshLoopState("dedupe");
+  const stale = freshRunnerState("dedupe");
   stale.dayStamp = todayStamp(Date.now() - 86_400_000);
   stale.dayCostUsd = 5.67;
-  saveLoopState(repo, stale);
+  saveRunnerState(repo, stale);
 
   let payload = statusPayload(repo) as { roles: Array<{ role: string; todayUsd: number }> };
   assert.equal(payload.roles.find((l) => l.role === "clean")?.todayUsd, 12.34, "fresh window rides the payload");
   assert.equal(payload.roles.find((l) => l.role === "dedupe")?.todayUsd, 0, "stale stamp reads zero");
 
-  // A loop that never ticked (default state file) also carries an explicit zero field.
-  saveLoopState(repo, freshLoopState("organize"));
+  // A role that never ticked (default state file) also carries an explicit zero field.
+  saveRunnerState(repo, freshRunnerState("organize"));
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.roles.find((l) => l.role === "organize")?.todayUsd, 0, "missing window reads zero");
 });
 
-test("status payload carries the consecutive no-change streak per loop", async () => {
+test("status payload carries the consecutive no-change streak per role", async () => {
   const repo = makeRepo();
   await initProject(repo, "payload no-change test");
   // A streak on the state file rides the payload for the TUI/GUI to read.
-  const streaked = freshLoopState("clean");
+  const streaked = freshRunnerState("clean");
   streaked.noChangeStreak = 4;
-  saveLoopState(repo, streaked);
-  // A loop that never ticked (absent field) reads as an explicit zero.
-  saveLoopState(repo, freshLoopState("organize"));
+  saveRunnerState(repo, streaked);
+  // A role that never ticked (absent field) reads as an explicit zero.
+  saveRunnerState(repo, freshRunnerState("organize"));
 
   let payload = statusPayload(repo) as { roles: Array<{ role: string; noChangeStreak: number }> };
   assert.equal(payload.roles.find((l) => l.role === "clean")?.noChangeStreak, 4, "a persisted streak rides the payload");
@@ -295,8 +295,8 @@ test("status payload's planHolds carries the working-on-it mark for a claimed pl
     { heading: "## Planned", body: "### Volume slider (planned 2026-10-01)\n\nBody." },
     { heading: "## Done" },
   ]);
-  saveLoopState(repo, {
-    ...loadLoopState(repo, "feature-2"),
+  saveRunnerState(repo, {
+    ...loadRunnerState(repo, "feature-2"),
     claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" },
   });
   const payload = statusPayload(repo) as { planHolds: string[]; planBlocked: boolean[] };
@@ -395,7 +395,7 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
 test("the status payload carries the operator pause flag; its phase outranks waiting: budget spent", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui team pause test");
-  // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
+  // A live orchestrator (this process) so rolePhase doesn't short-circuit to "stopped"…
   writeOrchestratorMarker(repo, ["clean"]);
 
   // No marker: not paused.
@@ -407,14 +407,14 @@ test("the status payload carries the operator pause flag; its phase outranks wai
   assert.notEqual(payload.roles.find((l) => l.role === "clean")?.phase, "paused");
 
   // Drop the marker (what `tumwater pause` does) with spend at the cap: the flag flips and
-  // the idle loop's phase reads `paused`, ahead of waiting: budget spent.
+  // the idle role's phase reads `paused`, ahead of waiting: budget spent.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 10;
   saveConfig(repo, cfg);
-  const s = freshLoopState("clean");
+  const s = freshRunnerState("clean");
   s.dayStamp = todayStamp();
   s.dayCostUsd = 12.5; // >= cap → waiting: budget spent too
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
   const marker = pausedPath(repo);
   writeMarker(marker, { at: Date.now() });
 
@@ -429,7 +429,7 @@ test("the status payload carries the operator pause flag; its phase outranks wai
   assert.equal(payload.roles.find((l) => l.role === "director")?.phase, "ready for messages");
 
   // Removing the marker (what `tumwater resume` does) reverts both: flag false, and with the
-  // spend still at the cap the loop falls back to waiting: budget spent.
+  // spend still at the cap the role falls back to waiting: budget spent.
   fs.rmSync(marker);
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.paused, false);
@@ -455,7 +455,7 @@ test("the status payload names the project and carries the recent events as data
   assert.equal(payload.eventItems.length, payload.events.length, "one item per feed line");
   const tail = payload.eventItems.slice(-3);
   assert.deepEqual(tail.map((e) => [e.source, e.type, e.result]), [["qa", "run_end", "error"], ["bugfix", "merged", undefined], ["bugfix", "build_check", "failed"]]);
-  // Each item's message is its feed line without the time and loop columns.
+  // Each item's message is its feed line without the time and role columns.
   for (const [i, item] of payload.eventItems.entries()) {
     assert.ok(payload.events[i]!.endsWith(" " + item.message), `line ${i} ends with its item's message`);
   }
@@ -463,73 +463,73 @@ test("the status payload names the project and carries the recent events as data
   assert.equal(formatEvent({ ts: tail[1]!.ts, source: "bugfix", type: "merged", commit: "a".repeat(40), summary: "Escape backlog bodies" }), payload.events.at(-2));
 });
 
-test("the status payload renders a corrupt event's loop as ? like the reports", async () => {
+test("the status payload renders a corrupt event's role as ? like the reports", async () => {
   const repo = makeRepo();
-  await initProject(repo, "gui corrupt loop test");
+  await initProject(repo, "gui corrupt role test");
   // A torn or hand-edited line parses (readEvents pushes any parsed object), so an event with
-  // no loop reaches eventItem; String(undefined) shipped the literal "undefined" as the feed's
-  // loop chip. eventRole's "?" is the rule the usage report and failure digest apply.
+  // no role reaches eventItem; String(undefined) shipped the literal "undefined" as the feed's
+  // role chip. eventRole's "?" is the rule the usage report and failure digest apply.
   writeEvents(repo, [{ ts: 123, type: "wake", reason: "main moved" }]);
   const payload = statusPayload(repo) as { eventItems: Array<{ source: string }> };
   assert.equal(payload.eventItems.at(-1)?.source, "?");
 });
 
-test("the status payload carries each loop's last error for the rows that failed", async () => {
+test("the status payload carries each role's last error for the rows that failed", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui last error test");
-  const s = freshLoopState("qa");
+  const s = freshRunnerState("qa");
   s.lastResult = "error";
   s.lastError = "429 Rate limit exceeded";
-  saveLoopState(repo, s);
-  saveLoopState(repo, freshLoopState("clean"));
+  saveRunnerState(repo, s);
+  saveRunnerState(repo, freshRunnerState("clean"));
   const payload = statusPayload(repo) as { roles: Array<{ role: string; lastError: string | null }> };
   assert.equal(payload.roles.find((l) => l.role === "qa")?.lastError, "429 Rate limit exceeded");
   assert.equal(payload.roles.find((l) => l.role === "clean")?.lastError, null);
 });
 
-test("the status payload carries each loop's last-merged epoch ms, null until it merges", async () => {
+test("the status payload carries each role's last-merged epoch ms, null until it merges", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui last merged test");
-  const s = freshLoopState("qa");
+  const s = freshRunnerState("qa");
   s.lastMergedAt = 123_456_789;
-  saveLoopState(repo, s);
-  saveLoopState(repo, freshLoopState("clean"));
+  saveRunnerState(repo, s);
+  saveRunnerState(repo, freshRunnerState("clean"));
   const payload = statusPayload(repo) as { roles: Array<{ role: string; lastMergedAt: number | null }> };
   assert.equal(payload.roles.find((l) => l.role === "qa")?.lastMergedAt, 123_456_789);
   assert.equal(payload.roles.find((l) => l.role === "clean")?.lastMergedAt, null);
 });
 
-test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () => {
+test("statusPayload exposes each role's nextRunAt and backoffSeconds", async () => {
   const repo = makeRepo();
   await initProject(repo, "payload schedule test");
-  const state = freshLoopState("clean");
+  const state = freshRunnerState("clean");
   state.nextRunAt = 1_758_800_000_000;
   state.backoffSeconds = 90;
-  saveLoopState(repo, state);
+  saveRunnerState(repo, state);
 
   const payload = statusPayload(repo) as { roles: Array<{ role: string; nextRunAt: number; backoffSeconds: number }> };
   const clean = payload.roles.find((l) => l.role === "clean");
-  assert.ok(clean, "the loop has a payload row");
+  assert.ok(clean, "the role has a payload row");
   assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms, formatted client-side");
   assert.equal(clean.backoffSeconds, 90);
 });
 
 // The per-role cap on the payload surface: `status --json`
-// carries the held roles beside pausedRoles, and a held idle loop's phase reads
-// `waiting: daily cap spent` — the loopPhase ladder naming the specific spend state.
-test("the status payload carries capPaused; a held idle loop's phase reads waiting: daily cap spent", async () => {
+// carries the held roles beside pausedRoles, and a held idle role's phase reads
+// `waiting: daily cap spent` — the rolePhase ladder naming the specific spend state.
+test("the status payload carries capPaused; a held idle role's phase reads waiting: daily cap spent", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui waiting: daily cap spent test");
-  // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
+  // A live orchestrator (this process) so rolePhase doesn't short-circuit to "stopped"…
   writeOrchestratorMarker(repo, ["clean"]);
 
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsdPerRole = { clean: 1 };
   saveConfig(repo, cfg);
-  const s = freshLoopState("clean");
+  const s = freshRunnerState("clean");
   s.dayStamp = todayStamp();
   s.dayCostUsd = 1.25; // >= cap → held
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
 
   let payload = statusPayload(repo) as {
     capPaused: string[];
@@ -541,7 +541,7 @@ test("the status payload carries capPaused; a held idle loop's phase reads waiti
   assert.equal(
     payload.roles.find((l) => l.role === "clean")?.phase,
     "waiting: daily cap spent",
-    "the held idle loop's phase names its own cap",
+    "the held idle role's phase names its own cap",
   );
   // The director is exempt — its phase keeps its own label even when a cap entry names it.
   assert.equal(payload.roles.find((l) => l.role === "director")?.phase, "ready for messages");
@@ -693,7 +693,7 @@ test("status payload lists the newest done plans and fixed bugs beside the open 
 test("the status payload carries no retired script key anywhere in its tree", async () => {
   const repo = makeRepo();
   await initProject(repo, "retired keys test");
-  saveLoopState(repo, freshLoopState("qa"));
+  saveRunnerState(repo, freshRunnerState("qa"));
   enqueueMerge(repo, { role: "qa", sha: "abc1234", run: 3, summary: "queued", enqueuedAt: Date.now() });
   writeEvents(repo, [{ ts: 123, loop: "qa", type: "wake", reason: "main moved" }]);
   const payload = statusPayload(repo) as {

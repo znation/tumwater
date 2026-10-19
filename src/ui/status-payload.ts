@@ -10,7 +10,7 @@ import { dailyCost } from "../budget/budget.js";
 import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
 import { snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, quietBadge, runWindowBadge } from "./badges.js";
-import { isActivePhase, loopRowCells, onErrorStreak } from "./status-model.js";
+import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts } from "./team-alerts.js";
 
@@ -34,7 +34,7 @@ export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title
  * newer build and reload), while `tumwater status --json` (cli.ts) prints it verbatim — every
  * other field is shared, so the dashboard and the CLI can never drift apart. Assembled here —
  * not in gui/gui-server.ts — because it is shared data collection for observers, not part of
- * serving HTTP: snapshot() supplies the core state, and the per-loop phase/metrics fields come
+ * serving HTTP: snapshot() supplies the core state, and the per-role phase/metrics fields come
  * from the same status-model helpers the TUI table uses.
  *
  * `now` pins the poll's clock for the time-derived fields (see snapshot's seam of the same
@@ -62,24 +62,24 @@ export function statusPayload(root: string, now = Date.now()): object {
     for (const r of g.rows) planSeries[r.i] = slot;
   }
   const roles = snap.loops.map((s) => {
-    // loopRowCells single-homes the per-loop tail read + metrics + phase derivation the
+    // roleRowCells single-homes the per-role tail read + metrics + phase derivation the
     // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
     // drift apart.
-    const { live, generated, peakCtx, phase } = loopRowCells(snap, root, s);
+    const { live, generated, peakCtx, phase } = roleRowCells(snap, root, s);
     return {
       role: s.role,
-      // The loop's own failure-streak tell (onErrorStreak, status-model.ts): the red
+      // The role's own failure-streak tell (onErrorStreak, status-model.ts): the red
       // "failing tick after tick" alert keys on this rather than the rendered phase, so it
-      // stays up while the loop's next tick runs (phase reads "working") and clears only
+      // stays up while the role's next tick runs (phase reads "working") and clears only
       // when the streak resets (BUGS.md 2026-10-14).
       errorStreak: onErrorStreak(s),
-      // User-defined-loop marker (computed in snapshot — see StatusSnapshot.loops): the GUI
-      // renders it as an asterisk beside the loop name.
+      // User-defined-role marker (computed in snapshot — see StatusSnapshot.loops): the GUI
+      // renders it as an asterisk beside the role name.
       custom: s.custom,
-      // The loop's resolved selector, present whenever a model resolves (a single string
+      // The role's resolved selector, present whenever a model resolves (a single string
       // `model` or a tier map); the seam tier tag (part 7a, model-tiers.md
       // "Observability") rides only under a tier map. The GUI renders a tier tag beside
-      // the loop name and the selector in the sub line.
+      // the role name and the selector in the sub line.
       ...(s.modelTier ? { modelTier: s.modelTier } : {}),
       ...(s.model ? { model: s.model } : {}),
       // pi's own saved default (see StatusSnapshot.loops.modelFromPi): ships beside `model` so
@@ -87,7 +87,7 @@ export function statusPayload(root: string, now = Date.now()): object {
       // spread as `model`, present on exactly the rows that carry the flag.
       ...(s.modelFromPi ? { modelFromPi: true } : {}),
       // Model failure fallback (PLANS.md "Model failure fallback, part 2/2"): present only
-      // while the loop's ticks run off-model, so the common row shape is unchanged.
+      // while the role's ticks run off-model, so the common row shape is unchanged.
       ...(s.fallback ? { fallback: s.fallback } : {}),
       ...(s.slot ? { slot: s.slot, slotPinned: s.slotPinned === true } : {}),
       // Parallel work instances (plans/parallel-work-instances.md "Observability", part
@@ -97,7 +97,7 @@ export function statusPayload(root: string, now = Date.now()): object {
       // unclaimed row so the common payload shape is unchanged.
       ...(s.claim ? { claim: s.claim.title } : {}),
       ...(s.instanceOf ? { instanceOf: s.instanceOf } : {}),
-      // The loop's image-input surface (plans/image-input.md "Surfaces", part 5/5), always
+      // The role's image-input surface (plans/image-input.md "Surfaces", part 5/5), always
       // present: whether its own model reads images and where a blind prompt reroutes — the
       // GUI's images alert and composer notice read them (the JSON field is `imageReroute`, the
       // display label, not the persisted handoff state).
@@ -112,9 +112,9 @@ export function statusPayload(root: string, now = Date.now()): object {
       inFlight: isActivePhase(phase),
       // The stuck alert's silence span (ms since the last pi log write, capped to the tick by
       // progressOfTick) — the dashboards render it as "for <duration>" on a tool-call stall.
-      // Present only while the loop holds a live tail, so the common payload shape is unchanged.
+      // Present only while the role holds a live tail, so the common payload shape is unchanged.
       ...(live?.quietMs !== undefined ? { stuckMs: live.quietMs } : {}),
-      // What a working loop is doing right now (first assistant text of the in-flight run).
+      // What a working role is doing right now (first assistant text of the in-flight run).
       // Null when idle — never show a stale item from a finished tick.
       currentWork: live?.currentWork ?? null,
       runs: s.runs,
@@ -122,7 +122,7 @@ export function statusPayload(root: string, now = Date.now()): object {
       generated,
       peakCtx,
       costUsd: s.totalCostUsd,
-      // The loop's spend for the local day (the daily budget window): 0 while its stamp
+      // The role's spend for the local day (the daily budget window): 0 while its stamp
       // is stale or missing — same helper and semantics as the TUI's `today` column.
       todayUsd: dailyCost(s),
       lastResult: s.lastResult ?? null,
@@ -131,7 +131,7 @@ export function statusPayload(root: string, now = Date.now()): object {
       // beside a problem result that carries no summary of its own.
       lastError: s.lastError ?? null,
       lastRunEndedAt: s.lastRunEndedAt ?? null,
-      // When the loop last actually merged a change on main (epoch ms; null until it ever
+      // When the role last actually merged a change on main (epoch ms; null until it ever
       // does) — the direct answer to "how long has the dry spell been", the productivity
       // complement to lastError/lastRunEndedAt.
       lastMergedAt: s.lastMergedAt ?? null,
@@ -222,8 +222,8 @@ export function statusPayload(root: string, now = Date.now()): object {
     // the Queued tab shows each deferred prompt's delivery countdown from it. Raw data, like
     // inboxQueuedAt.
     inboxNotBefore: snap.inboxNotBefore,
-    // Per-role queued-prompt counts: the loop table's
-    // `p:N` state marker and the queued-prompts section's per-loop lines render from it.
+    // Per-role queued-prompt counts: the role table's
+    // `p:N` state marker and the queued-prompts section's per-role lines render from it.
     // Raw data, like inbox/inboxPrompts.
     roleInbox: snap.roleInbox,
     // Per-role queued prompts with their queue-file addresses (see
@@ -242,20 +242,20 @@ export function statusPayload(root: string, now = Date.now()): object {
     ...(snap.claudeWindow ? { claudeWindow: snap.claudeWindow } : {}),
     // Each tier's fallback step (fallback chain part 7c/7), raw for the GUI side card.
     ...(snap.chain ? { chain: snap.chain } : {}),
-    // Operator pause (`tumwater pause` marker present): every idle role loop's phase reads
-    // `paused` ahead of budget/main-red — one flag covers both dashboards through loopPhase.
+    // Operator pause (`tumwater pause` marker present): every idle role's phase reads
+    // `paused` ahead of budget/main-red — one flag covers both dashboards through rolePhase.
     paused: snap.paused,
     pausedRoles: snap.pausedRoles,
-    // The loop ids the scheduler treats as paused by the marker; the dashboards read this.
+    // The role ids the scheduler treats as paused by the marker; the dashboards read this.
     pausedLoops: snap.pausedLoops,
     // The per-role cap's held roles (part 2/2): an idle
-    // loop in this set reads `cap paused` — the loopPhase ladder names it, and `status
+    // role in this set reads `cap paused` — the rolePhase ladder names it, and `status
     // --json` carries the raw set beside pausedRoles so scripts read the same verdict.
     capPaused: snap.capPaused,
     // The maintenance allowance's held roles and figures (plans/work-ratio.md, part 1b/4):
-    // machine-readable for `status --json` beside capPaused; the loop cell's own
+    // machine-readable for `status --json` beside capPaused; the role cell's own
     // `held: maintenance quota <used>/<allowance>` label is built from `held` plus the figures
-    // through loopPhase.
+    // through rolePhase.
     maintenanceQuota: snap.maintenanceQuota,
     // The new-project bootstrap (plans/work-ratio.md, part 2/2): the raw progress and held set
     // are machine-readable for `status --json` beside capPaused, and the preformatted badge
@@ -265,7 +265,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     bootstrapBadge: bootstrapBadge(snap.bootstrap),
     // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
     // window, machine-readable for `status --json` beside capPaused; the dashboards render
-    // the loop's own `quiet until <end>` from it through loopPhase.
+    // the role's own `quiet until <end>` from it through rolePhase.
     roleQuietPaused: snap.roleQuietPaused,
     // The team marker's standing timed-pause deadline (ms epoch), absent when the team is
     // not timed-paused (undefined drops from the JSON). Raw data, like paused/pausedRoles —
@@ -294,12 +294,12 @@ export function statusPayload(root: string, now = Date.now()): object {
     roles,
     // The recent event feed as the one-line text `tumwater logs` prints…
     events: recent.map((e) => formatEvent(e)),
-    // …and the same events as data for the dashboard's activity feed: when, which loop, what
+    // …and the same events as data for the dashboard's activity feed: when, which role, what
     // kind (the event type plus its result or check status, which decide the row's tone), and
-    // the message without formatEvent's time/loop columns — the page renders those itself.
+    // the message without formatEvent's time/role columns — the page renders those itself.
     eventItems: recent.map(eventFeedItem),
     // Project status (planned features + open bugs + open questions), fresh per poll like
-    // events — loops edit these files constantly, so there is no cache to go stale. The page
+    // events — roles edit these files constantly, so there is no cache to go stale. The page
     // derives the header badge count from this list's length.
     plans,
     bugs: openBugs(root),

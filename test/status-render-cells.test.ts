@@ -1,14 +1,14 @@
 /** The status table's per-cell suites, split out of status-render.test.ts: the last-tick cell
  * (lastTickCell), the today column, the last-result cell, and the next-run column (nextRunCell).
  * The remaining renderStatus surface stays in status-render.test.ts; the status-model suite
- * (loopPhase, workingDetail) lives in status-model.test.ts, the header badges' in
+ * (rolePhase, workingDetail) lives in status-model.test.ts, the header badges' in
  * status-header.test.ts, and the fixtures these assemble snapshots from are in
  * status-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { lastTickCell, lastMergedCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
-import { loopPhase } from "../src/ui/status-model.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { rolePhase } from "../src/ui/status-model.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import { applyMergeOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { teamDailyCost, todayStamp } from "../src/budget/budget.js";
@@ -42,7 +42,7 @@ test("lastTickCell prefixes the date once older than a day", () => {
   assert.equal(lastTickCell(ts), `${prefix} ${stampOf(ts)} · 2d ago`);
 });
 
-test("lastTickCell is a bare dash for loops that never ticked", () => {
+test("lastTickCell is a bare dash for roles that never ticked", () => {
   assert.equal(lastTickCell(undefined), "-");
 });
 
@@ -62,7 +62,7 @@ test("renderStatus shows the absolute last-tick time in the table row", () => {
 
 test("last tick shrinks last: narrow width takes from last result, then state, then last tick", () => {
   const root = tmpdir();
-  // A working loop with a work-item-style wide state cell and a long last-result summary,
+  // A working role with a work-item-style wide state cell and a long last-result summary,
   // so all three flexible columns have room to shrink.
   writePiLog(root, "feature", [
     SESSION,
@@ -120,16 +120,16 @@ test("renderStatus shows the last-merged age in the table row, dash when never m
   const mergeDone = snapshotWith([{ role: "clean", lastRunEndedAt: ts, lastMergedAt: ts - 60_000 }]);
   const mergeDoneRow = renderStatus(tmpdir(), mergeDone).split("\n").find((l) => l.startsWith("clean")) ?? "";
   assert.ok(mergeDoneRow.includes(`${stampOf(ts - 60_000)} · 4m ago`), `row missing the merged age: ${JSON.stringify(mergeDoneRow)}`);
-  // A loop that has never merged shows the same dash as a never-ticked loop.
+  // A role that has never merged shows the same dash as a never-ticked role.
   const fresh = snapshotWith([{ role: "new", lastRunEndedAt: ts }]);
   const { lines: freshLines, cellAt, headers } = tableCells(renderStatus(tmpdir(), fresh));
   const freshRow = freshLines.find((l) => l.startsWith("new")) ?? "";
   assert.equal(cellAt(freshRow, headers.indexOf("last merged")), "-", "never-merged cell is the dash");
 });
 
-// The per-loop today-spend column: `today` sits between cost
-// and last tick, showing each loop's daily budget window via dailyCost — $0.00 while its stamp
-// is stale or missing, so loops that never ticked read zero without a save. It is not flexible
+// The per-role today-spend column: `today` sits between cost
+// and last tick, showing each role's daily budget window via dailyCost — $0.00 while its stamp
+// is stale or missing, so roles that never ticked read zero without a save. It is not flexible
 // (a short fixed-width cell like cost), and the totals row sums the same windows as the badge.
 
 // Header labels are padded to their column widths, so they cannot be split on the two-space
@@ -145,16 +145,16 @@ test("the status table has a today column between cost and last tick", () => {
   );
 });
 
-test("the today cell shows the loop's daily window and zeros for stale or missing stamps", () => {
-  const fresh = freshLoopState("clean");
+test("the today cell shows the role's daily window and zeros for stale or missing stamps", () => {
+  const fresh = freshRunnerState("clean");
   fresh.dayStamp = todayStamp();
   fresh.dayCostUsd = 12.34; // fresh stamp: the persisted window renders as-is
   // Stale: yesterday's stamp with positive spend reads zero — the window rolled over.
-  const stale = freshLoopState("dedupe");
+  const stale = freshRunnerState("dedupe");
   stale.dayStamp = todayStamp(Date.now() - 86_400_000);
   stale.dayCostUsd = 5.67;
-  // Missing: a loop that never ticked (freshLoopState defaults) also reads zero, no save needed.
-  const snap = snapshotWith([fresh, stale, freshLoopState("organize")]);
+  // Missing: a role that never ticked (freshRunnerState defaults) also reads zero, no save needed.
+  const snap = snapshotWith([fresh, stale, freshRunnerState("organize")]);
   const { lines, cellAt, headers: cols } = tableCells(renderStatus(tmpdir(), snap));
   const cleanRow = lines.find((l) => l.startsWith("clean")) ?? "";
   assert.equal(cellAt(cleanRow, cols.indexOf("today")), "$12.34", "fresh stamp renders its window");
@@ -165,18 +165,18 @@ test("the today cell shows the loop's daily window and zeros for stale or missin
   }
 });
 
-test("the totals row's today cell sums the loops' daily windows like the header badge", () => {
-  const a = freshLoopState("clean");
+test("the totals row's today cell sums the roles' daily windows like the header badge", () => {
+  const a = freshRunnerState("clean");
   a.dayStamp = todayStamp();
   a.dayCostUsd = 12.34;
-  const b = freshLoopState("dedupe");
+  const b = freshRunnerState("dedupe");
   b.dayStamp = todayStamp();
   b.dayCostUsd = 0.66;
-  // A stale loop contributes nothing to the team total…
-  const c = freshLoopState("organize");
+  // A stale role contributes nothing to the team total…
+  const c = freshRunnerState("organize");
   c.dayStamp = todayStamp(Date.now() - 86_400_000);
   c.dayCostUsd = 9.99;
-  // …and the badge carries the same sum (status/status-data.ts derives both from the loops).
+  // …and the badge carries the same sum (status/status-data.ts derives both from the roles).
   const snap = snapshotWith([a, b, c], { spentUsd: teamDailyCost([a, b, c]), capUsd: 50, capHitAt: null, free: false, fallback: null });
   const { lines, cellAt, headers: cols } = tableCells(renderStatus(tmpdir(), snap));
   const totalsRow = lines[lines.length - 1] ?? "";
@@ -192,7 +192,7 @@ test("the today column keeps its natural width under overflow like cost", () => 
     assistantLine(`implement plan "${"x".repeat(50)}"`),
     toolStart("bash", { command: "npm test" }),
   ]);
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.running = true;
   s.lastRunStartedAt = Date.now() - 5_000;
   s.lastResult = "changed";
@@ -261,34 +261,34 @@ test("the last-result cell shows the merge's outcome beside the summary of the c
 
 test("a pending change after a main-red tick does not keep the state cell reading main red", () => {
   // The last-result cell keeps the main_red pair (it IS the last completed outcome), but the
-  // state cell's "main's check is failing" says the loop is blocked NOW — and a queued change
+  // state cell's "main's check is failing" says the role is blocked NOW — and a queued change
   // got past the red-main gate, so main was green at its tick.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   applyTickOutcome(s, defaultConfig(), "feature", { result: "main_red", summary: "code merges blocked until main is green" });
-  assert.equal(loopPhase(s, true), "main's check is failing", "fixture sanity: the blocked tick reads main red");
+  assert.equal(rolePhase(s, true), "main's check is failing", "fixture sanity: the blocked tick reads main red");
   applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
-  assert.match(loopPhase(s, true), /^sleeping/, "the pending change's tick was not blocked");
+  assert.match(rolePhase(s, true), /^sleeping/, "the pending change's tick was not blocked");
   const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, mergeQueue: { depth: 1 } }), "feature");
   assert.doesNotMatch(row, /^feature\s+main's check is failing/);
   const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, mergeQueue: { depth: 1 } }));
   assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), "main's check is failing — code merges blocked until main is green", `prior pair kept: ${row}`);
 });
 // The `next run` column: nextRunCell's rules — a due idle
-// loop reads `now`, a future one its remaining time (`backoff `-prefixed while backing off),
-// in-flight loops and a stopped team read `-` — and the column is appended last so
+// role reads `now`, a future one its remaining time (`backoff `-prefixed while backing off),
+// in-flight roles and a stopped team read `-` — and the column is appended last so
 // FLEXIBLE_COLUMNS' positional indices stay untouched.
 
-test("nextRunCell reads now for a due idle loop and the remaining time for a future one", () => {
+test("nextRunCell reads now for a due idle role and the remaining time for a future one", () => {
   const now = Date.now();
-  const due = freshLoopState("clean");
-  const future = freshLoopState("dedupe");
+  const due = freshRunnerState("clean");
+  const future = freshRunnerState("dedupe");
   future.nextRunAt = now + 180_000;
-  const backoff = freshLoopState("feature");
+  const backoff = freshRunnerState("feature");
   backoff.nextRunAt = now + 180_000;
   backoff.backoffSeconds = 240;
   assert.equal(nextRunCell(due, "queued", now, true), "now");
   assert.equal(nextRunCell(future, "queued", now, true), "3m");
-  assert.equal(nextRunCell(backoff, "queued", now, true), "sleeping 3m", "a backing-off loop says so — that is what wake clears");
+  assert.equal(nextRunCell(backoff, "queued", now, true), "sleeping 3m", "a backing-off role says so — that is what wake clears");
 });
 
 test("nextRunCell shows ×N beside the time for a role whose yield scales its clock", () => {
@@ -296,7 +296,7 @@ test("nextRunCell shows ×N beside the time for a role whose yield scales its cl
   // `now`-due cell at ×4 is a role waiting out its stretched gap — the suffix is what
   // makes that visible instead of looking like a broken clock.
   const now = Date.now();
-  const scaled = freshLoopState("perf");
+  const scaled = freshRunnerState("perf");
   scaled.recentOutcomes = "n".repeat(16); // ×4
   scaled.nextRunAt = now - 1000;
   assert.equal(nextRunCell(scaled, "queued", now, true), "now ×4");
@@ -305,28 +305,28 @@ test("nextRunCell shows ×N beside the time for a role whose yield scales its cl
   scaled.backoffSeconds = 240;
   assert.equal(nextRunCell(scaled, "queued", now, true), "sleeping 3m ×4");
   // A role the scaling never applies to stays unsuffixed even with a full empty ring.
-  const work = freshLoopState("feature");
+  const work = freshRunnerState("feature");
   work.recentOutcomes = "n".repeat(20);
   work.nextRunAt = now - 1000;
   assert.equal(nextRunCell(work, "queued", now, true), "now");
   // And multiplier 1 (a merge in the recent window) carries no suffix either.
-  const mergeDone = freshLoopState("perf");
+  const mergeDone = freshRunnerState("perf");
   mergeDone.recentOutcomes = "n".repeat(19) + "L";
   mergeDone.nextRunAt = now - 1000;
   assert.equal(nextRunCell(mergeDone, "queued", now, true), "now");
 });
 
-test("nextRunCell reads - for a loop in flight or a team that is not running", () => {
+test("nextRunCell reads - for a role in flight or a team that is not running", () => {
   const now = Date.now();
-  const working = freshLoopState("clean");
+  const working = freshRunnerState("clean");
   working.nextRunAt = now + 60_000;
   working.running = true;
   assert.equal(nextRunCell(working, "working 3m", now, true), "-");
-  // A merge is in flight though the loop itself is not running: the rendered phase says so.
-  const mergeCell = freshLoopState("dedupe");
+  // A merge is in flight though the role itself is not running: the rendered phase says so.
+  const mergeCell = freshRunnerState("dedupe");
   mergeCell.nextRunAt = now + 60_000;
   assert.equal(nextRunCell(mergeCell, "merging 1m · checking", now, true), "-");
-  const idle = freshLoopState("feature");
+  const idle = freshRunnerState("feature");
   idle.nextRunAt = now + 60_000;
   assert.equal(nextRunCell(idle, "queued", now, false), "-", "a stopped team's nextRunAts are stale leftovers, not plans");
 });

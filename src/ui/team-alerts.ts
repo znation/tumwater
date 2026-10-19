@@ -2,10 +2,10 @@
 /** The team ALERT model: everything about the team that needs the operator — or that they
  * should know — phrased once for both observer surfaces: the dashboard's alert banners
  * (shipped in the status payload as `alerts`) and the TUI's attention lines
- * (tui-frame.ts alertLines). Split from status-model.ts, whose per-loop derivation this reads
+ * (tui-frame.ts alertLines). Split from status-model.ts, whose per-role derivation this reads
  * as input; `tone` ranks an
  * alert (red and amber ask for action, indigo asks a question, blue and gray inform), and
- * `actions` are the dashboard's buttons (`act` names a page action — open a loop, a view,
+ * `actions` are the dashboard's buttons (`act` names a page action — open a role, a view,
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status/status-data.js";
@@ -33,7 +33,7 @@ function entryListDetail(titles: readonly string[]): string {
  * phrased once for both observer surfaces: the dashboard's alert banners (shipped in the status
  * payload as `alerts`) and the TUI's attention lines. `tone` ranks it (red and amber ask for
  * action, indigo asks a question, blue and gray inform); `actions` are the dashboard's buttons
- * (`act` names a page action — open a loop, a view, the cap editor…). */
+ * (`act` names a page action — open a role, a view, the cap editor…). */
 export interface TeamAlert {
   key: string;
   tone: "red" | "amber" | "indigo" | "blue" | "gray";
@@ -42,23 +42,23 @@ export interface TeamAlert {
   actions: Array<{ label: string; act: string; arg?: string }>;
 }
 
-/** The loop facts teamAlerts reads: whether the loop's OWN failure streak is at or past the
+/** The role facts teamAlerts reads: whether the role's OWN failure streak is at or past the
  * alert threshold (onErrorStreak, src/ui/status-model.ts) — the tell the red "failing tick
  * after tick" banner keys on, independent of the rendered phase, so the alert stays up while
- * the loop's next tick runs (its phase reads "working") and clears only once the streak
+ * the role's next tick runs (its phase reads "working") and clears only once the streak
  * resets; plus its rendered phase (for the main-red and stuck banners), whether it is in
  * flight, and its last recorded error. */
-export interface AlertLoop {
+export interface AlertRole {
   role: string;
   phase: string;
   errorStreak: boolean;
   inFlight: boolean;
   lastError?: string | null;
-  /** Whether the loop's own model reads images (plans/image-input.md "Surfaces", part 5/5):
-   * `false` marks a text-only loop the `images` alert considers; null (unknown) is not
+  /** Whether the role's own model reads images (plans/image-input.md "Surfaces", part 5/5):
+   * `false` marks a text-only role the `images` alert considers; null (unknown) is not
    * counted as text-only. Always present on the real status rows. */
   imageInput?: boolean | null;
-  /** The loop's image reroute target as `<tier> (<model>)`, when a peer tier reads images.
+  /** The role's image reroute target as `<tier> (<model>)`, when a peer tier reads images.
    * Absent (or null) when no other tier reads images — the amber no-target alert. */
   imageReroute?: string | null;
   /** ms the in-flight run has been silent (its stall span), from the live tail's quietMs and
@@ -66,38 +66,38 @@ export interface AlertLoop {
   stuckMs?: number;
 }
 
-/** The dashboard's "Open <role>" buttons for an alert about a set of loops: one button per
- * loop (capped to the first three so the banner does not overflow), each opening that loop's
+/** The dashboard's "Open <role>" buttons for an alert about a set of roles: one button per
+ * role (capped to the first three so the banner does not overflow), each opening that role's
  * pane. Shared by the failing, stuck, and no-image-target alerts, so the button shape and its
  * cap cannot drift between them. */
-function openRoleActions(loops: readonly AlertLoop[]): Array<{ label: string; act: string; arg: string }> {
-  return loops.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role }));
+function openRoleActions(roles: readonly AlertRole[]): Array<{ label: string; act: string; arg: string }> {
+  return roles.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role }));
 }
 
 /** Natural English list of the given names: “a and b” for one or two, “a, b, and c”
- * beyond that. Shared by the loop-row and held-id banners so the wording cannot drift. */
+ * beyond that. Shared by the role-row and held-id banners so the wording cannot drift. */
 function andJoin(names: readonly string[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
-function listRoles(loops: readonly AlertLoop[]): string {
-  return andJoin(loops.map((l) => roleLabel(l.role)));
+function listRoles(roles: readonly AlertRole[]): string {
+  return andJoin(roles.map((l) => roleLabel(l.role)));
 }
 
 /** The `listRoles` rendering for a set of held role ids (status-data.ts's `capPaused` and
- * `maintenanceQuota.held`, the scheduler's enabled-but-held sets rather than rendered loop
- * rows): names every held id through roleLabel even when a stale id matches no live loop, so
+ * `maintenanceQuota.held`, the scheduler's enabled-but-held sets rather than rendered role
+ * rows): names every held id through roleLabel even when a stale id matches no live role, so
  * the role-cap and maintenance banners never drop a held role from their copy. */
 function listRoleIds(ids: readonly string[]): string {
   return andJoin(ids.map(roleLabel));
 }
 
-/** The stuck alert's per-loop detail: the stall phrase the phase rendered, plus — when that
+/** The stuck alert's per-role detail: the stall phrase the phase rendered, plus — when that
  * phrase does not already carry one — the honest silence span from the live tail (stuckMs,
- * ms since the loop's last pi log write, capped to the tick by progressOfTick). A
+ * ms since the role's last pi log write, capped to the tick by progressOfTick). A
  * "no agent output for <d>" phrase already carries its duration, so only a tool-call stall gets
  * a " for <duration>" suffix, and only when the caller holds a live tail (stuckMs present). */
-function stuckDetail(l: AlertLoop): string {
+function stuckDetail(l: AlertRole): string {
   const cause = (STALL_RE.exec(l.phase)?.[0] ?? "").trim();
   if (cause && !cause.startsWith("no agent output for") && l.stuckMs !== undefined) {
     return `${roleLabel(l.role)}: ${cause} for ${duration(l.stuckMs)}`;
@@ -111,7 +111,7 @@ function localizeInstants(text: string): string {
 }
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
- * main, loops failing tick after tick, loops that look stuck, a stale running build, open
+ * main, roles failing tick after tick, roles that look stuck, a stale running build, open
  * questions, refused entries, a pause, a stopped team. `now` is passed so a timed pause's
  * countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -135,7 +135,7 @@ export function teamAlerts(
     | "providerHolds"
   >,
   questions: readonly string[],
-  loops: readonly AlertLoop[],
+  roles: readonly AlertRole[],
   now: number,
   refused: readonly string[] = [],
 ): TeamAlert[] {
@@ -189,18 +189,18 @@ export function teamAlerts(
   // banner names it the way the budget, disk, and quiet banners name theirs, instead of leaving
   // an operator to read every row. An amber ask (it needs a raise to resume); clears on its own
   // at local midnight when the spend window rolls over.
-  const capPausedLoops = loops.filter((l) => snap.capPaused.includes(l.role));
+  const capPausedRoles = roles.filter((l) => snap.capPaused.includes(l.role));
   if (snap.capPaused.length > 0) {
     out.push({
       key: "role-cap",
       tone: "amber",
       title: `${listRoleIds(snap.capPaused)} ${agree(snap.capPaused.length, "is over its daily cap", "are over their daily caps")}`,
       detail: `The daily cap (maxDailyCostUsdPerRole) holds ${listRoleIds(snap.capPaused)}: no new runs until local midnight. Raise the cap to resume ${agree(snap.capPaused.length, "it", "them")}.`,
-      actions: openRoleActions(capPausedLoops),
+      actions: openRoleActions(capPausedRoles),
     });
   }
   // The disk floor holding new work (plans/disk-floor.md, part 4/4): the header badge and the
-  // loop rows say what is happening, but the banner names the threshold and the way out, so an
+  // role rows say what is happening, but the banner names the threshold and the way out, so an
   // operator hitting a full volume does not have to read events. An amber ask — the team is
   // stopped and needs room, not merely informed. Only while the hold is on; below the reclaim
   // threshold but not yet held is the badge's quieter business.
@@ -228,7 +228,7 @@ export function teamAlerts(
       actions: [],
     });
   }
-  const red = loops.filter((l) => l.phase === "main's check is failing");
+  const red = roles.filter((l) => l.phase === "main's check is failing");
   if (red.length) {
     out.push({
       key: "mainred",
@@ -238,14 +238,14 @@ export function teamAlerts(
       actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }
-  // A loop whose own failure streak is at or past the alarm threshold (onErrorStreak — an
+  // A role whose own failure streak is at or past the alarm threshold (onErrorStreak — an
   // error streak at ERROR_STREAK_WARN, or a quiet-kill streak): the red "failing tick after
   // tick" banner. Keyed on the streak, not on the rendered phase, so it stays up while the
-  // loop's next tick runs — where loopPhase reads "working"/"merge"/"reviewing" rather
+  // role's next tick runs — where rolePhase reads "working"/"merge"/"reviewing" rather
   // than "failing" — and clears only when the streak resets (BUGS.md 2026-10-14). The
   // wording names what happened (a streak of failed or rejected ticks), not a single repeated
   // error, because a rejection streak is three different rejected changes.
-  const failing = loops.filter((l) => l.errorStreak);
+  const failing = roles.filter((l) => l.errorStreak);
   if (failing.length) {
     out.push({
       key: "failing",
@@ -260,7 +260,7 @@ export function teamAlerts(
   // A stall marker rides only a running label. The director is excluded from `inFlight` (it
   // holds no maxConcurrent permit), so its own running phase is accepted too — otherwise a
   // stalled director would go unalerted (BUGS.md 2026-10-06).
-  const stuck = loops.filter((l) => (l.inFlight || l.phase.startsWith("director working")) && STALL_RE.test(l.phase));
+  const stuck = roles.filter((l) => (l.inFlight || l.phase.startsWith("director working")) && STALL_RE.test(l.phase));
   if (stuck.length) {
     out.push({
       key: "stuck",
@@ -310,7 +310,7 @@ export function teamAlerts(
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
-  // the team holding to a schedule is not a problem, but an operator watching idle loops
+  // the team holding to a schedule is not a problem, but an operator watching idle roles
   // inside the window needs the same explanation the pause alert gives a paused team —
   // why nothing ticks, and when it starts again. The window end comes from quiet-hours.ts's
   // quietWindowEnd, the same helper quietBadge uses for the header.
@@ -325,7 +325,7 @@ export function teamAlerts(
     });
   }
   // The maintenance allowance (plans/work-ratio.md, part 1b/4): by design and self-clearing —
-  // the scheduler holds maintenance loops at the rolling 24 h allowance until merges free room,
+  // the scheduler holds maintenance roles at the rolling 24 h allowance until merges free room,
   // then they tick again on their own — so it informs (gray, no actions), the quiet alert's
   // tone, rather than amber like the failed/refused asks. An operator watching idle maintenance
   // roles gets the same explanation the hold's own row carries, team-wide.
@@ -341,7 +341,7 @@ export function teamAlerts(
   }
   // A standing provider failure hold (src/team/team-hold.ts `standingHolds`, published through
   // the orchestrator info file): a provider storm holds roles on that provider, so an operator
-  // watching idle loops with no log open sees why nothing new starts there. Self-clearing by
+  // watching idle roles with no log open sees why nothing new starts there. Self-clearing by
   // design — the hold re-opens at its own deadline — so it informs (blue, no actions), the
   // quiet and maintenance alerts' tone, rather than asking. The snapshot carries the holds only
   // while a live orchestrator publishes one.
@@ -383,14 +383,14 @@ export function teamAlerts(
       actions: [{ label: "Copy the command", act: "copy", arg: "tumwater start" }],
     });
   }
-  // Image input (plans/image-input.md "Surfaces", part 5/5): a loop whose model cannot read
-  // images. Blue when every text-only loop has a reroute target (a tick that reads an image
-  // stops and reruns — nothing fails); amber when some text-only loop has none (a blind read
+  // Image input (plans/image-input.md "Surfaces", part 5/5): a role whose model cannot read
+  // images. Blue when every text-only role has a reroute target (a tick that reads an image
+  // stops and reruns — nothing fails); amber when some text-only role has none (a blind read
   // fails and image submissions are refused); a separate amber when a claimed model failed
-  // doctor's live probe (the claim is contradicted, whatever any loop resolved to). No alert
-  // when every enabled loop reads images (imageInput true or unknown — an unknown seam is not
+  // doctor's live probe (the claim is contradicted, whatever any role resolved to). No alert
+  // when every enabled role reads images (imageInput true or unknown — an unknown seam is not
   // counted as text-only, mirroring the submit gate and the doctor's `tier models` stance).
-  const textOnly = loops.filter((l) => l.imageInput === false);
+  const textOnly = roles.filter((l) => l.imageInput === false);
   const noTarget = textOnly.filter((l) => l.imageReroute == null || l.imageReroute === "");
   if (noTarget.length > 0) {
     out.push({
