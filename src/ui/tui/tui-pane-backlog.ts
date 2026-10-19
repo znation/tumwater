@@ -1,10 +1,42 @@
 // vocabulary: plain
 import { tryCancelEntry, tryMoveEntryToTop, tryReleaseEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
 import { requestWake } from "../../operator/operator-intent.js";
-import { moveEntrySelection, pageMarkdownBody } from "./tui-backlog.js";
+import { moveEntrySelection, pageMarkdownBody, type labeledBacklogEntries } from "./tui-backlog.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
+
+/** Resolve the selected plan/bug from the flat backlog list, deduping the four entry-action
+ * arms' common prologue (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release, Ctrl+E edit): the
+ * flat-index clamp and the empty / read-only-done / question guards, whose refusal flash
+ * differs only in the action's verb. Returns the actionable `{ kind, position, picked }`, or
+ * null — after flashing the guard's message — when the selection is unactionable (an emptied
+ * list, a done/fixed/answered entry, or a question). The caller then runs its own arm on the
+ * result. All four arms require the same selection, so they cannot drift on how it is resolved.
+ * The session, flat() and flashMessage() are structurally shared by the backlog and entry
+ * editors' sessions. */
+export function selectedEditableEntry(
+  session: { flat(): ReturnType<typeof labeledBacklogEntries>; flashMessage(message: string): void },
+  selectedEntry: number | null,
+  verb: "cancelled" | "moved" | "released" | "edited",
+): { kind: "plan" | "bug"; position: number; picked: ReturnType<typeof labeledBacklogEntries>[number] } | null {
+  if (selectedEntry === null) return null;
+  const entries = session.flat();
+  const sel = Math.min(selectedEntry, entries.length - 1);
+  const picked = entries[sel];
+  if (picked === undefined) return null; // an emptied list has nothing to act on
+  if (picked.label === "done" || picked.label === "fixed" || picked.label === "answered") {
+    session.flashMessage("a done plan, fixed bug or answered question is read-only");
+    return null;
+  }
+  if (picked.label === "question") {
+    session.flashMessage(`only a plan or open bug can be ${verb} here`);
+    return null;
+  }
+  const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
+  const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
+  return { kind, position, picked };
+}
 
 /** The project-status pane (view roleIds.length + 1) of the TUI (src/ui/tui/tui.tsx): the
  * entry browser's selection/scroll state, the up/down and PgUp/PgDn entry arms, and the
@@ -41,21 +73,12 @@ export function createBacklogPane(
     ) {
       // Ctrl+X twice cancels the selected plan or bug through the non-exiting core the
       // dashboard drawer uses; the title check inside tryCancelEntry refuses a stale selection.
-      if (selectedEntry !== null) {
-        const entries = session.flat();
-        const sel = Math.min(selectedEntry, entries.length - 1);
-        const picked = entries[sel];
-        if (picked === undefined) {
-          // an emptied list has nothing to cancel
-        } else if (picked.label === "done" || picked.label === "fixed" || picked.label === "answered") {
-          session.flashMessage("a done plan, fixed bug or answered question is read-only");
-        } else if (picked.label === "question") {
-          session.flashMessage("only a plan or open bug can be cancelled here");
-        } else {
-          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
-          const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
-          const target = { kind, position, title: picked.title };
-          if (session.armed !== null && session.armed.kind === kind && session.armed.position === position) {
+      const selected = selectedEditableEntry(session, selectedEntry, "cancelled");
+      if (selected !== null) {
+        const kind = selected.kind;
+        const position = selected.position;
+        const target = { kind, position, title: selected.picked.title };
+        if (session.armed !== null && session.armed.kind === kind && session.armed.position === position) {
             // The armed title (not the re-read one) goes to tryCancelEntry, so an entry that
             // changed since the arm reports `moved` instead of being cancelled.
             try {
@@ -77,7 +100,6 @@ export function createBacklogPane(
             session.cancelArmed = target;
             session.flashMessage(`press Ctrl+X again to cancel ${kind} #${position} — any other key keeps it`);
           }
-        }
       }
       session.requestRender();
       return true;
@@ -93,36 +115,26 @@ export function createBacklogPane(
       // and the dashboard's Move to top: one press, like the drawer's single click, and moving
       // changes no entry's eligibility, so no role is woken. A plan or bug at the head answers
       // already_first with no write.
-      if (selectedEntry !== null) {
-        const entries = session.flat();
-        const sel = Math.min(selectedEntry, entries.length - 1);
-        const picked = entries[sel];
-        if (picked === undefined) {
-          // an emptied list has nothing to move
-        } else if (picked.label === "done" || picked.label === "fixed" || picked.label === "answered") {
-          session.flashMessage("a done plan, fixed bug or answered question is read-only");
-        } else if (picked.label === "question") {
-          session.flashMessage("only a plan or open bug can be moved here");
-        } else {
-          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
-          const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
-          try {
-            const outcome = tryMoveEntryToTop(session.root, kind, position, picked.title);
-            if (outcome.status === "moved_to_top") {
-              session.commitBacklogEdit(outcome.file, `Prioritize ${kind}: ${outcome.title}`);
-            }
-            selectedEntry = null;
-            entryScroll = 0;
-            session.flashMessage(
-              outcome.status === "moved_to_top"
-                ? `moved ${kind} #${position} to the top: ${outcome.title}`
-                : outcome.status === "already_first"
-                  ? `that ${kind} is already at the top`
-                  : `that ${kind} was already removed or moved — nothing moved`,
-            );
-          } catch (err) {
-            session.flashError(err);
+      const selected = selectedEditableEntry(session, selectedEntry, "moved");
+      if (selected !== null) {
+        const kind = selected.kind;
+        const position = selected.position;
+        try {
+          const outcome = tryMoveEntryToTop(session.root, kind, position, selected.picked.title);
+          if (outcome.status === "moved_to_top") {
+            session.commitBacklogEdit(outcome.file, `Prioritize ${kind}: ${outcome.title}`);
           }
+          selectedEntry = null;
+          entryScroll = 0;
+          session.flashMessage(
+            outcome.status === "moved_to_top"
+              ? `moved ${kind} #${position} to the top: ${outcome.title}`
+              : outcome.status === "already_first"
+                ? `that ${kind} is already at the top`
+                : `that ${kind} was already removed or moved — nothing moved`,
+          );
+        } catch (err) {
+          session.flashError(err);
         }
       }
       session.requestRender();
@@ -138,23 +150,14 @@ export function createBacklogPane(
       // inside tryReleaseEntry refuses a stale selection. Releasing is the terminal twin of
       // `tumwater plan|bug --release <n>`: it lifts the note, commits the file and wakes the
       // kind's loop, so an operator never has to leave the pane.
-      if (selectedEntry !== null) {
-        const entries = session.flat();
-        const sel = Math.min(selectedEntry, entries.length - 1);
-        const picked = entries[sel];
-        if (picked === undefined) {
-          // an emptied list has nothing to release
-        } else if (picked.label === "done" || picked.label === "fixed" || picked.label === "answered") {
-          session.flashMessage("a done plan, fixed bug or answered question is read-only");
-        } else if (picked.label === "question") {
-          session.flashMessage("only a plan or open bug can be released here");
-        } else if (picked.hold !== "refused" && picked.hold !== "waiting-for-failure") {
-          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
-          session.flashMessage(`that ${kind} carries no Refused or Waiting for the next failure note`);
+      const selected = selectedEditableEntry(session, selectedEntry, "released");
+      if (selected !== null) {
+        if (selected.picked.hold !== "refused" && selected.picked.hold !== "waiting-for-failure") {
+          session.flashMessage(`that ${selected.kind} carries no Refused or Waiting for the next failure note`);
         } else {
-          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
-          const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
-          const target = { kind, position, title: picked.title };
+          const kind = selected.kind;
+          const position = selected.position;
+          const target = { kind, position, title: selected.picked.title };
           if (session.armedRelease !== null && session.armedRelease.kind === kind && session.armedRelease.position === position) {
             // The armed title (not the re-read one) goes to tryReleaseEntry, so an entry that
             // changed since the arm reports `moved` instead of being released.

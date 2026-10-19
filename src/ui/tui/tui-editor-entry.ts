@@ -5,6 +5,7 @@ import { readTextIfExists } from "../../files/files.js";
 import { submitRolePromptAndWake } from "../../operator/operator-intent.js";
 import { promptLengthProblem } from "../../inbox/inbox-submit.js";
 import { collapseWhitespace } from "../../text/text.js";
+import { selectedEditableEntry } from "./tui-pane-backlog.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
@@ -99,22 +100,14 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
       // saves through tryEditEntry, the non-exiting core the dashboard drawer shares, keeping
       // the body and stamp. The prompt line is single-line, so only the title is editable here.
       try {
-        const entries = session.flat();
-        const sel = Math.min(ctx.selectedEntry, entries.length - 1);
-        const picked = entries[sel];
-        if (picked === undefined) {
-          // an emptied list has nothing to edit
-        } else if (picked.label === "done" || picked.label === "fixed" || picked.label === "answered") {
-          session.flashMessage("a done plan, fixed bug or answered question is read-only");
-        } else if (picked.label === "question") {
-          session.flashMessage("only a plan or open bug can be edited here");
-        } else {
-          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
-          const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
+        const selected = selectedEditableEntry(session, ctx.selectedEntry, "edited");
+        if (selected !== null) {
+          const kind = selected.kind;
+          const position = selected.position;
           session.settleDraft((t) => (entryEditSavedInput = t), (n) => (entryEditSavedCursor = n));
-          entryEditFor = { kind, position, title: picked.title };
+          entryEditFor = { kind, position, title: selected.picked.title };
           session.held.entry = entryEditFor;
-          session.input = stripEntryStamp(picked.title);
+          session.input = stripEntryStamp(selected.picked.title);
           session.cursor = session.input.length;
           session.flashMessage(`editing ${kind} #${position} — Enter to save, Esc to cancel`);
         }
