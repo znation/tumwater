@@ -7,7 +7,7 @@
  * and the orchestrator only hands it the (possibly live-reloaded) window. */
 
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { pruneOldFiles } from "../files/files.js";
+import { ensureParentDir, pruneOldFiles } from "../files/files.js";
 import { pruneSessionLedgers, pruneOpencodeSessions } from "../agent/session-ledger.js";
 import { loadConfigSafe } from "../config/config.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
@@ -75,9 +75,11 @@ export class RetentionPruner {
     // own unit.
     const { config } = loadConfigSafe(root);
     const bin = config !== undefined ? opencodeBackend.resolveBin(config).bin : undefined;
+    const dbPath = opencodeDbPath(root);
+    ensureParentDir(dbPath);
     const deleted = pruneOpencodeSessions(sessions, days, {
       bin,
-      env: { ...process.env, OPENCODE_DB: opencodeDbPath(root) },
+      env: { ...process.env, OPENCODE_DB: dbPath },
       spillDir: opencodeSpillDir(root),
     });
     if (deleted > 0)

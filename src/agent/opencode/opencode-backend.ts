@@ -22,6 +22,7 @@
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import { ensureParentDir } from "../../files/files.js";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedAgentConfig } from "../../config/config-views.js";
 import { agentBaseEnv, withNotesPath } from "../../process/run-marker.js";
@@ -189,6 +190,8 @@ export const opencodeBackend: AgentBackend = {
     // this team so a resume's export check reads the same OPENCODE_DB the original run wrote.
     const root = teamRootOf(run.sessionDir);
     const dbPath = opencodeDbPath(root);
+    // opencode will not create the database's parent directory and its server dies without it.
+    ensureParentDir(dbPath);
     // Window-scaled tool-output caps (part 6f/7): OpenCode's `tool_output` default is about
     // three times pi's tuned budgets, so every turn would re-send far more tool output than a
     // pi run — critical on the 200K free model's window. Cap it at pi's `outputLimits(window)
@@ -245,6 +248,7 @@ export const opencodeBackend: AgentBackend = {
     if (record === null) return false;
     const root = teamRootOf(dir);
     const dbPath = opencodeDbPath(root);
+    ensureParentDir(dbPath);
     const env = { ...process.env, OPENCODE_DB: dbPath };
     // Resolve the binary exactly as the run's invocation does — same env → backends.opencode.bin
     // → default precedence — so a configured custom binary's resume guard agrees with the

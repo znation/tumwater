@@ -325,3 +325,18 @@ test("an opencode run finds the notes shim dir first on its PATH", async () => {
     );
   });
 });
+
+test("invocation creates the OPENCODE_DB parent directory on a fresh team root, since opencode will not", () => {
+  const dir = tmpdir("opencode-db-parent");
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const dbDir = path.join(dir, ".tumwater", "opencode");
+  assert.equal(fs.existsSync(dbDir), false);
+  const spec = {
+    ...opencodeRun(dir),
+    agentBin: "/nonexistent/opencode",
+    runMarker: "m",
+  };
+  const inv = opencodeBackend.invocation(spec);
+  assert.equal(inv.env.OPENCODE_DB, path.join(dbDir, "opencode.db"));
+  assert.equal(fs.statSync(dbDir).isDirectory(), true);
+});
