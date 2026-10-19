@@ -66,12 +66,13 @@ function main(): number {
     return refuse("this run keeps no notes");
   }
 
-  const [command, flag, flagArg] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const [command, flag, flagArg] = args;
   switch (command) {
     case "write":
       if (flag === undefined) return writeNote(readStdin());
       if (flag === "--file") {
-        if (flagArg === undefined) return refuse(USAGE);
+        if (flagArg === undefined || args.length > 3) return refuse(USAGE);
         let text: string;
         try {
           text = fs.readFileSync(flagArg, "utf8");
@@ -82,9 +83,11 @@ function main(): number {
       }
       return refuse(USAGE);
     case "show":
+      if (flag !== undefined) return refuse(USAGE);
       process.stdout.write(readNote());
       return 0;
     case "clear":
+      if (flag !== undefined) return refuse(USAGE);
       writeRoleNote(NOTES_PATH, "");
       process.stdout.write("notes cleared\n");
       return 0;

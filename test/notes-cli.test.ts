@@ -117,6 +117,17 @@ test("write --file with no path exits 1 with usage", () => {
   assert.equal(noteText(notesPath), undefined, "no note is touched");
 });
 
+test("write --file with a stray trailing argument exits 1 with usage", () => {
+  const dir = tmpdir();
+  const source = path.join(dir, "draft.txt");
+  const notesPath = path.join(dir, "feature.md");
+  fs.writeFileSync(source, "from a file\n");
+  const res = run(["write", "--file", source, "extra"], notesPath);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /usage: tumwater-notes/);
+  assert.equal(noteText(notesPath), undefined, "the stray arg must not write the note");
+});
+
 test("write --file with an unreadable path exits 1 naming the path", () => {
   const notesPath = path.join(tmpdir(), "feature.md");
   const missing = path.join(tmpdir(), "no-such-draft.txt");
@@ -130,6 +141,24 @@ test("no TUMWATER_NOTES_PATH exits 1 with 'this run keeps no notes'", () => {
   const res = run(["show"], null);
   assert.equal(res.status, 1);
   assert.equal(res.stderr.trim(), "this run keeps no notes");
+});
+
+test("show with a stray argument exits 1 with usage and prints nothing", () => {
+  const notesPath = path.join(tmpdir(), "feature.md");
+  run(["write"], notesPath, "something");
+  const res = run(["show", "--bogus"], notesPath);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /usage: tumwater-notes/);
+  assert.equal(res.stdout, "");
+});
+
+test("clear with a stray argument exits 1 with usage and leaves the note", () => {
+  const notesPath = path.join(tmpdir(), "feature.md");
+  run(["write"], notesPath, "something");
+  const res = run(["clear", "extra"], notesPath);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /usage: tumwater-notes/);
+  assert.equal(noteText(notesPath), "something", "a stray arg must not clear the note");
 });
 
 test("an unknown subcommand exits 2 with usage", () => {
