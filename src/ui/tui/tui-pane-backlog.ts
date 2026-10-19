@@ -67,6 +67,76 @@ export function createBacklogPane(
     entryScroll = 0;
   };
 
+  // The pane's three entry actions (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release) live in
+  // named helpers so each handler stays at two or three levels: the handler resolves the
+  // selection, picks the armed/guard path, then delegates the try/commit/scroll-reset/flash to
+  // the helper. The core's status decides the flash, so the one-press move and the two-press
+  // cancel/release read the same as the dashboard drawer's non-exiting action.
+  const cancelArmed = (
+    target: { kind: "plan" | "bug"; position: number; title: string },
+    armedTitle: string,
+  ): void => {
+    const { kind, position } = target;
+    try {
+      const outcome = tryCancelEntry(session.root, kind, position, armedTitle);
+      if (outcome.status === "cancelled") {
+        session.commitBacklogEdit(outcome.file, `Cancel ${kind}: ${outcome.title}`);
+      }
+      selectedEntry = null;
+      entryScroll = 0;
+      session.flashMessage(
+        outcome.status === "cancelled"
+          ? `cancelled ${kind} #${position}: ${target.title}`
+          : `that ${kind} was already removed or moved — nothing cancelled`,
+      );
+    } catch (err) {
+      session.flashError(err);
+    }
+  };
+  const moveEntryToTop = (kind: "plan" | "bug", position: number, title: string): void => {
+    try {
+      const outcome = tryMoveEntryToTop(session.root, kind, position, title);
+      if (outcome.status === "moved_to_top") {
+        session.commitBacklogEdit(outcome.file, `Prioritize ${kind}: ${outcome.title}`);
+      }
+      selectedEntry = null;
+      entryScroll = 0;
+      session.flashMessage(
+        outcome.status === "moved_to_top"
+          ? `moved ${kind} #${position} to the top: ${outcome.title}`
+          : outcome.status === "already_first"
+            ? `that ${kind} is already at the top`
+            : `that ${kind} was already removed or moved — nothing moved`,
+      );
+    } catch (err) {
+      session.flashError(err);
+    }
+  };
+  const releaseArmed = (
+    target: { kind: "plan" | "bug"; position: number; title: string },
+    armedTitle: string,
+  ): void => {
+    const { kind, position } = target;
+    try {
+      const outcome = tryReleaseEntry(session.root, kind, position, armedTitle);
+      if (outcome.status === "released") {
+        session.commitBacklogEdit(outcome.file, `Release ${kind}: ${outcome.title}`);
+        requestWake(session.root, [OPERATOR_FILE_KINDS[kind].role]);
+      }
+      selectedEntry = null;
+      entryScroll = 0;
+      session.flashMessage(
+        outcome.status === "released"
+          ? `released ${kind} #${position}: ${outcome.title}`
+          : outcome.status === "not_refused"
+            ? `that ${kind} carries no Refused or Waiting for the next failure note`
+            : `that ${kind} was already removed or moved — nothing released`,
+      );
+    } catch (err) {
+      session.flashError(err);
+    }
+  };
+
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
@@ -84,27 +154,13 @@ export function createBacklogPane(
         const position = selected.position;
         const target = { kind, position, title: selected.picked.title };
         if (session.armed !== null && session.armed.kind === kind && session.armed.position === position) {
-            // The armed title (not the re-read one) goes to tryCancelEntry, so an entry that
-            // changed since the arm reports `moved` instead of being cancelled.
-            try {
-              const outcome = tryCancelEntry(session.root, kind, position, session.armed.title);
-              if (outcome.status === "cancelled") {
-                session.commitBacklogEdit(outcome.file, `Cancel ${kind}: ${outcome.title}`);
-              }
-              selectedEntry = null;
-              entryScroll = 0;
-              session.flashMessage(
-                outcome.status === "cancelled"
-                  ? `cancelled ${kind} #${position}: ${target.title}`
-                  : `that ${kind} was already removed or moved — nothing cancelled`,
-              );
-            } catch (err) {
-              session.flashError(err);
-            }
-          } else {
-            session.cancelArmed = target;
-            session.flashMessage(`press Ctrl+X again to cancel ${kind} #${position} — any other key keeps it`);
-          }
+          // The armed title (not the re-read one) goes to tryCancelEntry, so an entry that
+          // changed since the arm reports `moved` instead of being cancelled.
+          cancelArmed(target, session.armed.title);
+        } else {
+          session.cancelArmed = target;
+          session.flashMessage(`press Ctrl+X again to cancel ${kind} #${position} — any other key keeps it`);
+        }
       }
       session.requestRender();
       return true;
@@ -122,25 +178,7 @@ export function createBacklogPane(
       // already_first with no write.
       const selected = selectedEditableEntry(session, selectedEntry, "moved");
       if (selected !== null) {
-        const kind = selected.kind;
-        const position = selected.position;
-        try {
-          const outcome = tryMoveEntryToTop(session.root, kind, position, selected.picked.title);
-          if (outcome.status === "moved_to_top") {
-            session.commitBacklogEdit(outcome.file, `Prioritize ${kind}: ${outcome.title}`);
-          }
-          selectedEntry = null;
-          entryScroll = 0;
-          session.flashMessage(
-            outcome.status === "moved_to_top"
-              ? `moved ${kind} #${position} to the top: ${outcome.title}`
-              : outcome.status === "already_first"
-                ? `that ${kind} is already at the top`
-                : `that ${kind} was already removed or moved — nothing moved`,
-          );
-        } catch (err) {
-          session.flashError(err);
-        }
+        moveEntryToTop(selected.kind, selected.position, selected.picked.title);
       }
       session.requestRender();
       return true;
@@ -157,37 +195,18 @@ export function createBacklogPane(
       // kind's loop, so an operator never has to leave the pane.
       const selected = selectedEditableEntry(session, selectedEntry, "released");
       if (selected !== null) {
+        const kind = selected.kind;
+        const position = selected.position;
+        const target = { kind, position, title: selected.picked.title };
         if (selected.picked.hold !== "refused" && selected.picked.hold !== "waiting-for-failure") {
-          session.flashMessage(`that ${selected.kind} carries no Refused or Waiting for the next failure note`);
+          session.flashMessage(`that ${kind} carries no Refused or Waiting for the next failure note`);
+        } else if (session.armedRelease !== null && session.armedRelease.kind === kind && session.armedRelease.position === position) {
+          // The armed title (not the re-read one) goes to tryReleaseEntry, so an entry that
+          // changed since the arm reports `moved` instead of being released.
+          releaseArmed(target, session.armedRelease.title);
         } else {
-          const kind = selected.kind;
-          const position = selected.position;
-          const target = { kind, position, title: selected.picked.title };
-          if (session.armedRelease !== null && session.armedRelease.kind === kind && session.armedRelease.position === position) {
-            // The armed title (not the re-read one) goes to tryReleaseEntry, so an entry that
-            // changed since the arm reports `moved` instead of being released.
-            try {
-              const outcome = tryReleaseEntry(session.root, kind, position, session.armedRelease.title);
-              if (outcome.status === "released") {
-                session.commitBacklogEdit(outcome.file, `Release ${kind}: ${outcome.title}`);
-                requestWake(session.root, [OPERATOR_FILE_KINDS[kind].role]);
-              }
-              selectedEntry = null;
-              entryScroll = 0;
-              session.flashMessage(
-                outcome.status === "released"
-                  ? `released ${kind} #${position}: ${outcome.title}`
-                  : outcome.status === "not_refused"
-                    ? `that ${kind} carries no Refused or Waiting for the next failure note`
-                    : `that ${kind} was already removed or moved — nothing released`,
-              );
-            } catch (err) {
-              session.flashError(err);
-            }
-          } else {
-            session.releaseArmed = target;
-            session.flashMessage(`press Ctrl+R again to release ${kind} #${position} — any other key keeps it`);
-          }
+          session.releaseArmed = target;
+          session.flashMessage(`press Ctrl+R again to release ${kind} #${position} — any other key keeps it`);
         }
       }
       session.requestRender();
