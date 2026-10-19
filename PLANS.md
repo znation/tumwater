@@ -1133,4 +1133,24 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### New plans join the back of the `## Planned` queue, so the plan role appends instead of inserting at the top (planned 2026-10-19 by the director role; independent of every eligible Planned entry — the plan-rerun entry edits src/scheduling, src/orchestrator and src/config, the git-identity entry src/git, src/merge, src/init, src/backlog and src/operator, the backlog-grep entry src/backlog and src/cli, the TUI entries src/ui/tui and docs/cli.md, and the blocked plain-terms series src/loop/src/runner, none of which is src/roles/role-guidance.ts, src/roles/role-catalog.ts, src/prompt/prompt.ts, test/role-guidance.test.ts or test/prompt-roles.test.ts; touches src/roles/role-guidance.ts src/roles/role-catalog.ts src/prompt/prompt.ts test/role-guidance.test.ts test/prompt-roles.test.ts)
+
+**Goal.** Claim assignment is the first free entry in file order — `assignNext` (`src/scheduling/claims.ts`) returns `free[0]`, and `src/prompt/prompt.ts`'s index lists entries in that same order — so the order of entries under `## Planned` is the work queue. The plan role's charter says only "Write it as a short markdown section under `## Planned`" (step 5, `src/roles/role-catalog.ts`) and names no position; a new plan lands at the top of the section, ahead of every older plan already waiting, including the plan-rerun and blocked-series entries. The operator's `tumwater plan` already appends filed entries at the section's end (`appendEntryLocked`, `src/backlog/backlog-write.ts`, pinned by `test/backlog-write.test.ts` "filePlan appends to ## Planned …"), so the two write paths disagree. The user's ruling: a new plan joins the back of the queue. State the rule once in a shared constant and embed it wherever a role is told to write a plan.
+
+**Approach.**
+- **src/roles/role-guidance.ts** — export `PLAN_QUEUE_GUIDANCE`, a short paragraph in the style of `PLAN_SIZING`/`DECOMPOSITION_GUIDANCE`: append the new entry at the END of `## Planned`, after every existing entry, never at the top; file order is the queue and claim assignment takes the first free entry (`assignNext`, `src/scheduling/claims.ts`), so an entry inserted at the top jumps ahead of work already waiting. Give it a doc comment naming its consumers.
+- **src/roles/role-catalog.ts** — import `PLAN_QUEUE_GUIDANCE` and interpolate it in the plan role's step 5, right after "Write it as a short markdown section under `## Planned` in PLANS.md: goal, approach, files touched, acceptance criteria." Embed it once in the organize role's find text, after the step 1 sentence that sends an oversized split to a `## Planned` entry; the later "write it as a plan in PLANS.md under ## Planned" sentence in the same find is covered by that one paragraph.
+- **src/prompt/prompt.ts** — append `${PLAN_QUEUE_GUIDANCE}` to the director's "A feature request or substantial change: write a concrete plan for it in PLANS.md" routing bullet, so a plan the director files also lands at the back. Import it beside `PLAN_SIZING`/`DECOMPOSITION_GUIDANCE`.
+- No change to `src/backlog/backlog-write.ts`: `appendEntryLocked` already writes before the section's next `## ` heading, i.e. at the end; do not touch it.
+
+**Files touched.** Source: src/roles/role-guidance.ts, src/roles/role-catalog.ts, src/prompt/prompt.ts. Tests: test/role-guidance.test.ts, test/prompt-roles.test.ts.
+
+**Acceptance criteria.**
+- `PLAN_QUEUE_GUIDANCE` is exported from `src/roles/role-guidance.ts`, is longer than one sentence, and its text says the new entry is appended at the end of `## Planned` / the back of the queue and that file order is the queue.
+- The constant is embedded verbatim in `roleById("plan")!.find`, in `roleById("organize")!.find`, and in `buildDirectorPrompt("add a feature", "a project")`: each of those strings `.includes(PLAN_QUEUE_GUIDANCE)`.
+- `test/role-guidance.test.ts` pins those three embeddings with `assert.ok(...includes(PLAN_QUEUE_GUIDANCE))`, following the file's existing "director routing includes the shared … guidance" pattern.
+- `test/prompt-roles.test.ts`'s plan-role test asserts the plan find matches the back-of-queue wording (e.g. `/at the END of `## Planned`/`).
+- No other role find text sends an entry to `## Planned` without embedding the constant: `grep -n '## Planned' src/roles/role-catalog.ts` shows the guidance beside each plan-writing sentence.
+- `npm test` passes.
+
 ## Done
