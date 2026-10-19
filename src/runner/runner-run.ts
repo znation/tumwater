@@ -15,6 +15,7 @@ import { logEventBestEffort } from "../events/events.js";
 import {
   buildConflictDiscardNote,
   buildConflictHandbackNote,
+  buildMainKnownRedNote,
   buildRevisionNote,
   buildRejectedReviewNote,
 } from "../prompt/gate-prompts.js";
@@ -532,7 +533,8 @@ async function tickWithWorktreePhase(
       const note = await bugfixMainRedNote(ctx.root, ctx.role, wt);
       if (note) prompt = appendPromptNote(prompt, note);
     } else {
-      const blocked = await mainRedGate(ctx.root, ctx.role, wt);
+      const knownRed: string[][] = [];
+      const blocked = await mainRedGate(ctx.root, ctx.role, wt, undefined, (tests) => knownRed.push(tests));
       if (blocked) {
         // The dequeued prompt never ran: put it back in its queue before returning, so it is
         // not lost to a restart (the pending field is memory-only) or dropped by the next
@@ -542,6 +544,7 @@ async function tickWithWorktreePhase(
         ctx.pending.clear();
         return blocked;
       }
+      if (knownRed[0]) prompt = appendPromptNote(prompt, buildMainKnownRedNote(knownRed[0]));
     }
   }
 

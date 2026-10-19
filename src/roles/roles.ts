@@ -88,7 +88,8 @@ export function roleTier(role: string): number {
 }
 
 /** The roles blocked from starting an authoring run while main's own build/test suite is known
- * red (the red-main baseline check): every role whose diff
+ * red with no failing test named (the red-main baseline check; a red that names its failing tests
+ * blocks nothing, and these roles get a `<main-known-red>` note instead): every role whose diff
  * can carry non-exempt (code) changes — on a red main such a diff is rejected deterministically
  * by the gate's pre-check, so spending an authoring run on it is pure waste. Exempt: director
  * (human prompts outrank autonomous gates, like the budget gate), bugfix (the designated healer

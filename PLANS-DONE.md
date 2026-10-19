@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 8/14: Every role runs on a red main, with a note listing main's known failures (planned 2026-10-19 by user; requires part 7/14 landed; design in plans/fast-merge.md "Lever 3: main's known failures instead of a team-wide hold"; touches src/baseline/main-red.ts src/runner/runner-run.ts src/prompt/gate-prompts.ts src/roles/roles.ts docs/how-it-works.md and their tests) — done 2026-10-19 by the feature role
+
+**Goal.** On a red main, feature and every code maintenance role (`BASELINE_BLOCKED_ROLES`, src/roles/roles.ts) end their runs `main_red` and wait, and each red commit logs "code merges blocked until main is green". Once part 7 lets changes through on known failures, the team should keep working on a red main. Only the owner (part 4b/14's revert, then bugfix) deals with the red.
+
+**Approach.**
+- `mainRedGate` (src/baseline/main-red.ts): when main's red verdict names its failing tests, every role proceeds. When it names none, the block stays as today.
+- Every role except bugfix gets a `<main-known-red>` block in its prompt. Build it in src/prompt/gate-prompts.ts beside `buildMainRedNote`, and append it in src/runner/runner-run.ts where `bugfixMainRedNote` is appended. It contains:
+  - the failing tests, at most 20;
+  - "These tests already fail on main. Tumwater or the bugfix role owns them. Leave them alone unless your task is about them; a change merges when it adds no new failures."
+- bugfix keeps `<main-red>` and the heal prompt. `warnMainRedOnce` sends the heal prompt once per set of failing tests (sorted test names as the key) instead of once per red commit.
+- The `main_red_hold` message becomes `main <sha> is red (<n> failing tests); changes that add no new failures still merge`.
+- docs/how-it-works.md: the red-main paragraph.
+
+**As built.** The note goes to the roles the gate runs for (`BASELINE_BLOCKED_ROLES` and user-defined roles), not to markdown-only roles that never ran the baseline check; a red naming 50 or more tests counts as unnamed (part 7's rule), so the block stays.
+
+**Files touched.**
+- Source: src/baseline/main-red.ts, src/runner/runner-run.ts, src/prompt/gate-prompts.ts, src/roles/roles.ts.
+- Docs: docs/how-it-works.md.
+- Tests: test/main-red.test.ts, and the prompt tests that cover `buildMainRedNote`.
+
+**Acceptance criteria.**
+- On a red main with named failures, a feature run authors, and its prompt holds the block with those test names. bugfix's prompt holds `<main-red>`.
+- Two red commits with the same failing set send bugfix one heal prompt.
+- On a red main whose failure names no test, a feature run ends `main_red` as today.
+- `npm test` passes.
+
 ### Fast merge, part 4a/14: The main watch names the first-parent commit that turned main red (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 3/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-watch.ts src/baseline/main-culprit.ts src/events/events.ts and their tests) — done 2026-10-19 by the feature role
 
 **Goal.** Part 3's watch records a red tip but not which commit broke it. This part finds that commit and records it, without acting on it yet. Parts 4b/14 (revert) and 4c/14 (hand-back) act on this event. Splitting the search out keeps each part one run.

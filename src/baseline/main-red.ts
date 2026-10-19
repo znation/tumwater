@@ -4,7 +4,7 @@ import { baseRoleOf } from "../roles/runner-ids.js";
 import { enqueueRolePrompt } from "../inbox/inbox.js";
 import { isCustomRole, liveConfig } from "../config/config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
-import { failureHeadline } from "../build/build-check-report.js";
+import { failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type BaselineCheckRun } from "../build/build-check-events.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../prompt/gate-prompts.js";
@@ -38,6 +38,20 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * then too, and an operator restarting into a still-red main should see why nothing merges. */
 let lastMainRedSha: string | null = null;
 
+/** The key of the last failing set the healer was sent a prompt for: the sorted failing test
+ * names, or the red SHA when the red names none. Two red commits with the same failing set send
+ * one heal prompt, not one per commit; a green main observed by the gate or the bugfix handoff
+ * clears it, so a set that returns after green is healed again. */
+let lastHealKey: string | null = null;
+
+/** The failing tests a red verdict names, when the list is complete — non-empty and short of
+ * FAILING_TESTS_MAX, which may have been cut short (the same rule as onlyKnownMainFailures).
+ * Empty when it names none: main's red is then not a set of known failures, and the block stays. */
+function namedFailures(red: { failingTests?: string[] }): string[] {
+  const tests = red.failingTests ?? [];
+  return tests.length > 0 && tests.length < FAILING_TESTS_MAX ? tests : [];
+}
+
 /** The red-main message's shared spine — the SHA, script, and failure headline a red baseline
  * carries, phrased once so the once-per-SHA warning and the main_red outcome cannot drift apart
  * over what main looks like. `action` is the consequence each caller names. */
@@ -60,23 +74,31 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
  * `inbox`, so no scheduler change is needed. */
 function warnMainRedOnce(
   root: string,
-  red: { sha: string; script?: string; outputTail?: string[] },
+  red: { sha: string; script?: string; outputTail?: string[]; failingTests?: string[] },
   foundBy: string,
 ): void {
   if (lastMainRedSha === red.sha) return;
   lastMainRedSha = red.sha;
+  const named = namedFailures(red);
   logEventBestEffort(root, {
     source: TUMWATER_SOURCE,
     type: "main_red_hold",
     sha: red.sha,
     script: red.script,
-    message: redMainMessage(red, "code merges blocked until main is green"),
+    message:
+      named.length > 0
+        ? `${mainRedPhrase(red.sha)} (${named.length} failing tests); changes that add no new failures still merge`
+        : redMainMessage(red, "code merges blocked until main is green"),
   });
   // Bugfix is the only repairer, and it is exempt from mainRedGate — but it is a work role
   // that with no open bugs defers like a maintenance role, so a red main discovered by any
   // other path could sit unrepaired until bugfix's own interval or a coincidental wake.
   // Queue the heal: one prompt per newly-verified red SHA per process (a restart re-queues
-  // once, desirable because the cache is cold then too).
+  // once, desirable because the cache is cold then too). With named failures the key is the
+  // failing set, so a second red commit with the same failures queues nothing.
+  const healKey = named.length > 0 ? [...named].sort().join("\n") : red.sha;
+  if (lastHealKey === healKey) return;
+  lastHealKey = healKey;
   if (baseRoleOf(foundBy) !== BUGFIX_ROLE) {
     enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(red.sha));
   }
@@ -118,6 +140,7 @@ export async function bugfixMainRedNote(root: string, role: string, wt: string):
   const config = liveConfig(root);
   const baseline = await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
   const red = baseline.baseline;
+  if (red?.status === "green") lastHealKey = null;
   if (red?.status !== "red") return undefined;
   warnMainRedOnce(root, red, role);
   return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail), red.outputTail);
@@ -135,6 +158,9 @@ export async function mainRedGate(
   /** The sleep clock the baseline run measures host suspension with; defaults to the real
    * sampleSleepClock. A test seam — production callers leave it unset. */
   sampleSleep?: Parameters<typeof checkMainBaseline>[5],
+  /** Called with main's failing tests when the red names them: the role then runs on the red
+   * main instead of ending `main_red`, and the caller puts them in its prompt. */
+  onKnownRed?: (failingTests: string[]) => void,
 ): Promise<TickOutcome | null> {
   // User-defined loops are blocked alongside the built-in code roles (plans/user-defined-loops.md):
   // an unknown charter may produce code, and on red main such diffs are rejected deterministically
@@ -172,6 +198,11 @@ export async function mainRedGate(
   if (baseline.baseline?.status === "red") {
     const red = baseline.baseline;
     warnMainRedOnce(root, red, role);
+    const named = namedFailures(red);
+    if (named.length > 0) {
+      onKnownRed?.(named);
+      return null;
+    }
     return {
       result: "main_red",
       summary: "code merges blocked until main is green",
@@ -182,6 +213,7 @@ export async function mainRedGate(
       error: redMainMessage(red, "authoring skipped until main is green"),
     };
   }
+  if (baseline.baseline?.status === "green") lastHealKey = null;
   return null;
 }
 

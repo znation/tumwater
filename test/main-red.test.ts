@@ -516,3 +516,29 @@ test("a queued healer prompt makes a bugfix runner due on the next poll despite 
     reason: "inbox",
   });
 });
+
+test("mainRedGate lets a role run on a red main that names its failing tests, once per failing set", async () => {
+  const script = `echo '✖ known-red-alpha (1.2ms)'; echo '✖ known-red-beta (0.4ms)'; exit 1`;
+  const { root, wt } = baselineFixture(ROLE, script);
+  const restore = fakeNpm(script);
+  try {
+    let known: string[] | undefined;
+    const blocked = await mainRedGate(root, ROLE, wt, undefined, (t) => (known = t));
+    assert.equal(blocked, null, "named failures do not end the run main_red");
+    assert.deepEqual(known, ["known-red-alpha", "known-red-beta"]);
+    const holds = mainRedHolds(root);
+    assert.equal(holds.length, 1);
+    const message = (holds[0] as { message?: string }).message ?? "";
+    assert.ok(message.includes("(2 failing tests); changes that add no new failures still merge"), message);
+    assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "the healer is told once");
+
+    // A second red commit with the same failing set sends no second heal prompt.
+    sh(root, "git", "commit", "--allow-empty", "-q", "-m", "second-red");
+    sh(wt, "git", "reset", "--hard", "main");
+    assert.equal(await mainRedGate(root, ROLE, wt, undefined, () => {}), null);
+    assert.equal(mainRedHolds(root).length, 2, "the new red SHA is still logged");
+    assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "same failing set: one heal prompt");
+  } finally {
+    restore();
+  }
+});

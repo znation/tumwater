@@ -588,6 +588,18 @@ If the failure is environmental — flaky, load-sensitive, or a broken local too
 ${tailBlock}</main-red>`;
 }
 
+/** The note every role but bugfix gets while main is red with named failures: the tests that
+ * already fail on main (at most 20 listed, then a `…and N more` line) and who owns them. A pure
+ * function so its shape is pinned in tests. */
+export function buildMainKnownRedNote(failingTests: readonly string[]): string {
+  const shown = failingTests.slice(0, 20).map((t) => `- ${t}`);
+  if (failingTests.length > 20) shown.push(`- …and ${failingTests.length - 20} more`);
+  return `<main-known-red>
+${shown.join("\n")}
+These tests already fail on main. Tumwater or the bugfix role owns them. Leave them alone unless your task is about them; a change merges when it adds no new failures.
+</main-known-red>`;
+}
+
 /** The note appended to an assigned series part's prompt naming the later planned parts that
  * wait on it, so the implementer sees where its part ends and leaves their share alone. At most
  * five are listed, then a literal `- …and N more` line (the `moreSuffix` phrase renders inline,

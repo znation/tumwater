@@ -182,10 +182,14 @@ discards a role's in-flight merge.
 - `tumwater prompt --role <id>` puts a prompt in one role's inbox for its next run instead of the
   director's, and wakes it. `--list` shows the inboxes grouped by role; per-role prompts
   wait behind a paused role like the director's wait behind a team pause.
-- While main's check is failing, code-producing roles pause authoring (the status shows "main's check is failing") until
-  it passes again. Bugfix, the director, and markdown-only roles keep going. A newly-verified red main also
-  queues a bugfix healer, so the healer starts on the next poll instead of waiting out its interval or deferral —
-  and that queued prompt no-ops (a "verify green" clause) if main turned green before it ran.
+- While main's check is failing and names its failing tests, every role keeps working: the code
+  roles' prompts carry a `<main-known-red>` note listing those tests (at most 20), and a change
+  merges when it adds no new failures. Only when the failure names no test (another runner, a crash,
+  a compile error) do code-producing roles pause authoring (the status shows "main's check is
+  failing") until it passes again; bugfix, the director, and markdown-only roles keep going. A
+  newly-verified red main also queues a bugfix healer, so the healer starts on the next poll instead
+  of waiting out its interval or deferral — once per failing set, not once per red commit — and that
+  queued prompt no-ops (a "verify green" clause) if main turned green before it ran.
 - A main watch runs the full check on main's tip in the background whenever the head moves (one run
   at a time, covering every commit since the last watched head; a red is re-run once before it counts;
   a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and
