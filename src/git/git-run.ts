@@ -70,8 +70,14 @@ export class GitError extends Error {
      * binary itself could not be started, which is what execFile puts in `err.code` then. */
     public code: number | string | undefined,
   ) {
+    // Quote any argv a space or quote would make ambiguous (a multi-word commit message, a
+    // path), so the reported command reads unambiguously instead of "commit -m some message"
+    // reading as a stray subcommand plus arguments. Single-token argv stays bare, keeping the
+    // pinned "git status failed (1)" shape. JSON.stringify is the codebase's shared value
+    // quoting idiom (gotSuffix, cli/error text use it for the same reason).
+    const argv = args.map((a) => (/[\s"\\]/.test(a) ? JSON.stringify(a) : a)).join(" ");
     super(
-      `git ${args.join(" ")} failed${code !== undefined ? ` (${code})` : ""}${stderr ? `: ${stderr}` : ""}`,
+      `git ${argv} failed${code !== undefined ? ` (${code})` : ""}${stderr ? `: ${stderr}` : ""}`,
     );
   }
 }

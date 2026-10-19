@@ -487,6 +487,19 @@ test("runGit reports a silent nonzero exit by its code alone, with no dangling c
   );
 });
 
+test("runGit quotes a whitespace-bearing argv value so the failing command reads unambiguously", async () => {
+  // One seed commit, a clean tree: `git commit -m "some message"` has nothing to commit and
+  // exits nonzero — the same failure a multi-word commit message surfaces on a dirty state.
+  const repo = makeRepo();
+  await assert.rejects(
+    runGit(repo, ["commit", "-m", "some message"]),
+    (err: unknown) =>
+      err instanceof Error &&
+      err.message.includes('git commit -m "some message" failed') &&
+      !err.message.includes("git commit -m some message failed"),
+  );
+});
+
 test("runGit keeps git's stderr on a noisy nonzero exit (format unchanged)", async () => {
   const repo = makeRepo();
   await assert.rejects(
