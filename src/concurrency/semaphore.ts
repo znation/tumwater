@@ -7,6 +7,12 @@
  * entry points — acquire/tryAcquire/release — are unchanged; only acquireLease, forceLease
  * and setKeyCaps touch the keyed path. */
 
+/** The entries of a `maxConcurrentPerProvider` map the semaphore enforces: positive integers
+ * only, so a non-positive or non-integer cap is dropped rather than read as a limit. */
+export function enforcedKeyCaps(caps: Record<string, number> | undefined): [string, number][] {
+  return Object.entries(caps ?? {}).filter(([, v]) => Number.isInteger(v) && v > 0);
+}
+
 /** The handle one keyed acquisition owns: the key it currently holds, a release that hands the
  * team permit and the key's slot back, and a rekey that moves the lease onto another key. */
 export interface SemaphoreLease {
@@ -300,7 +306,7 @@ export class Semaphore {
    * holder — it only withholds future grants on that key until releases drain it under the new
    * cap, the same contract as setCapacity. Non-positive and non-integer entries are dropped. */
   setKeyCaps(caps: Record<string, number>): void {
-    this.keyCaps = new Map(Object.entries(caps).filter(([, v]) => Number.isInteger(v) && v > 0));
+    this.keyCaps = new Map(enforcedKeyCaps(caps));
     this.drive();
   }
 

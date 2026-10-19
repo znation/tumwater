@@ -43,6 +43,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { resolvedAgentConfig } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
+import { enforcedKeyCaps } from "../concurrency/semaphore.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
@@ -925,7 +926,7 @@ export function checkWorkInstances(
 export function checkProviderConcurrency(config: TumwaterConfig | undefined, root: string): CheckOutcome {
   if (!config) return okOutcome("no config to audit");
   const caps = config.maxConcurrentPerProvider;
-  const capEntries = Object.entries(caps ?? {}).filter(([, v]) => Number.isInteger(v) && v > 0);
+  const capEntries = enforcedKeyCaps(caps);
   if (capEntries.length === 0) return okOutcome("no per-provider caps configured");
   // The pi default model the orchestrator's admission seam carries: a bare no-model pi seam
   // resolves its key only through it, so a team whose default is readable has keyed seams and
