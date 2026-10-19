@@ -38,6 +38,8 @@ interface TuiHeld {
   entry: { kind: "plan" | "bug"; position: number | null; title: string } | null;
   /** The Activity view's Ctrl+V image-attach mode on the prompt line. */
   attach: boolean;
+  /** The Activity view's Ctrl+A team-model editor holds the prompt line. */
+  model: boolean;
   /** The notes view's Ctrl+E replace-notes editor: the role whose notes the prompt line
    * is replacing from a typed file path, or null when closed. */
   notes: string | null;
@@ -131,7 +133,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "roleModel" | "instances"): string | null;
+  heldEditorFlash(entering: "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "roleModel" | "model" | "instances"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -168,6 +170,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       backends: false,
       fallback: false,
       roleModel: false,
+      model: false,
       instances: false,
     },
     root: deps.root,
@@ -210,6 +213,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.brief && entering !== "brief") return session.busyFlash("brief edit");
       if (h.retire && entering !== "retire") return session.busyFlash("retire role");
       if (h.quiet && entering !== "quiet") return session.busyFlash("quiet hours");
+      if (h.model && entering !== "model") return session.busyFlash("model edit");
       if (h.interval && entering !== "interval") return session.busyFlash("min run interval");
       if (h.instructions && entering !== "instructions") return session.busyFlash("instructions edit");
       if (h.providerCaps && entering !== "providerCaps") return session.busyFlash("provider caps");
@@ -227,7 +231,8 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (entering === "quiet" && (h.attach || h.notes || h.budget || h.brief || h.retire)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : "budget edit");
       if (entering === "interval" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : "budget edit");
       if (entering === "instructions" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "budget edit");
-      if (entering === "providerCaps" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : "budget edit");
+      if (entering === "providerCaps" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions || h.model)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : h.model ? "model edit" : "budget edit");
+      if (entering === "model" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions || h.providerCaps)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : h.providerCaps ? "provider caps" : "budget edit");
       if (entering === "concurrency" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "instructions edit");
       if (entering === "slots" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : h.instructions ? "instructions edit" : "budget edit");
       if (entering === "notify" && (h.attach || h.notes || h.budget || h.brief || h.retire || h.quiet || h.interval || h.instructions)) return session.busyFlash(h.attach ? "image attach" : h.notes ? "notes edit" : h.budget ? "budget edit" : h.brief ? "brief edit" : h.retire ? "retire role" : h.quiet ? "quiet hours" : h.interval ? "min run interval" : "instructions edit");

@@ -62,6 +62,7 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+U` / `Ctrl+K` | prompt line | delete to the start / to the end of the line |
 | `Ctrl+B` | Activity, Transcript | edit the daily cost cap: the team's on Activity, the viewed role's (`maxDailyCostUsdPerRole.<role>`) on its Transcript; empty means no cap |
 | `Ctrl+P` | Activity | edit the team's per-provider concurrency caps (`maxConcurrentPerProvider`, a JSON object like `{"anthropic":2}`; empty clears it) |
+| `Ctrl+A` | Activity | edit the team's model (`model`, a model id or a JSON map by tier like `{"strong":"..."}`; empty clears it) |
 | `Ctrl+X` | Activity | edit the team's agent backends (`backends`, a JSON object of per-backend `bin`/`args` such as `{"pi":{"bin":"/path/to/pi"}}`; empty clears it) — the terminal twin of the dashboard Settings Agent backends field |
 | `Ctrl+F` | Activity | pause the team (`[duration] [reason]`), or resume it when paused |
 | `Ctrl+Q` | Activity | stop the team later (a duration), or cancel a scheduled stop |

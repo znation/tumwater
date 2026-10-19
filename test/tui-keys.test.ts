@@ -3612,3 +3612,35 @@ test("Ctrl+G on Activity, History and the report views keeps its scope cycle, no
   assert.equal(keys.state().historyRole, "feature", "History Ctrl+G cycles the history scope");
   assert.equal(keys.state().instancesMode, false, "the instances editor stays closed off a Transcript");
 });
+
+// Ctrl+A on the Activity view opens the team-model editor (PLANS.md) — the TUI's twin of the
+// dashboard Settings `Model` field and `tumwater config set model` — pre-filled from the
+// file's top-level `model` (empty when unset). On a role's Transcript the same key keeps its
+// per-loop meaning: the new arm returns false off view 0, so the pause editor's abort arm
+// still aborts that role's run. This pins the scope the two arms share the key over.
+test("Ctrl+A opens the team-model editor on Activity, still aborts a role's run on its Transcript", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  assert.equal(keys.state().view, 0, "starts on Activity");
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.equal(keys.state().modelMode, true, "Ctrl+A opens the model editor on Activity");
+  assert.equal(keys.state().budgetMode, false, "the budget editor stays closed");
+  assert.equal(keys.state().input, "", "an unset model pre-fills an empty line");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().modelMode, false, "Esc closes the model editor");
+
+  // A role's Transcript keeps Ctrl+A as the per-loop abort, not the model editor.
+  const abortRoot = makeRoot();
+  writeOrchestratorMarker(abortRoot, ["feature"]); // a live team so requestAbort writes the marker
+  const { keys: keys2 } = makeKeys(abortRoot, () => 0);
+  keys2.syncSnapshot(0, false, ["feature", "director", "clean"]);
+  keys2.handleKey(undefined, { ctrl: true, name: "t" }); // → feature's transcript
+  assert.equal(keys2.state().view, 1);
+  assert.equal(keys2.state().roleIds[keys2.state().view - 1], "feature");
+  keys2.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.equal(keys2.state().modelMode, false, "Ctrl+A on a Transcript does not open the model editor");
+  assert.equal(keys2.state().budgetMode, false);
+  assert.ok(fs.existsSync(abortRequestPath(abortRoot, "feature")), "the per-loop abort marker is written");
+  assert.match(keys2.state().flash!, /abort requested for feature/);
+});
