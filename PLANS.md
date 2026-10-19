@@ -73,6 +73,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Fast merge, part 4/14: A commit that turned main red is bisected, reverted and handed back to its role (planned 2026-10-19 by user; requires part 3/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-watch.ts src/merge/merge-drain.ts src/merge/merge-git.ts src/merge/merge-core.ts src/operator/revert.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md and their tests)
 
+**Needs review 2026-10-19 by feature: too large for one run**
+
 **Goal.** When main goes red, the commit that did it should leave main in minutes and go back to its author as a revision. It should not hold a red main open while N roles try to fix the same break. Tumwater's own code does this, with no new role: bugfix keeps fix-forward for what a revert cannot handle.
 
 **Approach.**
