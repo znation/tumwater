@@ -20,6 +20,7 @@ import { branchHead, currentBranch } from "../git/git.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
 import { queuedMergeFiles, queuedMergeRoles } from "../merge/merge-queue.js";
+import { requeueMainRedPin } from "../merge/merge-slot.js";
 import { drainMergeQueue, settleAbortedApproved } from "../merge/merge-drain.js";
 import { abortableMerges, mergeTasks, newMergePipeline } from "../merge/merge-pipeline.js";
 import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -483,6 +484,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // merge, exactly as it starts no tick; what is already in flight runs on, and a verify
       // parked for its permit meets the same start gate as a parked tick when the permit comes.
       if (!holdForRestart && !reviewHeld && !diskHeld) {
+        // A `main_red` pin the pipeline kept goes back on the queue once main's head has moved.
+        for (const r of runners) await requeueMainRedPin(root, mainBranch, r.state, mainHead);
         await drainMergeQueue(
           {
             root,

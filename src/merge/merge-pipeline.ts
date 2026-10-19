@@ -8,7 +8,7 @@ import { errorMessage } from "../text/text.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { ModelSelector } from "../config/model-selector.js";
 import { deleteRef } from "../git/git.js";
-import { removeMergeChange, writeMergeOutcome, type MergeUsage } from "./merge-slot.js";
+import { removeMergeChange, requeueKeptChange, writeMergeOutcome, type MergeUsage } from "./merge-slot.js";
 import { mergeRefName, rejectedRefName } from "../paths.js";
 import type { AbortableMerge } from "../operator/operator-requests.js";
 import type { MergeEntry } from "./merge-queue.js";
@@ -211,6 +211,7 @@ export async function settleMergeOutcome(
   durationMs: number,
   usage: MergeUsage,
   file: string,
+  mainBranch?: string,
 ): Promise<void> {
   writeMergeOutcome(root, entry, state, result, durationMs, usage, file);
   // A revision that merges ends the rejected change's life: drop the rejected ref (plans/revise-
@@ -222,4 +223,14 @@ export async function settleMergeOutcome(
     await deleteRef(root, rejectedRefName(entry.role));
   }
   removeMergeChange(root, entry.role);
+  // A kept change goes straight back on the queue (the callers pass the main branch; a
+  // direct caller without one leaves the retry to the author's leftover recovery). The write-back
+  // above already happened, so a failure here must not lose the settled outcome.
+  if (mainBranch !== undefined) {
+    try {
+      await requeueKeptChange(root, mainBranch, entry, state, result);
+    } catch (err) {
+      warnEventBestEffort(root, entry.role, `could not re-queue the kept change: ${errorMessage(err)}`);
+    }
+  }
 }

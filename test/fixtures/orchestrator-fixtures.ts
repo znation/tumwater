@@ -8,7 +8,7 @@ import { runOrchestrator } from "../../src/orchestrator/orchestrator.js";
 import { drainMerge } from "../../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../../src/merge/merge-pipeline.js";
 import { startVerify } from "../../src/merge/merge-verify.js";
-import { headMerge } from "../../src/merge/merge-queue.js";
+import { dropMerge, headMerge, queuedMergeFiles } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { loadLoopState } from "../../src/runner/runner-state.js";
@@ -290,6 +290,12 @@ export async function mergeHead(
   drainMerge(ctx, pipeline);
   await pipeline.merge?.promise;
   if (fs.existsSync(head.file)) throw new Error(`the merge of ${role} ended without an outcome`);
+  // The pipeline re-queues a kept change itself (requeueKeptChange). This driver models the
+  // author-side backstop — leftover recovery at the next tick — so it drops that re-queue;
+  // a test of the re-queue itself drives startVerify directly.
+  for (const { entry, file } of queuedMergeFiles(repo)) {
+    if (entry.role === role && entry.retry !== undefined) dropMerge(file);
+  }
   const result = runner.state.lastResult;
   if (result === undefined) throw new Error(`the merge of ${role} recorded no result`);
   return result;

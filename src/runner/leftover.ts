@@ -30,6 +30,45 @@ import type { RunnerState } from "./runner-state.js";
  * part 2/2"); a lineage already handed back once is discarded instead. */
 export const MERGE_CONFLICT_LIMIT = 2;
 
+/** Delete a pin main already contains — the work merged and a crash skipped its un-pinning —
+ * so nothing re-merges what main holds. True when it was stale and is gone. Shared by the
+ * author's recovery and the pipeline's re-queue (pinnedRetrySha). */
+async function dropStalePin(root: string, ref: string, sha: string, mainBranch: string): Promise<boolean> {
+  if (!(await isMergedInto(root, sha, mainBranch))) return false;
+  await deleteRef(root, ref);
+  return true;
+}
+
+/** The permanent-reviewer-config hold when it names `sha`, else undefined. */
+function reviewHold(held: RunnerState["mergeReviewError"], sha: string): { message: string } | undefined {
+  return held?.sha === sha ? held : undefined;
+}
+
+/** Consecutive conflict-ended merges of `sha` (0 when the streak names another sha). */
+function conflictAttempts(streak: RunnerState["mergeConflicts"], sha: string): number {
+  return streak?.sha === sha ? streak.count : 0;
+}
+
+/** The sha of a role's kept pin when the merge pipeline may re-queue it itself: the pin exists,
+ * main does not already contain it (a stale pin is deleted, as recovery does), no reviewer
+ * configuration hold names it, and its conflict streak is under MERGE_CONFLICT_LIMIT. Null
+ * otherwise — a pin at the limit is the author's conflict hand-back, a held one waits for a
+ * config change, and both stay with recoverLeftover. */
+export async function pinnedRetrySha(
+  root: string,
+  role: string,
+  mainBranch: string,
+  state: Pick<RunnerState, "mergeConflicts" | "mergeReviewError">,
+): Promise<string | null> {
+  const ref = mergeRefName(role);
+  const sha = await refSha(root, ref).catch(() => null);
+  if (!sha) return null;
+  if (await dropStalePin(root, ref, sha, mainBranch)) return null;
+  if (reviewHold(state.mergeReviewError, sha)) return null;
+  if (conflictAttempts(state.mergeConflicts, sha) >= MERGE_CONFLICT_LIMIT) return null;
+  return sha;
+}
+
 /** What recoverLeftover needs from its owning runner: identity, the current tick number, the
  * role's worktree (needed only for the no-pin ahead-of-main fallback), and the role's merge
  * state — its conflict streak, outstanding hand-back, and permanent-reviewer hold. */
@@ -104,12 +143,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   const ref = mergeRefName(ctx.role);
   let sha = await refSha(ctx.root, ref).catch(() => null);
   if (sha) {
-    if (await isMergedInto(ctx.root, sha, ctx.mainBranch)) {
-      // Stale pin: the work already merged and a crash skipped its un-pinning. Clean it up so
-      // the next tick does not re-merge what main already holds.
-      await deleteRef(ctx.root, ref);
-      return null;
-    }
+    if (await dropStalePin(ctx.root, ref, sha, ctx.mainBranch)) return null;
   } else {
     // No pin: either nothing was left behind, or a crash hit the commit→pin window (or
     // the pin write failed) and the commit still sits on the branch ahead of main. Recover that
@@ -137,9 +171,9 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   // full gate check for a request that can never succeed until the model config changes. The
   // caller clears the hold (and re-queues) once the resolved reviewer selector differs, so a
   // fixed config recovers automatically (BUGS.md 2026-10-06).
-  const held = ctx.mergeReviewError;
-  if (held?.sha === sha) return { kind: "held", sha, message: held.message };
-  const attempts = ctx.mergeConflicts?.sha === sha ? ctx.mergeConflicts.count : 0;
+  const held = reviewHold(ctx.mergeReviewError, sha);
+  if (held) return { kind: "held", sha, message: held.message };
+  const attempts = conflictAttempts(ctx.mergeConflicts, sha);
   if (attempts >= MERGE_CONFLICT_LIMIT) {
     const summary = meta.subject ?? `leftover ${shortSha(sha)}`;
     if (ctx.conflictHandback) {

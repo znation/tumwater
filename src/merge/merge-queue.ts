@@ -64,6 +64,14 @@ export interface MergeEntry {
    * (plans/revise-rejected.md part 2/2). Filled by tick-stage.ts from LoopState.lastReview only
    * on a tick that held the rejected diff; a recovery merge never carries one. */
   priorReview?: PriorReview;
+  /** Earliest time (epoch ms) the verification may start, absent for an entry that is ready at
+   * once. Set on the pipeline's own re-queue of a `review_error` change, so a flaky reviewer is
+   * not hit again within 60 s; drainVerify skips the entry until then. */
+  notBefore?: number;
+  /** The retriable result (`merge_blocked`, `review_error`, `merge_conflict`, `main_red`) whose
+   * attempt this entry re-queues, absent for an author's or a recovery's entry. Logged on the
+   * re-queue's `merge_queued` event only. */
+  retry?: string;
 }
 
 let seq = 0;
@@ -179,7 +187,9 @@ function isMergeEntry(v: unknown): v is MergeEntry {
     (e.body === undefined || typeof e.body === "string") &&
     (e.highFriction === undefined || typeof e.highFriction === "boolean") &&
     (e.revisionRound === undefined || nonNegativeNumber(e.revisionRound, null) !== null) &&
-    (e.priorReview === undefined || isPriorReview(e.priorReview))
+    (e.priorReview === undefined || isPriorReview(e.priorReview)) &&
+    (e.notBefore === undefined || nonNegativeNumber(e.notBefore, null) !== null) &&
+    (e.retry === undefined || typeof e.retry === "string")
   );
 }
 

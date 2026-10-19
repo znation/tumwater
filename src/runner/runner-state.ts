@@ -1,5 +1,6 @@
 // vocabulary: plain
 import type { TickResult } from "../tick/tick-outcome.js";
+import type { MergeEntry } from "../merge/merge-queue.js";
 import type { ModelFallbackState } from "./model-fallback.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
@@ -246,6 +247,11 @@ export interface RunnerState {
    * current reviewer selector differs, the config has changed and recovery clears the hold and
    * re-queues. Cleared when the pin merges or is rejected. */
   mergeReviewError?: { sha: string; selector?: string; message: string };
+  /** A `main_red` merge's kept pin, waiting for main to move: `head` is main's head when the
+   * attempt settled and `entry` the dropped queue entry (minus its sha, which is the pin's
+   * current one). The orchestrator poll re-queues it on the first poll whose main head differs
+   * (merge-slot.ts requeueKeptChange); cleared then, or when the pin is gone. */
+  mainRedRetry?: { head: string; entry: Omit<MergeEntry, "sha"> };
   /** Consecutive merges of one patch (git/git.ts patchId, stable across a clean rebase) whose
    * in-lock check went red on the rebased tree. At merge-check-failures.ts's
    * MERGE_CHECK_FAILURE_LIMIT the red is attributed through main's own verdict instead of
@@ -502,6 +508,18 @@ export function loadRunnerState(root: string, role: string): RunnerState {
         ? v.reasonCounts.map((c) => healNumber(c, 0))
         : undefined;
     });
+  // A torn retry record reads as none: leftover recovery is the backstop for the pin.
+  if (
+    s.mainRedRetry !== undefined &&
+    !(
+      isJsonObject(s.mainRedRetry) &&
+      typeof s.mainRedRetry.head === "string" &&
+      isJsonObject(s.mainRedRetry.entry) &&
+      typeof s.mainRedRetry.entry.role === "string" &&
+      typeof s.mainRedRetry.entry.summary === "string"
+    )
+  )
+    s.mainRedRetry = undefined;
   if (s.mergeConflicts !== undefined)
     s.mergeConflicts = healRecord(s.mergeConflicts, (v) => {
       v.count = healNumber(v.count, 0);

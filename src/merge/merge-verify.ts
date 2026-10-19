@@ -114,6 +114,8 @@ export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): 
   for (const { entry, file } of queue) {
     if (p.verifying.size >= verifyLimit(ctx.semaphore.limit)) return;
     if (liveRoles(p).has(entry.role)) continue;
+    // A re-queued review_error waits out its delay; the entry stays queued and holds its author.
+    if (entry.notBefore !== undefined && Date.now() < entry.notBefore) continue;
     if (await mergedIntoMain(ctx.root, entry.sha, ctx.mainBranch, mainHead)) {
       dropMerge(file);
       removeMergeChange(ctx.root, entry.role);
@@ -221,7 +223,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
         setMergeChangeStatus(root, role, "approved");
       } else {
         const result = verdict.kind === "stack" ? "aborted" : verdict.result;
-        await settleMergeOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);
+        await settleMergeOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file, mainBranch);
         if (verify.userAborted) await discardPinnedRefs(root, [role]);
       }
     } finally {

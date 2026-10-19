@@ -287,10 +287,15 @@ stop if its supervisor dies without forwarding a signal (a `kill -9` or OOM kill
 supervisor takes the team down instead of leaving it orphaned and running unattended. Crashes
 recover the same way, and so do runs the watchdog stops as stalled, up to three in a row. An
 interrupted merge goes back through the pipeline, and an interrupted director prompt goes back to
-its inbox. A commit left unmerged (a merge error that kept it, or a crash before it was queued)
-goes back in the merge queue at the role's next run, which ends there instead of authoring, so the
-one merge step stays main's only writer. The director's next run is otherwise only ever your prompt, so while it holds a kept commit it is
-also due on its own min-run clock. A commit whose last three merges all hit conflicts that
+its inbox. A change whose merge ends blocked, in a review error, or in a conflict that stays
+under the limit is put back in the merge queue by the pipeline itself, at once, with its original
+summary and no author run; a review error waits 60 s first, and a held reviewer configuration
+error is not re-queued. A change kept because main's check was failing goes back once main's head
+moves. A commit left unmerged by a crash or a restart (or one before it was queued) goes back in
+the merge queue at the role's next run, which ends there instead of authoring, so the one merge
+step stays main's only writer. The director's next run is otherwise only ever your prompt, so while
+it holds a kept commit it is also due on its own min-run clock. A commit whose last three merges
+all hit conflicts that
 conflict resolution could not settle is dropped instead, and the role's next prompt says so.
 
 ## Updates

@@ -156,7 +156,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
     const settleOne = async (s: number, result: TickResult): Promise<void> => {
       const v = picks[s]!;
       settled.add(s);
-      await settleMergeOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file);
+      await settleMergeOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file, mainBranch);
     };
     try {
       results = await mergeApproved(

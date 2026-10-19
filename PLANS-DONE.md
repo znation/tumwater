@@ -5,6 +5,37 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 1/14: The merge pipeline re-queues a kept change itself, so a retry needs no author run (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 1: roles stop waiting on their own change"; touches src/merge/merge-slot.ts src/merge/merge-queue.ts src/merge/merge-verify.ts src/runner/leftover.ts src/orchestrator/orchestrator.ts docs/how-it-works.md and their tests) — done 2026-10-19 by the feature role
+
+**Goal.** A merge attempt that ends `merge_blocked`, `review_error`, `merge_conflict` or `main_red` drops its queue entry and keeps its pin. Only the author's next run puts it back, through `recoverLeftover` (src/runner/leftover.ts), and that run waits for its scheduling gap. After `main_red` it also waits on the idle backoff, which doubles from 120 s up to 10 h. From 2026-10-17 to 2026-10-19, 79 `merge_blocked` attempts alone held 60 h of pipeline time. The pipeline should re-queue such a change itself, at once.
+
+**Approach.**
+- Factor the eligibility checks of `recoverLeftover` into one exported helper that both the author path and the pipeline call, so the two cannot drift. The checks are:
+  - a pin that main already contains is stale and gets deleted;
+  - the `mergeReviewError` hold;
+  - `MERGE_CONFLICT_LIMIT`, at which the conflict hand-back stays the author's job.
+- After `writeMergeOutcome` (src/merge/merge-slot.ts) drops the entry, handle a result in `RETRIABLE_MERGE_RESULTS` (src/merge/merge-core.ts) whose pin still exists and that the helper allows:
+  - enqueue a new entry for the same runner;
+  - copy the dropped entry's `run`, `summary`, `body`, `highFriction`, `revisionRound` and `priorReview` unchanged, so the summary is not the "recovered leftover work from …" label;
+  - use the pin's current sha;
+  - log `merge_queued` with a new `retry` field naming the result.
+- A `review_error` re-queue waits 60 s. Add an optional `notBefore` (epoch ms) to `MergeEntry` (src/merge/merge-queue.ts) and have `drainVerify` (src/merge/merge-verify.ts) skip an entry until then. A dead reviewer backend is already held team-wide by `reviewHeld`.
+- `main_red` keeps the pin, as today. The orchestrator poll (src/orchestrator/orchestrator.ts, where it reads `mainHead`) re-queues such a pin on the first poll whose main head differs from the head when the attempt settled. Record that head on the runner's state, beside the pin.
+- The interlock (`queuedRoles`, src/orchestrator/orchestrator-scheduling.ts) is unchanged: the runner still does not run while its re-queued entry exists. Leftover recovery at run start stays as the backstop after a restart or a crash.
+- docs/how-it-works.md: in the paragraph about merge retries, say the pipeline re-queues a kept change itself.
+
+**Files touched.**
+- Source: src/merge/merge-slot.ts, src/merge/merge-queue.ts, src/merge/merge-verify.ts, src/runner/leftover.ts, src/orchestrator/orchestrator.ts, and src/runner/runner-state.ts for the head field.
+- Docs: docs/how-it-works.md.
+- Tests: test/merge-requeue.test.ts (new), test/orchestrator-once.e2e.test.ts (an orchestrator test with a fake agent), and test/fixtures/orchestrator-fixtures.ts.
+
+**Acceptance criteria.**
+- A change whose first in-lock merge check is red, then green, merges with no `run_start` for its runner between its `merge_failed merge_blocked` and its `merge_done`. The re-queue's `merge_queued` carries the original summary and `retry: "merge_blocked"`.
+- A `review_error` attempt re-queues once, no sooner than 60 s later. A held reviewer configuration error does not re-queue.
+- A `main_red` pin re-queues once main's head moves, and not before.
+- At `MERGE_CONFLICT_LIMIT` the hand-back still goes through the author's run, as today.
+- `npm test` passes.
+
 ### Fast merge, part 5/14: Self-redeploy runs main's newest green commit, not only a green tip (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/redeploy/redeployer.ts src/redeploy/redeploy.ts src/redeploy/redeploy-policy.ts src/redeploy/redeploy-probes.ts src/orchestrator/orchestrator.ts src/baseline/main-baseline.ts docs/how-it-works.md docs/invariants.md and their tests); done 2026-10-19 by the feature role
 
 **Goal.** Self-redeploy only ever runs a commit whose full check is green (decided 2026-10-19 by you). Today it targets only main's tip (`mainHead`, src/orchestrator/orchestrator.ts ~355). When the tip is red it deploys nothing until main moves (`blockedHead`, src/redeploy/redeployer.ts ~317 and ~411). Once part 6 lets main be briefly red between merges, that would stall redeploys. The target should be the newest green commit instead.

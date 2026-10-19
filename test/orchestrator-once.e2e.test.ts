@@ -16,7 +16,7 @@ import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
 import { fastConfig, makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
-import { mainSha, makeRepo } from "./fixtures/repo-fixtures.js";
+import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, withIdlePi, withPi } from "./fakes/fake-pi.js";
 import { cli } from "./helpers/cli-harness.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -289,4 +289,47 @@ test("once --role: a custom loop id is a valid target", async () => {
     assert.equal(loadLoopState(repo, "docs-sync").runs, 1, "the custom loop ticked once");
     assert.equal(loadLoopState(repo, "clean").runs, 0, "the enabled built-in never ran");
   });
+});
+
+test("once: a merge_blocked change is re-queued by the pipeline and merges with no second run", async () => {
+  const repo = await makeFastRepo("once requeue test", ["clean"]);
+  const counter = path.join(tmpdir("requeue-count-"), "n");
+  const config = loadConfig(repo);
+  // Invocation 1 is the baseline, 2 the gate; the reviewer then moves main, so the merge's rebase
+  // is not a no-op and the in-lock merge check (invocation 3) runs, red. The re-queued
+  // attempt's check (4) is green.
+  config.check = {
+    command: `n=$(cat '${counter}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${counter}'; [ $n -ne 3 ]`,
+  };
+  saveConfig(repo, config);
+  // The first review also moves main (once).
+  const bump =
+    `[ -f '${counter}.bumped' ] || { touch '${counter}.bumped'; ` +
+    `echo bump > '${repo}/bump.txt'; git -C '${repo}' add bump.txt; ` +
+    `git -C '${repo}' -c user.name=t -c user.email=t@t commit -q -m bump; }`;
+  await withPi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) ${bump}; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+    async () => {
+      await onceRound(repo);
+      const events = readEvents(repo);
+      const types = events.map((e) => e.type);
+      const failed = events.findIndex((e) => e.type === "merge_failed");
+      assert.equal(events[failed]!.result, "merge_blocked", "the first merge attempt was blocked");
+      const done = events.findIndex((e) => e.type === "merge_done");
+      assert.ok(done > failed, "the change merged after the blocked attempt");
+      assert.equal(
+        types.slice(failed, done).includes("run_start"),
+        false,
+        "no run_start for the author between merge_failed and merge_done",
+      );
+      const requeue = events.slice(failed, done).find((e) => e.type === "merge_queued");
+      assert.equal(requeue?.retry, "merge_blocked", "the pipeline's re-queue names the result it retries");
+      assert.equal(requeue?.summary, "add hello file", "the re-queue keeps the original summary");
+      assert.equal(events[done]!.result, "changed");
+    },
+  );
 });

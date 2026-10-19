@@ -48,7 +48,6 @@ import { waitFor } from "./helpers/wait.js";
 import { setRef } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import { pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { withIdlePi } from "./fakes/fake-pi.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
 /** The session name (pi's `-n` value) of a run block recorded by logPromptsTo: the line after
@@ -141,14 +140,22 @@ test("director: once recovers a kept merge pin and drains the queue before exit"
   const repo = await makeFastRepo("once director leftover", ["director"]);
   const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "kept.txt"), "kept\n"), "kept director change");
   await setRef(repo, mergeRefName("director"), sha);
-  await withIdlePi(async () => {
+  // A reviewer that rejects ends the merge rejected; an idle reply is a review_error, which the
+  // pipeline re-queues after 60 s and a once round would wait for.
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: reject")}'; exit 0;; esac; done\n` +
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+  );
+  try {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.ticksRun?.get("director"), 1, "the director's recovery tick ran");
     assert.ok(eventsOfType(repo, "merge_queued").some((e) => e.commit === sha), "the pin was re-queued");
     assert.equal(queueDepth(repo), 0, "the merge queue drained before exit");
     assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
-  });
+  } finally {
+    restore();
+  }
 });
 
 test("director: a team pause holds role ticks but not the director's queued prompt", async () => {
