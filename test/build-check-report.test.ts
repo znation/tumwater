@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { BuildCheck } from "../src/build/build-check-detect.js";
 import type { BuildCheckOutcome } from "../src/build/build-check.js";
-import { checkFailureReasons, clipBuildTail, failureHeadline } from "../src/build/build-check-report.js";
+import { checkFailureReasons, clipBuildTail, failureHeadline, parseFailingTests } from "../src/build/build-check-report.js";
 
 // build-check-report.ts's checkFailureReasons turns a red check's outcome into the machine text
 // every rejecting gate hands its author — the reason lines injected into the next-tick note by
@@ -280,4 +280,21 @@ test("clipBuildTail rescues no name for output without a failed test", () => {
   const tail = clipBuildTail(["✖ failing tests:", "Error: boom", ...frames].join("\n"));
   assert.equal(tail[0], "Error: boom", "the section header is not a test name");
   assert.equal(failureHeadline(tail), "Error: boom");
+});
+
+test("parseFailingTests lists each failed title once, durations stripped, in output order", () => {
+  const output = [
+    "▶ suite",
+    "  ✖ nested one (1.5ms)",
+    "✖ second",
+    "✔ fine (2ms)",
+    "ℹ fail 2",
+    "✖ failing tests:",
+    "✖ nested one (1.5ms)",
+    "✖ second (4ms)",
+  ].join("\n");
+  assert.deepEqual(parseFailingTests(output), ["nested one", "second"]);
+  assert.deepEqual(parseFailingTests("tsc: error TS2304"), []);
+  const many = Array.from({ length: 80 }, (_, i) => `✖ t${i}`).join("\n");
+  assert.equal(parseFailingTests(many).length, 50);
 });

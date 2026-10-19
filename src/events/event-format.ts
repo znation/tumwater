@@ -372,6 +372,13 @@ export function eventMessage(e: HarnessEvent): string {
       return `role ${textOr(e.role)} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new runs until the cap is raised or removed in tumwater.json or the local day rolls over`;
     case "role_cap_resumed":
       return `role ${textOr(e.role)} resumed — it is under its daily cap again and runs again`;
+    case "main_check": {
+      const failing = Array.isArray(e.failingTests) ? e.failingTests.map(String) : [];
+      const covered = Number(e.covered) > 1 ? ` (${textOr(e.covered)} commits)` : "";
+      const verdict = e.status === "failed" ? "failed" : "passed";
+      const names = failing.length > 0 ? `: ${failing.slice(0, 3).join("; ")}${failing.length > 3 ? `; +${failing.length - 3} more` : ""}` : "";
+      return `main ${shortSha(String(e.sha ?? ""))}${covered} full check ${verdict}${names}`;
+    }
     case "main_red_hold":
       // The message already names the SHA, script, and consequence; the problem tone comes
       // from PROBLEM_EVENTS.

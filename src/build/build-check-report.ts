@@ -38,6 +38,25 @@ const ERROR_MESSAGE_LINE = /^\S*Error\b[^:]*:\s/;
  * detail ends the output, so it names the test the tail's message and stack belong to. */
 const FAILED_TEST_LINE = /^✖ (?!failing tests:)/;
 
+/** How many failing test titles parseFailingTests keeps. */
+const FAILING_TESTS_MAX = 50;
+
+/** The titles of the tests a check's COMPLETE output reports failed: every line FAILED_TEST_LINE
+ * matches, its trailing duration stripped, deduplicated (node:test prints a failure in the tree and
+ * again under `✖ failing tests:`), in output order, at most FAILING_TESTS_MAX. Read the full
+ * output, before clipBuildTail cuts it. Empty for output from another runner. */
+export function parseFailingTests(output: string): string[] {
+  const titles = new Set<string>();
+  for (const raw of output.split("\n")) {
+    const line = raw.trim();
+    if (!FAILED_TEST_LINE.test(line)) continue;
+    const title = line.slice(2).replace(/ \([\d.]+m?s\)$/, "").trim();
+    if (title !== "") titles.add(title);
+    if (titles.size >= FAILING_TESTS_MAX) break;
+  }
+  return [...titles];
+}
+
 /** Keep the TAIL of a build's combined output: last ≤10 meaningful lines, each via clipReason —
  * so a chatty build cannot bloat persisted state or the injected next-tick note. Blank lines
  * and npm's own script banner (`> pkg@1.0 script`, `> <command>`) are dropped: they name the

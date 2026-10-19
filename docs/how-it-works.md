@@ -183,6 +183,11 @@ discards a role's in-flight merge.
   it passes again. Bugfix, the director, and markdown-only roles keep going. A newly-verified red main also
   queues a bugfix healer, so the healer starts on the next poll instead of waiting out its interval or deferral —
   and that queued prompt no-ops (a "verify green" clause) if main turned green before it ran.
+- A main watch runs the full check on main's tip in the background whenever the head moves (one run
+  at a time, covering every commit since the last watched head; a red is re-run once before it counts;
+  a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and
+  saves reds beside the greens in `.tumwater/state/baseline-verdicts.json`. Nothing reads its verdicts
+  yet, and no run or merge waits for it.
 - Failed runs retry on a shorter ladder, capped at ten minutes. Three failures in a row mark a
   role `failing` until it has a healthy run.
 - A search role's own recent yield stretches its clock: after ten consecutive counted runs

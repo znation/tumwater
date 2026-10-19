@@ -37,6 +37,7 @@ import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
+import { createMainWatch } from "../baseline/main-watch.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import { RetentionPruner } from "./retention.js";
@@ -281,6 +282,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // Need-based deferral: whether qualifying work has merged
   // since a role's last-seen main head, cached per head (see scheduling/work-merged-cache.ts).
   const workMergedSince = new WorkMergedCache(root, mainBranch);
+  const mainWatch = createMainWatch(root, mainBranch);
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
   // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode
   // logs exactly once — on the transition in, never while merely not-due and never on exit.
@@ -444,6 +446,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // in flight here — poll only returns `restart` once it has finished. (holdForRestart keeps
       // the previous poll's verdict until this one's is in: resetting it before the await
       // would open the gate for a waiter granted a permit while poll runs.)
+      // Main watch (src/baseline/main-watch.ts): records the full check's verdict on main's new
+      // tip in the background; nothing here waits for it.
+      if (!opts.once) mainWatch.poll(mainHead, holdForRestart || diskHeld, liveConfig);
       if (redeploy) {
         const action = await redeploy.poll(
           mainHead,

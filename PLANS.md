@@ -71,40 +71,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - plan, clean and every other single-runner role schedule exactly as before.
 - `npm test` passes.
 
-### Fast merge, part 3/14: Main watch runs the full check on main's tip after merges and records each verdict with its failing tests (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-baseline.ts src/baseline/main-red.ts src/build/build-check-report.ts src/build/build-check.ts src/orchestrator/orchestrator.ts src/events/events.ts docs/how-it-works.md and their tests, plus a new src/baseline/main-watch.ts)
-
-**Goal.** Parts 4–8 need a full-check verdict for main's commits, with the names of the failing tests, without any run or merge waiting for it. Today a full check runs on main only when something needs one right away: a fresh run's red-main gate, the gate's re-attribution, a merge's attribution, or the redeployer. A red verdict keeps only its script and a clipped output tail. This part adds the watch and records what it sees. Nothing acts on it yet.
-
-**Approach.**
-- New src/baseline/main-watch.ts, called from the orchestrator poll beside `redeploy.poll` (src/orchestrator/orchestrator.ts ~448) with the poll's `mainHead`. When the head differs from the last watched head and no watch run is in flight:
-  - Run main's full check on the tip through `gateMainQueue` in `_gate-main` (src/baseline/main-red.ts), at merge-tier check priority.
-  - Cached verdicts count, so do not force a fresh run.
-  - A red runs once more before it is final (`reverifyRed`).
-  - One run covers every commit since the last watched head; a head that moves during a run is watched next.
-- Doc-only commits inherit green, as `inheritedGreen` already does.
-- Skip while the team is held for a restart or for disk space, and when the project has no check.
-- Failing tests:
-  - Add `failingTests?: string[]` to `MainBaseline` (src/baseline/main-baseline.ts).
-  - Parse them from the complete check output, before `clipBuildTail` cuts it (src/build/build-check-report.ts, src/build/build-check.ts): every line `FAILED_TEST_LINE` matches, with the trailing duration stripped, deduplicated, in output order, at most 50.
-  - Export the parser for parts 7 and 9.
-- Persist reds: `.tumwater/state/baseline-verdicts.json` gains `reds: [{ sha, script, failingTests }]` (newest 64) beside `greens`, loaded at start like the greens.
-- Log a `main_check` event: `{ sha, status, durationMs, covered, failingTests? }`. `covered` counts first-parent commits since the previous watched head. Register it in the event catalog (src/events/events.ts) so `tumwater logs` renders it.
-- docs/how-it-works.md: a short paragraph on the watch.
-
-**Files touched.**
-- Source: new src/baseline/main-watch.ts; src/baseline/main-baseline.ts, src/baseline/main-red.ts, src/build/build-check-report.ts, src/build/build-check.ts, src/orchestrator/orchestrator.ts, src/events/events.ts.
-- Docs: docs/how-it-works.md.
-- Tests: a new test/main-watch.test.ts, test/main-baseline-persist.test.ts, and a parser case in the build-check report tests.
-
-**Acceptance criteria.**
-- After a fake merge, exactly one `main_check` with status `passed` is logged for the new head.
-- Two merges in quick succession produce at most two watch runs. A run that covers both reports `covered: 2`.
-- A red tip logs `main_check` status `failed` with `failingTests` parsed from a node:test fixture output holding three `✖` lines. The red was re-run once first.
-- A restart reloads the red verdict and its failing tests.
-- A doc-only commit inherits green without a run.
-- No run, gate or merge waits on the watch.
-- `npm test` passes.
-
 ### Fast merge, part 4/14: A commit that turned main red is bisected, reverted and handed back to its role (planned 2026-10-19 by user; requires part 3/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-watch.ts src/merge/merge-drain.ts src/merge/merge-git.ts src/merge/merge-core.ts src/operator/revert.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md and their tests)
 
 **Goal.** When main goes red, the commit that did it should leave main in minutes and go back to its author as a revision. It should not hold a red main open while N roles try to fix the same break. Tumwater's own code does this, with no new role: bugfix keeps fix-forward for what a revert cannot handle.

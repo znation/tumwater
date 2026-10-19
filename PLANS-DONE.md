@@ -5,6 +5,40 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 3/14: Main watch runs the full check on main's tip after merges and records each verdict with its failing tests (planned 2026-10-19 by user; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/baseline/main-baseline.ts src/baseline/main-red.ts src/build/build-check-report.ts src/build/build-check.ts src/orchestrator/orchestrator.ts src/events/events.ts docs/how-it-works.md and their tests, plus a new src/baseline/main-watch.ts) — done 2026-10-19 by the feature role
+
+**Goal.** Parts 4–8 need a full-check verdict for main's commits, with the names of the failing tests, without any run or merge waiting for it. Today a full check runs on main only when something needs one right away: a fresh run's red-main gate, the gate's re-attribution, a merge's attribution, or the redeployer. A red verdict keeps only its script and a clipped output tail. This part adds the watch and records what it sees. Nothing acts on it yet.
+
+**Approach.**
+- New src/baseline/main-watch.ts, called from the orchestrator poll beside `redeploy.poll` (src/orchestrator/orchestrator.ts ~448) with the poll's `mainHead`. When the head differs from the last watched head and no watch run is in flight:
+  - Run main's full check on the tip through `gateMainQueue` in `_gate-main` (src/baseline/main-red.ts), at merge-tier check priority.
+  - Cached verdicts count, so do not force a fresh run.
+  - A red runs once more before it is final (`reverifyRed`).
+  - One run covers every commit since the last watched head; a head that moves during a run is watched next.
+- Doc-only commits inherit green, as `inheritedGreen` already does.
+- Skip while the team is held for a restart or for disk space, and when the project has no check.
+- Failing tests:
+  - Add `failingTests?: string[]` to `MainBaseline` (src/baseline/main-baseline.ts).
+  - Parse them from the complete check output, before `clipBuildTail` cuts it (src/build/build-check-report.ts, src/build/build-check.ts): every line `FAILED_TEST_LINE` matches, with the trailing duration stripped, deduplicated, in output order, at most 50.
+  - Export the parser for parts 7 and 9.
+- Persist reds: `.tumwater/state/baseline-verdicts.json` gains `reds: [{ sha, script, failingTests }]` (newest 64) beside `greens`, loaded at start like the greens.
+- Log a `main_check` event: `{ sha, status, durationMs, covered, failingTests? }`. `covered` counts first-parent commits since the previous watched head. Register it in the event catalog (src/events/events.ts) so `tumwater logs` renders it.
+- docs/how-it-works.md: a short paragraph on the watch.
+
+**Files touched.**
+- Source: new src/baseline/main-watch.ts; src/baseline/main-baseline.ts, src/baseline/main-red.ts, src/build/build-check-report.ts, src/build/build-check.ts, src/orchestrator/orchestrator.ts, src/events/events.ts.
+- Docs: docs/how-it-works.md.
+- Tests: a new test/main-watch.test.ts, test/main-baseline-persist.test.ts, and a parser case in the build-check report tests.
+
+**Acceptance criteria.**
+- After a fake merge, exactly one `main_check` with status `passed` is logged for the new head.
+- Two merges in quick succession produce at most two watch runs. A run that covers both reports `covered: 2`.
+- A red tip logs `main_check` status `failed` with `failingTests` parsed from a node:test fixture output holding three `✖` lines. The red was re-run once first.
+- A restart reloads the red verdict and its failing tests.
+- A doc-only commit inherits green without a run.
+- No run, gate or merge waits on the watch.
+- `npm test` passes.
+
 ### Give the director an own-clock retry for its unmerged change, not only a prompt-driven one (planned 2026-10-19 by user; independent of every eligible Planned entry — the TUI-editor entries and the check-wait pair (src/build, src/events, src/doctor, src/config) and the backend/model split (src/config, src/status, src/roles) touch none of this part's files; the blocked plain-terms series reaches src/scheduling (runner 9/14, run 12/20), src/orchestrator (runner 8/14, run 10/20-11/20), src/runner (run 8/20-9/20) and src/tick (run 1/20-5/20) only in far-behind parts, so whichever lands second rebases; touches src/scheduling/scheduling.ts + src/orchestrator/orchestrator-scheduling.ts + src/runner/leftover.ts + src/runner/runner-run.ts + src/tick/tick-resume.ts + docs/how-it-works.md + test/scheduling.test.ts + test/leftover.test.ts + test/orchestrator-scheduling.test.ts + test/orchestrator-director.test.ts + test/runner-leftover-recovery.test.ts + test/orchestrator.e2e.test.ts) — done 2026-10-19 by the feature role
 
 **Goal.** A change whose merge fails non-terminally keeps its merge ref and is retried by "next-tick leftover recovery, never the queue" (`src/events/events.ts:41`): `docs/how-it-works.md:281-283` promises "a commit left unmerged (a merge error that kept it, or a crash before it was queued) goes back in the merge queue at the role's next run, which ends there instead of authoring". Thirteen roles get that next run from their own min-run clock; the director is the only role with no clock — `isEligible` returns a run for it only when `inboxCount > 0` (`src/scheduling/scheduling.ts:60-63`), so after a `merge_blocked` (`src/tick/tick-apply.ts:290-296` sets `lastResult`, so the dashboard reads "Merge blocked") a director with an empty inbox sits on the kept pin **forever** and nothing retries it. The exemption that creates this is a *cost* argument — an explicit human prompt outranks any autonomous gate, `src/orchestrator/orchestrator-scheduling.ts:217-235` — but a leftover-recovery run spends nothing: it authoring-runs no pi and ends in about a second (`finishRecoveryTickPhase`, `src/runner/runner-recovery.ts:94-136`). **Goal:** a director holding a kept merge pin is due on the same min-run clock a `queued` outcome already schedules (`scheduleAtMinInterval`, `src/tick/tick-apply.ts:157-169`; default 20 s), and that promptless run re-enqueues the pin exactly as a prompt-driven leftover-recovery run does today.

@@ -44,7 +44,7 @@ test("a new generation starts from the saved greens and does not re-run the suit
   assert.equal(runsOf(counter), 0, "the previous generation's verdict answered");
 });
 
-test("a red is never saved, and a green a run turned red leaves the file", async () => {
+test("a red the watch recorded loads with its failing tests; a green a run turned red leaves the greens", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture("improve", `echo run >> ${counter}; exit 1`);
   persistBaselineVerdicts(root);
@@ -52,7 +52,7 @@ test("a red is never saved, and a green a run turned red leaves the file", async
   assert.ok(JSON.stringify(savedGreens(root)).includes(headSha(root)));
   const observed = await checkMainBaseline(wt, defaultConfig(), undefined, false, false, undefined, true);
   assert.equal(observed.baseline?.status, "red");
-  assert.ok(!JSON.stringify(savedGreens(root)).includes(headSha(root)), "the red replaced it on disk too");
+  assert.deepEqual((savedGreens(root) as { greens: unknown[] }).greens.filter((g) => JSON.stringify(g).includes(headSha(root))), [], "the red replaced it on disk too");
 });
 
 test("a torn file or malformed entries read as no data", () => {
@@ -67,4 +67,21 @@ test("a torn file or malformed entries read as no data", () => {
   persistBaselineVerdicts(root);
   assert.equal(cachedBaselineVerdict("not-a-sha"), undefined);
   assert.equal(cachedBaselineVerdict(sha(9)), "green", "a well-formed SHA loads; a malformed carry-over source is dropped");
+});
+
+test("a restart reloads a saved red with its failing tests, and a new run keeps them", async () => {
+  const root = tmpdir("persist-red-");
+  fs.mkdirSync(path.dirname(baselineVerdictsPath(root)), { recursive: true });
+  fs.writeFileSync(
+    baselineVerdictsPath(root),
+    JSON.stringify({ reds: [{ sha: sha(7), script: "test", failingTests: ["a", "b"] }, { sha: "nope" }] }),
+  );
+  persistBaselineVerdicts(root);
+  assert.equal(cachedBaselineVerdict(sha(7)), "red");
+  noteGreenBaseline(sha(8)); // any write mirrors the cache again
+  const saved = savedGreens(root) as { reds: Array<{ sha: string }> };
+  assert.deepEqual(
+    saved.reds.filter((r) => r.sha === sha(7)),
+    [{ sha: sha(7), script: "test", failingTests: ["a", "b"] }],
+  );
 });

@@ -1,7 +1,7 @@
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck } from "./build-check-detect.js";
 import { EXEC_MAX_BUFFER, execFileAsync } from "../process/process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "../process/process-group.js";
-import { clipBuildTail } from "./build-check-report.js";
+import { clipBuildTail, parseFailingTests } from "./build-check-report.js";
 import { parseTestCounts, type TestCounts } from "./build-check-counts.js";
 import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "./host-sleep.js";
 import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
@@ -67,6 +67,9 @@ export interface BuildCheckOutcome {
   /** Clipped tail of the combined output on failure — last ≤10 meaningful lines (non-blank,
    * npm banner excluded), each clipped to MAX_REASON_CHARS. */
   outputTail?: string[];
+  /** On failure: the titles of the failing tests, parsed from the complete output before the tail
+   * was clipped (parseFailingTests) — empty when the output names none. */
+  failingTests?: string[];
   /** Why no verdict was reached ("skipped"). */
   skipReason?: BuildSkipReason;
   /** On a "killed" skip: the signal that stopped the check — the harness's own timeout is
@@ -302,6 +305,7 @@ async function runDeclaredCheck(
       status: "failed",
       script,
       outputTail: clipBuildTail(output),
+      failingTests: parseFailingTests(output),
       run,
       counts: parseTestCounts(output),
     };

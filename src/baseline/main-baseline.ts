@@ -46,6 +46,10 @@ interface MainBaseline {
    * (build/build-check-report.ts) picks the line that goes into the warning event so an
    * operator sees what broke without opening a transcript. */
   outputTail?: string[];
+  /** Red only: the titles of the failing tests, parsed from the complete output (parseFailingTests,
+   * build/build-check-report.ts) — empty when the output names none, absent on a verdict a
+   * previous generation saved before it carried them. Unlike outputTail it is persisted. */
+  failingTests?: string[];
   /** Red only: the worktrees that have independently observed this red. A red seen in ONE
    * worktree is provisional evidence about the environment as much as the tree, so it is
    * re-verified elsewhere before it blocks the team; two distinct worktrees agreeing makes it
@@ -124,41 +128,60 @@ function rememberBaseline(sha: string, baseline: MainBaseline): void {
   saveGreens();
 }
 
-/** The file the cache's greens are mirrored to (persistBaselineVerdicts), or undefined while no
+/** How many reds the verdict file keeps (the newest). */
+const SAVED_REDS_MAX = 64;
+
+/** The file the cache's verdicts are mirrored to (persistBaselineVerdicts), or undefined while no
  * team process has asked for it: the CLI and the tests keep the cache in memory only. */
 let greensFile: string | undefined;
 
-/** Mirror the green verdicts to disk, so the team's next generation starts with them. A restart
+/** Mirror the verdicts to disk, so the team's next generation starts with them. A restart
  * used to empty the cache, and the first tick after every restart re-ran the suite on a main the
  * previous generation had already verified (41 of 319 baseline runs over 2026-10-02..12 started
- * within 10 minutes of an orchestrator start). Only greens are kept: a green is a fact about an
- * immutable tree, while a red is provisional (shouldRerunRed) and is cheap to rediscover. Best
+ * within 10 minutes of an orchestrator start). A green is a fact about an
+ * immutable tree. A red is provisional (shouldRerunRed), so it is saved only as the main watch's
+ * record — sha, script and failing tests, the newest SAVED_REDS_MAX — and a loaded red is
+ * re-run by the next worktree that consults it, like any red seen in one worktree. Best
  * effort: a failed write costs at most a re-run after the next restart. */
 function saveGreens(): void {
   if (greensFile === undefined) return;
   const greens = [...baselineCache.values()]
     .filter((b) => b.status === "green")
     .map((b) => (b.inheritedFrom === undefined ? { sha: b.sha } : { sha: b.sha, inheritedFrom: b.inheritedFrom }));
+  const reds = [...baselineCache.values()]
+    .filter((b) => b.status === "red")
+    .slice(-SAVED_REDS_MAX)
+    .map((b) => ({ sha: b.sha, script: b.script, failingTests: b.failingTests ?? [] }));
   try {
-    writeJsonAtomic(greensFile, { greens });
+    writeJsonAtomic(greensFile, { greens, reds });
   } catch {
     // A read-only or full disk: the in-memory cache still answers this generation.
   }
 }
 
-/** Load the green verdicts a previous generation saved under `root` and keep mirroring them
+/** Load the verdicts a previous generation saved under `root` and keep mirroring them
  * there (saveGreens). Called once at team startup (cli/cli-run.ts). An entry the cache already
  * holds is left as it is, and a malformed file or entry reads as no data. */
 export function persistBaselineVerdicts(root: string): void {
   const file = baselineVerdictsPath(root);
   greensFile = undefined; // the load below re-writes nothing it just read
-  const stored = readJsonFile<{ greens?: unknown }>(file);
+  const stored = readJsonFile<{ greens?: unknown; reds?: unknown }>(file);
   const entries: unknown[] = Array.isArray(stored?.greens) ? stored.greens : [];
   for (const entry of entries) {
     if (!isJsonObject(entry) || typeof entry.sha !== "string" || !/^[0-9a-f]{40,64}$/.test(entry.sha)) continue;
     if (baselineCache.has(entry.sha)) continue;
     const from = typeof entry.inheritedFrom === "string" ? { inheritedFrom: entry.inheritedFrom } : {};
     rememberBaseline(entry.sha, { status: "green", sha: entry.sha, ...from });
+  }
+  const reds: unknown[] = Array.isArray(stored?.reds) ? stored.reds : [];
+  for (const entry of reds) {
+    if (!isJsonObject(entry) || typeof entry.sha !== "string" || !/^[0-9a-f]{40,64}$/.test(entry.sha)) continue;
+    if (baselineCache.has(entry.sha)) continue;
+    const failingTests = Array.isArray(entry.failingTests)
+      ? entry.failingTests.filter((t): t is string => typeof t === "string")
+      : [];
+    const script = typeof entry.script === "string" ? { script: entry.script } : {};
+    rememberBaseline(entry.sha, { status: "red", sha: entry.sha, ...script, failingTests });
   }
   greensFile = file;
 }
@@ -310,6 +333,8 @@ export async function checkMainBaseline(
    * so only a real run may answer. A green from that run upgrades the SHA's verdict, and a red
    * replaces the inherited green for every consumer. */
   observedOnly = false,
+  /** The check permit tier the run queues at; the main watch asks for the merge tier. */
+  tier: number = CHECK_TIER.other,
 ): Promise<MainBaselineCheck> {
   const sha = await refSha(wt, "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
@@ -341,7 +366,7 @@ export async function checkMainBaseline(
       // withCheckPermit): this runs the suite directly, so it must count against the cap too.
       // Only the one run per key holds a permit; deduped waiters above await `pending` holding
       // none.
-      const { outcome, durationMs } = await withCheckPermit(config, CHECK_TIER.other, () =>
+      const { outcome, durationMs } = await withCheckPermit(config, tier, () =>
         runWithCleanRetry(
           () => runBuildCheck(wt, check, undefined, undefined, sampleSleep),
           // Weather (a late deadline, a foreign kill, a host sleep) made no verdict about the
@@ -374,6 +399,7 @@ export async function checkMainBaseline(
               sha,
               script: outcome.script,
               outputTail: outcome.outputTail,
+              failingTests: outcome.failingTests ?? [],
               redFrom: priorRedFrom.includes(wt) ? priorRedFrom : [...priorRedFrom, wt],
             };
       // A green is always recorded (promoting a provisional red); a red never overwrites an

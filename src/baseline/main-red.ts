@@ -98,7 +98,7 @@ export function mainRedHealPrompt(sha: string): string {
  * check this module runs — the bugfix handoff, the authoring gate, and mainTipVerdict's tip
  * check (which review.ts's gate and merge-check-failures.ts's attributeRedCheck reach
  * through it) — so the event's shape cannot drift between them. */
-function baselineCheckLogger(
+export function baselineCheckLogger(
   root: string,
   role: string,
 ): (run: BaselineCheckRun) => void {
@@ -223,6 +223,26 @@ export function mainTipVerdict(
   forceFresh = false,
 ): Promise<MainTipVerdict> {
   const run = gateMainQueue.then(() => verdictAtMainTip(root, role, mainBranch, config, forceFresh));
+  gateMainQueue = run.catch(() => undefined);
+  return run;
+}
+
+/** Run `fn` in the `_gate-main` mirror re-pointed at `mainBranch`'s tip, queued behind the gates
+ * mainTipVerdict serves (gateMainQueue) and holding the mirror as they do. The main watch's way in
+ * (main-watch.ts): it hands `fn` the checkout and the tip it holds. Rejects when main is
+ * unreadable or the checkout fails — the caller is a background task that must catch. */
+export function withMainTipWorktree<T>(
+  root: string,
+  mainBranch: string,
+  fn: (wt: string) => Promise<T>,
+): Promise<T> {
+  const run = gateMainQueue.then(() =>
+    useWorktree(root, gateMainWorktreePath(root), async () => {
+      const tip = await branchHead(root, mainBranch);
+      if (!tip) throw new Error(`${mainBranch} is unreadable`);
+      return fn(await ensureDetachedWorktree(root, gateMainWorktreePath(root), tip));
+    }),
+  );
   gateMainQueue = run.catch(() => undefined);
   return run;
 }
