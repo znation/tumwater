@@ -418,6 +418,47 @@ test("logs --type prints only events of exactly that type, where --grep substrin
   assert.ok(g.stdout.includes("woke (merge_failed)"), g.stdout);
 });
 
+test("logs --type takes a comma list matching any of its types", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs type list");
+  const now = Date.now();
+  writeLogLines(eventsLogPath(repo), [
+    { ts: now - 40 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 800 },
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_start", run: 7 },
+    { ts: now - 20 * 60_000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy"], durationMs: 400 },
+  ]);
+
+  for (const value of ["merge_failed,review_rejected", " merge_failed , review_rejected "]) {
+    const r = await cli(repo, "logs", "--type", value, "-n", "50");
+    assert.equal(r.code, 0);
+    const a = r.stdout.indexOf("failed");
+    const b = r.stdout.indexOf("review rejected");
+    assert.ok(a > -1 && b > a, r.stdout);
+    assert.ok(!r.stdout.includes("run #7"), r.stdout);
+  }
+
+  let r = await cli(repo, "logs", "--since", "1h", "--type", "merge_failed,review_rejected");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("review rejected") && !r.stdout.includes("run #7"), r.stdout);
+
+  r = await cli(repo, "logs", "--count", "--type", "merge_failed,review_rejected", "-n", "50");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("merge_failed") && r.stdout.includes("review_rejected"), r.stdout);
+  assert.ok(!r.stdout.includes("run_start"), r.stdout);
+
+  r = await cli(repo, "logs", "--type", "merge_faild,wake", "-n", "50");
+  assert.ok(r.stdout.includes('no events matching "merge_faild,wake"'), r.stdout);
+  assert.ok(r.stdout.includes("merge_failed"), r.stdout);
+
+  r = await cli(repo, "logs", "--type", "wake,run_end", "-n", "50");
+  assert.ok(r.stdout.includes('no events matching "wake,run_end"'), r.stdout);
+  assert.ok(!r.stdout.includes("did you mean"), r.stdout);
+
+  r = await cli(repo, "logs", "--type", ",");
+  assert.notEqual(r.code, 0);
+  assert.ok((r.stderr + r.stdout).includes("logs --type needs an event type"), r.stderr);
+});
+
 test("logs --since --type filters the window, and an empty match is gentle prose", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs type since");

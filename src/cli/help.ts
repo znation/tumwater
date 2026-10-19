@@ -92,13 +92,13 @@ Usage:
                                    roles still merges the built-in catalog per entry, so
                                    disable a role with roles.<id>.enabled false, not by
                                    omitting it
-  tumwater logs [-f/--follow] [-n N] [--since <duration>] [--grep <text>] [--type <event type>] [--count] [--json]
+  tumwater logs [-f/--follow] [-n N] [--since <duration>] [--grep <text>] [--type <event type>[,<event type>...]] [--count] [--json]
                                    Show (and follow) tumwater events; --since shows the
                                    events of the past window (capped at 7d); --grep shows
                                    only events whose type or rendered line matches,
                                    case-insensitively (-n bounds the scanned window, not
-                                   the printed rows); --type shows only events of that
-                                   exact event type, and an older event name matches its current one (it
+                                   the printed rows); --type shows only events of the listed
+                                   exact event types (comma-separated), and an older event name matches its current one (it
                                    composes with --since); --count
                                    prints one \`N \u00d7 <type>\` line per present event type
                                    (most-frequent first) over the selected window instead

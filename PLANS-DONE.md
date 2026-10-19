@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater logs --type` takes a comma-separated list of event types, so one feed or tally shows every event of the kinds an operator is chasing (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — touches only `src/cli/log-commands.ts`, `src/cli/help.ts`, docs/cli.md and `test/cli-logs-filtering.test.ts`) — done 2026-10-19 by the feature role
+
+**Goal.** `logs --type` filters the event feed by ONE exact type today (`cmdLogs`, `src/cli/log-commands.ts`), so a question that spans kinds — "every `merge_failed` and `review_rejected` in the last day", "count the `run_deferred` and `run_end` events" — takes one command per type or a loose `--grep` that also matches lines quoting those words. Accept `--type a,b,c`: an event passes when its type equals any listed type (after `canonicalEventType`), in every view `--type` already composes with (`-n`, `--since`, `-f`, `--grep`, `--count`, `--json`). A single type behaves exactly as now.
+
+**Approach.**
+- **src/cli/log-commands.ts** — after `parseTypeFlag` (unchanged: it still returns the raw value), split `type` on `,`, trim each piece and drop empty pieces; when that leaves none (e.g. `--type ,`), `fail(TYPE_VALUE_ERROR)`. Build `wantedTypes = new Set(pieces.map(canonicalEventType))` and make `typeFilter` test `wantedTypes.has(e.type)`. Replace the `--since` branch's inline `events.filter((e) => e.type === wantedType)` with `events.filter(typeFilter)` so the window, the `-n` view, the tally and the follow share the one predicate (`feedFilter` already threads `typeFilter`). Rework `typeEmpty(type)` to take the raw value and its pieces: the prose stays `no events matching "<raw value as typed>"`, and the did-you-mean hint is `typoSuffix` of the FIRST piece whose canonical form is not an `EVENT_TYPE_LABELS` key (no hint when every piece is valid). The single-type output is then unchanged character for character. Update the `--type` comment block above `parseTypeFlag`'s call to say a comma list matches any of its types.
+- **src/cli/help.ts** — the `logs` usage reads `[--type <event type>[,<event type>...]]` and the prose says `--type shows only events of the listed exact event types (comma-separated)`; keep the `--type <event type>` substring so `test("tumwater help logs documents --type")` still matches.
+- **docs/cli.md** — the `Check state` row's `tumwater logs --type <event type>` clause names the comma list (`--type merge_failed,review_rejected` shows events of either type).
+- Completion is untouched: `src/cli/completion.ts` keeps offering single codes, which still complete the first piece of a list.
+
+**Tests** (in `test/cli-logs-filtering.test.ts`, beside `test("logs --type prints only events of exactly that type, where --grep substrings")`, reusing its event-seeding helpers):
+- `logs --type merge_failed,review_rejected -n 50` prints both types' rows in log order and omits other types; ` merge_failed , review_rejected ` (spaces around the pieces) behaves the same.
+- `--since 1h --type a,b` filters the window to both types, and `--count --type a,b` tallies only those two types.
+- `--type merge_faild,review_rejected` matching nothing prints `no events matching "merge_faild,review_rejected"` plus the did-you-mean hint naming `merge_failed`; `--type merge_failed,review_rejected` with neither present prints the prose with no hint.
+- `--type ,` fails with `TYPE_VALUE_ERROR`'s wording and a non-zero exit.
+- The existing single-type `--type` tests pass unchanged.
+
+**Acceptance criteria.**
+- `tumwater logs --type a,b` shows exactly the events whose canonical type is `a` or `b`, in the `-n`, `--since`, `-f`, `--count` and `--json` views, and composes with `--grep` (type-list AND text) as the single type does; an older event name in the list matches its current one.
+- A single `--type <t>` produces output identical to today's, including the empty-match prose and its hint (the existing single-type tests pass untouched).
+- An empty-match list names the value as typed and hints only for the first invalid piece; a list with no non-empty piece fails with `TYPE_VALUE_ERROR`.
+- `tumwater help logs` and docs/cli.md document the comma list; `npm test` passes.
+
 ### Plain terms code runner, part 5/14: Convert the status renderer and payload and the team alerts (planned 2026-10-16 by user; requires part 4/14 landed; design in plans/terminology.md "Code names"; touches src/ui/status-render.ts + src/ui/status-payload.ts + src/ui/team-alerts.ts + their tests; done 2026-10-19 by the feature role)
 
 **Goal.** The status table renderer, the status payload builder and the team alerts use role and runner names, and `AlertLoop` becomes `AlertRole`.

@@ -81,12 +81,11 @@ export const TYPE_VALUE_ERROR = "logs --type needs an event type";
  * completion already offers the valid codes, so a bare no-match for a near-miss reads as a silent
  * mystery) — while a VALID type that merely has no matching events stays hint-free, a legitimate
  * empty result rather than a typo. A valid type or a legacy alias (canonicalEventType maps the
- * alias onto the current code, which is a label key) never hints. */
-function typeEmpty(type: string): string {
-  const canonical = canonicalEventType(type);
-  const hint = Object.hasOwn(EVENT_TYPE_LABELS, canonical)
-    ? ""
-    : typoSuffix(type, Object.keys(EVENT_TYPE_LABELS));
+ * alias onto the current code, which is a label key) never hints. For a comma list the hint
+ * is for the first piece that is not a valid type; the prose names the value as typed. */
+function typeEmpty(type: string, pieces: string[]): string {
+  const bad = pieces.find((p) => !Object.hasOwn(EVENT_TYPE_LABELS, canonicalEventType(p)));
+  const hint = bad === undefined ? "" : typoSuffix(bad, Object.keys(EVENT_TYPE_LABELS));
   return `no events matching "${type}"${hint}`;
 }
 
@@ -109,14 +108,17 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // deterministic where --grep substrings — a merge_failed whose rendered line quotes
   // "merge_failed" matches --grep but not --type. Unlike --grep it composes with --since
   // (the window, not a filter of its own) as well as -n, -f, --json, and --grep; like --json
-  // it is a rival only of the --role/--prompt transcript view. The value scan (keeping a
+  // it is a rival only of the --role/--prompt transcript view. A comma list matches any of its
+  // types. The value scan (keeping a
   // flag-shaped value like --since as text, the empty-value fail) mirrors parseGrepFlag via
   // parseTypeFlag, so the two cannot drift; `rest` here has both flags' value tokens removed.
   const { rest, type } = parseTypeFlag(grepped, TYPE_VALUE_ERROR);
   const grepLower = grepPattern === null ? null : grepPattern.toLowerCase();
   // An older event name matches its current one; the empty-match prose still names what was typed.
-  const wantedType = type === null ? null : canonicalEventType(type);
-  const typeFilter = type === null ? null : (e: HarnessEvent) => e.type === wantedType;
+  const typePieces = type === null ? [] : type.split(",").map((p) => p.trim()).filter((p) => p !== "");
+  if (type !== null && typePieces.length === 0) fail(TYPE_VALUE_ERROR);
+  const wantedTypes = new Set(typePieces.map(canonicalEventType));
+  const typeFilter = type === null ? null : (e: HarnessEvent) => wantedTypes.has(e.type);
   // The composed feed rule every emit site threads today's grep-only predicate through:
   // an event passes when it is absent-or-matches the --grep substring AND absent-or-equals
   // the --type id, held in one place so the --since window, the -n tally, and the follow
@@ -166,11 +168,11 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     // window events of the exact type are printed, and an all-filtered window answers with
     // the no-match prose (the type's own line) instead of the generic empty-window one —
     // "which merge_failed in the last hour" filters the same as it would the -n view.
-    const filtered = type === null ? events : events.filter((e) => e.type === wantedType);
+    const filtered = type === null ? events : events.filter(typeFilter!);
     if (filtered.length === 0) {
       // In JSON mode an empty result answers silently — an empty output IS the machine-readable
       // answer, and prose would corrupt a consumer's NDJSON stream.
-      if (!json) say(type === null ? `no events in ${durationLabel(ms)}` : typeEmpty(type));
+      if (!json) say(type === null ? `no events in ${durationLabel(ms)}` : typeEmpty(type, typePieces));
       return;
     }
     // `--count` composes with the window: the tally covers exactly the filtered window rows
@@ -215,10 +217,10 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     if (shown.length !== 0) sayTally(shown, json);
     else if (!json && (grepPattern !== null || type !== null)) {
       if (grepPattern !== null && type !== null)
-        say(`no events matching "${grepPattern}" or ${typeEmpty(type)}`);
+        say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
       // Type-empty gets the hint (only the type branch); a grep-only empty stays the bare
       // no-match line, because a free-text pattern is not an event type to suggest against.
-      else say(type !== null ? typeEmpty(type) : `no events matching "${grepPattern ?? ""}"`);
+      else say(type !== null ? typeEmpty(type, typePieces) : `no events matching "${grepPattern ?? ""}"`);
     }
     return;
   }
@@ -229,10 +231,10 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     // knows what to loosen.
     if (shown.length === 0 && !json && (grepPattern !== null || type !== null)) {
       if (grepPattern !== null && type !== null)
-        say(`no events matching "${grepPattern}" or ${typeEmpty(type)}`);
+        say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
       // Type-empty gets the hint (only the type branch); a grep-only empty stays the bare
       // no-match line, because a free-text pattern is not an event type to suggest against.
-      else say(type !== null ? typeEmpty(type) : `no events matching "${grepPattern ?? ""}"`);
+      else say(type !== null ? typeEmpty(type, typePieces) : `no events matching "${grepPattern ?? ""}"`);
     }
     return;
   }
