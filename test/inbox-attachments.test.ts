@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   imageReferenceLines,
   imageReferencePaths,
+  isPromptImageSibling,
   movePromptImages,
   PROMPT_IMAGES_MAX_COUNT,
   promptImagesProblem,
@@ -295,4 +296,32 @@ test("movePromptImages carries saved attachments to the new stem and rewrites th
   // A writer-shaped line naming a file the harness never saved beside this prompt is content.
   assert.match(moved.text, new RegExp(`\\[image attached: ${stranger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`));
   assert.ok(fs.existsSync(stranger), "a hand-typed reference is left where it is");
+});
+
+test("isPromptImageSibling matches exactly the shapes savePromptImages writes", () => {
+  for (const name of ["a.png", "a.PNG", "a.jpeg", "a-2.png", "a-12.webp"]) {
+    assert.ok(isPromptImageSibling("a", name), `${name} is an image sibling of a`);
+  }
+  for (const name of ["a.md", "a-notes.md", "a-notes.png", "a-2.md", "a-.png", "ab.png", "a.txt", "b.png", "a"]) {
+    assert.ok(!isPromptImageSibling("a", name), `${name} is not an image sibling of a`);
+  }
+});
+
+test("movePromptImages never overwrites an image already under the new stem", () => {
+  const root = tmpdir();
+  const dir = roleInboxDir(root, "qa");
+  const from = enqueueRolePrompt(root, "qa", "look");
+  const saved = savePromptImages(root, "qa", from, [png()]);
+  assert.ok("paths" in saved);
+  const to = enqueueRolePrompt(root, "qa", "holder for the new stem");
+  const held = savePromptImages(root, "qa", to, [png()]);
+  assert.ok("paths" in held);
+  const toStem = path.basename(to, ".md");
+  assert.equal(path.basename(held.paths[0]!), `${toStem}.png`);
+  const moved = movePromptImages(from, to, `look\n\n[image attached: ${saved.paths[0]!}]`);
+  assert.equal(moved.problem, null);
+  assert.ok(fs.existsSync(path.join(dir, `${toStem}.png`)), "the image already on the new stem survives");
+  assert.ok(fs.existsSync(path.join(dir, `${toStem}-2.png`)), "the moved image took the next free name");
+  assert.ok(!fs.existsSync(saved.paths[0]!), "the old-stem name is gone");
+  assert.ok(moved.text.includes(path.join(dir, `${toStem}-2.png`)), "the reference names the deduplicated path");
 });

@@ -2082,3 +2082,70 @@ and keeps a requeued request's", "cancel removes an image a requeue moved to the
 stem", "a requeue whose prompt lost one attachment still carries the survivors", "settleImages never
 deletes a file named by hand-typed prompt text" and "a resumed request's images survive the
 interrupted run and are swept from the reclaimed file's stem once the resume fulfils it".
+
+## Prompt images: an attachment is exactly a same-stem image sibling, a reference is exactly the writer's line, and no save or move overwrites another image
+
+Images live beside the prompt's queue file under its stem, so the stem decides which files every
+sweep and move touches. One module, `src/inbox/inbox-attachments.ts`, holds that shape, the
+reference-line format and the dedup rule.
+
+### INV-AK1: an image sibling of a stem is exactly `<stem><ext>` or `<stem>-<digits><ext>`, with ext one of PROMPT_IMAGE_EXTENSIONS in any case
+
+**Guarantee.** `isPromptImageSibling` is true for a name that is the stem followed by an image
+extension, or by a hyphen, digits and an image extension; extension case does not matter. Any
+other name, including a longer stem (`ab.png` for `a`), a word after the hyphen (`a-notes.png`)
+and a non-image extension, is not a sibling, so no sweep or move touches it.
+
+**Binds.** `src/inbox/inbox-attachments.ts` (`isPromptImageSibling`) and its callers
+(`takenImageSiblings` there, `removeSameStemSiblings` in `src/inbox/inbox.ts`).
+
+**Pinned by.** `test/inbox-attachments.test.ts` — "isPromptImageSibling matches exactly the shapes
+savePromptImages writes" and "cancelling a prompt does not delete a hyphen-named sibling prompt's
+queue file".
+
+### INV-AK2: a reference is only a line that, trimmed, is exactly `[image attached: <path>]`; any other line is content
+
+**Guarantee.** The private `referencedImagePath` accepts a line only in the writer's shape, and
+`imageReferencePaths`, `stripImageReferenceLines`, `stripVanishedImageReferences` and
+`movePromptImages` all use it. `movePromptImages` moves only a referenced same-stem sibling inside
+`fromFile`'s directory; a writer-shaped line naming any other file passes through untouched and
+the file stays where it is.
+
+**Binds.** `src/inbox/inbox-attachments.ts` (`referencedImagePath` and the four functions above).
+
+**Pinned by.** `test/inbox-attachments.test.ts` — "imageReferenceLines appends one absolute-path
+line per image", "stripVanishedImageReferences drops only vanished references and records the
+loss" and "movePromptImages carries saved attachments to the new stem and rewrites their lines".
+
+### INV-AK3: saving or moving an image never overwrites one already on the target stem, and a vanished or unmovable attachment never stops the others moving
+
+**Guarantee.** `uniqueStemName` picks `<stem><ext>` when free and otherwise the first free
+`<stem>-<n><ext>` from 2, against the siblings `takenImageSiblings` found plus the names already
+chosen. `savePromptImages` and `movePromptImages` both name files through it. In
+`movePromptImages` a vanished attachment keeps its line and an attachment whose rename fails is
+recorded as a problem; the remaining attachments still move. When a request's images are swept or
+moved is INV-AJ3's policy; this entry holds the mechanics.
+
+**Binds.** `src/inbox/inbox-attachments.ts` (`uniqueStemName`, `takenImageSiblings`,
+`savePromptImages`, `movePromptImages`).
+
+**Pinned by.** `test/inbox-attachments.test.ts` — "savePromptImages does not overwrite an image
+already beside the queue file" and "movePromptImages never overwrites an image already under the
+new stem"; `test/pending-prompt.test.ts` — "a requeue whose prompt lost one attachment still
+carries the survivors".
+
+### INV-AK4: one module states every image rule (count, extension, size, base64), so every surface rejects with the same wording
+
+**Guarantee.** `promptImagesProblem` composes `promptImagesCountProblem`,
+`promptImageExtensionProblem` and `promptImageSizeProblem` with the base64 check, and the limits
+come from `PROMPT_IMAGES_MAX_COUNT` and `PROMPT_IMAGE_MAX_BYTES`. Surfaces outside `src/inbox`
+import these instead of restating them: `src/ui/tui/tui-editor-attach.ts`,
+`src/ui/gui/gui-client-composer.ts` and `src/gui/gui-prompt-commands.ts`.
+
+**Binds.** `src/inbox/inbox-attachments.ts` (`promptImagesProblem`, `promptImagesCountProblem`,
+`promptImageExtensionProblem`, `promptImageSizeProblem`, `PROMPT_IMAGE_MAX_BYTES`,
+`PROMPT_IMAGES_MAX_COUNT`).
+
+**Pinned by.** `test/inbox-attachments.test.ts` — "promptImagesProblem accepts valid images and
+names every rule it enforces" and "promptImageExtensionProblem names the near miss on a mistyped
+extension, the list alone otherwise".
