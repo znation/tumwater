@@ -458,7 +458,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "claude_window_reserved": {
       const used = finiteNumber(e.utilization, null);
       const line = finiteNumber(e.reserve, null);
-      const pct = (f: number | null) => (f === null ? "?" : `${Math.round(f * 100)}%`);
+      const pct = (f: number | null) => (f === null ? "?" : `${claudeUtilizationPct(f)}%`);
       return `claude subscription window ${textOr(e.windowType)} at ${pct(used)}, past its ${pct(line)} reserve${windowResetPhrase(e)} — the team leaves it to you (director keeps running)`;
     }
     case "claude_window_limited":

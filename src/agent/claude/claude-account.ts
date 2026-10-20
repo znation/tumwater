@@ -126,7 +126,7 @@ export function claudeWindowLabel(type: string): string {
 
 /** The fraction of a subscription usage window consumed (0–1) as a whole-number percent: a
  * `0.64` utilization reads `64`. The one home of the fraction→percent conversion, shared by
- * the status badge and the doctor's hold reason so the two render a window's fill
+ * the status badge, the doctor's hold reason and the event formatter so they render a window's fill
  * identically (the browser dashboard's own window line is embedded client-side and keeps its
  * inline copy). */
 export function claudeUtilizationPct(utilization: number): number {
