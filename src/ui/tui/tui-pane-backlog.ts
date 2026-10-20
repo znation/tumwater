@@ -1,6 +1,6 @@
 // vocabulary: plain
 import { tryCancelEntry, tryMoveEntryToTop, tryReleaseEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
-import { cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote } from "../../backlog/backlog-eligibility.js";
+import { backlogHolds, cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { plannedPlanEntries } from "../../backlog/backlog.js";
 import { allLiveClaims } from "../../runner/runner-state.js";
 import { requestWake } from "../../operator/operator-intent.js";
@@ -102,17 +102,25 @@ export function createBacklogPane(
       session.flashError(err);
     }
   };
+  /** ` — still held [...]` for the entry now at a 1-based position, "" when it is eligible. */
+  const heldTailAt = (kind: "plan" | "bug", position: number): string => {
+    const holds = backlogHolds(session.root);
+    const hold = (kind === "bug" ? holds.bugs : holds.plans)[position - 1] ?? null;
+    return hold === null ? "" : ` — ${stillHeldNote(hold)}`;
+  };
   const moveEntryToTop = (kind: "plan" | "bug", position: number, title: string): void => {
     try {
       const outcome = tryMoveEntryToTop(session.root, kind, position, title);
+      let heldTail = "";
       if (outcome.status === "moved_to_top") {
         session.commitBacklogEdit(outcome.file, `Prioritize ${kind}: ${outcome.title}`);
+        heldTail = heldTailAt(kind, 1);
       }
       selectedEntry = null;
       entryScroll = 0;
       session.flashMessage(
         outcome.status === "moved_to_top"
-          ? `moved ${kind} #${position} to the top: ${outcome.title}`
+          ? `moved ${kind} #${position} to the top: ${outcome.title}${heldTail}`
           : outcome.status === "already_first"
             ? `that ${kind} is already at the top`
             : `that ${kind} was already removed or moved — nothing moved`,
@@ -128,15 +136,17 @@ export function createBacklogPane(
     const { kind, position } = target;
     try {
       const outcome = tryReleaseEntry(session.root, kind, position, armedTitle);
+      let heldTail = "";
       if (outcome.status === "released") {
         session.commitBacklogEdit(outcome.file, `Release ${kind}: ${outcome.title}`);
-        requestWake(session.root, [OPERATOR_FILE_KINDS[kind].role]);
+        heldTail = heldTailAt(kind, position);
+        if (heldTail === "") requestWake(session.root, [OPERATOR_FILE_KINDS[kind].role]);
       }
       selectedEntry = null;
       entryScroll = 0;
       session.flashMessage(
         outcome.status === "released"
-          ? `released ${kind} #${position}: ${outcome.title}`
+          ? `released ${kind} #${position}: ${outcome.title}${heldTail}`
           : outcome.status === "not_refused"
             ? `that ${kind} carries no Refused or Waiting for the next failure note`
             : `that ${kind} was already removed or moved — nothing released`,

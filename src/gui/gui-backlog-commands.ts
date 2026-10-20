@@ -8,7 +8,7 @@
  * HTTP onto the domain work one layer down (backlog-write, question-answer, backlog-commit)
  * and touches no socket beyond its own `res`.
  */
-import { cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote } from "../backlog/backlog-eligibility.js";
+import { backlogHolds, cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote, stillHeldNote, type EntryHold } from "../backlog/backlog-eligibility.js";
 import { plannedPlanEntries } from "../backlog/backlog.js";
 import { allLiveClaims } from "../runner/runner-state.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
@@ -175,10 +175,17 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
   }
 }
 
+/** The hold on the kind's entry at a 1-based position (backlogHolds), `null` when eligible. */
+function heldAt(root: string, kind: "plan" | "bug", position: number): EntryHold {
+  const holds = backlogHolds(root);
+  return (kind === "bug" ? holds.bugs : holds.plans)[position - 1] ?? null;
+}
+
 /** Handle POST /api/backlog-release: the entry drawer's release — the same lock and splice as
  * `tumwater plan|bug --release <n>` through the non-exiting tryReleaseEntry. Body as
- * backlog-cancel's. A released entry is newly eligible, so the kind's role is woken; `gone`
- * and `moved` answer okGone, and an entry with neither a Refused nor a Waiting-for-the-next-
+ * backlog-cancel's. A released entry that is not still held is newly eligible, so the kind's
+ * role is woken (a held one wakes no role and carries `heldNote`); `gone` and `moved` answer
+ * okGone, and an entry with neither a Refused nor a Waiting-for-the-next-
  * failure note answers status "not_refused" with no write and no wake. */
 export async function handleBacklogRelease(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');
@@ -192,8 +199,9 @@ export async function handleBacklogRelease(req: http.IncomingMessage, res: http.
   if (outcome === null) return;
   if (outcome.status === "released") {
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Release ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
-    requestWake(root, [OPERATOR_FILE_KINDS[kind].role]);
-    sendJson(res, 200, { ok: true, status: "released", file: outcome.file, title: outcome.title, committed });
+    const hold = heldAt(root, kind, position);
+    if (hold === null) requestWake(root, [OPERATOR_FILE_KINDS[kind].role]);
+    sendJson(res, 200, { ok: true, status: "released", file: outcome.file, title: outcome.title, committed, ...(hold === null ? {} : { heldNote: stillHeldNote(hold) }) });
   } else if (outcome.status === "not_refused") {
     sendJson(res, 200, { ok: true, status: "not_refused", title: outcome.title });
   } else {
@@ -203,8 +211,9 @@ export async function handleBacklogRelease(req: http.IncomingMessage, res: http.
 
 /** Handle POST /api/backlog-top: the entry drawer's Move to top — the same splice as
  * `tumwater plan|bug --top <n>` through the non-exiting tryMoveEntryToTop. Body as
- * backlog-cancel's. Reordering makes no entry newly eligible, so no role is woken; position 1
- * answers status "already_first" with no write, and `gone` and `moved` answer okGone. */
+ * backlog-cancel's. Reordering makes no entry newly eligible, so no role is woken (a held entry
+ * carries `heldNote`); position 1 answers status "already_first" with no write, and `gone` and
+ * `moved` answer okGone. */
 export async function handleBacklogTop(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 2, "title": "<heading>"}');
   if (!body) return;
@@ -217,7 +226,8 @@ export async function handleBacklogTop(req: http.IncomingMessage, res: http.Serv
   if (outcome === null) return;
   if (outcome.status === "moved_to_top") {
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Prioritize ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
-    sendJson(res, 200, { ok: true, status: "moved_to_top", file: outcome.file, title: outcome.title, committed });
+    const hold = heldAt(root, kind, 1);
+    sendJson(res, 200, { ok: true, status: "moved_to_top", file: outcome.file, title: outcome.title, committed, ...(hold === null ? {} : { heldNote: stillHeldNote(hold) }) });
   } else if (outcome.status === "already_first") {
     sendJson(res, 200, { ok: true, status: "already_first", title: outcome.title });
   } else {

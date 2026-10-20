@@ -157,7 +157,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/backlog-release", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
         closeDrawer();
         if (d && d.status === "released") {
-          return "Released “" + splitTitle(title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " — " + (file === "bugs" ? "bugfix" : "feature") + " will pick it up" + uncommittedTail(d);
+          return "Released “" + splitTitle(title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " — " + (d.heldNote || (file === "bugs" ? "bugfix" : "feature") + " will pick it up") + uncommittedTail(d);
         }
         return d && d.status === "not_refused"
           ? "That entry carries no Refused or Waiting note — refreshed"
@@ -170,7 +170,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/backlog-top", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
         closeDrawer();
         if (d && d.status === "moved_to_top") {
-          return "Moved “" + splitTitle(title).title + "” to the top of " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " — " + (file === "bugs" ? "bugfix" : "feature") + " takes it next" + uncommittedTail(d);
+          return "Moved “" + splitTitle(title).title + "” to the top of " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " — " + (d.heldNote || (file === "bugs" ? "bugfix" : "feature") + " takes it next") + uncommittedTail(d);
         }
         return d && d.status === "already_first"
           ? "That entry is already first — refreshed"

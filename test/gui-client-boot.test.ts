@@ -224,6 +224,36 @@ test("entry-release posts the release at once for plans and bugs", () => {
   ]);
 });
 
+test("entry-release and entry-top toasts name a held entry instead of the role", () => {
+  const cases: [string, string, string, string][] = [
+    ["entry-release", "/api/backlog-release", "released", "will pick it up"],
+    ["entry-top", "/api/backlog-top", "moved_to_top", "takes it next"],
+  ];
+  for (const [act, post, status, role] of cases) {
+    const toast = (d: object): string => {
+      let out = "";
+      const scope = clientScope<{ runAct(a: string, b: string): void }>(
+        ["run-act"], ["runAct"],
+        {
+          lastStatus: { plans: ["A"], bugs: [] },
+          closeDrawer: () => {},
+          postAction: (p: string, _body: unknown, cb: (d: object) => string) => {
+            assert.equal(p, post);
+            out = cb(d);
+          },
+          splitTitle: (t: string) => ({ title: t }),
+          uncommittedTail: () => "",
+        },
+      );
+      scope.runAct(act, "plans:0");
+      return out;
+    };
+    const held = toast({ status, heldNote: "still held [blocked: needs review]: x", committed: true });
+    assert.ok(held.includes("still held [blocked: needs review]") && !held.includes(role));
+    assert.ok(toast({ status, committed: true }).includes(role));
+  }
+});
+
 test("entry-top posts the reorder at once for plans and bugs", () => {
   const posts: unknown[] = [];
   const scope = clientScope<{ runAct(a: string, b: string): void }>(

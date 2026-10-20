@@ -353,9 +353,9 @@ test("Ctrl+T cycles the views and PgDn/PgUp page a selected backlog entry's body
 
 /** A root with two planned entries, two open bugs, and one open question, the keys on the
  * backlog view. */
-function backlogCancelRig() {
+function backlogCancelRig(seed?: string) {
   const root = makeRoot();
-  const plans = "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Plan two (planned 2026-10-02 by test)\n\nbody\n";
+  const plans = seed ?? "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Plan two (planned 2026-10-02 by test)\n\nbody\n";
   const bugs = "## Open\n\n### Bug one (found by test 2026-10-02)\n\nbody\n\n### Bug two (found by test 2026-10-02)\n\nbody\n";
   fs.writeFileSync(path.join(root, "PLANS.md"), plans);
   fs.writeFileSync(path.join(root, "BUGS.md"), bugs);
@@ -531,10 +531,14 @@ test("backlog Ctrl+V on the first entry, an answered row, or a question refuses,
   assert.equal(read("BUGS.md"), bugs);
 });
 
-function backlogReleaseRig() {
+const HELD_PLANS =
+  "## Planned\n\n### Export series, part 1/2: a (planned 2026-10-01)\n\nbody\n\n" +
+  "### Export series, part 2/2: b (planned 2026-10-02; requires part 1/2 landed)\n\nbody\n";
+
+function backlogReleaseRig(seed?: string) {
   const root = makeRoot();
   const plans =
-    "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Plan two (planned 2026-10-02 by test)\n\nbody\n";
+    seed ?? "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Plan two (planned 2026-10-02 by test)\n\nbody\n";
   const bugs =
     "## Open\n\n### Bug one (found by test 2026-10-02)\n\nbody\n\n### Bug two (found by test 2026-10-02)\n\nbody\n\n**Refused 2026-10-02 by feature: no**\n";
   fs.writeFileSync(path.join(root, "PLANS.md"), plans);
@@ -570,6 +574,23 @@ test("backlog Ctrl+R arms, then a second Ctrl+R releases the selected refused bu
   assert.equal(keys.state().releaseArmed, null);
   assert.equal(keys.state().selectedEntry, null);
   assert.match(keys.state().flash ?? "", /released bug #2/);
+});
+
+test("backlog Ctrl+R on a still-held plan says so and wakes no role", () => {
+  const { root, keys, down, ctrlR, read } = backlogReleaseRig(HELD_PLANS + "\n**Refused 2026-10-02 by feature: no**\n");
+  down(2); // plan 1, plan 2
+  ctrlR();
+  ctrlR();
+  assert.ok(!read("PLANS.md").includes("Refused"));
+  assert.match(keys.state().flash ?? "", /released plan #2: .* — still held \[blocked: requires Export series 1\/2\]/);
+  assert.ok(!fs.existsSync(wakeRequestPath(root)));
+});
+
+test("backlog Ctrl+V on a still-held plan says so", () => {
+  const { keys, down, ctrlV } = backlogCancelRig(HELD_PLANS);
+  down(2);
+  ctrlV();
+  assert.match(keys.state().flash ?? "", /to the top: .* — still held \[blocked: requires/);
 });
 
 test("backlog Ctrl+R on a note-less entry, question, or done row refuses, and budget mode blocks it", () => {

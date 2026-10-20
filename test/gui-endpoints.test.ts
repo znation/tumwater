@@ -1962,6 +1962,29 @@ test("handleBacklogRelease lifts the Refused note, wakes the kind's role, and an
   assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsNow);
 });
 
+test("handleBacklogRelease and handleBacklogTop report a still-held entry in heldNote and wake no role on release", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body:
+        "### Export series, part 1/2: a (planned 2026-10-01)\n\nbody\n\n" +
+        "### Export series, part 2/2: b (planned 2026-10-02; requires part 1/2 landed)\n\nbody\n\n**Refused 2026-10-02 by feature: no**",
+    },
+    { heading: "## Done" },
+  ]);
+  const title = "Export series, part 2/2: b (planned 2026-10-02; requires part 1/2 landed)";
+  const release = await captureJson((res) => handleBacklogRelease(fakeReq(JSON.stringify({ kind: "plan", position: 2, title })), res, root));
+  const released = release.data as { status: string; heldNote?: string };
+  assert.equal(released.status, "released");
+  assert.match(String(released.heldNote), /^still held \[blocked: requires Export series 1\/2\]/);
+  assert.ok(!fs.existsSync(wakeRequestPath(root)));
+  const top = await captureJson((res) => handleBacklogTop(fakeReq(JSON.stringify({ kind: "plan", position: 2, title })), res, root));
+  const moved = top.data as { status: string; heldNote?: string };
+  assert.equal(moved.status, "moved_to_top");
+  assert.match(String(moved.heldNote), /^still held \[blocked: requires Export series 1\/2\]/);
+});
+
 test("handleBacklogRelease lifts a Waiting for the next failure note from a bug", async () => {
   const root = tmpdir();
   writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: "### w1\n\n**Waiting for the next failure 2026-10-16 by bugfix: x**\n\nbody" }, { heading: "## Fixed" }]);
