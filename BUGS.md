@@ -41,23 +41,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Waiting for the next failure 2026-10-19 by bugfix: a `fail orphans` line for a leaked `logs -f` will end with `(run <pid>-…; tumwater <pid> exited)` when it inherited a run's mark, naming the run that spawned it; a line with no such suffix means the process escaped the mark (detached with a cleared environment) and the spawner is still unknown.**
 
-### `gui --all-interfaces prints the reachable LAN URLs and serves until killed` failed, then passed on the same tree (quarantined by tumwater 2026-10-20)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-ℹ skipped 2
-ℹ todo 0
-ℹ duration_ms 104872.912959
-✖ failing tests:
-test at dist/test/cli-gui.test.js:205:1
-✖ gui --all-interfaces prints the reachable LAN URLs and serves until killed (566.994792ms)
-Error: the child exited (code 1) before the gui banner and exposure warning; output so far:
-stderr:
-tumwater: port 52830 is already in use — stop that process or pick another port with `tumwater gui --port <n>`
-at poll (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-9/dist/test/helpers/cli-harness.js:77:32)
-~~~~
-
 ## Fixed
 
 ## Verified

@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `gui --all-interfaces prints the reachable LAN URLs and serves until killed` failed, then passed on the same tree (quarantined by tumwater 2026-10-20) — fixed 2026-10-20 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 104872.912959
+✖ failing tests:
+test at dist/test/cli-gui.test.js:205:1
+✖ gui --all-interfaces prints the reachable LAN URLs and serves until killed (566.994792ms)
+Error: the child exited (code 1) before the gui banner and exposure warning; output so far:
+stderr:
+tumwater: port 52830 is already in use — stop that process or pick another port with `tumwater gui --port <n>`
+at poll (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-9/dist/test/helpers/cli-harness.js:77:32)
+~~~~
+
+**Fixed 2026-10-20 (bugfix):** the test probed a free port, released it, then the child bound it; a concurrent process (other agents share this machine) took it in between and the child exited "port … is already in use". New `spawnGuiOnFreePort` in test/cli-gui.test.ts retries on a fresh port when the child exits with that message; the all-interfaces test and the other `freeTcpPort()` + `spawnCli` sites in that file use it, and a regression test holds the first pick busy. The raw `spawn` near the dist/ test still calls `freeTcpPort()` directly and was not converted.
+
+**Validation gap:** no-repro — the race depends on another process grabbing the port, so it was reproduced by holding the first pick busy rather than observed.
+
 ### `pollPauseGates: a per-role pause whose shared deadline passes logs role_resumed with expired` failed, then passed on the same tree (quarantined by tumwater 2026-10-20) — fixed 2026-10-20 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

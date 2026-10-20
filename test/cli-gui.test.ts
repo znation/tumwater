@@ -30,6 +30,29 @@ async function freeTcpPort(): Promise<number> {
   return port;
 }
 
+/** Spawn `tumwater gui` on a probed free port and wait for `ready`. The probe releases its port
+ * before the child binds, so a concurrent process can take it in between and the child exits
+ * "port … is already in use"; that race is retried on a fresh port instead of failing the test. */
+async function spawnGuiOnFreePort(
+  repo: string,
+  extraArgs: string[],
+  ready: (port: number) => (out: string) => boolean,
+  what: string,
+  pickPort: () => Promise<number> = freeTcpPort,
+): Promise<{ gui: ReturnType<typeof spawnCli>; port: number }> {
+  for (let attempt = 1; ; attempt++) {
+    const port = await pickPort();
+    const gui = spawnCli(repo, ["gui", "--port", String(port), ...extraArgs]);
+    try {
+      await gui.waitFor(ready(port), what);
+      return { gui, port };
+    } catch (err) {
+      gui.kill();
+      if (attempt >= 5 || !String(err).includes("is already in use")) throw err;
+    }
+  }
+}
+
 test("gui --port validates its range instead of listening on an unexpected port", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli gui validation");
@@ -74,20 +97,26 @@ test("gui starts, prints its banner, and --all-interfaces names the LAN exposure
   await initProject(repo, "cli gui serve");
 
   // Default binding: the banner names localhost only, with no all-interfaces warning.
-  const localPort = await freeTcpPort();
-  const local = spawnCli(repo, ["gui", "--port", String(localPort)]);
+  const { gui: local } = await spawnGuiOnFreePort(
+    repo,
+    [],
+    (p) => (b) => b.includes(`tumwater gui at http://127.0.0.1:${p}`),
+    "the gui banner",
+  );
   try {
-    await local.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${localPort}`), "the gui banner");
     assert.ok(!local.out().includes("ALL interfaces"), "default bind does not claim all interfaces");
   } finally {
     local.kill();
   }
 
   // --all-interfaces: the concrete LAN URLs and the no-auth warning join the banner.
-  const lanPort = await freeTcpPort();
-  const lan = spawnCli(repo, ["gui", "--port", String(lanPort), "--all-interfaces"]);
+  const { gui: lan, port: lanPort } = await spawnGuiOnFreePort(
+    repo,
+    ["--all-interfaces"],
+    () => (b) => b.includes("listening on ALL interfaces"),
+    "the all-interfaces warning",
+  );
   try {
-    await lan.waitFor((b) => b.includes("listening on ALL interfaces"), "the all-interfaces warning");
     for (const addr of lanAddresses())
       assert.ok(
         lan.out().includes(`also at http://${addr}:${lanPort}`),
@@ -107,10 +136,13 @@ test("the served /api/status carries the merge queue's entries", async () => {
   enqueueMerge(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
   enqueueMerge(repo, { role: "feature", sha: "def5678", run: 2, summary: "add a thing", enqueuedAt: Date.now() });
 
-  const port = await freeTcpPort();
-  const gui = spawnCli(repo, ["gui", "--port", String(port)]);
+  const { gui, port } = await spawnGuiOnFreePort(
+    repo,
+    [],
+    (p) => (b) => b.includes(`tumwater gui at http://127.0.0.1:${p}`),
+    "the gui banner",
+  );
   try {
-    await gui.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${port}`), "the gui banner");
     const snap = await (await fetch(`http://127.0.0.1:${port}/api/status`)).json();
     assert.equal(snap.mergeQueue.depth, 2);
     assert.deepEqual(
@@ -133,10 +165,13 @@ test("the served /api/status carries a re-submitted entry's revision fields, and
   enqueueMerge(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
   enqueueMerge(repo, { role: "feature", sha: "def5678", run: 2, summary: "revise a thing", enqueuedAt: Date.now(), revisionRound: 2, priorReview: { sha: "deadbeef", reasons: ["x", "y"] } });
 
-  const port = await freeTcpPort();
-  const gui = spawnCli(repo, ["gui", "--port", String(port)]);
+  const { gui, port } = await spawnGuiOnFreePort(
+    repo,
+    [],
+    (p) => (b) => b.includes(`tumwater gui at http://127.0.0.1:${p}`),
+    "the gui banner",
+  );
   try {
-    await gui.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${port}`), "the gui banner");
     const snap = await (await fetch(`http://127.0.0.1:${port}/api/status`)).json();
     const first = snap.mergeQueue.entries[0];
     const second = snap.mergeQueue.entries[1];
@@ -199,15 +234,15 @@ test("gui --token serves behind the gate and prints the token-bearing URL", asyn
   const repo = makeRepo();
   await initProject(repo, "cli gui token serve");
 
-  const port = await freeTcpPort();
-  const gui = spawnCli(repo, ["gui", "--port", String(port), "--token", "s3cret"]);
+  const { gui, port } = await spawnGuiOnFreePort(
+    repo,
+    ["--token", "s3cret"],
+    (p) => (b) => b.includes(`tumwater gui at http://127.0.0.1:${p}/?token=s3cret`),
+    "the token-bearing banner",
+  );
   try {
     // The banner URL carries the token: an operator pasting the printed link must land
     // inside the gate, not on a bare 401 with no hint of what is missing.
-    await gui.waitFor(
-      (b) => b.includes(`tumwater gui at http://127.0.0.1:${port}/?token=s3cret`),
-      "the token-bearing banner",
-    );
     // The gate is live from the first response: without the token, even the page is 401.
     const bare = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(bare.status, 401);
@@ -232,6 +267,33 @@ test("gui names the fix for a permission-denied port", async () => {
   assert.match(r.stderr, /unprivileged port/);
 });
 
+test("a probed port taken before the gui binds is retried on a fresh port", async () => {
+  // The free-port probe releases its port before the child binds, so another process can win
+  // the race (BUGS.md 2026-10-20). Simulate the loser: the first pick is held by a listener.
+  const repo = makeRepo();
+  await initProject(repo, "cli gui port race");
+  const blocker = http.createServer();
+  await new Promise<void>((resolve) => blocker.listen(0, resolve));
+  const taken = (blocker.address() as { port: number }).port;
+  const picks = [taken];
+  try {
+    const { gui, port } = await spawnGuiOnFreePort(
+      repo,
+      ["--all-interfaces"],
+      (p) => (b) => b.includes(`tumwater gui at http://127.0.0.1:${p}`),
+      "the gui banner",
+      async () => picks.shift() ?? freeTcpPort(),
+    );
+    try {
+      assert.notEqual(port, taken, "the retry moved to a fresh port");
+    } finally {
+      gui.kill();
+    }
+  } finally {
+    await new Promise<void>((resolve) => blocker.close(() => resolve()));
+  }
+});
+
 test("gui --all-interfaces prints the reachable LAN URLs and serves until killed", async () => {
   // The success path of `tumwater gui` (banner, LAN URL lines, exposure warning) is only
   // reachable with a live child: startGui resolves once listening, then the CLI prints and
@@ -241,12 +303,6 @@ test("gui --all-interfaces prints the reachable LAN URLs and serves until killed
   const repo = makeRepo();
   await initProject(repo, "cli gui all interfaces");
 
-  // Claim a free port: bind an ephemeral listener, take its number, release it.
-  const probe = http.createServer();
-  await new Promise<void>((resolve) => probe.listen(0, resolve));
-  const { port } = probe.address() as { port: number };
-  await new Promise<void>((resolve) => probe.close(() => resolve()));
-
   // The URLs the CLI should print: every non-loopback IPv4 address of this machine —
   // computed here (the same filter lanAddresses applies) so the test checks the printed
   // lines against reality instead of a hardcoded IP. Empty on machines without one.
@@ -255,14 +311,15 @@ test("gui --all-interfaces prints the reachable LAN URLs and serves until killed
     .filter((a): a is os.NetworkInterfaceInfo => Boolean(a?.family === "IPv4" && !a.internal))
     .map((a) => a.address);
 
-  const s = spawnCli(repo, ["gui", "--port", String(port), "--all-interfaces"]);
+  // Wait for the LAST of the three synchronous startup writes (banner → URL lines →
+  // warning), so every line is present before asserting.
+  const { gui: s, port } = await spawnGuiOnFreePort(
+    repo,
+    ["--all-interfaces"],
+    (p) => (out) => out.includes(`tumwater gui at http://127.0.0.1:${p}`) && out.includes("listening on ALL interfaces"),
+    "the gui banner and exposure warning",
+  );
   try {
-    // Wait for the LAST of the three synchronous startup writes (banner → URL lines →
-    // warning), so every line is present before asserting.
-    await s.waitFor(
-      (out) => out.includes(`tumwater gui at http://127.0.0.1:${port}`) && out.includes("listening on ALL interfaces"),
-      "the gui banner and exposure warning",
-    );
 
     // The no-auth exposure warning is printed whenever --all-interfaces is used.
     assert.match(s.out(), /listening on ALL interfaces — no auth; anyone reaching it can prompt the director/);
@@ -295,17 +352,17 @@ test("gui --all-interfaces --token prints the protected warning and token-bearin
   const repo = makeRepo();
   await initProject(repo, "cli gui token all interfaces");
 
-  const port = await freeTcpPort();
-  const gui = spawnCli(repo, ["gui", "--port", String(port), "--all-interfaces", "--token", "s3cret"]);
+  // Wait for the LAST of the synchronous startup writes (the warning line), so every line
+  // is present before asserting — the same tail the token-less all-interfaces test waits on.
+  const { gui } = await spawnGuiOnFreePort(
+    repo,
+    ["--all-interfaces", "--token", "s3cret"],
+    (p) => (out) =>
+      out.includes(`tumwater gui at http://127.0.0.1:${p}/?token=s3cret`) &&
+      out.includes("listening on ALL interfaces"),
+    "the gui banner and exposure warning",
+  );
   try {
-    // Wait for the LAST of the synchronous startup writes (the warning line), so every line
-    // is present before asserting — the same tail the token-less all-interfaces test waits on.
-    await gui.waitFor(
-      (out) =>
-        out.includes(`tumwater gui at http://127.0.0.1:${port}/?token=s3cret`) &&
-        out.includes("listening on ALL interfaces"),
-      "the gui banner and exposure warning",
-    );
 
     // The protected warning replaces the no-auth one — checking both forms means a
     // regression that prints one, the other, or both fails either way.
@@ -546,9 +603,12 @@ test("gui stops on Ctrl+C: SIGINT ends the serve loop instead of wedging the ter
   const repo = makeRepo();
   await initProject(repo, "cli gui sigint");
 
-  const port = await freeTcpPort();
-  const gui = spawnCli(repo, ["gui", "--port", String(port)]);
-  await gui.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${port}`), "the banner");
+  const { gui, port } = await spawnGuiOnFreePort(
+    repo,
+    [],
+    (p) => (b) => b.includes(`tumwater gui at http://127.0.0.1:${p}`),
+    "the banner",
+  );
   gui.child.kill("SIGINT");
   // A default-disposition SIGINT death closes with code null and signal SIGINT — so the
   // timeout, not a null code, is the failure (a hung gui rejects here; a clean stop resolves).
