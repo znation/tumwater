@@ -620,3 +620,33 @@ test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
   assert.deepEqual(calls, ["renderTeam"]);
   assert.equal(log.filter((l) => l.startsWith("tab-team ")).pop(), "tab-team aria-current=page");
 });
+
+test("entry-edit-save words an edited, unchanged and gone reply", () => {
+  const messages: string[] = [];
+  const replies: unknown[] = [
+    { status: "edited", title: "B", committed: true },
+    { status: "unchanged", title: "B" },
+    { status: "gone" },
+  ];
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      lastStatus: { plans: ["A", "B"] },
+      entryEditing: { key: "plans:1", title: "B" },
+      $: (id: string) => ({ entryedittitle: { value: "B" }, entryeditbody: { value: "" } })[id],
+      stopEntryEdit: () => {},
+      closeDrawer: () => {},
+      uncommittedTail: () => "",
+      postAction: (_path: string, _body: unknown, msg: (d: unknown) => string) => {
+        for (const d of replies) messages.push(msg(d));
+      },
+      splitTitle: (t: string) => ({ title: t }),
+    },
+  );
+  scope.runAct("entry-edit-save", "plans:1");
+  assert.deepEqual(messages, [
+    "Edited “B” in PLANS.md",
+    "No change to “B” — PLANS.md was not written",
+    "That entry was removed or moved — refreshed",
+  ]);
+});

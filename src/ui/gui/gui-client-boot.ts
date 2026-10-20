@@ -198,6 +198,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         closeDrawer();
         return d && d.status === "edited"
           ? "Edited “" + splitTitle(d.title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + uncommittedTail(d)
+          : d && d.status === "unchanged"
+          ? "No change to “" + splitTitle(d.title).title + "” — " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " was not written"
           : "That entry was removed or moved — refreshed";
       });
     } else if (act === "note-edit") {

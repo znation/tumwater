@@ -2054,6 +2054,10 @@ test("handleBacklogEdit rewrites the entry, answers gone for a stale title, 400s
   }
   assert.equal(fs.readFileSync(plansPath, "utf8"), before);
 
+  const same = await serve({ kind: "plan", position: 1, title: "p1 (planned 2026-10-01 by plan)", newTitle: "p1", newBody: "old" });
+  assert.deepEqual(same.data, { ok: true, status: "unchanged", file: "PLANS.md", title: "p1" });
+  assert.equal(fs.readFileSync(plansPath, "utf8"), before);
+
   const done = await serve({ kind: "plan", position: 1, title: "p1 (planned 2026-10-01 by plan)", newTitle: "p2", newBody: "l1\n\nl2" });
   assert.equal(done.captured.status, 200);
   assert.deepEqual(done.data, { ok: true, status: "edited", file: "PLANS.md", title: "p2", committed: false });

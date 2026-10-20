@@ -325,10 +325,12 @@ export function bodyStructureProblem(body: string): string | null {
   return tracker.open() ? "the body leaves a code fence open" : null;
 }
 
-/** What `tryEditEntry` did, the CancelEntryOutcome shape: `edited` wrote the file; `gone` and
- * `moved` refuse as data, writing nothing. */
+/** What `tryEditEntry` did, the CancelEntryOutcome shape: `edited` wrote the file; `unchanged`
+ * found the entry already holding that text and wrote nothing; `gone` and `moved` refuse as
+ * data, writing nothing. */
 export type EditEntryOutcome =
   | { status: "edited"; file: string; title: string }
+  | { status: "unchanged"; file: string; title: string }
   | { status: "gone" }
   | { status: "moved"; title: string };
 
@@ -352,8 +354,8 @@ export function tryEditEntry(
     const entry = findEntry(md, sectionTitle, n);
     if (entry === undefined) return { status: "gone" };
     if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
-    spliceInEditedEntry(file, md.split("\n"), entry, title, body);
-    return { status: "edited", file: fileName, title };
+    const wrote = spliceInEditedEntry(file, md.split("\n"), entry, title, body);
+    return { status: wrote ? "edited" : "unchanged", file: fileName, title };
   });
 }
 

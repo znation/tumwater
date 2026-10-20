@@ -2825,6 +2825,20 @@ test("backlog Ctrl+E on an entry rewritten since the editor opened edits nothing
   assert.equal(read("BUGS.md"), moved);
 });
 
+test("backlog Ctrl+E saving the pre-filled title says unchanged and commits nothing", async () => {
+  const { keys, down, ctrlE, read } = entryEditRig();
+  down(2); // plan 1, bug 1
+  const before = read("BUGS.md");
+  ctrlE();
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().entryEditFor, null);
+  assert.match(keys.state().flash ?? "", /unchanged bug #1: Bug one/);
+  assert.equal(read("BUGS.md"), before);
+  // A commit attempt would flash "NOT committed" once its git call settles (the rig is no repo).
+  await sleep(300);
+  assert.match(keys.state().flash ?? "", /unchanged bug #1/);
+});
+
 test("backlog Ctrl+E twice replaces a bug's title and body from a file, keeping its stamp", () => {
   const { root, keys, down, ctrlE, read } = entryEditRig();
   const type = (text: string): void => {

@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Backlog edits, part 2/2: the TUI and dashboard entry edits say when a save changed nothing, instead of "edited" with an empty commit attempt (planned 2026-10-20 by the plan role; "requires part 1/2 landed": it uses the boolean part 1/2 adds to `spliceInEditedEntry`. Touches `tryEditEntry`/`EditEntryOutcome` in src/backlog/backlog-write.ts, `handleBacklogEdit` in src/gui/gui-backlog-commands.ts, the `entry-edit-save` action in src/ui/gui/gui-client-boot.ts, `applyEntryEdit` in src/ui/tui/tui-editor-entry.ts, test/gui-endpoints.test.ts and test/tui-keys.test.ts; done 2026-10-20 by the feature role)
+
+**Goal.** The TUI's Ctrl+E title editor opens pre-filled with the entry's title, and the dashboard drawer's edit form opens pre-filled with title and body. Saving either without a change runs `tryEditEntry`, which re-splices the same bytes and answers `edited`. Then:
+- the dashboard's `handleBacklogEdit` attempts a commit that has nothing to commit (`committed: false`), so the drawer shows `Edited "<title>" in PLANS.md` plus `uncommittedTail`'s not-committed note;
+- the TUI calls `session.commitBacklogEdit` and flashes `edited plan #<n>: <title>`.
+
+Both should say nothing changed, as the CLI does after part 1/2.
+
+**Approach.**
+- src/backlog/backlog-write.ts: add `| { status: "unchanged"; file: string; title: string }` to `EditEntryOutcome`. Have `tryEditEntry` return it when `spliceInEditedEntry` reports no write, and update the type's doc comment.
+- src/gui/gui-backlog-commands.ts `handleBacklogEdit`: on `unchanged`, skip `commitOperatorBacklogEdit` and answer `200 { ok: true, status: "unchanged", file, title }`. Note it in the doc comment.
+- src/ui/gui/gui-client-boot.ts `entry-edit-save`: map `d.status === "unchanged"` to `"No change to “" + splitTitle(d.title).title + "” — " + (BUGS.md|PLANS.md) + " was not written"`, ahead of the gone fallback.
+- src/ui/tui/tui-editor-entry.ts `applyEntryEdit`: on `unchanged`, flash `unchanged ${target.kind} #${target.position}: ${outcome.title}` without calling `session.commitBacklogEdit`. The gone/moved branch stays as it is.
+
+**Tests.**
+- test/gui-endpoints.test.ts "handleBacklogEdit rewrites the entry, …": add a save of the current title and body (`newTitle: "p1"`, `newBody: "old"`). Expect `{ ok: true, status: "unchanged", file: "PLANS.md", title: "p1" }` and identical bytes.
+- test/tui-keys.test.ts, next to the tests asserting `/edited bug #1/`: open the title editor on a bug and press Enter on the pre-filled title. Assert the flash matches `/unchanged bug #1/`, the BUGS.md bytes are identical, and the fake `commitBacklogEdit` dependency was not called (record its calls in the test's deps).
+- If test/gui-client-boot.test.ts pins the edit-save messages, add the unchanged message there too.
+
+**Acceptance criteria.**
+- A dashboard edit save with the entry's own title and body answers `status: "unchanged"`, writes and commits nothing, and the drawer shows the no-change message.
+- A TUI Ctrl+E save of the unchanged title flashes `unchanged <kind> #<n>: <title>` and does not call `commitBacklogEdit`.
+- Changed saves still answer `edited` and commit. Gone and moved answers are unchanged.
+- `npm run test:gate` passes.
+
 ### `tumwater plan|bug --release <n>` and `--top <n>` say when the entry is still held afterwards, instead of reporting a release or a move to the top that no role acts on (planned 2026-10-20 by the plan role; independent of every Planned entry. Touches `releaseAndAnnounce` and `topAndAnnounce` in src/backlog/backlog-cli.ts and `holdMark` in src/backlog/backlog-eligibility.ts. It does not touch `editAndAnnounce` or `cancelAndAnnounce`, which the in-flight Backlog edits 1/2 and cancel entries change), done 2026-10-20
 
 **Goal.** Both commands report success even when the entry will not be taken. `releaseEntry` (src/backlog/backlog-write.ts) lifts one kind of note through `liftRefusal`: the Refused notes, or else the Waiting for the next failure notes. An entry that also carries a Needs-review or Needs-replan line, or a series part whose "requires part N/M landed" prerequisite is still in `## Planned`, stays held by `entryHoldAgainst`. Yet `releaseAndAnnounce` prints `released plan in PLANS.md: …` and wakes the role, which finds nothing to take. `moveEntryToTop` puts a held entry first, and `topAndAnnounce` prints `moved plan to the top of PLANS.md: …`, which `docs/cli.md` glosses as "so feature or bugfix takes it next". For a held entry that is false: `assignNext` skips it. After the write and commit, both commands should name the hold that remains, in the wording `--list` and the backlog index already use (`holdMark`).

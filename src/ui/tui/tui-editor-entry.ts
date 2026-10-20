@@ -149,6 +149,8 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
           if (outcome.status === "edited") {
             session.commitBacklogEdit(outcome.file, `Edit ${target.kind}: ${outcome.title}`);
             session.flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}`);
+          } else if (outcome.status === "unchanged") {
+            session.flashMessage(`unchanged ${target.kind} #${target.position}: ${outcome.title}`);
           } else {
             session.clearBacklogSelection();
             session.flashMessage(`that ${target.kind} was already removed or moved — nothing edited`);

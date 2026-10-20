@@ -600,31 +600,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### Backlog edits, part 2/2: the TUI and dashboard entry edits say when a save changed nothing, instead of "edited" with an empty commit attempt (planned 2026-10-20 by the plan role; "requires part 1/2 landed": it uses the boolean part 1/2 adds to `spliceInEditedEntry`. Touches `tryEditEntry`/`EditEntryOutcome` in src/backlog/backlog-write.ts, `handleBacklogEdit` in src/gui/gui-backlog-commands.ts, the `entry-edit-save` action in src/ui/gui/gui-client-boot.ts, `applyEntryEdit` in src/ui/tui/tui-editor-entry.ts, test/gui-endpoints.test.ts and test/tui-keys.test.ts)
-
-**Goal.** The TUI's Ctrl+E title editor opens pre-filled with the entry's title, and the dashboard drawer's edit form opens pre-filled with title and body. Saving either without a change runs `tryEditEntry`, which re-splices the same bytes and answers `edited`. Then:
-- the dashboard's `handleBacklogEdit` attempts a commit that has nothing to commit (`committed: false`), so the drawer shows `Edited "<title>" in PLANS.md` plus `uncommittedTail`'s not-committed note;
-- the TUI calls `session.commitBacklogEdit` and flashes `edited plan #<n>: <title>`.
-
-Both should say nothing changed, as the CLI does after part 1/2.
-
-**Approach.**
-- src/backlog/backlog-write.ts: add `| { status: "unchanged"; file: string; title: string }` to `EditEntryOutcome`. Have `tryEditEntry` return it when `spliceInEditedEntry` reports no write, and update the type's doc comment.
-- src/gui/gui-backlog-commands.ts `handleBacklogEdit`: on `unchanged`, skip `commitOperatorBacklogEdit` and answer `200 { ok: true, status: "unchanged", file, title }`. Note it in the doc comment.
-- src/ui/gui/gui-client-boot.ts `entry-edit-save`: map `d.status === "unchanged"` to `"No change to “" + splitTitle(d.title).title + "” — " + (BUGS.md|PLANS.md) + " was not written"`, ahead of the gone fallback.
-- src/ui/tui/tui-editor-entry.ts `applyEntryEdit`: on `unchanged`, flash `unchanged ${target.kind} #${target.position}: ${outcome.title}` without calling `session.commitBacklogEdit`. The gone/moved branch stays as it is.
-
-**Tests.**
-- test/gui-endpoints.test.ts "handleBacklogEdit rewrites the entry, …": add a save of the current title and body (`newTitle: "p1"`, `newBody: "old"`). Expect `{ ok: true, status: "unchanged", file: "PLANS.md", title: "p1" }` and identical bytes.
-- test/tui-keys.test.ts, next to the tests asserting `/edited bug #1/`: open the title editor on a bug and press Enter on the pre-filled title. Assert the flash matches `/unchanged bug #1/`, the BUGS.md bytes are identical, and the fake `commitBacklogEdit` dependency was not called (record its calls in the test's deps).
-- If test/gui-client-boot.test.ts pins the edit-save messages, add the unchanged message there too.
-
-**Acceptance criteria.**
-- A dashboard edit save with the entry's own title and body answers `status: "unchanged"`, writes and commits nothing, and the drawer shows the no-change message.
-- A TUI Ctrl+E save of the unchanged title flashes `unchanged <kind> #<n>: <title>` and does not call `commitBacklogEdit`.
-- Changed saves still answer `edited` and commit. Gone and moved answers are unchanged.
-- `npm run test:gate` passes.
-
 ### `tumwater doctor --kill-orphans` kills the orphaned processes the orphans check lists, each with its descendants, instead of leaving the operator to find and kill them by hand (planned 2026-10-20 by the plan role; the operator-side half of BUGS.md "Two `logs -f` processes leaked out of a slot's run…", whose doctor line ends "nothing reaps these". Independent of every Planned entry: touches src/doctor/doctor-orphans.ts, the `doctor` case in src/cli.ts, src/cli/cli-flag-specs.ts, src/cli/help.ts, docs/cli.md and test/doctor-orphans.test.ts and test/doctor.test.ts. The blocked Plain terms series reword comments in src/doctor/ and src/cli.ts but rename nothing this entry uses)
 
 **Goal.** `checkOrphans` (src/doctor/doctor-orphans.ts) finds the processes this team leaked: reparented to PID 1 and either running from `.tumwater/worktrees/` or carrying only dead runs' `TUMWATER_RUN` marks. It fails with `… — nothing reaps these; kill each with its descendants`. The operator then has to rebuild each process tree from `ps` and kill it by hand, and the 2026-10-19 `logs -f` pair stood for 3½ days. The check already knows the exact set and its descendants. One operator command should kill that set and nothing else. This is not an automatic reaper: the bug's open spawner question stays open. The operator runs it, and it kills only what the check would print.
