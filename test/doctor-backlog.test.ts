@@ -242,7 +242,7 @@ test("checkStrandedPlans warns naming a stranded heading and stays silent on a c
   });
 
   // The mirror direction: a done-stamped heading still sitting under ## Planned — finished
-  // work the feature loop may implement again. The remedy names the other section.
+  // work the feature role may implement again. The remedy names the other section.
   fs.writeFileSync(
     path.join(dir, "PLANS.md"),
     `# Plans\n\n## Planned\n\n### Old feature (planned 2026-09-01, done 2026-09-02)\n\n### Second stranded (planned 2026-09-03, done 2026-09-04)\n\n## Done\n\n_None yet._\n`,

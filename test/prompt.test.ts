@@ -351,7 +351,8 @@ test("every role prompt states the reading budget in numbers: size check, ranges
   assert.match(prompt, /Check size first \(`wc -l`\)/);
   assert.match(prompt, /read files over ~150 lines in ranges/);
   assert.match(prompt, /Do not re-read what you already saw/);
-  // The rule names the cost so the model can budget, and never uses the loop tests' cut-off marker.
+  // The rule names the cost so the model can budget, and never uses the runner tests' cut-off
+  // marker.
   assert.match(prompt, /costs ~5k tokens/);
   assert.doesNotMatch(prompt, /ran out of context/);
 });

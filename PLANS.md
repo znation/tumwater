@@ -6,26 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Plain terms code runner, part 16/16: Reword role-sense "loop" in test/ comments and test titles (planned 2026-10-19 by the plan role, split from the rejected 14/14; requires part 15/16 landed; design in plans/terminology.md "Code names"; touches comments and test titles in test/ + docs/invariants.md quotes of renamed titles)
-
-**Goal.** No comment or `it`/`test`/`describe` title in test/ says "loop" when it means a role or its worker. Iteration-sense wording is unchanged, and serialized fixture data is untouched.
-
-**Approach.**
-- Apply part 15/16's classification rule (role sense → "role"/"runner"; iteration sense and ambiguous → unchanged, ambiguous ones named in the commit message) to:
-  - comments: `grep -rnwiE 'loops?' test | grep -E ':[0-9]+:\s*(//|\*|/\*)'`, plus trailing `// …` comments;
-  - titles: `grep -rnwiE 'loops?' test | grep -E '\b(it|test|describe)\('`.
-- Most `loop` hits in test/ are the serialized `loop:` event field in fixtures (test/report*.test.ts, test/failure*.test.ts and others). Those are out of scope: do not touch them.
-- When you rename a test title that docs/invariants.md quotes (`grep -n '<old title>' docs/invariants.md`), update the quote in the same commit so test/invariants-doc.test.ts stays green.
-- Leave legacy-reader tests and fixtures that deliberately write old names alone.
-
-**Files touched.** Comments and titles in test/ files from the work list; docs/invariants.md quotes of renamed titles.
-
-**Acceptance criteria.**
-- `git diff main -- test` changes only comment text and test-title strings, never fixture data, `loop:` fields or code.
-- In every changed comment or title, the old "loop" referred to a role or its runner.
-- Every test title docs/invariants.md quotes still exists verbatim, and test/invariants-doc.test.ts passes.
-- `npm run test` passes.
-
 ### Plain terms code run, part 1/20: Move src/tick to src/run and the run command module to cli-start (planned 2026-10-16 by user; requires Plain terms code runner 16/16 landed; design in plans/terminology.md "Code names"; touches src/tick/ + src/ui/tick-progress-model.ts + src/cli/cli-run.ts + test/tick-*.test.ts + test/cli-run*.test.ts + test/helpers/run-live-harness.ts + every importer + docs/invariants.md + DEVELOPMENT.md + test/invariants-doc.test.ts)
 
 **Goal.** Mechanical. The run pipeline's modules, the run-progress model, the `tumwater start` command module and their tests move to their final names, with every import path and path citation updated and no identifier changed.

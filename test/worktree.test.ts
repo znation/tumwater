@@ -201,7 +201,7 @@ test("resetWorktreeToMain discards commits and untracked files", async () => {
 
 // A git killed mid-write (the group deadline's SIGKILL, a crashed harness, an operator kill)
 // leaves index.lock behind; every later `git reset --hard` then fails "Unable to create
-// '…/index.lock': File exists" forever, wedging the loop. resetWorktreeToMain clears that
+// '…/index.lock': File exists" forever, wedging the runner. resetWorktreeToMain clears that
 // wreckage before it resets — but must leave a *fresh* lock alone, since it may belong to a git
 // still running.
 test("resetWorktreeToMain clears a stale index.lock left by a killed git", async () => {

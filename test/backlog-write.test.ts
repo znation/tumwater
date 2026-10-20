@@ -107,7 +107,7 @@ test("a filed entry keeps the blank-line separators the rest of the backlog file
   fileBug(repo, "second symptom", 'tumwater bug "<symptom>"');
   const bugs = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
   // The entry heading never abuts the next ## heading: one blank line between the last
-  // line of the section and ## Fixed, like the init template and every loop-written move.
+  // line of the section and ## Fixed, like the init template and every role-written move.
   assert.match(bugs, /### second symptom[^\n]*\n\n## Fixed\n/, "entry must be blank-separated from ## Fixed");
   // The same for a plan whose body is the last line before ## Done.
   filePlan(repo, "Add an export command", "keep it JSON first", 'tumwater plan "<title>" [body...]');
@@ -144,7 +144,7 @@ test("an unreadable BUGS.md fails the write instead of seeding over it", async (
   assert.equal(fs.readFileSync(file, "utf8"), before);
 });
 
-test("tumwater bug files the entry, confirms, and wakes the bugfix loop", async () => {
+test("tumwater bug files the entry, confirms, and wakes the bugfix role", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli bug test");
   const r = await cli(repo, "bug", "the config parser rejects empty values");
@@ -156,7 +156,7 @@ test("tumwater bug files the entry, confirms, and wakes the bugfix loop", async 
   assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /### the config parser rejects empty values \(reported by the user/);
 });
 
-test("tumwater plan files the entry and wakes the feature loop", async () => {
+test("tumwater plan files the entry and wakes the feature role", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli plan test");
   const r = await cli(repo, "plan", "Add an export command", "keep", "it", "JSON", "first");

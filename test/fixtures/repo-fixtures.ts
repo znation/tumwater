@@ -67,7 +67,7 @@ export function sh(cwd: string, cmd: string, ...args: string[]): string {
 }
 
 /** main's current commit sha — the head every "did this merge move main" assertion captures
- * before acting and re-reads after (merger, drain, merge, baseline, review, loop tests), so the
+ * before acting and re-reads after (merger, drain, merge, baseline, review, runner tests), so the
  * pinned-ref spelling cannot drift between them and a typo'd ref fails in one place. */
 export function mainSha(dir: string): string {
   return sh(dir, "git", "rev-parse", "main");
@@ -83,7 +83,7 @@ export function headSha(dir: string): string {
 
 /** Assert a repo or worktree dir has a clean `git status --porcelain` — the single home of the
  * tests' "no stray edits / no uncommitted work" assertion (init, cli, merger, merge, and
- * loop tests carried ~20 identical copies). An optional label is forwarded so the sites that
+ * runner tests carried ~20 identical copies). An optional label is forwarded so the sites that
  * named the assertion keep their failure message. Sites asserting a *non*-clean status (a
  * conflict, an expected untracked file) assert something different and keep their own spelling. */
 export function assertClean(dir: string, message?: string): void {
@@ -205,7 +205,7 @@ export function makeRepo(dir = tmpdir()): string {
 }
 
 /** A makeRepo'd repo that has run initProject — the standard fixture for tests that drive a
- * full tick or merger against an initialized tumwater project. Shared by the loop e2e slices,
+ * full tick or merger against an initialized tumwater project. Shared by the runner e2e slices,
  * which each used to carry their own identical copy. */
 export async function initializedRepo(): Promise<string> {
   const repo = makeRepo();

@@ -18,7 +18,7 @@ import { errorMessage } from "../src/text/text.js";
 // echo appending its env to a temp file), so the spawn path, its env vars, the per-type
 // throttle, and the live-update path are all exercised end to end; nothing here calls a model.
 
-/** A command that appends `TYPE|LOOP|MESSAGE` to `out` — the recording end every spawn test
+/** A command that appends `TYPE|ROLE|MESSAGE` to `out` — the recording end every spawn test
  * reads back. The vars are double-quoted so messages with spaces survive the shell whole. */
 function recorderCommand(out: string): string {
   return `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_SOURCE|$TUMWATER_EVENT_MESSAGE" >> ${out}`;

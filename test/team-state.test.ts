@@ -106,7 +106,7 @@ test("pauseRole and resumeRole maintain the marker set idempotently", () => {
     false,
     "the last removal deletes the marker outright",
   );
-  // Custom-loop ids are stored verbatim — the marker must survive config edits.
+  // Custom-role ids are stored verbatim — the marker must survive config edits.
   assert.equal(pauseRole(root, "my-custom-loop"), true);
   assert.deepEqual(pausedRoles(root), ["my-custom-loop"]);
 });
@@ -167,7 +167,7 @@ test("simultaneous cross-process pauseRole calls all survive in the marker", asy
   // Regression: the marker's whole-set overwrite was written unlocked, so concurrent
   // read-modify-write writers (CLI `pause --role` vs the dashboard's per-row toggle) raced and
   // the last writer's set silently dropped every other pause recorded since its read — the
-  // operator believes those loops are stopped while they keep ticking. The marker is
+  // operator believes those roles are stopped while they keep ticking. The marker is
   // pre-seeded with a large role set so every writer's read-serialize-write window spans
   // milliseconds: with the windows that wide, eight aligned writers lose pauses on the
   // unlocked build essentially every run, while the serialized build ends with exactly the

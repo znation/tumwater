@@ -53,7 +53,7 @@ function writeModels(): string {
 
 /** A full, validated TumwaterConfig (defaults overlaid) carrying just the model/fallback/roles
  * the test names. All catalog roles stay enabled by default — the reroute tests use roles whose
- * tier is fixed (feature → default, director → strong), so the extra loops do not interfere. */
+ * tier is fixed (feature → default, director → strong), so the extra roles do not interfere. */
 function rerouteConfig(extra: Record<string, unknown>): TumwaterConfig {
   const root = readyRepo();
   writeConfig(root, extra);

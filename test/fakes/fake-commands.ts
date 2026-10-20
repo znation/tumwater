@@ -21,7 +21,7 @@ const SCRIPT_SHIM = fileURLToPath(new URL("../../../test/fixtures/script-shim", 
 // (an --outDir under /tmp) resolves it to a path that is not there, and every writeScript
 // fake becomes a dangling symlink: PATH lookups skip dangling entries and fall through to
 // the REAL binaries — the suite reaches real agents, git, and npm (BUGS.md 2026-09-30: a
-// coverage loop's /tmp build ran 291 real `pi` agents against a live backend this way).
+// coverage role's /tmp build ran 291 real `pi` agents against a live backend this way).
 // Fail on the first import with the rule, instead of quietly disabling every fake.
 if (!fs.existsSync(SCRIPT_SHIM)) {
   throw new Error(

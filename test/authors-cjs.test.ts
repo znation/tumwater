@@ -1,5 +1,5 @@
 /** docs/code-metrics/authors.cjs — the attribution report that splits lines, functions and
- * duplication between Tumwater's own role loops and human-directed Claude sessions using
+ * duplication between Tumwater's own roles and human-directed Claude sessions using
  * blame.json. It had no test (grep for its name across test/ found nothing), yet every
  * tumwater-vs-Claude figure in the metrics docs is this script's arithmetic: authorOf, the who()
  * mapping, the p90/median quantile, the majority-authorship and "pure function" split, and the

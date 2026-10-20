@@ -473,7 +473,7 @@ test("backlogStructureReason passes a heading quoted inside a fenced block", asy
   assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
 });
 
-test("backlogStructureReason passes a pre-existing stranded entry — the clean loop's repair owns those", async () => {
+test("backlogStructureReason passes a pre-existing stranded entry — the clean role's repair owns those", async () => {
   const wt = await structureFixture(
     "PLANS.md",
     "## Planned\n\n## Done\n\n### Old plan (planned 2026-09-01)\n",
@@ -591,7 +591,7 @@ test("renderBacklogIndexBlock blocks a BUGS.md entry whose prerequisite plan is 
   );
   const block = renderBacklogIndexBlock(dir) ?? "";
   // The eligibility gate (eligibleEntries) and `tumwater backlog`'s holds judge a bug against
-  // the still-planned set too, so the prompt index must word the same hold: a bugfix loop must
+  // the still-planned set too, so the prompt index must word the same hold: a bugfix role must
   // not read this entry as eligible.
   assert.match(block, /BUGS\.md ## Open\n- 3-4: Bug \[blocked: requires Base 1\/2\]/);
 });

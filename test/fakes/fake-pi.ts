@@ -21,12 +21,12 @@ delete process.env.TUMWATER_PI_BIN;
 
 /** A shell fragment for fake-pi scripts: create a session file in the --session-dir pi was
  * given, so the harness's resume/continue guard (hasResumableSession) sees a session to
- * continue. The loop tests repeated this fragment verbatim; shared here so a change to how
+ * continue. The runner tests repeated this fragment verbatim; shared here so a change to how
  * the session dir must be seeded cannot drift between the copies. */
 export const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
 
 /** A shell fragment for fake-pi scripts: record which session-resume flags pi was invoked
- * with (`--continue`/`-n`), appending one `run:<flags>` line per run to `file`. The loop and
+ * with (`--continue`/`-n`), appending one `run:<flags>` line per run to `file`. The runner and
  * pi tests repeated this fragment verbatim (seven copies across four files); shared here so
  * a change to how the resume flags are observed cannot drift between the copies. */
 export function logFlagsTo(file: string): string {
@@ -62,7 +62,7 @@ export function writePiScript(file: string, body: string): void {
 
 /** A shell fragment for fake-pi scripts: append the run's full argv (the prompt is its last
  * argument once PROMPT_FROM_STDIN has run) to `file` as one `RUN_MARKER`-delimited block per
- * run. The loop, requeue, and review-precheck tests repeated this fragment verbatim — with two
+ * run. The runner, requeue, and review-precheck tests repeated this fragment verbatim — with two
  * drifting spellings of the printf newline — so the prompt-capture technique is shared here,
  * like logFlagsTo, and a change to how prompts are observed cannot drift between the copies.
  * Pair with readRunBlocks to read the log back. */
@@ -85,7 +85,7 @@ export function fakePi(script: string): () => void {
 
 /** The script fakePiIdle installs: one compliant TUMWATER_NOTHING_TO_DO assistant line — the
  * standard fixture for a tick that finds nothing to do. The single home of the printf +
- * assistantLine idiom the orchestrator and loop tests repeated verbatim, so the sentinel's
+ * assistantLine idiom the orchestrator and runner tests repeated verbatim, so the sentinel's
  * spelling cannot drift per fixture. `opts` passes through to assistantLine when a test pins
  * tokens or cost. */
 function idlePiScript(opts: { cost?: number } = {}): string {
@@ -147,10 +147,10 @@ export function piRanMarker(): string {
   return path.join(tmpdir(), "pi-ran");
 }
 
-/** A shell fragment list for fake-pi scripts: the phase gate the loop tests use to make a
+/** A shell fragment list for fake-pi scripts: the phase gate the runner tests use to make a
  * fake pi do real work on its first run and idle on every later one — create `marker`, run
  * the `firstRun` lines, and on every later invocation emit the standard
- * TUMWATER_NOTHING_TO_DO line. Eight loop tests hand-rolled this if/then/else skeleton (with
+ * TUMWATER_NOTHING_TO_DO line. Eight runner tests hand-rolled this if/then/else skeleton (with
  * two drifting spellings of the printf newline); shared here so the gate's shape — and the
  * idle line it re-emits — cannot drift between the copies. Pass `firstRun` lines unindented;
  * they are indented two spaces to sit inside the if-branch. */

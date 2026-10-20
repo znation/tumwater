@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code runner, part 16/16: Reword role-sense "loop" in test/ comments and test titles (planned 2026-10-19 by the plan role, split from the rejected 14/14; requires part 15/16 landed; design in plans/terminology.md "Code names"; touches comments and test titles in test/ + docs/invariants.md quotes of renamed titles) — done 2026-10-20
+
+**Goal.** No comment or `it`/`test`/`describe` title in test/ says "loop" when it means a role or its worker. Iteration-sense wording is unchanged, and serialized fixture data is untouched.
+
+**Approach.**
+- Apply part 15/16's classification rule (role sense → "role"/"runner"; iteration sense and ambiguous → unchanged, ambiguous ones named in the commit message) to:
+  - comments: `grep -rnwiE 'loops?' test | grep -E ':[0-9]+:\s*(//|\*|/\*)'`, plus trailing `// …` comments;
+  - titles: `grep -rnwiE 'loops?' test | grep -E '\b(it|test|describe)\('`.
+- Most `loop` hits in test/ are the serialized `loop:` event field in fixtures (test/report*.test.ts, test/failure*.test.ts and others). Those are out of scope: do not touch them.
+- When you rename a test title that docs/invariants.md quotes (`grep -n '<old title>' docs/invariants.md`), update the quote in the same commit so test/invariants-doc.test.ts stays green.
+- Leave legacy-reader tests and fixtures that deliberately write old names alone.
+
+**Files touched.** Comments and titles in test/ files from the work list; no docs/invariants.md quote named a renamed title, so that file is unchanged.
+
+**Acceptance criteria.**
+- `git diff main -- test` changes only comment text and test-title strings, never fixture data, `loop:` fields or code.
+- In every changed comment or title, the old "loop" referred to a role or its runner.
+- Every test title docs/invariants.md quotes still exists verbatim, and test/invariants-doc.test.ts passes.
+- `npm run test` passes.
+
 ### `tumwater config get|set|unset` reach one field of the fixed-shape sections, so `config set bootstrap.untilPlansDone 3` and `config get review.model` work (planned 2026-10-20 by the plan role; touches src/config/config-keys.ts src/config/config-write.ts src/cli/config-commands.ts src/cli/completion.ts docs/config.md and their tests; done 2026-10-20 by the feature role)
 
 **Goal.** `tumwater.json` has four top-level sections whose fields are a fixed list in src/config/config-schema.ts: `review` (`REVIEW_KEYS`), `check` (`CHECK_KEYS`), `idleBackoff` (`BACKOFF_KEYS`) and `bootstrap` (`BOOTSTRAP_KEYS`). `parseConfigKey` (src/config/config-keys.ts) refuses every dotted key into them, so on main's build `tumwater config get bootstrap.untilPlansDone`, `config set bootstrap.untilPlansDone 3`, `config get review.model` and `config set idleBackoff.factor 3` each fail with the generic `unknown config key "…" — dotted keys name one entry of a per-role map or one field of a role entry …`. The only way to change one field is to re-type the whole section as JSON (`config set review '{…}'`), which drops any field the operator forgets. `roles.<id>.<field>`, `backends.<id>.<field>` and `model.<tier>` already work this way; this extends the same dotted form to the four sections, nothing else.

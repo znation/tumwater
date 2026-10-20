@@ -106,7 +106,7 @@ test("the completion command works outside a repo and rejects other shells", asy
   assert.match(topic.stdout, /tumwater completion <bash\|zsh\|fish>/);
 });
 
-test("the bash script completes loop ids after --role and for role/history/revert", async () => {
+test("the bash script completes role ids after --role and for role/history/revert", async () => {
   const script = completionScript("bash");
   assert.deepEqual(await complete(script, ["tumwater", "logs", "--role", "fe"], 3), ["feature", "feature-2"]);
   assert.deepEqual(await complete(script, ["tumwater", "role", "q"], 2), ["qa"]);
@@ -115,7 +115,7 @@ test("the bash script completes loop ids after --role and for role/history/rever
   assert.deepEqual(await complete(script, ["tumwater", "revert", "qa", "q"], 3), []);
 });
 
-test("completion --roles prints the repo's loop ids, or the catalog on a broken config", async () => {
+test("completion --roles prints the repo's role ids, or the catalog on a broken config", async () => {
   const dir = tmpdir();
   await run("git", ["init", "-q", dir]);
   writeFileSync(join(dir, "tumwater.json"), JSON.stringify({ roles: { feature: { instances: 2 } } }));

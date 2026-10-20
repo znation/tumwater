@@ -19,7 +19,7 @@ import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 import { runPiFixture } from "./helpers/pi-run-harness.js";
 
 // The quiet watchdog's kill is reported as quietKilled, not timedOut: a hung tool call leaves
-// its session and worktree edits intact, so the loop resumes them instead of discarding hours
+// its session and worktree edits intact, so the runner resumes them instead of discarding hours
 // of work for the next tick's reset (BUGS.md 2026-09-12).
 //
 // The watchdog tests below run it on logical time (watchdogClock): each waits until the raw
@@ -93,7 +93,7 @@ test("a run that is slow to speak is not quiet-killed during startup", async (t)
 // reasons (the live config's 54000 s left a wedged model connection 15 hours in a
 // concurrency slot). The zero-byte bound is now max(two quiet windows, 30 min), independent
 // of the tick timeout. This pins that a byte-silent run is reaped by the quiet watchdog —
-// reported quietKilled, so the loop resumes it — with a tick timeout set far beyond the
+// reported quietKilled, so the runner resumes it — with a tick timeout set far beyond the
 // bound; under the old exemption this run never settles short of the real 2 h timeout.
 test("a run that never emits a byte is quiet-killed at 30 minutes regardless of the tick timeout", async (t) => {
   const dir = tmpdir();

@@ -22,7 +22,7 @@ function ev(extra: Partial<HarnessEvent> & { ts?: number }): HarnessEvent {
 }
 
 test("eventRole answers '?' for absent, empty, and non-string role fields", () => {
-  assert.equal(eventRole({ ts: 1, type: "wake" } as HarnessEvent), "?"); // no loop at all
+  assert.equal(eventRole({ ts: 1, type: "wake" } as HarnessEvent), "?"); // no role at all
   assert.equal(eventRole(ev({ source: "" })), "?"); // empty: not a real role grouping
   assert.equal(eventRole(ev({ source: 42 as unknown as string })), "?"); // corrupt field
   assert.equal(eventRole(ev({ source: "director" })), "director");
@@ -65,7 +65,7 @@ test("eventDayKey buckets by ts and answers null when ts is not a number", () =>
   assert.equal(eventDayKey(ev({ ts: Number.NaN })), null);
 });
 
-test("tickStartMap pairs only run_start events by loop#tick", () => {
+test("tickStartMap pairs only run_start events by role#tick", () => {
   const starts = tickStartMap([
     ev({ type: "run_start", source: "feature", run: 7, ts: 100 }),
     ev({ type: "run_end", source: "feature", run: 7, ts: 150 }), // not a start: ignored

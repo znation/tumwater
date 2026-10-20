@@ -210,7 +210,7 @@ test("editing an unstamped entry does not adopt a stamp-like parenthetical from 
   );
 });
 
-test("tumwater bug --edit replaces the entry, confirms, and wakes no loop", async () => {
+test("tumwater bug --edit replaces the entry, confirms, and wakes no role", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli bug edit");
   await cli(repo, "bug", "first symptom");

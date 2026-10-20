@@ -132,7 +132,7 @@ test("route follows #role/<role> into the drawer over team, and idempotently on 
   scope.route();
   assert.deepEqual(calls, ["fetchHistory"], "the history view fetched, team not re-painted");
 
-  // A later #loop route on an already-routed page must not force team back on.
+  // A later #role route on an already-routed page must not force team back on.
   hash = "#role/feature";
   calls.length = 0;
   log.length = 0;

@@ -340,7 +340,7 @@ test("checkBrief reports a brief file that exists but cannot be read as a failur
   // A directory at the README.md path makes existsSync true and readFileSync fail with
   // EISDIR, user-independently. briefFile throws (the message is brief.ts's, naming the
   // file and the fix), and the check must turn that throw into a fail outcome — a crashed
-  // doctor would hide why every loop is about to run without its project brief.
+  // doctor would hide why every role is about to run without its project brief.
   const dirReadme = makeRepo();
   fs.mkdirSync(path.join(dirReadme, "README.md"));
   const readmeFail = checkBrief(dirReadme);

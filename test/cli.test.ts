@@ -290,7 +290,7 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   assert.equal(doc.running, false, "no harness running");
   assert.ok(!("pid" in doc), "no pid while the harness is not running");
 
-  // Per-loop fields on every row.
+  // Per-role fields on every row.
   const roles = doc.roles as Array<Record<string, unknown>>;
   assert.ok(roles.length > 0);
   for (const l of roles) {

@@ -21,9 +21,9 @@ test("semaphore bounds concurrency", async () => {
 });
 
 test("release wakes waiters in FIFO order", async () => {
-  // The orchestrator relies on this: fairOrder queues eligible loops by priority, and the
+  // The orchestrator relies on this: fairOrder queues eligible roles by priority, and the
   // semaphore's wake order is what actually hands out freed slots. LIFO (pop instead of
-  // shift) would let a loop that keeps re-queueing every poll beat loops waiting longer.
+  // shift) would let a role that keeps re-queueing every poll beat roles waiting longer.
   const sem = new Semaphore(1);
   await sem.acquire(0); // hold the only slot so everything below queues
   const order: string[] = [];

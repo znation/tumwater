@@ -34,7 +34,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-eligibility.ts (plans, parallel-work-instances,
  * part 2/7): a plan heading's prerequisite clause and the note holds decide which entries a
- * work loop may take, and the backlog index renders the same verdicts as marks. */
+ * work role may take, and the backlog index renders the same verdicts as marks. */
 
 function entry(title: string, body = ""): BacklogEntry {
   return { title, body };

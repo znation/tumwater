@@ -42,7 +42,7 @@ test("checkNotify ignores a failure older than 24h", () => {
   assert.equal(out.level, "ok");
 });
 
-test("checkNotify does not count other loops' warnings or non-warning events", () => {
+test("checkNotify does not count other roles' warnings or non-warning events", () => {
   const root = readyRepo();
   const message = notifyExitWarning("budget_paused", 1, null) ?? "";
   warnEvent(root, "feature", message);

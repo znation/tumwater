@@ -93,7 +93,7 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
   assert.match(halfWarn.detail, /^a half-resolved pair is not priced at zero/);
   assert.match(halfWarn.detail, /roles pause instead of switching/);
 
-  // A priced or unknown id would be refused by the gate, so role loops would pause at the cap
+  // A priced or unknown id would be refused by the gate, so roles would pause at the cap
   // instead of switching — warn before the day's budget is spent on discovering it.
   const paid = readyRepo();
   writeConfig(paid, { fallbackModel: { provider: "paid", model: "gpt-x" } });
@@ -697,7 +697,7 @@ test("checkImageInput names the reroute for a text-only default with a vision st
   );
 });
 
-test("checkImageInput warns when no tier can read images and a text-only loop has no target", async () => {
+test("checkImageInput warns when no tier can read images and a text-only role has no target", async () => {
   const models = writeImageModels();
   const root = readyRepo();
   writeConfig(root, { model: { default: "local/text", strong: "local/textlist" }, roles: onlyFeature() });

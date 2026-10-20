@@ -7,7 +7,7 @@ import { repoRoot } from "./helpers/repo-root.js";
 
 // Comments in this tree wrap at 100 columns; code lines have no limit. This test makes that
 // a deterministic gate: a new long comment line fails the commit that adds it, and the clean
-// loop stops hand-sweeping the theme with ad hoc greps. ESLint's core max-len is deprecated
+// role stops hand-sweeping the theme with ad hoc greps. ESLint's core max-len is deprecated
 // (removed in ESLint 11) and its replacement would be a new dependency, which PRINCIPLES.md
 // rules out, so this is a node:test file like test/exports.test.ts.
 

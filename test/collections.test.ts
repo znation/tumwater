@@ -148,7 +148,7 @@ test("sortByValueDesc carries extra trailing fields through untouched", () => {
   );
 });
 
-// addTo seeds a missing key at `amount`, so its read must be an OWN property: the custom-loop
+// addTo seeds a missing key at `amount`, so its read must be an OWN property: the custom-role
 // name charset (/^[a-z0-9][a-z0-9_-]{0,31}$/) admits "constructor", which collides with an
 // Object.prototype key. A bare `record[key] ?? 0` would read the inherited function, store
 // `function Object() { [native code] }5`, and every later sum (roleSum, report totals) would

@@ -629,7 +629,7 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
 
 test("a broken raw log degrades to a lost log, never a stuck tick", async () => {
   // The stream dies instead of finishing ('error' fires, 'finish' never does): runPi must
-  // still settle with the run's real result rather than hang the loop.
+  // still settle with the run's real result rather than hang the runner.
   const dir = tmpdir();
   const brokenEvents = new EventEmitter();
   const broken = Object.assign(brokenEvents, {
@@ -688,7 +688,7 @@ test("runPi flags a JSON.parse crash on pi's stderr as a transient pi crash", as
 test("runPi does not flag ordinary crashes or harness kills as transient pi crashes", async () => {
   const crashed = await runFakePi(`echo 'TypeError: cannot read properties of undefined' >&2\nexit 1`);
   assert.equal(crashed.transientPiCrash, false, "an unrelated crash is not transient");
-  // The pattern itself is what the loop relies on: pin the phrasings Node's JSON.parse produces.
+  // The pattern itself is what the runner relies on: pin the phrasings Node's JSON.parse produces.
   for (const line of [
     "Unterminated string in JSON at position 9088 (line 1 column 9089)",
     "Expected ',' or '}' after property value in JSON at position 12",
@@ -746,14 +746,14 @@ test("runPi classifies a request timeout on stderr as the timeout backend kind",
 // pi's stderr warning when a requested model id has no exact definition: pi clones the
 // provider's default model, inheriting that default's price and context window, so a
 // mistyped or vendor-suffixed id silently misprices the run (BUGS.md 2026-10-06). Captured
-// from stderr so the loop's warning event can name it.
+// from stderr so the runner's warning event can name it.
 test("runPi captures pi's fallback-clone stderr warning for an undefined model id", async () => {
   const r = await runFakePi(
     `printf '%s\\n' 'Warning: Model "deepseek-ai/DeepSeek-V4.1-Flash:deepinfra" not found for provider "huggingface". Using custom model id.' >&2\nprintf '%s\\n' '${assistantLine("done", { tokens: 5 })}'`,
   );
   assert.equal(r.ok, true);
   assert.match(r.fallbackClone ?? "", /not found for provider "huggingface"/);
-  // The pattern itself is what the loop relies on: pin the spelling pi emits.
+  // The pattern itself is what the runner relies on: pin the spelling pi emits.
   assert.ok(MODEL_FALLBACK_CLONE.test(r.fallbackClone ?? ""));
 
   // An ordinary run that prints no such line carries no clone.

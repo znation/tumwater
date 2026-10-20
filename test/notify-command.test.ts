@@ -11,7 +11,7 @@ import { runNotifyHook, testNotifyHook, NOTIFY_TEST_TIMEOUT_MS } from "../src/cl
 // the CLI the way the cli-queue tests drive `queue` — an initialized repo, child-process runs,
 // output assertions. The real hook is a shell echo appending its env to a temp file.
 
-/** A command that appends `TYPE|LOOP|MESSAGE` to `out` — the recorder `tumwater notify --test`
+/** A command that appends `TYPE|ROLE|MESSAGE` to `out` — the recorder `tumwater notify --test`
  * runs. Double quotes keep a message with spaces whole through the shell. */
 function recorderCommand(out: string): string {
   return `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_SOURCE|$TUMWATER_EVENT_MESSAGE" >> ${out}`;

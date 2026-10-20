@@ -183,7 +183,7 @@ test("checkMaintenanceQuota: under the allowance is ok and shows used/allowance"
   assert.match(r.detail, /3\/12 maintenance merges/);
 });
 
-test("checkMaintenanceQuota: a full window warns and names the held loops", () => {
+test("checkMaintenanceQuota: a full window warns and names the held roles", () => {
   const r = checkMaintenanceQuota(mergedRoot("clean", 12), mcfg(), true, MNOW);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /12\/12/);
@@ -292,14 +292,14 @@ test("checkErrorStreaks: no streak, or one below the warn bar, is ok", () => {
   assert.equal(r.level, "ok");
 });
 
-test("checkErrorStreaks: an unpaused loop at the warn bar warns with count and squashed last error", () => {
+test("checkErrorStreaks: an unpaused role at the warn bar warns with count and squashed last error", () => {
   const r = checkErrorStreaks(streakRoot({ feature: ERROR_STREAK_WARN }, "line one\n   line two"), bcfg({}));
   assert.equal(r.level, "warn");
   assert.match(r.detail, /failing run after run: feature: 3 failed runs — last error: line one line two/);
   assert.doesNotMatch(r.detail, /paused/);
 });
 
-test("checkErrorStreaks: a paused loop at the breaker bar names the resume command", () => {
+test("checkErrorStreaks: a paused role at the breaker bar names the resume command", () => {
   const root = streakRoot({ feature: ERROR_STREAK_BREAKER });
   pauseRole(root, "feature");
   const r = checkErrorStreaks(root, bcfg({}));
@@ -316,7 +316,7 @@ test("checkErrorStreaks: instance 1 paused under feature-1 reads as paused and n
   assert.match(r.detail, /tumwater resume --role feature-1`/);
 });
 
-test("checkErrorStreaks: a paused loop below the breaker is just paused", () => {
+test("checkErrorStreaks: a paused role below the breaker is just paused", () => {
   const root = streakRoot({ feature: ERROR_STREAK_WARN });
   pauseRole(root, "feature");
   const r = checkErrorStreaks(root, bcfg({}));
@@ -345,17 +345,17 @@ test("checkMainRed: unreadable config is not checked", () => {
   assert.match(r.detail, /not checked/);
 });
 
-test("checkMainRed: no loop at main_red is ok", () => {
+test("checkMainRed: no role at main_red is ok", () => {
   assert.deepEqual(checkMainRed(tmpdir("tw-mainred-"), bcfg({})), { level: "ok", detail: "no role waiting on main's check" });
 });
 
-test("checkMainRed: a held code loop warns naming it, the count, and the squashed error", () => {
+test("checkMainRed: a held code role warns naming it, the count, and the squashed error", () => {
   const r = checkMainRed(redRoot(), bcfg({}));
   assert.equal(r.level, "warn");
   assert.match(r.detail, /main's check is failing; 1 code role waiting: feature — main abc is red \(npm test: 2 failing\)/);
 });
 
-test("checkMainRed: a loop with a queued summary is ok", () => {
+test("checkMainRed: a role with a queued summary is ok", () => {
   assert.equal(checkMainRed(redRoot({ queuedSummary: "x" }), bcfg({})).level, "ok");
 });
 
@@ -365,7 +365,7 @@ test("checkMainRed: a passed merge check newer than the red tick retires the hol
   assert.equal(checkMainRed(root, bcfg({})).level, "ok");
 });
 
-test("checkMainRed: the detail names the bugfix loop as repairer only when one is enabled", () => {
+test("checkMainRed: the detail names the bugfix role as repairer only when one is enabled", () => {
   const without = checkMainRed(redRoot(), bcfg({}));
   assert.match(without.detail, /no bugfix role is enabled/);
   const withBugfix = checkMainRed(redRoot(), qcfg({ roles: { feature: { enabled: true }, bugfix: { enabled: true } } }));

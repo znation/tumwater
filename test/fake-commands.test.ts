@@ -9,7 +9,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 test("a compiled fake-commands copied outside the checkout refuses to import instead of leaving every fake a dangling symlink", () => {
   // BUGS.md 2026-09-30: SCRIPT_SHIM resolves relative to the compiled file
   // (../../../test/fixtures/script-shim), which exists only when the compiled tests sit inside
-  // the checkout. A tree compiled to an --outDir elsewhere (the coverage loop's /tmp build)
+  // the checkout. A tree compiled to an --outDir elsewhere (the coverage role's /tmp build)
   // resolved it to a path that was not there, writeScript symlinked every fake to the missing
   // shim anyway, and PATH lookups fell through to the REAL binaries — 291 real `pi` agents
   // against a live backend. The module must fail on its first import with the rule, loudly.

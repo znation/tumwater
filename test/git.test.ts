@@ -457,7 +457,7 @@ test("readBranchHead returns null for missing refs, bad content, and non-repos",
 });
 
 // --- runGit's error contract: a GitError must always say why when there is a why to say ---
-// These messages surface verbatim as a loop's lastError on the dashboards (src/runner/runner-run.ts
+// These messages surface verbatim as a role's lastError on the dashboards (src/runner/runner-run.ts
 // records errorMessage(err) for any tick failure), so an unexplained "failed (ENOENT): " tail is
 // what an operator actually reads.
 

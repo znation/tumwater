@@ -126,7 +126,7 @@ test("an out-of-range cancel fails and leaves the file byte-identical", async ()
   assert.match(empty.stderr, /no planned feature at position 1 \(0 in PLANS\.md\)/);
 });
 
-test("tumwater plan --cancel removes only from PLANS.md and wakes no loop", async () => {
+test("tumwater plan --cancel removes only from PLANS.md and wakes no role", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli plan cancel");
   await cli(repo, "bug", "a bug stays put");

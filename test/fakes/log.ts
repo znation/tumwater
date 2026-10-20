@@ -4,13 +4,13 @@
  * literals with `as HarnessEvent` casts, each file spelling the defaults slightly
  * differently) plus a one-call writer that stamps them into a scratch repo's
  * `.tumwater/log/events.jsonl` via log-fixtures's `writeEvents`. The builders default to
- * the shape the real writers stamp (feature loop, tick 1, changed); overrides pass through.
+ * the shape the real writers stamp (feature role, tick 1, changed); overrides pass through.
  * Node built-ins only.
  */
 import type { HarnessEvent } from "../../src/events/events.js";
 import { writeEvents } from "../fixtures/log-fixtures.js";
 
-/** A `run_end` event with the shape tick-finalize stamps: the feature loop, tick 1,
+/** A `run_end` event with the shape tick-finalize stamps: the feature role, tick 1,
  * `changed`. Overrides pass through (`tickEnd({ result: "error", error: "pi unreachable" })`). */
 export function tickEnd(over: Partial<HarnessEvent> = {}): HarnessEvent {
   return { ts: 0, source: "feature", type: "run_end", run: 1, result: "changed", ...over } as HarnessEvent;
