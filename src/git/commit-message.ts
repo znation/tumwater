@@ -43,8 +43,9 @@ export function fallbackSummary(files: string[], role: string, runNumber: number
   return truncate(`Update ${shown}${rest}`, COMMIT_SUMMARY_MAX);
 }
 
-/** Cap on each commit-body field, so a verbose model cannot bloat every commit. */
-const COMMIT_BODY_FIELD_MAX = 200;
+/** Cap on each commit-body field. It only bounds a runaway reply: at 200 it cut almost half of
+ * all body lines, which reviewers rejected as incomplete claims. */
+const COMMIT_BODY_FIELD_MAX = 1000;
 
 /** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_BLOCK
  * contract declared by reply-contract.ts. Each field is optional: a non-compliant reply still
@@ -59,7 +60,7 @@ interface CommitBody {
 
 /** Pull the WHY:/RISK:/VERIFIED: lines out of a pi final reply via the shared labeled-line
  * parser, tolerant of any subset being absent (a non-compliant reply still commits), each field
- * capped at 200 chars (truncate + ellipsis). Null when none were found. */
+ * capped at COMMIT_BODY_FIELD_MAX (truncate + ellipsis). Null when none were found. */
 export function extractCommitBody(finalText: string): CommitBody | null {
   const pick = (label: string): string | undefined => {
     const v = labeledLine(finalText, label);

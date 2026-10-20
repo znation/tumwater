@@ -83,11 +83,19 @@ test("extractCommitBody only matches line-anchored fields", () => {
   assert.equal(body?.risk, "none that I can see");
 });
 
-test("extractCommitBody caps each field at 200 chars with an ellipsis", () => {
-  const body = extractCommitBody(`WHY: ${"w".repeat(500)}\nRISK: short\n`);
-  assert.ok(body?.why?.length === 200, "capped at exactly 200");
+test("extractCommitBody caps each field at 1000 chars with an ellipsis", () => {
+  const body = extractCommitBody(`WHY: ${"w".repeat(1500)}\nRISK: short\n`);
+  assert.equal(body?.why?.length, 1000, "capped at exactly 1000");
   assert.match(body!.why!, /…$/);
   assert.equal(body!.risk, "short", "other fields untouched by the cap");
+});
+
+test("extractCommitBody keeps a 600-character field whole", () => {
+  const risk = "word ".repeat(119) + "words";
+  const body = extractCommitBody(`RISK: ${risk}\n`);
+  assert.equal(risk.length, 600);
+  assert.equal(body?.risk, risk);
+  assert.doesNotMatch(body!.risk!, /…/);
 });
 
 test("formatCommitBody orders WHY, RISK, VERIFIED and skips missing fields", () => {
