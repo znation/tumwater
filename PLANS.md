@@ -55,4 +55,36 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   - Before writing, run `grep -n '^### INV-C' docs/invariants.md | tail`. CL, CM and CN are already claimed, and CO was free on 2026-10-20.
 - `npm run test:gate` passes. The cited test names exist verbatim (`grep -rF` them in test/).
 
+### Red-main healer: a heal prompt that cannot be queued warns and is retried at the next red verification, instead of throwing out of mainRedGate and losing the heal for the rest of the process (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/baseline/main-red.ts + test/main-red-heal.test.ts + docs/invariants.md)
+
+**Goal.** `warnMainRedOnce` (src/baseline/main-red.ts) is reached from `mainRedGate` and `bugfixMainRedNote` (both documented "Never throws") and from `verdictAtMainTipIn` (behind `mainTipVerdict`). It sets `lastHealKey = healKey` and only then calls `enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(red.sha))` with no `try`. `enqueueRolePrompt` (src/inbox/inbox.ts) writes through `writeTextAtomic` and can throw (ENOSPC, EACCES). A plan-role scratch test on 2026-10-20 reproduced this. It used the "a failing set queues one heal prompt …" setup from test/main-red-heal.test.ts (`baselineFixture("coverage", …)`, `fakeNpm`, one failing test `heal-alpha`) and faulted `writeFileSync` with `errnoError("ENOSPC")` for paths starting with `roleInboxDir(root, "bugfix")`:
+- `mainRedGate(root, "coverage", wt, undefined, () => {})` rejected with `Error: ENOSPC`, and no prompt was queued.
+- With the fault removed, a new red commit with the same failing set returned null and still queued no prompt, and `warningMessages(root)` was empty. `lastHealKey` already held the set, so the heal was lost for the rest of the process, silently.
+
+The `mainTipVerdict` path has a worse outcome. `verdictAtMainTipIn`'s `catch` turns the throw into `{ status: "unavailable", why: "ENOSPC" }`. `attributeRedCheck` (src/merge/merge-check-failures.ts) then pushes "main's own baseline was unavailable …, so the failed … is attributed to this change", which blames the change for a main that is known to be red. This is the same kind of fix as "Main revert: a heal prompt or reviewer hand-off that cannot be queued warns instead of throwing" (above, in flight), but at a different site: that plan changes only src/baseline/main-revert.ts and leaves `warnMainRedOnce` alone.
+
+**Approach.** Change only `warnMainRedOnce` in src/baseline/main-red.ts:
+1. Wrap the `enqueueRolePrompt` call in `try`/`catch`. In the `catch`:
+   - reset `lastHealKey = null`, so the next verification of a red main queues the heal again (with `lastMainRedSha` still set, a later call for the same SHA returns early, so the retry comes with the next red SHA or a fresh process — say exactly that in the comment);
+   - call `warnEventBestEffort` with `root`, `foundBy` and the message `could not queue the heal prompt for bugfix: ${errorMessage(err)}`. Both helpers are already imported by this file.
+2. Keep the order: `main_red_hold` is still logged first, and the enqueue is still skipped when `baseRoleOf(foundBy) === BUGFIX_ROLE`.
+3. Add one sentence to `warnMainRedOnce`'s doc comment: a heal prompt that cannot be queued is warned under `foundBy` and clears the heal key, never thrown.
+4. Do not touch `queueCulpritHeal`, which the main-revert plan's `heal` guard covers, or any other file in src/.
+
+**Files touched.** src/baseline/main-red.ts, test/main-red-heal.test.ts, docs/invariants.md.
+
+**Acceptance criteria.**
+- New test in test/main-red-heal.test.ts, "a heal prompt that cannot be queued warns, lets the gate resolve, and is queued at the next red commit". Put it in this file because the file runs in its own process and the module state starts fresh. Use a fresh `baselineFixture("coverage", script)` + `fakeNpm(script)`, where the script prints `✖ heal-gamma (1ms)` and exits 1, plus the same `newCommit` helper as the first test.
+  - Make the first red commit. Install `patchFsMethod("writeFileSync", …)` (test/helpers/fs-faults.ts), which throws `errnoError("ENOSPC")` when `file` is a string starting with `roleInboxDir(root, "bugfix")` (src/paths.ts) and calls the original otherwise. Remove it in a `finally`.
+  - Assert that `await mainRedGate(root, "coverage", wt, undefined, () => {})` resolves to null, that `queuedRolePrompts(root, "bugfix")` is empty, and that `warningMessages(root)` (test/fixtures/log-fixtures.ts) has exactly one entry matching `/could not queue the heal prompt for bugfix: .*ENOSPC/`.
+  - Without the fault, make a new red commit with the same failing set. Assert that `mainRedGate` returns null and that `queuedRolePrompts(root, "bugfix").length === 1`.
+  - Use a failing-test name no other test in the file uses, so the existing test's `lastHealKey` state cannot mask or satisfy this one. Before the fix, the first assertion fails (rejects ENOSPC). With only the `try` and no `lastHealKey = null` reset, the last assertion fails (0 prompts).
+- The existing tests in test/main-red-heal.test.ts and test/main-red.test.ts pass unchanged.
+- docs/invariants.md: at the END of the file, after every section present when the change is made, add `## Red-main healer: a heal prompt that cannot be queued never fails the gate`. Under it put `### INV-CP1: a red main whose heal prompt cannot be queued resolves the gate, warns once that the prompt was not queued, and queues it at the next red verification`, in the Guarantee / Binds / Pinned by layout:
+  - Binds: `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedGate`).
+  - Pinned by: the new test's name.
+  - The `mainTipVerdict` attribution path is covered by the same guard but not by this test, and the invariant must not claim otherwise.
+  - Before writing, run `grep -n '^### INV-C' docs/invariants.md | tail`. CM and CO are claimed by Planned entries, and CP was free on 2026-10-20.
+- `npm run test:gate` passes. The cited test name exists verbatim (`grep -rF` it in test/).
+
 ## Done
