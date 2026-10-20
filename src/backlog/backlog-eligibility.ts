@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Backlog eligibility: which PLANS.md / BUGS.md entries a work role may take now (plans,
  * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**,
  * **Needs review …**, **Needs replan …** or **Waiting for the next failure …** note, or when

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";

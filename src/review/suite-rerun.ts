@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Detecting a reviewer run that re-ran the full suite on a tree the gate's pre-check already
  * verified — pure string logic over the bash command lines a pi run started, no subprocess or
  * file I/O. The review prompt tells such a reviewer not to (src/prompt/gate-prompts.ts), but on

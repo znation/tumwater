@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { bodyStructureProblem, fileEntryWithBody, OPERATOR_FILE_KINDS, splitEntryFile, tryEditEntry } from "../../backlog/backlog-write.js";
 import { backlogHolds, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { stripEntryStamp } from "../../backlog/backlog-structure.js";

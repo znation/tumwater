@@ -1,4 +1,3 @@
-// vocabulary: plain
 import fs from "node:fs";
 import { loadConfigSafe } from "../config/config.js";
 import { CUSTOM_NAME_RE } from "../config/config-schema.js";

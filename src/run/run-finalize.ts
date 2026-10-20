@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, saveRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { branchHead } from "../git/git.js";

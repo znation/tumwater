@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The fallback's circuit breaker (BUGS.md 2026-09-20): whether the engaged free fallback can
  * actually SERVE. Split out of budget.ts, which keeps the daily-cost figures and the gate they
  * drive; the breaker is a self-contained pure state machine — no scheduler, no pi model

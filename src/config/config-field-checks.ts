@@ -1,4 +1,3 @@
-// vocabulary: plain
 import {
   MODEL_TRIPLE_KEYS,
   MODEL_TIERS,

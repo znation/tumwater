@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { submitPrompt } from "../../inbox/inbox-submit.js";
 import { applyKey } from "./tui-input.js";
 import { pushPromptHistory, recallPromptHistory } from "./tui-prompt-history.js";

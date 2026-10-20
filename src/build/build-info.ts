@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitTry } from "../git/git-run.js";

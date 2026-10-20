@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";

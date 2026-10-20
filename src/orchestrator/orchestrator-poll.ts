@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The orchestrator's per-poll steps (src/orchestrator/orchestrator.ts keeps the setup, the loop
  * skeleton and the shutdown drain): each step names what it reads from the PollContext and what
  * it reads or writes in the PollState, so one poll's passes read apart from one another. Called

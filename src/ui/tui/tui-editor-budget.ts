@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { setConfigKey, setDailyBudgetUsd } from "../../config/config-write.js";
 import { loadConfigSafe } from "../../config/config.js";
 import { usdCap } from "../../text/format.js";

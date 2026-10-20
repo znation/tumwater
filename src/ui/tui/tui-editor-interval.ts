@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { checkMinRunInterval } from "../../config/config-keys.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";

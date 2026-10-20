@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import type { RunnerState } from "../runner/runner-state.js";
 import type { readSlotsState } from "../git/slots-state.js";

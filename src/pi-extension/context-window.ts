@@ -1,4 +1,3 @@
-// vocabulary: plain
 /**
  * The model's declared context window, as the bundled pi extensions read it: the one home of the
  * window arithmetic bounded-output, context-shake and strip-thinking share.

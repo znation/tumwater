@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { PAUSE_REASON_MAX } from "../../team/team-state.js";
 
 /** The dashboard's team-wide operator controls, browser-side, all living in the sidebar so

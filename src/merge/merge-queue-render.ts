@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The renderer behind `tumwater queue` — the operator-facing text for the merge queue view the
  * reader gathers (merge-queue.ts's readMergeQueue, beside it): one line per queued merge
  * in execution order, plus the count of queue files the reader skipped. Pure function of the

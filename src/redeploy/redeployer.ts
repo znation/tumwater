@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { BuildInfo, BuildStaleness, BuildStatus } from "../build/build-info.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import type { CompileResult } from "../build/build-stage.js";

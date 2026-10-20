@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's Settings view, browser-side: the curated top-level config keys
  * (EDITABLE_CONFIG_KEYS's set, mirrored here for the labels) as label + current value +
  * inline field + Save + Clear, one row per key (the Notify row also has Send test, which

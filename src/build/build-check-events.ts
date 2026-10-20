@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The presentation half of the build check: the scope vocabulary, the environmental-skip
  * warning's wording, and the build_check event's shape. Split out of build-check.ts — which
  * keeps the deterministic execution and classification (detect → spawn → classify) — because

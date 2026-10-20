@@ -1,4 +1,3 @@
-// vocabulary: plain
 /**
  * The dashboard's POST backlog/QUESTIONS command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):

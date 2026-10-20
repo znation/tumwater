@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import type { RunnerState } from "../runner/runner-state.js";

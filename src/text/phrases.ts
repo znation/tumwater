@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { squash } from "./text.js";

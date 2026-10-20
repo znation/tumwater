@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Pure formatting and description of a build check's failure output — split out of build-check.ts,
  * which keeps the execution side (detect → run → classify, the toolchain probe, the process-group
  * runner). This module turns a check's raw combined output and a BuildCheckOutcome into the machine

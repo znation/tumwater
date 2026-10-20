@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Collection half of the usage report: read the harness's event log (through the shared
  * event-folding layer in src/report/report-fold.ts) and the backlog history over a window of
  * local calendar days and distill it into a `ReportData` / `SinceReport` — per-day

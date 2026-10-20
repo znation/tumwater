@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Terminal rendering of `tumwater doctor`'s report: a header line, one line per check (level,
  * name, detail), the routing table of every seam the config can spawn, and the verdict. Lives
  * in the CLI output layer beside the other terminal renderers (src/report/report-render.ts,

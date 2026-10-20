@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { truncate } from "../text/text.js";
 import { compactTokens } from "../text/format.js";
 import { modelLabel } from "../agent/backend-traits.js";

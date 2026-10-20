@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { loadConfigSafe } from "../../config/config.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import { createTeamConfigKeyEditor } from "./tui-editor-config.js";

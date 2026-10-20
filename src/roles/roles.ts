@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The role registries and classification helpers over the built-in role catalog. The catalog
  * itself — each role's identity and its "find something to do" prompt text — lives in
  * role-catalog.ts (split out 2026-10-01, organize); this module re-exports ROLES and Role so

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The ink→readline key-mapping layer of the TUI (extracted from tui-keys.ts): ink's
  * `useInput` delivers parsed (input, key) pairs, while the keypress dispatch in
  * tui-keys.ts's createTuiKeys consumes the readline (str, key) shape — this module mints

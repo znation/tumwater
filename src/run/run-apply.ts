@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
 import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";

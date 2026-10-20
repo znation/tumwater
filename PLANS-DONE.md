@@ -5,6 +5,24 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code cleanup, part 7/7: Make the vocabulary guard cover all of src and drop the opt-in headers (planned 2026-10-16 by user; requires part 6/7 landed; design in plans/terminology.md "Guards"; touches test/vocabulary.test.ts + every src/ module carrying a vocabulary header) — done 2026-10-20
+
+**Goal.** Mostly mechanical. The vocabulary guard has no opt-in: it always scans every src/ module. The `// vocabulary: plain` header lines are deleted, since they no longer mean anything.
+
+**Approach.**
+- test/vocabulary.test.ts: remove the header requirement and any remaining scope logic (`optedIn` goes away), so the target is every `.ts`/`.tsx` module under src/. Replace the groundwork test "with no `// vocabulary: plain` header anywhere in src/, the guard passes" with one that a header-less module is scanned. Keep the word list, the word-bounded case-insensitive match, the string-literal and template-text walk (never `${…}` expressions), the `// vocabulary-ok: <reason>` line exemption, and the shared legacy-reader exemption from part 5/7. Update the file's header comment to say the guard covers all of src/ and that `vocabulary-ok` is the only escape.
+- Delete every `// vocabulary: plain` line in src/: `grep -rln '^// vocabulary: plain' src` lists them, one line per module, up to about 300. Change nothing else in those files.
+- Features keep landing while this series runs, so run the guard and fix any hit introduced since part 6/7 the same way: reword, or mark `vocabulary-ok` with a reason.
+- docs/glossary.md and DEVELOPMENT.md may describe the opt-in header. Update their sentence on how the guard is scoped, and nothing else in them.
+
+**Files touched.** test/vocabulary.test.ts; every src/ module with a `// vocabulary: plain` header (one deleted line each); any module with a newly introduced hit; the guard sentence in docs/glossary.md and DEVELOPMENT.md if they describe the header.
+
+**Acceptance criteria.**
+- `grep -rn 'vocabulary: plain' src test` prints nothing, apart from a negative-case fixture inside test/vocabulary.test.ts if it keeps one.
+- Adding `say("the fleet is idle")` to any src/ module without a `vocabulary-ok` marker makes the guard fail (check locally, do not commit).
+- The guard's own tests pin the new scope: a module without any header is scanned.
+- `npm run test` passes.
+
 ### docs/invariants.md gains an orchestrator-info section, and one new test file pins that a publish writes once for a changed batch, never for an unchanged one, and warns rather than throws when the file cannot be written (planned 2026-10-20 by the plan role; independent of every eligible plan; touches docs/invariants.md + a new test/orchestrator-info-publish.test.ts; done 2026-10-20)
 
 **Goal.** `publishInfoFields` (src/team/orchestrator-info.ts) is the only way the orchestrator's poll publishes the info file that status, the TUI, the GUI and `tumwater start`'s second-team check read. Its callers are src/orchestrator/orchestrator-poll.ts (permits, check permits, slot pool, build) and src/gates/gate-polls.ts (the budget fields, disk). Before this entry, docs/invariants.md did not name orchestrator-info.ts or any of its functions, and no test imported `publishInfoFields`. test/orchestrator-info.test.ts pins the tolerant reader, the atomic writer and `orchestratorAlive`, but not the publish rules the function's doc comment promises:

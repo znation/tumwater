@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { resolveFromNodeModules } from "./build-check-detect.js";
 import { readJsonFile } from "../files/json-files.js";

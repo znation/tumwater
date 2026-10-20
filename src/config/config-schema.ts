@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The tumwater.json config schema shape: the types `config-validation.ts` validates a
  * loaded config into and every config read site consumes, plus the key allow-lists and
  * value shapes (`TOP_LEVEL_KEYS` and friends) that say what a valid file may hold at each

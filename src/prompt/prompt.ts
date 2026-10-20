@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's Usage and Failures views, browser-side. Usage renders /api/report as six
  * totals (each with its per-day average) over five daily bar charts — merged commits, runs by
  * role, output tokens, spend by role, rejections by role — with gridlines, a scale, and one

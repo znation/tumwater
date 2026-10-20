@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The staging self-check's findings about backlog records (PLANS.md, BUGS.md, QUESTIONS.md and
  * the finished-entry archives), split from stage-check.ts, which gathers them with the git-level
  * path checks. Each takes the edited text (`head`) and its merge-base text (`base`), so only a

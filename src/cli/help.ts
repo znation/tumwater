@@ -5,7 +5,6 @@
  * topic can never drift out of sync with the full listing. */
 import { suggestClosest } from "../text/suggest.js";
 
-// vocabulary: plain
 
 /** Machine names HELP quotes verbatim; the scripting series renames them. */
 const SUMMARY_JSON_KEYS = "{ loops, total }"; // vocabulary-ok: --json keys until the scripting series

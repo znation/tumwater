@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { parseDurationMs } from "../../cli/cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../../operator/operator-intent.js";
 import { cutSplitsSurrogatePair, gotSuffix } from "../../text/text.js";

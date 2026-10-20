@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { loadConfigSafe } from "../config/config.js";
 import { envPath } from "../files/files.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";

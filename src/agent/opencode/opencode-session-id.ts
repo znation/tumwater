@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Minting an OpenCode session id (plans/opencode-backend.md "Sessions", finding 3) — a pure
  * reproduction of OpenCode's `Identifier.descending()` (packages/schema/src/identifier.ts), so
  * a fresh run's `--session` id is accepted by the free-tier gate. A `ses_…` id in any other

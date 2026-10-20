@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, loadConfigCached } from "./config.js";
 import { runnerIds } from "../roles/runner-ids.js";

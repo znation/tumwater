@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The QUESTIONS.md reader/writer core — the shared home of the open-question outbox logic: listing
  * the open questions in QUESTIONS.md and answering one, which moves its entry from `## Open` to
  * `## Answered` with a dated operator answer. It does the markdown surgery — cut exactly one

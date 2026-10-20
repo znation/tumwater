@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The machine-detectable half of the reply contract every pi run must follow: the
  * TUMWATER_NOTHING_TO_DO sentinel a role emits when it found nothing to do, the
  * TUMWATER_REFUSED line a role emits when it declines its task, and the review gate's VERDICT

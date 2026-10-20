@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Installing the per-team `tumwater-notes` shim every backend's run finds on its PATH
  * (plans/notes-command.md "Reaching it from a run"): run-agent calls `ensureNotesShim(root)`
  * before building each invocation, and the backend prepends the returned dir to the run's

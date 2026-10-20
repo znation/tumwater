@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { baselineBlocked, BUGFIX_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { enqueueRolePrompt } from "../inbox/inbox.js";

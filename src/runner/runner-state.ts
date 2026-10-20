@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { RunResult } from "../run/run-outcome.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
 import type { ModelFallbackState } from "./model-fallback.js";

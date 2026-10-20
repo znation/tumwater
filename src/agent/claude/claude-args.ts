@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Building the claude command line for one run (plans/agent-backends.md "The claude
  * invocation") — pure argv construction plus the prompt-on-stdin pairing, with no subprocess,
  * backend registration, or session ledger. Part 3c supplies the session decision (which

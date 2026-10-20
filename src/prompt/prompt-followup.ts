@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { contextBudgetRule } from "./prompt.js";
 import { dialectFor } from "./dialect.js";
 import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-contract.js";

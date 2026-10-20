@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { warnEvent, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";

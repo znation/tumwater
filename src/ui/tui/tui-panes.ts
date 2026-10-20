@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { arrowDir, pageDir } from "./tui-keymap.js";
 import { createTuiPaneSession, type TuiPanesDeps } from "./tui-pane-session.js";
 import { createActivityPane } from "./tui-pane-activity.js";

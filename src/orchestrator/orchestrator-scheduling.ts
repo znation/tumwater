@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The poll loop's per-runner scheduling pass (src/orchestrator/orchestrator.ts): decide, for each
  * runner, whether this poll admits a run and why — the pause/quiet/cost-cap/failure-hold
  * gates, the merge-queue interlock, need-based deferral, and once-mode settlement —

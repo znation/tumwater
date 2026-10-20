@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's browser-side twins of roleLabel and eventTypeLabel. The script is
  * String.raw text and cannot import server modules, so the data is interpolated at module build
  * and the few lines of logic are hand-kept copies, pinned against their TypeScript originals by

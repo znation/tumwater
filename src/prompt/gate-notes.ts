@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { shortSha } from "../text/format.js";
 import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../roles/role-guidance.js";
 import { formatTimestamp } from "../text/datetime.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { dropMerge, enqueueMerge, queuedMerges, type MergeEntry } from "./merge-queue.js";
 import { RETRIABLE_MERGE_RESULTS } from "./merge-core.js";
 import { pinnedRetrySha } from "../runner/leftover.js";

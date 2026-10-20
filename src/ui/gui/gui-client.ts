@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The browser-side dashboard app inlined as the GUI page's only <script>. It polls /api/status
  * every second and renders, in the order an operator needs them: the masthead's team status
  * (running, build, main check) and team controls (budget, pause); alerts for whatever needs a

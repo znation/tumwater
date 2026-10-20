@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// vocabulary: plain
 /** The CLI's entry point and command dispatcher — the `bin` target package.json points at
  * (dist/src/cli.js). main() runs the Node-floor gate from package.json's `engines.node`, answers a
  * `--help` topic before any command parses arguments or gates on a ready repo, resolves the repo

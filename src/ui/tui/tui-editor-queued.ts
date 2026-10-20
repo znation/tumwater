@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { editQueuedFile, readQueuedPromptBody } from "../../inbox/inbox-edit.js";
 import { parseRolePromptInput } from "./tui-input.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";

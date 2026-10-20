@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The backlog archive (plans/backlog-archive.md): finished entries leave the live backlog files.
  *
  * Every role run reads PLANS.md and BUGS.md to find work, and by 2026-10-18 nine tenths of both

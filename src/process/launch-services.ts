@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** launchservicesd's Mach-port budget on macOS: the running team's warning, driven by a watch
  * stepped from the orchestrator's poll. The daemon keeps a port for every process that ever
  * checked in with LaunchServices and never releases it, and the kernel kills it near

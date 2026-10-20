@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { runMainRevert, type MainCulprit } from "../baseline/main-revert.js";
 import { mergeApproved, type BatchRoleWiring } from "./merge-batch.js";
 import { removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";

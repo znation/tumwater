@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { asTestCounts, type TestCounts } from "../build/build-check-counts.js";
 import { isFullCheckScope } from "../build/build-check-events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { logEventBestEffort } from "../events/events.js";
 import { roleInboxDir } from "../paths.js";

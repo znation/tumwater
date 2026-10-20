@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The review gate's deterministic build pre-check — split out of review.ts so the gate keeps
  * one responsibility (running the model reviewer and acting on its verdict) while this module
  * owns the pre-review verification: the one scoped build-check run, its flake re-run, the

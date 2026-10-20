@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { RunDetail } from "../../run/run-detail-data.js";
 import { runDetailStat } from "../../run/run-detail.js";
 import { collectTeamChanges, collectRoleChange, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";

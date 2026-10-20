@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { openQuestions } from "../backlog/backlog.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { changeBaseRev, commitMessage, headOf } from "../git/git.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's History view, browser-side: every completed run, newest first, as
  * /api/history serves them (the rows `tumwater history` prints). A toolbar narrows it to one
  * role (server-side, so a quiet role still gets its full count), searches the rendered row text

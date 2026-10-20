@@ -1,4 +1,3 @@
-// vocabulary: plain
 import {
   questionAsker,
   tryAnswerQuestion,

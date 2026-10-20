@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Pressure reclaim of build outputs (plans/disk-floor.md, "Reclaiming build outputs", part
  * 2/4): when the worktrees volume drops below `diskReclaimGB`, delete the files git ignores
  * (`git clean -fdX`) in idle harness worktrees, least recently used first, before part 1/4's

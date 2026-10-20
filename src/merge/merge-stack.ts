@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The stack merger — the merge-half machinery of a multi-change batch (extracted from
  * merge-batch.ts, whose header scopes that file to the verify and merge halves): assemble the
  * approved changes as a cherry-picked stack on main's current tip, run ONE scope-`batch` build

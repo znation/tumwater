@@ -1,4 +1,3 @@
-// vocabulary: plain
 /**
  * The one write path for a role's notes, shared by every surface that touches it: the
  * `tumwater-notes` command (src/notes-cli.ts), `tumwater role --notes-file` /

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The entry-writing half of `tumwater bug` and `tumwater plan` — the operator-authored backlog
  * writes, mirroring the read half in backlog.ts: file a bug into BUGS.md's `## Open` or a plan
  * request into PLANS.md's `## Planned`, stamped the way roles write those entries, and cancel,

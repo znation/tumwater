@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { promptBlockOf } from "../brief/brief.js";
 import { readTextOrNull } from "../files/files.js";

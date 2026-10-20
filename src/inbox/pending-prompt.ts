@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { RunnerState } from "../runner/runner-state.js";
 import { enqueueRolePrompt, removeSameStemSiblings, takeQueuedFile } from "./inbox.js";
 import { movePromptImages, stripVanishedImageReferences } from "./inbox-attachments.js";

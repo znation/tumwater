@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { readBrief, renderBrief } from "../brief/brief.js";
 import { editBriefText } from "../brief/brief-edit.js";

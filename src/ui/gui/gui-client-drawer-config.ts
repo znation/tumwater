@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard role drawer's Configuration section, browser-side: what the role runs on and
  * carries, with the editors' open/closed rows, built from the same /api/role payload the CLI's
  * `tumwater role <id>` renders. Split from gui-client-drawer.ts, which owns the drawer's

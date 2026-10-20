@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { answeredQuestionSummaries } from "../backlog/question-answer.js";
 import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, plannedPlans, type BacklogEntry } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress, backlogMarks, refusedEntryTitles } from "../backlog/backlog-eligibility.js";

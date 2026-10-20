@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The team ALERT model: everything about the team that needs the operator — or that they
  * should know — phrased once for both observer surfaces: the dashboard's alert banners
  * (shipped in the status payload as `alerts`) and the TUI's attention lines

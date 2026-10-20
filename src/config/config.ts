@@ -1,4 +1,3 @@
-// vocabulary: plain
 import fs from "node:fs";
 import type { TumwaterConfig, RoleConfig } from "./config-schema.js";
 import type { ResolvedModelConfig } from "./config-views.js";

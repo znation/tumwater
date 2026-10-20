@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { queueCulpritHeal } from "./main-red.js";
 import { gateCommandOf } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";

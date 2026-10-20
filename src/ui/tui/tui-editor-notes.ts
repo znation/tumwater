@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { saveRoleNote } from "../../agent/role-notes-write.js";
 import { readTextIfExists } from "../../files/files.js";
 import { roleNotesPath } from "../../paths.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The free-form-prompt commands' bespoke argument parsers: `tumwater init` and
  * `tumwater prompt`, whose positionals are prompt TEXT rather than a token list. Every
  * shared helper in cli/cli-args.ts assumes flags claim their tokens and rejects whatever is

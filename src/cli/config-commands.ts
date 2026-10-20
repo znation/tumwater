@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { loadConfigSafe, knownRoleIds } from "../config/config.js";
 import { fail, say, sayJson, sayJsonLine } from "./cli-output.js";
 import {

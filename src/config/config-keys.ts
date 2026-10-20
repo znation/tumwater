@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The config KEY language — how `tumwater config get/set/unset` and the dashboard editors
  * name a config value and what makes one legitimate, apart from the writes that change it.
  * One family, in its own module because it serves both verbs AND the read side: `config get`,

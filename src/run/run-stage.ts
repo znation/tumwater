@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunOutcome } from "./run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";

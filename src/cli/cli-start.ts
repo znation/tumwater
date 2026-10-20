@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The team-booting commands' implementations: `tumwater init` and `tumwater start` — the latter
  * with its supervisor half (src/process/supervisor.ts). cli.ts stays the pure dispatcher; every
  * other command it dispatches already delegates to a module (operator/operator-commands.ts,

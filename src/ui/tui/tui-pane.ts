@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The per-pane body builder for the TUI's render (extracted from src/ui/tui/tui.tsx): which
  * lines fill the lower pane for the view the frame shows — transcript, backlog, usage,
  * failures, history, pending, queued, health, brief, or activity. Pure with respect to

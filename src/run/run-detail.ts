@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Rendering + command half of `tumwater history <role> <n>`: one completed run's full event
  * block printed as a short summary header followed by the run's events through the shared
  * formatEvent. The payload itself is collected by run-detail-data.ts (the collector-in-core

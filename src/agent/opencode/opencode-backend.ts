@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The opencode adapter for the agent seam (plans/opencode-backend.md "The invocation",
  * "Sessions", §6). It shapes one run's argv/stdin/env, translates opencode's `run --format
  * json` into the canonical stream, runs the authoritative session export after the process

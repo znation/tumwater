@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { roleRank } from "./status-model.js";
 
 /** The shared COLOR/EVENT-CLASSIFICATION vocabulary of the observer surfaces, split out of

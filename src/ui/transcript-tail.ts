@@ -1,4 +1,3 @@
-// vocabulary: plain
 import fs from "node:fs";
 import { openForRead, statOrNull } from "../files/files.js";
 import { formatTranscript, type TranscriptEntry } from "./transcript.js";

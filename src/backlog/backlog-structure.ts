@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { increment } from "../collections.js";
 import { readTextOrNull } from "../files/files.js";

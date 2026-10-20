@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Collection half of `tumwater history <role> <n>`: one completed run's full event block,
  * distilled from the event log into a RunDetail payload. The collector-in-core convention
  * beside history-data.ts and src/report/report-data.ts — a pure read over root, so core

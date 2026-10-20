@@ -1,4 +1,3 @@
-// vocabulary: plain
 /**
  * Bundled pi extension: on a model with a small context window, send none of the model's earlier
  * thinking back to it. Loaded on every pi run via `-e <this file>` from src/pi/pi-args.ts.

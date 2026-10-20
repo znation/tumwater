@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { RoleRunner } from "../runner/runner.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import type { SemaphoreLease } from "../concurrency/semaphore.js";

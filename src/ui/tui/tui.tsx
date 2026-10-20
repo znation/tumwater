@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { render as inkRender } from "ink";
 import { TuiApp, type TuiAppView } from "./tui-app.js";
 import { openQuestions } from "../../backlog/backlog.js";

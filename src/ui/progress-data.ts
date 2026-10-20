@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import {
   applyToolExecutionEvent,

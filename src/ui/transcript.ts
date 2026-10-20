@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { parsePiEventLine } from "../pi/pi-event-line.js";
 import { statRoleLog, type TailState, withTail } from "../files/tail.js";
 import { collapseWhitespace, squash, textOr, truncate } from "../text/text.js";

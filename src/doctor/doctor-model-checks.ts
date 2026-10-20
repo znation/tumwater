@@ -1,4 +1,3 @@
-// vocabulary: plain
 import os from "node:os";
 import path from "node:path";
 import { childEnv } from "../process/process.js";

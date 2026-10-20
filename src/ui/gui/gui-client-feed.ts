@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's Activity card, browser-side: the notable/all feed with its Role picker,
  * text box and tally chips, and the debounced /api/logs search that reaches past the carried
  * window. renderFeed repaints it from each /api/status poll (renderTeam in

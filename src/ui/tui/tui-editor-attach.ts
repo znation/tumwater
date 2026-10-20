@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { imagePromptGuidance } from "../../inbox/inbox-submit.js";
 import { promptImagesCountProblem, readPromptImageFiles, type PromptImageInput } from "../../inbox/inbox-attachments.js";

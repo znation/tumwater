@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { editBriefText } from "../../brief/brief-edit.js";
 import { readTextIfExists } from "../../files/files.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";

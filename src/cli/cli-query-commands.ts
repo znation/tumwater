@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The read-only query commands' bodies (status, diff, backlog, role), split out of
  * cli.ts's dispatcher: main() routes to a cmd* here exactly as it routes to operator-commands's
  * cmdAbort or config-commands's cmdConfig, and cli.ts keeps only routing and the help/version

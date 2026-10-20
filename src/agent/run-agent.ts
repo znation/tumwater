@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The backend-neutral agent runner (plans/agent-backends.md \"The seam\"): everything a run
  * needs regardless of which agent it drives — the spawn, the `tumwater_run` raw-log marker,
  * the watchdog wiring, abort, the group kill and marker sweep, stderr capture, and result

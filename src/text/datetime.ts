@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Local date/time formatting and calendar-day arithmetic — the zero-padded clock and
  * calendar parts, local-midnight day math, and the report-window header every display and
  * report surface (transcript run separators, the status table's last-run cell, daily-budget

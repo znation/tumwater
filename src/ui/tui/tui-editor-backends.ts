@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { existsSync } from "node:fs";
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { loadConfigSafe, parseJsonConfig } from "../../config/config.js";

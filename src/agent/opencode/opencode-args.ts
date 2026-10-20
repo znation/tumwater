@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Building one OpenCode run's command line (plans/opencode-backend.md "The invocation") —
  * pure argv construction plus the prompt-on-stdin pairing, with no subprocess, backend
  * registration, or session database. Part 5/7 wires this into the adapter; this module turns

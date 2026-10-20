@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's Pending view, browser-side: every role's unmerged change as /api/diff
  * serves it (the same document `tumwater diff` prints from the shared change collectors). The
  * roster shows each role's branch, state, commits ahead of main with their subjects, and its

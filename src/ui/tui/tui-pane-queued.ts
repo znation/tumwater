@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { movePromptToTop } from "../../inbox/inbox-top.js";

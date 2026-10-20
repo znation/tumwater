@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { qaCoveragePath } from "../paths.js";
 import { isJsonObject } from "../files/json-object.js";

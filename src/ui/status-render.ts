@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { RunnerState } from "../runner/runner-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { dailyCost } from "../budget/budget.js";

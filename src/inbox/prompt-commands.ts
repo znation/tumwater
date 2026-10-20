@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The CLI layer of `tumwater prompt` — the steering-prompt command: submit a prompt to the
  * director (default) or one role's queue, `--list` what is queued with per-role position
  * numbering, or `--cancel <n>` a queued prompt by position. Split out of

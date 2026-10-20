@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The git-level, language-neutral findings of the staging self-check, split from
  * stage-check.ts (which gathers them with the merge gate's own checks): path drift after a
  * rename or delete, added lines naming paths absent from the resulting tree, lost final

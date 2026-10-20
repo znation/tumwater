@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Harness-mediated config WRITES — the mutators behind the operator surfaces (the TUI's
  * Ctrl+B editor, the GUI's /api/budget endpoint) and the director's config requests. Each
  * one loads fresh (bypassing config.ts's stat cache), validates before writing, and writes

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir } from "../paths.js";
 import { reviewRunConfig } from "../config/config-views.js";

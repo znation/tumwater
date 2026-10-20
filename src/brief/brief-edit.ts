@@ -1,4 +1,3 @@
-// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START, briefPath, replaceBriefText } from "./brief.js";

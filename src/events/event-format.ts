@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
 import { eventRole, eventRun, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { readMergeQueue } from "../../merge/merge-queue.js";
 import { renderMergeQueue } from "../../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";

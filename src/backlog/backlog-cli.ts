@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The CLI shells of `tumwater bug` and `tumwater plan` — flag classification, the preflights,
  * and the confirmation each case prints — over the entry-writing primitives in
  * backlog-write.ts (the read half's mirror, backlog.ts). cli.ts reaches the file, cancel,

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { collectReport, collectReportSince } from "../../report/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../../report/report-render.js";
 import { REPORT_DEFAULT_DAYS } from "../../events/event-window.js";

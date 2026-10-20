@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The orchestrator's launch pass: the half of the per-poll runner sweep that admits due
  * roles to their runs. The decision half (isEligible, the pause/backoff/deferral gates,
  * once-mode settling) stays in runOrchestrator (src/orchestrator/orchestrator.ts) — it reads

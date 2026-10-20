@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** False-fix detection for md-only BUGS.md edits (BUGS.md 2026-09-22): an md-only diff is
  * exempt from the review gate by design, so nothing else verifies that a bug it moves to
  * Fixed actually has code behind it — commit 9cea8c3 merged a Fix paragraph naming

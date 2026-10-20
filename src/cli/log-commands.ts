@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { fail, say, sayJsonLine } from "./cli-output.js";
 import { LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";

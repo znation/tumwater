@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Building one OpenCode run's injected config (`OPENCODE_CONFIG_CONTENT`) (plans/opencode-
  * backend.md "The invocation") — pure JSON construction, with no subprocess. The config
  * applies after the operator's global and project files, so only managed config wins over it:

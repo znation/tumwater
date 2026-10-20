@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { readBrief, renderBrief } from "../../brief/brief.js";
 import type { TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";

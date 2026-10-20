@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Every row name `tumwater doctor` can print, in report order — the names `tumwater doctor
  * <check>...` accepts. A leaf with no imports: cli.ts loads doctor.ts with a dynamic import()
  * while cli-command-args.ts is imported eagerly, so the argument parser reads the names from

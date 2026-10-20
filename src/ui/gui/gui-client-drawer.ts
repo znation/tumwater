@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's detail drawer, browser-side: a sheet on the right that opens over the page
  * without losing it. For a role it shows the state, the role's controls (prompt, wake now or later,
  * pause/resume, abort), what it is working on, its last result, the metrics the team table

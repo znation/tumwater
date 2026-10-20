@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The persisted slot layout of the worktree pool (plans/worktree-pool.md): which
  * `.tumwater/worktrees/_slot-<n>` checkouts exist, who leases each, and which role each is pinned
  * for. Kept in its own module, apart from the pool's lease machinery, so the readers that run in

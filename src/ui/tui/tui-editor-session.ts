@@ -1,4 +1,3 @@
-// vocabulary: plain
 import {
   newPromptHistory,
   resetPromptRecall,

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /**
  * Bundled pi extension: send pi's system prompt without its `docs` section, on every model.
  * Loaded on every pi run via `-e <this file>` from src/pi/pi-args.ts.

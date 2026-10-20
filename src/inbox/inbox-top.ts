@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";

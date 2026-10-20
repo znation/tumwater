@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Session retention (the `sessionRetentionDays` setting): the once-per-day gate and the prune
  * itself, split out of orchestrator.ts — the poll-loop runtime carried both a startup prune and
  * a near-identical in-poll prune plus the last-applied-window bookkeeping, and scheduling.ts

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The worktree pool's lease machinery (plans/worktree-pool.md, "Leases"; part 2a/5): a fixed set
  * of `.tumwater/worktrees/_slot-<n>` checkouts that runs and verifies lease and switch commits in
  * place, instead of keeping one `_land-<role>` checkout per role. The persisted layout and its

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The usage report's Markdown render: turn a collected `ReportData` (src/report/report-data.ts)
  * into the bounded Markdown the CLI prints and the TUI usage pane reuses (pure function of the
  * data — no I/O, no clock reads — so the bounds argued at collection hold here unchanged). The

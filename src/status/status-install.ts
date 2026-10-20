@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { installDrift } from "../build/dep-install.js";
 
 /** How long a computed drift answer is reused. The answer depends on two files (the lockfile and

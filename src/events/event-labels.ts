@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Words for the two code families the dashboards show: event types (the activity chips) and run
  * result codes (the result cells). Pure, no I/O, so core modules and the UI may both import it. */
 

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Collection half of `tumwater history`: read the event log and distill the last N completed
  * runs into RunRow — one row per run, newest first, with the paired duration and the raw
  * usage numbers. The Markdown/table rendering of this data lives in history.ts, a pure

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Two of the three halves of a merge (plans/merge-queue.md 5/5, PLANS.md land-queue speed
  * 2c): the per-change verify (verifyRequest) that merge-verify.ts's verify stage runs for every
  * queued change, and the merge (mergeApproved) its one merge slot runs over the approved ones — a

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { saveRoleNote } from "../../agent/role-notes-write.js";
 import { roleNotesPath } from "../../paths.js";
 import { renderRoleChange } from "../../change/change-render.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { QueuedListRow } from "../../inbox/inbox.js";
 
 /** The pane state the editor open arms read and the search editor pre-fills from. The factory

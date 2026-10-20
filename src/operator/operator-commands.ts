@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The merge gate's deterministic checks, run BEFORE a changed run commits.
  *
  * The gate runs `backlogStructureReason` and `falseFixReason` at merge time, by which point

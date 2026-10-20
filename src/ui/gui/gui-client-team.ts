@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's team view, browser-side — the main screen between polls: the sidebar's
  * project name and team status (roles running, build state, main's check, quiet hours),
  * the alerts band for whatever needs a human (a failing role, a red main, a spent budget,

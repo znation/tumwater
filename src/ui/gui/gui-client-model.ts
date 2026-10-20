@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's view model, browser-side — the pure layer between the status payload and
  * what the page shows, with no DOM of its own: each role's phase pill (label, tone, live
  * detail), its last result in words with the tone of its outcome, the role sort order and

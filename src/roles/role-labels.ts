@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** How a role's id shows up in words: an instance id as `feature #2`. Pure, no I/O, so core
  * modules and the UI may both import it. */
 

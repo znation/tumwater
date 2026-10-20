@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { revertSkipReason } from "../baseline/main-revert.js";
 import { reviewRunConfig, seamConcurrencyKey } from "../config/config-views.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";

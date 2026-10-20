@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** What a finished run or merge is (the RunResult/RunOutcome vocabulary), shared by the
  * runner that produces it, the dashboards that render it, and the state machine that applies
  * it. The application policy — which outcomes count which streaks, when a session resumes,

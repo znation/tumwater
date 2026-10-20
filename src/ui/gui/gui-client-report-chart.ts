@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard Usage view's chart builders, browser-side: the report-chart region. Pure
  * functions from /api/report's day series to SVG strings — the per-day bar and stacked charts,
  * their role/provider/model orderings, the shared role palette, and the has-data predicates that

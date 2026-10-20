@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { RunnerState } from "../runner/runner-state.js";
 import { backendSessionResumable } from "../agent/agent-backend.js";
 import { latestSession } from "../agent/session-ledger.js";

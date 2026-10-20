@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Building the environment for one opencode run (plans/opencode-backend.md "The invocation")
  * — pure scrub-and-set over a base environment, with no subprocess. The caller layers the
  * run-marker and the macOS preload on first (claude's adapter shows the pie pattern), then

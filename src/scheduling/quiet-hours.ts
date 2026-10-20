@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Quiet hours (plans: "Quiet hours … part 1/2, the gate"): a config-driven daily local-time
  * window — `"23:00-07:00"` — during which roles start no new runs, so an operator can
  * put the team on a nightly schedule once instead of typing `tumwater pause` every evening.

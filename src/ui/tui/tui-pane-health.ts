@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { renderDoctor, renderDoctorProblems } from "../../doctor/doctor-render.js";
 import { orphanKillLines } from "../../doctor/doctor-orphans.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";

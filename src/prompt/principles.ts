@@ -1,4 +1,3 @@
-// vocabulary: plain
 import path from "node:path";
 import { readTextOrNull } from "../files/files.js";
 import { truncateWithNote } from "../text/text.js";

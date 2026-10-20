@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { submitRolePromptAndWake } from "../../operator/operator-intent.js";
 import { pushPromptHistory } from "./tui-prompt-history.js";
 import { parseRolePromptInput } from "./tui-input.js";

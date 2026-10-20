@@ -1,4 +1,3 @@
-// vocabulary: plain
 
 /** The editor-mode flags the pane arms' exclusion guards read (es.*) — the same flags the
  * prompt-line editors consume every line-key on. Each pane arm restates its guard so its

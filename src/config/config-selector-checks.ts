@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { BACKEND_IDS, FALLBACK_STEP_KEYS, MODEL_TIERS } from "./config-schema.js";
 import { checkKnownKeys, show } from "./config-field-checks.js";
 import { isJsonObject } from "../files/json-object.js";

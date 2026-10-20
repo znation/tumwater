@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Wording half of the failure digest's Team state changes section: which transition event types
  * the digest replays and the bounded one-liner describing each. Split out of failure-data.ts (the
  * same seam build/build-check-events.ts split from build/build-check.ts) so the per-event-type

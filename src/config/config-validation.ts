@@ -1,4 +1,3 @@
-// vocabulary: plain
 import {
   BACKEND_IDS,
   SELECTOR_ENTRY_KEYS,

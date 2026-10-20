@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// vocabulary: plain
 /** The `tumwater-notes` command — the second bin entry (dist/src/notes-cli.js), the one
  * carrier for writing a role's note on every backend (plans/notes-command.md "The
  * `tumwater-notes` command"). A run finds it on its PATH (src/agent/notes-shim.ts) and hands

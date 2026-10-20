@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 import {
   HISTORY_DEFAULT_RUNS,

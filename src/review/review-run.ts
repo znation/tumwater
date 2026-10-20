@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { APPROVED_PATCH_IDS_MAX, REVIEW_RESUME_LIMIT, saveRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { modelSelectorField, resolvedBackendConfig, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";

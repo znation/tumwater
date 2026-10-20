@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { checkMainBaseline } from "./main-baseline.js";
 import { findRedCulprit } from "./main-culprit.js";
 import type { MainCulprit } from "./main-revert.js";

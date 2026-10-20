@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The budget/tier FALLBACK side of the config views, split out of config-views.ts: how the
  * team falls back at the daily spend cap — which free pair each tier runs on
  * (resolveTierFallbacks and its BORROW_ORDER), the per-role fallback config a model-failure

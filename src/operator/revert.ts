@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { loadConfigSafe } from "../config/config.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { currentBranch, headOf, isMergedInto, targetBranch } from "../git/git.js";

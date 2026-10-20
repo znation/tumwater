@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's backlog card, browser-side: the questions/plans/bugs/queued tabs with
  * their text Search box, the Queued tab's in-place prompt editor, and the New plan / File a
  * bug forms. renderBacklog repaints it from each /api/status poll (renderTeam in

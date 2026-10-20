@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
 import { clockHm, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";

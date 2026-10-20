@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { activityEvents } from "./tui-pane.js";
 import { stepEntryScroll } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";

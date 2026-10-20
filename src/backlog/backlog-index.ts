@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Renders the `<backlog-index>` prompt block every role prompt carries — each actionable
  * entry (PLANS.md ## Planned, BUGS.md ## Open, QUESTIONS.md ## Open) plus the newest closed
  * ones, each with the 1-based line range it occupies in its file — the bounded replacement for

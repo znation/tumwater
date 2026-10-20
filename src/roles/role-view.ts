@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** One role's read-only inspection payload — the collector behind `tumwater role <id>`:
  * what the role IS (catalog entry or custom, enabled, paused, tier), what it RUNS ON
  * (resolved provider/model, the budget fallback pair), what it CARRIES (the instructions

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { enqueueRolePrompt, promptPreview } from "./inbox.js";
 import { unlinkAllMissingTolerant } from "../files/files.js";
 import {

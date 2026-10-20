@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The hold-lifting and reordering writes of `tumwater bug|plan --release <n>` and `--top <n>`:
  * lift an entry's Refused or Waiting-for-the-next-failure note, or move it to the head of its open
  * section. Each comes as an exiting writer (the CLI) and a non-exiting `try…` core that refuses as

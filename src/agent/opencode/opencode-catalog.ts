@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The data half of OpenCode free-ness (plans/opencode-backend.md §7; part 6a/7): a bounded
  * fetch of models.dev's `api.json` — the catalog OpenCode itself caches (finding 10) — a parse
  * that keeps only the providers the config routes through OpenCode, a cache at

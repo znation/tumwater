@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import type { TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { roleLabel } from "../roles/role-labels.js";
 import { pausedRoles, pausedRolesUntil, standingTeamPause } from "../team/team-state.js";
 import { MODEL_TIERS, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"; part 2/2): a fresh
  * project seeds `bootstrap.untilPlansDone` in tumwater.json (part 1/2), and this gate holds
  * every maintenance role until that many plans have moved to PLANS.md's `## Done`. Only plan,

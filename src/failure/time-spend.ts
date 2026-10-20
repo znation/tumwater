@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The failure digest's time-and-spend fold: read the window's `run_end`s and price each one into
  * the per-role × outcome-class table (runs, summed wall-clock ms, cost) plus the loss-cause
  * ranking that weighs causes by agent-hours rather than run counts. Split from

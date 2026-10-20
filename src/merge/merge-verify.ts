@@ -1,4 +1,3 @@
-// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { gateRoleConfig } from "../gates/budget-gates.js";

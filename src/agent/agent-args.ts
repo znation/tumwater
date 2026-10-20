@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Appending a backend's configured passthrough args to an already-built argv. Shared by the
  * claude and opencode argv builders (claude-args.ts and opencode-args.ts), whose passthrough
  * handling is otherwise identical, so the two backends reject a reserved flag by the same

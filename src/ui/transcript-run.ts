@@ -1,4 +1,3 @@
-// vocabulary: plain
 import fs from "node:fs";
 import { formatTranscript } from "./transcript.js";
 import { parsePiEventLine } from "../pi/pi-event-line.js";

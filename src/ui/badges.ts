@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { TestCounts } from "../build/build-check-counts.js";
 import { claudeUtilizationPct, claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";

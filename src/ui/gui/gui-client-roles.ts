@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's roles table, browser-side — the team's rows grouped by what the roles are
  * doing (working, merge, needs-attention, paused, idle), each with its status pill, current
  * work, spend, and per-row operator controls (prompt, wake, pause/resume, and the two-click

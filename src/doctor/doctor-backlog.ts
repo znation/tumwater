@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { roleLabel } from "../roles/role-labels.js";
 import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import fs from "node:fs";

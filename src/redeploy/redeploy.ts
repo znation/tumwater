@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "../build/build-info.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import { baselineCheckEventLogger } from "../build/build-check-events.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { cachedBaselineVerdict, checkMainBaseline } from "./main-baseline.js";
 import { baselineCheckLogger } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";

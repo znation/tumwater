@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's composer, browser-side — the one input box that steers the director or any
  * single role: the target selector with its per-target unsent drafts, the character counter,
  * the image attachments (dropped or pasted onto the box, rendered as removable chips), and

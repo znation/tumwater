@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Event-log folding for the usage report: turn raw harness events (run_end/merged/…) into
  * per-day and whole-window `UsageFold` accumulators, memoizing the day-keyed read per
  * (root, fromKey) so a dashboard polling /api/report only folds appended lines instead of

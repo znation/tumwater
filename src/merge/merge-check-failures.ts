@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { deleteRef, headOf, patchId } from "../git/git.js";
 import { mergeRefName } from "../paths.js";
 import { recordReview } from "../run/run-apply.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The bundled project templates for `tumwater init --template`
  * (docs/feature-project-templates.md). Static string data, no file reads and no runtime
  * dependencies: a template is a brief preamble (the operator's own words stay appended after

@@ -1,4 +1,3 @@
-// vocabulary: plain
 /**
  * The per-backend capabilities that the config, prompt, watchdog, progress and doctor layers
  * read (plans/opencode-backend.md "Groundwork: the claude-only branches become backend

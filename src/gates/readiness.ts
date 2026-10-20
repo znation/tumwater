@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The repo preconditions' shared wording behind the readiness gate. startup-gate.ts answers
  * with the first unmet precondition (cmdStart and requireReadyRepo fail on it, the self-redeploy
  * refuses a swap on it) and doctor.ts reports each one individually, but every surface

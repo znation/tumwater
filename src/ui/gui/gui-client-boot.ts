@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The dashboard's boot, browser-side: view routing over #fragment links (Back/Forward and
  * bookmarks work, re-clicking the open tab refetches), #role/<role> opening that role's
  * drawer with the address bar following it, the global action dispatcher behind the

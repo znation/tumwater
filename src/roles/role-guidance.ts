@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Shared instruction fragments role prompts and prompt assembly embed verbatim. Pure
  * data: this module imports only the dependency-free legacy-role-ids, so prompt assembly
  * can depend on it without a cycle.

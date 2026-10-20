@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { deleteRef, headOf, patchId, setRef } from "../git/git.js";
 import { mergeRefName, mergeWorktreePath, rejectedRefName, reviewRunSessionDir } from "../paths.js";
 import { tryLeaseSlot } from "../git/worktree-pool.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { readTextIfExists } from "../../files/files.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";

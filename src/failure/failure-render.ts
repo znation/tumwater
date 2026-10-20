@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Rendering half of the failure digest: turn a collected `FailureReportData` (failure-data.ts)
  * into the bounded Markdown the CLI's `--failures` report, the GUI/TUI failures tabs, and the
  * selfcheck role's run evidence all print. Pure function of the data — no I/O, no clock

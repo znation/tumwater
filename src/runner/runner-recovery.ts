@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { RunOutcome } from "../run/run-outcome.js";
 import type { RunnerState } from "./runner-state.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";

@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { rawRoleField } from "../../roles/role-view.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";

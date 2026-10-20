@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { spawn, type StdioOptions } from "node:child_process";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import type { HarnessEventInput } from "../events/events.js";

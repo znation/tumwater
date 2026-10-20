@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** Rendering half of `tumwater history`: format a `RunRow[]`/summary — collected by
  * history-data.ts — into the aligned table or `--summary` text `cmdHistory` (history.ts)
  * prints. The sibling observing view report does the same (src/report/report.ts prints

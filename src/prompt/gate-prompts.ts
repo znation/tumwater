@@ -1,4 +1,3 @@
-// vocabulary: plain
 import { shortSha } from "../text/format.js";
 import { KILL_BY_PID_RULE, OLDER_NAMES_SENTENCE, TEST_RUNNER_RULE, dateLine } from "./prompt.js";
 import { describeCheck } from "../build/build-check-report.js";

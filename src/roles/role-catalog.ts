@@ -1,4 +1,3 @@
-// vocabulary: plain
 /** The role catalog: one built-in role's identity and its role-specific "find something to do"
  * instruction text. Split out of roles.ts (2026-10-01, organize) so the catalog's embedded
  * prompt prose lives apart from the derived registries and classification helpers, which stayed

@@ -165,7 +165,6 @@ function walk(dir: string, out: string[]): void {
   }
 }
 
-const H = "// vocabulary: plain\n";
 
 test("scanned src modules use only plain terms", () => {
   const root = repoRoot(fileURLToPath(new URL(".", import.meta.url)));
@@ -177,47 +176,45 @@ test("scanned src modules use only plain terms", () => {
 });
 
 test("flags retired words in string and template text, with inflections, not machine names", () => {
-  const src = H + 'const a = "the fleet";\nconst b = `drained ${x} ticks`;\nconst c = "tick_end land_queued fleet_paused";\n';
+  const src = 'const a = "the fleet";\nconst b = `drained ${x} ticks`;\nconst c = "tick_end land_queued fleet_paused";\n';
   const f = vocabularyFindings("m.ts", src);
   assert.equal(f.length, 3);
-  assert.match(f[0]!, /^m\.ts:2: fleet in /);
-  assert.match(f[1]!, /^m\.ts:3: drained in /);
-  assert.match(f[2]!, /^m\.ts:3: ticks in /);
-  assert.equal(vocabularyFindings("m.ts", H + 'const d = "fleet-wide tumwater(operator): Loop";\n').length, 3);
+  assert.match(f[0]!, /^m\.ts:1: fleet in /);
+  assert.match(f[1]!, /^m\.ts:2: drained in /);
+  assert.match(f[2]!, /^m\.ts:2: ticks in /);
+  assert.equal(vocabularyFindings("m.ts", 'const d = "fleet-wide tumwater(operator): Loop";\n').length, 3);
 });
 
 test("flags the retired role id dry but not --dry-run or a dry run", () => {
-  assert.equal(vocabularyFindings("m.ts", H + 'const a = "the dry role";\n').length, 1);
-  assert.deepEqual(vocabularyFindings("m.ts", H + 'const a = "--dry-run and a dry run";\n'), []);
+  assert.equal(vocabularyFindings("m.ts", 'const a = "the dry role";\n').length, 1);
+  assert.deepEqual(vocabularyFindings("m.ts", 'const a = "--dry-run and a dry run";\n'), []);
 });
 
 test("ignores retired words in identifiers, comments and template expressions", () => {
-  const src = H + "// the fleet loop\nconst fleet = 1;\nconst s = `ok ${fleet.loop} fine`;\n/* tick */\n";
+  const src = "// the fleet loop\nconst fleet = 1;\nconst s = `ok ${fleet.loop} fine`;\n/* tick */\n";
   assert.deepEqual(vocabularyFindings("m.ts", src), []);
 });
 
 test("honors vocabulary-ok with a reason and refuses an empty one", () => {
-  assert.deepEqual(vocabularyFindings("m.ts", H + 'const a = "tick"; // vocabulary-ok: event type\n'), []);
-  assert.equal(vocabularyFindings("m.ts", H + 'const a = "tick"; // vocabulary-ok:\n').length, 1);
-  assert.equal(vocabularyFindings("m.ts", H + 'const a = "tick"; // vocabulary-ok:   \n').length, 1);
+  assert.deepEqual(vocabularyFindings("m.ts", 'const a = "tick"; // vocabulary-ok: event type\n'), []);
+  assert.equal(vocabularyFindings("m.ts", 'const a = "tick"; // vocabulary-ok:\n').length, 1);
+  assert.equal(vocabularyFindings("m.ts", 'const a = "tick"; // vocabulary-ok:   \n').length, 1);
 });
 
 test("skips import specifiers, property-name literals and type literals", () => {
   const src =
-    H +
-    'import x from "./fleet.js";\nexport * from "./runner.js";\nconst o = { "tick": 1 };\ntype T = "fleet" | "loop";\nconst m = await import("./tick.js");\nconst r = require("./seam.js");\n';
+        'import x from "./fleet.js";\nexport * from "./runner.js";\nconst o = { "tick": 1 };\ntype T = "fleet" | "loop";\nconst m = await import("./tick.js");\nconst r = require("./seam.js");\n';
   assert.deepEqual(vocabularyFindings("m.ts", src), []);
 });
 
 test("flags JsxText in a tsx fixture", () => {
-  const f = vocabularyFindings("v.tsx", H + "const e = <b>the fleet</b>;\n");
+  const f = vocabularyFindings("v.tsx", "const e = <b>the fleet</b>;\n");
   assert.equal(f.length, 1);
-  assert.match(f[0]!, /^v\.tsx:2: fleet in /);
+  assert.match(f[0]!, /^v\.tsx:1: fleet in /);
 });
 
 test("scans String.raw browser blobs by their real file lines", () => {
   const src = [
-    "// vocabulary: plain",
     "export const X_JS = String.raw`",
     "var fleet = 1;",
     "el.textContent = 'the loop ' + ${JSON.stringify(\"tick\")};",
@@ -226,18 +223,18 @@ test("scans String.raw browser blobs by their real file lines", () => {
   ].join("\n");
   const f = vocabularyFindings("b.ts", src);
   assert.equal(f.length, 1);
-  assert.match(f[0]!, /^b\.ts:4: loop in /);
+  assert.match(f[0]!, /^b\.ts:3: loop in /);
 });
 
 test("does not flag ticket, seamless or lastTickEndedAt", () => {
-  assert.deepEqual(vocabularyFindings("m.ts", H + 'const a = "ticket seamless lastTickEndedAt loophole";\n'), []);
+  assert.deepEqual(vocabularyFindings("m.ts", 'const a = "ticket seamless lastTickEndedAt loophole";\n'), []);
 });
 
 test("scans a module whether or not it carries the header", () => {
   const src = 'const a = "the fleet";\n';
   assert.equal(vocabularyFindings("src/cli/m.ts", src).length, 1);
   assert.equal(vocabularyFindings("src/merge/m.ts", src).length, 1);
-  assert.equal(vocabularyFindings("src/merge/m.ts", H + src).length, 1);
+  assert.equal(vocabularyFindings("src/merge/m.ts", src).length, 1);
 });
 
 test("skips legacy files and honors retired-name-ok lines and regions", () => {

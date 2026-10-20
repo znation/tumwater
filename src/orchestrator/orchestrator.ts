@@ -1,4 +1,3 @@
-// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { readOrchestratorInfo, writeOrchestratorInfo, type OrchestratorInfo } from "../team/orchestrator-info.js";
 import { runnerIds } from "../roles/runner-ids.js";
