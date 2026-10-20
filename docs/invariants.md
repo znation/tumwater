@@ -1261,3 +1261,93 @@ and an empty context are no-ops. The summary note from `shakeNote` is appended t
 **Pinned by.** `test/context-shake.test.ts` — "the adapter shakes once at 70%, again at 85%, and
 notes the next tool result", "the adapter shakes a 64k run at 57.5% and again at 72.5%" and "the
 adapter tolerates missing usage and an empty context".
+
+## Bounded output: an oversized read or bash result shrinks to head and tail, never past its limit and never unrecoverably
+
+Every pi run loads `src/pi-extension/bounded-output.ts`. It rewrites every oversized `read` and
+`bash` result before the model sees it. `boundText`, `boundReadResult` and `boundBashResult` are
+the pure bounders, `outputLimits` picks the budgets for the model's window, and the default export
+`boundedOutput` is the thin adapter on pi's `tool_result` event.
+
+### INV-W1: a bounded text never exceeds its limit and never splits a character
+
+**Guarantee.** `boundText` returns empty and under-limit text byte-identical. Over the limit it
+keeps head and tail around a marker naming the omitted count (and the full-output path when given),
+counted in code points. When the marker alone outgrows the budget, the head and tail clamp to zero
+and a final hard cut keeps the result within the limit.
+
+**Binds.** `src/pi-extension/bounded-output.ts` (`boundText`, private `cpsWhenOverLimit`).
+
+**Pinned by.** `test/bounded-output.test.ts` — "boundText returns text under the limit
+byte-identical", "boundText over the limit returns head + marker + tail within the limit",
+"boundText marker names the full-output path when one is given", "boundText never splits
+multi-byte UTF-8 mid-character", "boundText keeps its limit when the full-output path alone
+swallows the budget", "boundText with a tiny limit and no path still stays within the limit" and
+"boundText returns astral-heavy text with cps within the limit unchanged".
+
+### INV-W2: a bounded read keeps whole lines and tells the model how to read the middle
+
+**Guarantee.** `boundReadResult` passes ranged reads (`offset` or `limit` set), short and empty
+text through untouched. Otherwise its cuts snap to line boundaries, and its marker names the file
+and asks for an offset/limit re-read; nothing is copied to disk. When snapping cannot fit (lines
+too long, the snap swallowing the text, or the snapped result overgrowing the limit), it falls
+back to `boundText` with no path.
+
+**Binds.** `src/pi-extension/bounded-output.ts` (`boundReadResult`, private `snapHeadForward`,
+`snapTailStartForward`, `SNAP_SLACK`).
+
+**Pinned by.** `test/bounded-output.test.ts` — "boundReadResult keeps whole lines and reports the
+omitted amount", "boundReadResult passes through ranged, short, and empty results",
+"boundReadResult of a 1000-line file stays under the read limit without input ranges",
+"boundReadResult clamps a path-swollen marker to the marker-alone bound, not a dropped tail",
+"boundReadResult falls back to a plain cut when lines are too long to snap", "boundReadResult
+passes astral-heavy text through when the code-point count fits the limit", "boundReadResult falls
+back to a plain cut when the line snap swallows the whole text" and "boundReadResult falls back to
+a plain cut when snapping overgrows the kept head past the limit".
+
+### INV-W3: a bounded bash result points at its complete output, and only an over-limit one earns a write
+
+**Guarantee.** `boundBashResult` prefers pi's `details.fullOutputPath` and then never calls the
+writer; otherwise it uses the path the writer returns, and with no path the marker carries none.
+Empty and under-limit output (by code points, so astral-heavy text within the limit included) is
+returned unchanged and the writer is never called.
+
+**Binds.** `src/pi-extension/bounded-output.ts` (`boundBashResult`),
+`src/pi-extension/full-output.ts` (`writeFullOutput`).
+
+**Pinned by.** `test/bounded-output.test.ts` — "boundBashResult keeps the first and last line on
+either side of the marker", "boundBashResult prefers pi's own fullOutputPath and never calls the
+writer", "boundBashResult with no fullOutputPath and no harness root writes nothing",
+"boundBashResult uses the writer's path when it provides one", "boundBashResult passes short
+results through untouched", "boundBashResult returns astral-heavy under-limit text unchanged and
+never writes it", "boundBashResult truncates astral-heavy text just past the code-point limit" and
+"boundBashResult returns empty output untouched".
+
+### INV-W4: the limits shrink with a small window, but never below a quarter
+
+**Guarantee.** `outputLimits` returns `READ_LIMIT_CHARS` and `BASH_LIMIT_CHARS` at and above the
+128k reference window and when the window is unknown, and scales both by `windowScale` below it,
+floored at `MIN_LIMIT_SHARE`.
+
+**Binds.** `src/pi-extension/bounded-output.ts` (`outputLimits`, `READ_LIMIT_CHARS`,
+`BASH_LIMIT_CHARS`, `MIN_LIMIT_SHARE`), `src/pi-extension/context-window.ts` (`windowScale`).
+
+**Pinned by.** `test/bounded-output.test.ts` — "outputLimits keeps the tuned limits at and above
+the 128k window and when it is unknown" and "outputLimits scales both limits with a smaller
+window, down to a quarter".
+
+### INV-W5: the adapter rewrites only an oversized read or bash text result
+
+**Guarantee.** `boundedOutput` returns nothing for any other tool, a non-array content payload, a
+result with no text block (an image), and a result its bounder leaves unchanged. Otherwise it
+returns a one-text-block `content` patch at the budgets `outputLimits` gives for
+`ctx.model.contextWindow`, read per result; for bash it hands the bounder a writer that calls
+`writeFullOutput` with the tool call id.
+
+**Binds.** `src/pi-extension/bounded-output.ts` (`boundedOutput`).
+
+**Pinned by.** `test/bounded-output.test.ts` — "adapter bounds oversized read results and passes
+everything else through", "adapter bounds oversized bash results using pi's fullOutputPath",
+"adapter persists the full output itself when pi's bash tool left no file", "adapter leaves a
+non-array content payload untouched" and "adapter bounds a 64k model's results to its scaled
+limits".
