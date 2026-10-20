@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
-import { GUI_CLIENT_TEAM_JS } from "../src/ui/gui/gui-client-team.js";
+import { GUI_CLIENT_BACKLOG_JS } from "../src/ui/gui/gui-client-backlog.js";
+import { GUI_CLIENT_FEED_JS } from "../src/ui/gui/gui-client-feed.js";
 import { GUI_PAGE } from "../src/ui/gui/gui-page.js";
 
-// The dashboard's team-view backlog panel (src/ui/gui/gui-client-team.ts's marked backlog
+// The dashboard's team-view backlog panel (src/ui/gui/gui-client-backlog.ts's marked backlog
 // region), exercised the way the page runs it: the shared view-model region supplies
 // queuedPrompts/splitTitle, the format region supplies fmtAgo, and a recording paintPanel
 // stands in for the DOM.
@@ -134,13 +135,13 @@ test("switching tabs abandons an open Queued editor", () => {
 });
 
 test("the queued row's delegated handler carries the edit arms", () => {
-  assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='promptedit'\]/);
-  assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='prompteditsave'\]/);
-  assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='prompteditcancel'\]/);
-  assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='prompttop'\]/);
-  assert.match(GUI_CLIENT_TEAM_JS, /"\/api\/prompt-text\?role="/);
-  assert.match(GUI_CLIENT_TEAM_JS, /"\/api\/prompt-edit"/);
-  assert.match(GUI_CLIENT_TEAM_JS, /"\/api\/prompt-top"/);
+  assert.match(GUI_CLIENT_BACKLOG_JS, /button\.rowaction\[data-action='promptedit'\]/);
+  assert.match(GUI_CLIENT_BACKLOG_JS, /button\.rowaction\[data-action='prompteditsave'\]/);
+  assert.match(GUI_CLIENT_BACKLOG_JS, /button\.rowaction\[data-action='prompteditcancel'\]/);
+  assert.match(GUI_CLIENT_BACKLOG_JS, /button\.rowaction\[data-action='prompttop'\]/);
+  assert.match(GUI_CLIENT_BACKLOG_JS, /"\/api\/prompt-text\?role="/);
+  assert.match(GUI_CLIENT_BACKLOG_JS, /"\/api\/prompt-edit"/);
+  assert.match(GUI_CLIENT_BACKLOG_JS, /"\/api\/prompt-top"/);
 });
 
 test("the other backlog tabs render unchanged alongside the queued age", () => {
@@ -289,7 +290,7 @@ test("the Merged today tile shows the work/maintenance commit split", () => {
   assert.match(html, /4 features done · 2 bugs fixed · 2 work \/ 3 maintenance/, "the sub-line names the work vs upkeep split");
 });
 
-// The Activity card's narrowing (src/ui/gui/gui-client-team.ts's marked activity region): the
+// The Activity card's narrowing (src/ui/gui/gui-client-feed.ts's marked activity region): the
 // Role picker and Search box narrow the event window the card already carries, exactly as the
 // History view's do. The scope runs the shared format/view-model/panel/role regions renderFeed
 // reaches, with the DOM, persistence, and panel paint stubbed.
@@ -760,9 +761,9 @@ test("clicking a type chip selects it and clicking the active chip clears it", (
 });
 
 test("the Activity filter persists its choices and the page ships the controls in the card head", () => {
-  assert.match(GUI_CLIENT_TEAM_JS, /store\("feed-role"/);
-  assert.match(GUI_CLIENT_TEAM_JS, /store\("feed-grep"/);
-  assert.match(GUI_CLIENT_TEAM_JS, /store\("feed-type"/);
+  assert.match(GUI_CLIENT_FEED_JS, /store\("feed-role"/);
+  assert.match(GUI_CLIENT_FEED_JS, /store\("feed-grep"/);
+  assert.match(GUI_CLIENT_FEED_JS, /store\("feed-type"/);
   const card = GUI_PAGE.slice(GUI_PAGE.indexOf('aria-labelledby="activity-title"'));
   const head = card.slice(0, card.indexOf("</header>"));
   assert.match(head, /id="feedrole"/);
@@ -779,7 +780,7 @@ test("the Plans and Bugs tabs offer a New form that survives polls and drops on 
     const html = panels["backlog"] ?? "";
     assert.match(html, /<input id='backlognew'/);
     assert.match(html, /<textarea id='backlognewbody'/);
-    assert.match(GUI_CLIENT_TEAM_JS, /body: bodyBox \? bodyBox\.value : ""/);
+    assert.match(GUI_CLIENT_BACKLOG_JS, /body: bodyBox \? bodyBox\.value : ""/);
     assert.match(html, new RegExp(`data-action='backlognewsave' data-kind='${kind}'`));
     assert.match(html, /data-action='backlognewcancel'/);
     scope.renderBacklog(status);

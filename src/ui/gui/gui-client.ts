@@ -11,9 +11,11 @@
  * cannot import the harness modules, so it keeps its own copies of the few display rules it
  * needs (formatters, role order), each pinned against its TypeScript twin by test. Written as
  * String.raw templates so the served script is exactly the text below — no double escaping. */
+import { GUI_CLIENT_BACKLOG_JS } from "./gui-client-backlog.js";
 import { GUI_CLIENT_BOOT_JS } from "./gui-client-boot.js";
 import { GUI_CLIENT_COMPOSER_JS } from "./gui-client-composer.js";
 import { GUI_CLIENT_DRAWER_JS } from "./gui-client-drawer.js";
+import { GUI_CLIENT_FEED_JS } from "./gui-client-feed.js";
 import { GUI_CLIENT_TEAM_JS } from "./gui-client-team.js";
 import { GUI_CLIENT_HISTORY_JS } from "./gui-client-history.js";
 import { GUI_CLIENT_LABELS_JS } from "./gui-client-labels.js";
@@ -354,5 +356,5 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
   let activeView = "team";
 `;
 
-export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_LABELS_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_SOUND_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_ROLES_JS, GUI_CLIENT_TEAM_JS, GUI_CLIENT_COMPOSER_JS,
+export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_LABELS_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_SOUND_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_ROLES_JS, GUI_CLIENT_TEAM_JS, GUI_CLIENT_BACKLOG_JS, GUI_CLIENT_FEED_JS, GUI_CLIENT_COMPOSER_JS,
   GUI_CLIENT_DRAWER_JS, GUI_CLIENT_HISTORY_JS, GUI_CLIENT_PENDING_JS, GUI_CLIENT_REPORT_CHART_JS, GUI_CLIENT_REPORT_JS, GUI_CLIENT_SETTINGS_JS, GUI_CLIENT_BOOT_JS].join("\n");
