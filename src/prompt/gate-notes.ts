@@ -36,7 +36,7 @@ export function buildRejectedReviewNote(review: {
   // PLANS.md entry, and re-authoring the same plan from scratch is what produced the long
   // rejection runs this note exists to end, so feature is sent to replan the entry instead.
   // A plan-less role has no downstream role to replan for it, so it is sent to its own
-  // notebook instead: it records the abandoned purpose and any instances that remain
+  // notes instead: it records the abandoned purpose and any instances that remain
   // unhandled, then takes a different theme on the next run. Re-authoring the same purpose
   // from the same objections is what restarted the round and produced the long rejection
   // runs this note exists to end. The markdown-only replan note merges review-exempt, but a

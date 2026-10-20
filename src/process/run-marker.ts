@@ -67,14 +67,14 @@ export function agentBaseEnv(
   return env;
 }
 
-/** The environment variable that names a run's notebook file, exported to authoring runs as
+/** The environment variable that names a run's notes file, exported to authoring runs as
  * the path the bundled `tumwater-notes` command reads and writes (notes-cli.ts). */
 const NOTES_PATH_VAR = "TUMWATER_NOTES_PATH";
 
-/** `base` plus this run's notebook as NOTES_PATH_VAR when `notesPath` is set — the agent
+/** `base` plus this run's notes as NOTES_PATH_VAR when `notesPath` is set — the agent
  * adapter's run spec carries one only for authoring runs, so every other run leaves the
  * variable untouched (and an inherited value survives). Kept out of runMarkerEnv so the two
- * environment concerns — cross-group attribution and the notebook — stay separate; shared here
+ * environment concerns — cross-group attribution and the notes — stay separate; shared here
  * beside agentBaseEnv because all three adapters (pi, claude, opencode) build their run
  * environment from it. */
 export function withNotesPath(base: NodeJS.ProcessEnv, notesPath?: string): NodeJS.ProcessEnv {

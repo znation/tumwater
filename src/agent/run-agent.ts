@@ -147,10 +147,10 @@ export interface PiRunOptions {
    * PiStreamParser) — the review gate collects its reviewer's calls through this to notice a
    * full-suite re-run the harness's green pre-check made redundant. */
   onToolCallStart?: (toolName: string, args: unknown) => void;
-  /** The role notebook this run may write through the `tumwater-notes` command on PATH,
+  /** The role notes this run may write through the `tumwater-notes` command on PATH,
    * exported to the child as TUMWATER_NOTES_PATH. Only authoring runs set it (RunnerPi.
    * runAuthoringPi); review, merge, and conflict-resolution runs leave it unset, so the
-   * command refuses to write there. Undefined: no notebook. */
+   * command refuses to write there. Undefined: no notes. */
   notesPath?: string;
   /** Called at settle when this run read an image its model cannot see (plans/image-input.md
    * "Detecting a blind read") — the caller's hook to log the `image_blind` event with its own

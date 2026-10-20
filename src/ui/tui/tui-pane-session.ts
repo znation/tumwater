@@ -122,7 +122,7 @@ export interface TuiPaneSession {
   /** The current roster of role ids. */
   roleIds: string[];
   /** The within-body scroll offset (line index of the window head) shared by the Markdown
-   * panes, the notebook/change/trail views, and the queued/entry bodies — PgDn/PgUp there. */
+   * panes, the notes/change/trail views, and the queued/entry bodies — PgDn/PgUp there. */
   paneScroll: number;
   /** The activity pane's current line budget, refreshed by every render. */
   eventBudget: number;
@@ -140,7 +140,7 @@ export interface TuiPaneSession {
   armedRelease: CancelTarget | null;
   /** The backlog pane's armed target for a second Ctrl+R; moved to `armedRelease` by beginKey. */
   releaseArmed: CancelTarget | null;
-  /** The armed notebook clear (first Ctrl+X on a transcript notebook view), read by the second. */
+  /** The armed notes clear (first Ctrl+X on a transcript notes view), read by the second. */
   armedNotes: string | null;
   /** The transcript pane's armed role for a second Ctrl+X; moved to `armedNotes` by beginKey. */
   notesClearArmed: string | null;

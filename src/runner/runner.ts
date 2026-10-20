@@ -105,7 +105,7 @@ export class RoleRunner {
   private readonly pi: RunnerPi;
   /** This runner's base role: `feature-2` → `feature`. Every identity lookup that is ABOUT the
    * role (its catalog charter, model, tier, red-main class) reads this, while state, branch,
-   * refs, inbox and notebook key the runner id. Equal to `role` until instances exist. */
+   * refs, inbox and notes key the runner id. Equal to `role` until instances exist. */
   readonly baseRole: string;
 
   constructor(

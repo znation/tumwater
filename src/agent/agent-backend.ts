@@ -36,7 +36,7 @@ export interface AgentRunSpec {
   agentBin: string;
   /** This run's cross-group attribution marker, already appended to any inherited one. */
   runMarker: string;
-  /** The role notebook to export as TUMWATER_NOTES_PATH, when this run carries one. */
+  /** The role notes to export as TUMWATER_NOTES_PATH, when this run carries one. */
   notesPath?: string;
   /** The notes shim directory (notesShimDir under the team root) to prepend to this run's
    * PATH, when run-agent could install it — how a run on any backend finds the

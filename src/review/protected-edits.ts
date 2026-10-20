@@ -6,13 +6,13 @@ import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { briefCandidates } from "../paths.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 
-/** The brief files that may carry the initial prompt block: the basenames of `briefCandidates`. */
+/** The brief files that may carry the brief text block: the basenames of `briefCandidates`. */
 const BRIEF_FILES = briefCandidates("").map((p) => path.basename(p));
 /** The roles that may edit PRINCIPLES.md. */
 const PRINCIPLES_ROLES = new Set(["director", "steward"]);
 
 /** The deterministic gate/stage finding for a change that edits what the role prompts forbid
- * editing: the initial prompt block of a brief file (changed, removed, or the file deleted —
+ * editing: the brief text block of a brief file (changed, removed, or the file deleted —
  * a block that only moves passes), or PRINCIPLES.md from a role other than director or
  * steward. undefined when neither happened. Reads the worktree and the change's merge-base
  * like backlogStructureReason; a missing file reads as empty and never throws. */

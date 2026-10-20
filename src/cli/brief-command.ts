@@ -1,7 +1,7 @@
 // vocabulary: plain
 import path from "node:path";
 import { readBrief, renderBrief } from "../brief/brief.js";
-import { editInitialPrompt } from "../brief/brief-edit.js";
+import { editBriefText } from "../brief/brief-edit.js";
 import { editInEditor } from "./cli-editor.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
@@ -14,7 +14,7 @@ const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
 /** `brief`'s `--edit` flag: open the prompt in `$VISUAL`/`$EDITOR`. */
 const EDIT_SPEC = { names: ["--edit"] };
 
-/** `tumwater brief`: show the initial prompt and the file holding it, or with `--file <path>` to
+/** `tumwater brief`: show the brief text and the file holding it, or with `--file <path>` to
  * replace it (or with `--edit`, open it in the editor) under the checks init applies and commit
  * that one file on main. */
 export async function cmdBrief(root: string, args: string[]): Promise<void> {
@@ -40,7 +40,7 @@ export async function cmdBrief(root: string, args: string[]): Promise<void> {
       return;
     }
   } else text = readPromptFileArg(args[fileIdx + 1]!);
-  const outcome = await editInitialPrompt(root, text);
+  const outcome = await editBriefText(root, text);
   if (!outcome.ok) fail(outcome.error);
   const { file: name, changed, committed } = outcome;
   if (json) sayJson({ file: name, changed, committed });

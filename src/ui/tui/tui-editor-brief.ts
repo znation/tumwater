@@ -1,5 +1,5 @@
 // vocabulary: plain
-import { editInitialPrompt } from "../../brief/brief-edit.js";
+import { editBriefText } from "../../brief/brief-edit.js";
 import { readTextIfExists } from "../../files/files.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
@@ -10,9 +10,9 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * the `heldEditorFlash(entering)` guard clause — the shared guard priority lives in the session
  * module — plus Esc and Enter). Guarded to the Brief view (`ctx.briefMode`), so the Health
  * reclaim and Report window Ctrl+E arms keep the key on their own views. The prompt line is
- * single-line and a brief may run to INITIAL_PROMPT_MAX_CHARS, so the editor takes a file path
- * and reads it verbatim, then replaces the brief through editInitialPrompt — the same core and
- * the same checks (non-empty, at most INITIAL_PROMPT_MAX_CHARS, no prompt marker) the CLI and
+ * single-line and a brief may run to BRIEF_TEXT_MAX_CHARS, so the editor takes a file path
+ * and reads it verbatim, then replaces the brief through editBriefText — the same core and
+ * the same checks (non-empty, at most BRIEF_TEXT_MAX_CHARS, no prompt marker) the CLI and
  * the dashboard's Brief card use, so the wording cannot drift. On success the Brief view
  * repaints the new brief in place through the session's refreshBrief seam, without leaving and
  * re-entering. */
@@ -38,7 +38,7 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
       // **e**dit brief — the same key the Health reclaim, Report window-cycle, Queued row-edit
       // and Backlog entry-edit arms use on their own views, guarded away here by ctx.briefMode).
       // The line edits one file path that becomes the whole brief through the same
-      // editInitialPrompt write the CLI and the dashboard's Brief card use. Entering saves the
+      // editBriefText write the CLI and the dashboard's Brief card use. Entering saves the
       // prompt draft and blanks the line; leaving restores it.
       const held = session.heldEditorFlash("brief");
       if (held) {
@@ -66,7 +66,7 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
       return true;
     }
     if (key.name === "return" && briefEdit) {
-      // Enter reads the typed path whole and replaces the brief through editInitialPrompt — the
+      // Enter reads the typed path whole and replaces the brief through editBriefText — the
       // shared write the CLI's `--file` and the dashboard's Brief card make, so the 4096 cap,
       // the marker check and its wording cannot drift. An empty path, a missing file, an
       // unreadable file, and a refused replacement all flash and STAY in the editor so the
@@ -88,7 +88,7 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
         session.flashMessage(`no such file: ${p}`);
         return true;
       }
-      void editInitialPrompt(session.root, text).then(
+      void editBriefText(session.root, text).then(
         (outcome) => {
           if (!outcome.ok) {
             // The core refused the replacement (empty, over the cap, a marker, no prompt

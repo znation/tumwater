@@ -7,7 +7,7 @@ import { cmdInit } from "../src/cli/cli-start.js";
 import { INIT_TEMPLATES, getTemplate, templateCatalog, templateIds, unknownTemplateError } from "../src/init/init-templates.js";
 import { parseEntryDetails } from "../src/backlog/backlog-md.js";
 import { parseInitArgs } from "../src/cli/cli-command-args.js";
-import { INITIAL_PROMPT_MAX_CHARS, readInitialPrompt } from "../src/brief/brief.js";
+import { BRIEF_TEXT_MAX_CHARS, readBriefText } from "../src/brief/brief.js";
 import { makeRepo, tmpdir, assertClean, sh } from "./fixtures/repo-fixtures.js";
 import { attempt, expectFail } from "./helpers/exit-capture.js";
 
@@ -43,7 +43,7 @@ test("initProject default (blank) is byte-identical to the pre-templates output"
     [...result.created].sort(),
     [".gitignore", "BUGS.md", "PLANS.md", "PRINCIPLES.md", "QUESTIONS.md", "README.md", "tumwater.json"],
   );
-  assert.equal(readInitialPrompt(repo), "Build a todo CLI.");
+  assert.equal(readBriefText(repo), "Build a todo CLI.");
   const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
   // The placeholder survives verbatim: no starter plans were seeded.
   assert.match(plans, /## Planned\n\n_None yet\._/);
@@ -63,7 +63,7 @@ test("initProject --template python-cli seeds preamble+plans+dirs and reports th
   assertClean(repo);
 
   // The brief carries the preamble first, the operator's words last.
-  const brief = readInitialPrompt(repo);
+  const brief = readBriefText(repo);
   assert.ok(brief.startsWith(tpl.briefPreamble + "\n\n"));
   assert.ok(brief.endsWith("A markdown-to-html converter."));
 
@@ -129,7 +129,7 @@ test("an unknown template id and an overflowing preamble fail before any side ef
   );
 
   // The preamble pushes the combined brief over the cap: refuse before writing anything.
-  const long = "x".repeat(INITIAL_PROMPT_MAX_CHARS);
+  const long = "x".repeat(BRIEF_TEXT_MAX_CHARS);
   await assert.rejects(
     () => initProject(repo, long, undefined, { template: "python-cli" }),
     /the brief with the python-cli template's preamble is \d+ chars/,

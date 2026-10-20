@@ -32,7 +32,7 @@ export function createRetireEditor(session: TuiEditorSession): TuiEditorModule {
   ): boolean => {
     if (key.ctrl && key.name === "x" && ctx.view === ctx.roleIds.length + 7 && !retireMode) {
       // Ctrl+X toggles retire-edit mode on the Health view's prompt line (mnemonic: **x**
-      // remove — the same key the Transcript notebook-clear, Backlog cancel, and Inbox cancel
+      // remove — the same key the Transcript notes-clear, Backlog cancel, and Inbox cancel
       // arms use on their own views, guarded away here by the Health index). The line edits one
       // role id; Enter retires that role's leftovers through the same retireRole core the CLI
       // and the dashboard button use. Entering saves the prompt draft and blanks the line;

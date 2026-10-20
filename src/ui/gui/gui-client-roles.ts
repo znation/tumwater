@@ -13,7 +13,7 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
   // the first click stores a { id, title?, until } record and repaints; armed() fires a second
   // click inside the 5 s window; a 5100 ms auto-disarm drops an unconfirmed record past its
   // expiry. Defined here (the earliest consumer splice) so the roles' abort in this file, an
-  // earlier splice, and the drawer's notebook-clear/entry-cancel in a later splice all share
+  // earlier splice, and the drawer's notes-clear/entry-cancel in a later splice all share
   // one arm, guard, and disarm instead of three copies.
   function confirmSlot(repaint) {
     let confirm = null; // { id, title?, until }

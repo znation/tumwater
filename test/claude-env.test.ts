@@ -69,7 +69,7 @@ test("claudeEnv sets the isolation values and derives BASH_MAX_TIMEOUT_MS", () =
   assert.equal(out.DISABLE_ERROR_REPORTING, "1");
 });
 
-test("claudeEnv preserves the layered run-marker/notebook/preload environment", () => {
+test("claudeEnv preserves the layered run-marker/notes/preload environment", () => {
   const out = env({
     TUMWATER_RUN: "123-abc",
     TUMWATER_NOTES_PATH: "/tmp/notes.md",

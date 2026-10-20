@@ -61,7 +61,7 @@ function missingEntryPaths(root: string, file: string, range: { start: number; e
   });
 }
 
-/** Read a role's notebook through files.ts's readTextOrNull — the one read-and-swallow
+/** Read a role's notes through files.ts's readTextOrNull — the one read-and-swallow
  * step — or undefined when it is missing or unreadable (an empty or whitespace-only note is
  * left for buildRunPrompt to omit). The degradation is deliberate: a torn or absent
  * runtime-state file must never fail a run.
@@ -70,7 +70,7 @@ function missingEntryPaths(root: string, file: string, range: { start: number; e
  * ROLE_NOTES_MAX_BYTES, but the file lives in hand-editable runtime state, so an oversized
  * note (an old build, a manual edit) would otherwise ride into every one of this role's
  * prefill-heavy run prompts uncapped. The same defensive backstop readPrinciples and the
- * initial-prompt reader apply to their hand-editable files. A UTF-8 character is never
+ * brief text reader apply to their hand-editable files. A UTF-8 character is never
  * fewer than one byte, so a note the tool accepted (≤ 4096 bytes) is always ≤ 4096 chars
  * and never trips this bound; only an over-cap file is cut, with truncateWithNote's visible
  * marker naming the loss. */
@@ -144,7 +144,7 @@ export function assembleRunPrompt(
     userPromptFile = entry?.file ?? null;
     prompt = buildDirectorPrompt(userPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent, config.roles[DIRECTOR_ROLE]?.instructions);
   } else {
-    // The role id keys its inbox and notebook; every lookup ABOUT the role — catalog charter,
+    // The role id keys its inbox and notes; every lookup ABOUT the role — catalog charter,
     // instructions, the qa/selfcheck/clean blocks — resolves through the base role, so
     // `feature-2` runs the feature charter and `roles.feature.instructions` while keeping its
     // own queue and notes (plans/parallel-work-instances.md).
@@ -190,10 +190,10 @@ export function assembleRunPrompt(
     // checkout's PLANS.md (plans, part 3/4), rendered like the digest and coverage blocks.
     // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
     const backlogStructure = base === "clean" ? renderBacklogStructureBlock(root) : undefined;
-    // The role's notebook (PLANS.md "Role notebook"): its own earlier runs' note. A missing,
+    // The role's notes (PLANS.md "Role notebook"): its own earlier runs' note. A missing,
     // empty, or unreadable file yields undefined, so the block is omitted; the write
     // instruction in buildRunPrompt is present either way. The director branch above never
-    // reads this path, so it carries no notebook.
+    // reads this path, so it carries no notes.
     const notes = readRoleNote(root, role);
     // The note file's mtime is when the notes were last saved (writes replace the file), so the
     // run can weigh how stale they are.

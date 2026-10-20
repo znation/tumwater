@@ -67,7 +67,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     const form = ev.target instanceof Element ? ev.target.closest("form.settings-row") : null;
     if (form) { ev.preventDefault(); saveSetting(form); }
   });
-  // The Initial prompt card's Save: its own form class, so the settings listener above never
+  // The Brief card's Save: its own form class, so the settings listener above never
   // routes it to saveSetting.
   document.addEventListener("submit", (ev) => {
     const form = ev.target instanceof Element ? ev.target.closest("form.brief-form") : null;

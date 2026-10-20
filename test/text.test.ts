@@ -127,7 +127,7 @@ test("truncateWithNote never splits a surrogate pair at the cut boundary", () =>
   // between an astral character's high and low surrogate would leave a lone high surrogate
   // that terminals render as garbage. It backs off one unit, keeping the prefix stable.
   const s = "ab🎉cd"; // 🎉 occupies code units 2..3
-  assert.match(truncateWithNote(s, 3, "initial prompt"), /^ab\n…\[initial prompt truncated at 3 chars\]$/);
+  assert.match(truncateWithNote(s, 3, "brief text"), /^ab\n…\[brief text truncated at 3 chars\]$/);
   for (let max = 0; max <= s.length + 2; max++) {
     const out = truncateWithNote(s, max, "x");
     assert.ok(!hasLoneSurrogate(out), `max ${max}: lone surrogate in ${JSON.stringify(out)}`);

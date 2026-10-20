@@ -9,12 +9,12 @@ import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The per-role transcript panes (views 1..roleIds.length) of the TUI: the Ctrl+N
- * transcript→notebook→change cycle and its two-step Ctrl+X notebook-clear arm, plus the
- * notebook/change PgUp/PgDn body window. Split out of the pane-navigation monolith; it owns
- * the notebook/change mode state and the arms that touch them. */
+ * transcript→notes→change cycle and its two-step Ctrl+X notes-clear arm, plus the
+ * notes/change PgUp/PgDn body window. Split out of the pane-navigation monolith; it owns
+ * the notes/change mode state and the arms that touch them. */
 export function createTranscriptPane(session: TuiPaneSession) {
   // Ctrl+N toggles the viewed role's pane between its live transcript and a read-only
-  // notebook view (its note and next run's prompt). Like paneCache, noteCache is computed
+  // notes view (its note and next run's prompt). Like paneCache, noteCache is computed
   // once on entry and only re-windowed each frame; both reset when the mode changes or the
   // view cycles.
   let noteMode = false;
@@ -30,7 +30,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
     ctx: TuiPaneCtx,
   ): boolean => {
     if (key.ctrl && key.name === "n") {
-      // Ctrl+N cycles the viewed role's pane live transcript → notebook → change → transcript
+      // Ctrl+N cycles the viewed role's pane live transcript → notes → change → transcript
       // (PLANS.md "Inspect a loop's notebook and next tick prompt in the TUI" and "Show a
       // loop's pending change in the TUI transcript pane"). The change step renders the same
       // collectRoleChange/renderRoleChange view the CLI's `tumwater diff --role <id>` and the
@@ -56,7 +56,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
         changeMode = false;
         changeCache = null;
       } else if (noteMode) {
-        // notebook → change: reset the notebook snapshot and kick off the collector
+        // notes → change: reset the notes snapshot and kick off the collector
         // fire-and-forget, caching the rendered text when it resolves (the Pending pane's
         // pattern). Guard on the change pane still being current — changeMode on, same role
         // at the same index — so a cycle away or a roster shift cannot overwrite the pane now
@@ -80,7 +80,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
           },
         );
       } else {
-        // rolePayload reads the notebook and assembles the next run's prompt off disk; a
+        // rolePayload reads the notes and assembles the next run's prompt off disk; a
         // throw leaves the transcript shown (the mode stays off) and flashes the reason
         // instead of escaping the handler and killing the TUI.
         try {
@@ -100,8 +100,8 @@ export function createTranscriptPane(session: TuiPaneSession) {
       promptLineFree(ctx.es) &&
       session.view >= 1 && session.view <= session.roleIds.length
     ) {
-      // Ctrl+X twice clears the viewed role's notebook through the writer the CLI's
-      // `--clear-notes` and the dashboard drawer share, then re-renders the notebook view.
+      // Ctrl+X twice clears the viewed role's notes through the writer the CLI's
+      // `--clear-notes` and the dashboard drawer share, then re-renders the notes view.
       const role = session.roleIds[session.view - 1]!;
       if (session.armedNotes === role) {
         try {
@@ -120,7 +120,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
     }
     const page = pageDir(key.name);
     if (page !== null && (noteMode || changeMode)) {
-      // Within-body scroll in the notebook and change views: PgDn/PgUp page the cached
+      // Within-body scroll in the notes and change views: PgDn/PgUp page the cached
       // inspection Markdown, clamped at both ends, exactly like the usage/failures panes
       // below. (The run-trail view's arm lives in the history module beside trailMode.)
       session.paneScroll = pageMarkdownBody(session.paneScroll, noteMode ? noteCache : changeCache, session.eventBudget, page);
@@ -143,7 +143,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
       session.requestRender();
     },
     reset() {
-      // A cycle away leaves notebook and change modes and drops their snapshots.
+      // A cycle away leaves notes and change modes and drops their snapshots.
       noteMode = false;
       noteCache = null;
       changeMode = false;

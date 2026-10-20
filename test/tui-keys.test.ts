@@ -2183,7 +2183,7 @@ test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-r
   assert.equal(calls, 2, "Ctrl+R off Pending does not re-read the collector");
 });
 
-test("Ctrl+N cycles transcript → notebook → change and back, caching the collector's render", async () => {
+test("Ctrl+N cycles transcript → notes → change and back, caching the collector's render", async () => {
   const root = makeRoot();
   const view = {
     role: "clean",
@@ -2211,12 +2211,12 @@ test("Ctrl+N cycles transcript → notebook → change and back, caching the col
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → transcript
   assert.equal(keys.state().view, 1);
 
-  keys.handleKey(undefined, { ctrl: true, name: "n" }); // transcript → notebook
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // transcript → notes
   assert.equal(keys.state().noteMode, true);
   assert.equal(keys.state().changeMode, false);
 
-  keys.handleKey(undefined, { ctrl: true, name: "n" }); // notebook → change
-  assert.equal(keys.state().noteMode, false, "the notebook mode and snapshot drop");
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // notes → change
+  assert.equal(keys.state().noteMode, false, "the notes mode and snapshot drop");
   assert.equal(keys.state().noteCache, null);
   assert.equal(keys.state().changeMode, true);
   assert.equal(keys.state().changeCache, null, "the loading state until the collector resolves");
@@ -2258,7 +2258,7 @@ test("Ctrl+T leaves change mode, and a resolution after a cycle away does not ca
   });
   keys.syncSnapshot(0, false, ["clean"], false);
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → transcript
-  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → notebook
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → notes
   keys.handleKey(undefined, { ctrl: true, name: "n" }); // → change
   assert.equal(keys.state().changeMode, true);
 
@@ -3204,7 +3204,7 @@ test("the Brief tab caches renderBrief of the brief file on entry, and holds nul
 
 // Ctrl+E on the Brief view replaces the brief from a typed file path — the terminal twin of
 // `tumwater brief --file <path>` and the dashboard's Brief card, all through the same
-// editInitialPrompt core (and its commit). The open arm is guarded to the Brief view, so the
+// editBriefText core (and its commit). The open arm is guarded to the Brief view, so the
 // Health reclaim and Report window-cycle arms keep Ctrl+E on their own views.
 test("the Brief view's Ctrl+E replaces the brief from a typed file path", async () => {
   const root = await initializedRepo();
@@ -3247,7 +3247,7 @@ test("the Brief view's Ctrl+E replaces the brief from a typed file path", async 
   keys.handleKey(undefined, { name: "escape" });
 
   // A whitespace-only replacement, an over-cap one, and one carrying the prompt marker are all
-  // refused by editInitialPrompt with the core's wording, staying in the editor. Each refusal
+  // refused by editBriefText with the core's wording, staying in the editor. Each refusal
   // flashes asynchronously (inside the core's promise), so await the wording.
   const blank = path.join(root, "blank.md");
   fs.writeFileSync(blank, "   \n");

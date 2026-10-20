@@ -175,7 +175,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     // "Edit cap" control is the end of the amber role-cap alert's path: the alert's remedy
     // leads here. A director shows no row (role-view.ts's guard exempts it from a cap). While
     // the cap editor is open for this role, an input prefilled with the current cap (empty for
-    // none) and Save/Discard replace the sentence, mirroring the notebook editor's markup.
+    // none) and Save/Discard replace the sentence, mirroring the notes editor's markup.
     if (role !== "director") {
       const dc = view.dailyCap && typeof view.dailyCap === "object" ? view.dailyCap : null;
       const editing = capEditing && capEditing.role === role;
@@ -195,7 +195,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     // override or not — because the Edit/Save control is how the director's and instance
     // runs' instructions get written from the dashboard: the same always-shown rationale as
     // the Daily cap row above. While the editor is open for this role, a textarea prefilled
-    // with the current text and Save/Discard replace the sentence, mirroring the notebook
+    // with the current text and Save/Discard replace the sentence, mirroring the notes
     // editor's markup; a role with no override still seeds an empty textarea, so an empty
     // buffer on Save clears.
     const instEditing = instructionsEditing && instructionsEditing.role === role;

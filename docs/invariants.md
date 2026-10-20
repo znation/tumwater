@@ -392,7 +392,7 @@ review — md-only diffs included — and flagged at staging for one fix-up turn
 **Binds.** `src/review/protected-edits.ts`, `src/review/review.ts`, `src/run/stage-check.ts`.
 
 **Pinned by.** `test/protected-edits.test.ts` (the per-case reasons), `test/review.test.ts` — "gate
-rejects an md-only edit to the initial prompt block with no pi run" and "gate rejects an md-only
+rejects an md-only edit to the brief text block with no pi run" and "gate rejects an md-only
 PRINCIPLES.md edit except from the steward" — and `test/stage-check.test.ts` — "an uncommitted
 PRINCIPLES.md edit is a finding for a non-steward role only".
 
@@ -802,7 +802,7 @@ workspace are each refused before any write, `git init` or commit, in a dry run 
 **Binds.** `src/init/init.ts` (`initProject`), `src/paths.ts` (`owningTeamRoot`).
 
 **Pinned by.** `test/init.test.ts` — "initProject validates before seeding: a bad prompt leaves no
-repo behind", "initProject rejects an over-long initial prompt before seeding", "initProject
+repo behind", "initProject rejects an over-long brief text before seeding", "initProject
 refuses --branch on an existing repo instead of silently ignoring it" and "initProject refuses
 inside a team workspace and writes nothing"; `test/init-templates.test.ts` — "an unknown template
 id and an overflowing preamble fail before any side effect".

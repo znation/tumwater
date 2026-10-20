@@ -144,12 +144,12 @@ test("Ctrl+L is mutually exclusive with the other prompt-line editors, and Ctrl+
 });
 
 // The pause editor's team and per-role arms (tui-editor-pause.ts) and the transcript pane's
-// notebook arm (tui-pane-transcript.ts) each restate the held-editor mutual-exclusion guard, and
+// notes arm (tui-pane-transcript.ts) each restate the held-editor mutual-exclusion guard, and
 // each must also honor the instructions editor's held flag: while Ctrl+L is open on a role
 // transcript, team pause/stop, per-role pause/abort/wake/reset, the role-prompt editor, and the
-// notebook toggle all stay inert and leave the prompt line with the instructions editor (the
+// notes toggle all stay inert and leave the prompt line with the instructions editor (the
 // reviewer's missed-flag paths).
-test("the pause and notebook arms stay inert while Ctrl+L holds the line", async () => {
+test("the pause and notes arms stay inert while Ctrl+L holds the line", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // → clean's transcript
@@ -172,7 +172,7 @@ test("the pause and notebook arms stay inert while Ctrl+L holds the line", async
     tui.key(undefined, "v", { ctrl: true });
     assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+V does not reset the role's counters");
 
-    // The transcript pane's notebook toggle (Ctrl+N) stays inert and the notes view does not open.
+    // The transcript pane's notes toggle (Ctrl+N) stays inert and the notes view does not open.
     tui.key(undefined, "n", { ctrl: true });
     assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+N does not open the notes view while Ctrl+L is open");
     assert.doesNotMatch(tui.lastFrame(), /clean's notes/, "notes mode did not open");

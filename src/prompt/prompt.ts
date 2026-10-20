@@ -267,16 +267,16 @@ function savedClause(savedDay?: string, today?: string): string {
   return `last saved ${savedDay}, ${plural(age, "day")} ago; `;
 }
 
-/** The role's notebook as shown to it: its own earlier runs' note, labeled as unverified.
+/** The role's notes as shown to it: its own earlier runs' note, labeled as unverified.
  * Rides only when there is a non-empty note; the standing instruction to write one is always
  * present (roleNotesInstruction), so a role's FIRST run — with no note yet — still learns the
- * command exists and can seed the notebook. */
+ * command exists and can seed the notes. */
 function roleNotesBlock(notes: string, savedDay?: string, today?: string): string {
   return `Notes your role wrote in earlier runs (${savedClause(savedDay, today)}yours, unverified — check against the code before
 relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
 }
 
-/** The standing instruction that makes the notebook seedable: every role run is told it may
+/** The standing instruction that makes the notes seedable: every role run is told it may
  * write one, so the first run (when no note exists yet) can create it. The note content block
  * (roleNotesBlock) is what is omitted when there is nothing to show. Every backend speaks the
  * same shell command (plans/notes-command.md §3), and the director never reaches
@@ -307,7 +307,7 @@ interface RunPromptInput {
   backlogStructure?: string;
   /** Rendered actionable backlog index (see backlog-index.ts); every run carries it. */
   backlogIndex?: string;
-  /** The role's notebook (roleNotesPath, read by run-prompt.ts): the note its own earlier
+  /** The role's notes (roleNotesPath, read by run-prompt.ts): the note its own earlier
    * runs wrote. A missing/empty/whitespace-only note is passed as undefined, so the
    * <role-notes> block is omitted; the write instruction is always present. The director
    * never reaches buildRunPrompt, so it never carries either. */
@@ -336,7 +336,7 @@ interface RunPromptInput {
   /** The configured `check.gateCommand` (gateCommandOf), when set: the verify rule names it and
    * says tumwater runs the full check. Omitted: the verify rule names the check itself. */
   gateCommand?: string;
-  /** The file the project brief (the managed initial prompt + status) is read from —
+  /** The file the project brief (the managed brief text + status) is read from —
    * TUMWATER.md when it owns the sections, else README.md (plans/portability.md §7a/7).
    * Omitted: the README.md compatibility default, exactly as prompts read before the brief
    * became resolvable. */

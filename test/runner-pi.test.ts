@@ -15,7 +15,7 @@ import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 
 // RunnerPi (src/runner/runner-pi.ts) is the pi-invocation plumbing of one role's runner: the shared
 // per-runner wiring (role config, session dir, raw log, per-run abort signal) as it reaches
-// the role and merge runs, the role notebook an authoring run carries, and the merge
+// the role and merge runs, the role notes an authoring run carries, and the merge
 // agent run's shutdown-only signal. Tested through a fake pi on PATH, so real spawning and parsing
 // are in the runner. (The shared transient retry is in runner-pi-retry.test.ts; the SUMMARY and
 // stage-fix follow-ups in runner-pi-followups.test.ts; the claude backend in
@@ -74,10 +74,10 @@ test("runRolePi with resume passes --continue so a shutdown-interrupted run resu
   }
 });
 
-// The role notebook (PLANS.md "Role notebook"): runAuthoringPi is the ONE path that exports
+// The role notes (PLANS.md "Role notebook"): runAuthoringPi is the ONE path that exports
 // TUMWATER_NOTES_PATH to the child. Every other agent run must leave it unset — a review, merge, or
 // conflict-resolution run is not the role's recurring search and must not rewrite the note —
-// and the director has no notebook at all.
+// and the director has no notes at all.
 function envRecordingFakePi(envFile: string): () => void {
   return fakePi(`printf '%s\\n' "$TUMWATER_NOTES_PATH" >> "${envFile}"`);
 }
@@ -86,7 +86,7 @@ function lastEnvLine(envFile: string): string {
   return fs.readFileSync(envFile, "utf8").trimEnd().split("\n").pop()!;
 }
 
-test("runAuthoringPi exports the role's notebook path to the child", async () => {
+test("runAuthoringPi exports the role's notes path to the child", async () => {
   const root = tmpdir();
   const env = path.join(root, "env");
   const restore = envRecordingFakePi(env);
@@ -100,7 +100,7 @@ test("runAuthoringPi exports the role's notebook path to the child", async () =>
   }
 });
 
-test("the director's authoring run carries no notebook", async () => {
+test("the director's authoring run carries no notes", async () => {
   const root = tmpdir();
   const env = path.join(root, "env");
   const restore = envRecordingFakePi(env);
@@ -113,7 +113,7 @@ test("the director's authoring run carries no notebook", async () => {
   }
 });
 
-test("conflict, merge, and review runs carry no notebook", async () => {
+test("conflict, merge, and review runs carry no notes", async () => {
   const root = tmpdir();
   const env = path.join(root, "env");
   const restore = envRecordingFakePi(env);
@@ -135,7 +135,7 @@ test("conflict, merge, and review runs carry no notebook", async () => {
       label: "review",
     });
     // One empty env line per agent run: the variable exists in neither child's environment.
-    assert.equal(fs.readFileSync(env, "utf8"), "\n\n\n", "none of the three agent runs exports a notebook path");
+    assert.equal(fs.readFileSync(env, "utf8"), "\n\n\n", "none of the three agent runs exports a notes path");
   } finally {
     restore();
   }

@@ -45,7 +45,7 @@ test("buildRejectedReviewNote omits the context when the review recorded neither
 
 // A change that used its last revision round must not be re-authored from scratch: the same
 // purpose would come back and the round would restart at 1 forever. Feature is sent to replan
-// the PLANS.md entry it implemented; a plan-less role is sent to its notebook to record the
+// the PLANS.md entry it implemented; a plan-less role is sent to its notes to record the
 // abandoned purpose and take a different theme.
 test("an exhausted feature rejection tells feature to replan, not re-author", () => {
   const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "feature");

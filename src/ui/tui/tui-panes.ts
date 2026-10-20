@@ -37,7 +37,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   const brief = createBriefPane(session);
 
   /** Every key starts disarmed; only the backlog Ctrl+X/Ctrl+R branches read `armed`/
-   * `armedRelease`, only the notebook Ctrl+X branch reads `armedNotes`, and only the Health
+   * `armedRelease`, only the notes Ctrl+X branch reads `armedNotes`, and only the Health
    * Ctrl+K branch reads `armedKillOrphans`. */
   const beginKey = (): void => {
     session.armed = session.cancelArmed;
@@ -70,7 +70,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   /** The pane half of Ctrl+T: the shell has already exited every open editor. */
   const cycleView = (): void => {
     // A cycle away drops each pane's leaving-view snapshot first, so re-entering any pane
-    // starts at today's list/head/live tail (the notebook/change/trail modes, the entry and
+    // starts at today's list/head/live tail (the notes/change/trail modes, the entry and
     // queued-row selections, and the activity scroll all reset here).
     activity.reset?.();
     transcript.reset?.();
@@ -117,7 +117,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       // Ctrl+N means three different things. The Health arm is routed first so its notify-test
       // action is reachable on Health; the History trail arm second, which falls through
       // (returns false) unless the History view is selected; the transcript pane's
-      // notebook/change arm last. The order among them is NOT immaterial: the transcript arm
+      // notes/change arm last. The order among them is NOT immaterial: the transcript arm
       // consumes Ctrl+N whenever it is reached — it returns true with a render even off a
       // transcript view — so it must sit last, as the fallback, or it would swallow the key
       // before the Health or History arm ever saw it.
@@ -153,7 +153,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       return history.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "x") {
-      // The armed-clear Ctrl+X arms: the transcript notebook first, then the queued cancel,
+      // The armed-clear Ctrl+X arms: the transcript notes first, then the queued cancel,
       // then the backlog cancel — each returns false when its view/selection does not apply.
       if (transcript.handleKey?.(key, ctx)) return true;
       if (queued.handleKey?.(key, ctx)) return true;
@@ -186,7 +186,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     }
     const page = pageDir(key.name);
     if (page !== null) {
-      // Within-body page routing in today's order: the Activity tail, the notebook/change
+      // Within-body page routing in today's order: the Activity tail, the notes/change
       // (transcript) and run-trail (history) bodies, the Markdown panes from report on, then
       // the backlog entry body.
       if (activity.handleKey?.(key, ctx)) return true;

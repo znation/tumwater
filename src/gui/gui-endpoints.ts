@@ -379,7 +379,7 @@ export async function handleRun(q: URLSearchParams, res: http.ServerResponse, ro
   });
 }
 /** Handle GET /api/role?role=<id>: one role's inspection payload — rolePayload's object,
- * the same collection behind `tumwater role <id>` — so the drawer's Notebook and Next run
+ * the same collection behind `tumwater role <id>` — so the drawer's Notes and Next run
  * prompt sections render what the CLI shows without re-implementing the assembly. The role
  * is a target here, so it validates through rejectBadRole exactly like /api/transcript and
  * /api/run (unknown/missing → the shared 400 naming the valid ids and correcting typos);
@@ -462,7 +462,7 @@ export async function handleRetireList(res: http.ServerResponse, root: string): 
   }
   sendJson(res, 200, { roles });
 }
-/** Handle GET /api/brief: the brief file's name and the current initial prompt (what
+/** Handle GET /api/brief: the brief file's name and the current brief text (what
  * `tumwater brief --json` prints), or 404 when no brief carries a prompt block. */
 export function handleBrief(res: http.ServerResponse, root: string): void {
   const brief = readBrief(root);

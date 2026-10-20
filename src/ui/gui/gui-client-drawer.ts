@@ -187,7 +187,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     paintPanel("draweractions", actions);
     paintPanel("drawermeta", now + last + stats +
       "<section><div class='sec-head'><h3>Recent runs</h3></div>" + runs + "</section>" + drawerChangeSection());
-    // The notebook/prompt live in their own panel, outside drawermeta: the poll rewrites
+    // The notes/prompt live in their own panel, outside drawermeta: the poll rewrites
     // drawermeta whenever its countdown or run-age text changes, and an innerHTML rewrite
     // would collapse an opened Next run prompt. This panel's markup is stable while its
     // payload is unchanged, so paintPanel leaves it (and the disclosure's open state) alone.
@@ -228,7 +228,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // caller's state cell. A stale answer (the drawer moved to another role) is dropped;
   // later status polls repaint from the stored view. The assign callback writes that cell
   // (drawerChange / drawerRole), so the loading/ok/error contract lives here once for both
-  // the pending-change and notebook sections.
+  // the pending-change and notes sections.
   async function loadDrawerSection(role, url, fallbackMessage, assign) {
     if (!role) return;
     assign({ role, state: "loading" });
@@ -247,7 +247,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     return loadDrawerSection(role, "/api/diff?role=", "Pending change unavailable", (v) => { drawerChange = v; });
   }
 
-  // The open role's notebook and next-run prompt, as /api/role serves them (rolePayload):
+  // The open role's notes and next-run prompt, as /api/role serves them (rolePayload):
   // the same note and assembled prompt the CLI's role command shows, so the operator can
   // diagnose a role from the page. The note renders in a <pre>; the next prompt sits in a
   // <details> so it does not push the rest of the drawer down. Both empty cases say so in a
@@ -294,7 +294,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     }
     return "<section>" + body + "</section>";
   }
-  // An open notebook edit holds the draft's starting text, not the live payload, so a poll
+  // An open notes edit holds the draft's starting text, not the live payload, so a poll
   // refetch neither wipes the textarea nor changes the painted panel string. Clear waits for a
   // confirming click like entry cancel: the first click arms it for 5 s, the second posts.
   let noteEditing = null; // { role, text }
@@ -305,7 +305,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let instancesEditing = null; // { role, value } — value is the seeded count (number) or "" when none
   let modelEditing = null; // { role, provider, model, thinking } — the seeded raw overrides ("" when unset)
   function repaintDrawerRole() { if (lastStatus) renderRoleDrawer(lastStatus); }
-  // The notebook clear and the backlog entry cancel each build a two-click confirm slot from
+  // The notes clear and the backlog entry cancel each build a two-click confirm slot from
   // the shared confirmSlot factory (defined in the roles splice, an earlier one), so the arm,
   // guard, and disarm logic lives once.
   const noteClear = confirmSlot(repaintDrawerRole);
@@ -326,7 +326,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function stopModelEdit() { modelEditing = null; repaintDrawerRole(); }
   function startQuietEdit(role, window) { quietEditing = { role, window: String(window ?? "") }; repaintDrawerRole(); }
   function stopQuietEdit() { quietEditing = null; repaintDrawerRole(); }
-  // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so
+  // The notes fetch shares loadDrawerSection; closing the drawer clears drawerRole, so
   // reopening refetches.
   function loadDrawerRole(role) {
     return loadDrawerSection(role, "/api/role?role=", "Notes and prompt unavailable", (v) => { drawerRole = v; });

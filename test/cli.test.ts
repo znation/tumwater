@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { readInitialPrompt } from "../src/brief/brief.js";
+import { readBriefText } from "../src/brief/brief.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assertClean, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
@@ -175,7 +175,7 @@ test("init --dry-run prints the file lists and exits 0 without writing; --adopt 
   assert.match(r.stdout, /adopting an existing repo/);
   assert.match(r.stdout, /created .*TUMWATER\.md/);
   assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), "# theirs\n");
-  assert.equal(readInitialPrompt(repo), "Adopt me.");
+  assert.equal(readBriefText(repo), "Adopt me.");
 });
 
 test("init --dry-run in a fresh directory previews the repo seeding and writes nothing", async () => {
@@ -224,7 +224,7 @@ test("init --file reads the prompt from a file and rejects a missing path", asyn
   fs.writeFileSync(path.join(repo, "prompt.md"), "Build a thing.\nWith care.\n");
   let r = await cli(repo, "init", "--file", "prompt.md");
   assert.equal(r.code, 0);
-  assert.equal(readInitialPrompt(repo), "Build a thing.\nWith care.");
+  assert.equal(readBriefText(repo), "Build a thing.\nWith care.");
 
   const bare = makeRepo();
   r = await cli(bare, "init", "--file");
@@ -265,7 +265,7 @@ test("init rejects unknown flags and stray positionals instead of baking them in
   const bare2 = makeRepo();
   r = await cli(bare2, "init", "- Build A", "- Build B");
   assert.equal(r.code, 0);
-  assert.equal(readInitialPrompt(bare2), "- Build A - Build B");
+  assert.equal(readBriefText(bare2), "- Build A - Build B");
 });
 
 // --- `status --json` through the real CLI entry point: the machine-readable team state --

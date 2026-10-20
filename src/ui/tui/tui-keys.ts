@@ -66,7 +66,7 @@ interface TuiKeysState {
    * the prompt line is replacing from a typed file path, or null when closed. */
   notesEditFor: string | null;
   /** The Brief view's Ctrl+E replace-the-brief mode holds the prompt line, editing one typed
-   * file path that becomes the whole brief through editInitialPrompt. */
+   * file path that becomes the whole brief through editBriefText. */
   briefEditMode: boolean;
   /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
   retireMode: boolean;
@@ -150,10 +150,10 @@ interface TuiKeysState {
    * addresses a row's role/position without re-reading the queue each frame. */
   queuedRows: QueuedListRow[];
   paneCache: string | null;
-  /** Whether the viewed role's pane shows its notebook (Ctrl+N) instead of the transcript —
+  /** Whether the viewed role's pane shows its notes (Ctrl+N) instead of the transcript —
    * true only on a transcript view. */
   noteMode: boolean;
-  /** The notebook view's rendered Markdown, computed once on Ctrl+N entry and windowed by
+  /** The notes view's rendered Markdown, computed once on Ctrl+N entry and windowed by
    * paneBody; null when the live transcript is shown. */
   noteCache: string | null;
   /** Whether the History pane shows one completed run's full event trail (Ctrl+N) instead

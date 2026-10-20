@@ -581,11 +581,11 @@ test("the native log rotates under logMaxBytes like the raw log", async () => {
   });
 });
 
-// The notes wiring from part 2/4: an authoring run with a notebook saves its note through the
+// The notes wiring from part 2/4: an authoring run with a note saves its note through the
 // `tumwater-notes` command on PATH, so no `--mcp-config` reaches a Claude Code run and
 // `--strict-mcp-config` (always in claude-args.ts) keeps every MCP server out. The notes path
 // still rides the env beside the run marker.
-test("an authoring run with a notebook carries the notes path but no MCP server", async () => {
+test("an authoring run with notes carries the notes path but no MCP server", async () => {
   const dir = tmpdir();
   const envFile = path.join(dir, "notes-env.txt");
   await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
@@ -601,7 +601,7 @@ test("an authoring run with a notebook carries the notes path but no MCP server"
   });
 });
 
-test("a claude run without a notebook passes no MCP config and no notes path", async () => {
+test("a claude run without a note passes no MCP config and no notes path", async () => {
   const dir = tmpdir();
   const envFile = path.join(dir, "notes-env.txt");
   await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
@@ -610,7 +610,7 @@ test("a claude run without a notebook passes no MCP config and no notes path", a
     const result = await runAgent(claudeRun(dir));
     assert.equal(result.ok, true, `${result.errorMessage}`);
     const argv = readRunBlocks(fake.argvFile)[0]!.split("\n");
-    assert.ok(!argv.includes("--mcp-config"), "a run with no notebook exposes no MCP server");
+    assert.ok(!argv.includes("--mcp-config"), "a run with no notes exposes no MCP server");
     assert.equal(fs.readFileSync(envFile, "utf8"), "[]", "and no TUMWATER_NOTES_PATH is set");
   });
 });

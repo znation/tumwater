@@ -33,7 +33,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
 import { setConfigKey, unsetConfigKey } from "../config/config-write.js";
 
-/** `role`'s notebook-write flags: clear the note, or replace it from a file (`-` for stdin). */
+/** `role`'s notes-write flags: clear the note, or replace it from a file (`-` for stdin). */
 const CLEAR_NOTES_SPEC = { names: ["--clear-notes"] };
 const NOTES_FILE_SPEC = { names: ["--notes-file"], value: true, valueName: "<path>" };
 

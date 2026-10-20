@@ -7,12 +7,12 @@ import { findOnPath, writeTextAtomic } from "../files/files.js";
 import { GIT_MISSING_MESSAGE, commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
 import { hasCommits, isGitRepo } from "../git/git.js";
 import {
-  INITIAL_PROMPT_MAX_CHARS,
+  BRIEF_TEXT_MAX_CHARS,
   PROMPT_END,
   PROMPT_START,
   briefFile,
   briefTemplate,
-  readInitialPrompt,
+  readBriefText,
   readmeTemplate,
 } from "../brief/brief.js";
 import { teamWorkspaceMessage } from "../gates/readiness.js";
@@ -129,7 +129,7 @@ ignored. `dryRun` runs
  * the same validation and computes the same lists, but writes, inits and commits nothing. */
 export async function initProject(
   root: string,
-  initialPrompt: string,
+  briefText: string,
   branch?: string,
   opts: { adopt?: boolean; dryRun?: boolean; template?: string } = {},
 ): Promise<InitResult> {
@@ -147,14 +147,14 @@ export async function initProject(
   // every run's prefill, so it obeys the same cap as a bare prompt — reject before any side
   // effect so an overflowing preamble never lands in README.md.
   const combinedPrompt = tpl.briefPreamble
-    ? `${tpl.briefPreamble}\n\n${initialPrompt.trim()}`
-    : initialPrompt.trim();
-  if (combinedPrompt.length > INITIAL_PROMPT_MAX_CHARS) {
+    ? `${tpl.briefPreamble}\n\n${briefText.trim()}`
+    : briefText.trim();
+  if (combinedPrompt.length > BRIEF_TEXT_MAX_CHARS) {
     throw new Error(
       tooLongMessage(
         `the brief with the ${tpl.id} template's preamble`,
         combinedPrompt.length,
-        INITIAL_PROMPT_MAX_CHARS,
+        BRIEF_TEXT_MAX_CHARS,
         PREFILL_REASON,
       ),
     );
@@ -166,12 +166,12 @@ export async function initProject(
   if (owner !== undefined) throw new Error(teamWorkspaceMessage(owner));
   // Validate everything that is pure validation before any side effect, so a bad prompt or
   // README never leaves a half-seeded repo behind.
-  const prompt = initialPrompt.trim();
+  const prompt = briefText.trim();
   // A project brief that already carries the prompt makes it optional: a fresh clone of an
   // initialized project, or a checkout that lost its now-untracked tumwater.json
   // (plans/portability.md §4a/7), re-seeds with a bare `tumwater init` — the existing brief
   // file is never rewritten, so a prompt given here must match it (refused below otherwise).
-  if (!prompt && combinedPrompt.trim() === "" && readInitialPrompt(root) === "") {
+  if (!prompt && combinedPrompt.trim() === "" && readBriefText(root) === "") {
     // A bare init with no prompt is only ever refused for one of two reasons, and they have
     // different fixes: no README (nothing to read — the message below is the whole story) or a
     // README that lacks the managed markers (bare init reads them — name the file and the
@@ -197,7 +197,7 @@ export async function initProject(
     );
   }
   // The roles read the project's reason to exist back out of the project brief on every
-  // run (readInitialPrompt). A README.md without the managed section is the project's own
+  // run (readBriefText). A README.md without the managed section is the project's own
   // documentation, so it is never rewritten: the repo is adopted instead, with the brief in
   // TUMWATER.md (plans/portability.md §7/7) — the same path `--adopt` asks for explicitly.
   // A brief that is already marked (in either file) wins over both: nothing brief-shaped is
@@ -219,7 +219,7 @@ export async function initProject(
   // that owns the brief — TUMWATER.md resolves ahead of README.md (plans/portability.md §7a/7),
   // so pointing at README.md would send the user to edit a file nobody reads. A re-run with the
   // same prompt, or a bare init, is the idempotent re-seed and passes.
-  if (prompt && brief !== null && combinedPrompt !== readInitialPrompt(root)) {
+  if (prompt && brief !== null && combinedPrompt !== readBriefText(root)) {
     throw new Error(
       `${brief} already carries a different brief between the tumwater:prompt markers, and init never rewrites an existing project brief, so your prompt would be lost — to change the prompt, edit it in ${brief} between ${PROMPT_START} and ${PROMPT_END}; to re-seed with the current one, re-run a bare \`tumwater init\``,
     );
@@ -284,7 +284,7 @@ export async function initProject(
 
   // README.md is the brief only when none exists yet and there is no README to adopt (a fresh
   // repo): with TUMWATER.md owning the managed sections, a created README.md would carry a
-  // duplicate prompt + status block that readInitialPrompt never reaches and the readme role
+  // duplicate prompt + status block that readBriefText never reaches and the readme role
   // never maintains.
   const name = projectName(root);
   if (brief !== null) leftAlone.push(brief);

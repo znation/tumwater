@@ -12,7 +12,7 @@ export const CONFIG_BASENAME = "tumwater.json";
  * tumwater.json is seeded from (plans/portability.md §4a/7). */
 export const EXAMPLE_CONFIG_BASENAME = "tumwater.example.json";
 
-/** The files the project brief (the managed initial prompt + status sections) may live in,
+/** The files the project brief (the managed brief text + status sections) may live in,
  * candidates in resolution order: TUMWATER.md first, so an adopted repo's own README.md stays
  * untouched (plans/portability.md §7a/7); README.md is the compatibility path every repo
  * tumwater has created so far. */
@@ -136,7 +136,7 @@ export function qaCoveragePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "qa-coverage.json");
 }
 
-/** A role's notebook (.tumwater/state/notes/<role>.md): the bounded note the role's own earlier
+/** A role's notes (.tumwater/state/notes/<role>.md): the bounded note the role's own earlier
  * runs wrote, carried into the next fresh session. Runtime state under .tumwater/state/, never
  * committed — the worktree resets to main each run, so a committed note would move main. The
  * director has none: its work is the operator's prompt, not a recurring search. */

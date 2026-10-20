@@ -1,5 +1,5 @@
 // The prompt dialect (plans/agent-backends.md "What the pi extensions did, per backend",
-// PLANS.md "Agent backends, part 5/7"): the only backend-specific prompt text — the notebook
+// PLANS.md "Agent backends, part 5/7"): the only backend-specific prompt text — the notes
 // tool's name and the oversized-output rule. pi's reading-budget text is pinned byte for byte;
 // claude's names its own read tool and output-spill behavior.
 import test from "node:test";
@@ -30,7 +30,7 @@ test("pi's reading-budget rule is pinned byte for byte", () => {
   the full-output file path) instead of retrying the same read.`;
   assert.equal(contextBudgetRule(PI_DIALECT), pinned);
   assert.equal(contextBudgetRule(), pinned, "pi's dialect is the default");
-  // The notebook instruction is the same on every backend (part 2/4): it names the
+  // The notes instruction is the same on every backend (part 2/4): it names the
   // tumwater-notes command, never a per-backend tool.
   const instruction = roleNotesInstruction();
   assert.match(instruction, /tumwater-notes write <<'TUMWATER_NOTES'/);

@@ -15,7 +15,7 @@ export interface TuiPaneEditorState {
    * the prompt line is replacing from a typed file path, or null when closed. */
   notesEditFor: string | null;
   /** The Brief view's Ctrl+E replace-the-brief mode holds the prompt line, editing one typed
-   * file path that becomes the whole brief through editInitialPrompt. */
+   * file path that becomes the whole brief through editBriefText. */
   briefEditMode: boolean;
   /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
   retireMode: boolean;
@@ -76,7 +76,7 @@ export interface TuiPaneModule {
   /** Drop the pane's session role scope when the incoming roster no longer names it. */
   dropScopes?(roles: string[]): void;
   /** Repaint a view's cached body after an editor wrote to the disk it renders (the notes
-   * view repaints its notebook after a replace/clear). */
+   * view repaints its notes after a replace/clear). */
   refreshNotes?(role: string): void;
   /** Repaint the Brief view's cached body after a replace write. */
   refreshBrief?(): void;

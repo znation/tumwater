@@ -193,7 +193,7 @@ export const claudeBackend: AgentBackend = {
       ...(run.maxBudgetUsd !== undefined ? { maxBudgetUsd: run.maxBudgetUsd } : {}),
     });
     // agentBaseEnv applies the run marker and the macOS preload (shared with the pi adapter);
-    // claudeEnv layers the backend's own scrub-and-set on top. The notebook path rides beside
+    // claudeEnv layers the backend's own scrub-and-set on top. The notes path rides beside
     // the marker the same way pi's adapter carries it (withNotesPath); from part 2/4 the run
     // saves its note through the `tumwater-notes` command on PATH, so no MCP server reaches the
     // run and `--strict-mcp-config` (always in claude-args.ts) keeps it that way.

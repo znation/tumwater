@@ -20,7 +20,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * empty or whitespace-only file clears the key (unsetConfigKey, the dashboard's empty-clears
  * convention, giving the terminal a way to clear); an over-cap or unknown-role write flashes
  * the returned error and STAYS open. Esc, Ctrl+L again, and Ctrl+T cancel by restoring the
- * prompt draft. On success the notebook repaints through the session's refreshNotes seam (the
+ * prompt draft. On success the notes repaints through the session's refreshNotes seam (the
  * notes view's cached Markdown recomputes the same role-inspection body the `Instructions
  * override` row renders). Unlike quiet hours' director refusal there is none here: the
  * dashboard editor and `--instructions-file` both accept the director, so it edits too. */
@@ -93,7 +93,7 @@ export function createInstructionsEditor(session: TuiEditorSession): TuiEditorMo
       // An empty path, a missing file, an unreadable file, an over-cap text, and an unknown id
       // all flash and STAY in the editor so the operator can fix the path; an empty or
       // whitespace-only file clears the override (the dashboard's empty-clears convention). On
-      // success the notebook repaints the updated `Instructions override` row and the editor
+      // success the notes repaints the updated `Instructions override` row and the editor
       // exits with the shared success wording.
       const role = instructionsFor;
       const p = session.input.trim();

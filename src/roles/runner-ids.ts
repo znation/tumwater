@@ -1,6 +1,6 @@
 /** Runner-id arithmetic for parallel work instances (plans/parallel-work-instances.md, part 1/7). A
  * base role may run several runner ids — `feature`, `feature-2`, `bugfix-3`, … — each keying
- * its own persisted state, branch, refs, session and notebook, while every lookup that is ABOUT the
+ * its own persisted state, branch, refs, session and notes, while every lookup that is ABOUT the
  * role (its catalog charter, model, tier, caps, scheduling class) resolves through the base role.
  * With no instances configured, every runner id is bare, so `baseRoleOf` is the identity.
  *

@@ -206,7 +206,7 @@ export function checkConfigKeyNames(root: string): CheckOutcome {
   return warnOutcome(`old key names: ${renamed.join(", ")} — rename them in tumwater.json; both spellings work until then`);
 }
 
-/** Which file holds the project brief (the managed initial prompt + status sections,
+/** Which file holds the project brief (the managed brief text + status sections,
  * plans/portability.md §7a/7): TUMWATER.md first, README.md as the compatibility path. A repo
  * whose README carries no markers — or that has no brief at all — still boots, but every role
  * runs without its project prompt, so that state is a warning, not an error: it is exactly

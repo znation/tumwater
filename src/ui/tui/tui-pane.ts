@@ -36,7 +36,7 @@ interface TuiPaneState {
   selectedQueued: number | null;
   queuedRows: QueuedListRow[];
   paneCache: string | null;
-  /** The notebook view's rendered Markdown (roleInspectMarkdown), computed once on Ctrl+N
+  /** The notes view's rendered Markdown (roleInspectMarkdown), computed once on Ctrl+N
    * entry like paneCache; null when the live transcript is shown. */
   noteCache: string | null;
   /** The run-trail view's rendered text (renderRunDetail), computed once on Ctrl+N entry
@@ -73,7 +73,7 @@ export function activityEvents(root: string, role: string | null, grep: string |
   );
 }
 
-/** One role's notebook and next run prompt, rendered as the same Markdown the TUI's notebook
+/** One role's notes and next run prompt, rendered as the same Markdown the TUI's notes
  * view windows: inspectMarkdownLines over the role's rolePayload. Split out of the keypress
  * handler so the Ctrl+N branch can catch a collector throw and flash it. */
 export function roleInspectMarkdown(root: string, role: string): string {
@@ -103,7 +103,7 @@ export function paneBody(
 ): TuiPaneBody {
   const { root, width, eventBudget, entryBudget, state } = opts;
   if (pane.kind === "transcript") {
-    // The notebook view (Ctrl+N) windows the cached inspection Markdown exactly like the
+    // The notes view (Ctrl+N) windows the cached inspection Markdown exactly like the
     // usage/failures panes, headings bold; the live transcript keeps the tail.
     if (pane.note) {
       const win = entryBodyWindow(state.noteCache ?? "", state.paneScroll, eventBudget, width);

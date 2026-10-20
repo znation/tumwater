@@ -92,7 +92,7 @@ test("an explicit agent override selects the dialect over the config's primary",
 
 test("a repo whose brief markers are gone still assembles a prompt naming README.md", () => {
   // The degraded-but-running state: an operator edit (or a docs role rewrite) can strip the
-  // markers, leaving no file that owns the brief. The team must keep running — readInitialPrompt
+  // markers, leaving no file that owns the brief. The team must keep running — readBriefText
   // degrades to an empty brief and the fallback names the compatibility path, not a dead end.
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "README.md"), "# My project\n\nNo markers here.\n");
@@ -212,7 +212,7 @@ test("the plan prompt reports zero eligible plans and other roles omit the count
   assert.doesNotMatch(feature.prompt, /It holds/);
 });
 
-// The role notebook (PLANS.md "Role notebook"): the run reads the role's note file from disk.
+// The role notes (PLANS.md "Role notebook"): the run reads the role's note file from disk.
 // A missing file omits the block; the standing write instruction rides either way. The
 // director's branch never reads the path, so its prompt carries neither.
 test("a role run prompt reads the note from roleNotesPath, and omits the block when there is none", () => {
@@ -236,7 +236,7 @@ test("a role run prompt reads the note from roleNotesPath, and omits the block w
   assert.match(without.prompt, /tumwater-notes write <<'TUMWATER_NOTES'/, "the write instruction is still present");
 });
 
-// The notebook is bounded on read too: the tool caps writes at ROLE_NOTES_MAX_BYTES, but the
+// The notes is bounded on read too: the tool caps writes at ROLE_NOTES_MAX_BYTES, but the
 // file is hand-editable runtime state, so an over-long one must not ride into every prefill.
 // A note at the cap (a byte is never fewer than a character) is untouched.
 const NOTE_TRUNCATION_MARKER = `…[role notes truncated at ${ROLE_NOTES_MAX_BYTES} chars]`;

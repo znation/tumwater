@@ -162,7 +162,7 @@ export class RunnerPi {
       nativeLogFile: nativeLogPath(this.host.root, this.host.role, resolved.agent ?? "pi"),
       signal: this.host.runSignal(),
       // Only runAuthoringPi and its SUMMARY/stage-fix follow-ups pass this; a merge,
-      // review, or conflict-resolution run has no notebook, and neither does the director.
+      // review, or conflict-resolution run has no notes, and neither does the director.
       notesPath,
       // A tool call silent for the configured stall threshold names itself in the event feed
       // while the quiet watchdog still counts down (BUGS.md 2026-09-13 sibling): before this,
@@ -414,7 +414,7 @@ export class RunnerPi {
 
   /** Run pi for this runner's authoring run in worktree `wt`: the shared per-runner wiring and
    * the transient-failure retry, with usage folded into the run's counters. It is the ONE
-   * entry point that carries the role notebook (PLANS.md "Role notebook": TUMWATER_NOTES_PATH,
+   * entry point that carries the role notes (PLANS.md "Role notebook": TUMWATER_NOTES_PATH,
    * read by the `tumwater-notes` command): every other agent run (runRolePi's merge/conflict path,
    * runMergePi, runGatePi) leaves it unset, and the director is excluded because its work is
    * the operator's prompt, not a recurring search.
@@ -436,8 +436,8 @@ export class RunnerPi {
     );
   }
 
-  /** The notebook path an authoring run carries: the role's note file, or undefined for the
-   * director, which has no notebook. The SUMMARY/stage-fix follow-ups share the authoring
+  /** The notes path an authoring run carries: the role's note file, or undefined for the
+   * director, which has no notes. The SUMMARY/stage-fix follow-ups share the authoring
    * run's session and must carry the same notes wiring — every invocation reads the path
    * from TUMWATER_NOTES_PATH in the environment, so the follow-up re-passes the same path. */
   private authorNotesPath(): string | undefined {
@@ -446,10 +446,10 @@ export class RunnerPi {
       : roleNotesPath(this.host.root, this.host.role);
   }
 
-  /** The shared authoring/conflict agent run wiring WITHOUT the role notebook. The merge pipeline's
+  /** The shared authoring/conflict agent run wiring WITHOUT the role notes. The merge pipeline's
    * conflict resolver reaches pi through this (plans/merge-queue.md), and a conflict resolution
    * is not the role's recurring search: it must not carry the notes tool or rewrite the note.
-   * An authoring agent run goes through runAuthoringPi above, which is the only notebook-carrying
+   * An authoring agent run goes through runAuthoringPi above, which is the only notes-carrying
    * path. */
   async runRolePi(
     wt: string,

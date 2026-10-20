@@ -4,11 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import {
-  INITIAL_PROMPT_MAX_CHARS,
+  BRIEF_TEXT_MAX_CHARS,
   PROMPT_END,
   PROMPT_START,
   briefFile,
-  readInitialPrompt,
+  readBriefText,
 } from "../src/brief/brief.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
@@ -29,7 +29,7 @@ test("initProject creates and commits the harness files", async () => {
   );
   assert.ok(result.committed);
   assertClean(repo);
-  assert.equal(readInitialPrompt(repo), "Build a todo CLI.");
+  assert.equal(readBriefText(repo), "Build a todo CLI.");
   assert.match(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), /^\.tumwater\/$/m);
   assert.ok(loadConfig(repo).roles.director?.enabled);
 });
@@ -238,7 +238,7 @@ test("initProject adopts a repo whose README has no tumwater markers instead of 
   assert.ok(result.leftAlone.includes("README.md") && result.leftAlone.includes("PLANS.md"));
   // The brief round-trips from TUMWATER.md, and the adopted repo is committed clean.
   assert.equal(briefFile(repo), "TUMWATER.md");
-  assert.equal(readInitialPrompt(repo), "Adopted brief.");
+  assert.equal(readBriefText(repo), "Adopted brief.");
   assert.ok(result.committed);
   assertClean(repo);
   // A re-run finds the marked brief and has nothing to do.
@@ -298,7 +298,7 @@ test("initProject --adopt against an already-marked TUMWATER.md brief is a plain
   const reseed = await initProject(repo, "", undefined, { adopt: true });
   assert.ok(reseed.created.includes("tumwater.json"));
   assert.ok(!fs.existsSync(path.join(repo, "README.md")));
-  assert.equal(readInitialPrompt(repo), "Explicitly adopted.");
+  assert.equal(readBriefText(repo), "Explicitly adopted.");
   assertClean(repo);
 });
 
@@ -380,7 +380,7 @@ test("initProject accepts an existing README that already carries the prompt", a
   sh(repo, "git", "commit", "-m", "own readme with markers");
   const result = await initProject(repo, "my prompt");
   assert.ok(!result.created.includes("README.md"));
-  assert.equal(readInitialPrompt(repo), "my prompt");
+  assert.equal(readBriefText(repo), "my prompt");
 });
 
 test("initProject refuses a prompt that differs from the one a README-owned brief carries", async () => {
@@ -420,7 +420,7 @@ test("a marked TUMWATER.md satisfies init's bare-init re-seed path", async () =>
   const again = await initProject(repo, "");
   assert.ok(again.created.includes("tumwater.json"));
   assert.ok(!again.created.includes("README.md"), "README.md is never rewritten");
-  assert.equal(readInitialPrompt(repo), "the original prompt");
+  assert.equal(readBriefText(repo), "the original prompt");
 });
 
 test("a marked TUMWATER.md silences init's marker-less-README throw", async () => {
@@ -438,12 +438,12 @@ test("a marked TUMWATER.md silences init's marker-less-README throw", async () =
   const result = await initProject(repo, "adopted prompt");
   assert.ok(!result.created.includes("README.md"), "README.md is never created on the adopt path");
   assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), before, "README.md byte-identical");
-  assert.equal(readInitialPrompt(repo), "adopted prompt");
+  assert.equal(readBriefText(repo), "adopted prompt");
 });
 
 test("a TUMWATER.md-owned brief refuses a different prompt instead of writing it into a new README.md", async () => {
   // The bug (BUGS.md 2026-09-23): TUMWATER.md passed the marker guard, then the unconditional
-  // README.md write created a README carrying the NEW prompt — but readInitialPrompt resolves
+  // README.md write created a README carrying the NEW prompt — but readBriefText resolves
   // TUMWATER.md first, so every run kept running the old one. The refusal names the file that
   // actually owns the brief, and nothing is created or committed.
   const repo = makeRepo();
@@ -461,7 +461,7 @@ test("a TUMWATER.md-owned brief refuses a different prompt instead of writing it
   }
   assert.equal(fs.readFileSync(path.join(repo, "TUMWATER.md"), "utf8"), brief);
   assertClean(repo);
-  assert.equal(readInitialPrompt(repo), "the original prompt");
+  assert.equal(readBriefText(repo), "the original prompt");
 });
 
 test("a TUMWATER.md-owned brief never gains a duplicate README.md on a matching or bare init", async () => {
@@ -485,7 +485,7 @@ test("a TUMWATER.md-owned brief never gains a duplicate README.md on a matching 
   const bare = await initProject(repo, "");
   assert.deepEqual(bare.created, ["tumwater.json"]);
   assert.ok(!fs.existsSync(path.join(repo, "README.md")));
-  assert.equal(readInitialPrompt(repo), "the original prompt");
+  assert.equal(readBriefText(repo), "the original prompt");
 });
 
 test("initProject rejects empty prompts", async () => {
@@ -500,7 +500,7 @@ test("a bare init re-seeds a lost config from the README's prompt (portability 4
   fs.rmSync(path.join(repo, "tumwater.json"));
   const again = await initProject(repo, "");
   assert.deepEqual(again.created, ["tumwater.json"]);
-  assert.equal(readInitialPrompt(repo), "the original prompt");
+  assert.equal(readBriefText(repo), "the original prompt");
   // A repo tumwater created before adoption existed keeps its brief in README.md: the marked
   // README is not an adoption case, so no TUMWATER.md appears and no migration is needed.
   assert.ok(!again.adopted);
@@ -516,7 +516,7 @@ test("initProject seeds a git repo when the cwd is not one yet (BUGS.md 2026-09-
   // The seeded repo is on main with exactly the harness commit, and the prompt round-trips.
   assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "main");
   assert.equal(sh(dir, "git", "log", "--oneline").split("\n").length, 1);
-  assert.equal(readInitialPrompt(dir), "Fresh project.");
+  assert.equal(readBriefText(dir), "Fresh project.");
 });
 
 test("initProject honors the caller's branch and git's init.defaultBranch preference (portability 2/7)", async () => {
@@ -560,10 +560,10 @@ test("initProject validates before seeding: a bad prompt leaves no repo behind",
   assert.ok(!fs.existsSync(path.join(dir, ".git")));
 });
 
-test("initProject rejects an over-long initial prompt before seeding", async () => {
+test("initProject rejects an over-long brief text before seeding", async () => {
   const dir = tmpdir();
   await assert.rejects(
-    () => initProject(dir, "x".repeat(INITIAL_PROMPT_MAX_CHARS + 1)),
+    () => initProject(dir, "x".repeat(BRIEF_TEXT_MAX_CHARS + 1)),
     /shorten it to at most 4096/,
   );
   assert.ok(!fs.existsSync(path.join(dir, ".git")));

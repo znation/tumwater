@@ -106,7 +106,7 @@ export interface TuiEditorSession {
   flat(): ReturnType<typeof labeledBacklogEntries>;
   /** Re-read the Queued pane's rows and cached list after a commit/exit that touched the queue. */
   refreshQueued(): void;
-  /** Repaint the notes view's cached notebook after a replace/clear write. */
+  /** Repaint the notes view's cached notes after a replace/clear write. */
   refreshNotes(role: string): void;
   /** Repaint the Brief view's cached body after a replace write. */
   refreshBrief(): void;

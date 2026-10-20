@@ -36,9 +36,9 @@ function fencedOrNone(label: string, text: string | null, noneNote = "none"): st
   return [`## ${label}`, "", fence, text.replace(/\n+$/, ""), fence, ""];
 }
 
-/** The Notebook and Next run prompt blocks and the "more waits" disclosure, as Markdown
- * lines — the read-only inspection the TUI's notebook view and `tumwater role <id>` share,
- * so the terminal and the CLI show one role's notebook and assembled prompt identically.
+/** The Notes and Next run prompt blocks and the "more waits" disclosure, as Markdown
+ * lines — the read-only inspection the TUI's notes view and `tumwater role <id>` share,
+ * so the terminal and the CLI show one role's notes and assembled prompt identically.
  * `renderRoleMarkdown` splices these at the same position, so the extracted function and the
  * full document cannot drift. */
 export function inspectMarkdownLines(p: RoleViewPayload): string[] {
@@ -46,7 +46,7 @@ export function inspectMarkdownLines(p: RoleViewPayload): string[] {
   return [...(running ? [running, ""] : []), ...inspectBodyLines(p)];
 }
 
-/** The notebook, prompt and disclosure blocks alone — what renderRoleMarkdown splices after
+/** The notes, prompt and disclosure blocks alone — what renderRoleMarkdown splices after
  * its own Team lines, which already carry the fallback-step bullet. */
 function inspectBodyLines(p: RoleViewPayload): string[] {
   const lines: string[] = [];
@@ -148,7 +148,7 @@ function chainStepLine(p: RoleViewPayload): string | null {
 }
 
 /** One recent run outcome as a Markdown bullet line — `<time> · <result> · <span> —
- * <summary>` — so `tumwater role <id>` and the TUI notebook view read a role's discrete
+ * <summary>` — so `tumwater role <id>` and the TUI notes view read a role's discrete
  * outcomes at a glance. `time` is the same local `YYYY-MM-DD HH:MM:SS` stamp the model-
  * fallback `since` prints (formatTimestamp); `span` is the same short-duration phrasing
  * shortSpanPhrase renders for holdPhrase and the event feed's countdowns; the summary is

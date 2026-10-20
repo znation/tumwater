@@ -134,7 +134,7 @@ test("Ctrl+X holds the line against the per-role controls and the transcript pan
     }
 
     // Pane arms are excluded too: Ctrl+N stays on the transcript sub-view (it does not cycle
-    // to the notebook), and Ctrl+G/E scope/window do not act — the role-model line still owns
+    // to the notes), and Ctrl+G/E scope/window do not act — the role-model line still owns
     // the prompt line.
     for (const name of ["n", "g", "e"]) {
       tui.key(undefined, name, { ctrl: true });

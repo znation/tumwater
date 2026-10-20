@@ -945,7 +945,7 @@ async function protectedEditRepo(base: Record<string, string>, edit: Record<stri
 const PROMPT_README = (body: string) =>
   `# T\n\n<!-- tumwater:prompt:start -->\n${body}\n<!-- tumwater:prompt:end -->\n`;
 
-test("gate rejects an md-only edit to the initial prompt block with no pi run", async () => {
+test("gate rejects an md-only edit to the brief text block with no pi run", async () => {
   const { root, wt } = await protectedEditRepo(
     { "README.md": PROMPT_README("original") },
     { "README.md": PROMPT_README("rewritten") },

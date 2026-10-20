@@ -324,7 +324,7 @@ test("inspectMarkdownLines carries the notes and next-run blocks renderRoleMarkd
   enqueueRolePrompt(dir, "feature", "also test the NaN path");
   const p = rolePayload(dir, "feature", NO_MODELS);
   const lines = inspectMarkdownLines(p);
-  // The Notebook block is verbatim and fenced, then the Next run prompt block, then the
+  // The Notes block is verbatim and fenced, then the Next run prompt block, then the
   // "more waits" disclosure when several prompts are queued.
   assert.deepEqual(lines.slice(0, 5), ["## Notes", "", "```", "the scheduler lives in team.ts", "```"]);
   assert.ok(lines.includes("## Next run's prompt"));
@@ -332,13 +332,13 @@ test("inspectMarkdownLines carries the notes and next-run blocks renderRoleMarkd
     lines.join("\n"),
     /_\(the next run's prompt embeds the oldest inbox message — one is taken per run; 1 more waits?\)_/,
   );
-  // The extraction is in place: the full document still shows Find text before Notebook
-  // before Next run prompt, with the same fenced notebook body.
+  // The extraction is in place: the full document still shows Find text before Notes
+  // before Next run prompt, with the same fenced notes body.
   const md = renderRoleMarkdown(p);
   const findAt = md.indexOf("## Find text");
-  const notebookAt = md.indexOf("## Notes");
+  const notesAt = md.indexOf("## Notes");
   const nextAt = md.indexOf("## Next run's prompt");
-  assert.ok(findAt >= 0 && notebookAt > findAt && nextAt > notebookAt);
+  assert.ok(findAt >= 0 && notesAt > findAt && nextAt > notesAt);
   assert.match(md, /## Notes\n\n```\nthe scheduler lives in team\.ts\n```/);
 });
 
@@ -349,7 +349,7 @@ test("unset things render as explicit placeholder lines, not omissions", () => {
   assert.ok(!md.includes("Over-cap model")); // no fallback configured: no line at all
   assert.match(md, /## Instructions override\n\n_\(none\)_/);
   assert.match(md, /_\(none — the director is driven by its inbox, not by instructions\)_/);
-  assert.match(md, /## Notes\n\n_\(none yet/); // the director has no notebook
+  assert.match(md, /## Notes\n\n_\(none yet/); // the director has no notes
   assert.match(md, /## Next run's prompt\n\n_\(nothing to do this run\)_/);
 });
 

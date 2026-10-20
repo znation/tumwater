@@ -8,7 +8,7 @@ import {
   type PromptImageInput,
 } from "./inbox-attachments.js";
 import { logEventBestEffort } from "../events/events.js";
-import { INITIAL_PROMPT_MAX_CHARS } from "../brief/brief.js";
+import { BRIEF_TEXT_MAX_CHARS } from "../brief/brief.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { tooLongMessage } from "../text/text.js";
 import { defaultConfig, loadConfigSafe } from "../config/config.js";
@@ -27,7 +27,7 @@ import { roleLabel } from "../roles/role-labels.js";
  * into the TUI, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)` would otherwise
  * ride into the next run's context wholesale. submitPrompt and submitRolePrompt reject
  * over-long text before it is queued, so no surface can enqueue it. */
-export const DIRECTOR_PROMPT_MAX_CHARS = INITIAL_PROMPT_MAX_CHARS;
+export const DIRECTOR_PROMPT_MAX_CHARS = BRIEF_TEXT_MAX_CHARS;
 
 /** The one length rule for a submitted prompt, scoped to the role it targets: the error
  * message when the trimmed text exceeds DIRECTOR_PROMPT_MAX_CHARS, null when it fits. The

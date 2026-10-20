@@ -15,7 +15,7 @@
  * fresh id (design §4).
  *
  * Registration lives in src/agent/run-agent.ts beside the pi and claude adapters; a test selects
- * opencode by setting `config.agent = "opencode"` on a run. A run carrying a notebook gets the
+ * opencode by setting `config.agent = "opencode"` on a run. A run carrying a note gets the
  * notes path in its environment (the `tumwater-notes` command on PATH reads it), as the pi and
  * claude adapters do. */
 
@@ -205,7 +205,7 @@ export const opencodeBackend: AgentBackend = {
       operatorMcpNames: operatorMcpNames(process.env, os.homedir()),
       toolOutput: { maxLines: Math.round(maxBytes / 40), maxBytes },
     });
-    // The notebook path rides beside the run marker, as the pi and claude adapters' envs do
+    // The notes path rides beside the run marker, as the pi and claude adapters' envs do
     // (withNotesPath); from part 2/4 the run saves its note through the `tumwater-notes` command
     // on PATH, so OpenCode configures no tumwater MCP server for notes.
     const base = withNotesPath(agentBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
+import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
 import { assertClean, initializedRepo, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
 
@@ -48,7 +48,7 @@ test("brief --file --json names the successful edit with changed and committed",
 
 test("brief --file on a head off the base branch reports the edit without claiming a commit", async () => {
   const repo = await initializedRepo();
-  // On a detached HEAD the primary is not the base branch, so editInitialPrompt writes the
+  // On a detached HEAD the primary is not the base branch, so editBriefText writes the
   // new prompt but commitOperatorBacklogEdit declines (never touching git) — the human-facing
   // message must not claim "(committed to main)".
   sh(repo, "git", "checkout", "--detach");
@@ -64,7 +64,7 @@ test("brief --file refuses empty, over-long, and marker-bearing text without tou
   const repo = await initializedRepo();
   const before = fs.readFileSync(path.join(repo, "README.md"), "utf8");
   const head = sh(repo, "git", "rev-parse", "HEAD");
-  for (const text of ["  \n", "x".repeat(INITIAL_PROMPT_MAX_CHARS + 1), `a ${PROMPT_START} b`]) {
+  for (const text of ["  \n", "x".repeat(BRIEF_TEXT_MAX_CHARS + 1), `a ${PROMPT_START} b`]) {
     const r = await cli(repo, "brief", "--file", promptFile(text));
     assert.notEqual(r.code, 0);
   }
@@ -85,13 +85,13 @@ test("brief edits TUMWATER.md when it owns the block, and refuses a positional",
   assert.notEqual((await cli(repo, "brief", "extra")).code, 0);
 });
 
-test("editInitialPrompt refuses a repo with no brief and trims the text it writes", async () => {
-  const { editInitialPrompt } = await import("../src/brief/brief-edit.js");
-  const none = await editInitialPrompt(makeRepo(), "Anything.");
+test("editBriefText refuses a repo with no brief and trims the text it writes", async () => {
+  const { editBriefText } = await import("../src/brief/brief-edit.js");
+  const none = await editBriefText(makeRepo(), "Anything.");
   assert.equal(none.ok, false);
   assert.match(none.ok ? "" : none.error, /no project brief with a prompt block found/);
   const repo = await initializedRepo();
-  const done = await editInitialPrompt(repo, "  Fresh text.  ");
+  const done = await editBriefText(repo, "  Fresh text.  ");
   assert.equal(done.ok, true);
   const readme = fs.readFileSync(path.join(repo, "README.md"), "utf8");
   assert.match(readme, /\nFresh text\.\n/);

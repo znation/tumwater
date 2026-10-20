@@ -298,7 +298,7 @@ test("suiteEnv drops every variable the harness resolves, so a team-started suit
   assert.equal("TUMWATER_PI_BIN" in env, false, "resolveAgentBin must fall through to the fakes on PATH");
   assert.equal(SUPERVISED_ENV in env, false, "a CLI child's `run` must take its supervisor half");
   assert.equal(SUPERVISOR_PID_ENV in env, false, "an inherited supervisor pid must not outlive the supervisor it named");
-  assert.equal("TUMWATER_NOTES_PATH" in env, false, "a non-authoring run must not carry a notebook");
+  assert.equal("TUMWATER_NOTES_PATH" in env, false, "a non-authoring run must not carry a note");
   assert.equal("TUMWATER_RUN" in env, false, "a spawned run must start its marker from scratch");
   assert.equal(DASHBOARD_CHILD_ENV in env, false, "a reload must take the supervisor branch");
 

@@ -251,7 +251,7 @@ function tumwaterServer(fake: FakeOpencodeReplay): NotesServer | undefined {
   return parsed.mcp?.servers?.tumwater;
 }
 
-test("an authoring run with a notebook carries the notes path but no tumwater MCP server", async () => {
+test("an authoring run with notes carries the notes path but no tumwater MCP server", async () => {
   const dir = tmpdir();
   fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
   const notes = path.join(dir, ".tumwater", "notes", "feature.md");
@@ -269,7 +269,7 @@ test("an authoring run with a notebook carries the notes path but no tumwater MC
     assert.match(fs.readFileSync(fake.envFile, "utf8"), new RegExp(`TUMWATER_NOTES_PATH=${notes}`), "the continue keeps the notes path");
   });
 
-  // A run without a notebook names no tumwater server at all.
+  // A run without a note names no tumwater server at all.
   await withOpencodeReplay(opencodeCaptures.editRun, async (fake) => {
     const run = opencodeRun(dir);
     const result = await runAgent(run);

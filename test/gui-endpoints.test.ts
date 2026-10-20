@@ -22,7 +22,7 @@ import { queuedFiles, queuedRolePromptRecords } from "../src/inbox/inbox.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 import { writeEvents, eventsOfType } from "./fixtures/log-fixtures.js";
-import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brief.js";
+import { BRIEF_TEXT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brief.js";
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
@@ -637,7 +637,7 @@ function serveRole(root: string, query: string) {
 
 test("handleRole serves a role's notes and next prompt, refusing a missing or unknown role", async () => {
   const root = tmpdir();
-  // A notebook written by the role's own earlier run — the text the drawer's Notebook
+  // A notes written by the role's own earlier run — the text the drawer's Notes
   // section must show verbatim.
   const notes = roleNotesPath(root, "feature");
   fs.mkdirSync(path.dirname(notes), { recursive: true });
@@ -2164,7 +2164,7 @@ test("POST /api/brief replaces the prompt and commits on main; refusals leave th
   assert.deepEqual(again.data, { file: "README.md", changed: false, committed: false });
   assert.equal(head(), after);
   const before = fs.readFileSync(path.join(repo, "README.md"), "utf8");
-  for (const prompt of ["  ", "x".repeat(INITIAL_PROMPT_MAX_CHARS + 1), PROMPT_START, 5]) {
+  for (const prompt of ["  ", "x".repeat(BRIEF_TEXT_MAX_CHARS + 1), PROMPT_START, 5]) {
     const bad = await post({ prompt });
     assert.equal(bad.captured.status, 400);
     assert.match((bad.data as { error: string }).error, /\S/);

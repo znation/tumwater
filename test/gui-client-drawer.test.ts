@@ -535,7 +535,7 @@ test("transcriptHtml classifies run separators, tool calls, thinking, and warnin
   assert.equal(t.scope.transcriptHtml(["── a"]), "<span class='l-sep'>── a</span>");
 });
 
-test("a role with no notebook or queued prompt shows the placeholder lines", async () => {
+test("a role with no notes or queued prompt shows the placeholder lines", async () => {
   const t = openDrawer(["toggleRole"], { status: workingStatus() });
   t.scope.toggleRole("clean");
   await flush();
@@ -546,7 +546,7 @@ test("a role with no notebook or queued prompt shows the placeholder lines", asy
   assert.match(role, /Nothing to run \(empty inbox\)\./);
 });
 
-test("the role drawer renders its notebook and next prompt, refetching when the drawer switches roles", async () => {
+test("the role drawer renders its notes and next prompt, refetching when the drawer switches roles", async () => {
   const statusRow = (role: string) => ({
     role, phase: "sleeping", inFlight: false, currentWork: "", lastResult: "changed", lastSummary: "x",
     lastRunEndedAt: Date.now() - 60_000, commits: 1, runs: 2, generated: 100, peakCtx: 100,
@@ -585,7 +585,7 @@ test("the role drawer renders its notebook and next prompt, refetching when the 
   assert.doesNotMatch(second, /clean keeps the tree tidy/);
 });
 
-test("the drawer's Notebook section offers Edit and Clear with a note, Edit alone without, and an edit holds its captured text", async () => {
+test("the drawer's Notes section offers Edit and Clear with a note, Edit alone without, and an edit holds its captured text", async () => {
   const responses: Record<string, unknown> = { "/api/role?role=clean": { notes: "first note", nextPrompt: null } };
   const t = openDrawer(["toggleRole", "renderRoleDrawer", "startNoteEdit", "stopNoteEdit", "loadDrawerRole"], { status: workingStatus(), responses });
   t.scope.toggleRole("clean");

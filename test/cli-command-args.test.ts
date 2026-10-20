@@ -50,7 +50,7 @@ test("parseInitArgs --file reads the exact file contents", () => {
 });
 
 test("parseInitArgs rejects unknown double-dash tokens — including the bare `--`", () => {
-  // A misspelled --file used to be baked into the initial prompt — injected into every run
+  // A misspelled --file used to be baked into the brief text — injected into every run
   // of every role until someone edits README.md. Now it fails like any other unknown flag.
   const r = expectFail(() => parseInitArgs(["--fil", "prompt.md"]));
   assert.equal(r.code, 1);

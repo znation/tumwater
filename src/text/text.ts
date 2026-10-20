@@ -146,8 +146,8 @@ export function squash(s: string, max: number): string {
 /** Text capped for injection into a prompt: past `max` characters it is cut and given a visible
  * `…[<label> truncated at <max> chars]` note naming what was capped and how much survived, so
  * the loss is never silent. The single home of that marker format — the PRINCIPLES.md cap
- * (principles.ts's readPrinciples), the initial-prompt backstop (brief.ts's extractPrompt), and
- * the role-notebook read (run-prompt.ts) all render through it, so the defensive caps cannot
+ * (principles.ts's readPrinciples), the brief text backstop (brief.ts's extractPrompt), and
+ * the role-notes read (run-prompt.ts) all render through it, so the defensive caps cannot
  * drift apart in wording. A plain slice at `max` (not truncate's ellipsis-and-trim cut): the
  * marker carries the ellipsis, and the cut boundary must stay a stable, predictable prefix of
  * the original text. A cut that would split a surrogate pair (an astral character such as
@@ -196,7 +196,7 @@ export function parseNonNegativeInt(raw: string): number | null {
 
 /** The shared over-long-text message: `<subject> is <n> chars — shorten it to at most <max>`,
  * with `tail` naming where the text rides once accepted. The one home of that phrasing, used
- * by init's seed check (init.ts, "the initial prompt … every run's prefill"), inbox-submit's
+ * by init's seed check (init.ts, "the brief text … every run's prefill"), inbox-submit's
  * promptLengthProblem ("the prompt … the <role> run's prefill"), and config-validation's
  * customRoles task and roles instructions caps (both "every run's prefill"), so the four
  * too-long messages cannot drift apart in shape. Callers keep their own subject, cap, and

@@ -52,7 +52,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
         return true;
       }
       // A Ctrl+N on any other state (not the Backlog view's new-entry slot, or an editor
-      // already holding the line) is the notebook/change/trail cycle, a pane arm the outer
+      // already holding the line) is the notes/change/trail cycle, a pane arm the outer
       // dispatch handles — this factory returns false so it runs.
       if (
         ctx.view === ctx.roleIds.length + 1 &&

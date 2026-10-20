@@ -7,17 +7,17 @@ import { roleNotesPath } from "../src/paths.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
 // Ctrl+N notes mode: on a role's transcript, the pane swaps the live transcript for the
-// role's notebook and next run's prompt (PLANS.md "Inspect a loop's notebook and next tick
+// role's notes and next run's prompt (PLANS.md "Inspect a loop's notebook and next tick
 // prompt in the TUI"), and swaps back — the terminal view of what the dashboard drawer shows.
 
-/** Seed a role's notebook file. */
+/** Seed a role's notes file. */
 function seedNote(repo: string, role: string, text: string): void {
   const note = roleNotesPath(repo, role);
   fs.mkdirSync(path.dirname(note), { recursive: true });
   fs.writeFileSync(note, text);
 }
 
-test("Ctrl+N shows the viewed role's notebook and next run prompt, and toggles back", async () => {
+test("Ctrl+N shows the viewed role's notes and next run prompt, and toggles back", async () => {
   const repo = await makeTuiRepo();
   seedNote(repo, "clean", "the scheduler lives in team.ts\n");
   enqueueRolePrompt(repo, "clean", "check the scheduler first");
@@ -34,7 +34,7 @@ test("Ctrl+N shows the viewed role's notebook and next run prompt, and toggles b
     // The assembled prompt opens the block (the queued prompt embeds further down, past the
     // pane window): the preview seam's output is what renders, not a placeholder.
     assert.match(tui.lastFrame(), /You are the "clean" role/);
-    assert.match(tui.lastFrame(), /Ctrl\+N change/); // the notebook's next step is the change view
+    assert.match(tui.lastFrame(), /Ctrl\+N change/); // the notes's next step is the change view
 
     // The second Ctrl+N shows the collected pending change (this fixture holds no worktree, so
     // the collector degrades; the tab label is what the step is pinned on).
@@ -46,7 +46,7 @@ test("Ctrl+N shows the viewed role's notebook and next run prompt, and toggles b
     assert.match(tui.lastFrame(), /Transcript: clean \(1\/1\)/);
     assert.match(tui.lastFrame(), /Ctrl\+N notes/);
 
-    // Ctrl+T away and back also lands on the live transcript, not a stale notebook.
+    // Ctrl+T away and back also lands on the live transcript, not a stale notes.
     tui.key(undefined, "t", { ctrl: true }); // → backlog
     tui.key(undefined, "t", { ctrl: true }); // → usage
     tui.key(undefined, "t", { ctrl: true }); // → failures
@@ -62,7 +62,7 @@ test("Ctrl+N shows the viewed role's notebook and next run prompt, and toggles b
   });
 });
 
-test("a role with no notebook shows the none-yet placeholder, not the transcript's empty note", async () => {
+test("a role with no notes shows the none-yet placeholder, not the transcript's empty note", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
@@ -73,7 +73,7 @@ test("a role with no notebook shows the none-yet placeholder, not the transcript
   });
 });
 
-test("PgUp/PgDn page the notebook body and clamp at both ends", async () => {
+test("PgUp/PgDn page the notes body and clamp at both ends", async () => {
   const repo = await makeTuiRepo();
   seedNote(repo, "clean", Array.from({ length: 60 }, (_, i) => `note line ${i + 1}`).join("\n"));
   await withTui(repo, async (tui) => {
@@ -99,7 +99,7 @@ test("PgUp/PgDn page the notebook body and clamp at both ends", async () => {
   });
 });
 
-test("Ctrl+X twice in the notebook view clears the role's notebook; the first press only arms", async () => {
+test("Ctrl+X twice in the notes view clears the role's notes; the first press only arms", async () => {
   const repo = await makeTuiRepo();
   seedNote(repo, "clean", "stale note\n");
   await withTui(repo, async (tui) => {
@@ -116,7 +116,7 @@ test("Ctrl+X twice in the notebook view clears the role's notebook; the first pr
   });
 });
 
-test("another key between the two Ctrl+X presses disarms the notebook clear", async () => {
+test("another key between the two Ctrl+X presses disarms the notes clear", async () => {
   const repo = await makeTuiRepo();
   seedNote(repo, "clean", "keep me\n");
   await withTui(repo, async (tui) => {
@@ -129,7 +129,7 @@ test("another key between the two Ctrl+X presses disarms the notebook clear", as
   });
 });
 
-test("Ctrl+X on the live transcript leaves the notebook alone", async () => {
+test("Ctrl+X on the live transcript leaves the notes alone", async () => {
   const repo = await makeTuiRepo();
   seedNote(repo, "clean", "keep me\n");
   await withTui(repo, async (tui) => {

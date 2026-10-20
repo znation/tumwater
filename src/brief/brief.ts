@@ -6,17 +6,17 @@ import { errorMessage, truncateWithNote } from "../text/text.js";
 
 /** The managed sections of the project brief (TUMWATER.md, with README.md as the
  * compatibility path — plans/portability.md §7a/7): marker constants, the templates a fresh
- * repo gets, and reading the project's initial prompt back out. */
+ * repo gets, and reading the project's brief text back out. */
 
 export const PROMPT_START = "<!-- tumwater:prompt:start -->";
 export const PROMPT_END = "<!-- tumwater:prompt:end -->";
 
-/** Cap on the initial prompt (see readInitialPrompt). The prompt is the project's reason to
+/** Cap on the brief text (see readBriefText). The prompt is the project's reason to
  * exist and rides into EVERY run and director prompt, so unbounded text would be a standing
  * per-run prefill cost — the same budget customRoles.task and roles.<id>.instructions are
  * held to. `tumwater init` rejects an over-long prompt before it is committed (init.ts); this
  * constant is the shared bound so the read path and the init check cannot drift. */
-export const INITIAL_PROMPT_MAX_CHARS = 4096;
+export const BRIEF_TEXT_MAX_CHARS = 4096;
 // The status markers stay exported too: the readme role targets the resolved brief file, not
 // a hardcoded README.md, and doctor's brief check reports which file holds the sections. The
 // prompt markers above stay exported because init.ts names them in its error message.
@@ -29,18 +29,18 @@ export const STATUS_END = "<!-- tumwater:status:end -->";
  * template and the readme role's real-status replacement cannot drift on the wording. */
 const EMPTY_STATUS = "_No status yet. The readme role keeps this section up to date._";
 
-/** The two managed sections a fresh brief carries — the initial prompt in its prompt
+/** The two managed sections a fresh brief carries — the brief text in its prompt
  * markers, an empty status in its status markers — under the given H1. Both homes render
  * the identical body (README.md for a fresh repo, TUMWATER.md for an adopted one), so the
  * body lives here once and the two templates cannot drift on section wording or marker
  * placement; the H1 is the only difference between them. */
-function managedSections(heading: string, initialPrompt: string): string {
+function managedSections(heading: string, briefText: string): string {
   return `# ${heading}
 
 ## Brief
 
 ${PROMPT_START}
-${initialPrompt.trim()}
+${briefText.trim()}
 ${PROMPT_END}
 
 ## Status
@@ -51,21 +51,21 @@ ${STATUS_END}
 `;
 }
 
-/** The README.md a fresh repo starts with: the initial prompt and an empty status,
+/** The README.md a fresh repo starts with: the brief text and an empty status,
  * each in its managed section. */
-export function readmeTemplate(projectName: string, initialPrompt: string): string {
-  return managedSections(projectName, initialPrompt);
+export function readmeTemplate(projectName: string, briefText: string): string {
+  return managedSections(projectName, briefText);
 }
 
 /** The TUMWATER.md an adopted repo gets (plans/portability.md §7a/7, written by 7b's adopt
  * path): the same two managed sections as the README template, under a brief heading —
  * so the resolution logic in this module is the only difference between the two homes. */
-export function briefTemplate(projectName: string, initialPrompt: string): string {
-  return managedSections(`${projectName} — project brief`, initialPrompt);
+export function briefTemplate(projectName: string, briefText: string): string {
+  return managedSections(`${projectName} — project brief`, briefText);
 }
 
 /** True when `text` carries a well-formed managed prompt block: opening marker, then a
- * closing one strictly after it (readInitialPrompt's ordering guard). */
+ * closing one strictly after it (readBriefText's ordering guard). */
 function ownsBrief(text: string): boolean {
   const start = text.indexOf(PROMPT_START);
   if (start < 0) return false;
@@ -104,19 +104,19 @@ function firstBriefText(
 
 /** Which file owns the project's managed sections — the basename of the first candidate
  * that carries a well-formed prompt block, or null when none does. Callers that only need
- * the prompt use readInitialPrompt; this exists for the prompt builders (which name the
+ * the prompt use readBriefText; this exists for the prompt builders (which name the
  * actual file) and doctor's brief check. */
 export function briefFile(root: string): string | null {
   return readBrief(root)?.file ?? null;
 }
 
-/** The project's initial prompt, extracted from the resolved brief file's managed section —
+/** The project's brief text, extracted from the resolved brief file's managed section —
  * TUMWATER.md when it exists with markers, else README.md (plans/portability.md §7a/7). The
  * closing marker is searched for only AFTER the opening one: an end marker mentioned in prose
  * before the real block (e.g. README docs explaining how to edit the prompt) must not make a
  * valid later block unreadable — every role would then run without its project prompt, and
  * init's guard would reject re-init as if the section were missing. */
-export function readInitialPrompt(root: string): string {
+export function readBriefText(root: string): string {
   return readBrief(root)?.prompt ?? "";
 }
 
@@ -130,7 +130,7 @@ export function briefPath(root: string): string | null {
 /** `text` with the prompt block's content replaced by `prompt` (trimmed), every byte outside
  * the two markers kept; null when the text has no well-formed block. Finds the block by
  * extractPrompt's rule (first start marker, then the first end marker after it). */
-export function replaceInitialPrompt(text: string, prompt: string): string | null {
+export function replaceBriefText(text: string, prompt: string): string | null {
   const start = text.indexOf(PROMPT_START);
   if (start < 0) return null;
   const bodyStart = start + PROMPT_START.length;
@@ -156,21 +156,21 @@ function extractPrompt(text: string): string | null {
   // for every run instead of injecting the whole thing (the same defensive cap readPrinciples
   // applies, through text.ts's truncateWithNote), with a visible note so the loss is not
   // silent. init rejects the normal path before it is committed, so this is the backstop.
-  return truncateWithNote(prompt, INITIAL_PROMPT_MAX_CHARS, "brief");
+  return truncateWithNote(prompt, BRIEF_TEXT_MAX_CHARS, "brief");
 }
 
 /** The resolved brief as one value: the owning file's basename (briefFile) and its extracted
- * initial prompt (readInitialPrompt) from a SINGLE firstBriefText scan. Run prompt assembly
- * asks for both on every run, and briefFile + readInitialPrompt each re-ran the candidate
+ * brief text (readBriefText) from a SINGLE firstBriefText scan. Run prompt assembly
+ * asks for both on every run, and briefFile + readBriefText each re-ran the candidate
  * scan and re-read the file — two whole-file reads per run for one file's worth of content.
- * readInitialPrompt and briefFile now derive from this, so there is one read path; null when
+ * readBriefText and briefFile now derive from this, so there is one read path; null when
  * no candidate carries a well-formed prompt block (both derived values are then empty/null). */
 export function readBrief(root: string): { file: string; prompt: string } | null {
   const found = firstBriefText(root, ownsBrief);
   return found ? { file: found.file, prompt: extractPrompt(found.text) ?? "" } : null;
 }
 
-/** The brief's plain-text form: its file name, then the initial prompt — what `tumwater brief`
+/** The brief's plain-text form: its file name, then the brief text — what `tumwater brief`
  * prints and the TUI's Brief tab shows, so the two cannot drift. */
 export function renderBrief(brief: { file: string; prompt: string }): string {
   return `${brief.file}\n${brief.prompt}`;

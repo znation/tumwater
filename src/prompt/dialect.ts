@@ -2,7 +2,7 @@
 /**
  * The only backend-specific prompt text (plans/agent-backends.md "What the pi extensions did,
  * per backend"). Everything else in the prompts already speaks in shell commands and "tool
- * calls"; what differs between pi and claude is the name of the notebook tool and how each
+ * calls"; what differs between pi and claude is the name of the notes tool and how each
  * backend's oversized tool output reaches the model, so those live behind a `PromptDialect`
  * that prompt.ts and prompt-followup.ts take as an optional argument.
  *

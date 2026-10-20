@@ -18,7 +18,7 @@ import { makeHost, recordingFakePi, runArgs } from "./fixtures/runner-pi-fixture
 // RunnerPi's one-reply follow-up turns (src/runner/runner-pi.ts): requestSummary asks the run's
 // own session for the missing SUMMARY block, and requestStageFix asks it to address review
 // findings. Both resume the authoring session through the shared transient retry, carry the
-// role notebook like the authoring run, and fold their spend into the run's counters.
+// role notes like the authoring run, and fold their spend into the run's counters.
 // Tested through a fake pi on PATH.
 test("requestSummary returns null when the role has no resumable session", async () => {
   const root = tmpdir();
@@ -81,11 +81,11 @@ test("requestSummary resumes the run's session and folds its usage", async () =>
   }
 });
 
-test("requestSummary carries the role notebook path, like the authoring run", async () => {
+test("requestSummary carries the role notes path, like the authoring run", async () => {
   // The SUMMARY/stage-fix follow-ups continue the authoring session, so they must run with
   // the same notes wiring: the shared wiring fills PiRunOptions.notesPath exactly as
   // runAuthoringPi does, and the `tumwater-notes` command reaches the same file through
-  // TUMWATER_NOTES_PATH. The director keeps no notebook.
+  // TUMWATER_NOTES_PATH. The director keeps no notes.
   const root = tmpdir();
   const envFile = path.join(root, "notes-env");
   await withPi(
@@ -99,7 +99,7 @@ test("requestSummary carries the role notebook path, like the authoring run", as
       assert.equal(
         fs.readFileSync(envFile, "utf8"),
         `[${roleNotesPath(root, "feature")}]`,
-        "the follow-up runs with the role's notebook path in its environment",
+        "the follow-up runs with the role's notes path in its environment",
       );
     },
   );

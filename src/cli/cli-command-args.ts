@@ -122,7 +122,7 @@ function readPromptFileChecked(file: string): string {
 /** Fail when a read `--file` prompt holds no text: an empty (or whitespace-only) file reads
  * as an empty prompt, which the bare-init path would then treat as "re-seed from README.md"
  * (the operator's --file argument silently ignored on an initialized repo), and a generic
- * "an initial prompt is required" (which never names the file) on a fresh one; the prompt
+ * "a brief is required" (which never names the file) on a fresh one; the prompt
  * queue would enqueue nothing. Names the file, like every other bad --file shape. Shared by
  * the init and prompt parsers, so the message cannot drift between them. */
 function failEmptyPromptFile(file: string, contents: string): void {
@@ -165,7 +165,7 @@ function rejectDuplicateFlags(args: readonly string[], flags: readonly string[])
  * once; with `--file` present nothing but the other flags may accompany it; a `--branch
  * <name>` pair and the valueless flags are never prompt content; single-dash positionals are
  * prompt content, not flags. Without these checks a misspelled --file would be baked into the
- * initial prompt — injected into every run of every role until someone edits the project
+ * brief text — injected into every run of every role until someone edits the project
  * brief. */
 export function parseInitArgs(args: string[]): {
   prompt: string;

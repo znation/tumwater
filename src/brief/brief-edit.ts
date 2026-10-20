@@ -1,7 +1,7 @@
 // vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
-import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START, briefPath, replaceInitialPrompt } from "./brief.js";
+import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START, briefPath, replaceBriefText } from "./brief.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 import { writeTextAtomic } from "../files/files.js";
@@ -9,7 +9,7 @@ import { stampedSubject } from "../git/commit-message.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { tooLongMessage } from "../text/text.js";
 
-/** The outcome of replacing the initial prompt: a refusal's message, or the brief file's
+/** The outcome of replacing the brief text: a refusal's message, or the brief file's
  * basename with whether the text changed and whether that change was committed to main. */
 type BriefEditOutcome =
   | { ok: false; error: string }
@@ -17,15 +17,15 @@ type BriefEditOutcome =
 
 const NO_BRIEF = "no project brief with a prompt block found — run `tumwater init` first";
 
-/** Replace the initial prompt with `text` under the checks init applies (non-empty, at most
- * INITIAL_PROMPT_MAX_CHARS, no prompt marker), write it under the primary-worktree lock, and
+/** Replace the brief text with `text` under the checks init applies (non-empty, at most
+ * BRIEF_TEXT_MAX_CHARS, no prompt marker), write it under the primary-worktree lock, and
  * commit that one file on main. The one writer behind `tumwater brief --file` and the
  * dashboard's Settings card, so the two cannot drift. */
-export async function editInitialPrompt(root: string, text: string): Promise<BriefEditOutcome> {
+export async function editBriefText(root: string, text: string): Promise<BriefEditOutcome> {
   const prompt = text.trim();
   if (prompt === "") return { ok: false, error: "the new brief is empty" };
-  if (prompt.length > INITIAL_PROMPT_MAX_CHARS)
-    return { ok: false, error: tooLongMessage("the new brief", prompt.length, INITIAL_PROMPT_MAX_CHARS, PREFILL_REASON) };
+  if (prompt.length > BRIEF_TEXT_MAX_CHARS)
+    return { ok: false, error: tooLongMessage("the new brief", prompt.length, BRIEF_TEXT_MAX_CHARS, PREFILL_REASON) };
   if (prompt.includes(PROMPT_START) || prompt.includes(PROMPT_END))
     return { ok: false, error: "the new brief contains a tumwater:prompt marker, which would break the block for every reader" };
   const file = briefPath(root);
@@ -33,7 +33,7 @@ export async function editInitialPrompt(root: string, text: string): Promise<Bri
   const name = path.basename(file);
   const changed = withPrimaryWorktreeLock(root, (): boolean | string => {
     const current = fs.readFileSync(file, "utf8");
-    const next = replaceInitialPrompt(current, prompt);
+    const next = replaceBriefText(current, prompt);
     if (next === null) return `${name} no longer carries a prompt block`;
     if (next === current) return false;
     writeTextAtomic(file, next);

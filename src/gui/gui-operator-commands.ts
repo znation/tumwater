@@ -15,7 +15,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "../operator/revert.js";
 import { shortSha } from "../text/format.js";
-import { editInitialPrompt } from "../brief/brief-edit.js";
+import { editBriefText } from "../brief/brief-edit.js";
 import { requireStringField, validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
@@ -102,7 +102,7 @@ export async function handleAbort(req: http.IncomingMessage, res: http.ServerRes
   sendRequestResult(res, requestAbort(root, body.role as string));
 }
 
-/** Handle POST /api/role-notes: the role drawer's notebook Edit/Clear — the same saveRoleNote
+/** Handle POST /api/role-notes: the role drawer's notes Edit/Clear — the same saveRoleNote
  * `tumwater role <id> --notes-file` / `--clear-notes` call, so the 4 KB cap and its wording
  * cannot drift. `"text": ""` clears. The director has no notes (400, the CLI's wording); a
  * non-string text is a 400 before anything is written; an over-cap note is a 400 carrying
@@ -165,7 +165,7 @@ export async function handleRevert(req: http.IncomingMessage, res: http.ServerRe
     message: `main is now ${shortSha(result.headSha)}${followUp === null ? "" : ` — ${followUp}`}`,
   });
 }
-/** Handle POST /api/brief: replace the initial prompt through editInitialPrompt — the same
+/** Handle POST /api/brief: replace the brief text through editBriefText — the same
  * checks, locked write, and commit as `tumwater brief --file`. A non-string prompt or any
  * refusal is a 400 and writes nothing. */
 export async function handleBriefEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
@@ -173,7 +173,7 @@ export async function handleBriefEdit(req: http.IncomingMessage, res: http.Serve
   if (!body) return;
   const prompt = requireStringField(res, body, "prompt", "the full replacement brief");
   if (prompt === null) return;
-  const outcome = await editInitialPrompt(root, prompt);
+  const outcome = await editBriefText(root, prompt);
   if (!outcome.ok) return badRequest(res, outcome.error);
   sendJson(res, 200, { file: outcome.file, changed: outcome.changed, committed: outcome.committed });
 }

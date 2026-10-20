@@ -24,7 +24,7 @@ interface CompletionSpec {
 /** The completable words of a stanza's usage part: the text after `tumwater <command>` up to the
  * description column (two or more spaces). Bare lowercase words count inside `[...]` and as the
  * leading run directly after the command; outside brackets the first other token ends the run, so
- * a single-space description (`role <id> --clear-notes Clear that notebook`) adds nothing. */
+ * a single-space description (`role <id> --clear-notes Clear that notes`) adds nothing. */
 function usageWords(firstLine: string, command: string): string[] {
   const rest = firstLine.replace(new RegExp(`^ {2}tumwater ${command}`), "");
   // Usage arguments follow the command after a single space; two or more spaces start the

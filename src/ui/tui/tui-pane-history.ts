@@ -277,7 +277,7 @@ export function createHistoryPane(
     if (key.ctrl && key.name === "n") {
       // On the History pane Ctrl+N swaps the row list for one run's full event trail instead
       // (the CLI's `tumwater run --last` text). Routed here only for the History view, ahead
-      // of the transcript pane's notebook/change arm; a non-History view falls through to it.
+      // of the transcript pane's notes/change arm; a non-History view falls through to it.
       if (session.view !== session.roleIds.length + 4) return false;
       if (!promptLineFree(ctx.es)) {
         // The transcript guard would consume the key; keep Ctrl+N consumed on the History view.
@@ -394,7 +394,7 @@ export function createHistoryPane(
     const page = pageDir(key.name);
     if (page !== null && trailMode) {
       // Within-body scroll in the run-trail view: PgDn/PgUp page the cached trail Markdown,
-      // clamped at both ends, exactly like the notebook/change and usage/failures panes.
+      // clamped at both ends, exactly like the notes/change and usage/failures panes.
       session.paneScroll = pageMarkdownBody(session.paneScroll, trailCache, session.eventBudget, page);
       session.requestRender();
       return true;

@@ -47,7 +47,7 @@ export interface TuiEditorsDeps {
   flat(): ReturnType<typeof labeledBacklogEntries>;
   /** Re-read the Queued pane's rows and cached list after a commit/exit that touched the queue. */
   refreshQueued(): void;
-  /** Repaint the notes view's cached notebook after a replace/clear write. */
+  /** Repaint the notes view's cached notes after a replace/clear write. */
   refreshNotes(role: string): void;
   /** Repaint the Brief view's cached body after a replace write. */
   refreshBrief(): void;
@@ -108,7 +108,7 @@ interface TuiEditorState {
    * the prompt line is replacing from a typed file path, or null when closed. */
   notesEditFor: string | null;
   /** The Brief view's Ctrl+E replace-the-brief mode holds the prompt line, editing one typed
-   * file path that becomes the whole brief through editInitialPrompt. */
+   * file path that becomes the whole brief through editBriefText. */
   briefEditMode: boolean;
   /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
   retireMode: boolean;
