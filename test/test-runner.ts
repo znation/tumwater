@@ -129,6 +129,15 @@ const E2E_SUFFIX = ".e2e.test.js";
  * y in the files a or b select — the name parts cannot be per-file, and one alternation is
  * the honest shape of that). */
 export function selectTestFiles(filters: readonly string[], distDir: string): TestFileSelection {
+  // A leading "-" is a flag, never a file filter: a misspelt `--covrage` would otherwise fall
+  // through to "no test file matches" and read as a missing file.
+  const flag = filters.find((f) => f.startsWith("-"));
+  if (flag !== undefined)
+    return {
+      names: [],
+      files: [],
+      error: `unknown option ${JSON.stringify(flag)} — the runner takes --coverage, --affected[=<ref>], and file or file#name filters`,
+    };
   for (const raw of filters) {
     if (parseFilter(raw).name === "")
       return {

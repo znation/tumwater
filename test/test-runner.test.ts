@@ -104,6 +104,8 @@ test("a #name part filters the tests inside the selected files, as one escaped-l
   // A bare `#` would mean "run nothing" — rejected with the syntax shown.
   const empty = selectTestFiles(["runner#"], dir);
   assert.match(empty.error ?? "", /a "#" must be followed by the test name to run/);
+  // A misspelt flag is named as an unknown option, not reported as a missing test file.
+  assert.match(selectTestFiles(["--covrage"], dir).error ?? "", /unknown option "--covrage".*--coverage/);
   // parseFilter splits at the first # only; a test name may itself carry one.
   assert.deepEqual(parseFilter("a#b#c"), { file: "a", name: "b#c" });
   assert.deepEqual(parseFilter("plain"), { file: "plain", name: null });
