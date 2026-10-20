@@ -41,9 +41,12 @@ Usage:
                                    localhost only; --all-interfaces serves the whole
                                    network — without --token there is no auth, anyone
                                    reaching it can message the director)
-  tumwater status [--json]         One-shot status table (--json prints machine-readable
+  tumwater status [--role <id>[,<id>...]] [--json]
+                                   One-shot status table (--json prints machine-readable
                                    team state — the GUI's /api/status payload minus the
-                                   serving process's serverBuildSha)
+                                   serving process's serverBuildSha); --role keeps only the
+                                   listed roles' rows (a base id includes its instances);
+                                   the header and budget stay team-wide
   tumwater report [--days N] [--role <id>[,<id>...]] [--json]
                                    Markdown usage report — tokens/runs/commits per day (default
                                    14 days); totals also include merge runs (reviewer + conflict

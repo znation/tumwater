@@ -17,6 +17,8 @@ import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { initProject } from "../src/init/init.js";
 import { orchestratorStatePath } from "../src/paths.js";
+import { scopeSnapshotToRoles } from "../src/status/status-data.js";
+import { todayStamp } from "../src/budget/budget.js";
 import { tmpdir, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -703,4 +705,34 @@ test("status renders no banner block on an alert-free team", () => {
   // team keeps the banner block empty, so the output is byte-identical to a pre-banner status.
   assert.equal(lines[1], "");
   assert.match(lines[2] ?? "", /^role\b/, "the line after the header blank is the table, not a banner");
+});
+
+test("a role-scoped status table keeps the listed roles and their instances", () => {
+  const snap = snapshotWith([
+    { role: "clean", totalCostUsd: 1.25 },
+    { role: "dedupe", totalCostUsd: 0.5 },
+    { role: "feature", totalCostUsd: 2 },
+    { role: "feature-2", totalCostUsd: 4 },
+  ]);
+  const out = renderStatus(tmpdir(), scopeSnapshotToRoles(snap, ["feature", "clean"]), undefined, true);
+  for (const label of ["clean", "feature", "feature #2"]) assert.ok(rowOf(out, label), `${label} row shown`);
+  assert.equal(out.split("\n").some((l) => l.startsWith("dedupe ")), false);
+  const lines = out.split("\n");
+  assert.match(lines[lines.length - 1] ?? "", /\$7\.25/);
+});
+
+test("a scoped totals row sums today over the shown rows, not the team budget", () => {
+  const stamp = todayStamp();
+  const snap = snapshotWith([
+    { role: "clean", dayStamp: stamp, dayCostUsd: 0.1 },
+    { role: "dedupe", dayStamp: stamp, dayCostUsd: 0.3 },
+    { role: "feature", dayStamp: stamp, dayCostUsd: 5 },
+  ]);
+  snap.budget.spentUsd = 9.99;
+  const scoped = scopeSnapshotToRoles(snap, ["clean", "dedupe"]);
+  const totals = (out: string) => out.split("\n").pop() ?? "";
+  const shown = totals(renderStatus(tmpdir(), scoped, undefined, true));
+  assert.match(shown, /\$0\.40/);
+  assert.doesNotMatch(shown, /\$9\.99/);
+  assert.match(totals(renderStatus(tmpdir(), snap)), /\$9\.99/);
 });

@@ -6,13 +6,13 @@
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender, warnIfUncommitted } from "./cli-output.js";
-import { flagValue, parseCountFlag, parseGrepFlag, parsePositionFlag, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
+import { flagValue, parseCountFlag, parseGrepFlag, parsePositionFlag, parseRoleFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
 import { JSON_FLAG, READY_FLAG, grepFlagSpec, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
-import { snapshot } from "../status/status-data.js";
+import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
@@ -119,16 +119,18 @@ function peelRolePositional(args: string[]): { id: string | null; rest: string[]
 /** `tumwater status`: the team snapshot as rendered text or as the JSON document GET
  * /api/status serves. */
 export async function cmdStatus(root: string, args: string[]): Promise<void> {
-  rejectUnknownArgs("status", args, [JSON_FLAG]);
+  rejectUnknownArgs("status", args, [ROLE_FLAG, JSON_FLAG]);
   await requireReadyRepo(root);
+  const scope = parseRoleListScope(root, args);
   if (args.includes("--json")) {
     // Machine-readable team state — the document GET /api/status serves minus the
     // serving process's own `serverBuildSha`, printed with no server. A query, not a
     // health verdict: exit 0 on any successful read and let scripts interpret fields
     // themselves ("running": false is data, not failure).
-    sayJson(statusPayload(root));
+    sayJson(statusPayload(root, Date.now(), scope));
   } else {
-    say(renderStatus(root, snapshot(root), process.stdout.isTTY ? process.stdout.columns : undefined));
+    const snap = snapshot(root);
+    say(renderStatus(root, scope ? scopeSnapshotToRoles(snap, scope) : snap, process.stdout.isTTY ? process.stdout.columns : undefined, scope !== null));
   }
 }
 

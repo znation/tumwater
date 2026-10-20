@@ -731,3 +731,15 @@ test("the status payload carries no retired script key anywhere in its tree", as
   assert.ok(payload.eventItems.every((it) => !("loop" in it) && "source" in it));
   assert.ok(payload.mergeQueue.entries.every((e) => !("tick" in e) && "run" in e));
 });
+
+test("status payload scoped to a role lists only that role and keeps the team budget", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload role scope");
+  for (const role of ["clean", "dedupe"]) saveRunnerState(repo, freshRunnerState(role));
+  const now = Date.now();
+  const all = statusPayload(repo, now) as { roles: { role: string }[]; budget: unknown };
+  const scoped = statusPayload(repo, now, ["clean"]) as typeof all;
+  assert.ok(all.roles.some((r) => r.role === "dedupe"));
+  assert.deepEqual(scoped.roles.map((r) => r.role), ["clean"]);
+  assert.deepEqual(scoped.budget, all.budget);
+});

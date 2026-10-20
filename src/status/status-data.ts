@@ -367,6 +367,12 @@ function earliestStop(a: number | undefined, b: number | undefined): number | un
   return a === undefined ? b : b === undefined ? a : Math.min(a, b);
 }
 
+/** The snapshot keeping only the listed roles' rows: a base id also keeps its instances
+ * (`feature` keeps `feature-2`). Every other field stays team-wide. */
+export function scopeSnapshotToRoles(snap: StatusSnapshot, roles: readonly string[]): StatusSnapshot {
+  return { ...snap, loops: snap.loops.filter((s) => roles.includes(s.role) || roles.includes(baseRoleOf(s.role))) };
+}
+
 /** One fresh team snapshot for observers. `modelsPath` overrides pi's model definitions
  * location (default ~/.pi/agent/models.json) — a test seam, like doctor's pathEnv. `now` pins
  * the poll's clock for the budget figures (the persisted day-stamp check and the burn-rate

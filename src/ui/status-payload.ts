@@ -8,7 +8,7 @@ import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
 import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
-import { snapshot } from "../status/status-data.js";
+import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
@@ -40,8 +40,10 @@ export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title
  * `now` pins the poll's clock for the time-derived fields (see snapshot's seam of the same
  * name) — spend stamp-check, burn-rate projection, disk badge, and the pause countdown — so a
  * test's expected value cannot race the payload's own Date.now(). */
-export function statusPayload(root: string, now = Date.now()): object {
-  const snap = snapshot(root, undefined, now);
+export function statusPayload(root: string, now = Date.now(), scope: readonly string[] | null = null): object {
+  const full = snapshot(root, undefined, now);
+  // `--role` scopes the role rows (and the alerts computed from them); budget stays team-wide.
+  const snap = scope ? scopeSnapshotToRoles(full, scope) : full;
   // One event read feeds both feed shapes below, so `events[i]` and `eventItems[i]` always
   // describe the same event.
   const recent = readEvents(root, RECENT_EVENTS);

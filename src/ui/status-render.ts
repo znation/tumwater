@@ -223,6 +223,7 @@ export function renderStatusSpans(
   root: string,
   snap: StatusSnapshot,
   maxWidth?: number,
+  scoped = false,
 ): { lines: StatusLine[]; loops: StatusRoleRow[] } {
   const name = projectName(root);
   const lines: StatusLine[] = [];
@@ -378,7 +379,8 @@ export function renderStatusSpans(
     // exactly the in-flight charge the budget gate has already counted, and displaying it is
     // the point (BUGS.md 2026-09-30). Not running, the snapshot derives the block from these
     // same roles, so cells and total agree by construction.
-    usd(snap.budget.spentUsd),
+    // A role-scoped table adds up the rows shown instead: the team figure would not match them.
+    usd(scoped ? snap.loops.reduce((sum, s) => sum + dailyCost(s), 0) : snap.budget.spentUsd),
     "",
     "",
     "",
@@ -459,8 +461,8 @@ export function renderStatusSpans(
 /** Render the status table shared by `tumwater status` and the TUI as plain text (see
  * renderStatusSpans). When `maxWidth` is given, wide cells are clipped so no line exceeds it
  * (terminal rows never wrap). */
-export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
-  const { lines, loops: roles } = renderStatusSpans(root, snap, maxWidth);
+export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number, scoped = false): string {
+  const { lines, loops: roles } = renderStatusSpans(root, snap, maxWidth, scoped);
   // The team-attention banners (team-alerts.ts) drop under the header's blank line here, on
   // the CLI-only plain-text surface — the same spelled-out banners the dashboard and TUI draw,
   // from the one shared source, so the CLI/GUI/TUI cannot drift on wording. One QUESTIONS.md
