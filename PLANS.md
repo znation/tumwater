@@ -456,4 +456,17 @@ The self-check runs before the sweep, while the author can still fix the change 
 - The existing stage-check tests pass unedited, including "a duplicated ## Done heading yields the structure finding" and "a clean change yields no findings".
 - `npm run test:gate` passes.
 
+### A commit body's WHY, RISK and VERIFIED lines are kept whole up to 1000 characters, so a reviewer stops rejecting a change because the harness cut its own RISK line mid-sentence (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches src/git/commit-message.ts and test/commit-message.test.ts, which no Planned entry names)
+
+**Goal.** `extractCommitBody` (src/git/commit-message.ts) caps each of WHY, RISK and VERIFIED at `COMMIT_BODY_FIELD_MAX = 200` characters with `truncate`, which ends a cut line with "…". At that size the cap cuts ordinary answers, not just verbose ones. In the 1306 commits on main since 2026-10-13, 1554 of the 3741 `WHY:`/`RISK:`/`VERIFIED:` lines end in "…". 1344 of them are exactly 200 characters long and 210 are 199 (`truncate` trims a trailing space before the ellipsis). Reviewers read that commit message and reject the change over it. Between 2026-10-19 08:58 and 2026-10-20 00:57 UTC there were seven `review_rejected` reasons from feature-3 and feature-5 like "WHY, RISK and VERIFIED each end mid-sentence with "…" in the commit message itself" and "the RISK list stops at `` (`src/… ``". They came from Plain-terms parts whose series rules ask for any leftover name to be listed in the commit message. The author cannot fix this in a revision: each new round truncates the line again. The cap exists so that a verbose model cannot bloat every commit. 1000 characters still does that job and fits a full list of leftovers.
+
+**Approach.**
+- **src/git/commit-message.ts.** Set `COMMIT_BODY_FIELD_MAX` to `1000`. Reword its doc comment to give the reason: the cap only bounds a runaway reply, and at 200 it cut almost half of all body lines, which reviewers rejected as incomplete claims. Change "capped at 200 chars" in `extractCommitBody`'s doc comment to name the constant. Leave the rest as it is: `truncate` still cuts a field that is over the cap. `parseCommitMetadata` re-extracts the body through `extractCommitBody`, so leftover recovery reads a whole field back under the same cap. Leave `COMMIT_SUMMARY_MAX`, `summaryOverCap` and `SUMMARY_BLOCK` (src/verdict/reply-contract.ts) alone. This plan adds no follow-up turn for an over-long body field.
+- **test/commit-message.test.ts.** Rename "extractCommitBody caps each field at 200 chars with an ellipsis" to "extractCommitBody caps each field at 1000 chars with an ellipsis". Feed it a 1500-character WHY, and assert the result is exactly 1000 characters long, ends in "…", and leaves RISK untouched. Add "extractCommitBody keeps a 600-character field whole": a 600-character RISK made of words and spaces comes back unchanged, with no "…".
+
+**Acceptance criteria.**
+- `grep -n 'COMMIT_BODY_FIELD_MAX = ' src/git/commit-message.ts` shows `1000`. `grep -rn '200 chars' src/git/commit-message.ts` finds nothing.
+- Both tests named above pass. Every other test in test/commit-message.test.ts passes without edits, including "extractCommitBody pulls all three fields, trimmed" and "extractCommitBody tolerates any subset and returns null when none are present".
+- `npm run test:gate` passes.
+
 ## Done
