@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { gitTry } from "../git/git-run.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
-import { refSha } from "../git/git.js";
+import { commitExists, refSha } from "../git/git.js";
 
 /** Build provenance for the compiled harness: which commit `dist/` was compiled from, written by
  * `npm run build` (scripts/stamp-build.mjs) as dist/build-info.json and read back by the running
@@ -77,7 +77,7 @@ export async function stampBuild(root: string, dist: string, sha?: string): Prom
  * at some other project is never stale with respect to that project's main. */
 export async function isSelfHosted(root: string, info: BuildInfo): Promise<boolean> {
   if (path.resolve(root) !== info.root) return false;
-  return (await gitTry(root, "cat-file", "-e", `${info.sha}^{commit}`)) !== null;
+  return commitExists(root, info.sha);
 }
 
 /** What orchestrator.json publishes about the running build (OrchestratorInfo.build), for the

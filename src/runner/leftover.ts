@@ -1,5 +1,5 @@
 // vocabulary: plain
-import { aheadOfMain, commitMessage, deleteRef, headOf, isMergedInto, refSha, setRef } from "../git/git.js";
+import { aheadOfMain, commitExists, commitMessage, deleteRef, deleteRefIfAt, headOf, isMergedInto, refSha, setRef } from "../git/git.js";
 import { parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { enqueueMerge, queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
@@ -39,6 +39,19 @@ async function dropStalePin(root: string, ref: string, sha: string, mainBranch: 
   return true;
 }
 
+/** Delete a pin whose commit is missing from the repository, with a warning: it can never merge,
+ * and re-queuing it would end every run on an error. True when it was dangling and is gone. */
+async function dropDanglingPin(root: string, role: string, ref: string, sha: string): Promise<boolean> {
+  if (await commitExists(root, sha)) return false;
+  await deleteRefIfAt(root, ref, sha);
+  warnEventBestEffort(
+    root,
+    role,
+    `dropped merge pin ${shortSha(sha)}: its commit is missing from the repository, so it can never merge`,
+  );
+  return true;
+}
+
 /** The permanent-reviewer-config hold when it names `sha`, else undefined. */
 function reviewHold(held: RunnerState["mergeReviewError"], sha: string): { message: string } | undefined {
   return held?.sha === sha ? held : undefined;
@@ -63,6 +76,7 @@ export async function pinnedRetrySha(
   const ref = mergeRefName(role);
   const sha = await refSha(root, ref).catch(() => null);
   if (!sha) return null;
+  if (await dropDanglingPin(root, role, ref, sha)) return null;
   if (await dropStalePin(root, ref, sha, mainBranch)) return null;
   if (reviewHold(state.mergeReviewError, sha)) return null;
   if (conflictAttempts(state.mergeConflicts, sha) >= MERGE_CONFLICT_LIMIT) return null;
@@ -129,8 +143,9 @@ export async function hasUnmergedPin(root: string, role: string): Promise<boolea
 /** Queue a commit a previous tick left unmerged. Entry condition: the merge ref exists and
  * its sha is not yet contained in main — or, with no pin at all, the role's branch is ahead of
  * main (crash between the commit and the pin). A present-but-contained ref is stale — a crash
- * between the ff-merge and the ref deletion — and is deleted without queuing anything. Returns
- * null when there was nothing to salvage. The queued entry carries the pin's sha plus the
+ * between the ff-merge and the ref deletion — and is deleted without queuing anything, and so is
+ * a pin whose commit is missing from the repository (with a warning — it can never merge).
+ * Returns null when there was nothing to salvage. The queued entry carries the pin's sha plus the
  * summary, body, and high-friction flag read back from its commit message, because the
  * authoring run that set them is gone; from there the merge slot keeps or deletes the ref per
  * the merger's usual policy. An unreadable ref or worktree reads as no leftover — only git-level
@@ -143,6 +158,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   const ref = mergeRefName(ctx.role);
   let sha = await refSha(ctx.root, ref).catch(() => null);
   if (sha) {
+    if (await dropDanglingPin(ctx.root, ctx.role, ref, sha)) return null;
     if (await dropStalePin(ctx.root, ref, sha, ctx.mainBranch)) return null;
   } else {
     // No pin: either nothing was left behind, or a crash hit the commit→pin window (or

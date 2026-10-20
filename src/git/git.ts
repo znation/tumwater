@@ -243,6 +243,11 @@ export async function refsUnder(root: string, prefix: string): Promise<{ ref: st
   });
 }
 
+/** Whether `sha` names a commit present in the repository. */
+export async function commitExists(root: string, sha: string): Promise<boolean> {
+  return (await gitTry(root, "cat-file", "-e", `${sha}^{commit}`)) !== null;
+}
+
 /** Delete `ref` only while it still names `sha` (git update-ref -d guarded by the old value). */
 export async function deleteRefIfAt(root: string, ref: string, sha: string): Promise<void> {
   await gitTry(root, "update-ref", "-d", ref, sha);

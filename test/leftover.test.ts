@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { MERGE_CONFLICT_LIMIT, hasUnmergedPin, recoverLeftover, type LeftoverContext } from "../src/runner/leftover.js";
+import { MERGE_CONFLICT_LIMIT, hasUnmergedPin, pinnedRetrySha, recoverLeftover, type LeftoverContext } from "../src/runner/leftover.js";
 import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
@@ -194,6 +194,37 @@ test("a stale ref already contained in main is deleted without queuing anything"
 
   assert.deepEqual(queuedMerges(root), [], "contained work is never re-queued");
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the stale pin was cleaned up");
+});
+
+/** A repo whose merge pin is a loose ref file naming a commit that does not exist. */
+function danglingPinFixture(): string {
+  const root = makeRepo();
+  const refFile = path.join(root, ".git", mergeRefName(ROLE));
+  fs.mkdirSync(path.dirname(refFile), { recursive: true });
+  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
+  return root;
+}
+
+test("a pin whose commit is missing is dropped with a warning and nothing is queued", async () => {
+  const root = danglingPinFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+
+  assert.equal(await recoverLeftover(makeCtx(root, wt)), null);
+
+  assert.deepEqual(queuedMerges(root), []);
+  assert.equal(await refSha(root, mergeRefName(ROLE)), null);
+  const warnings = warningMessages(root).filter((m) => m.includes("dropped merge pin"));
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /dropped merge pin 1111111/);
+  assert.match(warnings[0]!, /missing/);
+});
+
+test("pinnedRetrySha drops a pin whose commit is missing", async () => {
+  const root = danglingPinFixture();
+
+  assert.equal(await pinnedRetrySha(root, ROLE, "main", {}), null);
+
+  assert.equal(await refSha(root, mergeRefName(ROLE)), null);
 });
 
 test("an unpinned commit ahead of main (crash in the commit→pin window) is adopted and queued from the branch tip", async () => {

@@ -806,40 +806,6 @@ Objections quoted from the final review:
 - New test "ensureDetachedWorktree still throws on a dangling ref outside refs/tumwater/": a loose `refs/heads/broken` pointing at a missing object makes `ensureDetachedWorktree` reject with `bad object`. The ref file stays and no `warning` event is logged.
 - `resetWorktreeToMain` callers compile unchanged. `npm run test:gate` passes.
 
-### Leftover recovery drops a merge pin whose commit is gone, with a warning, instead of re-queuing it on every author run (planned 2026-10-19 by the plan role; no dependency on any Planned entry. It sits beside "A slot reset drops a dangling pin under any `refs/tumwater/` namespace", which heals the slot checkout. This plan heals the role's own pin and touches different files)
-
-**Goal.** BUGS-FIXED.md's 2026-10-19 "dangling `refs/tumwater/merge/feature-5`" entry shows that a `refs/tumwater/merge/<role>` pin can outlive its commit. Leftover recovery does not handle that case:
-
-- `refSha` (src/git/git.ts) reads the ref from files, so it returns the dangling sha.
-- `dropStalePin` (src/runner/leftover.ts) asks `isMergedInto`. `git merge-base --is-ancestor <missing> main` exits 128, so `gitTry` returns null and the pin reads as "not merged".
-- `recoverLeftover` then enqueues a `MergeEntry` for a sha that cannot merge.
-- `verifyRequest` (src/merge/merge-batch.ts) cannot lease a slot at that sha and degrades to a terminal `error`. Its comment says so: "The queue entry outlived its pinned commit". The drain drops the entry, but no path deletes the pin.
-- The role's next run calls `recoverLeftover`, which finds the same pin and queues it again.
-
-So the role re-queues a dead sha on every run, ends each run on `error`, and never authors again. `pinnedRetrySha` shares `dropStalePin`, so the merge slot's own re-queue (`requeueKeptChange`, `requeueMainRedPin` in src/merge/merge-slot.ts) can queue the same dead sha after a retriable result. A scratch repo checked the git side: with `.git/refs/tumwater/merge/feature` holding `1111…1` (no such object), `merge-base --is-ancestor` exits 128, `log -1 --format=%B` exits 128, `cat-file -e <sha>^{commit}` exits 128, and `update-ref -d refs/tumwater/merge/feature <sha>` exits 0 and removes the file.
-
-**Approach.**
-- src/git/git.ts: add `export async function commitExists(root: string, sha: string): Promise<boolean>`. It returns `(await gitTry(root, "cat-file", "-e", \`${sha}^{commit}\`)) !== null`. Give it a one-line doc comment. `isSelfHosted` in src/build/build-info.ts already runs this same command inline, so switch it to call `commitExists(root, info.sha)`, which keeps one home for the idiom.
-- src/runner/leftover.ts: add a private `dropDanglingPin(root, role, ref, sha): Promise<boolean>` next to `dropStalePin`. When `commitExists(root, sha)` is false, it:
-  - runs `deleteRefIfAt(root, ref, sha)`, guarded by the old value so it cannot remove a pin a concurrent write has just repointed;
-  - logs `warnEventBestEffort(root, role, \`dropped merge pin ${shortSha(sha)}: its commit is missing from the repository, so it can never merge\`)`;
-  - returns true.
-  
-  Otherwise it returns false. Call it first in `pinnedRetrySha` (return null when it returns true) and in `recoverLeftover`'s `if (sha)` branch (return null when it returns true), each time before `dropStalePin`. Recovery then reads "nothing to salvage", and the run goes on to author on a fresh main, as it does after a stale pin.
-- Extend `recoverLeftover`'s doc comment: a pin whose commit is missing is deleted with a warning and nothing is queued. `hasUnmergedPin` stays as it is ("ref presence is the whole answer"), because recovery now clears the dangling pin on the role's next run.
-
-**Files touched.** src/git/git.ts (`commitExists`); src/build/build-info.ts (`isSelfHosted`); src/runner/leftover.ts (`dropDanglingPin`, `pinnedRetrySha`, `recoverLeftover`); test/leftover.test.ts.
-
-**Acceptance criteria.**
-- New test in test/leftover.test.ts, "a pin whose commit is missing is dropped with a warning and nothing is queued". It uses `makeRepo` and writes `refs/tumwater/merge/<ROLE>` as a loose ref file holding `"1".repeat(40)` under `.git/refs/tumwater/merge/`, so `setRef` does not reject the missing object. It checks:
-  - `recoverLeftover(makeCtx(root, wt))` returns null;
-  - `queuedMerges(root)` is `[]`;
-  - `refSha(root, mergeRefName(ROLE))` is null;
-  - `warningMessages(...)` (test/fixtures/log-fixtures.ts) holds one message containing `dropped merge pin 1111111` and `missing`.
-- New test, "pinnedRetrySha drops a pin whose commit is missing". The same setup run through `pinnedRetrySha(root, ROLE, "main", {})` returns null, and the ref is gone.
-- The existing tests "a pinned commit not in main is put on the merge queue, not merged" and "a stale ref already contained in main is deleted without queuing anything" still pass, so a live pin still gets no warning and is still queued.
-- `npm run test:gate` passes.
-
 ### The dashboard's History "Show transcript" gets a "Show prompts" button that reloads the run's transcript with each agent run's prompt, the dashboard twin of `tumwater history <role> <n> --transcript --prompt` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. "Logs role filter, part 1/2" edits only the `/api/transcript` doc comment in src/gui/gui-endpoints.ts, not `handleTick`'s, so whichever lands second just rebases. The leftover-recovery and slot-reset plans touch src/runner/, src/git/ and src/build/, none of these files. Touches src/gui/gui-endpoints.ts src/ui/gui/gui-client-history.ts docs/how-it-works.md test/gui-server-api.test.ts test/gui-client-history.test.ts)
 
 **Goal.** `tumwater history <role> <n> --transcript --prompt` prints a past run's agent transcript together with the prompt each agent run was given. It does this by passing `{ includePrompts: true }` to `tickTranscriptLines` (src/tick/tick-detail.ts), which passes it on to `readRunTranscript` (src/ui/transcript-run.ts). The dashboard's History drill-down "Show transcript" button (`histTranscriptHtml`/`toggleHistTranscript`, src/ui/gui/gui-client-history.ts) fetches `/api/run?…&transcript=1`. `handleTick`'s `transcriptText` (src/gui/gui-endpoints.ts) calls `tickTranscriptLines` with four arguments, so the dashboard never shows the prompt. That prompt is the first thing an operator wants to see when a run went wrong. Close the gap the way the CLI does: prompts stay opt-in, because they are long.
