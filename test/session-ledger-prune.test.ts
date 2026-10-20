@@ -9,10 +9,10 @@ import {
   readSessions,
   recordSession,
   sessionLedgerPath,
-  type SessionRecord,
 } from "../src/agent/session-ledger.js";
 import { skipIfRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 import { errnoError, withReadOnlyDir, withThrowingFs } from "./helpers/fs-faults.js";
+import { record } from "./fakes/session-record.js";
 import { writeScript } from "./fakes/fake-commands.js";
 
 // The retention trim runs in the orchestrator's poll loop, where a throw ends the team: these
@@ -20,18 +20,6 @@ import { writeScript } from "./fakes/fake-commands.js";
 // resume check and the OpenCode purge that test/session-ledger.test.ts does not reach.
 
 const DAY = 24 * 3600 * 1000;
-
-function record(overrides: Partial<SessionRecord> = {}): SessionRecord {
-  return {
-    agent: "pi",
-    id: "id",
-    kind: "author",
-    name: "tumwater-feature-1",
-    cwd: "/wt",
-    at: Date.now(),
-    ...overrides,
-  };
-}
 
 test("pruneSessionLedgers leaves a ledger it cannot rewrite as it was and counts nothing for it", (t) => {
   const root = tmpdir();

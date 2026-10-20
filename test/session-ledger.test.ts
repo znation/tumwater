@@ -11,27 +11,15 @@ import {
   resumableSession,
   sessionLedgerPath,
   sessionResumable,
-  type SessionRecord,
 } from "../src/agent/session-ledger.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { record } from "./fakes/session-record.js";
 import { writeScript } from "./fakes/fake-commands.js";
 
 // The session ledger (plans/agent-backends.md "Sessions") is the resume paths' memory of which
 // session a `--continue` would actually reach: one line per run, kind and agent tagged. These
 // tests pin the record/read round trip, the newest-of-kind lookup that fixes the conflict
 // resolver shadowing the author's session, the file-exists requirement, and the retention trim.
-
-function record(overrides: Partial<SessionRecord> = {}): SessionRecord {
-  return {
-    agent: "pi",
-    id: "id",
-    kind: "author",
-    name: "tumwater-feature-1",
-    cwd: "/wt",
-    at: Date.now(),
-    ...overrides,
-  };
-}
 
 test("recordSession and readSessions round-trip records, skipping malformed lines", () => {
   const dir = tmpdir();

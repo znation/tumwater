@@ -4,10 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
 import { sessionsRootDir, toolOutputDir, eventsLogPath, opencodeDbPath } from "../src/paths.js";
-import { recordSession, sessionLedgerPath, type SessionRecord } from "../src/agent/session-ledger.js";
+import { recordSession, sessionLedgerPath } from "../src/agent/session-ledger.js";
 import { backdate } from "./helpers/backdate.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { record } from "./fakes/session-record.js";
 import { writeScript } from "./fakes/fake-commands.js";
 
 /** Unit tests for src/orchestrator/retention.ts — the session-retention prune gate (moved here
@@ -85,18 +86,6 @@ test("RetentionPruner: a window change and a prune survive an unwritable events 
   assert.doesNotThrow(() => pruner.poll(root, 7));
   assert.equal(fs.existsSync(toolOut), false);
 });
-
-function record(overrides: Partial<SessionRecord> = {}): SessionRecord {
-  return {
-    agent: "pi",
-    id: "id",
-    kind: "author",
-    name: "tumwater-feature-1",
-    cwd: "/wt",
-    at: Date.now(),
-    ...overrides,
-  };
-}
 
 test("RetentionPruner: an idle role's expired opencode session is purged before its ledger ages out", () => {
   const root = tmpdir();
