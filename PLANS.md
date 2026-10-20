@@ -8,6 +8,10 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Plain terms code run, part 9/20: Convert the rest of the runner modules and tests (planned 2026-10-16 by user; requires part 8/20 landed; design in plans/terminology.md "Code names"; touches src/runner/ except runner.ts and runner-run.ts + src/roles/runner-ids.ts + the other test/runner-*.test.ts + test/revision.test.ts + test/leftover.test.ts + test/model-fallback.test.ts + test/fixtures/runner-*.ts)
 
+**Needs replan 2026-10-20 by feature: rejected after 3 review rounds**
+
+1. (prior 3) The PLANS-DONE.md part 9/20 entry is marked done, but its series rule (a bare noun "run" meaning one agent invocation becomes "agent run") still isn't met. Self-contradicting "run" wording remains at `src/runner/runner-pi.ts:534` and `:548` ("folded into the run's usage like every other r…
+
 **Goal.** Runner state, the agent wrapper, recovery, leftover handling and model fallback use run wording, and `finishAbortedRunPhase` and `finishRecoveryRunPhase` replace their tick names.
 
 **Approach.**
