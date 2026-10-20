@@ -620,4 +620,26 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `tumwater doctor --kill-orphans` and the orphans check report exactly what they did before.
 - `npm run test:gate` passes.
 
+### A run whose end-of-run sweep had to kill processes it left running logs a warning naming the role and the count, so a leaking role shows up in the event feed instead of the sweep's count being discarded (planned 2026-10-20 by the plan role; independent of every Planned entry. Touches src/process/run-marker.ts, src/agent/run-agent.ts, src/runner/runner-pi.ts, test/run-marker.test.ts and test/pi-process.test.ts. The blocked Plain terms code parts reword src/runner/runner-pi.ts and src/agent/run-agent.ts, but they rename no identifier this entry uses or adds; whichever lands second only rebases)
+
+**Goal.** When pi exits, the exit hook in `runAgent` (src/agent/run-agent.ts) calls `sweepRunMarker(runMarker)` (src/process/run-marker.ts). That sends SIGTERM to every process still carrying the run's `TUMWATER_RUN` mark and returns how many it signaled, but the hook throws the number away (`void sweepRunMarker(runMarker).catch(() => {})`). So nobody can tell which role's runs leave servers, watchers or `logs -f` followers running. BUGS.md's open entry about two leaked `logs -f` processes had to be traced by hand. When a run that tumwater did not kill leaves marked processes running, the run should log one warning under its role, giving the run kind and how many processes the sweep signaled. Runs that tumwater kills (abort, deadline, quiet watchdog, blind image read) are excluded: their process group got SIGTERM moments before the sweep scans, so members that are still exiting would be counted and every killed run would raise a false leak.
+
+**Approach.**
+- src/process/run-marker.ts: add `export function leftoversSweptMessage(kind: PiRunKind, count: number, killed: boolean): string | undefined`. It returns undefined when `count === 0` or `killed` is true. Otherwise it returns `run sweep: ${plural(count, "process", "processes")} the ${kind} run started ${count === 1 ? "was" : "were"} still running after pi exited; sent SIGTERM`, using `plural` from src/text/phrases.ts. Import `PiRunKind` as a type from src/pi/pi-event-line.ts. In the doc comment, explain why killed runs are excluded (see Goal).
+- src/agent/run-agent.ts:
+  - Add an optional `onLeftoversSwept?: (message: string) => void` to `PiRunOptions`. Its doc comment goes beside `onToolCallStalled` and `onAgentWarning`.
+  - Put the killed test in one place: declare `const wasKilled = (): boolean => aborted || wd.timedOut || wd.quietKilled || blindRead !== undefined;` right after `let aborted = false;` (below the `startPiWatchdogs` call that sets up `wd`). The `close` handler's `const killed = …` becomes `const killed = wasKilled();`.
+  - The `exit` hook becomes `void sweepRunMarker(runMarker).then((n) => { const msg = leftoversSweptMessage(opts.kind, n, wasKilled()); if (msg) opts.onLeftoversSwept?.(msg); }).catch(() => {});`. The sweep is still not awaited, so the run resolves exactly when it did before.
+- src/runner/runner-pi.ts (`RunnerPi.runnerPiOpts`): set `onLeftoversSwept: (message) => this.host.warn(message)` beside `onToolCallStalled`. This one site covers the author run, its follow-ups and the gate (review/resolver) runs, because each of them builds its options here. A gate run's warning is filed under the authoring role, the same as its usage.
+
+**Tests.**
+- test/run-marker.test.ts, "leftoversSweptMessage words the sweep's count and stays silent for a killed or clean run": `("author", 1, false)` gives `run sweep: 1 process the author run started was still running after pi exited; sent SIGTERM`. `("gate", 2, false)` contains `2 processes the gate run started were`. `("author", 0, false)` and `("author", 3, true)` give undefined.
+- test/pi-process.test.ts, "the end-of-run sweep reaches a detached tool call's cross-group orphan (regression)": pass `onLeftoversSwept: (m) => messages.push(m)` through `runPiFixture(dir, { config, onLeftoversSwept })`. After the existing `waitFor` that the orphan is gone, also `waitFor` `messages.length === 1` (the callback fires after the sweep's scan resolves) and assert that `messages[0]` starts with `run sweep: 1 process the author run started`. `runPiFixture` (test/helpers/pi-run-harness.ts) already passes `kind: "author"`. The existing finally that kills the orphan stays.
+
+**Acceptance criteria.**
+- A run that ends without being killed and leaves N ≥ 1 marked processes running logs one `warning` event under its role, reading `run sweep: N process(es) the <author|gate> run started … still running after pi exited; sent SIGTERM`.
+- A run that leaves nothing running logs no sweep warning. A run that tumwater aborted or killed (deadline, quiet watchdog, blind read) logs none whatever the sweep counts.
+- The run's result, its resolve timing and the sweep's SIGTERM/SIGKILL behavior do not change: `sweepRunMarker`'s signature and body stay as they are, and the existing tests in test/run-marker.test.ts and test/pi-process.test.ts pass.
+- `npm run test:gate` passes.
+
 ## Done
