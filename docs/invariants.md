@@ -2398,3 +2398,47 @@ dropping later chunks", "runScriptGroup reports a command missing from PATH as s
 code, and resolves" and "runScriptGroup starts its tree with the LaunchServices preload on macOS,
 and the env unchanged elsewhere"; `test/build-check.test.ts` — "runBuildCheck skips (not fails
 closed) when npm is missing from PATH".
+
+## Queue-file names: a file-addressed request names a plain .md basename inside its role's inbox, or nothing is touched
+
+The dashboard and the TUI address a queued prompt by its file name so a stale snapshot cannot hit
+the wrong entry. The name is joined onto the role's inbox directory, so one guard decides which
+names are safe.
+
+### INV-AH1: a name is accepted only as a non-empty .md basename with no separator, NUL or bare ..
+
+**Guarantee.** A non-string or empty value is "file required" with no suffix. A `/`, `\`, NUL or
+exactly `..` is the plain-basename refusal, and any other non-`.md` name is the extension refusal.
+Both detailed refusals echo the name through `gotSuffix`.
+
+**Binds.** `src/inbox/inbox-cancel.ts` (`queueFileNameProblem`).
+
+**Pinned by.** `test/inbox.test.ts` — "queueFileNameProblem echoes the rejected name and names the
+accepted shape" and "every file-addressed queue function refuses a name failing
+queueFileNameProblem, touching nothing".
+
+### INV-AH2: every file-addressed queue function throws the guard's reason before touching disk
+
+**Guarantee.** `cancelQueuedFile`, `editQueuedFile`, `readQueuedPromptBody` and `topQueuedFile`
+each run `assertQueueFileName` first and throw the reason `queueFileNameProblem` gives, so a caller
+that skips the dashboard's check fails closed: the inbox listing, the queued texts and the event
+log stay as they were.
+
+**Binds.** `src/inbox/inbox-cancel.ts` (`assertQueueFileName`, `cancelQueuedFile`);
+`src/inbox/inbox-edit.ts` (`editQueuedFile`, `readQueuedPromptBody`); `src/inbox/inbox-top.ts`
+(`topQueuedFile`).
+
+**Pinned by.** `test/inbox.test.ts` — "every file-addressed queue function refuses a name failing
+queueFileNameProblem, touching nothing"; `test/inbox-edit.test.ts` — "editQueuedFile refuses a name
+failing queueFileNameProblem, touching nothing".
+
+### INV-AH3: the dashboard answers a bad name with the guard's reason as a 400, before any read
+
+**Guarantee.** `rejectBadQueueFileName` sends `queueFileNameProblem`'s reason as the shared 400 and
+tells the handler to stop. On 2026-10-20 it is called once in `src/gui/gui-endpoints.ts` and three
+times in `src/gui/gui-prompt-commands.ts`.
+
+**Binds.** `src/gui/gui-args.ts` (`rejectBadQueueFileName`).
+
+**Pinned by.** `test/gui-server-api.test.ts` — "gui /api/prompt-cancel removes one queued prompt by
+file, answers gone on a race".

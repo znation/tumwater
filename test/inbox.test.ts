@@ -12,7 +12,15 @@ import path from "node:path";import {
   queuedRolePromptEntries,
   queuedRolePrompts,
 } from "../src/inbox/inbox.js";
-import { cancelPrompt, cancelRolePrompt, queueFileNameProblem } from "../src/inbox/inbox-cancel.js";
+import {
+  cancelPrompt,
+  cancelQueuedFile,
+  cancelRolePrompt,
+  queueFileNameProblem,
+} from "../src/inbox/inbox-cancel.js";
+import { editQueuedFile, readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
+import { topQueuedFile } from "../src/inbox/inbox-top.js";
+import { roleInboxDir } from "../src/paths.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
@@ -446,4 +454,34 @@ test("a malformed or missing not-before marker reads as deliverable", () => {
       notBeforeMs: 1_000_000_000,
     },
   ]);
+});
+
+test("every file-addressed queue function refuses a name failing queueFileNameProblem, touching nothing", () => {
+  const root = tmpdir();
+  enqueueRolePrompt(root, "qa", "first");
+  enqueueRolePrompt(root, "qa", "second");
+  const before = fs.readdirSync(roleInboxDir(root, "qa"));
+
+  for (const name of ["../x.md", "a/b.md", "a\\b.md", "a\u0000.md", "..", "q.txt", ""]) {
+    const reason = queueFileNameProblem(name);
+    assert.notEqual(reason, null, JSON.stringify(name));
+    const calls: Record<string, () => unknown> = {
+      cancelQueuedFile: () => cancelQueuedFile(root, "qa", name),
+      editQueuedFile: () => editQueuedFile(root, "qa", name, "new"),
+      readQueuedPromptBody: () => readQueuedPromptBody(root, "qa", name),
+      topQueuedFile: () => topQueuedFile(root, "qa", name),
+    };
+    for (const [fn, call] of Object.entries(calls)) {
+      assert.throws(call, { message: reason! }, `${fn} ${JSON.stringify(name)}`);
+    }
+  }
+  // A non-string value is the required-field refusal.
+  assert.equal(queueFileNameProblem(42), "file required");
+  assert.equal(queueFileNameProblem(null), "file required");
+
+  assert.deepEqual(fs.readdirSync(roleInboxDir(root, "qa")), before);
+  assert.deepEqual(queuedRolePrompts(root, "qa"), ["first", "second"]);
+  for (const type of ["prompt_cancelled", "prompt_edited", "prompt_topped"] as const) {
+    assert.deepEqual(eventsOfType(root, type), [], type);
+  }
 });
