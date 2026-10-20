@@ -163,18 +163,30 @@ export async function cmdTick(
 ): Promise<void> {
   // Positional arity by form: cli.ts has already peeled the flags off and gated them (only
   // --json and --last are admitted), so anything left over that does not fit the chosen form
-  // is a mistake. --last takes exactly one positional (<role>); the numeric path keeps
-  // exactly two (<role> <n>).
-  const arity = last ? 1 : 2;
-  if (positionals.length !== arity) fail(`usage: ${TICK_USAGE}`);
-  if (prompt && !transcript) fail(`history --prompt needs --transcript (usage: ${TICK_USAGE})`);
-  const role = canonicalRoleId(positionals[0] as string);
+  // is a mistake. The role is checked first, so a typo is named whatever the count; then
+  // --last takes exactly one positional (<role>) and the numeric path exactly two (<role> <n>).
+  const role = canonicalRoleId(positionals[0] ?? "");
   // The role is validated like every role-targeting command's --role (knownRoleIdsCached: the
   // built-ins plus user-defined roles, read through the never-throwing cached loader so a
   // transiently broken tumwater.json cannot take a read-only view down), with the shared
   // unknown-role wording plus the usage the positional command owes.
-  const ids = knownRoleIdsCached(root);
-  if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (usage: ${TICK_USAGE})`);
+  if (positionals.length >= 1) {
+    const ids = knownRoleIdsCached(root);
+    if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (usage: ${TICK_USAGE})`);
+  }
+  const arity = last ? 1 : 2;
+  if (positionals.length !== arity) {
+    if (positionals.length === 1) {
+      fail(
+        `history ${role} needs a run number or --last — \`tumwater history --role ${role}\` lists its runs (usage: ${TICK_USAGE})`,
+      );
+    }
+    if (positionals.length === 2 && last) {
+      fail(`history --last takes no run number (got "${positionals[1]}") (usage: ${TICK_USAGE})`);
+    }
+    fail(`usage: ${TICK_USAGE}`);
+  }
+  if (prompt && !transcript) fail(`history --prompt needs --transcript (usage: ${TICK_USAGE})`);
   // The tick number: either the user's positive integer (the numbered path, through the
   // shared count parser — a non-positive or non-numeric n fails naming the shape; there is
   // no cap — the number selects, it does not size the scan) or the newest completed tick's

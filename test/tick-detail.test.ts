@@ -237,6 +237,32 @@ test("cmdTick fails with the usage on a missing, unknown, or extra positional an
   }
 });
 
+test("cmdTick names an unknown role before the positional count", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "tick role first");
+  const typo = await expectFailAsync(() => cmdTick(repo, ["featuer"], false));
+  assert.match(typo, /unknown role: featuer/);
+  assert.match(typo, /did you mean `feature`/);
+  assert.match(typo, /usage: tumwater history <role>/);
+  assert.match(await expectFailAsync(() => cmdTick(repo, ["nosuch", "3", "extra"], false)), /unknown role: nosuch/);
+  const viaCli = await cli(repo, "history", "featuer");
+  assert.equal(viaCli.code, 1);
+  assert.match(viaCli.stderr, /unknown role: featuer/);
+});
+
+test("a bare history <role> names the missing run number or --last", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "tick bare role");
+  const bare = await expectFailAsync(() => cmdTick(repo, ["bugfix"], false));
+  assert.match(bare, /needs a run number or --last/);
+  assert.match(bare, /tumwater history --role bugfix/);
+  assert.match(bare, /usage: tumwater history <role>/);
+  assert.match(
+    await expectFailAsync(() => cmdTick(repo, ["bugfix", "3"], false, { last: true })),
+    /--last takes no run number \(got "3"\)/,
+  );
+});
+
 test("tumwater tick dispatches through the real binary, flags gated", async () => {
   const repo = makeRepo();
   await initProject(repo, "tick cli smoke");

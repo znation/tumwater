@@ -848,26 +848,4 @@ After this change, every command that reads or writes team state answers inside 
 - The existing completion tests pass unchanged, including `bash -n` on the script.
 - `npm run test:gate` passes.
 
-### `tumwater history <role>` checks the role before the positional count, and a bare `history <role>` names what is missing, so `tumwater history featuer` says "unknown role … did you mean `feature`?" instead of a bare usage line (planned 2026-10-19 by the plan role; no dependency on any Planned entry. "Plain terms code run, part 6/20" later renames src/tick/tick-detail.ts and its test; this change is a few lines inside `cmdTick`, so the rename carries it)
-
-**Goal.** Every role-taking command (`logs --role`, `diff --role`, `abort --role`, `history --role`, `prompt --role`, …) answers an unknown role with `unknownRoleMessage` (src/roles/roles.ts): the valid ids plus a did-you-mean. The positional run trail does not. `cmdTick` (src/tick/tick-detail.ts) checks the positional count before the role, so `tumwater history featuer` and `tumwater history nosuch` print only `usage: tumwater history <role> [<n>] …`. The operator's typo goes unnamed. `tumwater history feature` (a role and nothing else) prints the same bare usage, without saying that a run number or `--last` is missing, or that `history --role feature` is the listing they probably wanted. Checked against main's build on 2026-10-19: `history featuer`, `history feature` and `history feature 1 2` each print only the usage line, while `history nosuch --last` already gets the unknown-role wording because its count matches.
-
-**Approach.** All code edits are in `cmdTick` in src/tick/tick-detail.ts. `runTrailCommand` in src/cli.ts keeps its 1–2 positional guard, which runs before the ready-repo gate and is pinned by "tick's dispatcher fails a wrong positional count with its usage, before the ready-repo gate".
-- Move the role check (`canonicalRoleId`, `knownRoleIdsCached`, then fail with `${unknownRoleMessage(role, ids)} (usage: ${TICK_USAGE})`) above the `positionals.length !== arity` check. Guard it with `positionals.length >= 1`, so a direct `cmdTick(repo, [], …)` call still fails with the plain usage.
-- Replace the single arity failure with three messages, keeping the `(usage: ${TICK_USAGE})` suffix on each:
-  - One positional without `--last`: `history <role> needs a run number or --last — \`tumwater history --role <role>\` lists its runs`, with the canonical role id substituted.
-  - Two positionals with `--last`: `history --last takes no run number (got "<n>")`.
-  - Anything else (no positional, or more than two): the plain `usage: ${TICK_USAGE}` as today.
-- Update `cmdTick`'s doc comment and the arity comment inside it to match this order: role first, then count.
-- No help.ts or docs/cli.md change: the usage line itself does not change.
-
-**Files touched.** src/tick/tick-detail.ts, test/tick-detail.test.ts.
-
-**Acceptance criteria** (test/tick-detail.test.ts):
-- New test "cmdTick names an unknown role before the positional count": `cmdTick(repo, ["featuer"], false)` fails, and the failure matches `/unknown role: featuer/`, `` /did you mean `feature`/ `` and `/usage: tumwater history <role>/`. `cmdTick(repo, ["nosuch", "3", "extra"], false)` fails with `/unknown role: nosuch/`.
-- New test "a bare history <role> names the missing run number or --last": `cmdTick(repo, ["bugfix"], false)` fails, matching `/needs a run number or --last/`, `/tumwater history --role bugfix/` and `/usage: tumwater history <role>/`. `cmdTick(repo, ["bugfix", "3"], false, { last: true })` fails, matching `/--last takes no run number \(got "3"\)/`.
-- Through the CLI harness (`cli(repo, "history", "featuer")` in an initialized repo): exit 1, and stderr matches `/unknown role: featuer/`.
-- Existing tests keep passing. Adjust one only where its asserted text is exactly the message this plan replaces: "cmdTick --last with a numeric n is refused with the usage…" still matches `/usage: tumwater history <role>/` because of the kept suffix. The `[]` and `["bugfix", "3", "extra"]` cases in "cmdTick fails with the usage on a missing, unknown, or extra positional and a bad n" still get the plain usage.
-- `npm run test:gate` passes.
-
 ## Done
