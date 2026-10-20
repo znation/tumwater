@@ -193,11 +193,12 @@ Usage:
                                    planned plans and open bugs no hold keeps from being
                                    picked (entries a role is working on stay); --grep keeps the
                                    entries whose heading or body contains the text, case-insensitively
-  tumwater archive                 Move the finished entries still under PLANS.md ## Done and
+  tumwater archive [--json]        Move the finished entries still under PLANS.md ## Done and
                                    BUGS.md ## Fixed to the top of PLANS-DONE.md and BUGS-FIXED.md
                                    and commit them on the base branch, waiting for a merge in
                                    progress; a starting team does the same, and a role's own
-                                   finished entry moves when its change commits
+                                   finished entry moves when its change commits;
+                                   --json prints what moved and the commit as data
   tumwater bug "<symptom>" [--json]
                                    File a bug into BUGS.md ## Open as you (stamped
                                    with today's date) and wake the bugfix role; --json prints

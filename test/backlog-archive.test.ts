@@ -265,6 +265,38 @@ test("tumwater archive dispatches through the CLI to archive finished entries an
   assert.match(again.stdout, /nothing to archive/);
 });
 
+test("tumwater archive --json prints what moved and the full commit sha, then archived false", async () => {
+  const root = await initializedRepo();
+  ignoreInRepo(root, ".tumwater/");
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"));
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### B1 (found 2026-10-01; fixed 2026-10-02)\n\nFix.\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed finished entries");
+
+  const stat = await cli(root, "archive", "--stat");
+  assert.equal(stat.code, 1);
+  assert.match(stat.stderr, /unknown/i);
+
+  const moved = await cli(root, "archive", "--json");
+  assert.equal(moved.code, 0, moved.stderr);
+  const data = JSON.parse(moved.stdout);
+  assert.equal(data.archived, true);
+  assert.equal(data.commit, sh(root, "git", "rev-parse", "HEAD").trim());
+  assert.deepEqual(data.moved.map((f: { file: string; archive: string }) => [f.file, f.archive]), [
+    ["PLANS.md", "PLANS-DONE.md"],
+    ["BUGS.md", "BUGS-FIXED.md"],
+  ]);
+  for (const f of data.moved) {
+    assert.equal(f.titles.length, 1);
+    assert.match(f.titles[0], /D1|B1/);
+    assert.deepEqual(f.dropped, []);
+  }
+
+  const again = await cli(root, "archive", "--json");
+  assert.equal(again.code, 0, again.stderr);
+  assert.deepEqual(JSON.parse(again.stdout), { archived: false, commit: null, moved: [] });
+});
+
 test("a change committed before the archive rebases onto it: its new entry stays, the history it sat above does not return", async () => {
   // The migration shape (plans/backlog-archive.md): a branch pasted an entry at the top of a
   // long live ## Done, and main has since moved that history to the archive.

@@ -383,14 +383,25 @@ function sayFiled(command: string, filed: FiledEntry, json: boolean): void {
 /** `tumwater archive`: move the finished entries still under PLANS.md's `## Done` and BUGS.md's
  * `## Fixed` to PLANS-DONE.md and BUGS-FIXED.md and commit them on the base branch
  * (plans/backlog-archive.md) — the hand-run twin of the archive a starting team makes. Prints
- * what moved and the commit, or why nothing was written (a refusal fails the command). */
-export async function cmdArchive(root: string): Promise<void> {
+ * what moved and the commit, or why nothing was written (a refusal fails the command). `--json`
+ * prints `{ archived, commit, moved }` instead: `commit` is the full sha (`null` when nothing was
+ * archived) and `moved` the files' `{ file, archive, titles, dropped }`; a refusal still fails. */
+export async function cmdArchive(root: string, args: string[] = []): Promise<void> {
+  const json = args.includes("--json");
   const outcome = await archiveFinishedOnMain(root, { lockTimeoutMs: MERGE_LOCK_WAIT_MS });
   if (outcome.status === "nothing") {
+    if (json) {
+      sayJson({ archived: false, commit: null, moved: [] });
+      return;
+    }
     say("nothing to archive: PLANS.md ## Done and BUGS.md ## Fixed hold no finished entries");
     return;
   }
   if (outcome.status === "skipped") fail(`nothing archived: ${outcome.reason}`);
+  if (json) {
+    sayJson({ archived: true, commit: outcome.commit, moved: outcome.moved });
+    return;
+  }
   for (const f of outcome.moved) say(describeArchivedFile(f));
   say(`committed ${shortSha(outcome.commit)}`);
 }
