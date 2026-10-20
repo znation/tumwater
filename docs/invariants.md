@@ -1621,3 +1621,45 @@ each character outside `[\w-]` replaced by `_`. A missing, non-string or empty i
 **Pinned by.** `test/full-output.test.ts` — "writeFullOutput writes into .tumwater/log/tool-output
 named by toolCallId", "writeFullOutput falls back to a timestamped name when the tool call has no
 id" and "writeFullOutput keeps a toolCallId with path characters inside tool-output".
+
+## System-prompt trim: pi's docs section never goes out, and nothing else in the prompt changes
+
+`src/pi-extension/trim-system-prompt.ts` is a pi extension loaded on every pi run. Its rule is a
+pure exported function (`withoutDocsSection`) behind a thin default-export adapter. It edits only
+the system prompt that pi's `before_agent_start` event hands it.
+
+### INV-AB1: the docs section goes with the blank lines before it, and every other byte stays
+
+**Guarantee.** `withoutDocsSection` removes the first `<docs>`…`</docs>` span (the match is
+non-greedy) together with the newlines directly before it, so the sections around it keep the one
+blank line between them and a docs section last in the prompt leaves no trailing blank lines.
+Everything outside that span is returned byte for byte.
+
+**Binds.** `src/pi-extension/trim-system-prompt.ts` (`withoutDocsSection`, `DOCS_SECTION`).
+
+**Pinned by.** `test/trim-system-prompt.test.ts` — "withoutDocsSection cuts the docs section and
+keeps every other section byte for byte" and "withoutDocsSection leaves a prompt with no docs
+section alone" (its second assertion covers the docs-last case).
+
+### INV-AB2: a prompt with no docs section, or none at all, is left to pi
+
+**Guarantee.** `withoutDocsSection` returns null for a prompt with no docs section (a custom
+prompt, or a pi that no longer renders one), and the handler then returns undefined, so pi keeps
+its own prompt; a missing or non-string `systemPrompt` also returns undefined. The extension never
+substitutes text of its own.
+
+**Binds.** `src/pi-extension/trim-system-prompt.ts` (`withoutDocsSection`, default export
+`trimSystemPrompt`).
+
+**Pinned by.** `test/trim-system-prompt.test.ts` — "withoutDocsSection leaves a prompt with no docs
+section alone" and "the extension trims on every model, whatever window it declares".
+
+### INV-AB3: the trim applies on every model, whatever window it declares
+
+**Guarantee.** The `before_agent_start` handler does not read the model, so a 64k, 128k or 1M
+window, or no model at all, gets the same trimmed prompt.
+
+**Binds.** `src/pi-extension/trim-system-prompt.ts` (default export `trimSystemPrompt`).
+
+**Pinned by.** `test/trim-system-prompt.test.ts` — "the extension trims on every model, whatever
+window it declares".

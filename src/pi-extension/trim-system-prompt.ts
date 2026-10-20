@@ -14,7 +14,7 @@
  * preamble, tool list, tool rules and working directory are pi's own text.
  *
  * The cut is a pure exported function so it is unit-testable without pi; the default export is
- * the thin adapter over pi's `before_agent_start` event and `ctx.model`.
+ * the thin adapter over pi's `before_agent_start` event.
  */
 
 /** pi's docs section as rendered, with the blank lines that separate it from the section before
