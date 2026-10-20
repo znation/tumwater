@@ -83,12 +83,22 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       if (!b) return;
       toggleHistDetail(b.dataset.role, b.dataset.tick);
     });
+    // The drill-down's revert buttons: the first click previews, the preview's own button commits.
+    $("histbody").addEventListener("click", (ev) => {
+      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-revert], button[data-hist-revert-go]") : null;
+      if (!b) return;
+      if (b.dataset.histRevertGo !== undefined) runHistRevert(b.dataset.histRevertGo);
+      else previewHistRevert(b.dataset.histRevert);
+    });
   }
   // history-detail:start
   // Tick drill-down state: one open card at a time, keyed "role#tick", with each key's cache
   // entry — { state: "loading" } while its fetch is in flight, { state: "error", message }
-  // when one failed, { state: "ok", text } once /api/run answered. Cached until the view
-  // refetches (fetchHistory clears the map), so collapsing and re-expanding reuses the card.
+  // when one failed, { state: "ok", text, stat, revertSha, revert? } once /api/run answered —
+  // revertSha is the full sha of the change on main (null when none), revert the revert button's
+  // sub-state { state: previewing | preview | reverting | done | error, preview?, message? }.
+  // Cached until the view refetches (fetchHistory clears the map), so collapsing and
+  // re-expanding reuses the card.
   const histDetails = new Map();
   let histDetailOpen = "";
   function histDetailKey(role, tick) {
@@ -100,7 +110,52 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // errored fetch shows the server's message, and a fetched one shows the summary header plus
   // the tick's events exactly as the server pre-rendered them (renderTickDetail's output —
   // the tumwater tick rendering).
-  function histDetailCardHtml(entry) {
+  // The revert control under a card whose run's change is on main: the button, then the sub-state
+  // — a preview (subject, paths, and a Revert button only when it applies on a clean checkout),
+  // the server's message once done, or its error.
+  function histRevertHtml(entry, key) {
+    const r = entry.revert || {};
+    const s = r.state;
+    let out = "<button type='button' class='btn btn-sm' data-hist-revert='" + esc(key) + "'>Revert this change…</button>";
+    if (s === "previewing") out += " <span class='muted'>Checking…</span>";
+    else if (s === "reverting") out += " <span class='muted'>Reverting…</span>";
+    else if (s === "done" || s === "error") out += "<div class='" + (s === "error" ? "err" : "muted") + "'>" + esc(r.message || "") + "</div>";
+    else if (s === "preview" && r.preview) {
+      const p = r.preview;
+      const on = "on " + p.primary + " (HEAD " + String(p.head).slice(0, 7) + "); nothing was written";
+      out += "<div class='hist-revert-preview'><div class='mono'>would revert " + esc(String(p.sha).slice(0, 7)) + " " + esc(p.subject) + "</div><ul>" +
+        (p.paths || []).map((x) => "<li class='mono'>" + esc(x) + "</li>").join("") + "</ul>";
+      if (!p.applies) out += "<div>would conflict " + esc(on) + "</div>";
+      else if (p.dirty) out += "<div>the checkout has staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written</div>";
+      else out += "<div>applies cleanly " + esc(on) + "</div><button type='button' class='btn btn-sm btn-danger' data-hist-revert-go='" + esc(key) + "'>Revert</button>";
+      out += "</div>";
+    }
+    return out;
+  }
+  // Run one revert step for the card at key ("role#run"): set the sub-state, repaint, post, and
+  // store the outcome. A reply with an error (a 4xx body) or no JSON becomes the error state.
+  async function histRevertStep(key, dryRun) {
+    const entry = histDetails.get(key);
+    if (!entry || entry.state !== "ok" || !entry.revertSha) return;
+    entry.revert = { state: dryRun ? "previewing" : "reverting" };
+    renderHistory();
+    try {
+      const d = await postJson("/api/revert", dryRun ? { sha: entry.revertSha, dryRun: true } : { sha: entry.revertSha });
+      if (!d || d.error || !d.ok) entry.revert = { state: "error", message: (d && d.error) || "the revert did not answer" };
+      else if (dryRun) entry.revert = { state: "preview", preview: d.preview };
+      else entry.revert = { state: "done", message: d.message || "reverted" };
+    } catch (err) {
+      entry.revert = { state: "error", message: err && err.message ? err.message : "the revert failed" };
+    }
+    renderHistory();
+  }
+  function previewHistRevert(key) {
+    return histRevertStep(key, true);
+  }
+  function runHistRevert(key) {
+    return histRevertStep(key, false);
+  }
+  function histDetailCardHtml(entry, key) {
     const state = entry && entry.state;
     if (!state || state === "loading") return "<div class='empty'>Loading run detail…</div>";
     if (state === "error") return "<div class='empty'><strong>" + esc(entry.message || "Run detail unavailable") + "</strong></div>";
@@ -110,6 +165,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     return "<div class='hist-detail'><div class='hist-detail-head mono'>" + esc(head) + "</div>" +
       (trail ? "<pre class='mono'>" + esc(trail) + "</pre>" : "<div class='empty'>No events in this run's block.</div>") +
       (entry.stat ? "<pre class='mono hist-detail-stat'>" + esc(entry.stat) + "</pre>" : "") +
+      (entry.revertSha ? histRevertHtml(entry, key) : "") +
       "</div>";
   }
   // Expand or collapse one row's card. Opening fetches the trail on first expand only — an
@@ -139,7 +195,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
         throw new Error(
           "/api/run answered " + role + " run " + tick + " without a text field — the running tumwater may not match this dashboard",
         );
-      histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "" });
+      histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null });
     } catch (err) {
       histDetails.set(key, { state: "error", message: err && err.message ? err.message : "Run detail unavailable" });
     }
@@ -253,7 +309,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
           "<td class='num c-dur'>" + durCell(r.durationMs) + "</td>" +
           "<td class='num c-usage muted'>" + esc(r.usage || "—") + "</td></tr>";
         // The expanded card rides directly beneath its row, full width.
-        return open ? row + "<tr class='detail-row'><td colspan='9'>" + histDetailCardHtml(histDetails.get(key)) + "</td></tr>" : row;
+        return open ? row + "<tr class='detail-row'><td colspan='9'>" + histDetailCardHtml(histDetails.get(key), key) + "</td></tr>" : row;
       }).join("") + "</tbody></table></div>";
   }
   // history-table:end

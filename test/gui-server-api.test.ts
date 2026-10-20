@@ -12,7 +12,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
-import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // The dashboard transport's JSON read/write routes under live use: /api/status, the
 // prompt-cancel POST, and the read endpoints (history, tick) that serve the collectors'
@@ -347,6 +347,29 @@ test("gui /api/run serves one run's detail over the live route, 404 when the sca
     assert.equal((await fetch(base + "/api/run?role=nope&run=9")).status, 400);
     assert.equal((await fetch(base + "/api/run?role=clean&run=0")).status, 400);
     assert.equal((await fetch(base + "/api/run")).status, 400, "no role and no run → 400");
+  } finally {
+    server.close();
+  }
+});
+
+test("gui /api/run carries revertSha only for a run whose commit is on main", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "revert sha api test");
+  const onMain = sh(repo, "git", "rev-parse", "HEAD");
+  writeEvents(repo, [
+    { ts: 1000, source: "clean", type: "run_start", run: 1 },
+    { ts: 1100, source: "clean", type: "merge_done", run: 1, commit: onMain },
+    { ts: 1200, source: "clean", type: "run_end", run: 1, result: "merged" },
+    { ts: 2000, source: "clean", type: "run_start", run: 2 },
+    { ts: 2100, source: "clean", type: "merge_done", run: 2, commit: "0".repeat(40) },
+    { ts: 2200, source: "clean", type: "run_end", run: 2, result: "merged" },
+  ]);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const on = (await (await fetch(base + "/api/run?role=clean&run=1")).json()) as { revertSha: string | null };
+    assert.equal(on.revertSha, onMain);
+    const off = (await (await fetch(base + "/api/run?role=clean&run=2")).json()) as { revertSha: string | null };
+    assert.equal(off.revertSha, null);
   } finally {
     server.close();
   }

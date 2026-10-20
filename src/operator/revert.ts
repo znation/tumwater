@@ -44,8 +44,10 @@ export async function revertCommitIn(
 }
 
 /** The read-only refusals shared by a revert and its preview: the primary checkout must be on the
- * base branch, `ref` must resolve to a commit, and that commit must be merged into the branch. */
-async function resolveRevertTarget(
+ * base branch, `ref` must resolve to a commit, and that commit must be merged into the branch.
+ * The dashboard's `handleTick` also calls it, to decide whether a run's commit is on the base
+ * branch. */
+export async function resolveRevertTarget(
   root: string,
   ref: string,
 ): Promise<{ ok: true; full: string; primary: string } | { ok: false; error: string }> {

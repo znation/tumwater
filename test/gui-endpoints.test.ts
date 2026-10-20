@@ -550,7 +550,7 @@ test("handleTick serves one run's collector payload plus its pre-rendered text",
   assert.equal(captured.contentType, "application/json");
   // The payload is the collector's own — the same object `tumwater tick --json` prints — plus
   // `text`, the renderTickDetail rendering the browser shows instead of re-formatting events.
-  assert.deepEqual(data, { ...detail, text: renderTickDetail(detail!), stat: "(no commit: this run sent nothing to merge)" });
+  assert.deepEqual(data, { ...detail, text: renderTickDetail(detail!), stat: "(no commit: this run sent nothing to merge)", revertSha: null });
   const d = data as TickDetail & { text: string };
   assert.equal(d.durationMs, 46_000, "duration pairs the run's own run_start");
   assert.deepEqual(d.events.map((e) => e.type), ["run_start", "review_verdict", "run_end"]);

@@ -67,6 +67,7 @@ import {
   handleResetCounters,
   handleRoleNotes,
   handleRetire,
+  handleRevert,
   handleWake,
   handleWakeCancel,
 } from "./gui-endpoint-commands.js";
@@ -263,6 +264,7 @@ export function startGui(
     "POST /api/reset-counters": (req, res) => handleResetCounters(req, res, root),
     "POST /api/role-notes": (req, res) => handleRoleNotes(req, res, root),
     "POST /api/retire": (req, res) => handleRetire(req, res, root),
+    "POST /api/revert": (req, res) => handleRevert(req, res, root),
     "POST /api/restart": (req, res) => handleRestart(req, res, root),
     "POST /api/stop-schedule": (req, res) => handleStopSchedule(req, res, root),
     "POST /api/reclaim": (req, res) => handleReclaim(req, res, root),

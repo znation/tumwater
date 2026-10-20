@@ -58,6 +58,13 @@ function tickCommitSha(d: TickDetail): string | null {
   return queued === undefined ? null : (queued.commit as string);
 }
 
+/** The sha a run's change merged under on main: the `merged` sha when the merge logged one, else
+ * the pinned commit — a no-op fast-forward logs no `merged` event, so its pinned commit is what
+ * merged. Null when the run pinned no commit. */
+export function tickMergedSha(d: TickDetail): string | null {
+  return d.mergedSha ?? tickCommitSha(d);
+}
+
 /** The per-file `git show --stat` summary of a tick's pinned commit. The sha is the authored
  * commit the tick pinned: a merge that rebased gives main a different sha with the same
  * changes, so this describes what the tick changed. */

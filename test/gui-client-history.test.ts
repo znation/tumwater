@@ -462,3 +462,54 @@ test("fetchHistory rides the server summary and a persisted Summary mode survive
   await scope.fetchHistory(false);
   assert.deepEqual(scope.getHistSummary()?.roles, [{ role: "clean" }], "the fetched summary rides beside the rows, so toggling never refetches");
 });
+
+test("the drill-down's revert button previews, then reverts, through /api/revert", async () => {
+  const posts: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const preview = { sha: "a".repeat(40), subject: "tumwater(feature): <b>x", paths: ["src/a.ts"], head: "b".repeat(40), primary: "main", applies: true, dirty: false };
+  let answer: unknown = { ok: true, preview };
+  const scope = clientScope<{
+    histDetails: Map<string, Record<string, unknown>>;
+    histDetailCardHtml(entry: unknown, key: string): string;
+    previewHistRevert(key: string): Promise<void>;
+    runHistRevert(key: string): Promise<void>;
+  }>(HISTORY_REGIONS, ["histDetails", "histDetailCardHtml", "previewHistRevert", "runHistRevert"], {
+    icon: iconStub,
+    renderHistory: () => {},
+    postJson: (path: string, body: Record<string, unknown>) => {
+      posts.push({ path, body });
+      return Promise.resolve(answer);
+    },
+  });
+  const { histDetails, histDetailCardHtml, previewHistRevert, runHistRevert } = scope;
+  const sha = "a".repeat(40);
+  const card = () => histDetailCardHtml(histDetails.get("clean#9"), "clean#9");
+
+  histDetails.set("clean#8", { state: "ok", text: "h", revertSha: null });
+  assert.doesNotMatch(histDetailCardHtml(histDetails.get("clean#8"), "clean#8"), /data-hist-revert/, "no revertSha, no button");
+  histDetails.set("clean#9", { state: "ok", text: "h", revertSha: sha });
+  assert.match(card(), /data-hist-revert='clean#9'/);
+  assert.doesNotMatch(card(), /data-hist-revert-go/, "never a commit button before the preview");
+
+  await previewHistRevert("clean#9");
+  assert.deepEqual(posts, [{ path: "/api/revert", body: { sha, dryRun: true } }]);
+  assert.match(card(), /would revert aaaaaaa tumwater\(feature\): &lt;b&gt;x/);
+  assert.match(card(), /src\/a\.ts/);
+  assert.match(card(), /data-hist-revert-go='clean#9'/);
+
+  answer = { ok: true, message: "main is now abc1234 — the reverted role may redo the work" };
+  await runHistRevert("clean#9");
+  assert.deepEqual(posts[1], { path: "/api/revert", body: { sha } });
+  assert.match(card(), /main is now abc1234/);
+  assert.doesNotMatch(card(), /data-hist-revert-go/);
+
+  // A preview that would conflict shows no commit button.
+  answer = { ok: true, preview: { ...preview, applies: false } };
+  await previewHistRevert("clean#9");
+  assert.match(card(), /would conflict/);
+  assert.doesNotMatch(card(), /data-hist-revert-go/);
+
+  // A refusal shows the server's error.
+  answer = { error: "abc is not on main" };
+  await previewHistRevert("clean#9");
+  assert.match(card(), /abc is not on main/);
+});

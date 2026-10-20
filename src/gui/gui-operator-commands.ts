@@ -2,7 +2,7 @@
 /**
  * The dashboard's POST operator-lifecycle command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): reset-counters,
- * restart, reclaim, abort, stop-schedule, role-notes, retire, and brief-edit — every POST
+ * restart, reclaim, abort, stop-schedule, role-notes, retire, revert, and brief-edit — every POST
  * handler that is not prompt/backlog/config/team. Each handler adapts HTTP onto the domain work
  * one layer down (operator-intent, role-notes-write, brief-edit) and touches no socket beyond
  * its own `res`.
@@ -12,6 +12,8 @@ import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { artifactPhrase, retireRole } from "../operator/retire.js";
+import { previewRevert, revertMergedCommit } from "../operator/revert.js";
+import { shortSha } from "../text/format.js";
 import { editInitialPrompt } from "../brief/brief-edit.js";
 import { validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
@@ -122,6 +124,32 @@ export async function handleRetire(req: http.IncomingMessage, res: http.ServerRe
   } catch (err) {
     sendJson(res, 409, { error: errorMessage(err) });
   }
+}
+/** Handle POST /api/revert: the History drill-down's "Revert this change" button — the same
+ * cores `tumwater revert <sha> [--dry-run]` calls. A `sha` that is not 4-64 hex digits (so never
+ * a flag or a ref name) or a non-boolean `dryRun` is a 400 and runs nothing. `dryRun: true`
+ * answers `{ ok, preview }` (previewRevert, writing nothing); otherwise the revert commits and
+ * answers `{ ok, headSha, beforeSha, message }`. A core's refusal is a 409 with its wording. */
+export async function handleRevert(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
+  if (!body) return;
+  if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
+    return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
+  if (body.dryRun !== undefined && typeof body.dryRun !== "boolean")
+    return badRequest(res, `"dryRun" must be true or false${gotSuffix(body.dryRun)}`);
+  if (body.dryRun === true) {
+    const preview = await previewRevert(root, body.sha);
+    if (!preview.ok) return sendJson(res, 409, { error: preview.error });
+    return sendJson(res, 200, { ok: true, preview });
+  }
+  const result = await revertMergedCommit(root, body.sha);
+  if (!result.ok) return sendJson(res, 409, { error: result.error });
+  sendJson(res, 200, {
+    ok: true,
+    headSha: result.headSha,
+    beforeSha: result.beforeSha,
+    message: `main is now ${shortSha(result.headSha)} — the reverted role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not`,
+  });
 }
 /** Handle POST /api/brief: replace the initial prompt through editInitialPrompt — the same
  * checks, locked write, and commit as `tumwater brief --file`. A non-string prompt or any
