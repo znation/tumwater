@@ -1,4 +1,4 @@
-/** `tumwater run --once` (PLANS.md 2026-09-25): one full round of ticks — every enabled role
+/** `tumwater start --once` (PLANS.md 2026-09-25): one full round of runs — every enabled role
  * at most once, every change that round produced merged — then exit 0. Tests (a)–(d) drive
  * runOrchestrator directly in once mode on the standard fixture pattern (fake pi shim, short
  * poll); (e)–(g) go through the real CLI so the supervisor half, the flag vocabulary, and the
@@ -21,13 +21,13 @@ import { fakePi, fakePiIdle, withIdlePi, withPi } from "./fakes/fake-pi.js";
 import { cli } from "./helpers/cli-harness.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
-test("once: a team where every role finds nothing to do exits on its own, one tick each", async () => {
+test("once: a team where every role finds nothing to do exits on its own, one run each", async () => {
   const repo = await makeFastRepo("once round test", ["clean", "dedupe"]);
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false, "a once round never reports a restart");
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "clean ticked exactly once");
-    assert.equal(loadRunnerState(repo, "dedupe").runs, 1, "dedupe ticked exactly once");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "clean ran exactly once");
+    assert.equal(loadRunnerState(repo, "dedupe").runs, 1, "dedupe ran exactly once");
   });
 });
 
@@ -57,7 +57,7 @@ test("once: a round that produces a change merges it before exiting", async () =
 test("once: a role in error backoff is skipped and does not run, and the round still ends", async () => {
   const repo = await makeFastRepo("once backoff test", ["clean"]);
   // Persisted backoff: nextRunAt in the future with backoffSeconds raised — once mode
-  // honors a backoff deadline (it overrides only the min-tick-interval clock, and the
+  // honors a backoff deadline (it overrides only the min-run-interval clock, and the
   // clock is told from backoff by backoffSeconds, which only a backoff ladder leaves set).
   saveRunnerState(repo, {
     ...freshRunnerState("clean"),
@@ -70,30 +70,30 @@ test("once: a role in error backoff is skipped and does not run, and the round s
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(loadRunnerState(repo, "clean").runs, 3, "the backed-off role ran no tick");
+    assert.equal(loadRunnerState(repo, "clean").runs, 3, "the backed-off role did not run");
     assert.ok(
       !readEvents(repo).some((e) => e.type === "run_start" && e.source === "clean"),
-      "no tick started for the backed-off role",
+      "no run started for the backed-off role",
     );
   });
 });
 
-test("once: a team under a standing pause settles every role as paused, ticks nothing, and still exits", async () => {
+test("once: a team under a standing pause settles every role as paused, runs nothing, and still exits", async () => {
   const repo = await makeFastRepo("once paused test", ["clean"]);
   pauseTeam(repo);
   const restore = fakePiIdle();
   try {
     // The round must not hang on a pause it cannot lift — a once round has to end even when
     // a pause marker is left over (the orchestrator settles the role before the gates that
-    // would otherwise skip it silently, so the at-most-one-tick contract holds).
+    // would otherwise skip it silently, so the at-most-one-run contract holds).
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "paused", "the pause is the recorded settle reason, not idle");
-    assert.equal(exit.runsDone?.get("clean"), 0, "the paused role ran no tick");
-    assert.equal(loadRunnerState(repo, "clean").runs, 0, "nothing ticked under the pause");
+    assert.equal(exit.runsDone?.get("clean"), 0, "the paused role did not run");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "nothing ran under the pause");
     assert.ok(
       !readEvents(repo).some((e) => e.type === "run_start"),
-      "no tick started for the paused role",
+      "no run started for the paused role",
     );
   } finally {
     resumeTeam(repo);
@@ -101,11 +101,11 @@ test("once: a team under a standing pause settles every role as paused, ticks no
   }
 });
 
-test("once: a round started right after a productive daemon tick still ticks the role", async () => {
+test("once: a round started right after a productive daemon run still runs the role", async () => {
   const repo = await makeFastRepo("once fresh clock test", ["clean"]);
-  // State exactly as a just-finished productive daemon tick leaves it: the min-interval
+  // State exactly as a just-finished productive daemon run leaves it: the min-interval
   // clock is a full interval away (scheduleAtMinInterval) and backoffSeconds is 0. The
-  // round is an explicit demand for a round now, so the role must tick despite the fresh
+  // round is an explicit demand for a round now, so the role must run despite the fresh
   // clock — this is the scenario the once-mode clock override exists for (a real config's
   // minRunIntervalSeconds made the old gap-only override a no-op here).
   saveRunnerState(repo, {
@@ -120,13 +120,13 @@ test("once: a round started right after a productive daemon tick still ticks the
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the role ticked despite its fresh clock");
+    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the role ran despite its fresh clock");
   });
 });
 
 test("once: a deferrable role with an open backlog is deferred and does not block exit", async () => {
   const repo = await makeFastRepo("once deferral test", ["clean"]);
-  // An open backlog (PLANS.md ## Planned) plus a no_change history defers clean's due tick —
+  // An open backlog (PLANS.md ## Planned) plus a no_change history defers clean's due run —
   // in once mode that deferral is the role's round answer, not something to wait out.
   fs.writeFileSync(path.join(repo, "PLANS.md"), "# Plans\n\n## Planned\n\n### a queued feature (planned 2026-09-25)\n");
   const head = mainSha(repo);
@@ -135,12 +135,12 @@ test("once: a deferrable role with an open backlog is deferred and does not bloc
     runs: 1,
     lastResult: "no_change",
     lastMainHead: head,
-    nextRunAt: Date.now() - 1000, // due: without deferral it would tick
+    nextRunAt: Date.now() - 1000, // due: without deferral it would run
   });
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the deferred role ran no tick");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the deferred role did not run");
     assert.ok(
       readEvents(repo).some((e) => e.type === "run_deferred" && e.source === "clean"),
       "the deferral is logged, not silent",
@@ -162,8 +162,8 @@ test("once: the summary reports a deferred role as deferred, not idle", async ()
   await initProject(repo, "once summary deferral test");
   saveConfig(repo, fastConfig(["clean"]));
   // Same deferral setup as the in-process test above: an open backlog plus a no_change
-  // history defers clean's due tick. The summary is the round's only cron-visible output, so
-  // it must carry the orchestrator's own settle reason — "deferred" (the tick WAS due and was
+  // history defers clean's due run. The summary is the round's only cron-visible output, so
+  // it must carry the orchestrator's own settle reason — "deferred" (the run WAS due and was
   // set aside) — not the re-derived "idle" (nothing was due), which misreads the round.
   fs.writeFileSync(path.join(repo, "PLANS.md"), "# Plans\n\n## Planned\n\n### a queued feature (planned 2026-09-25)\n");
   const head = mainSha(repo);
@@ -212,12 +212,12 @@ test("once: a typo'd flag fails fast with the unknown-argument wording", async (
 
 // --- Scoped once rounds (`run --once --role <id>`, PLANS.md 2026-09-25) ---
 
-test("once --role: a scoped round ticks only the named role", async () => {
+test("once --role: a scoped round runs only the named role", async () => {
   const repo = await makeFastRepo("once scoped test", ["clean", "dedupe"]);
   await withIdlePi(async () => {
     const exit = await onceRound(repo, "clean");
     assert.equal(exit.restart, false, "a scoped round still exits on its own");
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the scoped role ticked exactly once");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the scoped role ran exactly once");
     assert.equal(loadRunnerState(repo, "dedupe").runs, 0, "the other role never ran");
   });
 });
@@ -249,7 +249,7 @@ test("once --role: the CLI scopes the round — banner and summary name only tha
     assert.equal(r.code, 0, `exit 0 on its own (stderr: ${r.stderr})`);
     assert.match(r.stdout, /roles: clean\n/, `the banner names only the scoped role: ${r.stdout}`);
     assert.match(r.stdout, /once: 1 run — 1 no_change/,
-      `the summary counts only the scoped role's tick: ${r.stdout}`);
+      `the summary counts only the scoped role's run: ${r.stdout}`);
     assert.doesNotMatch(r.stdout, /\bdedupe\b/);
     assert.equal(loadRunnerState(repo, "dedupe").runs, 0, "the other role's persisted counter is unchanged");
   });
@@ -286,7 +286,7 @@ test("once --role: a custom role id is a valid target", async () => {
   await withIdlePi(async () => {
     const r = await cli(repo, "run", "--once", "--role", "docs-sync");
     assert.equal(r.code, 0, `a custom role scopes like a built-in (stderr: ${r.stderr}; stdout: ${r.stdout})`);
-    assert.equal(loadRunnerState(repo, "docs-sync").runs, 1, "the custom role ticked once");
+    assert.equal(loadRunnerState(repo, "docs-sync").runs, 1, "the custom role ran once");
     assert.equal(loadRunnerState(repo, "clean").runs, 0, "the enabled built-in never ran");
   });
 });

@@ -1,6 +1,6 @@
 /** The daily cost budget gate's e2e tier slice (extracted from orchestrator-2.e2e.test.ts):
- * the cap pausing role ticks while the director keeps going, a pre-spent cap starting no role
- * ticks, the fallback free model that takes over instead of stopping the team, and the
+ * the cap pausing role runs while the director keeps going, a pre-spent cap starting no role
+ * runs, the fallback free model that takes over instead of stopping the team, and the
  * fallback's refusal/demotion behavior (plans/daily-cost-budget.md, plans/fallback-model.md).
  * Like the other topic-named orchestrator files (orchestrator-resize, orchestrator-permits,
  * orchestrator-pause), this file holds one coherent topic; the tier's balanced slices are
@@ -20,7 +20,7 @@ import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runne
 import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { awaitSettledTick, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
+import { awaitSettledRun, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { mergeWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
@@ -30,10 +30,10 @@ const FAST_POLL_MS = 100;
 
 // --- Daily cost budget gate (plans/daily-cost-budget.md) ---
 
-test("a reached daily cap pauses role ticks but not the director; raising the cap resumes", async () => {
+test("a reached daily cap pauses role runs but not the director; raising the cap resumes", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget gate e2e test");
-  // Tiny cap: exactly one fake run's cost. After clean's first tick the team has spent
+  // Tiny cap: exactly one fake run's cost. After clean's first run the team has spent
   // $1 >= $0.50, so every later poll reads budget-paused until the cap is raised live.
   const config = fastConfig(["clean", "director"]);
   config.maxDailyCostUsd = 0.5;
@@ -41,9 +41,9 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
   const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // clean's startup tick records the first spend; the transition is logged exactly once,
+    // clean's startup run records the first spend; the transition is logged exactly once,
     // harness-level, with the spend and cap that triggered it.
-    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    await awaitSettledRun(repo, "clean", 1, "the startup run to finish");
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
     const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused.length, 1, "one transition event per pause");
@@ -55,22 +55,22 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
 
     // The same figures are published in the orchestrator info file for the dashboards
     // (BUGS.md 2026-09-30): the gate's own pair, summed over the live runner states, which
-    // the persisted runner-state file can lag while a tick is in flight.
+    // the persisted runner-state file can lag while a run is in flight.
     assert.deepEqual(readOrchestratorInfo(repo)?.budget, { spentUsd: 1, capUsd: 0.5 });
 
-    // The paused role starts no new ticks even though its schedule says to run: wait well
-    // past nextRunAt plus several (fast) poll cycles — an ungated role would have ticked by then.
+    // The paused role starts no new runs even though its schedule says to run: wait well
+    // past nextRunAt plus several (fast) poll cycles — an ungated role would have run by then.
     const scheduled = loadRunnerState(repo, "clean").nextRunAt;
     await waitFor(() => Date.now() >= scheduled + 1500, "the schedule to pass while paused");
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "a budget-paused role starts no new ticks");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "a budget-paused role starts no new runs");
 
     // The director is exempt: a queued human prompt still runs while the team is paused.
     enqueuePrompt(repo, "steer me while the team is paused");
-    await awaitSettledTick(repo, "director", 1, "the director to tick while budget-paused");
+    await awaitSettledRun(repo, "director", 1, "the director to run while budget-paused");
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "still paused after the director's run");
 
     // Raising the cap live resumes within a poll cycle: one transition event, then the role
-    // ticks again. The director's spend counts toward the team total ($2 now), so this also
+    // runs again. The director's spend counts toward the team total ($2 now), so this also
     // proves resume is about the cap, not a reset of the daily window.
     const raised = fastConfig(["clean", "director"]);
     raised.maxDailyCostUsd = 100;
@@ -80,10 +80,10 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     assert.equal(resumed.length, 1, "one transition event per resume");
     assert.equal(resumed[0]?.source, "tumwater");
     assert.equal(resumed[0]?.capUsd, 100);
-    // clean is deferrable and no work has merged since its first tick — a work commit supplies
-    // the wake for the post-resume tick.
+    // clean is deferrable and no work has merged since its first run — a work commit supplies
+    // the wake for the post-resume run.
     mergeWork(repo);
-    await awaitSettledTick(repo, "clean", 2, "the paused role to tick again after the cap raise");
+    await awaitSettledRun(repo, "clean", 2, "the paused role to run again after the cap raise");
 
     // Exactly one of each transition for the whole run — no per-poll event spam.
     assert.equal(eventsOfType(repo, "budget_paused").length, 1);
@@ -95,12 +95,12 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
 
 // AC3's two startup/wake clauses (plans/daily-cost-budget.md): the gate also blocks a team
 // that is ALREADY at cap when the orchestrator starts, and it holds main-moved wakes while
-// paused — both are "no tick starts" guarantees, so they assert absence across several polls.
+// paused — both are "no run starts" guarantees, so they assert absence across several polls.
 
-test("startup with spend already at the cap starts no role ticks", async () => {
+test("startup with spend already at the cap starts no role runs", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget startup test");
-  // Tiny cap: the pre-seeded window ($1) already reaches it before any tick runs.
+  // Tiny cap: the pre-seeded window ($1) already reaches it before any run runs.
   const config = fastConfig(["clean"]);
   config.maxDailyCostUsd = 1;
   saveConfig(repo, config);
@@ -114,10 +114,10 @@ test("startup with spend already at the cap starts no role ticks", async () => {
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // The role is schedule-eligible (fresh state, nextRunAt 0) — an ungated team would have
-    // ticked within the first poll. Several (fast) poll cycles pass with no role tick starting.
+    // ran within the first poll. Several (fast) poll cycles pass with no role run starting.
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
     await sleep(600);
-    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a team at cap starts no role ticks");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a team at cap starts no role runs");
     // The pause is announced exactly once, with the spend and cap that closed the gate.
     const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused.length, 1);
@@ -131,14 +131,14 @@ test("startup with spend already at the cap starts no role ticks", async () => {
 test("a main-moved wake while budget-paused stays blocked", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget main-move test");
-  // Tiny cap: clean's startup tick spends $1 >= $0.50 and pauses the team.
+  // Tiny cap: clean's startup run spends $1 >= $0.50 and pauses the team.
   const config = fastConfig(["clean"]);
   config.maxDailyCostUsd = 0.5;
   saveConfig(repo, config);
   const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    await awaitSettledRun(repo, "clean", 1, "the startup run to finish");
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
 
     // The world changed: advance main. An ungated team would wake clean early ("main moved")…
@@ -147,7 +147,7 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
     sh(repo, "git", "commit", "-m", "advance main while paused");
 
     // …but the gate skips role runners before eligibility is even evaluated: several (fast)
-    // poll cycles pass with no tick and no wake event.
+    // poll cycles pass with no run and no wake event.
     await sleep(600);
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "a main move cannot wake a budget-paused team");
     assert.ok(!readEvents(repo).some((e) => e.type === "wake"), "no wake logged for the blocked main move");
@@ -177,7 +177,7 @@ function writeFallbackModels(): string {
 
 /** The fallback tests' standard config: fastConfig for the given roles plus the tiny cap and
  * paid-primary/free-fallback pair that writeFallbackModels() defines. One fake run costs $1,
- * so the startup tick closes the $0.50 gate. `fallbackModel` overrides the free pair for the
+ * so the startup run closes the $0.50 gate. `fallbackModel` overrides the free pair for the
  * refusal case, which names an unlisted model on purpose. */
 function fallbackConfig(
   roles: string[],
@@ -194,7 +194,7 @@ function fallbackConfig(
 test("a reached cap switches roles to the free fallback model instead of stopping them", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget fallback e2e test");
-  // Tiny cap: exactly one fake run's cost, so clean's startup tick closes the gate.
+  // Tiny cap: exactly one fake run's cost, so clean's startup run closes the gate.
   const config = fallbackConfig(["clean", "director"]);
   // A role pinned to its own paid model: the switch must drop that override too, or the cap
   // would keep being exceeded by exactly the role that opted out of the default model.
@@ -205,9 +205,9 @@ test("a reached cap switches roles to the free fallback model instead of stoppin
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
   const runs = (): string[] => readRunLines(argsFile);
   try {
-    // The startup tick runs on the budgeted pair — including clean's own paid override — and
+    // The startup run runs on the budgeted pair — including clean's own paid override — and
     // spends $1 >= $0.50.
-    await waitFor(() => runs().length >= 1, "the startup tick's pi run");
+    await waitFor(() => runs().length >= 1, "the startup run's pi run");
     assert.match(runs()[0] ?? "", /model=also-paid provider=paid/, "the budgeted model does the paid work");
 
     // One transition event naming the pair that took over: the operator must be able to tell
@@ -222,21 +222,21 @@ test("a reached cap switches roles to the free fallback model instead of stoppin
     assert.equal(fallback[0]?.model, "local-free");
     assert.ok(!readEvents(repo).some((e) => e.type === "budget_paused"), "the team degraded, it did not stop");
 
-    // And the team keeps working: clean's next tick runs on the free pair, with its paid
-    // role override dropped. (clean is deferrable and did nothing last tick, so work supplies
+    // And the team keeps working: clean's next run runs on the free pair, with its paid
+    // role override dropped. (clean is deferrable and did nothing last run, so work supplies
     // the wake — the same as every other budget test.)
     mergeWork(repo);
-    await awaitSettledTick(repo, "clean", 2, "a role tick after the cap was reached");
+    await awaitSettledRun(repo, "clean", 2, "a role run after the cap was reached");
     assert.match(
       runs().find((l) => l.includes("session=tumwater-clean-2")) ?? "",
       /model=local-free provider=local/,
-      "the role keeps ticking, on the cost n/a fallback",
+      "the role keeps running, on the cost n/a fallback",
     );
 
     // The director is outside the gate in both directions: an explicit human prompt outranks
     // the autonomous-spend cap, so it keeps the budgeted model.
     enqueuePrompt(repo, "steer me after the budget is spent");
-    await awaitSettledTick(repo, "director", 1, "the director to tick after the switch");
+    await awaitSettledRun(repo, "director", 1, "the director to run after the switch");
     assert.match(
       runs().find((l) => l.includes("session=tumwater-director-1")) ?? "",
       /model=big-paid provider=paid/,
@@ -251,7 +251,7 @@ test("a reached cap switches roles to the free fallback model instead of stoppin
     mergeWork(repo);
     await waitFor(
       () => runs().some((l) => l.includes("session=tumwater-clean-3")),
-      "a role tick after the cap was raised",
+      "a role run after the cap was raised",
     );
     assert.match(
       runs().find((l) => l.includes("session=tumwater-clean-3")) ?? "",
@@ -273,7 +273,7 @@ test("a fallback pi cannot price at zero is refused and the team pauses as befor
   const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
   try {
-    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    await awaitSettledRun(repo, "clean", 1, "the startup run to finish");
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
     // The event names the refused pair: why the team stopped instead of switching is the one
     // thing the operator can act on.
@@ -281,7 +281,7 @@ test("a fallback pi cannot price at zero is refused and the team pauses as befor
     assert.equal(paused[0]?.fallbackRejected, "local/typo-free");
     assert.ok(!readEvents(repo).some((e) => e.type === "budget_fallback"));
 
-    // And it really is paused: several poll cycles past its schedule, no second tick.
+    // And it really is paused: several poll cycles past its schedule, no second run.
     mergeWork(repo);
     await sleep(600);
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "a refused fallback leaves the team paused");
@@ -292,8 +292,8 @@ test("a fallback pi cannot price at zero is refused and the team pauses as befor
 
 // The fallback breaker (BUGS.md 2026-09-20): a free pair is not a usable fallback when its
 // backend cannot serve. On 2026-09-19 oMLX, priced at zero and up but pinned at its Metal
-// ceiling, failed 33 of 33 fallback ticks for an hour instead of the team pausing.
-test("a free fallback whose ticks keep failing is demoted to a pause, then probed back once it serves", async () => {
+// ceiling, failed 33 of 33 fallback runs for an hour instead of the team pausing.
+test("a free fallback whose runs keep failing is demoted to a pause, then probed back once it serves", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget fallback breaker test");
   const config = fallbackConfig(["clean"]);
@@ -326,17 +326,17 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
     fallbackBreakerPolicy: { failureLimit: 2, cooldownMs: 1500, maxCooldownMs: 1500 },
   });
   const clean = () => loadRunnerState(repo, "clean");
-  const runFor = (tick: number): string => {
+  const runFor = (runNumber: number): string => {
     const log = fs.existsSync(argsFile) ? fs.readFileSync(argsFile, "utf8") : "";
-    return log.split("\n").find((l) => l.includes(`session=tumwater-clean-${tick}`)) ?? "";
+    return log.split("\n").find((l) => l.includes(`session=tumwater-clean-${runNumber}`)) ?? "";
   };
   try {
-    // The startup tick spends $1 of the $0.50 cap on the paid pair: the free fallback takes over.
+    // The startup run spends $1 of the $0.50 cap on the paid pair: the free fallback takes over.
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "the switch to the fallback");
-    // Two fallback ticks, both rejected. Main-moved wakes supply them: an errored role backs off
+    // Two fallback runs, both rejected. Main-moved wakes supply them: an errored role backs off
     // 30 s, and a main move wakes it early.
     mergeWork(repo);
-    await waitFor(() => clean().runs >= 2 && !clean().running, "the first fallback tick");
+    await waitFor(() => clean().runs >= 2 && !clean().running, "the first fallback run");
     assert.equal(clean().lastResult, "error");
     assert.match(runFor(2), /model=local-free/);
     mergeWork(repo);
@@ -354,19 +354,19 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
     assert.equal(readOrchestratorInfo(repo)?.fallbackDemoted?.pair, "local/local-free");
     assert.equal(snapshot(repo, models).budget.fallback, null, "the dashboards read budget paused");
 
-    // Paused means paused: a main move during the cool-down starts no role tick.
+    // Paused means paused: a main move during the cool-down starts no role run.
     mergeWork(repo);
     await sleep(400);
-    assert.equal(clean().runs, 3, "no role tick starts while the fallback is demoted");
+    assert.equal(clean().runs, 3, "no role run starts while the fallback is demoted");
 
-    // The backend recovers. After the cool-down one probe tick finds out, the breaker closes, and
+    // The backend recovers. After the cool-down one probe run finds out, the breaker closes, and
     // the team is back on the fallback — no restart and no config edit needed.
     fs.writeFileSync(healed, "");
     await waitFor(
       () => eventsOfType(repo, "budget_fallback").length >= 2,
       "the probe to restore the fallback",
     );
-    assert.equal(clean().runs, 4, "one probe tick restored it");
+    assert.equal(clean().runs, 4, "one probe run restored it");
     assert.match(runFor(4), /model=local-free/, "the probe runs on the free pair, never the spent one");
     assert.equal(readOrchestratorInfo(repo)?.fallbackDemoted, undefined, "the demotion is withdrawn");
     assert.deepEqual(snapshot(repo, models).budget.fallback, { provider: "local", model: "local-free" });
@@ -377,12 +377,12 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
   }
 });
 
-// The budget handback (PLANS.md 2026-09-30): new ticks are gated live, but a tick that started
+// The budget handback (PLANS.md 2026-09-30): new runs are gated live, but a run that started
 // on the fallback keeps it until it ends — so a reopen at local midnight would leave the
 // team's fresh budget waiting on the slow local model. On the resuming poll the orchestrator
-// hands exactly those ticks back: one budget_handback event, the tick ends resumably, and its
+// hands exactly those runs back: one budget_handback event, the run ends resumably, and its
 // resume continues the same session on the primary.
-test("budget_resumed hands the in-flight fallback ticks back to the primary", async () => {
+test("budget_resumed hands the in-flight fallback runs back to the primary", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget handback e2e test");
   const config = fallbackConfig(["clean"]);
@@ -400,27 +400,27 @@ test("budget_resumed hands the in-flight fallback ticks back to the primary", as
     `echo "run: model=$m provider=$p session=$n" >> "${argsFile}"`;
   const idle = `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`;
 
-  // Phase 1: the startup tick on the paid pair spends $1 >= $0.50 and trips the gate.
+  // Phase 1: the startup run on the paid pair spends $1 >= $0.50 and trips the gate.
   let restore = fakePi([TOUCH_SESSION, rec, idle].join("\n"));
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
   try {
-    await awaitSettledTick(repo, "clean", 1, "the startup tick");
+    await awaitSettledRun(repo, "clean", 1, "the startup run");
 
-    // Phase 2: the next tick starts on the fallback pair and hangs mid-run — the shape the
-    // handback exists for. Installed before the reopen poll so no fallback tick can race the
-    // swap; the gate is already over cap, so the tick runs on the fallback view.
+    // Phase 2: the next run starts on the fallback pair and hangs mid-run — the shape the
+    // handback exists for. Installed before the reopen poll so no fallback run can race the
+    // swap; the gate is already over cap, so the run runs on the fallback view.
     restore();
     // TOUCH_SESSION and logFlagsTo must run BEFORE rec: the recorder shifts through the
     // argv, so a fragment after it sees no arguments.
     restore();
     restore = fakePi([TOUCH_SESSION, logFlagsTo(flagsFile), rec, `touch "${marker}"`, `exec sleep 30`].join("\n"));
     mergeWork(repo);
-    await waitFor(() => fs.existsSync(marker), "the in-flight fallback tick to start");
+    await waitFor(() => fs.existsSync(marker), "the in-flight fallback run to start");
     assert.equal(loadRunnerState(repo, "clean").running, true);
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "the budget_fallback event");
 
-    // Phase 3: raising the cap reopens the budget. The orchestrator hands the tick back:
-    // exactly one event naming the role and the pair, and the tick ends resumably.
+    // Phase 3: raising the cap reopens the budget. The orchestrator hands the run back:
+    // exactly one event naming the role and the pair, and the run ends resumably.
     saveConfig(repo, { ...config, maxDailyCostUsd: 100 });
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_handback"), "the budget_handback event");
     const hb = eventsOfType(repo, "budget_handback");
@@ -431,7 +431,7 @@ test("budget_resumed hands the in-flight fallback ticks back to the primary", as
     await waitFor(() => {
       const s = loadRunnerState(repo, "clean");
       return !s.running && s.resumePending === true && s.resumeCause === "budget-resumed";
-    }, "the handed-back tick to end resumably");
+    }, "the handed-back run to end resumably");
 
     // The resume continues the SAME session (--continue) on the budgeted pair. A resumed
     // run passes no -n, so its recorded session field is empty — wait on the flags file,
@@ -444,7 +444,7 @@ test("budget_resumed hands the in-flight fallback ticks back to the primary", as
       } catch {
         return false;
       }
-    }, "the resume tick's run");
+    }, "the resume run's run");
     assert.match(
       runs()[2] ?? "",
       /model=big-paid provider=paid/,
@@ -454,7 +454,7 @@ test("budget_resumed hands the in-flight fallback ticks back to the primary", as
     const flags = fs.readFileSync(flagsFile, "utf8").trim().split("\n");
     assert.equal(flags.length, 2, JSON.stringify(flags));
     assert.match(flags[1] ?? "", /--continue/, "the resume continues the handed-back session");
-    await awaitSettledTick(repo, "clean", 3, "the resume tick to settle");
+    await awaitSettledRun(repo, "clean", 3, "the resume run to settle");
   } finally {
     await stopOrchestrator(orch, restore);
   }

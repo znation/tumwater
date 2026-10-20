@@ -253,9 +253,6 @@ export async function awaitSettledRun(
   );
 }
 
-/** @deprecated Use awaitSettledRun. */
-export const awaitSettledTick = awaitSettledRun;
-
 /** Merge the head of the durable merge queue through the orchestrator's own merge pipeline
  * (merge-drain.ts). Runner-level tests call `runner.run()` directly — no poll loop — so the
  * entry a changed run enqueues needs a driver: this verifies the head alone (startVerify, on a

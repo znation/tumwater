@@ -1,6 +1,6 @@
 /** The orchestrator e2e tier's shared-permit slice (see orchestrator.e2e.test.ts for the
- * tier's split): a merge's reviewer run sharing the maxConcurrent permit with role ticks, and
- * a work-role tick jumping ahead of parked maintenance waiters. Renamed here from
+ * tier's split): a merge's reviewer run sharing the maxConcurrent permit with role runs, and
+ * a work-role run jumping ahead of parked maintenance waiters. Renamed here from
  * orchestrator-5.e2e.test.ts (2026-09-29) so the topic has a name instead of a slice number —
  * unlike the tier's balanced orchestrator-2/3 slices, this file holds one coherent topic.
  * Like the rest of the tier it waits on real timers and runs via `npm run test:e2e`, not in
@@ -13,7 +13,7 @@ import { saveConfig } from "../src/config/config.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
-import { awaitSettledTick, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
+import { awaitSettledRun, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
@@ -44,24 +44,24 @@ function readProviderSamples(runDir: string): Array<{ provider: string; provider
   }
 }
 
-test("a merge's reviewer run takes the same maxConcurrent permit as a role tick", async () => {
+test("a merge's reviewer run takes the same maxConcurrent permit as a role run", async () => {
   // BUGS.md 2026-09-18: the merge drain ran its reviewer outside the author semaphore, so
   // maxConcurrent + 1 merge + 1 director was the real ceiling and a single-GPU backend saw
-  // four streams. With one permit, a merge in flight and a role tick must never overlap.
+  // four streams. With one permit, a merge in flight and a role run must never overlap.
   const repo = makeRepo();
   await initProject(repo, "merge shares the maxConcurrent cap");
   const cfg = fastConfig(["clean", "bugfix"]);
   cfg.maxConcurrent = 1;
   saveConfig(repo, cfg);
-  // bugfix keeps ticking every ~1s here; with an empty BUGS.md `## Open` it defers like a
+  // bugfix keeps running every ~1s here; with an empty BUGS.md `## Open` it defers like a
   // maintenance role instead (deferTick), so the open bug keeps it on the every-wake schedule
   // the overlap observation below depends on.
   seedOpenBug(repo);
   const runDir = tmpdir();
   // Each run records how many pi processes were already in flight when it started. clean's
   // author makes a change (so its merge's reviewer actually runs and holds the slot ~3s);
-  // bugfix keeps ticking every ~1s and declares nothing-to-do. Without the permit the reviewer
-  // and a bugfix tick overlap; the 3s reviewer sleep makes that window unmissable.
+  // bugfix keeps running every ~1s and declares nothing-to-do. Without the permit the reviewer
+  // and a bugfix run overlap; the 3s reviewer sleep makes that window unmissable.
   const restore = fakePi(
     [
       `d="${runDir}/runs"; mkdir -p "$d"`,
@@ -72,7 +72,7 @@ test("a merge's reviewer run takes the same maxConcurrent permit as a role tick"
       // Role and run kind from the real markers, not the cwd: non-director runs happen in
       // pooled `_slot-<n>` checkouts (worktree-pool), so `case $PWD in *clean*)` can no
       // longer see the role. The role comes from the slot lease; the reviewer's run carries
-      // the gate's VERDICT prompt, a tick's does not. A `verify` flag routes the branch so
+      // the gate's VERDICT prompt, a run's does not. A `verify` flag routes the branch so
       // `rm -f "$f"` still cleans the reviewer's own file (clearing `f` would leak it and
       // fake a sample-2 overlap on the next run's count).
       leasedRoleShell(),
@@ -96,25 +96,25 @@ test("a merge's reviewer run takes the same maxConcurrent permit as a role tick"
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // The contention was real: clean's change merged through its reviewer while bugfix ticked.
+    // The contention was real: clean's change merged through its reviewer while bugfix ran.
     // Wait for the merge too, not only the runs: the verify frees its permit when its review
     // ends, and the merge after it (which runs no pi) can log `merge_done` just after bugfix's next
-    // tick has started.
+    // run has started.
     await waitFor(
       () => readSamples(runDir).length >= 5 && readEvents(repo).some((e) => e.type === "merge_done" && e.source === "clean"),
-      "several pi runs across the merge and role ticks, and clean's change merged",
+      "several pi runs across the merge and role runs, and clean's change merged",
     );
     const samples = readSamples(runDir);
     assert.ok(
       samples.every((n) => n <= 1),
-      `a merge and a role tick never share the backend at maxConcurrent 1 (samples: ${samples})`,
+      `a merge and a role run never share the backend at maxConcurrent 1 (samples: ${samples})`,
     );
   } finally {
     await stopOrchestrator(orch, restore);
   }
 });
 
-test("a work-role tick that becomes due later jumps ahead of maintenance waiters parked in an earlier poll", async () => {
+test("a work-role run that becomes due later jumps ahead of maintenance waiters parked in an earlier poll", async () => {
   // Cross-poll slot inversion (BUGS.md 2026-09-12): with one slot, the startup poll admits
   // bugfix first and parks clean + dedupe behind it. When bugfix becomes due again (~1s idle
   // backoff) while clean is still in flight, its acquire must jump ahead of the maintenance
@@ -124,7 +124,7 @@ test("a work-role tick that becomes due later jumps ahead of maintenance waiters
   const base = fastConfig(["clean", "dedupe", "bugfix"]);
   base.maxConcurrent = 1;
   saveConfig(repo, base);
-  // bugfix must become due again ~1s after its first no_change tick; with an empty BUGS.md
+  // bugfix must become due again ~1s after its first no_change run; with an empty BUGS.md
   // `## Open` it defers like a maintenance role instead (deferTick), so the open bug keeps it
   // on the every-wake schedule the jump-ahead assertion depends on.
   seedOpenBug(repo);
@@ -156,10 +156,10 @@ test("a work-role tick that becomes due later jumps ahead of maintenance waiters
   }
 });
 
-test("the director's tick starts immediately while every maxConcurrent slot is busy", async () => {
+test("the director's run starts immediately while every maxConcurrent slot is busy", async () => {
   // The director never queues behind the author semaphore: a user prompt starts right away
-  // even when all slots are held (orchestrator-launch.ts's usesSlot — only role ticks
-  // acquire). With one permit and clean's tick holding it for ~5s, the director's run must
+  // even when all slots are held (orchestrator-launch.ts's usesSlot — only role runs
+  // acquire). With one permit and clean's run holding it for ~5s, the director's run must
   // begin while clean is still in flight — its concurrency sample reads 2, proof it took no
   // permit.
   const repo = makeRepo();
@@ -189,14 +189,14 @@ test("the director's tick starts immediately while every maxConcurrent slot is b
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // clean's startup tick grabs the only permit and holds it for ~5s; the queued prompt is
-    // consumed while that tick is still running.
-    await waitFor(() => readSamples(runDir)[0] === 1, "clean's startup tick holding the slot");
+    // clean's startup run grabs the only permit and holds it for ~5s; the queued prompt is
+    // consumed while that run is still in progress.
+    await waitFor(() => readSamples(runDir)[0] === 1, "clean's startup run holding the slot");
     enqueuePrompt(repo, "steer me while clean holds the slot");
-    await awaitSettledTick(repo, "director", 1, "the director's tick to finish");
+    await awaitSettledRun(repo, "director", 1, "the director's run to finish");
     const order = readOrder(runDir);
     const samples = readSamples(runDir);
-    assert.equal(order[1], "director", `the director started before clean's second tick (${order})`);
+    assert.equal(order[1], "director", `the director started before clean's second run (${order})`);
     assert.equal(
       samples[1],
       2,
@@ -209,12 +209,12 @@ test("the director's tick starts immediately while every maxConcurrent slot is b
 
 // --- Reset counters while running (tumwater reset-counters marker) ---
 
-test("maxConcurrentPerProvider caps role-tick admission per provider while others run beside (part 2/5)", async () => {
+test("maxConcurrentPerProvider caps role-run admission per provider while others run beside (part 2/5)", async () => {
   // plans/provider-concurrency.md §4: the launch pass acquires a keyed lease on the authoring
-  // seam's provider, so maxConcurrentPerProvider caps role-tick admission on that provider
+  // seam's provider, so maxConcurrentPerProvider caps role-run admission on that provider
   // alone. With maxConcurrent 4 and { omlx: 1 }, two omlx roles must never overlap, while a
   // huggingface role runs beside them, and nothing exceeds the team total. Disabled review
-  // keeps every pi process here a role tick, so the shim's in-flight census is the role
+  // keeps every pi process here a role run, so the shim's in-flight census is the role
   // census this part owns (verifies count against their provider from part 3/5).
   const repo = makeRepo();
   await initProject(repo, "per-provider concurrency caps");
@@ -273,12 +273,12 @@ test("maxConcurrentPerProvider caps role-tick admission per provider while other
   }
 });
 
-test("a verify's reviewer and a role tick on the same capped provider never overlap, while another provider runs beside (part 3/5)", async () => {
+test("a verify's reviewer and a role run on the same capped provider never overlap, while another provider runs beside (part 3/5)", async () => {
   // plans/provider-concurrency.md §4: the merge verify acquires a keyed lease on the author's
-  // review seam, so a review on omlx shares the omlx provider cap with role ticks — not just
-  // the team total (part 2/5's scope, review off). With { omlx: 1 }, feature's omlx tick and
+  // review seam, so a review on omlx shares the omlx provider cap with role runs — not just
+  // the team total (part 2/5's scope, review off). With { omlx: 1 }, feature's omlx run and
   // the omlx review verifying feature's (or clean's) change never run at once, while the
-  // huggingface bugfix tick runs beside them. Review is on, pinned to omlx.
+  // huggingface bugfix run runs beside them. Review is on, pinned to omlx.
   const repo = makeRepo();
   await initProject(repo, "per-provider caps reach the verify");
   const cfg = fastConfig(["feature", "bugfix", "clean"]);
@@ -329,7 +329,7 @@ test("a verify's reviewer and a role tick on the same capped provider never over
     const totals = samples.map((s) => s.totalInFlight);
     assert.ok(
       omlxCounts.every((n) => n <= 1),
-      `a verify review and a role tick on omlx never overlap (samples: ${JSON.stringify(samples)})`,
+      `a verify review and a role run on omlx never overlap (samples: ${JSON.stringify(samples)})`,
     );
     assert.ok(
       totals.every((n) => n <= 4),
@@ -346,7 +346,7 @@ test("a verify's reviewer and a role tick on the same capped provider never over
 
 test("a director prompt on a full provider starts at once and holds the provider's only free slot (part 3/5)", async () => {
   // plans/provider-concurrency.md §4: the director keeps its bypass — it never queues and never
-  // counts toward maxConcurrent — but its tick does raise its provider's in-use by one. With
+  // counts toward maxConcurrent — but its run does raise its provider's in-use by one. With
   // { omlx: 1 } and clean holding the omlx slot for ~5s, a director prompt on omlx starts at
   // once (order.log: it runs while clean is in flight) and its own run reads omlx in-flight 2 —
   // the overshoot — and no third omlx run appears until that in-use drains.
@@ -355,7 +355,7 @@ test("a director prompt on a full provider starts at once and holds the provider
   const cfg = fastConfig(["clean", "director"]);
   cfg.maxConcurrent = 4;
   cfg.maxConcurrentPerProvider = { omlx: 1 };
-  cfg.review!.enabled = false; // keep every pi run a role/director tick: no verify, no resolver
+  cfg.review!.enabled = false; // keep every pi run a role/director run: no verify, no resolver
   cfg.roles.clean!.provider = "omlx";
   cfg.roles.clean!.model = "m";
   cfg.roles.director!.provider = "omlx";
@@ -382,12 +382,12 @@ test("a director prompt on a full provider starts at once and holds the provider
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => readProviderSamples(runDir)[0]?.providerInFlight === 1, "clean's startup omlx tick holding the cap");
+    await waitFor(() => readProviderSamples(runDir)[0]?.providerInFlight === 1, "clean's startup omlx run holding the cap");
     enqueuePrompt(repo, "steer me while omlx is full");
-    await awaitSettledTick(repo, "director", 1, "the director's tick to finish");
+    await awaitSettledRun(repo, "director", 1, "the director's run to finish");
     const order = readOrder(runDir);
     const samples = readProviderSamples(runDir);
-    assert.equal(order[1], "director", `the director started before clean's second tick (${order})`);
+    assert.equal(order[1], "director", `the director started before clean's second run (${order})`);
     const directorIdx = order.indexOf("director");
     const directorSample = samples[directorIdx];
     assert.ok(directorSample, "the director's run was counted against omlx");
@@ -405,11 +405,11 @@ test("a director prompt on a full provider starts at once and holds the provider
   }
 });
 
-test("two ticks on one provider and a single worktree slot both finish (pool-slot wait rule, part 4/5)", async () => {
+test("two runs on one provider and a single worktree slot both finish (pool-slot wait rule, part 4/5)", async () => {
   // plans/provider-concurrency.md §5 "No deadlock": a lease never holds a provider key while it
   // waits for a pool slot. With one pool slot and two omlx roles (cap 2 lets both hold omlx at
-  // admission), the second tick parks on the slot and drops its omlx key while it waits; the
-  // first releases the slot and both finish. The drop runs inside the tick's provider-lease
+  // admission), the second run parks on the slot and drops its omlx key while it waits; the
+  // first releases the slot and both finish. The drop runs inside the run's provider-lease
   // store (orchestrator-launch wraps runner.run()), so this reaches the pool-slot drop path
   // in a live orchestrator.
   const repo = makeRepo();
@@ -441,7 +441,7 @@ test("two ticks on one provider and a single worktree slot both finish (pool-slo
   try {
     await waitFor(
       () => readOrder(runDir).length >= 4 && readEvents(repo).some((e) => e.type === "merge_done"),
-      "both roles ticking through the one slot, and a merge",
+      "both roles running through the one slot, and a merge",
       150_000,
     );
     const roles = readOrder(runDir);

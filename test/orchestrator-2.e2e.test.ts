@@ -41,7 +41,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
 
     await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
     for (const role of ["clean", "dedupe"]) {
-      // A post-reset tick may have started in the same poll; without in-memory zeroing this
+      // A post-reset run may have started in the same poll; without in-memory zeroing this
       // would read >= 8.
       assert.ok(
         loadRunnerState(repo, role).runs <= 1,
@@ -64,7 +64,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Garbage where the marker should be: JSON.parse throws → requested stays null → every
-    // runner resets (a documented superset — skipping it would let the next tick's save
+    // runner resets (a documented superset — skipping it would let the next run's save
     // resurrect the pre-reset values).
     const markerFile = resetRequestPath(repo);
     ensureParentDir(markerFile);
@@ -88,7 +88,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
 
 test("a wake request makes a backed-off role due within one poll and logs it under the role", async () => {
   const repo = await makeFastRepo("wake request test", ["clean"]);
-  // Deep backoff: the role is two hours out and has ticked before, so the woken run reads as
+  // Deep backoff: the role is two hours out and has ran before, so the woken run reads as
   // "scheduled", not "startup". lastRunEndedAt is long past, so no min-gap gate applies.
   const seeded = freshRunnerState("clean");
   seeded.runs = 3;
@@ -108,10 +108,10 @@ test("a wake request makes a backed-off role due within one poll and logs it und
     const markerFile = wakeRequestPath(repo);
     writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
-    // The team consumes the marker within a poll cycle and the role ticks — its
-    // in-memory schedule was the gate, so the file zeroing alone cannot explain the tick.
-    await waitFor(() => loadRunnerState(repo, "clean").runs >= 4, "the woken role to tick");
-    await waitFor(() => !loadRunnerState(repo, "clean").running, "the woken tick to finish");
+    // The team consumes the marker within a poll cycle and the role runs — its
+    // in-memory schedule was the gate, so the file zeroing alone cannot explain the run.
+    await waitFor(() => loadRunnerState(repo, "clean").runs >= 4, "the woken role to run");
+    await waitFor(() => !loadRunnerState(repo, "clean").running, "the woken run to finish");
 
     // The wake is visible as exactly one plain event filed under the role, not a warning.
     const wakes = eventsOfType(repo, "wake");
@@ -129,12 +129,12 @@ test("an operator wake brings a slow-clock role in despite a fresh min-gap windo
   // hours out left the role asleep for the rest of the interval no matter how many wake
   // markers arrived, so `tumwater wake --role qa` and a queued per-role prompt's auto-wake
   // silently did nothing. The earlier wake test dodged this by seeding lastRunEndedAt an
-  // hour in the past; this one seeds the fresh-tick shape the operator actually hits.
+  // hour in the past; this one seeds the fresh-run shape the operator actually hits.
   const repo = await makeFastRepo("wake vs min gap test", ["clean"]);
   const cfg = loadConfig(repo);
   cfg.roles.clean = { enabled: true, minRunIntervalSeconds: 3600 };
   saveConfig(repo, cfg);
-  // Ticked moments ago, productive clock hours out, not backing off, main unmoved.
+  // Ran moments ago, productive clock hours out, not backing off, main unmoved.
   const seeded = freshRunnerState("clean");
   seeded.runs = 1;
   seeded.lastRunEndedAt = Date.now() - 2000;
@@ -152,20 +152,20 @@ test("an operator wake brings a slow-clock role in despite a fresh min-gap windo
     const markerFile = wakeRequestPath(repo);
     writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
-    await waitFor(() => loadRunnerState(repo, "clean").runs >= 2, "the woken role to tick");
-    await waitFor(() => !loadRunnerState(repo, "clean").running, "the woken tick to finish");
-    // Self-clearing: the woken tick's own end re-opens the gap window, so the role must
-    // not immediately tick again.
+    await waitFor(() => loadRunnerState(repo, "clean").runs >= 2, "the woken role to run");
+    await waitFor(() => !loadRunnerState(repo, "clean").running, "the woken run to finish");
+    // Self-clearing: the woken run's own end re-opens the gap window, so the role must
+    // not immediately run again.
     await sleep(300);
-    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the gap window re-arms after the woken tick");
+    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the gap window re-arms after the woken run");
   } finally {
     await stopOrchestrator(orch, restore);
   }
 });
 
 test("a queued per-role prompt pulls a slow-clock role in even when its wake was clobbered", async () => {
-  // The mid-tick wake race's end state, made deterministic: the enqueue's auto-wake arrived
-  // while a tick was in flight and that tick's end-save overwrote wokenAt and nextRunAt —
+  // The mid-run wake race's end state, made deterministic: the enqueue's auto-wake arrived
+  // while a run was in flight and that run's end-save overwrote wokenAt and nextRunAt —
   // so only the queue file is left carrying the demand. The old code read the schedule and
   // kept the role asleep for the rest of its interval despite the p:1 marker; now the
   // queued prompt is due on its own existence and the next poll runs it.
@@ -173,7 +173,7 @@ test("a queued per-role prompt pulls a slow-clock role in even when its wake was
   const cfg = loadConfig(repo);
   cfg.roles.clean = { enabled: true, minRunIntervalSeconds: 3600 };
   saveConfig(repo, cfg);
-  // The in-flight tick just ended: fresh gap, hours-out clock, no wokenAt — the end-save
+  // The in-flight run just ended: fresh gap, hours-out clock, no wokenAt — the end-save
   // already won. The queued prompt is the only trace of the request.
   const seeded = freshRunnerState("clean");
   seeded.runs = 1;
@@ -184,29 +184,29 @@ test("a queued per-role prompt pulls a slow-clock role in even when its wake was
   submitRolePrompt(repo, "clean", "check the queue-due path");
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
-    // The tick runs within a poll or two — a schedule-gated role would sit for the hour.
-    await waitFor(() => loadRunnerState(repo, "clean").runs >= 2, "the queued prompt's tick");
-    await waitFor(() => !loadRunnerState(repo, "clean").running, "the queue-due tick to finish");
+    // The run runs within a poll or two — a schedule-gated role would sit for the hour.
+    await waitFor(() => loadRunnerState(repo, "clean").runs >= 2, "the queued prompt's run");
+    await waitFor(() => !loadRunnerState(repo, "clean").running, "the queue-due run to finish");
     // The wake event names the queue as the cause, like the director's inbox wake.
     const wakes = eventsOfType(repo, "wake").filter((w) => w.source === "clean");
     assert.equal(wakes.length, 1);
     assert.equal(wakes[0]?.reason, "inbox");
-    // And the ordinary clock re-arms after the queue-due tick: no second tick.
+    // And the ordinary clock re-arms after the queue-due run: no second run.
     await sleep(300);
-    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the gap window re-arms after the tick");
+    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the gap window re-arms after the run");
   } finally {
     await stopOrchestrator(orch, restore);
   }
 });
 
-test("a plain wake consumed mid-tick survives the tick's end-save", async () => {
-  // The bare-wake half of the mid-tick race (BUGS.md 2026-09-25): `tumwater wake --role`
-  // with an EMPTY queue, consumed while the target's tick is running. r.wake() stamps the
-  // shared in-memory state, but the tick's end-save re-stamps lastRunEndedAt past wokenAt
+test("a plain wake consumed mid-run survives the run's end-save", async () => {
+  // The bare-wake half of the mid-run race (BUGS.md 2026-09-25): `tumwater wake --role`
+  // with an EMPTY queue, consumed while the target's run is still in progress. r.wake() stamps the
+  // shared in-memory state, but the run's end-save re-stamps lastRunEndedAt past wokenAt
   // and schedules a fresh gap out — the demand used to vanish and the role slept out its
-  // whole hour. restoreMidTickWake re-applies it at the end-save, so the next tick follows
-  // within a poll, exactly like a wake arriving after the tick ended.
-  const repo = await makeFastRepo("mid-tick wake test", ["feature"]);
+  // whole hour. restoreMidTickWake re-applies it at the end-save, so the next run follows
+  // within a poll, exactly like a wake arriving after the run ended.
+  const repo = await makeFastRepo("mid-run wake test", ["feature"]);
   const cfg = loadConfig(repo);
   cfg.roles.feature = { enabled: true, minRunIntervalSeconds: 3600 };
   saveConfig(repo, cfg);
@@ -214,28 +214,28 @@ test("a plain wake consumed mid-tick survives the tick's end-save", async () => 
   seeded.lastMainHead = "";
   seeded.nextRunAt = Date.now() - 1000; // due now
   saveRunnerState(repo, seeded);
-  // A fake pi run slow enough to leave room for a wake to arrive and be consumed mid-tick.
+  // A fake pi run slow enough to leave room for a wake to arrive and be consumed mid-run.
   const restore = fakePi(`sleep 1\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => loadRunnerState(repo, "feature").running === true, "the first tick to start");
-    // What `tumwater wake --role feature` does from the CLI side, while the tick is in flight:
+    await waitFor(() => loadRunnerState(repo, "feature").running === true, "the first run to start");
+    // What `tumwater wake --role feature` does from the CLI side, while the run is in flight:
     // the state stamp plus the marker the orchestrator consumes (consumeWakeRequest →
-    // r.wake() on the state object the tick holds).
+    // r.wake() on the state object the run holds).
     saveRunnerState(repo, clearBackoff(loadRunnerState(repo, "feature"), Date.now()));
     writeMarker(wakeRequestPath(repo), { at: Date.now(), roles: ["feature"] });
-    // The demand must actually be consumed mid-tick — the wake event fired while running
+    // The demand must actually be consumed mid-run — the wake event fired while running
     // holds — or the test would pass by waking an already-idle role.
     await waitFor(
       () => eventsOfType(repo, "wake").some((w) => w.source === "feature") && loadRunnerState(repo, "feature").running === true,
-      "the wake to be consumed mid-tick",
+      "the wake to be consumed mid-run",
     );
-    // The tick ends, its end-save runs — and the woken role must come straight back.
-    await waitFor(() => loadRunnerState(repo, "feature").runs >= 2, "the woken tick to follow within polls, not an hour", 10_000);
-    await waitFor(() => !loadRunnerState(repo, "feature").running, "the woken tick to finish");
-    // Then the ordinary clock re-arms: no third tick.
+    // The run ends, its end-save runs — and the woken role must come straight back.
+    await waitFor(() => loadRunnerState(repo, "feature").runs >= 2, "the woken run to follow within polls, not an hour", 10_000);
+    await waitFor(() => !loadRunnerState(repo, "feature").running, "the woken run to finish");
+    // Then the ordinary clock re-arms: no third run.
     await sleep(300);
-    assert.equal(loadRunnerState(repo, "feature").runs, 2, "the gap window re-arms after the woken tick");
+    assert.equal(loadRunnerState(repo, "feature").runs, 2, "the gap window re-arms after the woken run");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -265,7 +265,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
 
     await waitFor(() => !fs.existsSync(markerFile), "the corrupt marker to be consumed");
     for (const role of ["clean", "dedupe"]) {
-      await waitFor(() => loadRunnerState(repo, role).runs >= 4, `${role} to tick after the wake`);
+      await waitFor(() => loadRunnerState(repo, role).runs >= 4, `${role} to run after the wake`);
     }
     const wakes = eventsOfType(repo, "wake");
     assert.equal(wakes.length, 2, "one wake event per woken role");
@@ -290,41 +290,41 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
       return s.runs >= 1 && !s.running;
     };
     const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
-    await waitFor(() => finished("clean") && finished("dedupe"), "startup ticks to finish");
-    // Baseline while both roles are still enabled and idle: clean's next tick after the
-    // disable is what proves the rest of the team keeps ticking.
-    const cleanTicks = loadRunnerState(repo, "clean").runs;
+    await waitFor(() => finished("clean") && finished("dedupe"), "startup runs to finish");
+    // Baseline while both roles are still enabled and idle: clean's next run after the
+    // disable is what proves the rest of the team keeps running.
+    const cleanRuns = loadRunnerState(repo, "clean").runs;
 
-    // Disabling a role stops its next tick; the rest of the team keeps ticking.
+    // Disabling a role stops its next run; the rest of the team keeps running.
     saveConfig(repo, fastConfig(["clean"]));
-    // Wait until the disable is processed AND no in-flight dedupe tick remains. From that point
-    // on dedupe can never start another tick (isEligible hard-gates disabled roles), so its
+    // Wait until the disable is processed AND no in-flight dedupe run remains. From that point
+    // on dedupe can never start another run (isEligible hard-gates disabled roles), so its
     // captured count is final for the whole disabled window — no fixed sleep needed.
     await waitFor(
       () =>
         messages().some((m) => m.includes("role dedupe disabled — no new runs")) &&
         !loadRunnerState(repo, "dedupe").running,
-      "the disable to be processed with no in-flight tick",
+      "the disable to be processed with no in-flight run",
     );
-    const dryTicks = loadRunnerState(repo, "dedupe").runs;
-    // The enabled role's next tick proves the team is still alive and ticking — the disabled
+    const dedupeRuns = loadRunnerState(repo, "dedupe").runs;
+    // The enabled role's next run proves the team is still alive and running — the disabled
     // role had that same window and must not have used it. clean is deferrable (need-based
     // prioritization), so a work merge supplies its wake; the re-enabled dedupe below wakes on
     // the same commit.
     mergeWork(repo);
-    await waitFor(() => loadRunnerState(repo, "clean").runs > cleanTicks, "an enabled role to tick again");
-    assert.equal(loadRunnerState(repo, "dedupe").runs, dryTicks, "disabled role stops ticking");
+    await waitFor(() => loadRunnerState(repo, "clean").runs > cleanRuns, "an enabled role to run again");
+    assert.equal(loadRunnerState(repo, "dedupe").runs, dedupeRuns, "disabled role stops running");
     assert.ok(messages().some((m) => m.includes("role dedupe disabled — no new runs")), "disable transition logged");
 
     // Enabling a role that was not running at startup starts it (new runner).
     saveConfig(repo, fastConfig(["clean", "feature"]));
-    await waitFor(() => finished("feature"), "newly enabled role to tick");
+    await waitFor(() => finished("feature"), "newly enabled role to run");
     assert.ok(messages().some((m) => m.includes("role feature enabled — starting runs")), "enable transition logged");
-    assert.equal(loadRunnerState(repo, "dedupe").runs, dryTicks, "still-disabled role stays stopped");
+    assert.equal(loadRunnerState(repo, "dedupe").runs, dedupeRuns, "still-disabled role stays stopped");
 
     // Re-enabling a previously running role resumes it within one poll cycle.
     saveConfig(repo, fastConfig(["clean", "dedupe", "feature"]));
-    await waitFor(() => loadRunnerState(repo, "dedupe").runs > dryTicks, "re-enabled role to tick again");
+    await waitFor(() => loadRunnerState(repo, "dedupe").runs > dedupeRuns, "re-enabled role to run again");
     assert.ok(messages().some((m) => m.includes("role dedupe enabled — starting runs")), "re-enable transition logged");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -336,7 +336,7 @@ test("a live config edit logs one config_changed naming the keys, and an identic
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     const changeds = () => eventsOfType(repo, "config_changed");
-    await waitFor(() => loadRunnerState(repo, "clean").runs >= 1, "a startup tick");
+    await waitFor(() => loadRunnerState(repo, "clean").runs >= 1, "a startup run");
     assert.equal(changeds().length, 0, "no config_changed while the file is unchanged");
 
     // Rewriting the same content (new mtime, same bytes) is not a change.
@@ -380,7 +380,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
   const repo = makeRepo();
   await initProject(repo, "config vanish test");
   // bugfix is never need-deferred (with an open bug — with an empty BUGS.md `## Open` it
-  // defers like a maintenance role and would starve this test of pi runs), so it keeps ticking
+  // defers like a maintenance role and would starve this test of pi runs), so it keeps running
   // through the whole incident. The cap is off-default so a reload-as-defaults would log
   // max_concurrent_changed.
   const cfg = fastConfig(["bugfix"], "kept-model");
@@ -443,17 +443,17 @@ test("custom roles can be added, removed, and reordered mid-run without a restar
     const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
     const roleOrder = () =>
       (statusPayload(repo) as { roles: Array<{ role: string }> }).roles.map((l) => l.role);
-    await waitFor(() => finished("clean"), "the startup tick to finish");
+    await waitFor(() => finished("clean"), "the startup run to finish");
 
     // Adding a custom entry starts its runner within one poll cycle — the live-reload
     // machinery already handles any enabled id, so no orchestrator change is needed.
     let cfg = fastConfig(["clean"]);
     cfg.customRoles.push({ name: "docs-auditor", task: "Keep the docs current." });
     saveConfig(repo, cfg);
-    await waitFor(() => finished("docs-auditor"), "the new custom role to tick");
+    await waitFor(() => finished("docs-auditor"), "the new custom role to run");
     assert.ok(
       readEvents(repo).some((e) => e.type === "run_start" && e.source === "docs-auditor"),
-      "ticks under its own name",
+      "runs under its own name",
     );
     // Owns its persistent worktree and branch like a built-in.
     assert.ok(fs.existsSync(roleWt(repo, "docs-auditor")), "its worktree");
@@ -462,22 +462,22 @@ test("custom roles can be added, removed, and reordered mid-run without a restar
 
     // A main move wakes it — customs are never deferred by need-based prioritization.
     mergeWork(repo);
-    await waitFor(() => loadRunnerState(repo, "docs-auditor").runs >= 2, "a second tick after a main move");
+    await waitFor(() => loadRunnerState(repo, "docs-auditor").runs >= 2, "a second run after a main move");
 
-    // Removing the entry logs one warning and stops its ticks.
+    // Removing the entry logs one warning and stops its runs.
     saveConfig(repo, fastConfig(["clean"]));
     await waitFor(
       () =>
         messages().some((m) => m.includes("role docs-auditor disabled — no new runs")) &&
         !loadRunnerState(repo, "docs-auditor").running,
-      "the removal to be processed with no in-flight tick",
+      "the removal to be processed with no in-flight run",
     );
-    const removedTicks = loadRunnerState(repo, "docs-auditor").runs;
-    // The enabled role's next tick proves the team is alive and main moved — a still-enabled
+    const removedRuns = loadRunnerState(repo, "docs-auditor").runs;
+    // The enabled role's next run proves the team is alive and main moved — a still-enabled
     // custom would have used that same wake (it never defers), so its count must not move.
     mergeWork(repo);
-    await waitFor(() => loadRunnerState(repo, "clean").runs > 1, "an enabled role to tick again");
-    assert.equal(loadRunnerState(repo, "docs-auditor").runs, removedTicks, "removed role stops ticking");
+    await waitFor(() => loadRunnerState(repo, "clean").runs > 1, "an enabled role to run again");
+    assert.equal(loadRunnerState(repo, "docs-auditor").runs, removedRuns, "removed role stops running");
 
     // Re-adding the same name revives its persisted state — counters survive, like re-enabling a
     // built-in.
@@ -485,10 +485,10 @@ test("custom roles can be added, removed, and reordered mid-run without a restar
     cfg.customRoles.push({ name: "docs-auditor", task: "Keep the docs current." });
     saveConfig(repo, cfg);
     await waitFor(
-      () => loadRunnerState(repo, "docs-auditor").runs > removedTicks && !loadRunnerState(repo, "docs-auditor").running,
-      "the re-added role to tick again",
+      () => loadRunnerState(repo, "docs-auditor").runs > removedRuns && !loadRunnerState(repo, "docs-auditor").running,
+      "the re-added role to run again",
     );
-    assert.equal(loadRunnerState(repo, "docs-auditor").runs, removedTicks + 1, "counters survived the removal");
+    assert.equal(loadRunnerState(repo, "docs-auditor").runs, removedRuns + 1, "counters survived the removal");
     assert.ok(
       messages().some((m) => m.includes("role docs-auditor enabled — starting runs")),
       "re-add transition logged",
@@ -499,7 +499,7 @@ test("custom roles can be added, removed, and reordered mid-run without a restar
     cfg.customRoles.push({ name: "docs-auditor", task: "Keep the docs current." });
     cfg.customRoles.push({ name: "perf-hunter", task: "Hunt perf wins." });
     saveConfig(repo, cfg);
-    await waitFor(() => finished("perf-hunter"), "the second custom role to tick");
+    await waitFor(() => finished("perf-hunter"), "the second custom role to run");
     assert.deepEqual(roleOrder().slice(-2), ["docs-auditor", "perf-hunter"], "customs after built-ins in array order");
 
     cfg = fastConfig(["clean"]);

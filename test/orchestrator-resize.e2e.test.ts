@@ -37,14 +37,14 @@ function concurrencyRecordingFakePi(runDir: string): () => void {
 test("a live maxConcurrent edit resizes the cap without a restart", async () => {
   const repo = makeRepo();
   await initProject(repo, "live maxConcurrent test");
-  // THREE fast-ticking roles and ONE slot: with three roles competing for one permit, steady
-  // state always has at least one tick queued on the semaphore (a two-role team settles into
+  // THREE fast-running roles and ONE slot: with three roles competing for one permit, steady
+  // state always has at least one run queued on the semaphore (a two-role team settles into
   // a strict alternation where every poll schedules exactly one role, so there would be no
-  // queued tick for the grow to wake). The shim's ~1.5s hold makes overlapping runs visible.
+  // queued run for the grow to wake). The shim's ~1.5s hold makes overlapping runs visible.
   const base = fastConfig(["clean", "dedupe", "bugfix"]);
   base.maxConcurrent = 1;
   saveConfig(repo, base);
-  // bugfix is one of the three fast-ticking roles this test needs to keep ticking between
+  // bugfix is one of the three fast-running roles this test needs to keep running between
   // merges; with an empty BUGS.md `## Open` it defers like a maintenance role instead
   // (deferTick), so the open bug keeps it on the every-wake schedule the test was written for.
   seedOpenBug(repo);
@@ -56,7 +56,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   // the boundary and false-fail the test.
   const orch = startLiveOrchestrator(repo);
   try {
-    // Phase 1 (cap 1): all three roles tick — but never overlap. Wait until each has run at
+    // Phase 1 (cap 1): all three roles run — but never overlap. Wait until each has run at
     // least once (three samples), then confirm no sample ever exceeded one concurrent run.
     await waitFor(() => readSamples(runDir).length >= 3, "all three roles to have run");
     assert.ok(
@@ -72,11 +72,11 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
       () => readEvents(repo).some((e) => e.type === "max_concurrent_changed" && e.to === 2),
       "the max_concurrent_changed event",
     );
-    // Need-based deferral (merged after this test was written) leaves only bugfix ticking:
-    // clean and dedupe defer after their nothing-to-do startup ticks, so without a merge there
+    // Need-based deferral (merged after this test was written) leaves only bugfix running:
+    // clean and dedupe defer after their nothing-to-do startup runs, so without a merge there
     // is no queued work for the grow to admit and no overlap can ever form — phase 2 would
     // then pass only by racing the startup burst's tail. Merge work to wake the deferred roles:
-    // with cap 2 at least two of them tick concurrently, making the overlap deterministic.
+    // with cap 2 at least two of them run concurrently, making the overlap deterministic.
     mergeWork(repo);
     // 60s, not the 20s default: this is the one assertion in the suite that waits on the
     // orchestrator's real poll loop scheduling two live pi shims at once, and under the load the
@@ -117,19 +117,19 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   }
 });
 
-test("a live maxConcurrentPerProvider edit admits a parked omlx tick and logs its own event", async () => {
+test("a live maxConcurrentPerProvider edit admits a parked omlx run and logs its own event", async () => {
   // plans/provider-concurrency.md §7: config-live re-applies the key caps on an edit and fires
   // provider_concurrency_changed per changed provider. All three roles share omlx with cap 1,
-  // so a second omlx tick meeting the key is parked; growing the cap to 2 admits it (overlap
+  // so a second omlx run meeting the key is parked; growing the cap to 2 admits it (overlap
   // appears) within a poll, and shrinking to 1 preempts nothing (semaphore unit tests pin the
   // never-preempt contract).
   //
   // The roles run nothing-to-do work — no change, hence no merge. A role with a queued or
-  // in-flight merge never ticks (the merge-queue interlock), so change-producing roles would
-  // serialize on the one merge slot and could never overlap on ANY cap: the parked-tick
+  // in-flight merge never runs (the merge-queue interlock), so change-producing roles would
+  // serialize on the one merge slot and could never overlap on ANY cap: the parked-run
   // admission this test exists for would be unobservable. With no merges to interlock them,
   // moving main wakes the roles deferred after their no-op startup run, putting two due in one
-  // poll — one poll's launch pass starts every due tick its permits allow — for the cap to
+  // poll — one poll's launch pass starts every due run its permits allow — for the cap to
   // admit or park. Mirrors the sibling maxConcurrent test above.
   const repo = makeRepo();
   await initProject(repo, "live per-provider cap resize");
@@ -155,12 +155,12 @@ test("a live maxConcurrentPerProvider edit admits a parked omlx tick and logs it
     await waitFor(() => readSamples(runDir).length >= 3, "the startup burst", 60_000);
     assert.ok(
       readSamples(runDir).every((n) => n <= 1),
-      `peak stays 1 while the second omlx tick waits on its key (samples: ${readSamples(runDir)})`,
+      `peak stays 1 while the second omlx run waits on its key (samples: ${readSamples(runDir)})`,
     );
 
-    // Phase 2 (omlx cap 2): the live edit admits the parked tick — overlap appears, no restart.
-    // The parked startup tick is the subject: under cap 1 the role that lost the permit waits on
-    // the key, and the grow admits it alongside the tick already running. No wake is needed —
+    // Phase 2 (omlx cap 2): the live edit admits the parked run — overlap appears, no restart.
+    // The parked startup run is the subject: under cap 1 the role that lost the permit waits on
+    // the key, and the grow admits it alongside the run already in progress. No wake is needed —
     // and a main move here would re-defer the waiter instead of admitting it — so grow and read.
     const grow = fastConfig(["clean", "dedupe", "bugfix"]);
     grow.maxConcurrent = 4;

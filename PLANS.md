@@ -6,39 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Plain terms code run, part 11/20: Convert the orchestrator end-to-end tests (planned 2026-10-16 by user; requires parts 10a/20 and 10b/20 landed; design in plans/terminology.md "Code names"; touches test/orchestrator*.e2e.test.ts)
-
-**Goal.** Mechanical, test-only. The orchestrator e2e suites use run names in their helpers, locals, comments and test titles.
-
-**Approach.**
-- Series rules (every code-run part):
-  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
-  - A bare `tick` binding holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
-  - Keep node:test mock-clock calls and serialized names (event types and fields in assertions, state fields), which were renamed earlier.
-  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
-  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
-  - Migrate every use of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names any more (test/exports.test.ts).
-- No "run … running" (replanned 2026-10-20 by the plan role, after review rejected the "run is still running" and "no run was running" wording three times). A word-for-word swap of "tick" next to "running" gives "run is running", "running run" or "run already running". Reword each of these with "in progress" or "in flight" instead, for example "while that run is still in progress", `"no run was in flight"`, "main moves under an in-flight run". A simulated swap finds them in these places (find them by text, not line number):
-  - orchestrator-permits "consumed while that tick is still running";
-  - orchestrator-3's assertion message `"no tick was running"` (in the test that asserts zero `run_aborted` events);
-  - orchestrator-2 "consumed while the target's tick is running";
-  - orchestrator-pause "a tick already running when the marker drops";
-  - orchestrator-resize "alongside the tick already running";
-  - orchestrator.e2e "Drop the marker while the tick is running";
-  - orchestrator-redeploy's three `"main moves under a running tick"` commit subjects. Nothing else in the repo matches those subjects.
-
-  Leave the `running` state field (`loadRunnerState(…).running`) and "running" used as a plain verb (for example "the wake event fired while running") alone.
-- Files: test/orchestrator.e2e.test.ts, orchestrator-2, orchestrator-3, orchestrator-budget, orchestrator-permits, orchestrator-pause, orchestrator-redeploy, orchestrator-once, orchestrator-resize, orchestrator-quiet-hours and orchestrator-mixed (all `.e2e.test.ts`).
-- Helpers and locals: `awaitSettledTick` → `awaitSettledRun`, then delete its alias in test/fixtures/orchestrator-fixtures.ts if nothing else uses it. `removedTicks`, `tickQueued`, `cleanTicks` and `minTickInterval` → run forms. `dryTicks` → `dedupeRuns`, its final name, so Plain terms code cleanup does not touch it again. Migrate `runTimedRoleRun` uses; `deferTick` and `restoreMidTickWake` keep their names until part 12/20 renames them.
-
-**Files touched.** The eleven `test/orchestrator*.e2e.test.ts` files; test/fixtures/orchestrator-fixtures.ts (alias removal only).
-
-**Acceptance criteria.**
-- `grep -nE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' test/orchestrator*.e2e.test.ts` lists only serialized names and names a later part of this series owns (`deferTick`, `restoreMidTickWake`).
-- `grep -nE '\bruns? (is |was )?(still |already )?running\b|\brunning runs?\b' test/orchestrator*.e2e.test.ts` prints nothing.
-- No test added or removed: the e2e test count is unchanged and `npm run test:e2e` passes.
-- `npm run test` passes.
-
 ### Plain terms code run, part 12/20: Rename the scheduler's deferral and wake names and convert the gates (planned 2026-10-16 by user; requires part 11/20 landed; design in plans/terminology.md "Code names"; touches src/scheduling/ + src/gates/ + their tests + test/fixtures/gate-fixtures.ts)
 
 **Goal.** The scheduler and the gates use run names: `deferRun`, `deferRunReason`, `restoreMidRunWake` and `runOnPair`.

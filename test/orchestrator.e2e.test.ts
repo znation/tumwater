@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { backdate } from "./helpers/backdate.js";
-import { runTimedRoleTick, sleepInterruptible } from "../src/run/run-timing.js";
+import { runTimedRoleRun, sleepInterruptible } from "../src/run/run-timing.js";
 import { DEFER_MAX_MS } from "../src/scheduling/scheduling.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
@@ -31,7 +31,7 @@ import { resetRequestPath, worktreePath } from "../src/paths.js";
 import { eventTypes, eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import {
   FAST_POLL_MS,
-  awaitSettledTick,
+  awaitSettledRun,
   fastConfig,
   makeFastRepo,
   runRepoOrchestrator,
@@ -46,30 +46,30 @@ import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fakes/fake-
 import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
-test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {
+test("runTimedRoleRun measures the run, not its semaphore queue wait", async () => {
   // BUGS.md 2026-09-18: the restart drain's p75 sample spans `run_start`..`run_end`, so the
-  // clock must start after the maxConcurrent permit is granted — a tick parked in the queue
+  // clock must start after the maxConcurrent permit is granted — a run parked in the queue
   // must not have that wait counted as its run time (which would overstate how long an
-  // in-flight tick still has and hold the drain open longer than needed). The fake clock
-  // advances 500ms inside acquire and 30ms inside tick; the sample must read 30, not 530.
+  // in-flight run still has and hold the drain open longer than needed). The fake clock
+  // advances 500ms inside acquire and 30ms inside run; the sample must read 30, not 530.
   let t = 1000;
   const now = () => t;
-  const duration = await runTimedRoleTick(
+  const duration = await runTimedRoleRun(
     new AbortController().signal,
     async () => {
       t += 500; // parked waiting for a permit
     },
     () => {},
     async () => {
-      t += 30; // the tick's actual run
+      t += 30; // the run's actual duration
       return { result: "changed" };
     },
     now,
   );
   assert.equal(duration, 30);
 
-  // A cut-off tick yields no sample: its short length must not drag the p75 down.
-  const aborted = await runTimedRoleTick(
+  // A cut-off run yields no sample: its short length must not drag the p75 down.
+  const aborted = await runTimedRoleRun(
     new AbortController().signal,
     async () => {},
     () => {},
@@ -81,11 +81,11 @@ test("runTimedRoleTick measures the tick, not its semaphore queue wait", async (
   );
   assert.equal(aborted, null);
 
-  // A tick the harness never starts (already stopping) also yields no sample.
+  // A run the harness never starts (already stopping) also yields no sample.
   const stopping = new AbortController();
   stopping.abort();
   let ran = false;
-  const never = await runTimedRoleTick(
+  const never = await runTimedRoleRun(
     stopping.signal,
     async () => {},
     () => {},
@@ -96,19 +96,19 @@ test("runTimedRoleTick measures the tick, not its semaphore queue wait", async (
     now,
   );
   assert.equal(never, null);
-  assert.equal(ran, false, "the tick does not run once the signal is aborted");
+  assert.equal(ran, false, "the timed run does not start once the signal is aborted");
 
-  // The permit is always released, even when the tick throws.
+  // The permit is always released, even when the run throws.
   let released = false;
   await assert.rejects(
-    runTimedRoleTick(
+    runTimedRoleRun(
       new AbortController().signal,
       async () => {},
       () => {
         released = true;
       },
       async () => {
-        throw new Error("tick blew up");
+        throw new Error("run blew up");
       },
       now,
     ),
@@ -154,7 +154,7 @@ test("backoff grows by the factor and caps at max", () => {
 
 // --- Orchestrator lifecycle (run/shutdown) ---
 
-test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () => {
+test("runOrchestrator runs enabled roles and cleans up on shutdown", async () => {
   const repo = makeRepo();
   await initProject(repo, "orchestrator lifecycle test");
   const config = loadConfig(repo);
@@ -180,15 +180,15 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     assert.deepEqual([...info.roles].sort(), ["clean", "dedupe"]);
     assert.ok(orchestratorAlive(repo), "a live orchestrator reports alive");
 
-    // Wait for both startup ticks to actually finish (not a fixed sleep): the post-shutdown
-    // state and event assertions then observe completed runs, never an abort mid-tick.
+    // Wait for both startup runs to actually finish (not a fixed sleep): the post-shutdown
+    // state and event assertions then observe completed runs, never an abort mid-run.
     await waitFor(
       () =>
         ["clean", "dedupe"].every((role) => {
           const s = loadRunnerState(repo, role);
           return s.runs >= 1 && !s.running;
         }),
-      "both startup ticks to finish",
+      "both startup runs to finish",
     );
     // Shutdown must not wait out the current poll sleep: abort wakes the loop immediately. The
     // bound is a race, not a ceiling on a measurement: 60 s is far beyond a woken shutdown even
@@ -211,9 +211,9 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     assert.ok(types.includes("orchestrator_start"));
     assert.ok(types.includes("orchestrator_stop"));
     assert.equal(eventsOfType(repo, "orchestrator_stop")[0]?.cause, "signal", "the caller abort is a signal stop");
-    // Both enabled roles got their startup tick.
+    // Both enabled roles got their startup run.
     for (const role of ["clean", "dedupe"])
-      assert.ok(loadRunnerState(repo, role).runs >= 1, `${role} should have ticked`);
+      assert.ok(loadRunnerState(repo, role).runs >= 1, `${role} should have run`);
   } finally {
     restore();
     controller.abort();
@@ -226,7 +226,7 @@ test("runOrchestrator starts one runner per runner id and an unclaimed extra ins
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
   saveConfig(repo, config);
   // Two eligible plans: feature and feature-2 take one each (part 4/7's claims); feature-3 has
-  // no free entry and never ticks.
+  // no free entry and never runs.
   fs.writeFileSync(path.join(repo, "PLANS.md"), twoPlansDoc());
   const restore = fakePiIdle();
   const controller = new AbortController();
@@ -236,10 +236,10 @@ test("runOrchestrator starts one runner per runner id and an unclaimed extra ins
     assert.deepEqual([...readOrchestratorInfo(repo)!.roles].sort(), ["feature", "feature-2", "feature-3"]);
     await waitFor(
       () => loadRunnerState(repo, "feature").runs >= 1 && loadRunnerState(repo, "feature-2").runs >= 1,
-      "the two claimed instances tick",
+      "the two claimed instances run",
     );
-    assert.equal(loadRunnerState(repo, "feature-3").runs, 0, "the extra instance with no claim does not tick");
-    // Ticks lease pooled slots: no per-role worktree is created for the instance.
+    assert.equal(loadRunnerState(repo, "feature-3").runs, 0, "the extra instance with no claim does not run");
+    // Runs lease pooled slots: no per-role worktree is created for the instance.
     assert.equal(fs.existsSync(worktreePath(repo, "feature-2")), false, "no feature-2 role worktree");
     controller.abort();
     await done;
@@ -272,16 +272,16 @@ test("runOrchestrator refuses to start with no roles enabled", async () => {
 test("a main move and a queued prompt each log exactly one wake event with their reason", async () => {
   const repo = makeRepo();
   await initProject(repo, "wake event test");
-  // clean gets a long backoff after its startup tick so nothing but an early wake can
+  // clean gets a long backoff after its startup run so nothing but an early wake can
   // schedule it again; the director idles until the inbox has work.
   const config = fastConfig(["clean", "director"]);
   config.idleBackoff = { initialSeconds: 60, factor: 1, maxSeconds: 60 };
   saveConfig(repo, config);
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
-    // Wait for clean's startup tick to finish (its state save records the current main
+    // Wait for clean's startup run to finish (its state save records the current main
     // head): from then on it sleeps ~60s, so only a main move can schedule it again.
-    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    await awaitSettledRun(repo, "clean", 1, "the startup run to finish");
 
     // The world changed: advance main with a real commit. The next poll must wake clean
     // early and log why — the TUI/GUI/logs surface this as `woke (main moved)`.
@@ -293,8 +293,8 @@ test("a main move and a queued prompt each log exactly one wake event with their
       () => readEvents(repo).some((e) => e.type === "wake" && e.reason === "main moved"),
       "a wake event for the main move",
     );
-    // The wake actually ran a tick, not just logged one.
-    await awaitSettledTick(repo, "clean", 2, "the woken tick to finish");
+    // The wake actually ran a run, not just logged one.
+    await awaitSettledRun(repo, "clean", 2, "the woken run to finish");
 
     // A queued prompt wakes the idle director the same way (reason: inbox).
     enqueuePrompt(repo, "wake me up");
@@ -302,10 +302,10 @@ test("a main move and a queued prompt each log exactly one wake event with their
       () => readEvents(repo).some((e) => e.type === "wake" && e.reason === "inbox"),
       "a wake event for the queued prompt",
     );
-    await awaitSettledTick(repo, "director", 1, "the director's woken tick to finish");
+    await awaitSettledRun(repo, "director", 1, "the director's woken run to finish");
 
     // Exactly one wake per cause: the running-flag reservation must prevent a re-wake on
-    // every poll while the prompt is pending or the tick is in flight.
+    // every poll while the prompt is pending or the run is in flight.
     const wakes = eventsOfType(repo, "wake");
     assert.deepEqual(
       wakes.map((w) => [w.source, w.reason]),
@@ -342,7 +342,7 @@ test("a director holding a kept merge pin wakes on its own clock (reason: leftov
   }
 });
 
-test("a director with neither a prompt nor a kept pin never ticks", async () => {
+test("a director with neither a prompt nor a kept pin never runs", async () => {
   const repo = await makeFastRepo("director idle control", ["director"]);
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
@@ -353,16 +353,16 @@ test("a director with neither a prompt nor a kept pin never ticks", async () => 
   }
 });
 
-test("a no_change maintenance role defers due ticks until work merges on main", async () => {
-  // organize ticks fast (no min gap, 1s backoff) and declares nothing-to-do every run — so
-  // after its startup tick it keeps coming due with lastResult no_change: only deferral can
+test("a no_change maintenance role defers due runs until work merges on main", async () => {
+  // organize runs fast (no min gap, 1s backoff) and declares nothing-to-do every run — so
+  // after its startup run it keeps coming due with lastResult no_change: only deferral can
   // keep it quiet while non-work commits merge.
   const repo = await makeFastRepo("deferral test", ["organize"]);
   const argsFile = path.join(tmpdir(), "pi-args.txt");
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
+    await awaitSettledRun(repo, "organize", 1, "the startup run to finish");
 
     // A non-work merge (a readme commit) moves main but must not wake the deferred role.
     fs.writeFileSync(path.join(repo, "readme-note.txt"), "x\n");
@@ -374,15 +374,15 @@ test("a no_change maintenance role defers due ticks until work merges on main", 
     assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
     assert.equal(loadRunnerState(repo, "organize").runs, 1);
 
-    // Work merges: the deferred tick starts within one poll and finishes. (This is also the
+    // Work merges: the deferred run starts within one poll and finishes. (This is also the
     // verdict-cache flip case: the earlier false verdict over this range must not be cached.)
     fs.writeFileSync(path.join(repo, "feature-note.txt"), "y\n");
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "tumwater(feature): y");
-    await awaitSettledTick(repo, "organize", 2, "the woken tick to finish");
+    await awaitSettledRun(repo, "organize", 2, "the woken run to finish");
 
     // Exactly one deferral episode so far: one event on the transition in, none while merely
-    // not-due and none on exit. (The woken tick's own no_change outcome starts a fresh
+    // not-due and none on exit. (The woken run's own no_change outcome starts a fresh
     // episode only after its 1s backoff — outside this assertion window.)
     const deferred = eventsOfType(repo, "run_deferred");
     assert.deepEqual(deferred.map((d) => d.source), ["organize"]);
@@ -395,12 +395,12 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
   // The episode bookkeeping behind run_deferred is edge-triggered: the event fires on the
   // transition into a deferral episode, not on every deferred poll. An inbox run (a queued
   // per-role prompt) must end the episode as it takes over — otherwise the flag survives the
-  // prompt's tick and the NEXT deferral transition is swallowed: the operator sees one
+  // prompt's run and the NEXT deferral transition is swallowed: the operator sees one
   // run_deferred forever, even though the role keeps deferring between its prompt-driven
-  // runs. With the default idle backoff the not-due window after each tick already ends the
-  // episode, so this test zeroes it: after a no_change tick the role is due again on the very
+  // runs. With the default idle backoff the not-due window after each run already ends the
+  // episode, so this test zeroes it: after a no_change run the role is due again on the very
   // next poll, and the inbox run's own episode reset is the only boundary left between two
-  // due-deferred stretches. Episode 1 defers, a queued prompt ticks the role, episode 2 must
+  // due-deferred stretches. Episode 1 defers, a queued prompt runs the role, episode 2 must
   // log its own event.
   const repo = await makeFastRepo("deferral episode reset test", ["organize"]);
   const cfg = loadConfig(repo);
@@ -409,16 +409,16 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
   const restore = recordingFakePi(path.join(tmpdir(), "pi-args-episode.txt"));
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
+    await awaitSettledRun(repo, "organize", 1, "the startup run to finish");
 
-    // Episode 1: due again immediately after the startup tick, the no_change role defers —
+    // Episode 1: due again immediately after the startup run, the no_change role defers —
     // announced once.
     await waitFor(() => eventsOfType(repo, "run_deferred").length === 1, "the first deferral event");
 
     // The queued prompt pulls the role in on its own due-ness (reason inbox, outside the
-    // deferral block) and the tick runs to completion.
+    // deferral block) and the run runs to completion.
     submitRolePrompt(repo, "organize", "check the deferral episode reset");
-    await awaitSettledTick(repo, "organize", 2, "the prompt-driven tick to finish");
+    await awaitSettledRun(repo, "organize", 2, "the prompt-driven run to finish");
 
     // Episode 2: due again on the next poll, still no_change, still no work merged — and
     // deferring a second time is announced again because the inbox run ended the first
@@ -426,17 +426,17 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
     await waitFor(() => eventsOfType(repo, "run_deferred").length === 2, "the second deferral event");
     const deferred = eventsOfType(repo, "run_deferred").filter((d) => d.source === "organize");
     assert.equal(deferred.length, 2, "both episodes announced, the second not swallowed");
-    // And the second episode still defers: no third tick while it holds.
+    // And the second episode still defers: no third run while it holds.
     await sleep(500);
-    assert.equal(loadRunnerState(repo, "organize").runs, 2, "the second episode defers, it does not tick");
+    assert.equal(loadRunnerState(repo, "organize").runs, 2, "the second episode defers, it does not run");
   } finally {
     await stopOrchestrator(orch, restore);
   }
 });
 
-test("an open bug backlog defers due maintenance ticks even when work merges, until it drains", async () => {
-  // organize ticks fast (no min gap, 1s backoff) and declares nothing-to-do every run — so
-  // after its startup tick it keeps coming due with lastResult no_change.
+test("an open bug backlog defers due maintenance runs even when work merges, until it drains", async () => {
+  // organize runs fast (no min gap, 1s backoff) and declares nothing-to-do every run — so
+  // after its startup run it keeps coming due with lastResult no_change.
   const repo = await makeFastRepo("backlog-aware deferral test", ["organize"]);
   const argsFile = path.join(tmpdir(), "pi-args.txt");
   const restore = recordingFakePi(argsFile);
@@ -447,9 +447,9 @@ test("an open bug backlog defers due maintenance ticks even when work merges, un
   sh(repo, "git", "commit", "-m", "seed the backlog");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
+    await awaitSettledRun(repo, "organize", 1, "the startup run to finish");
 
-    // Work merges while the backlog is open: the due maintenance tick must stay deferred —
+    // Work merges while the backlog is open: the due maintenance run must stay deferred —
     // before the fix this poll started a new run (workMergedSinceLast broke deferral).
     fs.writeFileSync(path.join(repo, "feature-note.txt"), "y\n");
     sh(repo, "git", "add", "-A");
@@ -459,14 +459,14 @@ test("an open bug backlog defers due maintenance ticks even when work merges, un
     assert.equal(loadRunnerState(repo, "organize").runs, 1);
 
     // The bugfix role fixes the last open bug: its merge drains BUGS.md `## Open` (and
-    // counts as work) — the deferred tick starts within one poll of either conjunct flipping.
+    // counts as work) — the deferred run starts within one poll of either conjunct flipping.
     fs.writeFileSync(
       path.join(repo, "BUGS.md"),
       fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("### An open bug\n", ""),
     );
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "tumwater(bugfix): fix the open bug");
-    await awaitSettledTick(repo, "organize", 2, "the woken tick to finish");
+    await awaitSettledRun(repo, "organize", 2, "the woken run to finish");
 
     // One deferral episode: one event on the transition in, none while merely not-due and
     // none on exit.
@@ -477,7 +477,7 @@ test("an open bug backlog defers due maintenance ticks even when work merges, un
   }
 });
 
-test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an open backlog", async () => {
+test("a maintenance role deferred past DEFER_MAX_MS runs anyway, despite an open backlog", async () => {
   const repo = await makeFastRepo("deferral cap test", ["organize"]);
   // Open the backlog: the deferral predicate's backlog term holds permanently, which before
   // the cap froze `lastResult` at no_change and silenced the role forever.
@@ -485,7 +485,7 @@ test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an ope
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "seed the backlog");
 
-  // Seed the role exactly as a long-deferred no_change tick looks on disk: its scheduled time
+  // Seed the role exactly as a long-deferred no_change run looks on disk: its scheduled time
   // is already past the cap. The fix must let it run; the pre-fix predicate deferred it forever.
   const state = freshRunnerState("organize");
   state.runs = 1;
@@ -499,7 +499,7 @@ test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an ope
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await awaitSettledTick(repo, "organize", 2, "the cap-forced tick to run");
+    await awaitSettledRun(repo, "organize", 2, "the cap-forced run to finish");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -648,7 +648,7 @@ test("mid-run tumwater.json edits steer the team; a broken file keeps last-known
   // bugfix (a work-tier role) on purpose: it is never deferred by need-based prioritization,
   // so this config-reload pin stays decoupled from scheduling timing — deferral itself is
   // pinned in its own test below. The open bug keeps that premise true: with an empty BUGS.md
-  // `## Open` bugfix defers like a maintenance role (deferTick), and a deferred tick would
+  // `## Open` bugfix defers like a maintenance role (deferTick), and a deferred run would
   // starve this test of the pi runs it asserts on.
   const repo = await makeFastRepo("live reload test", ["bugfix"], "good-model");
   seedOpenBug(repo);
@@ -657,7 +657,7 @@ test("mid-run tumwater.json edits steer the team; a broken file keeps last-known
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // Assert on what pi actually saw (its recorded argv), not on tick counts: a tick can be
+    // Assert on what pi actually saw (its recorded argv), not on run counts: a run can be
     // scheduled before our file write lands, so only the argv evidence pins a run to a config.
     // The file is created by pi's first run; until then there are no runs.
     // recordingFakePi writes one `run model=… provider=…` line per pi invocation.
@@ -693,15 +693,15 @@ test("mid-run tumwater.json edits steer the team; a broken file keeps last-known
   }
 });
 
-test("a reset request zeroes in-memory counters, survives tick boundaries, and logs an event", async () => {
+test("a reset request zeroes in-memory counters, survives run boundaries, and logs an event", async () => {
   const repo = await makeFastRepo("reset counters e2e test", ["clean"]);
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
-    // Let a couple of ticks accumulate counters in the runner's memory. clean is deferrable
-    // (need-based prioritization), so the second tick needs a work merge to wake it.
-    await awaitSettledTick(repo, "clean", 1, "the first tick to finish");
+    // Let a couple of runs accumulate counters in the runner's memory. clean is deferrable
+    // (need-based prioritization), so the second run needs a work merge to wake it.
+    await awaitSettledRun(repo, "clean", 1, "the first run to finish");
     mergeWork(repo);
-    await awaitSettledTick(repo, "clean", 2, "two finished ticks");
+    await awaitSettledRun(repo, "clean", 2, "two finished runs");
 
     // Reproduce what `tumwater reset-counters` does from the CLI side: zero the state file
     // and drop the marker. (The CLI path itself is covered in test/cli.test.ts.)
@@ -710,7 +710,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
     // The team consumes the marker within a poll cycle and re-saves zeroed counters. A
-    // post-reset tick may have started in the same poll (its +1 belongs to the new window),
+    // post-reset run may have started in the same poll (its +1 belongs to the new window),
     // so at most 1 is expected — without in-memory zeroing this would read >= 3.
     await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
     assert.ok(
@@ -718,13 +718,13 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
       `counters start from zero after consumption (got ${loadRunnerState(repo, "clean").runs})`,
     );
 
-    // The reset survives tick boundaries: the next completed tick counts from zero — a stale
-    // in-memory copy would have saved ticks >= 3 here instead. A work merge wakes the
-    // deferred role for that post-reset tick.
+    // The reset survives run boundaries: the next completed run counts from zero — a stale
+    // in-memory copy would have saved runs >= 3 here instead. A work merge wakes the
+    // deferred role for that post-reset run.
     mergeWork(repo);
     await waitFor(
       () => loadRunnerState(repo, "clean").runs === 1 && !loadRunnerState(repo, "clean").running,
-      "a post-reset tick to finish",
+      "a post-reset run to finish",
     );
 
     // The reset is visible as one plain event (no warning prefix), filed under the role.
@@ -736,41 +736,41 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
   }
 });
 
-test("a reset consumed while a tick is in flight does not wedge the role", async () => {
-  const repo = await makeFastRepo("mid-tick reset test", ["clean"]);
-  // A slow fake pi: each tick holds for ~2s — long enough that a marker dropped while the
-  // first tick is in flight (observed within a poll or two of start, consumed within one)
-  // arrives mid-tick. That is the documented use case (resetting a running team), where most
-  // roles are mid-tick at any moment.
+test("a reset consumed while a run is in flight does not wedge the role", async () => {
+  const repo = await makeFastRepo("mid-run reset test", ["clean"]);
+  // A slow fake pi: each run holds for ~2s — long enough that a marker dropped while the
+  // first run is in flight (observed within a poll or two of start, consumed within one)
+  // arrives mid-run. That is the documented use case (resetting a running team), where most
+  // roles are mid-run at any moment.
   const restore = fakePi(`sleep 2\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => loadRunnerState(repo, "clean").running === true, "a tick to be in flight");
+    await waitFor(() => loadRunnerState(repo, "clean").running === true, "a run to be in flight");
 
-    // Drop the marker while the tick is running (CLI-side file zeroing included).
+    // Drop the marker while the run is in progress (CLI-side file zeroing included).
     saveRunnerState(repo, zeroCounters(loadRunnerState(repo, "clean")));
     const markerFile = resetRequestPath(repo);
     writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
     await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
 
-    // The in-flight tick must still end cleanly: its running flag clears on disk. Before the
-    // fix, resetCounters() replaced the state object mid-tick, so the tick's end-of-save
+    // The in-flight run must still end cleanly: its running flag clears on disk. Before the
+    // fix, resetCounters() replaced the state object mid-run, so the run's end-of-save
     // wrote back the zeroed copy — which still carried running=true — and the role was wedged
     // (never eligible again) until a restart.
     await waitFor(
       () => loadRunnerState(repo, "clean").running === false,
-      "the in-flight tick to finish",
+      "the in-flight run to finish",
     );
 
     // Counters stayed zeroed: no resurrection from the pre-reset in-memory copy.
     assert.ok(
       loadRunnerState(repo, "clean").runs <= 1,
-      `counters start from zero after a mid-tick reset (got ${loadRunnerState(repo, "clean").runs})`,
+      `counters start from zero after a mid-run reset (got ${loadRunnerState(repo, "clean").runs})`,
     );
 
-    // And the role keeps ticking: a post-reset tick runs to completion.
-    await awaitSettledTick(repo, "clean", 1, "a post-reset tick to finish");
+    // And the role keeps running: a post-reset run runs to completion.
+    await awaitSettledRun(repo, "clean", 1, "a post-reset run to finish");
 
     // The reset is still visible as one plain event, filed under the role.
     const resets = eventsOfType(repo, "counters_reset");
@@ -786,7 +786,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Let one poll pass so the divergence watch is seeded against the startup branch.
-    await waitFor(() => loadRunnerState(repo, "clean").runs >= 1, "the startup tick to run");
+    await waitFor(() => loadRunnerState(repo, "clean").runs >= 1, "the startup run to finish");
 
     // A human checks out something else in the primary checkout mid-run: one warning names
     // the divergence, and the team keeps merging into the branch it resolved at startup.

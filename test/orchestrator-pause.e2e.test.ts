@@ -16,7 +16,7 @@ import { pauseRole, resumeRole } from "../src/team/team-state.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { pausedPath } from "../src/paths.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
-import { awaitSettledTick, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
+import { awaitSettledRun, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { sh } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
@@ -24,12 +24,12 @@ import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 
 const FAST_POLL_MS = 100;
 
-test("a pause marker blocks new role ticks for any reason while the director runs; resume unblocks", async () => {
+test("a pause marker blocks new role runs for any reason while the director runs; resume unblocks", async () => {
   const repo = await makeFastRepo("operator pause e2e test", ["clean", "director"]);
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
-    // Baseline: clean's startup tick runs while unpaused.
-    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    // Baseline: clean's startup run runs while unpaused.
+    await awaitSettledRun(repo, "clean", 1, "the startup run to finish");
 
     // The operator pauses the running team (what `tumwater pause` does: drop the marker).
     const marker = pausedPath(repo);
@@ -42,10 +42,10 @@ test("a pause marker blocks new role ticks for any reason while the director run
     sh(repo, "git", "commit", "-m", "advance main while paused");
 
     // …but the gate skips role runners before eligibility is even evaluated: several (fast)
-    // poll cycles pass with no tick and no wake for clean. The marker itself survives — it
+    // poll cycles pass with no run and no wake for clean. The marker itself survives — it
     // is persistent state, not a one-shot request like the abort/reset markers.
     await sleep(600);
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "a user-paused role starts no new ticks");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "a user-paused role starts no new runs");
     assert.ok(
       !readEvents(repo).some((e) => e.type === "wake" && e.source === "clean"),
       "no wake logged for the blocked main move",
@@ -54,14 +54,14 @@ test("a pause marker blocks new role ticks for any reason while the director run
 
     // The director is exempt: a queued human prompt still runs while the team is paused.
     enqueuePrompt(repo, "steer me while the team is paused");
-    await awaitSettledTick(repo, "director", 1, "the director to tick while user-paused");
+    await awaitSettledRun(repo, "director", 1, "the director to run while user-paused");
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "still paused after the director's run");
 
     // Removing the marker mid-run (what `tumwater resume` does) lifts the pause on the next
-    // poll: one transition event, then the blocked role ticks again without a restart.
+    // poll: one transition event, then the blocked role runs again without a restart.
     fs.rmSync(marker);
     await waitFor(() => readEvents(repo).some((e) => e.type === "team_resumed"), "a team_resumed event");
-    await awaitSettledTick(repo, "clean", 2, "the paused role to tick again after resume");
+    await awaitSettledRun(repo, "clean", 2, "the paused role to run again after resume");
 
     // Exactly one of each transition for the whole run — no per-poll event spam.
     assert.equal(eventsOfType(repo, "team_paused").length, 1);
@@ -74,12 +74,12 @@ test("a pause marker blocks new role ticks for any reason while the director run
 // The persistence bullet of the same plan: pausing while stopped, then starting. The marker
 // is the only state involved — a team that starts already paused stays blocked until resume,
 // with no restart and no runner-state or config changes.
-test("starting already paused keeps role ticks blocked until resume — no restart needed", async () => {
+test("starting already paused keeps role runs blocked until resume — no restart needed", async () => {
   const repo = await makeFastRepo("operator pause at startup test", ["clean", "director"]);
   const restore = fakePiIdle();
 
   // The operator paused before starting the team (the marker is persistent state): startup
-  // itself must not start any role tick.
+  // itself must not start any role run.
   const marker = pausedPath(repo);
   writeMarker(marker, { at: Date.now() });
 
@@ -89,17 +89,17 @@ test("starting already paused keeps role ticks blocked until resume — no resta
 
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await awaitSettledTick(repo, "director", 1, "the director to tick while the team starts paused");
+    await awaitSettledRun(repo, "director", 1, "the director to run while the team starts paused");
 
-    // Several fast poll cycles pass with zero role ticks — startup is a wake reason like any
+    // Several fast poll cycles pass with zero role runs — startup is a wake reason like any
     // other, and the gate sits before eligibility. The marker survives: persistent state.
     await sleep(600);
-    assert.equal(loadRunnerState(repo, "clean").runs, 0, "an already-paused role starts no ticks");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "an already-paused role starts no runs");
     assert.ok(fs.existsSync(marker), "the marker survives startup — not consumed");
 
-    // Resume without a restart: the blocked role ticks on its next eligibility.
+    // Resume without a restart: the blocked role runs on its next eligibility.
     fs.rmSync(marker);
-    await awaitSettledTick(repo, "clean", 1, "the paused role to tick after resume");
+    await awaitSettledRun(repo, "clean", 1, "the paused role to run after resume");
 
     // One transition event per direction for the whole run — including the startup read.
     assert.equal(eventsOfType(repo, "team_paused").length, 1);
@@ -109,12 +109,12 @@ test("starting already paused keeps role ticks blocked until resume — no resta
   }
 });
 
-// The in-flight bullet of the same plan: a tick already running when the marker drops is not
+// The in-flight bullet of the same plan: a run already in progress when the marker drops is not
 // killed — it finishes and records its outcome even though no new one starts.
-test("an in-flight tick finishes and merges while the team is paused", async () => {
+test("an in-flight run finishes and merges while the team is paused", async () => {
   const repo = await makeFastRepo("operator pause in-flight test", ["clean"]);
   // A slow fake pi that makes a real change: it stays in flight long enough for the marker to
-  // drop mid-run. The review gate approves with zero usage so the tick's outcome is clean.
+  // drop mid-run. The review gate approves with zero usage so the run's outcome is clean.
   const restore = fakePi(
     [
       APPROVE_PI,
@@ -125,31 +125,31 @@ test("an in-flight tick finishes and merges while the team is paused", async () 
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // Wait for the tick to be in flight (running is persisted before pi starts)…
+    // Wait for the run to be in flight (running is persisted before pi starts)…
     await waitFor(
       () => loadRunnerState(repo, "clean").running === true,
-      "the tick to be in flight",
+      "the run to be in flight",
     );
 
-    // …and pause mid-run. The gate blocks only NEW ticks — it never kills an in-flight one.
+    // …and pause mid-run. The gate blocks only NEW runs — it never kills an in-flight one.
     const marker = pausedPath(repo);
     writeMarker(marker, { at: Date.now() });
 
-    // The in-flight tick finishes (commit + pin + enqueue) and the merge slot drains the
+    // The in-flight run finishes (commit + pin + enqueue) and the merge slot drains the
     // entry to main — both despite the pause: a queued merge is committed work awaiting
-    // completion, not a new tick, so the pause gate deliberately does not hold it.
+    // completion, not a new run, so the pause gate deliberately does not hold it.
     await waitFor(
       () => loadRunnerState(repo, "clean").lastResult === "changed",
       "the in-flight merge to finish",
     );
     const s = loadRunnerState(repo, "clean");
-    assert.equal(s.runs, 1, "exactly one tick started");
+    assert.equal(s.runs, 1, "exactly one run started");
     assert.equal(s.lastResult, "changed", "the outcome is recorded despite the pause");
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change merged to main");
 
-    // …and no new tick starts while the marker holds.
+    // …and no new run starts while the marker holds.
     await sleep(600);
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "no second tick while paused");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "no second run while paused");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -166,10 +166,10 @@ test("a per-role pause gates only that role, holds a named director, and resumes
   pauseRole(repo, "clean");
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
-    // The unpaused role ticks normally while the paused one never starts.
-    await awaitSettledTick(repo, "dedupe", 1, "the unpaused role to tick");
+    // The unpaused role runs normally while the paused one never starts.
+    await awaitSettledRun(repo, "dedupe", 1, "the unpaused role to run");
     await sleep(600);
-    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a paused role starts no new ticks");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a paused role starts no new runs");
 
     // One harness-level event per crossing, naming the role — not one per poll.
     const paused = eventsOfType(repo, "role_paused");
@@ -183,7 +183,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
     await sleep(600);
     assert.ok(
       !readEvents(repo).some((e) => e.type === "run_start" && e.source === DIRECTOR_ROLE),
-      "a paused director starts no ticks",
+      "a paused director starts no runs",
     );
     assert.ok(
       readEvents(repo).some((e) => e.type === "role_paused" && e.role === DIRECTOR_ROLE),
@@ -192,7 +192,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
 
     // Resume re-enables the role within one poll, with its one resumed event.
     resumeRole(repo, "clean");
-    await awaitSettledTick(repo, "clean", 1, "the resumed role to tick");
+    await awaitSettledRun(repo, "clean", 1, "the resumed role to run");
     const resumed = eventsOfType(repo, "role_resumed");
     assert.equal(resumed.length, 1);
     assert.equal(resumed[0]?.source, "tumwater");

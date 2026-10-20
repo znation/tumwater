@@ -242,6 +242,3 @@ export async function drainInFlightWork(
     await Promise.allSettled([runs, merge?.promise]);
   }
 }
-
-/** @deprecated Use runTimedRoleRun. */
-export const runTimedRoleTick = runTimedRoleRun;
