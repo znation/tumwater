@@ -43,7 +43,7 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
   const ROLE_WAKE_CHOICES = ROLE_PAUSE_CHOICES.filter((c) => c[0] > 0); // a wake has no "standing" choice
   // A role's controls, from its table row or its drawer: prompt (aims the composer at the role),
   // wake, pause/resume (the target state is always explicit), and abort, which discards the
-  // tick's work — the first click arms it, a second within 5 s fires it.
+  // run's work — the first click arms it, a second within 5 s fires it.
   async function rowAction(action, role, forSeconds) {
     if (action === "prompt") {
       setTarget(role);
@@ -113,10 +113,10 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
     const slowed = / ×(\d+)$/.exec(raw);
     const next = slowed ? raw.slice(0, slowed.index) : raw;
     const backoff = next.startsWith("sleeping ") ? "sleeping — next check in " + next.slice(9) : "";
-    // A yield-scaled clock: the role's recent ticks merged nothing, so it ticks less often.
+    // A yield-scaled clock: the role's recent runs merged nothing, so it runs less often.
     const note = slowed ? " · slowed ×" + slowed[1] + ", nothing merged lately" : "";
     // The consecutive no-change streak (status-payload noChangeStreak, mirrored from
-    // status-model rolePhase's · no change ×N suffix): how many completed ticks in a row
+    // status-model rolePhase's · no change ×N suffix): how many completed runs in a row
     // returned nothing to do. Shown only on a resting idle cell (sleeping/queued/idle/
     // deferred) — never on live work, a pause, a failure, or main-red, which the status
     // label likewise leaves bare. Observational only: a legitimately idle maintenance role
@@ -165,7 +165,7 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
       "' data-role='" + esc(l.role) + "' title='" + esc(title) + "' aria-label='" + esc(title) + "'>" + icon(ic) + "</button>";
     let actions = b("prompt", "chat", "Message " + roleLabel(l.role));
     // The running set (info.live), not the permit-holder inFlight: the exempt running director
-    // has an abortable tick without holding a maxConcurrent permit (BUGS.md 2026-10-06).
+    // has an abortable run without holding a maxConcurrent permit (BUGS.md 2026-10-06).
     if (info.live) {
       actions += abortConfirming(l.role)
         ? "<button type='button' class='icon-btn rowaction confirming' data-action='abort' data-role='" + esc(l.role) + "' title='Click again to stop this run'>" + icon("stop") + "Stop?</button>"

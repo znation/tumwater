@@ -64,7 +64,7 @@ function drawerScope(names: string[], inject: Record<string, unknown>): DrawerSc
   return run(...keys.map((k) => inject[k]));
 }
 
-/** Let the blob's fire-and-forget async loads (ticks, transcript, entry) settle. */
+/** Let the blob's fire-and-forget async loads (runs, transcript, entry) settle. */
 const flush = async () => {
   await sleep(0);
   await sleep(0);
@@ -255,7 +255,7 @@ test("an idle role's drawer offers Cancel scheduled wake only while a future wak
   assert.match(actionsFor(undefined, "base", [{ atMs: soon, roles: ["base"] }, { atMs: soon + 1000, roles: ["clean"] }]), /data-action='wake-cancel'/);
 });
 
-test("the role drawer paints a working role's actions, metrics, ticks, and transcript with the real formatters", async () => {
+test("the role drawer paints a working role's actions, metrics, runs, and transcript with the real formatters", async () => {
   const now = Date.now();
   const t = openDrawer(["toggleRole", "loadRoleRuns"], {
     status: workingStatus(),
@@ -264,7 +264,7 @@ test("the role drawer paints a working role's actions, metrics, ticks, and trans
         { run: 3, ts: now - 120_000, result: "changed", detail: "tidied the drawer", durationMs: 65_000, time: "12:00:00" },
         { run: 2, ts: now - 240_000, result: "changed", detail: "raced the cutoff", durationMs: 119_999, time: "11:58:00" },
       ] },
-      "/api/transcript?role=clean&n=200": { lines: ["── tick 3", "→ npm test"] },
+      "/api/transcript?role=clean&n=200": { lines: ["── run 3", "→ npm test"] },
     },
   });
   t.scope.toggleRole("clean");
@@ -294,10 +294,10 @@ test("the role drawer paints a working role's actions, metrics, ticks, and trans
   assert.match(meta, /Tokens, this run<\/dt><dd title='12\.3k'>12\.3k</);
   assert.match(meta, /Peak context, this run<\/dt><dd title='90\.0k'>90\.0k</);
   assert.match(meta, /Spent today<\/dt><dd title='\$1\.50'>\$1\.50</);
-  assert.match(meta, /1m ago/); // the last tick's age, through the real fmtAgo
+  assert.match(meta, /1m ago/); // the last run's age, through the real fmtAgo
   // A role with no lastMergedAt reports never merged in its drawer kv.
   assert.match(meta, /Last merged<\/dt><dd title='never'>never</);
-  // The fetched tick rows render with the real result/age/span formatters.
+  // The fetched run rows render with the real result/age/span formatters.
   assert.match(meta, /#3 · /);
   assert.match(meta, /tidied the drawer/);
   assert.match(meta, /2m ago/);
@@ -306,7 +306,7 @@ test("the role drawer paints a working role's actions, metrics, ticks, and trans
 
   // The transcript rendered through transcriptHtml and pinned to the bottom.
   const pre = t.el("transcript");
-  assert.match(pre.innerHTML, /<span class='l-sep'>── tick 3<\/span>/);
+  assert.match(pre.innerHTML, /<span class='l-sep'>── run 3<\/span>/);
   assert.match(pre.innerHTML, /<span class='l-tool'>→ npm test<\/span>/);
   assert.equal(pre.scrollTop, pre.scrollHeight);
 });
@@ -524,8 +524,8 @@ test("drawerChangeHtml renders the full patch for a ready view and degrades the 
 test("transcriptHtml classifies run separators, tool calls, thinking, and warnings, escaping each line", () => {
   const t = openDrawer(["transcriptHtml"]);
   assert.equal(
-    t.scope.transcriptHtml(["── tick 3", "→ npm test", "· thinking out loud", "⚠ retrying", "plain <line>"]),
-    "<span class='l-sep'>── tick 3</span>\n" +
+    t.scope.transcriptHtml(["── run 3", "→ npm test", "· thinking out loud", "⚠ retrying", "plain <line>"]),
+    "<span class='l-sep'>── run 3</span>\n" +
     "<span class='l-tool'>→ npm test</span>\n" +
     "<span class='l-think'>· thinking out loud</span>\n" +
     "<span class='l-warn'>⚠ retrying</span>\n" +
@@ -565,7 +565,7 @@ test("the role drawer renders its notebook and next prompt, refetching when the 
   assert.match(first, /clean keeps the tree tidy/);
   assert.match(first, /the clean next prompt/);
 
-  // A status poll rewrites drawermeta (its tick-age text changes) but must not repaint
+  // A status poll rewrites drawermeta (its run-age text changes) but must not repaint
   // drawerrole: an innerHTML rewrite would collapse an opened Next run's prompt.
   const rolePaints = t.painted.filter(([id]) => id === "drawerrole").length;
   const metaPaints = t.painted.filter(([id]) => id === "drawermeta").length;
@@ -620,10 +620,10 @@ test("the drawer's Notebook section offers Edit and Clear with a note, Edit alon
   assert.doesNotMatch(role, /note-clear/);
 });
 
-// Recent tick outcomes (the `tumwater role <id>` section) ripple into the role drawer's
+// Recent run outcomes (the `tumwater role <id>` section) ripple into the role drawer's
 // role panel: the payload's recentOutcomes render as a Recent outcomes list with each
 // outcome's relative age, result label, summary, and duration.
-test("the role drawer shows the recent tick outcomes from the role payload", async () => {
+test("the role drawer shows the recent run outcomes from the role payload", async () => {
   const now = Date.now();
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
@@ -657,7 +657,7 @@ test("a role with no recent outcomes shows no Recent outcomes section", async ()
 // The role drawer's Configuration section mirrors `tumwater role <id>`'s field labels and
 // wording family from the same /api/role payload (rolePayload), so the page and the CLI read
 // one role's configuration identically: model/tier, provider cap, image reading (with the
-// reroute target), model and budget fallback pairs, billing, min tick interval, queued
+// reroute target), model and budget fallback pairs, billing, min run interval, queued
 // prompts, and the clamped instructions/find text. Absent fields render no row, so a
 // cap-less or notes-only payload keeps an empty section.
 test("the role drawer renders the Configuration section from the role payload", async () => {

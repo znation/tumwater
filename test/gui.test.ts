@@ -307,7 +307,7 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
         JSON.stringify({ type: "agent_start" }),
         JSON.stringify({
           type: "message_end",
-          message: { role: "user", content: [{ type: "text", text: "tick prompt" }], timestamp: 1787222691956 },
+          message: { role: "user", content: [{ type: "text", text: "run prompt" }], timestamp: 1787222691956 },
         }),
         JSON.stringify({
           type: "message_end",
@@ -321,9 +321,9 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
     assert.ok(ok.lines.some((l) => l.startsWith("── run @ ")));
     assert.ok(ok.lines.includes("  did the thing"));
     assert.ok(ok.lines.includes("→ read PLANS.md"));
-    assert.ok(!ok.lines.some((l) => l.includes("tick prompt")));
+    assert.ok(!ok.lines.some((l) => l.includes("run prompt")));
     const withPrompt = await getJson<{ lines: string[] }>(base, "/api/transcript?role=feature&n=10&prompt=1");
-    const promptAt = withPrompt.lines.findIndex((l) => l.includes("tick prompt"));
+    const promptAt = withPrompt.lines.findIndex((l) => l.includes("run prompt"));
     assert.ok(promptAt !== -1, "prompt=1 renders the run's prompt");
     assert.ok(promptAt < withPrompt.lines.indexOf("  did the thing"));
 
@@ -397,22 +397,22 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
   }
 });
 
-test("the GUI last tick cell shows absolute time plus relative age, mirroring the TUI", async () => {
+test("the GUI last run cell shows absolute time plus relative age, mirroring the TUI", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const { lastTickCell } = await import("../src/ui/status-render.js");
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc test and
-  // sortRoles. fmtLastTick is pure (no DOM), so nothing is injected.
-  const m = /\/\/ last-tick-fmt:start\n([\s\S]*?)\n  \/\/ last-tick-fmt:end/.exec(GUI_PAGE);
-  assert.ok(m, "last-tick-fmt region found in the page");
-  // fmtLastTick now formats its age through the page's shared humanSeconds helper, so the
+  // sortRoles. fmtLastRun is pure (no DOM), so nothing is injected.
+  const m = /\/\/ last-run-fmt:start\n([\s\S]*?)\n  \/\/ last-run-fmt:end/.exec(GUI_PAGE);
+  assert.ok(m, "last-run-fmt region found in the page");
+  // fmtLastRun now formats its age through the page's shared humanSeconds helper, so the
   // helper's marked region is spliced into the sandbox too (same extraction pattern).
   const hs = /\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/.exec(GUI_PAGE);
   assert.ok(hs, "human-seconds-fmt region found in the page");
-  const fmtLastTick = new Function(`${hs[1]}\n${m[1]}\nreturn fmtLastTick;`)() as (ts: number | null) => string;
+  const fmtLastRun = new Function(`${hs[1]}\n${m[1]}\nreturn fmtLastRun;`)() as (ts: number | null) => string;
 
   // The cell renders client-side from the payload's existing lastRunEndedAt field.
-  assert.match(GUI_PAGE, /fmtLastTick\(l\.lastRunEndedAt\)/);
+  assert.match(GUI_PAGE, /fmtLastRun\(l\.lastRunEndedAt\)/);
 
   const now = Date.now();
   // The absolute part derives from the fixed ts, so it is stable across the test's own clock
@@ -420,29 +420,29 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
   // oracles.ts's clockOf, the same builder the status fixtures' stampOf uses.
   const abs = (ts: number) => clockOf(new Date(ts));
 
-  // Never ticked.
-  assert.equal(fmtLastTick(null), "-");
-  assert.equal(fmtLastTick(0), "-");
+  // Never ran.
+  assert.equal(fmtLastRun(null), "-");
+  assert.equal(fmtLastRun(0), "-");
 
   // Timestamps sit well inside each bucket so Date.now() drift between the call and the
   // assertion cannot flip a result: 45 s (not near 60); 190 s → 3m (far from the 2.5/3.5 m
   // rounding edges); 7500 s → 2h; ~3 d + 2 h → 3d with the MM-DD prefix.
   const t45 = now - 45_000;
-  assert.equal(fmtLastTick(t45), `${abs(t45)} · 45s ago`);
+  assert.equal(fmtLastRun(t45), `${abs(t45)} · 45s ago`);
 
   const t190 = now - 190_000;
-  assert.equal(fmtLastTick(t190), `${abs(t190)} · 3m ago`);
+  assert.equal(fmtLastRun(t190), `${abs(t190)} · 3m ago`);
 
   const t2h = now - 7_500_000;
-  assert.equal(fmtLastTick(t2h), `${abs(t2h)} · 2h ago`);
+  assert.equal(fmtLastRun(t2h), `${abs(t2h)} · 2h ago`);
 
   const t3d = now - (3 * 86_400_000 + 7_200_000);
   const day3 = dayKey(t3d).slice(5); // MM-DD, dropped from the raw-parts day key.
-  assert.equal(fmtLastTick(t3d), `${day3} ${abs(t3d)} · 3d ago`);
+  assert.equal(fmtLastRun(t3d), `${day3} ${abs(t3d)} · 3d ago`);
 
   // The whole cell — absolute stamp and age bucketing — must stay byte-identical to the TUI's
   // lastTickCell, so a drift in either surface fails here.
-  for (const ts of [t45, t190, t2h, t3d]) assert.equal(fmtLastTick(ts), lastTickCell(ts));
+  for (const ts of [t45, t190, t2h, t3d]) assert.equal(fmtLastRun(ts), lastTickCell(ts));
 });
 
 // Full backlog entries:
@@ -786,11 +786,11 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   assert.match(GUI_PAGE, /fmtNextRun\(l, d\.running\)/);
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc, sortRoles,
-  // and fmtLastTick tests. fmtNextRun is pure (no DOM), so nothing is injected.
+  // and fmtLastRun tests. fmtNextRun is pure (no DOM), so nothing is injected.
   const m = /\/\/ next-run-fmt:start\n([\s\S]*?)\n  \/\/ next-run-fmt:end/.exec(GUI_PAGE);
   assert.ok(m, "next-run-fmt region found in the page");
   // fmtNextRun's countdown goes through the page's shared humanSeconds helper too, so its
-  // marked region is spliced in alongside (same extraction pattern as the fmtLastTick test).
+  // marked region is spliced in alongside (same extraction pattern as the fmtLastRun test).
   const hs = /\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/.exec(GUI_PAGE);
   assert.ok(hs, "human-seconds-fmt region found in the page");
   // …and through the page's shared isActivePhase helper, spliced in alongside (the same
@@ -802,7 +802,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
 
   const now = Date.now();
   // Each case pins the TUI helper and the GUI twin to the same output, so the two copies
-  // cannot drift (the sortRoles/fmtLastTick lockstep precedent).
+  // cannot drift (the sortRoles/fmtLastRun lockstep precedent).
   const cases: Array<{
     state: Partial<RunnerState>;
     phase: string;

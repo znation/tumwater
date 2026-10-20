@@ -163,7 +163,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   }
   // needs-you-cue:end
   // Alerts are patched by key, and only their text is rewritten in place: a stall alert's
-  // "no pi output for 9m47s" ticks every second, and rebuilding it would swap its buttons out
+  // "no pi output for 9m47s" updates every second, and rebuilding it would swap its buttons out
   // from under a click in progress.
   function alertParts(a, restartable) {
     // A stale-build alert's refresh icon IS the restart button (PLANS.md 2026-09-30): pressing

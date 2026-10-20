@@ -355,7 +355,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     // A history row's drill-down button sits inside the row's data-open cell area but must not
     // open the drawer — expansion is the button's alone (gui-client-history's own delegated
     // handler toggles the card).
-    if (open && !t.closest("#rolerows") && !t.closest("[data-tickdetail]")) { // vocabulary-ok: element selectors
+    if (open && !t.closest("#rolerows") && !t.closest("[data-rundetail]")) {
       ev.preventDefault();
       toggleRole(open.dataset.open);
     }
@@ -393,7 +393,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   }
   let lastEventKey = null;
   // New events are what move the numbers the other panels show (today's merges, the History
-  // rows, the open role's recent ticks), so they refetch on that signal, each throttled.
+  // rows, the open role's recent runs), so they refetch on that signal, each throttled.
   function onNewEvents() {
     refreshToday(false);
     if (activeView === "history") fetchHistory(true);

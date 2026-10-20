@@ -93,7 +93,7 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
  * value clears the key through unsetConfigKey (so the role falls back to the team-wide
  * interval), otherwise the write rides the CLI's own setConfigKey dotted path so
  * checkMinRunInterval and whole-candidate validateConfig (which rejects an unknown role id)
- * own the final truth. The director is accepted here — it ticks on the same clock, unlike
+ * own the final truth. The director is accepted here — it runs on the same clock, unlike
  * the cap's director exemption. A bare `feature-2` role id maps to its base role's override
  * (baseRoleOf), since the interval is about the role. A write failure is configKeyError's 400
  * exactly as handleRoleCap reports it. A no-op set or clear says so in its message. */
@@ -143,7 +143,7 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
 }
 
 /** Handle POST /api/role-instances: the role drawer's instance-count editor sets or clears one
- * role's parallel-runner count — the count that lets `feature-2`…`feature-N` tick. Same body
+ * role's parallel-runner count — the count that lets `feature-2`…`feature-N` run. Same body
  * discipline as /api/role-interval (readPostBody → 400 malformed/non-object, 413 oversized); a
  * null, "" or whitespace-only value clears the key through unsetConfigKey (so the role falls
  * back to the default 1), otherwise the write rides the CLI's own setConfigKey dotted path so

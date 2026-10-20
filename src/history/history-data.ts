@@ -203,7 +203,7 @@ export interface RunRow {
  * sits outside the scanned window) shows the em dash rather than a fabricated duration. */
 export interface RunRowCells {
   role: string;
-  tick: string;
+  run: string;
   result: string;
   model: string;
   duration: string;
@@ -213,7 +213,7 @@ export interface RunRowCells {
 export function runRowCells(row: RunRow): RunRowCells {
   return {
     role: roleLabel(row.role),
-    tick: String(row.run),
+    run: String(row.run),
     result: eventTypeLabel(row.result),
     model: row.model ?? "",
     duration: row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
@@ -235,7 +235,7 @@ export function runRowLine(
   return [
     row.time,
     pad("role", c.role), // vocabulary-ok: column key, not shown
-    `#${pad("tick", c.tick)}`, // vocabulary-ok: column key, not shown
+    `#${pad("run", c.run)}`,
     pad("result", c.result),
     pad("model", c.model),
     pad("duration", c.duration),

@@ -2,7 +2,7 @@
 /** The dashboard's detail drawer, browser-side: a sheet on the right that opens over the page
  * without losing it. For a role it shows the state, the role's controls (prompt, wake now or later,
  * pause/resume, abort), what it is working on, its last result, the metrics the team table
- * leaves out (tokens, context, cost, timings), its recent ticks (/api/history filtered to the
+ * leaves out (tokens, context, cost, timings), its recent runs (/api/history filtered to the
  * role), and its live transcript (/api/transcript, re-fetched on the 1 s poll and kept pinned
  * to the bottom while the reader is there; a "Show prompts" button adds each agent run's prompt
  * with `&prompt=1`). For a backlog entry it shows the entry in full
@@ -12,8 +12,8 @@
  * same row again closes it. Spliced into gui-client.ts's script, reaching its helpers through
  * that concatenation. */
 export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "role", role } | { kind: "entry", file, index } while open
-  let drawerTicks = null; // the open role's recent history rows (null until fetched)
-  let drawerTicksAt = 0;
+  let drawerRuns = null; // the open role's recent history rows (null until fetched)
+  let drawerRunsAt = 0;
   let drawerChange = null; // the open role's unmerged change: { role, state: "loading"|"ok"|"error", view, message }
   let drawerRole = null; // the open role's /api/role payload: { role, state: "loading"|"ok"|"error", view, message }
   const openEntryKey = () => (drawer && drawer.kind === "entry" ? drawer.file + ":" + drawer.index : null);
@@ -48,7 +48,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     modelEditing = null;
     disarmNoteClear();
     if (wasRole && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
-    drawerTicks = null;
+    drawerRuns = null;
     drawerChange = null;
     drawerRole = null;
     $("drawer").hidden = true;
@@ -65,8 +65,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     transcriptPrompts = false;
     const hash = "#role/" + encodeURIComponent(role);
     if (location.hash !== hash) history.replaceState(null, "", hash);
-    drawerTicks = null;
-    drawerTicksAt = 0;
+    drawerRuns = null;
+    drawerRunsAt = 0;
     drawerChange = null;
     drawerRole = null;
     showDrawer("<div id='draweractions' class='drawer-actions'></div><div id='drawermeta'></div><div id='drawerrole'></div><section class='transcript-sec'><div class='sec-head'><h3>Live transcript</h3>" +
@@ -128,7 +128,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       "' data-role='" + esc(l.role) + "'>" + icon(ic) + esc(label) + "</button>";
     let actions = btn("prompt", "chat", "Message this role");
     // The running set (info.live), not the permit-holder inFlight: the exempt running director
-    // has an abortable tick without holding a maxConcurrent permit (BUGS.md 2026-10-06).
+    // has an abortable run without holding a maxConcurrent permit (BUGS.md 2026-10-06).
     if (info.live) actions += abortConfirming(l.role) ? btn("abort", "stop", "Click again to stop", "btn-danger confirming") : btn("abort", "stop", "Stop this run", "btn-danger");
     else {
       actions += btn("wake", "bolt", "Wake now");
@@ -167,17 +167,17 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       : next === "now" || next.startsWith("now ") ? next
       : next.startsWith("sleeping ") ? "in " + next.slice(9) + " (sleeping)"
       : "in " + next;
-    const tickWord = info.live ? "this run" : "last run";
+    const runWord = info.live ? "this run" : "last run";
     const stats = "<dl class='kv'>" + kvRow("Commits", String(l.commits)) + kvRow("Runs", String(l.runs)) +
-      kvRow("Tokens, " + tickWord, fmtTokens(l.generated)) + kvRow("Peak context, " + tickWord, fmtTokens(l.peakCtx)) +
+      kvRow("Tokens, " + runWord, fmtTokens(l.generated)) + kvRow("Peak context, " + runWord, fmtTokens(l.peakCtx)) +
       kvRow("Spent today", fmtUsd(l.todayUsd)) + kvRow("Spent in total", fmtUsd(l.costUsd)) +
-      kvRow("Last run ended", l.lastRunEndedAt ? fmtAgo(l.lastRunEndedAt) : "never", fmtLastTick(l.lastRunEndedAt)) +
+      kvRow("Last run ended", l.lastRunEndedAt ? fmtAgo(l.lastRunEndedAt) : "never", fmtLastRun(l.lastRunEndedAt)) +
       kvRow("Last merged", l.lastMergedAt ? fmtAgo(l.lastMergedAt) : "never") +
       kvRow("Next run", nextNote) + "</dl>";
-    const ticks = drawerTicks === null
+    const runs = drawerRuns === null
       ? "<p class='muted'>Loading…</p>"
-      : drawerTicks.length
-        ? "<ul class='ticks'>" + drawerTicks.map((t) => { // vocabulary-ok: the ticks class stays
+      : drawerRuns.length
+        ? "<ul class='ticks'>" + drawerRuns.map((t) => { // vocabulary-ok: the ticks class stays
           const res = resultInfo(t.result);
           return "<li><span class='when' title='" + esc(t.time) + "'>#" + esc(t.run) + " · " + esc(fmtAgo(t.ts)) + "</span>" +
             "<span class='clamp1' title='" + esc(t.detail) + "'><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span> " + esc(t.detail) + "</span>" +
@@ -186,10 +186,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         : "<p class='muted'>No completed runs in the log yet.</p>";
     paintPanel("draweractions", actions);
     paintPanel("drawermeta", now + last + stats +
-      "<section><div class='sec-head'><h3>Recent runs</h3></div>" + ticks + "</section>" + drawerChangeSection());
+      "<section><div class='sec-head'><h3>Recent runs</h3></div>" + runs + "</section>" + drawerChangeSection());
     // The notebook/prompt live in their own panel, outside drawermeta: the poll rewrites
-    // drawermeta whenever its countdown or tick-age text changes, and an innerHTML rewrite
-    // would collapse an opened Next tick prompt. This panel's markup is stable while its
+    // drawermeta whenever its countdown or run-age text changes, and an innerHTML rewrite
+    // would collapse an opened Next run prompt. This panel's markup is stable while its
     // payload is unchanged, so paintPanel leaves it (and the disclosure's open state) alone.
     paintPanel("drawerrole", drawerRoleSection());
   }
@@ -247,12 +247,12 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     return loadDrawerSection(role, "/api/diff?role=", "Pending change unavailable", (v) => { drawerChange = v; });
   }
 
-  // The open role's notebook and next-tick prompt, as /api/role serves them (rolePayload):
+  // The open role's notebook and next-run prompt, as /api/role serves them (rolePayload):
   // the same note and assembled prompt the CLI's role command shows, so the operator can
   // diagnose a role from the page. The note renders in a <pre>; the next prompt sits in a
   // <details> so it does not push the rest of the drawer down. Both empty cases say so in a
   // muted line. It paints into its own #drawerrole panel, not #drawermeta: the poll rewrites
-  // drawermeta whenever its countdown or tick-age text changes, and an innerHTML rewrite would
+  // drawermeta whenever its countdown or run-age text changes, and an innerHTML rewrite would
   // collapse an opened <details>. This panel's string is stable while the payload is unchanged,
   // so paintPanel skips it and the disclosure stays open.
   function drawerRoleSection() {
@@ -276,9 +276,9 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         : note ? "<pre class='mono'>" + esc(note) + "</pre>" : "<p class='muted'>No notes yet.</p>";
       body = "<div class='sec-head'><h3>Notes</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
         "<details><summary>Next run's prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>" +
-        // The role's recent tick outcomes (rolePayload's recentOutcomes, read from the event
-        // log), rendered like the Recent ticks list above: each with its relative age, result
-        // label, summary, and duration. Mirrors the Recent tick outcomes section of
+        // The role's recent run outcomes (rolePayload's recentOutcomes, read from the event
+        // log), rendered like the Recent runs list above: each with its relative age, result
+        // label, summary, and duration. Mirrors the Recent run outcomes section of
         // tumwater role <id> — no backticks allowed here (this whole script is one big
         // String.raw template), so the page and the CLI read one role's outcomes identically.
         (outcomes.length ? "<section><div class='sec-head'><h3>Recent outcomes" +
@@ -334,14 +334,14 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
 
   async function loadRoleRuns(force) {
     const role = openRoleId();
-    if (!role || (!force && Date.now() - drawerTicksAt < 5000)) return;
-    drawerTicksAt = Date.now();
+    if (!role || (!force && Date.now() - drawerRunsAt < 5000)) return;
+    drawerRunsAt = Date.now();
     try {
       const d = await getJson("/api/history?n=8&role=" + encodeURIComponent(role), pollSignal());
       if (openRoleId() !== role) return;
-      drawerTicks = d && Array.isArray(d.rows) ? d.rows : [];
+      drawerRuns = d && Array.isArray(d.rows) ? d.rows : [];
     } catch {
-      if (drawerTicks === null) drawerTicks = [];
+      if (drawerRuns === null) drawerRuns = [];
     }
     if (lastStatus) renderRoleDrawer(lastStatus);
   }

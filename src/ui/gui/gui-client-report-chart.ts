@@ -34,8 +34,8 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return Object.entries(by).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
 
-  // Window totals per role — ticks desc, then name — so the legend and the stack order match
-  // the Markdown report's "Ticks by role" line. Roles that only spent (no ticks) still count.
+  // Window totals per role — runs desc, then name — so the legend and the stack order match
+  // the Markdown report's "Runs by role" line. Roles that only spent (no runs) still count.
   // Reads and seeds use Object.hasOwn: the custom-role name charset admits "constructor", an
   // Object.prototype key whose inherited value would otherwise seed the counter and satisfy
   // the membership test (the browser twin of addTo's fix; BUGS.md 2026-10-10).
@@ -236,7 +236,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return stackChart(data, reportRoleOrder(data), field, fmt, fmtAxis, integer);
   }
 
-  function chartTicksByRole(data) {
+  function chartRunsByRole(data) {
     return roleStackChart(data, "runsByRole", (n) => plural(n, "run"), countAxis, true);
   }
 
@@ -268,7 +268,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return stackChart(data, reportModelOrder(data), "runsByModel", (n) => plural(n, "run"), countAxis, true);
   }
 
-  // The team's deferred maintenance ticks, per day, stacked by reason: each segment one
+  // The team's deferred maintenance runs, per day, stacked by reason: each segment one
   // (day, reason code), the dashboard twin of the day report's "Deferred runs by reason"
   // line. Sparse like the model chart; the reason codes are the legend labels.
   function chartDeferredByReason(data) {
@@ -281,7 +281,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return stackChart(data, reportProviderOrder(data), "notionalByProvider", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
 
-  // The team's review friction, per role, on a tick-like count axis: one segment per
+  // The team's review friction, per role, on a run-like count axis: one segment per
   // (day, role) with a rejection, empty when the report has none.
   function chartRejectionsByRole(data) {
     return roleStackChart(data, "rejectionsByRole", (n) => plural(n, "rejection"), countAxis, true);

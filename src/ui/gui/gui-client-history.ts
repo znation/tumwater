@@ -1,14 +1,14 @@
 // vocabulary: plain
-/** The dashboard's History view, browser-side: every completed tick, newest first, as
+/** The dashboard's History view, browser-side: every completed run, newest first, as
  * /api/history serves them (the rows `tumwater history` prints). A toolbar narrows it to one
  * role (server-side, so a quiet role still gets its full count), searches the rendered row text
  * (server-side, through the same haystack rule `tumwater history --grep` uses), to an outcome
  * class (changes, no change, problems — client-side over the fetched rows), and picks how many
- * ticks to fetch or a trailing window matching `tumwater history --since`. It refetches when the
+ * runs to fetch or a trailing window matching `tumwater history --since`. It refetches when the
  * view opens and, while it stays open, whenever the status poll sees new events — never on a
  * timer of its own. A row opens that role's drawer. Spliced into gui-client.ts's script,
  * reaching its helpers (esc, getJson, resultInfo, the formatters) through that concatenation. */
-export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to show" picker offers; the recalled count is normalized to one of
+export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to show" picker offers; the recalled count is normalized to one of
   // them at read, so the picker can always represent (and the request always matches) the scope.
   const HIST_COUNTS = [20, 50, 100, 200];
   let histRole = recall("hist-role") || "";
@@ -82,7 +82,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     $("histrefresh").addEventListener("click", () => fetchHistory());
     // The drill-down's details toggle: the button alone expands or collapses (the row's own
     // click still opens the drawer — gui-client-boot's data-open handler skips clicks on a
-    // data-tickdetail button).
+    // data-rundetail button).
     // A By model row's label drills into that model's runs: the table, filtered to the selector.
     $("histbody").addEventListener("click", (ev) => {
       const b = ev.target instanceof Element ? ev.target.closest("button[data-histmodel]") : null;
@@ -93,7 +93,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       fetchHistory();
     });
     $("histbody").addEventListener("click", (ev) => {
-      const b = ev.target instanceof Element ? ev.target.closest("button[data-tickdetail]") : null;
+      const b = ev.target instanceof Element ? ev.target.closest("button[data-rundetail]") : null;
       if (!b) return;
       toggleHistDetail(b.dataset.role, b.dataset.tick);
     });
@@ -124,7 +124,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     });
   }
   // history-detail:start
-  // Tick drill-down state: one open card at a time, keyed "role#tick", with each key's cache
+  // Run drill-down state: one open card at a time, keyed "role#run", with each key's cache
   // entry — { state: "loading" } while its fetch is in flight, { state: "error", message }
   // when one failed, { state: "ok", text, stat, revertSha, hasCommit, patch?, transcript?,
   // revert? } once /api/run answered — hasCommit is whether the run pinned a commit (the Show
@@ -139,15 +139,15 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // re-expanding reuses the card.
   const histDetails = new Map();
   let histDetailOpen = "";
-  function histDetailKey(role, tick) {
-    return role + "#" + tick;
+  function histDetailKey(role, run) {
+    return role + "#" + run;
   }
   // The expanded card's markup from its cache entry. The state is checked explicitly, in
   // loading → error → ok order, so a placeholder can never fall into the fetched path and
   // render as an empty trail: an absent or loading entry shows the Loading… placeholder, an
   // errored fetch shows the server's message, and a fetched one shows the summary header plus
-  // the tick's events exactly as the server pre-rendered them (renderTickDetail's output —
-  // the tumwater tick rendering).
+  // the run's events exactly as the server pre-rendered them (renderRunDetail's output —
+  // the tumwater history <role> <n> rendering).
   // The revert control under a card whose run's change is on main: the button, then the sub-state
   // — a preview (subject, paths, and a Revert button only when it applies on a clean checkout),
   // the server's message once done, or its error.
@@ -315,14 +315,14 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // already-cached entry (ok or error) is reused, and a re-expand while the fetch is in flight
   // leaves that fetch to finish. The loading entry is installed and painted synchronously
   // (renderHistory below), so the placeholder shows while the request runs.
-  function toggleHistDetail(role, tick) {
-    const key = histDetailKey(role, tick);
+  function toggleHistDetail(role, run) {
+    const key = histDetailKey(role, run);
     histDetailOpen = histDetailOpen === key ? "" : key;
-    if (histDetailOpen) fetchHistDetail(role, tick);
+    if (histDetailOpen) fetchHistDetail(role, run);
     renderHistory();
   }
-  async function fetchHistDetail(role, tick) {
-    const key = histDetailKey(role, tick);
+  async function fetchHistDetail(role, run) {
+    const key = histDetailKey(role, run);
     const prev = histDetails.get(key);
     if (prev && prev.state !== "loading") return; // cached until the view refetches
     // The loading entry is the synchronous prefix: it is set before toggleHistDetail's
@@ -330,13 +330,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     // (and a re-expand during flight sees it and lets the first fetch finish).
     histDetails.set(key, { state: "loading" });
     try {
-      const d = await getJson("/api/run?role=" + encodeURIComponent(role) + "&run=" + encodeURIComponent(String(tick)));
-      // Name the endpoint, the tick it answered for, and the likely cause: a 200 without
-      // text is a server too old (or too new) for this dashboard's client, not a lost tick —
+      const d = await getJson("/api/run?role=" + encodeURIComponent(role) + "&run=" + encodeURIComponent(String(run)));
+      // Name the endpoint, the run it answered for, and the likely cause: a 200 without
+      // text is a server too old (or too new) for this dashboard's client, not a lost run —
       // a 404 already answers that shape with the CLI's own not-found wording.
       if (!d || typeof d.text !== "string")
         throw new Error(
-          "/api/run answered " + role + " run " + tick + " without a text field — the running tumwater may not match this dashboard",
+          "/api/run answered " + role + " run " + run + " without a text field — the running tumwater may not match this dashboard",
         );
       histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null, hasCommit: d.hasCommit === true });
     } catch (err) {
@@ -368,7 +368,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       // The trailing-window shape carries the server's coverage; the count shape has no note.
       histNote = d && typeof d.note === "string" ? d.note : "";
       // A refetch invalidates the drill-down cache: cached trails could disagree with the new
-      // rows, and an open card's tick may no longer be among them — close it; the next expand
+      // rows, and an open card's run may no longer be among them — close it; the next expand
       // refetches.
       histDetails.clear();
       histDetailOpen = "";
@@ -379,7 +379,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     renderHistory();
   }
   // history-table:start
-  // The trailing-window choices the toolbar's #histcount select grows after the tick counts:
+  // The trailing-window choices the toolbar's #histcount select grows after the run counts:
   // key → [milliseconds, phrase]. historyQuery turns a key into the endpoint URL, so the
   // browser and the CLI's history --since ask for the same window by construction. The phrase
   // names the window in the empty state.
@@ -403,7 +403,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   function historyNoteHtml(note) {
     return note ? "<p class='muted window-note'>" + esc(note) + "</p>" : "";
   }
-  // Which outcome class a tick result falls in — the History filter's buckets.
+  // Which outcome class a run result falls in — the History filter's buckets.
   function historyClass(result) {
     if (result === "changed" || result === "queued") return "changes";
     if (result === "no_change" || result === "skipped" || result === "user_aborted") return "none";
@@ -440,7 +440,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
         const key = histDetailKey(r.role, r.run);
         const open = histDetailOpen === key;
         const toggle = known.has(r.role)
-          ? "<button type='button' class='btn btn-sm hist-x' data-tickdetail='1' data-role='" + esc(r.role) +
+          ? "<button type='button' class='btn btn-sm hist-x' data-rundetail='1' data-role='" + esc(r.role) +
             "' data-tick='" + esc(r.run) + "' aria-expanded='" + open + "' title='" + (open ? "Hide run detail" : "Show run detail") + "'>" + icon("chev") + "</button>" // vocabulary-ok: the data-tick name stays
           : "";
         const row = "<tr" + (known.has(r.role) ? " class='clickable' data-open='" + esc(r.role) + "'" : "") + ">" +
@@ -460,13 +460,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // history-table:end
   // history-summary:start
   // The Summary table: one row per role plus the total, in the same column set the CLI's
-  // history --summary prints (ticks, changes, none, refused, problems, tokens, cost, time,
+  // history --summary prints (runs, changes, none, refused, problems, tokens, cost, time,
   // last change), so the dashboard and the CLI cannot drift column for column. Every number
   // comes from the
-  // server's summary (built on the shared summarizeTickRows) — nothing here re-derives a
+  // server's summary (built on the shared summarizeRunRows) — nothing here re-derives a
   // tally — and the cost/token cells reuse the page's report formatters. The time cell is the
   // sum of the role's run spans via fmtSpan, a dash when none of its rows carried a span. The
-  // last-change cell is the newest changes-class tick's age via fmtAgo, a dash when the role had
+  // last-change cell is the newest changes-class run's age via fmtAgo, a dash when the role had
   // none. Pure — the view's render paints what this returns.
   function summaryTableHtml(header, entries) {
     const cell = (r, key, fmt) => "<td class='num'>" + esc(fmt ? fmt(r[key]) : r[key]) + "</td>";

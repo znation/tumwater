@@ -322,7 +322,7 @@ export const GUI_STYLES = String.raw`
                        font-size: 12px; font-weight: 600; color: var(--text-3); }
   .table tr.group:not(:first-child) td { border-top: 1px solid var(--line); }
   .table tr.group .badge { margin-left: 6px; }
-  /* The history view's tick drill-down: the rows' details toggle and the expanded card that
+  /* The history view's run drill-down: the rows' details toggle and the expanded card that
      rides beneath its row, full width. */
   .history .c-x { width: 40px; white-space: nowrap; }
   .hist-x { padding: 0 6px; }

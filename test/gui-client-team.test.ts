@@ -517,7 +517,7 @@ test("clearing the filter restores the windowed feed byte-for-byte", async () =>
 });
 
 test("the Activity feed tallies its present event types like logs --count", () => {
-  // Default feed filter is Notable, so carry the routine tick rows too via the All choice.
+  // Default feed filter is Notable, so carry the routine run rows too via the All choice.
   const { scope, panels } = feedScope({ feed: "all" });
   scope.renderFeed({
     roles: [],

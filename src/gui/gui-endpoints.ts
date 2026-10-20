@@ -1,6 +1,6 @@
 /**
  * The dashboard's GET data endpoint handlers (src/gui/gui-server.ts routes to them): transcript,
- * prompt-text, backlog, report, failures, history, tick, diff, config — the read-only surface.
+ * prompt-text, backlog, report, failures, history, run, diff, config — the read-only surface.
  * The POST
  * operator endpoints (prompt, prompt-role, prompt-cancel, prompt-edit, budget, config-set, pause,
  * wake, restart, abort, pause-role) and their body-discipline helpers live in
@@ -27,13 +27,13 @@ import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
 import { collectTeamChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
-import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, readTickRows, readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, runRowsMatchingGrep, runRowsOnModels, type TickRow } from "../history/history-data.js";
+import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, readRunRows, readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type RunRow } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { eventRole, readEvents } from "../events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
-import { readTickDetail, type TickDetail } from "../run/run-detail-data.js";
+import { readRunDetail, type RunDetail } from "../run/run-detail-data.js";
 import {
-  renderTickDetail,
+  renderRunDetail,
   runCommitSha,
   runDetailPatch,
   runDetailStat,
@@ -234,8 +234,8 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
 }
 
 /** Handle GET /api/history?role=<id>&n=N[&grep=<text>] — or ?role=<id>&sinceMs=<ms> for a
- * trailing window: the per-tick rows the CLI's `tumwater history` derives from the event log,
- * the dashboard's history tab renders them. The count shape ({ rows }) rides readTickRows (the
+ * trailing window: the per-run rows the CLI's `tumwater history` derives from the event log,
+ * the dashboard's history tab renders them. The count shape ({ rows }) rides readRunRows (the
  * shared scan, window growth included, so a role-filtered ask on a busy team cannot silently
  * come back short); n is optional: absent → HISTORY_DEFAULT_RUNS; present but not a plain
  * non-negative integer → 400 (the handleBacklog index discipline — an explicit count that does
@@ -246,22 +246,22 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * case-insensitive haystack rule `tumwater history --grep` uses (shared, not
  * re-implemented), after the n/role scan so n bounds the scanned window and not the
  * printed rows — the CLI's rule. The window shape ({ rows, covered, note }) rides
- * readTickRowsSince, the collector behind `history --since`,
+ * readRunRowsSince, the collector behind `history --since`,
  * so the browser and the CLI cannot disagree about the window's rows; a simultaneous n is a
  * rival shape → 400 (the CLI's count-vs-window rule), sinceMs parses and is capped through
  * sinceMsQuery (gui-args.ts, LOGS_SINCE_MAX_MS — the shared `history --since` cap), and note is
  * SPARSE_WINDOW_NOTE when covered is false, else "". role is optional: absent or empty → all
  * roles; present → passed straight through as the role filter with no config validation (a
- * filter is not a target — an id with no ticks legitimately yields zero rows), so the endpoint
+ * filter is not a target — an id with no runs legitimately yields zero rows), so the endpoint
  * reads nothing but files, like /api/report and /api/failures. Reads files directly, so it
  * present → passed straight through as the role filter with no config validation (a
- * filter is not a target — an id with no ticks legitimately yields zero rows), so the endpoint
+ * filter is not a target — an id with no runs legitimately yields zero rows), so the endpoint
  * reads nothing but files, like /api/report and /api/failures. summary is optional: absent /
  * empty adds nothing (the response is byte-for-byte today's); present (any value — the flag's
  * mere presence, a bad value ignored like a missing one) adds an additive `summary` folding the
- * exact served rows through the shared summarizeTickRows collector, the same tally
+ * exact served rows through the shared summarizeRunRows collector, the same tally
  * `tumwater history --summary` prints, so the dashboard Summary and the table cannot disagree
- * about what a tick was. It also adds `modelSummary`, `{ models, total }`, the
+ * about what a run was. It also adds `modelSummary`, `{ models, total }`, the
  * `history --summary --by model` tally of the same rows. `model=<selector>[,...]` keeps only the
  * runs that started on exactly one of those models (the `history --model` rule), after `grep` and
  * before the summaries fold. Reads files directly, so it works whether
@@ -272,7 +272,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   // `model` is a comma list of exact selectors (trimmed, deduplicated); "", absent and a list
   // with no non-empty piece all filter nothing, and an unknown selector keeps no rows.
   const modelPieces = [...new Set((q.get("model") ?? "").split(",").map((p) => p.trim()).filter((p) => p !== ""))];
-  const onModels = (rows: TickRow[]): TickRow[] => (modelPieces.length ? runRowsOnModels(rows, modelPieces) : rows);
+  const onModels = (rows: RunRow[]): RunRow[] => (modelPieces.length ? runRowsOnModels(rows, modelPieces) : rows);
   const summary = q.get("summary") !== null; // the flag's presence, whatever its value
   if (q.get("sinceMs") !== null) {
     if (q.get("n") !== null) {
@@ -282,18 +282,18 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
     const sinceMs = sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) =>
       `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
     if (sinceMs === null) return;
-    const { rows, covered } = readTickRowsSince(root, sinceMs, role);
+    const { rows, covered } = readRunRowsSince(root, sinceMs, role);
     const matched = onModels(grep === null ? rows : runRowsMatchingGrep(rows, grep));
-    sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...(summary ? { summary: summarizeTickRows(matched), modelSummary: summarizeTickRowsByModel(matched) } : {}) });
+    sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...(summary ? { summary: summarizeRunRows(matched), modelSummary: summarizeRunRowsByModel(matched) } : {}) });
     return;
   }
   const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_RUNS);
   if (parsed === null) return;
   const n = clampCount(parsed, HISTORY_MAX_RUNS);
-  let rows = readTickRows(root, n, role);
+  let rows = readRunRows(root, n, role);
   if (grep !== null) rows = runRowsMatchingGrep(rows, grep);
   rows = onModels(rows);
-  sendJson(res, 200, summary ? { rows, summary: summarizeTickRows(rows), modelSummary: summarizeTickRowsByModel(rows) } : { rows });
+  sendJson(res, 200, summary ? { rows, summary: summarizeRunRows(rows), modelSummary: summarizeRunRowsByModel(rows) } : { rows });
 }
 
 /** How many of the log's newest events `GET /api/logs` scans by default, and the most it will
@@ -331,19 +331,19 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
   sendJson(res, 200, { events: matched.map(eventFeedItem) });
 }
 
-/** handleTick's `transcript` text: the run's transcript lines joined, else the miss note. */
-function transcriptText(root: string, role: string, tick: number, detail: TickDetail, includePrompts: boolean): string {
-  const { found, note } = runTranscriptLines(root, role, tick, detail, { includePrompts });
+/** handleRun's `transcript` text: the run's transcript lines joined, else the miss note. */
+function transcriptText(root: string, role: string, run: number, detail: RunDetail, includePrompts: boolean): string {
+  const { found, note } = runTranscriptLines(root, role, run, detail, { includePrompts });
   return found.length > 0 ? found.join("\n") : note;
 }
-/** Handle GET /api/run?role=<id>&run=N: one tick's full event trail — readTickDetail's
- * TickDetail, the collector `tumwater tick <role> <n>` prints from, plus `text`: the same
- * payload through renderTickDetail, pre-rendered server-side like /api/transcript's lines so
+/** Handle GET /api/run?role=<id>&run=N: one run's full event trail — readRunDetail's
+ * RunDetail, the collector `tumwater history <role> <n>` prints from, plus `text`: the same
+ * payload through renderRunDetail, pre-rendered server-side like /api/transcript's lines so
  * the browser shows the CLI's exact rendering instead of re-implementing the event formatting.
  * Serving the shared collector is the point: the CLI and this endpoint cannot drift on what one
- * tick's block contains. The role is a target here, not a filter, so it validates through
- * rejectBadRole (unknown/missing → 400 naming the valid ids); the tick is an explicit count
- * through intQuery (missing or not a positive integer → 400); and a tick the scanned window
+ * run's block contains. The role is a target here, not a filter, so it validates through
+ * rejectBadRole (unknown/missing → 400 naming the valid ids); the run is an explicit count
+ * through intQuery (missing or not a positive integer → 400); and a run the scanned window
  * does not hold — never ran, or rotation ate it — answers 404 with runNotFoundMessage, the
  * CLI's exact not-found wording,
  * never a crash. `revertSha` is the run's landed commit's full sha when it is on the base branch
@@ -356,30 +356,30 @@ function transcriptText(root: string, role: string, tick: number, detail: TickDe
  * note), so the default expand reads no pi log; a present `prompt` flag also renders each agent
  * run's prompt, the text `history --transcript --prompt` prints. Reads files directly, so
  * it works whether or not the team is running. */
-export async function handleTick(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
+export async function handleRun(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
-  const tick = intQuery(q, res, "run", "positive");
-  if (tick === null) return;
-  const detail = readTickDetail(root, role as string, tick);
+  const run = intQuery(q, res, "run", "positive");
+  if (run === null) return;
+  const detail = readRunDetail(root, role as string, run);
   if (detail === null) {
-    sendJson(res, 404, { error: runNotFoundMessage(role as string, tick) });
+    sendJson(res, 404, { error: runNotFoundMessage(role as string, run) });
     return;
   }
   const mergedAs = runMergedSha(detail);
   const target = mergedAs === null ? null : await resolveRevertTarget(root, mergedAs);
   sendJson(res, 200, {
     ...detail,
-    text: renderTickDetail(detail),
+    text: renderRunDetail(detail),
     stat: await runDetailStat(root, detail),
     revertSha: target?.ok ? target.full : null,
     hasCommit: runCommitSha(detail) !== null,
     ...(q.get("patch") !== null ? { patch: await runDetailPatch(root, detail) } : {}),
-    ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role as string, tick, detail, q.get("prompt") !== null) } : {}),
+    ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role as string, run, detail, q.get("prompt") !== null) } : {}),
   });
 }
 /** Handle GET /api/role?role=<id>: one role's inspection payload — rolePayload's object,
- * the same collection behind `tumwater role <id>` — so the drawer's Notebook and Next tick
+ * the same collection behind `tumwater role <id>` — so the drawer's Notebook and Next run
  * prompt sections render what the CLI shows without re-implementing the assembly. The role
  * is a target here, so it validates through rejectBadRole exactly like /api/transcript and
  * /api/run (unknown/missing → the shared 400 naming the valid ids and correcting typos);

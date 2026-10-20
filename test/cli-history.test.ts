@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
 import { initProject } from "../src/init/init.js";
-import { readTickRows, HISTORY_MAX_RUNS } from "../src/history/history-data.js";
+import { readRunRows, HISTORY_MAX_RUNS } from "../src/history/history-data.js";
 import { displayWidth } from "../src/text/text-width.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
@@ -16,7 +16,7 @@ import { seededHistoryRepo } from "./fixtures/history-fixtures.js";
 // validation, --json, and the unknown-flag/empty-log/help edges. The window-and-filter halves
 // (--since, --grep) live in cli-history-filtering.test.ts, split the way cli-logs.test.ts
 // keeps itself apart from cli-logs-filtering.test.ts so node --test runs the two in parallel.
-// The runRows collector's own unit cases live beside readTickRows in test/history-data.test.ts;
+// The runRows collector's own unit cases live beside readRunRows in test/history-data.test.ts;
 // the direct in-process cmdHistory views in cli-history-views.test.ts.
 
 test("history CLI keeps the detail column aligned across usage and usage-less rows", async () => {
@@ -41,7 +41,7 @@ test("history CLI keeps the detail column aligned across usage and usage-less ro
 });
 
 test("history grows the scan window to pair a run_start the first window's boundary cut off", async () => {
-  // The default window (limit*2+50) can end inside a tick's own event block: every run_end
+  // The default window (limit*2+50) can end inside a run's own event block: every run_end
   // the ask needs sits within it, but the oldest one's run_start sits just before the
   // boundary — and since the row count is satisfied, growth keyed on short rows alone never
   // re-read. The log holds the start, so the row must show its duration, not a dash.
@@ -49,7 +49,7 @@ test("history grows the scan window to pair a run_start the first window's bound
   await initProject(repo, "cli history boundary");
   const events: HarnessEvent[] = [{ ts: 1000, source: "feature", type: "run_start", run: 1 } as HarnessEvent];
   // Unrelated events inflate the span between the two run_ends past the first window: 41
-  // merged events put tick 1's end at depth 54 of a 55-event log, exactly one event short of
+  // merged events put run 1's end at depth 54 of a 55-event log, exactly one event short of
   // carrying its own start (window = 2*2+50 = 54).
   for (let i = 0; i < 41; i++) events.push({ ts: 1001 + i, source: "other", type: "merged" } as HarnessEvent);
   events.push(
@@ -65,7 +65,7 @@ test("history grows the scan window to pair a run_start the first window's bound
   assert.equal(r.code, 0);
   const lines = r.stdout.trim().split("\n");
   assert.equal(lines.length, 2);
-  // Newest first: tick 2 pairs inside the first window (1s); tick 1's start only pairs once
+  // Newest first: run 2 pairs inside the first window (1s); run 1's start only pairs once
   // the window grows — 4s, from its start at ts 1000 to its end at ts 5000.
   assert.match(lines[0]!, /#2\s+merged\s+1s\s+work 2/);
   assert.match(lines[1]!, /#1\s+merged\s+4s\s+100 tok · \$0\.01\s+work/);
@@ -95,11 +95,11 @@ test("history --role restricts rows to that role, including user-defined ids", a
   assert.match(bogus.stderr, /unknown role: bogus/);
 });
 
-test("history --role grows its scan window until it reaches the role's ticks", async () => {
+test("history --role grows its scan window until it reaches the role's runs", async () => {
   // The dilution case: the first window (limit*2+50 events) fills with a busy sibling role's
-  // run_ends, so the filtered rows fall short while older qa ticks sit just past it. The
+  // run_ends, so the filtered rows fall short while older qa runs sit just past it. The
   // command must re-read with a larger window instead of printing fewer rows (or, at the
-  // extreme, "no runs yet" for a role that had ticks).
+  // extreme, "no runs yet" for a role that had runs).
   const repo = makeRepo();
   await initProject(repo, "history dilution");
   const events: HarnessEvent[] = [];
@@ -112,7 +112,7 @@ test("history --role grows its scan window until it reaches the role's ticks", a
   assert.equal(lines.length, 5);
   assert.match(lines[0]!, /qa\s+#5\s+merged\s+—\s+qa fix 4/); // no run_start seeded: — duration
 
-  // The honest-shortfall case: the log holds fewer qa ticks than asked and the scan reached
+  // The honest-shortfall case: the log holds fewer qa runs than asked and the scan reached
   // its start — the growth loop must stop and print what exists, not spin.
   const short = await cli(repo, "history", "--role", "qa", "-n", "10");
   assert.equal(short.code, 0);
@@ -150,13 +150,13 @@ test("history keeps the role column aligned when a role name holds a wide charac
   assert.equal(r.code, 0);
   const lines = r.stdout.trim().split("\n");
   assert.equal(lines.length, 2);
-  // The `#tick` cell opens the first padded column, so its display column must be identical
+  // The `#run` cell opens the first padded column, so its display column must be identical
   // across rows — the boundary the earlier cells pad up to.
   const cols = lines.map((l) => displayWidth(l.slice(0, l.indexOf("#"))));
   assert.equal(new Set(cols).size, 1, `loop columns align across rows: ${lines.join(" | ")}`);
 });
 
-test("history --json prints the tick rows as machine-readable data", async () => {
+test("history --json prints the run rows as machine-readable data", async () => {
   const repo = await seededHistoryRepo();
 
   const r = await cli(repo, "history", "--json");
@@ -164,7 +164,7 @@ test("history --json prints the tick rows as machine-readable data", async () =>
   const payload = JSON.parse(r.stdout) as { rows: unknown[] };
   // The payload is the collector's own output: identical to what the GUI's /api/history
   // serves for the same log, and to what the table renders.
-  assert.deepEqual(payload, JSON.parse(JSON.stringify({ rows: readTickRows(repo, HISTORY_MAX_RUNS, null) })));
+  assert.deepEqual(payload, JSON.parse(JSON.stringify({ rows: readRunRows(repo, HISTORY_MAX_RUNS, null) })));
   const rows = payload.rows as Array<Record<string, unknown>>;
   assert.equal(rows.length, 3); // The run_start contributes no row.
   // Newest first, with the raw fields the table's renderings are derived from.

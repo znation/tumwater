@@ -7,11 +7,11 @@ import type http from "node:http";
 import { readEventsTailWithEnd } from "../src/events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
+import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
-import { renderTickDetail } from "../src/run/run-detail.js";
-import { readTickDetail, type TickDetail } from "../src/run/run-detail-data.js";
+import { renderRunDetail } from "../src/run/run-detail.js";
+import { readRunDetail, type RunDetail } from "../src/run/run-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
 import { scheduledStopAt } from "../src/team/team-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
@@ -38,7 +38,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { captureJson } from "./fakes/fake-res.js";
 import { readJson } from "./helpers/json-read.js";
 import { rolePayload } from "../src/roles/role-view.js";
-import { summarizeTickRows, summarizeTickRowsByModel } from "../src/history/history-data.js";
+import { summarizeRunRows, summarizeRunRowsByModel } from "../src/history/history-data.js";
 import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
@@ -105,7 +105,7 @@ test("handleFailures serves the digest as JSON markdown, empty and after an erro
   assert.equal(captured.contentType, "application/json");
   assert.match((data as { markdown: string }).markdown, /^# tumwater failure digest/);
 
-  // A seeded error tick surfaces as a real outcome row in the same digest.
+  // A seeded error run surfaces as a real outcome row in the same digest.
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 1, result: "error" }), // retired-name-ok: legacy event field in a fixture
@@ -476,7 +476,7 @@ test("handleHistory ?summary folds the served rows into an additive per-role sum
   const root = tmpdir();
   const now = Date.now();
   // All timestamps sit inside the last hour, so both the count arm and a 1h trailing window
-  // hold every row. The two changes-class ticks are at 50m (feature) and 15m (clean) ago, so
+  // hold every row. The two changes-class runs are at 50m (feature) and 15m (clean) ago, so
   // the newest change is clean's, at now - 900_000.
   writeEvents(root, [
     { ts: now - 3_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
@@ -487,13 +487,13 @@ test("handleHistory ?summary folds the served rows into an additive per-role sum
   const { captured, data } = await serveHistory(root, "?n=50&summary=1");
   assert.equal(captured.status, 200);
   const { rows, summary } = data as {
-    rows: Parameters<typeof summarizeTickRows>[0];
+    rows: Parameters<typeof summarizeRunRows>[0];
     summary: { roles: { role: string; lastChangeTs: number | null }[]; total: { runs: number; changes: number; none: number; refused: number; problems: number; tokens: number; costUsd: number; lastChangeTs: number } };
   };
   assert.equal(rows.length, 4);
   // The summary folds the exact served rows through the shared collector, so it can never
   // disagree with the table it scrolls beside (`history --summary`'s own tally).
-  assert.deepEqual(summary, summarizeTickRows(rows));
+  assert.deepEqual(summary, summarizeRunRows(rows));
   assert.deepEqual(summary.roles.map((l) => l.role), ["clean", "feature"]);
   assert.equal(summary.total.runs, 4);
   assert.equal(summary.total.changes, 2);
@@ -506,16 +506,16 @@ test("handleHistory ?summary folds the served rows into an additive per-role sum
   // The count shape without the flag is today's byte-for-byte: no summary key.
   const bare = await serveHistory(root, "?n=50");
   assert.ok(!("summary" in (bare.data as object)));
-  assert.deepEqual((bare.data as { rows: Parameters<typeof summarizeTickRows>[0] }).rows, rows);
+  assert.deepEqual((bare.data as { rows: Parameters<typeof summarizeRunRows>[0] }).rows, rows);
   // A bad summary value counts as the flag present (its mere presence triggers it).
   const blank = await serveHistory(root, "?n=50&summary=");
   assert.ok("summary" in (blank.data as object), "an empty value still counts as the flag present");
   // The trailing-window arm folds the same way, riding { rows, covered, note }.
   const win = await serveHistory(root, "?sinceMs=3600000&summary=1");
-  const wdata = win.data as { rows: Parameters<typeof summarizeTickRows>[0]; covered: boolean; note: string; summary: { total: { runs: number } } };
+  const wdata = win.data as { rows: Parameters<typeof summarizeRunRows>[0]; covered: boolean; note: string; summary: { total: { runs: number } } };
   assert.equal(wdata.rows.length, 4);
   assert.equal(wdata.summary.total.runs, 4);
-  assert.deepEqual(wdata.summary, summarizeTickRows(wdata.rows));
+  assert.deepEqual(wdata.summary, summarizeRunRows(wdata.rows));
 });
 
 test("handleHistory ?summary also folds the served rows per model", async () => {
@@ -528,14 +528,14 @@ test("handleHistory ?summary also folds the served rows per model", async () => 
     { ts: now - 1_790_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
     { ts: now - 300_000, loop: "qa", type: "run_end", run: 1, result: "error", summary: "c", tokens: 50, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
   ]);
-  type Rows = Parameters<typeof summarizeTickRowsByModel>[0];
+  type Rows = Parameters<typeof summarizeRunRowsByModel>[0];
   interface Body { rows: Rows; modelSummary: { models: { model: string | null }[] } }
   const count = (await serveHistory(root, "?n=50&summary=1")).data as Body;
   assert.equal(count.rows.length, 3);
-  assert.deepEqual(count.modelSummary, summarizeTickRowsByModel(count.rows));
+  assert.deepEqual(count.modelSummary, summarizeRunRowsByModel(count.rows));
   assert.deepEqual(count.modelSummary.models.map((m) => m.model), ["m-a", "m-b", null], "the null bucket is last");
   const win = (await serveHistory(root, "?sinceMs=3600000&summary=1")).data as Body;
-  assert.deepEqual(win.modelSummary, summarizeTickRowsByModel(win.rows));
+  assert.deepEqual(win.modelSummary, summarizeRunRowsByModel(win.rows));
   const bare = await serveHistory(root, "?n=50");
   assert.ok(!("modelSummary" in (bare.data as object)));
 });
@@ -550,13 +550,13 @@ test("handleHistory ?model keeps exact selectors in both shapes, before the summ
     { ts: now - 1_790_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
     { ts: now - 300_000, loop: "qa", type: "run_end", run: 1, result: "error", summary: "c", tokens: 50, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
   ]);
-  type Rows = Parameters<typeof summarizeTickRowsByModel>[0];
+  type Rows = Parameters<typeof summarizeRunRowsByModel>[0];
   interface Body { rows: Rows & { role: string }[]; modelSummary: unknown }
   const get = async (q: string) => (await serveHistory(root, q)).data as Body;
   assert.deepEqual((await get("?n=50&model=m-a")).rows.map((r) => r.role), ["clean"]);
   const two = await get("?n=50&model=m-a,m-b&summary=1");
   assert.equal(two.rows.length, 2);
-  assert.deepEqual(two.modelSummary, summarizeTickRowsByModel(two.rows));
+  assert.deepEqual(two.modelSummary, summarizeRunRowsByModel(two.rows));
   assert.deepEqual((await get("?sinceMs=3600000&model=m-a")).rows.map((r) => r.role), ["clean"]);
   assert.equal((await get("?n=50&model=")).rows.length, 3);
   assert.equal((await get("?n=50&model=,")).rows.length, 3);
@@ -565,66 +565,67 @@ test("handleHistory ?model keeps exact selectors in both shapes, before the summ
   assert.deepEqual((none.data as Body).rows, []);
 });
 
-function serveTick(root: string, query: string) {
-  return captureJson((res) => handleTick(new URLSearchParams(query), res, root));
+function serveRun(root: string, query: string) {
+  return captureJson((res) => handleRun(new URLSearchParams(query), res, root));
 }
 
-test("handleTick serves one run's collector payload plus its pre-rendered text", async () => {
+test("handleRun serves one run's collector payload plus its pre-rendered text", async () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: 2_000, loop: "clean", type: "review_verdict", verdict: "approve" }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: 47_000, loop: "clean", type: "run_end", run: 3, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 }), // retired-name-ok: legacy event field in a fixture
-    // Another role's same-numbered tick must not leak into clean's block.
+    // Another role's same-numbered run must not leak into clean's block.
     JSON.stringify({ ts: 48_000, loop: "feature", type: "run_end", run: 3, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
   ]);
-  const { captured, data } = await serveTick(root, "?role=clean&run=3");
-  const detail = readTickDetail(root, "clean", 3);
+  const { captured, data } = await serveRun(root, "?role=clean&run=3");
+  const detail = readRunDetail(root, "clean", 3);
   assert.ok(detail);
   assert.equal(captured.status, 200);
   assert.equal(captured.contentType, "application/json");
-  // The payload is the collector's own — the same object `tumwater tick --json` prints — plus
-  // `text`, the renderTickDetail rendering the browser shows instead of re-formatting events.
-  assert.deepEqual(data, { ...detail, text: renderTickDetail(detail!), stat: "(no commit: this run sent nothing to merge)", revertSha: null, hasCommit: false });
-  const d = data as TickDetail & { text: string };
+  // The payload is the collector's own — the same object `tumwater history <role> <n> --json`
+  // prints — plus `text`, the renderRunDetail rendering the browser shows instead of
+  // re-formatting events.
+  assert.deepEqual(data, { ...detail, text: renderRunDetail(detail!), stat: "(no commit: this run sent nothing to merge)", revertSha: null, hasCommit: false });
+  const d = data as RunDetail & { text: string };
   assert.equal(d.durationMs, 46_000, "duration pairs the run's own run_start");
   assert.deepEqual(d.events.map((e) => e.type), ["run_start", "review_verdict", "run_end"]);
   assert.match(d.text, /^clean run #3 — merged · 46s/);
   assert.match(d.text, /tidy up/);
 });
 
-test("handleTick's stat names a pinned commit that is not in the repository", async () => {
+test("handleRun's stat names a pinned commit that is not in the repository", async () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: 2_000, loop: "clean", type: "merge_queued", commit: "abcdef1234567890abcdef1234567890abcdef12" }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: 3_000, loop: "clean", type: "run_end", run: 3, result: "changed" }), // retired-name-ok: legacy event field in a fixture
   ]);
-  const { data } = await serveTick(root, "?role=clean&run=3");
+  const { data } = await serveRun(root, "?role=clean&run=3");
   assert.match((data as { stat: string }).stat, /^\(commit [0-9a-f]+ is not in this repository\)$/);
 });
 
-test("handleTick's error cases: role and run 400s, a missed run 404", async () => {
+test("handleRun's error cases: role and run 400s, a missed run 404", async () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: 2_000, loop: "clean", type: "run_end", run: 3, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
   ]);
   // The role is a target here, not a filter: missing and unknown are 400s naming the valid ids.
-  assert.equal((await serveTick(root, "?run=3")).captured.status, 400);
-  const unknown = await serveTick(root, "?role=nope&run=3");
+  assert.equal((await serveRun(root, "?run=3")).captured.status, 400);
+  const unknown = await serveRun(root, "?role=nope&run=3");
   assert.equal(unknown.captured.status, 400);
   assert.match((unknown.data as { error: string }).error, /unknown role "nope"/);
-  // The tick is an explicit count: required, and a positive integer through intQuery.
-  assert.equal((await serveTick(root, "?role=clean")).captured.status, 400);
+  // The run is an explicit count: required, and a positive integer through intQuery.
+  assert.equal((await serveRun(root, "?role=clean")).captured.status, 400);
   for (const bad of ["abc", "0", "-5", "1e3"]) {
-    const r = await serveTick(root, `?role=clean&run=${bad}`);
+    const r = await serveRun(root, `?role=clean&run=${bad}`);
     assert.equal(r.captured.status, 400, `run=${bad} → 400`);
     assert.match((r.data as { error: string }).error, /run must be a positive integer/);
   }
-  // A tick the scanned window does not hold — never ran, or rotation ate it — is a not-found
+  // A run the scanned window does not hold — never ran, or rotation ate it — is a not-found
   // status with the CLI's wording, not a crash.
-  const missing = await serveTick(root, "?role=clean&run=9");
+  const missing = await serveRun(root, "?role=clean&run=9");
   assert.equal(missing.captured.status, 404);
   assert.match((missing.data as { error: string }).error, /no run #9 for clean in the scanned window/);
   for (const r of [unknown, missing]) assert.equal("stat" in (r.data as object), false, "error bodies carry no stat");
@@ -636,7 +637,7 @@ function serveRole(root: string, query: string) {
 
 test("handleRole serves a role's notes and next prompt, refusing a missing or unknown role", async () => {
   const root = tmpdir();
-  // A notebook written by the role's own earlier tick — the text the drawer's Notebook
+  // A notebook written by the role's own earlier run — the text the drawer's Notebook
   // section must show verbatim.
   const notes = roleNotesPath(root, "feature");
   fs.mkdirSync(path.dirname(notes), { recursive: true });
@@ -1133,7 +1134,7 @@ test("handleRoleInterval maps an instance id to its base role's override and the
   assert.equal(inst.captured.status, 200);
   // An instance id writes roles.feature.minRunIntervalSeconds (the key its runs carry).
   assert.deepEqual(inst.data, { ok: true, role: "feature", minRunIntervalSeconds: 240, message: "feature: min run interval set to 240s" });
-  // The director ticks on the same clock — no exemption like the cap's.
+  // The director runs on the same clock — no exemption like the cap's.
   const dir = await serveRoleInterval(root, { role: "director", minRunIntervalSeconds: 60 });
   assert.equal(dir.captured.status, 200);
   assert.deepEqual(dir.data, { ok: true, role: "director", minRunIntervalSeconds: 60, message: "director: min run interval set to 60s" });

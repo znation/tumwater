@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { fail, say, sayJson, sayJsonLine } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
-import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, runRows, summarizeTickRows, summarizeTickRowsByModel, runRowsMatchingGrep, runRowsOnModels, type HistoryResultClass, type TickRow } from "./history-data.js";
+import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readRunRows, readRunRowsSince, runRows, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { followUntilParentGone, type FollowSeams } from "../cli/log-commands.js";
@@ -11,7 +11,7 @@ import { eventsLogPath } from "../paths.js";
 import { gotSuffix } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 
-/** `tumwater history [--role <id>[,<id>...]] [-n N]`: one row per completed tick, newest first. The
+/** `tumwater history [--role <id>[,<id>...]] [-n N]`: one row per completed run, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
  * every datum rides the `run_end` events src/run/run-finalize.ts already writes, so this
  * is a rendering of the existing record, not a new one. The rows themselves are collected
@@ -44,9 +44,9 @@ export const HISTORY_BY_VALUE_ERROR = "history --by needs role or model";
 const HISTORY_FOLLOW_BUFFER_EVENTS = 2000;
 
 /** `tumwater history [--role <id>[,<id>...]] [-n N] [-f] [--since <duration>] [--grep <text>]
- * [--result <class>] [--model <selector>[,...]]`: print the last N completed ticks, newest
+ * [--result <class>] [--model <selector>[,...]]`: print the last N completed runs, newest
  * first — or,
- * with `--since`, the ticks of a bounded past window over the same record, the same shape
+ * with `--since`, the runs of a bounded past window over the same record, the same shape
  * `logs --since` and `report --since` speak. `--grep` keeps rows whose rendered line matches,
  * `--result` narrows to the listed outcome classes (changes/none/problems, the dashboard History
  * filter's buckets) and `--model` keeps runs that started on the listed models; all compose
@@ -62,13 +62,13 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   // --grep, rest is args.
   const { rest, pattern: grepPattern } = parseGrepFlag(args, HISTORY_GREP_VALUE_ERROR);
   const nRaw = flagValue(rest, "-n");
-  // `--since <duration>` is the window-shaped view over the same tick record the -n view
+  // `--since <duration>` is the window-shaped view over the same run record the -n view
   // dumps: a rival shape to -n, so they fail together naming both (the same rule and wording
   // shape logs uses). It reuses the logs --since cap (same log, same cap — no third cap
   // value) through parseSinceFlag, so the error wordings cannot drift. `--role` composes with
   // --since here: history's --role is a row filter, not the rival transcript view logs guards
   // against.
-  let rows: TickRow[];
+  let rows: RunRow[];
   let covered = true;
   const follow = rest.includes("-f") || rest.includes("--follow");
   if (follow) {
@@ -81,13 +81,13 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
   if (followTail !== null) {
     const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_RUNS) : HISTORY_DEFAULT_RUNS;
-    // The seed goes through readTickRows, which widens its window until it finds `limit` rows;
+    // The seed goes through readRunRows, which widens its window until it finds `limit` rows;
     // the tail buffer only feeds the live follow.
-    rows = readTickRows(root, limit, parseRoleListScope(root, rest));
+    rows = readRunRows(root, limit, parseRoleListScope(root, rest));
   } else if (sinceMs !== null) {
     if (nRaw !== null) failRivalShapes("history --since", "-n", "a count and a window are rival shapes");
     const role = parseRoleListScope(root, rest);
-    const windowed = readTickRowsSince(root, sinceMs, role);
+    const windowed = readRunRowsSince(root, sinceMs, role);
     rows = windowed.rows;
     covered = windowed.covered;
   } else {
@@ -97,7 +97,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
     // The config is read (through loadConfigCached, never throwing) only when --role is present:
     // a read-only view must not refuse a transiently broken tumwater.json.
     const role = parseRoleListScope(root, rest);
-    rows = readTickRows(root, limit, role);
+    rows = readRunRows(root, limit, role);
   }
   // The filter runs on the collected rows, before rendering and before --json serialization:
   // the same rows the table would print, filtered the same way in both forms (the logs --grep
@@ -169,14 +169,14 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   }
   const summary = rest.includes("--summary") && rows.length > 0;
   if (rest.includes("--json")) {
-    sayJson(summary ? (byModel ? summarizeTickRowsByModel(rows) : summarizeTickRows(rows)) : { rows });
+    sayJson(summary ? (byModel ? summarizeRunRowsByModel(rows) : summarizeRunRows(rows)) : { rows });
     return;
   }
   if (rows.length === 0) {
     // A grep that matched nothing must not borrow the empty-log prose: `no runs yet` and
     // `no runs in 2h` are statements about the LOG and the WINDOW, and both are false when
     // rows were scanned and filtered out — the operator would read a quiet team where the
-    // truth is `the ticks are there, none match`. The logs --grep rule (its `no events
+    // truth is `the runs are there, none match`. The logs --grep rule (its `no events
     // matching "<pattern>"`, src/cli/log-commands.ts) names the pattern instead; --json stays
     // a bare {"rows":[]} document above, never prose in either form.
     //
@@ -197,7 +197,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
     );
     return;
   }
-  if (summary) say(byModel ? renderModelSummary(summarizeTickRowsByModel(rows)) : renderSummary(summarizeTickRows(rows)));
+  if (summary) say(byModel ? renderModelSummary(summarizeRunRowsByModel(rows)) : renderSummary(summarizeRunRows(rows)));
   else {
     const widths = widestWidths(rows);
     say(rows.map((r) => renderRow(r, widths)).join("\n"));
@@ -210,7 +210,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
 }
 
 /** The row filters `--grep`, `--result` and `--model` apply, as one predicate for followed rows. */
-function rowKept(row: TickRow, grep: string | null, classes: HistoryResultClass[] | null, models: string[] | null): boolean {
+function rowKept(row: RunRow, grep: string | null, classes: HistoryResultClass[] | null, models: string[] | null): boolean {
   if (grep !== null && runRowsMatchingGrep([row], grep).length === 0) return false;
   if (classes !== null && !classes.includes(historyClass(row.result))) return false;
   return models === null || runRowsOnModels([row], models).length > 0;
@@ -222,9 +222,9 @@ function rowKept(row: TickRow, grep: string | null, classes: HistoryResultClass[
 async function followHistory(
   root: string,
   rest: string[],
-  seed: TickRow[],
+  seed: RunRow[],
   tail: { events: HarnessEvent[]; coveredEnd: number },
-  keep: (row: TickRow) => boolean,
+  keep: (row: RunRow) => boolean,
   seams: FollowSeams,
   json: boolean,
 ): Promise<void> {

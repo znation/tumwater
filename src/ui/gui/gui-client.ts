@@ -182,14 +182,14 @@ const FORMAT_JS = String.raw`  // format:start
   const ACTIVE_PHASE_PREFIXES = ${JSON.stringify(ACTIVE_PHASE_PREFIXES)};
   const isActivePhase = (phase) => ACTIVE_PHASE_PREFIXES.some((p) => phase.startsWith(p));
   // active-phase-fmt:end
-  // last-tick-fmt:start
-  // The absolute local time of a tick end with its age ("14:32:05 · 3m ago"), prefixed MM-DD
-  // once older than a day; "-" when never ticked — status-render.ts's lastTickCell.
+  // last-run-fmt:start
+  // The absolute local time of a run end with its age ("14:32:05 · 3m ago"), prefixed MM-DD
+  // once older than a day; "-" when never ran — status-render.ts's lastTickCell.
   // Whole elapsed seconds since an instant, clamped at zero and rounded to the nearest
   // second — datetime.ts's secondsSince (the browser runtime cannot import it), shared by
-  // fmtLastTick and fmtAgo below so the clamp cannot drift between the page's ages.
+  // fmtLastRun and fmtAgo below so the clamp cannot drift between the page's ages.
   const ageSec = (ts) => Math.max(0, Math.round((Date.now() - ts) / 1000));
-  const fmtLastTick = (ts) => {
+  const fmtLastRun = (ts) => {
     if (!ts) return "-";
     const d = new Date(ts);
     const p = (n) => String(n).padStart(2, "0");
@@ -199,9 +199,9 @@ const FORMAT_JS = String.raw`  // format:start
     const age = humanSeconds(sec) + " ago";
     return s + " · " + age;
   };
-  // last-tick-fmt:end
+  // last-run-fmt:end
   // next-run-fmt:start
-  // When an idle role may tick again — status-render.ts's nextRunCell: "-" for a role in flight
+  // When an idle role may run again — status-render.ts's nextRunCell: "-" for a role in flight
   // or parked awaiting a slot (it has no next run to speak of) and for a stopped team; "now"
   // when due; otherwise the remaining time, prefixed "backoff " while backing off. A yield-scaled
   // clock rides as a " ×N" suffix: a quiet role's effective gap is longer than the countdown.
@@ -226,7 +226,7 @@ const FORMAT_JS = String.raw`  // format:start
     return sec < 60 ? "just now" : humanSeconds(sec) + " ago";
   };
   const fmtClock = (ts) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  // A tick's duration: seconds under two minutes, then minutes, then hours. Each bucket is
+  // A run's duration: seconds under two minutes, then minutes, then hours. Each bucket is
   // chosen from the rounded count so a span just under a cutoff never prints "120s" or "120m".
   const fmtSpan = (ms) => {
     const sec = Math.round(ms / 1000);
@@ -236,7 +236,7 @@ const FORMAT_JS = String.raw`  // format:start
     return (ms / 3600000).toFixed(1) + "h";
   };
   // A run's wall-clock span cell: fmtSpan when a row carries a duration, a dash when it does not
-  // (a tick whose start sits outside the window). Shared by the History table and summary rows
+  // (a run whose start sits outside the window). Shared by the History table and summary rows
   // (and any future duration cell) so the null rule and its em-dash cannot drift between them.
   const durCell = (ms) => (ms === null || ms === undefined ? "—" : esc(fmtSpan(Number(ms))));
   // Server text sometimes carries ISO instants (a restart cooldown's deadline); show them in

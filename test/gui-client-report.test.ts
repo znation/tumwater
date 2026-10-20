@@ -199,15 +199,15 @@ test("reportBaseRoles folds each instance into its `instanceOf` base role, once,
   );
 });
 
-test("the Rejections by role chart stacks per role in the ticks order and stays empty without a map", () => {
+test("the Rejections by role chart stacks per role in the runs order and stays empty without a map", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
-    chartTicksByRole(d: ReportData): string;
+    chartRunsByRole(d: ReportData): string;
     chartRejectionsByRole(d: ReportData): string;
   }
-  const { reportRoleOrder, chartTicksByRole, chartRejectionsByRole } = clientScope<Builders>(
+  const { reportRoleOrder, chartRunsByRole, chartRejectionsByRole } = clientScope<Builders>(
     ["format", "report-chart"],
-    ["reportRoleOrder", "chartTicksByRole", "chartRejectionsByRole"],
+    ["reportRoleOrder", "chartRunsByRole", "chartRejectionsByRole"],
   );
   const mkDay = (date: string, runsByRole: Record<string, number>, rejectionsByRole?: Record<string, number>): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
@@ -226,12 +226,12 @@ test("the Rejections by role chart stacks per role in the ticks order and stays 
     [...svg.matchAll(/<rect x='([\d.]+)' y='([\d.]+)' width='([\d.]+)' height='([\d.]+)' rx='2' fill='([^']*)'><title>([^<]*)<\/title><\/rect>/g)].map(
       (r) => ({ y: +r[2]!, h: +r[3]!, title: r[6]! }),
     );
-  // A role that rejected but never ticked (qa) still keeps a stack row, after the tickers.
+  // A role that rejected but never ran (qa) still keeps a stack row, after the tickers.
   assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["bugfix", 0], ["qa", 0]]);
   const rects = parseRects(chartRejectionsByRole(data));
   assert.equal(rects.length, 3, "one segment per (day, role) with a rejection");
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
-  assert.equal(legendOf(chartRejectionsByRole(data)), legendOf(chartTicksByRole(data)), "same per-role order and colors as the ticks element");
+  assert.equal(legendOf(chartRejectionsByRole(data)), legendOf(chartRunsByRole(data)), "same per-role order and colors as the runs element");
   // A missing rejectionsByRole map renders the element empty (no segments).
   const none = mkDay("2026-09-01", { feature: 2 });
   const emptySvg = chartRejectionsByRole({ ...data, series: [none, { ...none, date: "2026-09-02" }] });
@@ -241,14 +241,14 @@ test("the Rejections by role chart stacks per role in the ticks order and stays 
 test("the Fallbacks and Image reroutes charts stack per role and seriesHasAny gates them", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
-    chartTicksByRole(d: ReportData): string;
+    chartRunsByRole(d: ReportData): string;
     chartFallbacksByRole(d: ReportData): string;
     chartImageReroutesByRole(d: ReportData): string;
     seriesHasAny(d: ReportData, field: string): boolean;
   }
-  const { reportRoleOrder, chartTicksByRole, chartFallbacksByRole, chartImageReroutesByRole, seriesHasAny } = clientScope<Builders>(
+  const { reportRoleOrder, chartRunsByRole, chartFallbacksByRole, chartImageReroutesByRole, seriesHasAny } = clientScope<Builders>(
     ["format", "report-chart"],
-    ["reportRoleOrder", "chartTicksByRole", "chartFallbacksByRole", "chartImageReroutesByRole", "seriesHasAny"],
+    ["reportRoleOrder", "chartRunsByRole", "chartFallbacksByRole", "chartImageReroutesByRole", "seriesHasAny"],
   );
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
@@ -266,8 +266,8 @@ test("the Fallbacks and Image reroutes charts stack per role and seriesHasAny ga
   assert.equal(titles(chartImageReroutesByRole(data)).length, 1);
   assert.ok(titles(chartImageReroutesByRole(data)).some((t) => t.includes("qa: 1 image reroute")));
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
-  assert.equal(legendOf(chartFallbacksByRole(data)), legendOf(chartTicksByRole(data)));
-  assert.equal(legendOf(chartImageReroutesByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.equal(legendOf(chartFallbacksByRole(data)), legendOf(chartRunsByRole(data)));
+  assert.equal(legendOf(chartImageReroutesByRole(data)), legendOf(chartRunsByRole(data)));
   const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 }, { fallbacksByRole: { feature: 0 } })]);
   assert.equal(seriesHasAny(plain, "fallbacksByRole"), false);
   assert.equal(seriesHasAny(plain, "imageReroutesByRole"), false);
@@ -278,14 +278,14 @@ test("the Fallbacks and Image reroutes charts stack per role and seriesHasAny ga
 test("the Failed runs and Merge failures charts stack per role and seriesHasAny gates them", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
-    chartTicksByRole(d: ReportData): string;
+    chartRunsByRole(d: ReportData): string;
     chartFailedRunsByRole(d: ReportData): string;
     chartMergeFailuresByRole(d: ReportData): string;
     seriesHasAny(d: ReportData, field: string): boolean;
   }
-  const { reportRoleOrder, chartTicksByRole, chartFailedRunsByRole, chartMergeFailuresByRole, seriesHasAny } = clientScope<Builders>(
+  const { reportRoleOrder, chartRunsByRole, chartFailedRunsByRole, chartMergeFailuresByRole, seriesHasAny } = clientScope<Builders>(
     ["format", "report-chart"],
-    ["reportRoleOrder", "chartTicksByRole", "chartFailedRunsByRole", "chartMergeFailuresByRole", "seriesHasAny"],
+    ["reportRoleOrder", "chartRunsByRole", "chartFailedRunsByRole", "chartMergeFailuresByRole", "seriesHasAny"],
   );
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
@@ -303,8 +303,8 @@ test("the Failed runs and Merge failures charts stack per role and seriesHasAny 
   assert.equal(titles(chartMergeFailuresByRole(data)).length, 1);
   assert.ok(titles(chartMergeFailuresByRole(data)).some((t) => t.includes("qa: 1 merge failure")));
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
-  assert.equal(legendOf(chartFailedRunsByRole(data)), legendOf(chartTicksByRole(data)));
-  assert.equal(legendOf(chartMergeFailuresByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.equal(legendOf(chartFailedRunsByRole(data)), legendOf(chartRunsByRole(data)));
+  assert.equal(legendOf(chartMergeFailuresByRole(data)), legendOf(chartRunsByRole(data)));
   const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 }, { failedRunsByRole: { feature: 0 } })]);
   assert.equal(seriesHasAny(plain, "failedRunsByRole"), false);
   assert.equal(seriesHasAny(plain, "mergeFailedByRole"), false);
@@ -315,13 +315,13 @@ test("the Failed runs and Merge failures charts stack per role and seriesHasAny 
 test("the Merged by role chart stacks per role and seriesHasAny gates it", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
-    chartTicksByRole(d: ReportData): string;
+    chartRunsByRole(d: ReportData): string;
     chartMergedByRole(d: ReportData): string;
     seriesHasAny(d: ReportData, field: string): boolean;
   }
-  const { reportRoleOrder, chartTicksByRole, chartMergedByRole, seriesHasAny } = clientScope<Builders>(
+  const { reportRoleOrder, chartRunsByRole, chartMergedByRole, seriesHasAny } = clientScope<Builders>(
     ["format", "report-chart"],
-    ["reportRoleOrder", "chartTicksByRole", "chartMergedByRole", "seriesHasAny"],
+    ["reportRoleOrder", "chartRunsByRole", "chartMergedByRole", "seriesHasAny"],
   );
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
@@ -336,7 +336,7 @@ test("the Merged by role chart stacks per role and seriesHasAny gates it", () =>
   const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
   assert.deepEqual(titles(chartMergedByRole(data)), ["2026-09-01 · feature: 2 merges", "2026-09-01 · qa: 1 merge"]);
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
-  assert.equal(legendOf(chartMergedByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.equal(legendOf(chartMergedByRole(data)), legendOf(chartRunsByRole(data)));
   const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 })]);
   const missing = mk([mkDay("2026-09-01", { feature: 1 }, { runsByRole: { feature: 1 } }), mkDay("2026-09-02", { feature: 1 })]);
   assert.equal(seriesHasAny(plain, "mergedByRole"), false);
@@ -344,15 +344,15 @@ test("the Merged by role chart stacks per role and seriesHasAny gates it", () =>
   assert.equal(seriesHasAny(data, "mergedByRole"), true);
 });
 
-test("the Commits by role chart stacks per role in the ticks order", () => {
+test("the Commits by role chart stacks per role in the runs order", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
-    chartTicksByRole(d: ReportData): string;
+    chartRunsByRole(d: ReportData): string;
     chartCommitsByRole(d: ReportData): string;
   }
-  const { reportRoleOrder, chartTicksByRole, chartCommitsByRole } = clientScope<Builders>(
+  const { reportRoleOrder, chartRunsByRole, chartCommitsByRole } = clientScope<Builders>(
     ["format", "report-chart"],
-    ["reportRoleOrder", "chartTicksByRole", "chartCommitsByRole"],
+    ["reportRoleOrder", "chartRunsByRole", "chartCommitsByRole"],
   );
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
@@ -366,7 +366,7 @@ test("the Commits by role chart stacks per role in the ticks order", () => {
   const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
   assert.deepEqual(titles(chartCommitsByRole(data)), ["2026-09-01 · feature: 2 commits", "2026-09-01 · qa: 1 commit"]);
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
-  assert.equal(legendOf(chartCommitsByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.equal(legendOf(chartCommitsByRole(data)), legendOf(chartRunsByRole(data)));
   assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["qa", 0]]);
   const missing = mk([mkDay("2026-09-01", { feature: 1 }, { runsByRole: { feature: 1 } }), mkDay("2026-09-02", { feature: 1 })]);
   assert.equal(titles(chartCommitsByRole(missing)).length, 0, "a day whose commitsByRole map is missing renders no commit segments");
@@ -375,13 +375,13 @@ test("the Commits by role chart stacks per role in the ticks order", () => {
 test("the Revisions chart stacks per role and seriesHasAny gates it", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
-    chartTicksByRole(d: ReportData): string;
+    chartRunsByRole(d: ReportData): string;
     chartRevisionsByRole(d: ReportData): string;
     seriesHasAny(d: ReportData, field: string): boolean;
   }
-  const { reportRoleOrder, chartTicksByRole, chartRevisionsByRole, seriesHasAny } = clientScope<Builders>(
+  const { reportRoleOrder, chartRunsByRole, chartRevisionsByRole, seriesHasAny } = clientScope<Builders>(
     ["format", "report-chart"],
-    ["reportRoleOrder", "chartTicksByRole", "chartRevisionsByRole", "seriesHasAny"],
+    ["reportRoleOrder", "chartRunsByRole", "chartRevisionsByRole", "seriesHasAny"],
   );
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
@@ -399,7 +399,7 @@ test("the Revisions chart stacks per role and seriesHasAny gates it", () => {
   assert.ok(got.some((t) => t.includes("2026-09-01 · feature: 2 revisions")));
   assert.ok(got.some((t) => t.includes("2026-09-02 · bugfix: 1 revision")));
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
-  assert.equal(legendOf(chartRevisionsByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.equal(legendOf(chartRevisionsByRole(data)), legendOf(chartRunsByRole(data)));
   const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 }, { revisionsByRole: { feature: 0 } })]);
   assert.equal(seriesHasAny(plain, "revisionsByRole"), false);
   assert.equal(seriesHasAny(data, "revisionsByRole"), true);
@@ -408,13 +408,13 @@ test("the Revisions chart stacks per role and seriesHasAny gates it", () => {
 test("the Refusals chart stacks per role and seriesHasAny gates it", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
-    chartTicksByRole(d: ReportData): string;
+    chartRunsByRole(d: ReportData): string;
     chartRefusalsByRole(d: ReportData): string;
     seriesHasAny(d: ReportData, field: string): boolean;
   }
-  const { reportRoleOrder, chartTicksByRole, chartRefusalsByRole, seriesHasAny } = clientScope<Builders>(
+  const { reportRoleOrder, chartRunsByRole, chartRefusalsByRole, seriesHasAny } = clientScope<Builders>(
     ["format", "report-chart"],
-    ["reportRoleOrder", "chartTicksByRole", "chartRefusalsByRole", "seriesHasAny"],
+    ["reportRoleOrder", "chartRunsByRole", "chartRefusalsByRole", "seriesHasAny"],
   );
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
@@ -432,7 +432,7 @@ test("the Refusals chart stacks per role and seriesHasAny gates it", () => {
   assert.ok(got.some((t) => t.includes("2026-09-01 · feature: 2 refusals")));
   assert.ok(got.some((t) => t.includes("2026-09-02 · bugfix: 1 refusal")));
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
-  assert.equal(legendOf(chartRefusalsByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.equal(legendOf(chartRefusalsByRole(data)), legendOf(chartRunsByRole(data)));
   const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 }, { refusalsByRole: { feature: 0 } })]);
   assert.equal(seriesHasAny(plain, "refusalsByRole"), false, "a refusal-free series whose only refusal map is { feature: 0 } gates the chart off");
   assert.equal(seriesHasAny(data, "refusalsByRole"), true);
@@ -451,15 +451,15 @@ test("the Usage render chain gates the Refusals by role chart right after Revisi
   assert.equal((chain.match(/block\("Refusals by role", chartRefusalsByRole\(d\)\)/g) || []).length, 1);
 });
 
-test("the Tokens by role chart stacks per role and matches the ticks legend", () => {
+test("the Tokens by role chart stacks per role and matches the runs legend", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
-    chartTicksByRole(d: ReportData): string;
+    chartRunsByRole(d: ReportData): string;
     chartTokensByRole(d: ReportData): string;
   }
-  const { reportRoleOrder, chartTicksByRole, chartTokensByRole } = clientScope<Builders>(
+  const { reportRoleOrder, chartRunsByRole, chartTokensByRole } = clientScope<Builders>(
     ["format", "report-chart"],
-    ["reportRoleOrder", "chartTicksByRole", "chartTokensByRole"],
+    ["reportRoleOrder", "chartRunsByRole", "chartTokensByRole"],
   );
   const mkDay = (date: string, runsByRole: Record<string, number>, tokensByRole?: Record<string, number>): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
@@ -479,7 +479,7 @@ test("the Tokens by role chart stacks per role and matches the ticks legend", ()
     "2026-09-02 · qa: 1.5M output tokens",
   ]);
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
-  assert.equal(legendOf(chartTokensByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.equal(legendOf(chartTokensByRole(data)), legendOf(chartRunsByRole(data)));
   // A day whose tokensByRole map is missing renders no token segments.
   const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 })]);
   assert.equal(titles(chartTokensByRole(plain)).length, 0);

@@ -79,7 +79,7 @@ test("pendingTableHtml escapes role, branch, and subject text", () => {
 // The Merge queue card (pendingQueueHtml): the queued merges the status payload already
 // carries, painted in execution order like `tumwater queue` — from a pure function of the
 // payload and a fixed `now` so the ages are pinned.
-test("pendingQueueHtml lists each queued merge in order with position, role, tick, short sha, age, and summary", () => {
+test("pendingQueueHtml lists each queued merge in order with position, role, run, short sha, age, and summary", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
     ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],

@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The dashboard's Usage and Failures views, browser-side. Usage renders /api/report as six
- * totals (each with its per-day average) over five daily bar charts — merged commits, ticks by
+ * totals (each with its per-day average) over five daily bar charts — merged commits, runs by
  * role, output tokens, spend by role, rejections by role — with gridlines, a scale, and one
  * shared color per role; a window picker switches between 7, 14, 30, and 90 days and a
  * Role picker scopes the report to one role group (`?role=`, the browser twin of
@@ -63,7 +63,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
     const days = Math.max(1, Number(data.days) || data.series.length || 1);
     // The per-day average every tile's sub-line carries: the shared "≈ " prefix and division by
     // the window's day count, with the tile's own formatter for the quotient (counts keep one
-    // decimal, ticks and tokens round, money reuses fmtUsd). One home for the prefix and the
+    // decimal, runs and tokens round, money reuses fmtUsd). One home for the prefix and the
     // divisor, so the six tiles cannot drift on how an average is stated.
     const perDay = (value, fmt) => "≈ " + fmt(value / days);
     const tile = (label, ic, value, avg, extra) => "<div class='stat'><span class='stat-label'>" + icon(ic) + esc(label) +
@@ -271,7 +271,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
       // CLI's --role report. The team-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
-        block("Work vs maintenance commits", chartCommitTiers(d), "per day · work + maintenance") + block("Merged commits", chartCommits(d)) + block("Commits by role", chartCommitsByRole(d)) + (seriesHasBacklogAdded(d) ? block("Backlog items opened", chartBacklogItemsOpened(d), "per day · plans added + bugs filed") : "") + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
+        block("Work vs maintenance commits", chartCommitTiers(d), "per day · work + maintenance") + block("Merged commits", chartCommits(d)) + block("Commits by role", chartCommitsByRole(d)) + (seriesHasBacklogAdded(d) ? block("Backlog items opened", chartBacklogItemsOpened(d), "per day · plans added + bugs filed") : "") + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartRunsByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Tokens by role", chartTokensByRole(d)) + block("Spend by role", chartCostByRole(d)) +
         (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +
         block("Rejections by role", chartRejectionsByRole(d)) +

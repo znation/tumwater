@@ -123,7 +123,7 @@ test("the page's role order is status-model's, rank by rank", () => {
     { role: "director", phase: "director working 1m", lastRunEndedAt: t(7) },
     { role: "vetted-v", phase: "approved, waiting to merge", lastRunEndedAt: t(4) },
     { role: "parked-p", phase: "waiting to start 10s", lastRunEndedAt: t(6) },
-    { role: "never-ticked", phase: "stopped", lastRunEndedAt: null },
+    { role: "never-ran", phase: "stopped", lastRunEndedAt: null },
     { role: "main-red", phase: "main's check is failing", lastRunEndedAt: t(0) },
     { role: "broken", phase: "failing", lastRunEndedAt: t(2) },
     { role: "held", phase: "paused", lastRunEndedAt: t(9) },
@@ -135,11 +135,11 @@ test("the page's role order is status-model's, rank by rank", () => {
   const order = model.sortRoles(roles).map((l) => l.role);
   assert.deepEqual(order, [
     "director", // its own live work, outside the permit-holder group
-    "working-b", "landing-x", "reviewing-a", // live work, newest tick first, never-ticked last
+    "working-b", "landing-x", "reviewing-a", // live work, newest run first, never-ran last
     "parked-p", "vetted-v", // waiting in the pipeline
     "broken", "main-red", // needs attention
-    "held", "timed", "capped", "broke", "bootstrapped", // paused, newest tick first
-    "queued-z", "sleepy", "never-ticked", // idle
+    "held", "timed", "capped", "broke", "bootstrapped", // paused, newest run first
+    "queued-z", "sleepy", "never-ran", // idle
   ]);
   // Lockstep with the TUI/status comparator and its rank function.
   assert.deepEqual(sortRolesByState(roles.map((l) => ({ ...l, lastTickEndedAt: l.lastRunEndedAt }))).map((l) => l.role), order);
@@ -167,7 +167,7 @@ test("the running director buckets outside the In-progress group", () => {
   assert.equal(groupOf("waiting to start 5s"), "In progress");
 });
 
-test("tick results read as words with the tone of their outcome", () => {
+test("run results read as words with the tone of their outcome", () => {
   const all = ["changed", "queued", "refused", "no_change", "merge_conflict", "merge_blocked", "rejected", "review_error", "error",
     "aborted", "quiet_killed", "user_aborted", "main_red", "skipped"];
   for (const r of all) {

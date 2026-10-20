@@ -63,7 +63,7 @@ test("a sleeping role's second line says when it wakes, and names a backoff", ()
   // Backing off after failures — named, not left to look like a normal schedule.
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 30 }), info, { running: true }),
     "sleeping — next check in 2m");
-  // A yield-scaled clock rides as a note: nothing merged lately, so it ticks less often.
+  // A yield-scaled clock rides as a note: nothing merged lately, so it runs less often.
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 0, yieldMultiplier: 3 }), info, { running: true }),
     "wakes in 2m · slowed ×3, nothing merged lately");
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 30, yieldMultiplier: 2 }), info, { running: true }),
@@ -73,15 +73,15 @@ test("a sleeping role's second line says when it wakes, and names a backoff", ()
 test("the second line names a consecutive no-change streak on a resting idle cell", () => {
   const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
   const l = (patch: object) => ({ phase: "sleeping", nextRunAt: now + 120_000, backoffSeconds: 0, ...patch });
-  // Two or more consecutive no_change ticks earn the suffix (status-payload noChangeStreak,
+  // Two or more consecutive no_change runs earn the suffix (status-payload noChangeStreak,
   // mirrored from status-model rolePhase).
   assert.equal(phaseDetail(l({ noChangeStreak: 2 }), info, { running: true }), "wakes in 2m · no change ×2");
   assert.equal(phaseDetail(l({ noChangeStreak: 5 }), info, { running: true }), "wakes in 2m · no change ×5");
-  // N=1 and an absent field are ordinary single quiet ticks — no suffix.
+  // N=1 and an absent field are ordinary single quiet runs — no suffix.
   assert.equal(phaseDetail(l({ noChangeStreak: 1 }), info, { running: true }), "wakes in 2m");
   assert.equal(phaseDetail(l({}), info, { running: true }), "wakes in 2m");
   // Live work, a pause, and a failure never carry the streak: a running role's streak is
-  // stale until the tick ends, and the status label leaves those cells bare too.
+  // stale until the run ends, and the status label leaves those cells bare too.
   const working = { key: "working", label: "Working", tone: "blue", live: true, detail: "3m · turn 4" };
   assert.equal(phaseDetail({ phase: "working 3m · turn 4", noChangeStreak: 2 }, working, { running: true }), "3m · turn 4");
   const paused = { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new runs" };
@@ -153,7 +153,7 @@ test("an idle role's activity is its last result in words with the reason that e
   const clean = row({ ...base, lastResult: "no_change", lastError: "" });
   assert.ok(clean.activity.includes("<span class='res t-gray'>No change</span>"));
   assert.ok(!clean.activity.includes("review crashed"));
-  // Never ticked.
+  // Never ran.
   assert.ok(row({ role: "new", phase: "sleeping" }).activity.includes("No runs yet"));
 });
 

@@ -16,9 +16,9 @@ import { seededHistoryRepo } from "./fixtures/history-fixtures.js";
 
 // --- --since <duration>: the window-shaped view (the sibling of logs --since / report --since)
 
-/** Seed tick pairs at fixed ages before `now` (the pattern cli-logs-filtering.test.ts uses for
- * --since): one 2-day-old run_end outside any sane window, then a clean tick (start 50m,
- * end 45m) and a feature tick (start 30m, end 10m) inside a 1h window. */
+/** Seed run pairs at fixed ages before `now` (the pattern cli-logs-filtering.test.ts uses for
+ * --since): one 2-day-old run_end outside any sane window, then a clean run (start 50m,
+ * end 45m) and a feature run (start 30m, end 10m) inside a 1h window. */
 function seedWindowedHistory(repo: string, now = Date.now()): void {
   const age = (ms: number) => now - ms;
   writeEvents(repo, [
@@ -30,7 +30,7 @@ function seedWindowedHistory(repo: string, now = Date.now()): void {
   ]);
 }
 
-test("history --since returns exactly the ticks of the window, newest first, with durations where starts survive", async () => {
+test("history --since returns exactly the runs of the window, newest first, with durations where starts survive", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history since window");
   seedWindowedHistory(repo);
@@ -39,7 +39,7 @@ test("history --since returns exactly the ticks of the window, newest first, wit
   assert.equal(r.code, 0);
   const lines = r.stdout.trim().split("\n");
   assert.equal(lines.length, 2, r.stdout);
-  // Newest first; the 2-day-old tick is outside the window on both the day key and ts.
+  // Newest first; the 2-day-old run is outside the window on both the day key and ts.
   assert.match(lines[0]!, /feature\s+#3\s+merged\s+20m\s+1200 tok · \$0\.01\s+new work/);
   assert.match(lines[1]!, /clean\s+#2\s+no change\s+5m\s+tidied/);
   assert.ok(!r.stdout.includes("old work"), r.stdout);
@@ -206,7 +206,7 @@ test("history --since --grep filters the window's rows", async () => {
   assert.equal(r.stdout.trim().split("\n").length, 1);
   assert.match(r.stdout, /feature\s+#3/);
 
-  // The 2-day-old tick sits outside the window, so its detail matches nothing here — the
+  // The 2-day-old run sits outside the window, so its detail matches nothing here — the
   // empty-match wording names the pattern, not a window the log disproves.
   const outside = await cli(repo, "history", "--since", "1h", "--grep", "old work");
   assert.equal(outside.code, 0);
@@ -373,7 +373,7 @@ test("history --result empty state names the class, never the empty log", async 
   assert.equal(unmatched.code, 0);
   assert.equal(unmatched.stdout, 'no runs matching "no such text"\n');
 
-  // A log holding no ticks at all: the result filter removed nothing, so naming the class
+  // A log holding no runs at all: the result filter removed nothing, so naming the class
   // would blame it for the log's emptiness. The empty-log prose stays.
   const blank = makeRepo();
   await initProject(blank, "cli history result empty log");
@@ -430,8 +430,8 @@ test("history --summary tallies each role's outcomes over the rows the table wou
   const json = await cli(repo, "history", "--summary", "--json");
   const payload = JSON.parse(json.stdout) as { roles: unknown[]; total: unknown };
   assert.equal(payload.roles.length, 3);
-  // The timed feature tick #7 (run_start 1787222691956 → run_end 1787222695956) folds a 4s span
-  // into the summary; the clean and bugfix ticks had no start, so only total and feature carry it.
+  // The timed feature run #7 (run_start 1787222691956 → run_end 1787222695956) folds a 4s span
+  // into the summary; the clean and bugfix runs had no start, so only total and feature carry it.
   assert.deepEqual(payload.total, { role: "total", runs: 3, changes: 1, none: 1, refused: 0, problems: 1, tokens: 2400, costUsd: 0.02, durationMs: 4000, lastChangeTs: 1787222695956 });
 
   const scoped = await cli(repo, "history", "--summary", "--role", "feature");
@@ -439,7 +439,7 @@ test("history --summary tallies each role's outcomes over the rows the table wou
   assert.match(scoped.stdout, /^feature /m);
 
   const problems = await cli(repo, "history", "--summary", "--result", "problems");
-  // The problems class is the bugfix error tick: no start was logged, so its time cell is a dash.
+  // The problems class is the bugfix error run: no start was logged, so its time cell is a dash.
   assert.match(problems.stdout, /^total +1 +0 +0 +0 +1 +0 +\$0\.00 +— +—$/m);
   assert.doesNotMatch(problems.stdout, /^clean/m);
 });

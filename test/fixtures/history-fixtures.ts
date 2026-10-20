@@ -1,5 +1,5 @@
 /** The seeded event log the `history` CLI tests share: a fixed multi-role log with a usage-less
- * row, a paired tick, and an unpaired run_end. Both test/cli-history.test.ts (the core views)
+ * row, a paired run, and an unpaired run_end. Both test/cli-history.test.ts (the core views)
  * and test/cli-history-filtering.test.ts (the --since/--grep views) read it, so the exact rows
  * those two files assert against cannot drift. Each test seeds relative to its own clock only
  * where the view under test is a window (that seed stays local to its file). */
@@ -7,8 +7,8 @@ import { initProject } from "../../src/init/init.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
-/** A repo holding a seeded event log: the feature role's paired tick #7 (usage and detail), the
- * clean role's usage-less tick #3, and the bugfix role's tick #9 whose run_start was never
+/** A repo holding a seeded event log: the feature role's paired run #7 (usage and detail), the
+ * clean role's usage-less run #3, and the bugfix role's run #9 whose run_start was never
  * logged (its duration renders as an em dash) ending in an error. */
 export async function seededHistoryRepo(): Promise<string> {
   const repo = makeRepo();

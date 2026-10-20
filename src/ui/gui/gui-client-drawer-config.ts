@@ -9,7 +9,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
   // A Configuration section built from the same /api/role payload the CLI's tumwater role
   // <id> renders (rolePayload), so the drawer's and the terminal's rows read one document and
   // cannot drift: what the role RUNS ON (model/tier, provider cap, image reading, the
-  // fallback pairs, billing, min tick interval) and CARRIES (queued prompts, the instructions
+  // fallback pairs, billing, min run interval) and CARRIES (queued prompts, the instructions
   // override, find text). Each row is guarded by a present/own check so an absent field
   // renders no row — a cap-less team shows no Provider row, no fallback shows no fallback
   // rows, and a notes-only payload adds an empty (omitted) section. Labels and wording mirror
@@ -19,7 +19,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     const pair = (p, m) => [p, m].filter(Boolean).join("/");
     const singleLine = (s) => String(s).replace(/\s+/g, " ").trim();
     // A verbatim value's single-line clamped rendering (80 chars + ellipsis) with the full
-    // text riding the title tooltip — the same clamp+tooltip idiom the tick summaries use.
+    // text riding the title tooltip — the same clamp+tooltip idiom the run summaries use.
     const clamp = (t) => { const one = singleLine(t); return one.length > 80 ? one.slice(0, 80) + "…" : one; };
     const rows = [];
     // A role that runs on pi's own saved default carries no provider/model but a piDefault

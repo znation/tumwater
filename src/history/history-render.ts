@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** Rendering half of `tumwater history`: format a `TickRow[]`/summary — collected by
+/** Rendering half of `tumwater history`: format a `RunRow[]`/summary — collected by
  * history-data.ts — into the aligned table or `--summary` text `cmdHistory` (history.ts)
  * prints. The sibling observing view report does the same (src/report/report.ts prints
  * src/report/report-render.ts's Markdown), and this split keeps the same separation
@@ -10,7 +10,7 @@ import { formatTimestamp, humanSeconds } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
-import { runRowCells, runRowLine, type HistoryModelSummaryRow, type HistorySummaryRow, type TickRow, type RunRowCells } from "./history-data.js";
+import { runRowCells, runRowLine, type HistoryModelSummaryRow, type HistorySummaryRow, type RunRow, type RunRowCells } from "./history-data.js";
 
 /** Each RunRowCells column's measured width in terminal display columns. A mapped type on
  * purpose: adding a column to RunRowCells cannot leave it without a width. */
@@ -19,12 +19,12 @@ type RowWidths = { [K in keyof RunRowCells]: number };
 /** Each column's width from its unpadded cell. Text cells measure terminal display columns
  * (displayWidth), not UTF-16 code units: a role name holding CJK or emoji renders two columns
  * per code point, and a code-unit padEnd lets that row's later columns drift right of its
- * ASCII neighbors. The tick cell measures before its "#" prefix is added (the prefix rides
+ * ASCII neighbors. The run cell measures before its "#" prefix is added (the prefix rides
  * outside the pad), and duration is ASCII, so both take plain length. */
 function widthsOf(cells: RunRowCells): RowWidths {
   return {
     role: displayWidth(cells.role),
-    tick: cells.tick.length,
+    run: cells.run.length,
     result: displayWidth(cells.result),
     model: displayWidth(cells.model),
     duration: cells.duration.length,
@@ -34,12 +34,12 @@ function widthsOf(cells: RunRowCells): RowWidths {
 
 /** The per-column maxima over every row the table shows — the widths derive from the rows
  * actually shown, so a single-row table has no padding gap. */
-export function widestWidths(rows: TickRow[]): RowWidths {
-  const widths = { role: 0, tick: 0, result: 0, model: 0, duration: 0, usage: 0 };
+export function widestWidths(rows: RunRow[]): RowWidths {
+  const widths = { role: 0, run: 0, result: 0, model: 0, duration: 0, usage: 0 };
   for (const row of rows) {
     const w = widthsOf(runRowCells(row));
     widths.role = Math.max(widths.role, w.role);
-    widths.tick = Math.max(widths.tick, w.tick);
+    widths.run = Math.max(widths.run, w.run);
     widths.result = Math.max(widths.result, w.result);
     widths.model = Math.max(widths.model, w.model);
     widths.duration = Math.max(widths.duration, w.duration);
@@ -52,7 +52,7 @@ export function widestWidths(rows: TickRow[]): RowWidths {
 export function widenWidths(a: RowWidths, b: RowWidths): RowWidths {
   return {
     role: Math.max(a.role, b.role),
-    tick: Math.max(a.tick, b.tick),
+    run: Math.max(a.run, b.run),
     result: Math.max(a.result, b.result),
     model: Math.max(a.model, b.model),
     duration: Math.max(a.duration, b.duration),
@@ -62,11 +62,11 @@ export function widenWidths(a: RowWidths, b: RowWidths): RowWidths {
 
 /** One aligned table line: fixed-width columns over the row set, then the free-text detail.
  * Every cell is padded to its column's width even when empty — usage is the one cell that can
- * be empty (a tick with neither tokens nor cost), and dropping it would pull the detail left,
+ * be empty (a run with neither tokens nor cost), and dropping it would pull the detail left,
  * misaligning that row against its neighbors; runRowLine strips only the trailing pad. The
  * row's column order rides history-data.ts's runRowLine, shared with the grep haystack so the
  * two cannot disagree about which field sits where. */
-export function renderRow(row: TickRow, widths: RowWidths): string {
+export function renderRow(row: RunRow, widths: RowWidths): string {
   return runRowLine(row, (column, value) => padToWidth(value, widths[column]));
 }
 

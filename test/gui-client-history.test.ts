@@ -8,7 +8,7 @@ import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { clientRegion, clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's History view (src/ui/gui/gui-client-history.ts): the table it paints from
-// /api/history's rows, its tick drill-down (the per-row details toggle and the card /api/run
+// /api/history's rows, its run drill-down (the per-row details toggle and the card /api/run
 // serves), and its place in the assembled script.
 
 test("GUI_CLIENT_JS carries the history module verbatim", () => {
@@ -19,7 +19,7 @@ test("GUI_CLIENT_JS carries the history module verbatim", () => {
 // drill-down state and card renderer, then the table.
 const HISTORY_REGIONS = ["format", "labels", "view-model", "history-detail", "history-table"];
 
-test("the History table renders tick rows, escapes them, and filters by outcome", () => {
+test("the History table renders run rows, escapes them, and filters by outcome", () => {
   const { historyTableHtml, historyClass } = clientScope<{
     historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, grep?: string, sinceKey?: string): string;
     historyClass(result: string): string;
@@ -45,9 +45,9 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   assert.match(html, /<td class='num c-dur'>—<\/td>/, "a missing duration is a dash, never NaN");
   assert.doesNotMatch(html, /NaN|<script>/);
   assert.match(html, /&lt;script&gt;x&lt;\/script&gt;/);
-  // The per-row drill-down toggle: a team role's row carries one, addressed by role+tick.
-  assert.match(html, /data-tickdetail='1' data-role='coverage' data-tick='5' aria-expanded='false'/);
-  assert.match(html, /data-tickdetail='1' data-role='qa' data-tick='2'/);
+  // The per-row drill-down toggle: a team role's row carries one, addressed by role+run.
+  assert.match(html, /data-rundetail='1' data-role='coverage' data-tick='5' aria-expanded='false'/);
+  assert.match(html, /data-rundetail='1' data-role='qa' data-tick='2'/);
   // The outcome filter's buckets.
   const bucketCases = ["changed", "queued", "no_change", "skipped", "user_aborted", "refused", "error", "rejected"];
   assert.deepEqual(bucketCases.map(historyClass),
@@ -150,7 +150,7 @@ test("historyNoteHtml renders the server's sparse-window note and nothing when e
   assert.match(html, /log&#39;s/, "the note is escaped like every other rendered string");
 });
 
-test("fetchHistory normalizes a persisted tick count the toolbar does not offer", async () => {
+test("fetchHistory normalizes a persisted run count the toolbar does not offer", async () => {
   // Only the picker's four counts are ever written, but a persisted hist-n from another build
   // (or a hand edit) can be anything. The picker can then not represent it, so the viewed count
   // and the requested count would disagree; normalize at read to the default the picker shows.
@@ -187,16 +187,16 @@ test("histDetailCardHtml branches on the entry's state: loading, error, then the
   assert.match(histDetailCardHtml({ state: "loading" }), /Loading run detail…/);
   assert.doesNotMatch(histDetailCardHtml({ state: "loading" }), /No events/);
   // An errored fetch shows the server's message, escaped.
-  assert.match(histDetailCardHtml({ state: "error", message: "no tick #9 for clean <b>" }), /no tick #9 for clean &lt;b&gt;/);
+  assert.match(histDetailCardHtml({ state: "error", message: "no run #9 for clean <b>" }), /no run #9 for clean &lt;b&gt;/);
   assert.match(histDetailCardHtml({ state: "error" }), /Run detail unavailable/, "a message-less failure still reads as one");
   // A fetched entry: the first line is the summary header, the rest the events, escaped.
-  const card = histDetailCardHtml({ state: "ok", text: "clean tick #9 — changed · 46s\nevent one\nevent <two>" });
+  const card = histDetailCardHtml({ state: "ok", text: "clean run #9 — changed · 46s\nevent one\nevent <two>" });
   assert.match(card, /hist-detail-head/);
-  assert.match(card, /clean tick #9 — changed · 46s/);
+  assert.match(card, /clean run #9 — changed · 46s/);
   assert.match(card, /event one/);
   assert.match(card, /event &lt;two&gt;/);
   // A text with only the header line (an event-less block) says so instead of an empty pre.
-  assert.match(histDetailCardHtml({ state: "ok", text: "clean tick #1 — unpaired" }), /No events in this run's block/);
+  assert.match(histDetailCardHtml({ state: "ok", text: "clean run #1 — unpaired" }), /No events in this run's block/);
   // The commit stat shows under the trail when present, and is absent otherwise.
   assert.match(histDetailCardHtml({ state: "ok", text: "h\ne", stat: " a.ts | 2 +-" }), /hist-detail-stat.*a\.ts \| 2 \+-/);
   assert.doesNotMatch(histDetailCardHtml({ state: "ok", text: "h\ne", stat: "" }), /hist-detail-stat/);
@@ -208,13 +208,13 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
   const scope = clientScope<{
     histDetails: Map<string, { state: string; text?: string; message?: string }>;
     histDetailOpen: string;
-    toggleHistDetail(role: string, tick: string): void;
+    toggleHistDetail(role: string, run: string): void;
     historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, sinceKey?: string): string;
   }>(HISTORY_REGIONS, ["histDetails", "histDetailOpen", "toggleHistDetail", "historyTableHtml"], {
     icon: iconStub,
     getJson: (path: string) => {
       calls.push(path);
-      return Promise.resolve({ text: "clean tick #9 — changed · 46s\nevent one" });
+      return Promise.resolve({ text: "clean run #9 — changed · 46s\nevent one" });
     },
     renderHistory: () => {
       renders++;
@@ -235,7 +235,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
   assert.deepEqual(calls, ["/api/run?role=clean&run=9"]);
   assert.equal(histDetails.get("clean#9")?.state, "ok");
   const card = htmlWith();
-  assert.match(card, /clean tick #9 — changed · 46s/);
+  assert.match(card, /clean run #9 — changed · 46s/);
   assert.match(card, /event one/);
   assert.doesNotMatch(card, /Loading run detail…/);
 
@@ -258,11 +258,11 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
 test("a failed detail fetch renders the server's message in the card, not a stuck loading state", async () => {
   const scope = clientScope<{
     histDetails: Map<string, { state: string; message?: string }>;
-    toggleHistDetail(role: string, tick: string): void;
+    toggleHistDetail(role: string, run: string): void;
     historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, sinceKey?: string): string;
   }>(HISTORY_REGIONS, ["histDetails", "toggleHistDetail", "historyTableHtml"], {
     icon: iconStub,
-    getJson: () => Promise.reject(new Error("no tick #9 for clean in the scanned window")),
+    getJson: () => Promise.reject(new Error("no run #9 for clean in the scanned window")),
     renderHistory: () => {},
   });
   const { histDetails, toggleHistDetail, historyTableHtml } = scope;
@@ -270,7 +270,7 @@ test("a failed detail fetch renders the server's message in the card, not a stuc
   await sleep(0);
   assert.equal(histDetails.get("clean#9")?.state, "error");
   const html = historyTableHtml([{ ts: 0, time: "t", role: "clean", run: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
-  assert.match(html, /no tick #9 for clean in the scanned window/);
+  assert.match(html, /no run #9 for clean in the scanned window/);
   assert.doesNotMatch(html, /Loading run detail…/);
   // And the errored entry is cached: re-expanding reuses it without a second request.
   toggleHistDetail("clean", "9");
@@ -278,11 +278,11 @@ test("a failed detail fetch renders the server's message in the card, not a stuc
   assert.equal(histDetails.get("clean#9")?.state, "error", "the error caches like an answer");
 });
 
-test("the fetched tick detail keeps the server's stat, and an older server's missing stat is not an error", async () => {
+test("the fetched run detail keeps the server's stat, and an older server's missing stat is not an error", async () => {
   for (const [answer, shown] of [[{ text: "h\ne", stat: " a.ts | 2 +-" }, true], [{ text: "h\ne" }, false]] as const) {
     const scope = clientScope<{
       histDetails: Map<string, { state: string; stat?: string }>;
-      toggleHistDetail(role: string, tick: string): void;
+      toggleHistDetail(role: string, run: string): void;
       historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, sinceKey?: string): string;
     }>(HISTORY_REGIONS, ["histDetails", "toggleHistDetail", "historyTableHtml"], {
       icon: iconStub,
@@ -298,10 +298,10 @@ test("the fetched tick detail keeps the server's stat, and an older server's mis
   }
 });
 
-test("a malformed run-detail payload errors naming the endpoint, the tick, and the likely cause", async () => {
+test("a malformed run-detail payload errors naming the endpoint, the run, and the likely cause", async () => {
   const scope = clientScope<{
     histDetails: Map<string, { state: string; message?: string }>;
-    toggleHistDetail(role: string, tick: string): void;
+    toggleHistDetail(role: string, run: string): void;
     historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, sinceKey?: string): string;
   }>(HISTORY_REGIONS, ["histDetails", "toggleHistDetail", "historyTableHtml"], {
     icon: iconStub,
@@ -362,7 +362,7 @@ test("histSummaryHtml paints one row per role plus the total, with the report fo
     total: { role: "total", runs: 4, changes: 2, none: 1, refused: 0, problems: 1, tokens: 13_000, costUsd: 0.25, durationMs: 3_600_000, lastChangeTs: now - 5 * 60_000 },
   };
   const html = histSummaryHtml(summary);
-  // The column set mirrors history --summary: role, ticks, changes, none, refused, problems,
+  // The column set mirrors history --summary: role, runs, changes, none, refused, problems,
   // tokens, cost, time, last change, so the dashboard and the CLI cannot drift column for column.
   for (const h of ["Role", "Runs", "Merged", "None", "Refused", "Problems", "Tokens", "Cost", "Time", "Last change"]) {
     assert.match(html, new RegExp("<th[^>]*>" + h + "</th>"), "the " + h + " header");

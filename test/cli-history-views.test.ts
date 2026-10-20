@@ -20,7 +20,7 @@ const NOW = Date.now();
 /** A repo whose event log holds two completed runs (role `dedupe`, then role `clean`,
  * newest last) plus a `docs` run_end with no matching run_start — the unpaired case a
  * rotation-cut log produces, which must render an em dash for its duration. */
-function repoWithTicks(): string {
+function repoWithRuns(): string {
   const repo = makeRepo();
   logEvent(repo, { ts: NOW - 120_000, source: "dedupe", type: "run_start", run: 1, model: "huggingface/x" });
   logEvent(repo, {
@@ -55,8 +55,8 @@ function repoWithTicks(): string {
   return repo;
 }
 
-test("history renders the last ticks newest-first with duration, usage, and detail", async () => {
-  const repo = repoWithTicks();
+test("history renders the last runs newest-first with duration, usage, and detail", async () => {
+  const repo = repoWithRuns();
   const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, []));
   const cleanIdx = out.indexOf("clean");
   const testsIdx = out.indexOf("dedupe");
@@ -69,21 +69,21 @@ test("history renders the last ticks newest-first with duration, usage, and deta
 });
 
 test("history -n bounds the printed rows", async () => {
-  const repo = repoWithTicks();
+  const repo = repoWithRuns();
   const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, ["-n", "1"]));
   assert.match(out, /docs\s+#2/, "the newest row survives the limit");
   assert.ok(!out.includes("clean"), `older rows are cut: ${JSON.stringify(out)}`);
 });
 
 test("history --role filters the rows to one role", async () => {
-  const repo = repoWithTicks();
+  const repo = repoWithRuns();
   const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, ["--role", "dedupe"]));
   assert.match(out, /dedupe\s+#1\s+error/);
   assert.ok(!out.includes("clean"), `other roles are filtered out: ${JSON.stringify(out)}`);
 });
 
 test("history --grep filters on the rendered row line (plus the run_end type), case-insensitively", async () => {
-  const repo = repoWithTicks();
+  const repo = repoWithRuns();
   // Matches through the detail column — the row as it renders.
   const { stdout: rendered } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "FLAKE"]));
   assert.match(rendered, /clean\s+#1\s+merged\s+acme\/m1\s+30s/);
@@ -102,7 +102,7 @@ test("history --grep filters on the rendered row line (plus the run_end type), c
 });
 
 test("history --grep with no matches names the pattern, not the empty-log prose", async () => {
-  const repo = repoWithTicks();
+  const repo = repoWithRuns();
   const { stdout } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "no-such-thing"]));
   assert.equal(stdout, 'no runs matching "no-such-thing"\n');
 });
@@ -116,7 +116,7 @@ test("history on an empty log prints the empty-log prose; --json prints a bare d
 });
 
 test("history --json serves the rows as raw data, newest first", async () => {
-  const repo = repoWithTicks();
+  const repo = repoWithRuns();
   const { stdout } = await expectOkAsync(() => cmdHistory(repo, ["--json"]));
   const parsed = JSON.parse(stdout) as { rows: Array<{ role: string; ts: number; tokens: number; costUsd: number; result: string; model: string | null }> };
   assert.deepEqual(
@@ -135,7 +135,7 @@ test("history --json serves the rows as raw data, newest first", async () => {
 });
 
 test("history --since prints the windowed rows and the rotation caveat; an empty window says so", async () => {
-  const repo = repoWithTicks();
+  const repo = repoWithRuns();
   const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, ["--since", "2h"]));
   assert.match(out, /clean\s+#1\s+merged/, "rows within the window print");
   // A fresh repo's log cannot prove it covers the window's start, so the caveat rides along.
@@ -167,11 +167,11 @@ test("history pads text columns by display width, so a wide-character role name 
   logEvent(repo, { ts: NOW - 30_000, source: "日本", type: "run_end", run: 1, result: "changed", summary: "second" });
   const { stdout } = await expectOkAsync(() => cmdHistory(repo, []));
   const lines = stdout.trimEnd().split("\n");
-  // The "#" that starts the tick column sits at the same terminal display column on
+  // The "#" that starts the run column sits at the same terminal display column on
   // every row — a code-unit padEnd would leave the CJK row's later columns drifted right.
   const hashColumns = lines.map((line) => {
     const idx = line.indexOf("#");
-    assert.ok(idx >= 0, `every row has a tick cell: ${JSON.stringify(line)}`);
+    assert.ok(idx >= 0, `every row has a run cell: ${JSON.stringify(line)}`);
     return displayWidth(line.slice(0, idx));
   });
   assert.equal(new Set(hashColumns).size, 1, `aligned: ${JSON.stringify(lines)}`);

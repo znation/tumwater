@@ -64,7 +64,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // STALL_SOURCE (interpolated at module build), shared with team-alerts.ts's server-side
   // matcher so the two cannot drift from the wording the cell renders.
   const STALL = new RegExp(${JSON.stringify(STALL_SOURCE)});
-  // A tick result (run-outcome.ts TickResult) in words, with the tone of its outcome.
+  // A run result (run-outcome.ts RunResult) in words, with the tone of its outcome.
   const RESULT_TONES = {
     changed: "green",
     queued: "indigo",
@@ -97,7 +97,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // director first (its own live work, outside the maxConcurrent cap it bypasses — BUGS.md
   // 2026-10-06), then live work (working, reviewing, merge), then work waiting in the pipe
   // line (approved, awaiting a slot), then roles that need attention (failing, main red), then
-  // paused, then idle; within a rank the most recent tick first, a never-ticked role last, ties
+  // paused, then idle; within a rank the most recent run first, a never-ran role last, ties
   // by name. The phase → rank rules are status-model.ts's ROLE_RANK_RULES (interpolated at
   // module build, like STALL/PROBLEM_RESULTS above), so the literals cannot drift from the
   // server's copy.

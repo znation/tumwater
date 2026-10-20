@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import type { HarnessEvent } from "../src/events/events.js";
 import { initProject } from "../src/init/init.js";
-import { runRows, readTickRowsSince } from "../src/history/history-data.js";
+import { runRows, readRunRowsSince } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
@@ -16,7 +16,7 @@ import { piLogPath } from "../src/paths.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // The dashboard transport's JSON read/write routes under live use: /api/status, the
-// prompt-cancel POST, and the read endpoints (history, tick) that serve the collectors'
+// prompt-cancel POST, and the read endpoints (history, run) that serve the collectors'
 // own payloads. Extracted from the former gui-server.test.ts (2026-10-12), whose
 // transport file covers hostile
 // input and whose lifecycle file covers reload and post-listen errors.
@@ -186,8 +186,8 @@ test("gui /api/prompt-top moves one queued prompt to its role's queue head", asy
   }
 });
 
-// The interleaved event seed /api/history and /api/run both read: one tick with a paired
-// start (its duration comes from the pair), one end-only skipped tick (no start, so no
+// The interleaved event seed /api/history and /api/run both read: one run with a paired
+// start (its duration comes from the pair), one end-only skipped run (no start, so no
 // fabricated duration), and a merged event that runRows must ignore.
 function historySeedEvents(): HarnessEvent[] {
   return [
@@ -217,10 +217,10 @@ test("gui /api/history serves runRows' JSON with role filtering and n clamped, n
     const d = (await res.json()) as { rows: ReturnType<typeof runRows> };
     assert.deepEqual(d, { rows: runRows(events, 20, null) });
     assert.deepEqual(d.rows.map((r) => [r.role, r.run]), [["clean", 9], ["feature", 2], ["clean", 7], ["feature", 1]], "newest first");
-    assert.equal(d.rows[0]!.durationMs, 46_000, "duration pairs the tick's own run_start");
-    assert.equal(d.rows[1]!.durationMs, null, "a skipped tick's end claims no duration");
+    assert.equal(d.rows[0]!.durationMs, 46_000, "duration pairs the run's own run_start");
+    assert.equal(d.rows[1]!.durationMs, null, "a skipped run's end claims no duration");
 
-    // role filters to that role's rows (a filter is not a target: an id with no ticks is a
+    // role filters to that role's rows (a filter is not a target: an id with no runs is a
     // legitimate empty result, not an error — no config validation).
     const scoped = await (await fetch(base + "/api/history?role=clean")).json();
     assert.deepEqual(scoped, { rows: runRows(events, 20, "clean") });
@@ -261,7 +261,7 @@ test("gui /api/history serves runRows' JSON with role filtering and n clamped, n
   }
 });
 
-test("gui /api/history serves a trailing window from readTickRowsSince with its coverage note", async () => {
+test("gui /api/history serves a trailing window from readRunRowsSince with its coverage note", async () => {
   const repo = makeRepo();
   await initProject(repo, "history since api test");
   const base = Date.now();
@@ -276,14 +276,14 @@ test("gui /api/history serves a trailing window from readTickRowsSince with its 
   try {
     // The window's rows come from the same collector as `tumwater history --since`.
     const all = (await (await fetch(url + "/api/history?sinceMs=7200000")).json()) as { rows: { role: string; run: number }[]; covered: boolean; note: string };
-    assert.deepEqual(all.rows, readTickRowsSince(repo, 7_200_000, null).rows);
+    assert.deepEqual(all.rows, readRunRowsSince(repo, 7_200_000, null).rows);
     assert.deepEqual(all.rows.map((r) => [r.role, r.run]), [["feature", 1], ["clean", 9]], "newest first");
     // The log starts inside the window, so coverage cannot be proven and the shared note rides.
     assert.equal(all.covered, false);
     assert.equal(all.note, SPARSE_WINDOW_NOTE);
     // role composes with the window; a window narrower than every event holds none.
     const clean = (await (await fetch(url + "/api/history?sinceMs=7200000&role=clean")).json()) as { rows: { role: string }[] };
-    assert.deepEqual(clean.rows, readTickRowsSince(repo, 7_200_000, "clean").rows);
+    assert.deepEqual(clean.rows, readRunRowsSince(repo, 7_200_000, "clean").rows);
     assert.deepEqual(clean.rows.map((r) => r.role), ["clean"]);
     const tiny = await (await fetch(url + "/api/history?sinceMs=1")).json();
     assert.deepEqual((tiny as { rows: unknown[] }).rows, []);
@@ -323,14 +323,14 @@ test("gui /api/history?grep filters through the CLI's shared haystack rule after
 
 test("gui /api/run serves one run's detail over the live route, 404 when the scan misses", async () => {
   const repo = makeRepo();
-  await initProject(repo, "tick api test");
+  await initProject(repo, "run api test");
   // The same seed the /api/history test uses: clean#9 is paired, feature#2 is end-only.
   const events = historySeedEvents();
   writeEvents(repo, events);
 
   const { server, base } = await startLocalGui(repo);
   try {
-    // The paired tick answers the collector's payload plus the pre-rendered text.
+    // The paired run answers the collector's payload plus the pre-rendered text.
     const res = await fetch(base + "/api/run?role=clean&run=9");
     assert.equal(res.status, 200);
     const d = (await res.json()) as { role: string; run: number; durationMs: number | null; events: { type: string }[]; text: string };
@@ -340,7 +340,7 @@ test("gui /api/run serves one run's detail over the live route, 404 when the sca
     assert.deepEqual(d.events.map((e) => e.type), ["run_start", "run_end"]);
     assert.match(d.text, /^clean run #9 — merged · 46s/);
 
-    // A tick the scan does not hold → 404 (never a crash); a bad role and a non-count tick →
+    // A run the scan does not hold → 404 (never a crash); a bad role and a non-count run →
     // the shared 400s.
     const missing = await fetch(base + "/api/run?role=clean&run=42");
     assert.equal(missing.status, 404);
@@ -433,10 +433,10 @@ test("gui /api/run carries the run's transcript only on request", async () => {
   }
 });
 
-test("gui /api/history grows its role-filtered scan window until it reaches the role's ticks", async () => {
+test("gui /api/history grows its role-filtered scan window until it reaches the role's runs", async () => {
   // The dilution case the CLI's `history --role` fix pinned: the first window (n*2+50 events)
   // fills with a busy sibling role's run_ends, so the filtered rows fall short while the
-  // role's older ticks sit just past it. The endpoint must grow the scan like cmdHistory,
+  // role's older runs sit just past it. The endpoint must grow the scan like cmdHistory,
   // not return fewer rows (or an empty set) for a role the retained log covers.
   const repo = makeRepo();
   await initProject(repo, "history api dilution");
@@ -448,7 +448,7 @@ test("gui /api/history grows its role-filtered scan window until it reaches the 
   try {
     const d = (await (await fetch(base + "/api/history?role=qa&n=5")).json()) as { rows: { role: string; run: number }[] };
     assert.deepEqual(d.rows.map((r) => [r.role, r.run]), [["qa", 5], ["qa", 4], ["qa", 3], ["qa", 2], ["qa", 1]], "all 5 qa rows despite the diluting sibling");
-    // The honest shortfall: the log holds fewer qa ticks than asked and the scan reached the
+    // The honest shortfall: the log holds fewer qa runs than asked and the scan reached the
     // log's start — what exists is returned, not an error or a hang.
     const short = (await (await fetch(base + "/api/history?role=qa&n=10")).json()) as { rows: unknown[] };
     assert.equal(short.rows.length, 5);

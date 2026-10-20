@@ -241,7 +241,7 @@ export async function handleBacklogTop(req: http.IncomingMessage, res: http.Serv
  * "newBody"}`; a missing position or a different heading there answers 200 { ok: true, status:
  * "gone" }; text identical to the entry's own answers 200 { ok: true, status: "unchanged", file,
  * title } with nothing written or committed. An edited entry that is still held adds `heldNote`
- * (stillHeldNote). The body keeps its line structure. No wake and no inbox prompt: whichever tick
+ * (stillHeldNote). The body keeps its line structure. No wake and no inbox prompt: whichever run
  * picks the entry up refines it. */
 export async function handleBacklogEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>", "newTitle": "...", "newBody": "..."}');
