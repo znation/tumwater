@@ -3582,3 +3582,32 @@ main watch checks that tip itself.
 tip green", "a stack that fails only main's known failures merges but seeds nothing", "a doc-only
 stack runs no check and seeds nothing" and "a stack merged on check.mergeCommand runs it as a
 non-full batch check and seeds nothing".
+
+## Staging self-check: each git-level finding stops at its cap, and a check that cannot run adds nothing
+
+### INV-BK1: a finding names at most ten paths, files or hits, and a change emits at most ten stale-reference findings
+
+**Guarantee.** A missing-path or lost-final-newline finding names at most 10 paths or files and
+counts the rest as ` (+N more)`. A stale-reference finding lists at most 10 `file:line` hits. A
+change emits at most 10 stale-reference findings, however many referenced paths it deletes.
+
+**Binds.** `src/run/stage-path-checks.ts` (`gitLevelFindings`, `cappedList`, `MAX_MISSING_PATHS`,
+`MAX_NEWLINE_FILES`, `MAX_STALE_PATHS`, `MAX_STALE_HITS`).
+
+**Pinned by.** `test/stage-path-caps.test.ts` — "a missing-path finding names the first ten paths
+and counts the rest", "a lost-final-newline finding names the first ten files and counts the
+rest", "a change deleting more referenced paths than the cap reports only the cap's worth" and
+"one stale reference lists at most ten of its hits".
+
+### INV-BK2: the git-level checks are best-effort, and the index is restored
+
+**Guarantee.** A failed git command adds no finding and does not throw.
+`gitLevelFindings` resets the index to HEAD in `finally`, so the run's change detection still sees
+the worktree.
+
+**Binds.** `src/run/stage-path-checks.ts` (`gitLevelFindings`); `src/run/stage-check.ts`
+(`stageCheckFindings`, its `.catch(() => [])`).
+
+**Pinned by.** `test/stage-check.test.ts` — "a git failure yields no findings instead of
+throwing", "the git-level check leaves the index clean, so change detection still sees the
+worktree" and "a clean change yields no findings".
