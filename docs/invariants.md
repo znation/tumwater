@@ -499,3 +499,56 @@ unchanged and queues bugfix's heal prompt.
 **Pinned by.** `test/main-revert.test.ts` — "a named culprit is reverted on main…", "a revert that
 conflicts leaves main alone…" and "a director-merged, runnerless or revert culprit is skipped";
 `test/main-watch.test.ts` — the culprit cases.
+
+## The fallback breaker: a free fallback that cannot serve is demoted, not retried forever
+
+The engaged free fallback is only worth running while it can serve. The breaker watches the runs
+the fallback pair produces, demotes the pair when they keep failing, and lets it back one probe
+run at a time. It binds the daily-cap path and the window-move path alike.
+
+### INV-M1: consecutive fallback failures demote the fallback, and a demoted fallback admits one probe run per cool-down
+
+**Guarantee.** `FALLBACK_BREAKER_POLICY.failureLimit` consecutive `error` outcomes on an engaged
+fallback pair demote it. The count is team-wide; any served run in between resets the streak.
+While the pair is demoted, `fallbackServing` is false and roles on it are paused. After the
+cool-down, exactly one probe run is admitted while other due roles wait. A served probe closes the
+breaker. A failed probe re-opens it with the cool-down doubled, capped at `maxCooldownMs`. A probe
+that never ran, or produced no evidence, hands its slot back.
+
+**Binds.** `src/budget/fallback-breaker.ts` (`fallbackServing`, `fallbackProbeDue`,
+`startFallbackProbe`, `abandonFallbackProbe`), `src/orchestrator/orchestrator-launch.ts`.
+
+**Pinned by.** `test/orchestrator-budget.e2e.test.ts` — "a free fallback whose runs keep failing is
+demoted to a pause, then probed back once it serves"; `test/orchestrator-probe.test.ts` — "a
+demoted fallback admits exactly one probe run per cool-down; other due roles wait";
+`test/budget.test.ts` — "each failed probe doubles the cool-down up to its cap; a probe with no
+evidence frees the slot"; `test/fallback-breaker.test.ts` — "fallbackServing is false exactly while
+the breaker holds a demotion, probe included"; `test/orchestrator-launch.test.ts` — "a probe turned
+away by the held start gate has its claim handed back".
+
+### INV-M2: a change of subject re-trusts the fallback
+
+**Guarantee.** Editing the cap, changing the fallback pair, or the gate leaving the fallback (local
+midnight) replaces a demoted breaker with a fresh, trusted one on the next poll. Evidence about a
+pair that is no longer engaged is dropped.
+
+**Binds.** `src/budget/fallback-breaker.ts` (`rekeyFallbackBreaker`, `rekeyFallbackBreakers`),
+`src/gates/gate-polls.ts`.
+
+**Pinned by.** `test/fallback-breaker.test.ts` — "rekey keeps the same breaker while the subject is
+unchanged, re-trusts on any change"; `test/budget.test.ts` — "rekeyFallbackBreaker clears a
+demotion when the cap, the pair, or the day changes" and "a served straggler closes a demoted
+breaker; evidence about another subject is dropped".
+
+### INV-M3: runs a window move put on a fallback feed the breaker below the cap, and its demotion holds the moved tier
+
+**Guarantee.** When a used-up claude window moves tiers to a fallback pair, those roles' run
+outcomes fold into that pair's breaker even though the daily cap is not reached. A demoted pair
+holds the moved tier's roles, with the same one-probe admission as INV-M1.
+
+**Binds.** `src/gates/gate-polls.ts` (`pollTeamGates`, its `windowMovedRoles`),
+`src/orchestrator/orchestrator-launch.ts`, `src/orchestrator/orchestrator-poll.ts`.
+
+**Pinned by.** `test/gate-polls.test.ts` — "pollTeamGates: a used-up window's demoted fallback
+holds the moved tier's roles below the cap"; `test/orchestrator-budget.e2e.test.ts` — "a window
+move's failing fallback is demoted and its tier held, below the cap".
