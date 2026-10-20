@@ -468,25 +468,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The existing tests "a free fallback whose ticks keep failing is demoted to a pause, then probed back once it serves" and "budgetPausedRoles holds the tiers that resolved to pause, and every demotion is published" pass unedited.
 - `npm run test:gate` passes.
 
-### A feature or bugfix primary whose eligible entries are all held by siblings stands down instead of running a model run that can only end in nothing-to-do (planned 2026-10-20 by the plan role; no dependency on any Planned entry)
-
-**Goal.** In the 24 hours to 13:11 UTC on 2026-10-20, the primary `feature` runner ended 52 runs with `no_change`. Their median length was 4.5 s, and together they cost $1.65 notional on the claude subscription window. A typical one: at 09:00:32 a `wake` ("main moved") was followed by `run_start` with no `claim` event and then `run_end` `no_change` 5.7 s later. In a multi-runner group, `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) skips an extra instance with no free entry ("no-free-entry"). The feature stand-down added 2026-10-12 skips the primary only when `eligible.length === 0`. When eligible entries exist but siblings hold every one, the claim block finds no `pick`, sets `runner.state.heldElsewhere`, and admits the primary unassigned. `buildHeldEntriesNote` (src/prompt/gate-notes.ts) then tells the run to "treat the backlog as having nothing to do for you". The run is paid for, but the only outcome it can have is no change. That is the waste the 10-12 stand-down was meant to remove, and the same holds for a bugfix primary whose open bugs are all held by siblings.
-
-**Approach.** Only `pollRunnerReasons`, in the claim block's `else if (instanceIndex(runner.role) >= 2)` branch:
-- Widen the condition to `!pick && (instanceIndex(runner.role) >= 2 || (heldTitles.length > 0 && !freshlyWoken(runner.state)))`. The branch body stays as it is: `noteSkip(root, runner, "no-free-entry")`, the `once.settle(runner.role, "no free entry")` call, and `continue`. `nextRunAt`/`backoffSeconds` are untouched, so the first poll after a sibling releases its entry or main moves starts the primary again.
-- Keep `runner.state.heldElsewhere` as the line above sets it. The branch is reached only for reasons other than inbox/resume, but a later inbox or resume run reuses the stored list in its `<held-entries>` note.
-- Without `heldTitles`, behavior does not change: a bugfix primary with no open bugs (an empty `claimGroup.eligible`) still runs in search mode, and so does any multi-runner role whose `eligibleEntries` is empty. An operator wake (`freshlyWoken`) still gets its run, the same exemption the stand-down above uses. A runner with a claim or outstanding work never reaches this branch.
-- Update the claim block's comment ("the primary runs unassigned only while some eligible entry exists (all of them held by siblings)") to say the primary now stands down in that case too, unless an operator wake is fresh.
-
-**Files.** `src/orchestrator/orchestrator-scheduling.ts`, `test/orchestrator-scheduling.test.ts`, `docs/how-it-works.md` (the "Parallel work instances" bullet: an instance, the first included, also skips while every eligible entry is held by a sibling, and an operator wake still runs).
-
-**Acceptance criteria.** In `test/orchestrator-scheduling.test.ts`:
-- Rename "an unassigned primary is told the entries its siblings hold, and the prompt names them" to say the primary stands down. Keep its `heldElsewhere` and prompt assertions, and add these: `reasons.has(feature)` is false, `feature.state.skipReason` is `"no-free-entry"`, and `nextRunAt`/`backoffSeconds` are unchanged.
-- A new test with the same three-feature setup, where the primary carries `wokenAt` later than `lastRunEndedAt`: the primary is admitted unassigned, with `heldElsewhere` set.
-- A new bugfix case: with two bugfix runners, BUGS.md holding one open eligible bug, and `bugfix-2` holding its claim, the primary `bugfix` is not admitted and records `"no-free-entry"`. With BUGS.md holding no open bugs, the primary is still admitted (search mode).
-- The existing tests "an extra instance with no free entry is skipped and keeps its schedule", "a once round settles an extra feature instance with no free entry" and the bugfix held-only tests pass unchanged.
-- `npm run test:gate` passes.
-
 ### The TUI's per-key editor guards ask the session's held registry instead of hand-listing editors, so a newly added editor can no longer be typed over by Ctrl+P/A/W/V, Ctrl+R, Ctrl+A, Ctrl+N or Ctrl+E (planned 2026-10-20 by the plan role; no dependency on any Planned entry)
 
 **Goal.** `createTuiEditorSession` (`src/ui/tui/tui-editor-session.ts`) already keeps a registry of which editors hold the prompt line: `heldEditorFlash` walks the six special holders plus `HOLDER_SUBJECTS`, and `anyEditorHeld` wraps it. Five key-entry guards still list `!session.held.<x>` flags by hand, though, and each list has fallen behind the editors added since it was written:

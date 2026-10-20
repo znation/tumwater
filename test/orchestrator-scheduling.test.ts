@@ -659,8 +659,8 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   assert.equal(secondReasons.has(runners[1]!), true, "the second role starts one run later");
 });
 
-test("an unassigned primary is told the entries its siblings hold, and the prompt names them", async () => {
-  const root = tmpdir("tumwater-scheduling-held-");
+function heldPrimarySetup(prefix: string) {
+  const root = tmpdir(prefix);
   fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
   fs.writeFileSync(path.join(root, "README.md"), "# proj\n");
   const config = defaultConfig();
@@ -672,12 +672,54 @@ test("an unassigned primary is told the entries its siblings hold, and the promp
   feature2.state.claim = claim("alpha");
   feature3.state.claim = claim("beta");
   const roleProviders = new Map([["feature", undefined], ["feature-2", undefined], ["feature-3", undefined]]);
-  await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3], roleProviders));
+  return { root, config, feature, ctx: schedulingCtx(root, [feature, feature2, feature3], roleProviders) };
+}
+
+test("a primary whose eligible entries siblings hold stands down, and the prompt names them", async () => {
+  const { root, config, feature, ctx } = heldPrimarySetup("tumwater-scheduling-held-");
+  const nextRunAt = feature.state.nextRunAt;
+  const backoffSeconds = feature.state.backoffSeconds;
+  const reasons = await pollRunnerReasons(ctx);
+  assert.equal(reasons.has(feature), false);
+  assert.equal(feature.state.skipReason, "no-free-entry");
+  assert.equal(feature.state.nextRunAt, nextRunAt);
+  assert.equal(feature.state.backoffSeconds, backoffSeconds);
   assert.equal(feature.state.claim, undefined);
   assert.equal(feature.state.heldElsewhere?.length, 2);
   const result = assembleRunPrompt({ root, config, role: "feature", state: feature.state });
   assert.match(result?.prompt ?? "", /<held-entries>[\s\S]*do not pick, edit, or implement them/);
   assert.match(result?.prompt ?? "", /- ".*"/);
+});
+
+test("a freshly woken primary whose eligible entries siblings hold is admitted unassigned", async () => {
+  const { feature, ctx } = heldPrimarySetup("tumwater-scheduling-held-woken-");
+  feature.state.lastRunEndedAt = 1_000_000_000;
+  feature.state.wokenAt = 1_000_005_000;
+  const reasons = await pollRunnerReasons(ctx);
+  assert.equal(reasons.has(feature), true);
+  assert.equal(feature.state.claim, undefined);
+  assert.equal(feature.state.heldElsewhere?.length, 2);
+});
+
+test("a bugfix primary stands down when siblings hold every eligible bug, but searches with none open", async () => {
+  const config = defaultConfig();
+  config.roles.bugfix = { enabled: true, instances: 2 };
+  const roleProviders = new Map([["bugfix", undefined], ["bugfix-2", undefined]]);
+  const held = tmpdir("tumwater-scheduling-bugfix-held-");
+  fs.writeFileSync(path.join(held, "BUGS.md"), bugsFile(OPEN_BUG));
+  const primary = fakeRunner("bugfix", config);
+  const second = fakeRunner("bugfix-2", config);
+  second.state.claim = { file: "BUGS.md", key: "live bug", title: "Live bug", at: 1_000_010_000, source: "assigned" };
+  const reasons = await pollRunnerReasons(schedulingCtx(held, [primary, second], roleProviders));
+  assert.equal(reasons.has(primary), false);
+  assert.equal(primary.state.skipReason, "no-free-entry");
+
+  const none = tmpdir("tumwater-scheduling-bugfix-none-");
+  fs.writeFileSync(path.join(none, "BUGS.md"), bugsFile());
+  const primary2 = fakeRunner("bugfix", config);
+  const second2 = fakeRunner("bugfix-2", config);
+  const reasons2 = await pollRunnerReasons(schedulingCtx(none, [primary2, second2], roleProviders));
+  assert.equal(reasons2.has(primary2), true);
 });
 
 test("a stale held-entries list is cleared once the role has no claim group", async () => {

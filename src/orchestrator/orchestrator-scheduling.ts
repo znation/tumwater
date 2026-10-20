@@ -463,7 +463,8 @@ export async function pollRunnerReasons(
     // holding it too would deadlock the whole group, since only its run can settle the hold.
     // Otherwise, when the run is not an inbox/resume run, it takes the first free entry; an
     // extra instance with none free is skipped without touching its backoff, and the primary
-    // runs unassigned only while some eligible entry exists (all of them held by siblings).
+    // stands down too while siblings hold every eligible entry, unless an operator wake is fresh
+    // (then it runs unassigned).
     // Stand-down: the feature charter says "If PLANS.md is empty or everything is done, there is
     // nothing to do" and the bugfix charter says "when every open entry carries [a Refused note],
     // there is nothing to do", so a feature runner (primary included) with no eligible plan at all,
@@ -528,10 +529,15 @@ export async function pollRunnerReasons(
             key: pick.key,
             title: pick.title,
           });
-        } else if (instanceIndex(runner.role) >= 2) {
+        } else if (
+          instanceIndex(runner.role) >= 2 ||
+          (heldTitles.length > 0 && !freshlyWoken(runner.state))
+        ) {
+          // An idle extra instance, or a primary whose eligible entries siblings all hold
+          // (unless an operator wake is fresh): no run, no backoff climb.
           noteSkip(root, runner, "no-free-entry");
           if (once.active) once.settle(runner.role, "no free entry");
-          continue; // an idle extra instance: no run, no backoff climb
+          continue;
         }
       }
     } else {

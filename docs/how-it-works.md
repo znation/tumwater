@@ -143,7 +143,8 @@ discards a role's in-flight merge.
   no longer exist in the checkout. The repeated-failure pause stops only the failing instance;
   instance 1's pause shows as `feature-1`, and `tumwater resume --role feature-1` lifts it. An
   extra instance with no unassigned eligible entry is
-  skipped without lengthening its sleep. A feature instance, the first included, skips its
+  skipped without lengthening its sleep, and so is the first instance while siblings hold every
+  eligible entry (a wake from you still runs it). A feature instance, the first included, skips its
   scheduled and main-moved runs while no plan is eligible at all, so a wake from you, an inbox
   message or a resume still runs; a `start --once` round settles a skipped instance as
   `no free entry`. A bugfix instance does the same while BUGS.md has open bugs but none is
