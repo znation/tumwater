@@ -1039,4 +1039,46 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The existing "history --summary tallies each loop's outcomes over the rows the table would print" and "history --summary keeps the empty-state output on an empty log" pass unchanged, and so do the `summarizeTickRows` cases in test/cli-run.test.ts.
 - `npm run test:gate` passes.
 
+### `tumwater revert <sha> --dry-run` previews the revert: the commit it would undo, the paths the inverse touches, and whether it applies cleanly on main, without writing anything (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — it touches only src/operator/revert.ts, `cmdRevert`, the revert help line and docs/cli.md's revert clause)
+
+**Goal.** `tumwater revert <sha>` acts at once. It commits the inverse on main, and the only way to learn whether a revert conflicts is to try it. An operator weighing a revert of a change merged a few commits back has no way to see first what it would undo, or whether later commits have built on it. `--dry-run` answers both from git's object store. It runs the same refusals as the real revert, then a three-way merge with `git merge-tree`. It never touches the index, the worktree or a ref, and it takes no lock. This is the same preview idea that `reclaim --dry-run` and `retire --dry-run` already offer.
+
+**Approach.**
+- `src/operator/revert.ts`:
+  - Factor the read-only refusals of `revertMergedCommit` into a private `resolveRevertTarget(root, ref): Promise<{ ok: true; full: string; primary: string } | { ok: false; error: string }>`. These are the base-branch check, `rev-parse --verify ref^{commit}` and `isMergedInto`. `revertMergedCommit` calls it inside its lock, keeping its existing error strings and order. The clean-tree check stays in `revertMergedCommit`.
+  - Export `previewRevert(root, ref): Promise<RevertPreview | { ok: false; error: string }>`. `RevertPreview` is `{ ok: true; sha: string; subject: string; paths: string[]; head: string; applies: boolean; dirty: boolean }`. The function never throws; a thrown git failure comes back as `{ ok: false, error: "the revert preview did not complete (git failed); nothing was written" }`. Its steps:
+    - Call `resolveRevertTarget`. It takes no lock, because it writes nothing.
+    - Count parents with `git rev-list --parents -n 1 <full>`. A commit with no parent, or with more than one, returns `{ ok: false, error: "<short> has <n> parents; revert previews a single-parent commit only" }`.
+    - `subject` comes from `git log -1 --format=%s <full>`.
+    - `paths` comes from `git diff --name-only --no-renames <full>^ <full>`, the same path rule `revertCommitIn` commits with.
+    - `head` is `headOf(root, "HEAD")`.
+    - `applies` comes from `runGit(root, ["merge-tree", "--write-tree", "--merge-base=" + full, "HEAD", full + "^"])`. This is the same three-way merge `git revert` performs: base = the commit, ours = HEAD, theirs = its parent. Exit 0 → `true`. A `GitError` with `code === 1` → `false` (conflict). Any other `GitError` returns `{ ok: false, error: "could not preview the revert: <message>" }`. That covers git older than 2.40, which lacks `--merge-base`.
+    - `dirty` is `true` when `git status --porcelain --untracked-files=no` is non-empty. That is the same condition on which `revertMergedCommit` refuses.
+- `src/operator/operator-commands.ts` (`cmdRevert`):
+  - Accept exactly `[<sha>]` or `[<sha>, "--dry-run"]` or `["--dry-run", <sha>]`. Any other flag-shaped token still fails with the existing `revert takes no flags (got …)` message, reworded to `revert takes only --dry-run (got …)`. The arity message is unchanged.
+  - With `--dry-run`, call `previewRevert` and `fail(error)` on `ok: false`. Otherwise print:
+    - `would revert <short sha> <subject>`
+    - each path indented two spaces
+    - then one verdict line:
+      - `applies cleanly on <primary> (HEAD <short head>); nothing was written` when `applies && !dirty`, exiting 0
+      - `would conflict on <primary> (HEAD <short head>); nothing was written` when `!applies`
+      - `the checkout has staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written` when `dirty`
+    - The conflict and dirty outcomes exit 1 (`process.exitCode = 1` after printing), so a script can gate the real revert on the dry run. When both hold, print both verdict lines.
+- `src/cli/help.ts`: change the usage line to `tumwater revert <sha> [--dry-run]` and add one sentence: `--dry-run names the commit and the paths its inverse touches and says whether it applies cleanly on main, writing nothing (exit 1 when the revert would conflict or refuse)`. Completion derives the flag from this line.
+- `docs/cli.md`: in the "Steer the project" row's `tumwater revert <sha>` clause, add the `--dry-run` sentence.
+
+**Acceptance criteria.**
+- `test/operator-revert.test.ts`, new cases calling `previewRevert`:
+  - On a non-tip commit whose paths no later commit touched, it returns `applies: true, dirty: false`, the commit's subject, and its paths. HEAD, `git status --porcelain` and `git stash list` are unchanged afterwards.
+  - On the "a later commit edited the same region" fixture, it returns `applies: false`, and HEAD and the tree are unchanged.
+  - With an unstaged edit to a tracked file, it returns `dirty: true`, and the edit is still in the worktree byte for byte.
+  - An unknown ref returns `no such commit: <ref>`. The repo's root commit returns the `has 0 parents` error.
+- The existing `revertMergedCommit` cases in test/operator-revert.test.ts pass unchanged.
+- `test/cli-operators.test.ts`, new case "revert --dry-run previews without writing":
+  - On a clean revert it exits 0. Stdout starts `would revert <short>`, lists the path, and contains `applies cleanly`.
+  - On a conflicting one it exits 1 with `would conflict`.
+  - In both, HEAD and `git status --porcelain` are as before.
+- The existing "revert rejects a flag-shaped token…" case is updated to the new `revert takes only --dry-run (got --json)` wording and still asserts that no commit is written.
+- `npm run test:gate` passes.
+
 ## Done
