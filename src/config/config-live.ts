@@ -2,13 +2,12 @@ import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, loadConfigCached } from "./config.js";
 import { runnerIds } from "../roles/runner-ids.js";
 import { configForRole, teamModelLabel, modelSelectorField } from "./config-views.js";
-import { seamsInUse } from "./config-fallbacks.js";
 import { bestEffortEventLogger, TUMWATER_SOURCE } from "../events/events.js";
 import { RoleRunner } from "../runner/runner.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import { errorMessage } from "../text/text.js";
-import { seedOpencodeCatalog, type OpenCodeSeedOptions } from "../gates/startup-gate.js";
+import { backendsInUse, seedOpencodeCatalog, type OpenCodeSeedOptions } from "../gates/startup-gate.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 
@@ -140,8 +139,8 @@ export function newLiveConfigReload(deps: {
         // added to a pi team does not start uncheckable. A missing binary is a warning event,
         // never a crash; a present one logs its verdict as a backend_binary event. The seed is
         // attempted once per root.
-        const prevBackends = new Set(seamsInUse(prevLive).map((s) => s.agent ?? "pi"));
-        for (const backend of new Set(seamsInUse(reloaded.config).map((s) => s.agent ?? "pi"))) {
+        const prevBackends = new Set(backendsInUse(prevLive));
+        for (const backend of backendsInUse(reloaded.config)) {
           if (prevBackends.has(backend)) continue;
           const resolved = resolveBackendBin(reloaded.config, backend);
           if (findBackendBinary(resolved)) {
