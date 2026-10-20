@@ -9,7 +9,8 @@ import { formatDate, formatTime, humanUntil } from "../text/datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { questionAsker } from "../backlog/question-answer.js";
-import { knownRoleIdsCached } from "../config/config.js";
+import { knownRoleIdsCached, loadConfigCached } from "../config/config.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { loadRunnerState, saveRunnerState, zeroCounters } from "../runner/runner-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
@@ -159,14 +160,33 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   } else writeJsonAtomic(wakeRequestPath(root), { at: now, roles });
   // Same liveness contract as reset-counters and pause/resume: only a live team consumes the
   // marker, so say so instead of promising a poll that will not happen.
+  const disabledNote = disabledWakeNote(root, roles);
   if (deferred)
     return (
       `wake scheduled for ${roles.join(", ")} — wakes in ${durationLabel(inMs)} — ` +
       (live
         ? "the running team applies it within one poll after the deadline"
-        : "tumwater is not running — the next `tumwater start` applies it after the deadline")
+        : "tumwater is not running — the next `tumwater start` applies it after the deadline") +
+      disabledNote
     );
-  return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
+  return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}${disabledNote}`;
+}
+
+/** The confirmation clause naming the woken roles that are disabled: a disabled role has no
+ * runner, so the wake only ends its sleep. Empty when none is disabled or the config
+ * cannot be read (the cached read, so a broken tumwater.json never makes a wake throw). */
+function disabledWakeNote(root: string, roles: string[]): string {
+  const { config } = loadConfigCached(root);
+  if (!config) return "";
+  const disabled = roles.filter((id) => config.roles[baseRoleOf(id)]?.enabled === false);
+  if (disabled.length === 0) return "";
+  const one = disabled.length === 1;
+  return (
+    `; ${disabled.join(", ")} ${one ? "is" : "are"} disabled, so the wake only ends ` +
+    `${one ? "its" : "their"} sleep — ${one ? "it" : "they"} won't run until you enable ` +
+    `${one ? "it" : "them"} with ` +
+    `tumwater config set roles.${one ? disabled[0]! : "<id>"}.enabled true`
+  );
 }
 
 /** Schedule a graceful team stop `inMs` from now (`tumwater stop --in`, the dashboard's "Stop the

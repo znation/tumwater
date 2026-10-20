@@ -384,3 +384,43 @@ test("listWakes filters by role and keeps full roles lists, earliest first", () 
   assert.deepEqual(listWakes(root, ["feature"], now).map((w) => w.roles), [["feature", "qa"]]);
   assert.deepEqual(listWakes(root, ["clean", "feature"], now).map((w) => w.roles), [["clean"], ["feature", "qa"]]);
 });
+
+/** A dead-team root whose tumwater.json disables the given roles. */
+function rootWithDisabled(...ids: string[]): string {
+  const root = deadRoot();
+  const roles = Object.fromEntries(ids.map((id) => [id, { enabled: false }]));
+  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ roles }));
+  return root;
+}
+
+test("requestWake names a disabled target in the immediate confirmation", () => {
+  const msg = requestWake(rootWithDisabled("selfcheck"), ["selfcheck"]);
+  assert.match(msg, /^wake requested for selfcheck — /);
+  assert.ok(
+    msg.endsWith(
+      "; selfcheck is disabled, so the wake only ends its sleep — it won't run until you enable it with tumwater config set roles.selfcheck.enabled true",
+    ),
+    msg,
+  );
+});
+
+test("requestWake appends the disabled clause to a scheduled wake naming enabled roles too", () => {
+  const msg = requestWake(rootWithDisabled("selfcheck"), ["clean", "selfcheck"], 45 * 60_000);
+  assert.match(msg, /^wake scheduled for clean, selfcheck — wakes in 45m — /);
+  assert.ok(
+    msg.endsWith(
+      "; selfcheck is disabled, so the wake only ends its sleep — it won't run until you enable it with tumwater config set roles.selfcheck.enabled true",
+    ),
+    msg,
+  );
+});
+
+test("requestWake pluralises the disabled clause and omits it when every target is enabled", () => {
+  const two = requestWake(rootWithDisabled("perf", "selfcheck"), ["perf", "selfcheck"]);
+  assert.match(
+    two,
+    /; perf, selfcheck are disabled, so the wake only ends their sleep — they won't run until you enable them with tumwater config set roles\.<id>\.enabled true$/,
+  );
+  const none = requestWake(rootWithDisabled("selfcheck"), ["clean"]);
+  assert.doesNotMatch(none, /disabled/);
+});
