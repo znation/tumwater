@@ -565,7 +565,8 @@ function renderShownEntry(shown: { title: string; body: string }): string {
  * what remains after the flags is the new text the callback folds to one line (so a `## `/`### `
  * line quoted in it can never grow a phantom section). After requireReadyRepo it prints
  * `edited <command> in <file>: <title>` or the `--json` payload {file, title}. Unlike
- * fileAndAnnounce there is no wake: an edit adds no work for a role to pick up. With
+ * fileAndAnnounce there is no wake: an edit adds no work for a role to pick up. An entry still
+ * held afterwards gets stillHeldNote, and `--json` carries `hold`. With
  * `--file <path>` (`-` reads stdin) the new entry comes from a markdown file instead of
  * positionals: `editText` receives its text, and any positional alongside --file is refused.
  * With neither positionals nor --file the entry, rendered as `--show` prints it, opens in
@@ -613,8 +614,13 @@ export async function editAndAnnounce(
     return;
   }
   warnIfUncommitted(await commitOperatorBacklogEdit(root, edited.file, stampedSubject("operator", `Edit ${command}: ${edited.title}`)), edited.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-  if (json) sayJson({ file: edited.file, title: edited.title });
-  else say(`edited ${command} in ${edited.file}: ${edited.title}`);
+  const holds = backlogHolds(root);
+  const hold = (command === "bug" ? holds.bugs : holds.plans)[position - 1] ?? null;
+  if (json) sayJson({ file: edited.file, title: edited.title, ...(hold === null ? {} : { hold }) });
+  else {
+    say(`edited ${command} in ${edited.file}: ${edited.title}`);
+    if (hold !== null) say(stillHeldNote(hold));
+  }
 }
 
 /** One confirmation for both file commands, prose or `--json`: the JSON branch prints the

@@ -239,6 +239,22 @@ test("tumwater plan --edit --json prints {file, title} and edits in place", asyn
   assert.equal(plans.length, 1);
   assert.match(plans[0]!, /^A corrected title \(reported by the user \d{4}-\d{2}-\d{2}\)$/);
   assert.match(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), /corrected body/);
+  assert.equal("hold" in payload, false);
+});
+
+test("plan --edit on a refused plan says it is still held", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli plan edit held");
+  await cli(repo, "plan", "Old title");
+  const file = path.join(repo, "..", `held-${path.basename(repo)}.md`);
+  fs.writeFileSync(file, "New title\n\n**Refused 2026-10-01 by feature: too big**\n");
+  const r = await cli(repo, "plan", "--edit", "1", "--file", file);
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /edited plan in PLANS\.md: New title/);
+  assert.match(r.stdout, /still held \[blocked: refused\]: no role takes it until that clears/);
+  fs.writeFileSync(file, "Newer title\n\n**Refused 2026-10-01 by feature: too big**\n");
+  const j = await cli(repo, "plan", "--edit", "1", "--file", file, "--json");
+  assert.equal((JSON.parse(j.stdout) as { hold: string }).hold, "refused");
 });
 
 test("an out-of-range or empty edit fails non-zero and leaves the file byte-identical", async () => {

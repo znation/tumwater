@@ -657,6 +657,7 @@ test("entry-edit-save words an edited, unchanged and gone reply", () => {
     { status: "edited", title: "B", committed: true },
     { status: "unchanged", title: "B" },
     { status: "gone" },
+    { status: "edited", title: "B", heldNote: "still held [blocked: refused]: no role takes it until that clears", committed: true },
   ];
   const scope = clientScope<{ runAct(a: string, b: string): void }>(
     ["run-act"], ["runAct"],
@@ -678,5 +679,6 @@ test("entry-edit-save words an edited, unchanged and gone reply", () => {
     "Edited “B” in PLANS.md",
     "No change to “B” — PLANS.md was not written",
     "That entry was removed or moved — refreshed",
+    "Edited “B” in PLANS.md — still held [blocked: refused]: no role takes it until that clears",
   ]);
 });

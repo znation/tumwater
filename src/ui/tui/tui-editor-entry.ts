@@ -1,5 +1,6 @@
 // vocabulary: plain
 import { bodyStructureProblem, fileEntryWithBody, OPERATOR_FILE_KINDS, splitEntryFile, tryEditEntry } from "../../backlog/backlog-write.js";
+import { backlogHolds, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { stripEntryStamp } from "../../backlog/backlog-structure.js";
 import { readTextIfExists } from "../../files/files.js";
 import { submitRolePromptAndWake } from "../../operator/operator-intent.js";
@@ -148,7 +149,9 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
           exitEntryEdit();
           if (outcome.status === "edited") {
             session.commitBacklogEdit(outcome.file, `Edit ${target.kind}: ${outcome.title}`);
-            session.flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}`);
+            const holds = backlogHolds(session.root);
+            const hold = (target.kind === "bug" ? holds.bugs : holds.plans)[position - 1] ?? null;
+            session.flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}${hold === null ? "" : ` — ${stillHeldNote(hold)}`}`);
           } else if (outcome.status === "unchanged") {
             session.flashMessage(`unchanged ${target.kind} #${target.position}: ${outcome.title}`);
           } else {

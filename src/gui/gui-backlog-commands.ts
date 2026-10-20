@@ -240,8 +240,9 @@ export async function handleBacklogTop(req: http.IncomingMessage, res: http.Serv
  * in-place rewrite under the state lock. Body `{"kind", "position", "title", "newTitle",
  * "newBody"}`; a missing position or a different heading there answers 200 { ok: true, status:
  * "gone" }; text identical to the entry's own answers 200 { ok: true, status: "unchanged", file,
- * title } with nothing written or committed. The body keeps its line structure. No wake and no
- * inbox prompt: whichever tick picks the entry up refines it. */
+ * title } with nothing written or committed. An edited entry that is still held adds `heldNote`
+ * (stillHeldNote). The body keeps its line structure. No wake and no inbox prompt: whichever tick
+ * picks the entry up refines it. */
 export async function handleBacklogEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>", "newTitle": "...", "newBody": "..."}');
   if (!body) return;
@@ -268,7 +269,8 @@ export async function handleBacklogEdit(req: http.IncomingMessage, res: http.Ser
   if (outcome === null) return;
   if (outcome.status === "edited") {
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
-    sendJson(res, 200, { ok: true, status: "edited", file: outcome.file, title: outcome.title, committed });
+    const hold = heldAt(root, kind, position);
+    sendJson(res, 200, { ok: true, status: "edited", file: outcome.file, title: outcome.title, committed, ...(hold === null ? {} : { heldNote: stillHeldNote(hold) }) });
   } else if (outcome.status === "unchanged") {
     sendJson(res, 200, { ok: true, status: "unchanged", file: outcome.file, title: outcome.title });
   } else {

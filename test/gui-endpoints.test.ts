@@ -2054,6 +2054,19 @@ test("backlog 400s name the offending value, and stay terse when the field is mi
 });
 
 // ---- POST /api/backlog-edit: the entry drawer's edit ----
+test("handleBacklogEdit names a hold that survives the edit", async () => {
+  const root = tmpdir();
+  const refused = "**Refused 2026-10-01 by feature: too big**";
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: `### p1 (planned 2026-10-01 by plan)\n\nold\n\n${refused}` }, { heading: "## Done" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogEdit(fakeReq(JSON.stringify(body)), res, root));
+  const kept = await serve({ kind: "plan", position: 1, title: "p1 (planned 2026-10-01 by plan)", newTitle: "p2", newBody: `new\n\n${refused}` });
+  assert.equal((kept.data as { status: string }).status, "edited");
+  assert.match((kept.data as { heldNote: string }).heldNote, /^still held \[blocked: refused\]/);
+  const dropped = await serve({ kind: "plan", position: 1, title: "p2 (planned 2026-10-01 by plan)", newTitle: "p3", newBody: "plain" });
+  assert.equal((dropped.data as { status: string }).status, "edited");
+  assert.equal("heldNote" in (dropped.data as object), false);
+});
+
 test("handleBacklogEdit rewrites the entry, answers gone for a stale title, 400s bad input, wakes nobody", async () => {
   const root = tmpdir();
   writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### p1 (planned 2026-10-01 by plan)\n\nold" }, { heading: "## Done" }]);

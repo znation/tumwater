@@ -2773,12 +2773,12 @@ test("the backlog pane answers the selected open question through tryAnswerQuest
   assert.equal(keys.state().input, draft);
 });
 
-function entryEditRig() {
+function entryEditRig(bugBody = "line a\n\n  indented line b\n\nline c\n") {
   const root = makeRoot();
   fs.writeFileSync(path.join(root, "PLANS.md"), "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n");
   fs.writeFileSync(
     path.join(root, "BUGS.md"),
-    "## Open\n\n### Bug one (found by test 2026-10-02)\n\nline a\n\n  indented line b\n\nline c\n",
+    `## Open\n\n### Bug one (found by test 2026-10-02)\n\n${bugBody}`,
   );
   fs.writeFileSync(path.join(root, "QUESTIONS.md"), "## Open\n\n### A question (asked by test 2026-10-02)\n\nbody\n");
   const { keys } = makeKeys(root, () => 0);
@@ -2804,7 +2804,17 @@ test("backlog Ctrl+E edits the selected bug's title, keeping its stamp and body"
   assert.equal(keys.state().entryEditFor, null);
   assert.equal(keys.state().input, "");
   assert.match(keys.state().flash ?? "", /edited bug #1/);
+  assert.doesNotMatch(keys.state().flash ?? "", /still held/);
   assert.equal(read("BUGS.md"), before.replace("### Bug one (", "### Bug one renamed ("));
+});
+
+test("backlog Ctrl+E on a refused bug flashes that it is still held", () => {
+  const { keys, down, ctrlE } = entryEditRig("**Refused 2026-10-01 by bugfix: not reproducible**\n");
+  down(2);
+  ctrlE();
+  for (const ch of " renamed") keys.handleKey(ch, { name: ch === " " ? "space" : ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash ?? "", /edited bug #1: .* — still held \[blocked: refused\]/);
 });
 
 test("backlog Ctrl+E refuses a question, Esc restores the draft, and a blank title stays open", () => {
