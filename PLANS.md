@@ -694,4 +694,26 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - TUI: the Backlog pane's armed Ctrl+X cancel of a claimed entry flashes text containing `is still working on it`; an unclaimed cancel's flash is unchanged.
 - Existing cancel tests (test/backlog-write-cancel.test.ts, the gui-endpoints and tui-keys backlog-cancel tests) pass unchanged; `npm run test:gate` passes.
 
+### `tumwater role <id>`'s config writes (`--model`, `--cap`, `--instances` and the rest) say when nothing changed, as `config set` and `--enable`/`--disable` already do (planned 2026-10-20 by the plan role; independent of every eligible Planned entry. It touches src/cli/cli-query-commands.ts `writeRoleConfigKey`, test/cli-operators.test.ts and docs/cli.md's `tumwater role` row. The in-flight pause/resume and cancel entries edit other functions and files)
+
+**Goal.** `writeRoleConfigKey` (src/cli/cli-query-commands.ts) is the shared write behind seven `tumwater role <id>` flags: `--quiet-hours`, `--cap`, `--min-run-interval`, `--instances`, `--provider`, `--model` and `--thinking`, plus their `--clear-*` forms. It always prints `<base>: <noun> set to <v>` or `<base>: <noun> cleared`, even when nothing was written. `role feature --instances 1` on a fresh project reports `set to 1` for the value it already had. A second `role feature --clear-cap` reports `daily cap cleared` for a key the file never held. The existing tests confirm that this second clear leaves the file bytes unchanged. `setConfigKey` already returns `unchanged: true` for a value equal to the resolved one (landed with the config-set "already" plan), and `unsetConfigKey` returns `oldValue: undefined` when the file never held the key. `config set` and `config unset` already turn those results into "already" and "nothing was removed" lines, and `role --enable`/`--disable` says `already enabled`/`already disabled`. The per-role writes should do the same.
+
+**Approach (src/cli/cli-query-commands.ts `writeRoleConfigKey` only).**
+- Clear arm: when `result.oldValue === undefined`, print `${base}: ${noun} is not set in tumwater.json, so nothing was cleared`. Otherwise keep `${base}: ${noun} cleared`.
+- Set arm: when `result.unchanged`, print `${base}: ${noun} is already ${display(raw)}, so tumwater.json was not written`. Otherwise keep `${base}: ${noun} set to ${display(raw)}`.
+- Exit code stays 0 in both no-op arms. Add one sentence to the function's doc comment saying that a no-op reports itself and writes nothing. Leave the instructions/notes branches, the enable/disable branch, `setConfigKey`/`unsetConfigKey`, the TUI and the GUI alone.
+
+**Tests (test/cli-operators.test.ts).** Several role-write tests clear a key twice, or clear with an empty value after a clear, and assert `cleared` both times. These are "role --quiet-hours and --clear-quiet-hours …", "role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval …", "role --instances/--clear-instances …" and "role --provider/--model/--thinking (and --clear-*) …". Change each such repeat assertion to match `<noun> is not set in tumwater.json, so nothing was cleared`, and keep its byte-identity check. In each test, the first clear of a key the file holds still asserts `cleared`. Add assertions to the instances test and the provider/model/thinking test:
+- On a project where `roles.feature.model` is set to `m1`, `role feature --model m1` prints `feature: model is already m1, so tumwater.json was not written`, and the file bytes stay identical.
+- `role feature --instances 1` on a project whose feature instances resolve to 1 prints `feature: instances is already 1, …`, and the bytes stay identical.
+- A different value still prints `set to` and writes.
+
+**Docs.** In docs/cli.md's `tumwater role` row, add after the per-role write flags: a value the key already resolves to is reported as `already` and a clear of an unset key as `not set`, and neither writes the file.
+
+**Acceptance criteria.**
+- On a fresh `tumwater init` project, `tumwater role feature --clear-cap` prints `feature: daily cap is not set in tumwater.json, so nothing was cleared` and exits 0.
+- `tumwater role feature --model m1` twice prints `feature: model set to m1`, then `feature: model is already m1, so tumwater.json was not written`. tumwater.json is byte-identical across the second call.
+- A malformed value (for example `--instances 9` or a bad `--quiet-hours` window) fails exactly as before.
+- `npm run test:gate` passes.
+
 ## Done
