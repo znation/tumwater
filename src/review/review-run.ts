@@ -1,4 +1,4 @@
-import { APPROVED_PATCH_IDS_MAX, REVIEW_RESUME_LIMIT, saveRunnerState, type RunnerState } from "../runner/runner-state.js";
+import { APPROVED_PATCH_IDS_MAX, REVIEW_RESUME_LIMIT, saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { modelSelectorField, resolvedBackendConfig, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
@@ -101,7 +101,7 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
     // Count the resume before the run: a crash must not let the same session be resumed
     // forever without ever spending the budget.
     priorResume.attempts += 1;
-    saveRunnerState(root, state);
+    saveRunnerStateBestEffort(root, state);
   } else {
     state.reviewResume = undefined;
   }
@@ -126,7 +126,7 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
   // mid-review is distinguishable from a crash mid-author-run on resume (stray edits are the
   // reviewer's then, not the author's). Cleared at run end alongside `running`.
   state.phase = "review";
-  saveRunnerState(root, state);
+  saveRunnerStateBestEffort(root, state);
 
   // Freeze the revision the diff is measured from once, before the run: main moves while a
   // merge is approved, and a reviewer comparing against the live `main` ref reads another role's
@@ -427,7 +427,7 @@ async function settleUnparsedReview(
         attempts: resumeAttempts,
         at: Date.now(),
       };
-      saveRunnerState(root, state);
+      saveRunnerStateBestEffort(root, state);
     } else {
       state.reviewResume = undefined;
     }

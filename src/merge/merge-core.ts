@@ -11,7 +11,7 @@ import { reviewAheadOfMain, type GateResult, type ReviewContext } from "../revie
 import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
-import { saveRunnerState, type RunnerState } from "../runner/runner-state.js";
+import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP } from "../runner/revision.js";
 import { priorObjectionNumber } from "../review/review-verdict.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -245,8 +245,10 @@ export async function reviewPinnedChange(
   // note into the next prompt), and this run's tail — the merge plus the still-to-come
   // authoring run — can outlive a sudden death by hours. A mid-run crash (power loss,
   // kill -9) would otherwise roll the state file back to the last run-boundary snapshot
-  // and re-inject a superseded rejection even though its replacement is already on main.
-  saveRunnerState(root, state);
+  // and re-inject a superseded rejection even though its replacement is already on main. The
+  // save is best-effort (it warns "could not save the role's state"): a throw here would skip
+  // the reviewer's usage fold below, and the merge write-back saves the same state later.
+  saveRunnerStateBestEffort(root, state);
   // The reviewer's usage is folded exactly once per attempt: runGatePi folds a RETRIED first
   // attempt at retry time (stamping the team-wide rate-limit hold promptly, BUGS.md
   // 2026-10-01), and the final run is folded HERE — not also inside the wiring, which would
@@ -475,7 +477,7 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
         if (gate.followUpRun) ctx.foldUsage(gate.followUpRun);
         if (gate.nudgeRun) ctx.foldUsage(gate.nudgeRun);
         setMergeStage(ctx.root, req.role, "merging");
-        saveRunnerState(ctx.root, ctx.state);
+        saveRunnerStateBestEffort(ctx.root, ctx.state);
         if (gate.aborted) return { verdict: "retry" };
         if (gate.decision === "approved" || gate.decision === "exempt") {
           return { verdict: "approved", verifiedHead: gate.verifiedHead };
@@ -493,7 +495,7 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
             req.revisionRound,
             req.priorReview?.counts,
           );
-          saveRunnerState(ctx.root, ctx.state);
+          saveRunnerStateBestEffort(ctx.root, ctx.state);
           await deleteRef(ctx.root, mergeRefName(req.role)); // the verdict is final for this pin
           ctx.state.lastError = "merge failed: conflict resolution rejected on re-review";
           return { verdict: "rejected" };

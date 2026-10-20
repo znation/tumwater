@@ -4164,3 +4164,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/verdict/refusal.ts` (`handleRefusal`, `withoutBlockedPlanRefusals`).
 
 **Pinned by.** `test/refusal.test.ts` — "a failed PLANS.md strip write warns, leaves PLANS.md out of the commit, and still merges the BUGS.md note".
+
+## Review gate: a failed state save never fails the verify
+
+### INV-CL1: a verify whose role-state saves fail still folds its reviewer runs, deletes a rejected pin and logs review_rejected, warning once per failed save
+
+**Guarantee.** The role-state saves inside a merge's verify (the review's resume-count, phase and `reviewResume` saves, the verdict save, and the two `recheckResolved` saves) are best-effort: a failed write (full disk, EACCES) logs a "could not save the role's state" warning instead of throwing, so the reviewer's usage still folds, a rejected pin is still deleted and `review_rejected` is still logged. The merge write-back saves the same in-memory state later.
+
+**Binds.** `src/review/review-run.ts` (`runReviewer`), `src/merge/merge-core.ts` (`reviewPinnedChange`, `mergeApprovedChangeIn`'s `recheckResolved`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
+
+**Pinned by.** `test/merger.test.ts` — "an unwritable state file mid-review still folds the reviewer runs and settles a rejected re-review" (covers the phase, verdict and `recheckResolved` saves; the resume-count and `reviewResume` saves are covered by the swap only).

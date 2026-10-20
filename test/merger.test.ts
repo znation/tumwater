@@ -16,6 +16,7 @@ import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { assertClean, headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { piRanMarker, withApprovePi, withPi } from "./fakes/fake-pi.js";
 import {
   ROLE,
@@ -277,6 +278,50 @@ test("a resolution the re-review rejects deletes the pin and merges nothing", as
       // worktree-pool.md, part 2c) — the resolution is discarded by dropping the pin, not the
       // checkout, so the next merge reuses it.
       assert.equal(fs.existsSync(mergeWorktreePath(root)), true, "the shared _merge checkout persists on rejection");
+    },
+  );
+});
+
+test("an unwritable state file mid-review still folds the reviewer runs and settles a rejected re-review", async () => {
+  const rec = path.join(tmpdir("merger-rereview-enospc-"), "n");
+  await withPi(
+    `n=1
+     if [ -f '${rec}' ]; then n=$(( $(cat '${rec}') + 1 )); fi
+     printf '%s\n' "$n" > '${rec}'
+     for a in "$@"; do case "$a" in *"VERDICT:"*)
+       if [ "$n" -eq 1 ]; then
+         printf '%s\n' '${assistantLine("VERDICT: approve")}'
+       else
+         printf '%s\n' '${assistantLine("VERDICT: reject\n1. the resolution restored code main reverted")}'
+       fi
+       exit 0;; esac; done`,
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      advanceMain(root, "seed.txt", "main\n");
+
+      const state = freshRunnerState(ROLE);
+      const { ctx, folded } = makeCtx(root, state, (wt) => {
+        fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n");
+      });
+      const stateTmp = `${statePath(root, ROLE)}.tmp-`;
+      const undo = patchFsMethod("writeFileSync", (orig) => (...args) => {
+        const file = args[0];
+        if (typeof file === "string" && file.startsWith(stateTmp)) throw errnoError("ENOSPC");
+        return orig(...args);
+      });
+      try {
+        assert.equal(await verifyAndMerge(ctx, request(sha)), "rejected");
+      } finally {
+        undo();
+      }
+
+      assert.equal(folded.length, 2, "the first review and the re-review both fold");
+      assert.equal(await refSha(root, REF), null, "the rejected pin is deleted");
+      assert.equal(eventsOfType(root, "review_rejected").length, 1, "the rejection is logged");
+      assert.ok(
+        warningMessages(root).some((m) => m.startsWith("could not save the role's state")),
+        "a failed save warns",
+      );
     },
   );
 });
