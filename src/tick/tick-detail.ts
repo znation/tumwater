@@ -22,7 +22,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
  * when the command's shape changes. */
-export const TICK_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--json]";
+export const TICK_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--patch] [--json]";
 
 /** The shared not-found frame both wordings complete — what the scan looked for, the role,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
@@ -65,12 +65,12 @@ export function tickMergedSha(d: TickDetail): string | null {
   return d.mergedSha ?? tickCommitSha(d);
 }
 
-/** The per-file `git show --stat` summary of a tick's pinned commit. The sha is the authored
- * commit the tick pinned: a merge that rebased gives main a different sha with the same
- * changes, so this describes what the tick changed. */
-async function tickCommitStat(root: string, sha: string | null): Promise<string> {
+/** The `git show --stat` summary or full `--patch` of a tick's pinned commit. The sha is the
+ * authored commit the tick pinned: a merge that rebased gives main a different sha with the
+ * same changes, so this describes what the tick changed. */
+async function tickCommitShow(root: string, sha: string | null, what: "--stat" | "--patch"): Promise<string> {
   if (sha === null) return "(no commit: this run sent nothing to merge)";
-  const out = await gitTry(root, "show", "--stat", "--format=", sha);
+  const out = await gitTry(root, "show", what, "--format=", sha);
   if (out === null) return `(commit ${shortSha(sha)} is not in this repository)`;
   return out.trimEnd();
 }
@@ -79,7 +79,14 @@ async function tickCommitStat(root: string, sha: string | null): Promise<string>
  * apply one rule for the sha and the "(no commit …)" / "(commit … is not in this repository)"
  * texts. */
 export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
-  return tickCommitStat(root, tickCommitSha(d));
+  return tickCommitShow(root, tickCommitSha(d), "--stat");
+}
+
+/** The pinned commit's full patch for a tick, for `history --patch`. Like tickDetailStat it
+ * shows the commit the tick pinned (tickCommitSha), not the `merged as` sha, so the stat and
+ * the patch describe the same commit; the placeholder texts are the stat's. */
+function tickDetailPatch(root: string, d: TickDetail): Promise<string> {
+  return tickCommitShow(root, tickCommitSha(d), "--patch");
 }
 
 /** The human view of a TickDetail: one summary line — result (or the in-flight/unpaired
@@ -109,11 +116,11 @@ export function renderTickDetail(d: TickDetail): string {
   return [header, ...trail].join("\n");
 }
 
-/** `tumwater tick <role> [<n>] [--last] [--stat] [--json]`: print one completed tick's full event
- * trail. Read-only: stdout only, no state file created — a tick the scan cannot find prints a
- * not-found line and exits 0 (history's empty-output convention: an absent record is an
- * answer, not a failure), and under --json it prints the JSON document `null` instead — the
- * report --json precedent
+/** `tumwater tick <role> [<n>] [--last] [--stat] [--patch] [--json]`: print one completed
+ * tick's full event trail. Read-only: stdout only, no state file created — a tick the
+ * scan cannot find prints a not-found line and exits 0 (history's empty-output convention:
+ * an absent record is an answer, not a failure), and under --json it prints the JSON document
+ * `null` instead — the report --json precedent
  * that every exit-0 output is parseable, never prose. `tumwater tick <role> --last` resolves
  * the role's newest completed tick in the scanned window and prints its trail exactly as the
  * numbered form would — the summary header and event rendering are shared, only the number's
@@ -125,6 +132,7 @@ export async function cmdTick(
   json: boolean,
   last = false,
   stat = false,
+  patch = false,
 ): Promise<void> {
   // Positional arity by form: cli.ts has already peeled the flags off and gated them (only
   // --json and --last are admitted), so anything left over that does not fit the chosen form
@@ -165,7 +173,9 @@ export async function cmdTick(
   }
   // --json swaps the renderer for the collector's own payload, exactly as history --json: a
   // JSON document in every exit-0 case, never prose.
-  const statText = stat ? await tickDetailStat(root, detail) : null;
-  if (json) sayJson(statText === null ? detail : { ...detail, stat: statText });
-  else say(statText === null ? renderTickDetail(detail) : `${renderTickDetail(detail)}\n\n${statText}`);
+  const footer: { stat?: string; patch?: string } = {};
+  if (stat) footer.stat = await tickDetailStat(root, detail);
+  if (patch) footer.patch = await tickDetailPatch(root, detail);
+  if (json) sayJson({ ...detail, ...footer });
+  else say([renderTickDetail(detail), ...Object.values(footer)].join("\n\n"));
 }

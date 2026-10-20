@@ -5,6 +5,38 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater history <role> <n> --patch` appends the run's full commit patch to its trail, the patch twin of `--stat` (planned 2026-10-19 by the plan role; no dependency on any Planned entry: the in-flight `history -f` plan edits src/history/history.ts and src/cli/log-commands.ts, the dashboard Revert plan adds one exported `tickLandedSha` to src/tick/tick-detail.ts, and a blocked runner-rename part renames identifiers there, so these meet only as rebases; done 2026-10-19 by the feature role)
+
+**Goal.** `tumwater history <role> <n> --stat` (`cmdTick` in src/tick/tick-detail.ts) appends the per-file `git show --stat` summary of the commit a run pinned. To see what the run actually changed, though, you still have to copy the `commit <sha>` out of the header and run `git show` yourself. `tumwater diff --role <id>` already prints the patch of a role's *pending* change. This plan gives a *finished* run the same view: `--patch` appends that commit's full patch. Like `--stat`, it shows the commit the run pinned (`tickCommitSha`), not the `merged as` sha: a rebased merge carries the same changes under a new sha, and the stat and the patch should describe the same commit.
+
+**Decided scope (no open question).**
+- `--patch` is accepted with `--stat`. Then the stat block comes first and the patch block follows, each separated by a blank line, in the same order as `git show --stat --patch`. With `--last`, it applies to the newest finished run, just as `--stat` does.
+- The patch is printed whole, with no byte cap, the same as `diff --role`'s patch. The reviewer-facing truncation in `aheadOfMainDiff` (src/git/git-diff.ts) is for a model's context window, not for a terminal that can page.
+- A run with no commit, or with a commit that is not in the repository, prints the same `(no commit: this run sent nothing to merge)` / `(commit <short> is not in this repository)` texts `--stat` prints. A missing commit is not a failure, and the exit code is 0.
+- `--json` adds a `patch` string field beside `stat`, and only when the flag is given. No dashboard or TUI change: the dashboard's `GET /api/run` (`handleTick`) and the TUI's History trail (`tickStat` in src/ui/tui/tui-keys.ts) keep the stat footer only.
+
+**Approach.**
+- **src/tick/tick-detail.ts**:
+  - Generalize `tickCommitStat(root, sha)` into `tickCommitShow(root, sha, what: "--stat" | "--patch")`, which runs `gitTry(root, "show", what, "--format=", sha)`. It keeps both placeholder texts and the `trimEnd()`. Keep `tickDetailStat` exactly as it is now, on top of the new helper.
+  - Export `tickDetailPatch(root, d)` beside it, with a doc comment that names the pinned-commit rule.
+  - `cmdTick` gains a trailing `patch = false` parameter. It collects the stat and patch blocks (each only when its flag is given) into one footer list. Plain text joins the trail and the footer with `\n\n`. `--json` spreads `{ stat?, patch? }` into the detail. Update the doc comment and `TICK_USAGE` to `tumwater history <role> [<n>] [--last] [--stat] [--patch] [--json]`.
+- **src/cli/cli-flag-specs.ts**: add `PATCH_FLAG: FlagSpec = { names: ["--patch"] }` beside `STAT_FLAG`, value-less.
+- **src/cli.ts** `runTrailCommand`: add `PATCH_FLAG` to its `rejectUnknownArgs` list, and pass `rest.includes("--patch")` to `cmdTick`. Update its doc comment's admitted-flag list.
+- **src/cli/help.ts**: the `history <role>` usage line gains `[--patch]`, plus the phrase "--patch appends the commit's full git show patch (after --stat's summary when both are given)". Completion derives from HELP.
+- **docs/cli.md** "Watch run history" row: after the `--stat` clause, add "`--patch` appends that commit's full patch (after the `--stat` summary when both are given)".
+
+**Files touched.** src/tick/tick-detail.ts, src/cli/cli-flag-specs.ts, src/cli.ts, src/cli/help.ts, docs/cli.md, test/tick-detail.test.ts.
+
+**Acceptance criteria.**
+- New test in test/tick-detail.test.ts, "tick --patch appends the pinned commit's patch, text and JSON", built like "tick --stat appends the pinned commit's per-file summary, text and JSON":
+  - Its text output starts with the plain trail and contains `diff --git a/README.md b/README.md` plus a `+` line from the commit.
+  - With `--stat` and `--patch` together, the `README.md | ` stat line comes before the `diff --git` line.
+  - `--json --patch` carries a `patch` field that matches `diff --git`, and it has no `stat` key unless `--stat` is given too.
+  - `cli(repo, "tick", "bugfix", "3", "--patch")` exits 0.
+- A case beside "tick --stat names a missing or foreign commit instead of failing" checks that `--patch` prints `(no commit: this run sent nothing to merge)` for a run with no commit and `(commit 00000000 is not in this repository)` for a foreign sha.
+- The two existing usage assertions in test/tick-detail.test.ts that match `\[--stat\] \[--json\]` are updated to match the new `TICK_USAGE`. The existing `--stat` tests pass with no change.
+- `npm run test:gate` passes.
+
 ### Plain terms code runner, part 12/14: Convert the run pipeline modules and the baseline and build modules (planned 2026-10-16 by user; requires part 11/14 landed; design in plans/terminology.md "Code names"; touches src/tick/ + src/baseline/ + src/build/ + test/tick-*.test.ts + their other tests); done 2026-10-19 by the feature role
 
 **Goal.** The run pipeline modules under src/tick/, which Plain terms code run renames next, and the baseline and build modules use `RunnerState`, `RoleRunner` and role wording, so the run series only handles tick words.
