@@ -141,6 +141,12 @@ export function cutSplitsSurrogatePair(s: string, i: number): boolean {
   return i > 0 && i < s.length && isHighSurrogate(s.charCodeAt(i - 1)) && isLowSurrogate(s.charCodeAt(i));
 }
 
+/** Join the first `max` of `items` with `sep`, then `<sep>+N more` when others were left out. */
+export function joinWithMore(items: readonly string[], max: number, sep = ", "): string {
+  const shown = items.slice(0, max).join(sep);
+  return items.length > max ? `${shown}${sep}+${items.length - max} more` : shown;
+}
+
 /** Shorten `s` to at most `max` characters: unchanged when it fits, otherwise cut to
  * `max - 1`, drop any trailing space the cut may have left behind, and append an ellipsis.
  * The result is never longer than `max`. A cut that would split a surrogate pair (an astral

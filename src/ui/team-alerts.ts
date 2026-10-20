@@ -17,6 +17,7 @@ import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { STALL_RE, duration } from "./run-progress-model.js";
 import { formatGB, usd, usdCap } from "../text/format.js";
 import { formatTimestamp, humanUntil } from "../text/datetime.js";
+import { joinWithMore } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
@@ -217,8 +218,7 @@ export function teamAlerts(
   // clears it too.
   const drift = snap.rootInstallDrift ?? [];
   if (drift.length) {
-    const shown = drift.slice(0, 5).join(", ");
-    const names = drift.length > 5 ? `${shown}, +${drift.length - 5} more` : shown;
+    const names = joinWithMore(drift, 5);
     out.push({
       key: "install",
       tone: "amber",

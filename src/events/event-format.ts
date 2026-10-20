@@ -6,7 +6,7 @@ import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
 import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
-import { isNonBlankString, squash, textOr, truncate } from "../text/text.js";
+import { isNonBlankString, joinWithMore, squash, textOr, truncate } from "../text/text.js";
 import { formatTimestamp, formatTime } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
@@ -395,7 +395,7 @@ export function eventMessage(e: HarnessEvent): string {
       const failing = Array.isArray(e.failingTests) ? e.failingTests.map(String) : [];
       const covered = Number(e.covered) > 1 ? ` (${textOr(e.covered)} commits)` : "";
       const verdict = e.status === "failed" ? "failed" : "passed";
-      const names = failing.length > 0 ? `: ${failing.slice(0, 3).join("; ")}${failing.length > 3 ? `; +${failing.length - 3} more` : ""}` : "";
+      const names = failing.length > 0 ? `: ${joinWithMore(failing, 3, "; ")}` : "";
       return `main ${shortSha(String(e.sha ?? ""))}${covered} full check ${verdict}${names}`;
     }
     case "main_culprit": {

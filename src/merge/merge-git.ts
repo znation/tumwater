@@ -6,7 +6,7 @@ import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { treeDiffFiles, unquotePorcelainPath } from "../git/git-diff.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
-import { errorFirstLine, errorMessage } from "../text/text.js";
+import { errorFirstLine, errorMessage, joinWithMore } from "../text/text.js";
 
 /** Git plumbing for the merge flow: rebasing a worktree branch onto main, inspecting and
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no merge policy
@@ -328,9 +328,7 @@ const MAX_BLOCKERS_LISTED = 5;
 /** Why a dirty primary checkout blocks a merge: up to 5 files per group. Callers prefix it with
  * their own stage (`fast-forward failed: `, or none from the pre-flight). */
 export function overwriteBlockedReason(blockers: OverwriteBlockers): string {
-  const list = (names: string[]): string =>
-    names.slice(0, MAX_BLOCKERS_LISTED).join(", ") +
-    (names.length > MAX_BLOCKERS_LISTED ? `, +${names.length - MAX_BLOCKERS_LISTED} more` : "");
+  const list = (names: string[]): string => joinWithMore(names, MAX_BLOCKERS_LISTED);
   const groups: string[] = [];
   if (blockers.uncommitted.length > 0) groups.push(`uncommitted: ${list(blockers.uncommitted)}`);
   if (blockers.untracked.length > 0) groups.push(`untracked: ${list(blockers.untracked)}`);
