@@ -1351,3 +1351,72 @@ everything else through", "adapter bounds oversized bash results using pi's full
 "adapter persists the full output itself when pi's bash tool left no file", "adapter leaves a
 non-array content payload untouched" and "adapter bounds a 64k model's results to its scaled
 limits".
+
+## Terminal text: a clipped line never overflows its columns, and a did-you-mean names only a near miss
+
+`displayWidth`, `clipToWidth` and `padToWidth` in `src/text/text-width.ts` measure in terminal
+columns, not UTF-16 code units (`truncate` in `src/text/text.ts` budgets by characters, a different
+unit). `suggestClosest`, `didYouMean` and `typoSuffix` in `src/text/suggest.ts` are the one home of
+the did-you-mean hint's threshold and wording.
+
+### INV-X1: width is counted in terminal columns, per code point
+
+**Guarantee.** `displayWidth` counts each code point as one column, except those in the
+`WIDE_RANGES` table (East Asian wide and fullwidth characters and common emoji), which count two.
+An astral character is one unit of width two, never two halves. Combining marks count one, so the
+measure can only overestimate.
+
+**Binds.** `src/text/text-width.ts` (`displayWidth`, private `codePointWidth`, `WIDE_RANGES`).
+
+**Pinned by.** `test/text-width.test.ts` — "clipToWidth counts wide characters as two columns and
+holds the invariant at every width".
+
+### INV-X2: a clipped line never exceeds its width and never splits a character
+
+**Guarantee.** `clipToWidth` returns text that fits unchanged and the empty string for a
+non-positive width. Over the budget it cuts on a code-point boundary, drops a wide character that
+cannot fit whole, and ends in `…`, which takes one column. A width of one clips bare, with no
+ellipsis. At every width the result's `displayWidth` is at most the width and holds no lone
+surrogate.
+
+**Binds.** `src/text/text-width.ts` (`clipToWidth`).
+
+**Pinned by.** `test/text-width.test.ts` — "clipToWidth never exceeds the requested width, even at
+degenerate widths", "clipToWidth never splits a surrogate pair (no lone surrogates in clipped
+lines)" and "clipToWidth counts wide characters as two columns and holds the invariant at every
+width".
+
+### INV-X3: padding reaches the exact column and never clips
+
+**Guarantee.** `padToWidth` appends spaces until the text's `displayWidth` equals the width, so a
+cell holding wide characters gets fewer spaces. Text already at or past the width is returned
+unchanged, so a caller clips first when a cell must not overflow.
+
+**Binds.** `src/text/text-width.ts` (`padToWidth`).
+
+**Pinned by.** `test/text-width.test.ts` — "padToWidth pads with spaces to the exact display
+column, and never past it".
+
+### INV-X4: a suggestion names only a near miss
+
+**Guarantee.** `suggestClosest` compares case-insensitively by Levenshtein distance and returns the
+closest candidate within `maxDistance` (two by default), else null. A candidate more than one edit
+away must share the input's first character. That filter runs inside the scan, so a disqualified
+nearer candidate cannot hide a farther one that qualifies. An empty candidate list gives null.
+
+**Binds.** `src/text/suggest.ts` (`suggestClosest`, private `editDistance`).
+
+**Pinned by.** `test/suggest.test.ts` — "suggestClosest names the closest candidate within two
+edits, case-insensitively".
+
+### INV-X5: the hint has one wording, and the suffix is its composition
+
+**Guarantee.** `didYouMean` renders `` — did you mean `x`?`` for a suggestion and the empty string
+for none. `typoSuffix` is exactly `didYouMean(suggestClosest(input, candidates))`, so every
+unknown-name error that uses it spells the hint the same way.
+
+**Binds.** `src/text/suggest.ts` (`didYouMean`, `typoSuffix`).
+
+**Pinned by.** `test/suggest.test.ts` — "didYouMean wraps a suggestion in the pinned wording, empty
+string for none" and "typoSuffix appends the did-you-mean wording for a close typo, nothing
+otherwise".
