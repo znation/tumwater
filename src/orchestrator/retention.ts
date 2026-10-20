@@ -73,9 +73,15 @@ export class RetentionPruner {
     // hands every expired OpenCode session id to `opencode session delete`. Each half warns its
     // own unit.
     const { config } = loadConfigSafe(root);
-    const bin = config !== undefined ? opencodeBackend.resolveBin(config).bin : undefined;
+    let bin = config !== undefined ? opencodeBackend.resolveBin(config).bin : undefined;
     const dbPath = opencodeDbPath(root);
-    ensureParentDir(dbPath);
+    try {
+      ensureParentDir(dbPath);
+    } catch {
+      // The directory cannot be created, so no OpenCode DB is there to delete from; this pass
+      // runs in the poll loop, where a throw ends the team. Skip only the session deletes.
+      bin = undefined;
+    }
     const deleted = pruneOpencodeSessions(sessions, days, {
       bin,
       env: { ...process.env, OPENCODE_DB: dbPath },

@@ -3814,3 +3814,47 @@ nothing past the window", "pruneSessionLedgers empties a fully stale ledger in p
 non-numeric stamp" and "pruneOpencodeSessions counts only deletes that succeeded and never throws";
 `test/session-ledger.test.ts` — "pruneSessionLedgers drops lines past the window and keeps the recent
 ones" and "pruneOpencodeSessions deletes expired opencode sessions and prunes old spill files".
+
+## Session retention: the once-per-day gate, a re-prune on a window change, and a prune pass that never throws
+
+### INV-BQ1: a prune is due for a positive window once a day, and startup prunes at once
+
+**Guarantee.** A prune is due when the window is positive and a full day has passed since the last
+prune or none has run; a window of 0 disables pruning; startup prunes at once.
+
+**Binds.** `src/orchestrator/retention.ts` (`dueForPrune`, the `RetentionPruner` constructor).
+
+**Pinned by.** `test/retention.test.ts` — "dueForPrune: the once-per-day gate with fake timestamps",
+"RetentionPruner: construction runs the startup prune at a positive window" and "RetentionPruner:
+retention 0 disables the startup prune".
+
+### INV-BQ2: a window change re-prunes at once and logs one event per distinct value
+
+**Guarantee.** A change in the live window logs one `retention_changed` per distinct value and
+re-prunes at once, even inside the daily window.
+
+**Binds.** `src/orchestrator/retention.ts` (`RetentionPruner.poll`).
+
+**Pinned by.** `test/retention.test.ts` — "RetentionPruner: poll re-prunes immediately on a window
+change and logs one event".
+
+### INV-BQ3: the OpenCode purge reads a ledger before the file pass can age it out
+
+**Guarantee.** The OpenCode session purge runs before the file pass, so an idle role's ledger is read
+before its file ages out.
+
+**Binds.** `src/orchestrator/retention.ts` (`RetentionPruner.prune`, order of its passes).
+
+**Pinned by.** `test/retention.test.ts` — "RetentionPruner: an idle role's expired opencode session is
+purged before its ledger ages out".
+
+### INV-BQ4: a prune pass never throws
+
+**Guarantee.** A prune pass never throws. An unwritable event feed costs only its warnings, and an
+OpenCode DB directory that cannot be created costs only the OpenCode session deletes.
+
+**Binds.** `src/orchestrator/retention.ts` (`RetentionPruner.prune`) and `warnEventBestEffort`.
+
+**Pinned by.** `test/retention.test.ts` — "RetentionPruner: a window change and a prune survive an
+unwritable events feed" and "RetentionPruner: an OpenCode DB dir that cannot be created skips the
+session deletes and still prunes the rest".

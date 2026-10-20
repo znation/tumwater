@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
-import { sessionsRootDir, toolOutputDir, eventsLogPath } from "../src/paths.js";
+import { sessionsRootDir, toolOutputDir, eventsLogPath, opencodeDbPath } from "../src/paths.js";
 import { recordSession, sessionLedgerPath, type SessionRecord } from "../src/agent/session-ledger.js";
 import { backdate } from "./helpers/backdate.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -126,4 +126,34 @@ test("RetentionPruner: an idle role's expired opencode session is purged before 
   const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
   assert.ok(log.includes("session delete ses-idle --standalone"), `idle opencode session purged: ${log}`);
   assert.equal(fs.existsSync(ledger), false, "the stale ledger itself is still aged out by the file pass");
+});
+
+test("RetentionPruner: an OpenCode DB dir that cannot be created skips the session deletes and still prunes the rest", () => {
+  const root = tmpdir();
+  // A regular file where the DB's directory belongs: the mkdir throws EEXIST.
+  const dbDir = path.dirname(opencodeDbPath(root));
+  fs.mkdirSync(path.dirname(dbDir), { recursive: true });
+  fs.writeFileSync(dbDir, "x");
+  const toolOut = staleFile(toolOutputDir(root), "tool-out.txt");
+  const day = 24 * 3600 * 1000;
+  recordSession(
+    path.join(sessionsRootDir(root), "feature"),
+    record({ agent: "opencode", id: "ses-blocked", at: Date.now() - 30 * day }),
+  );
+  const bin = tmpdir("opencode-retention-bin-");
+  const capture = path.join(tmpdir("opencode-retention-capture-"), "deleted.log");
+  writeScript(path.join(bin, "opencode"), `printf '%s\\n' "$*" >> ${capture}`);
+  process.env.TUMWATER_OPENCODE_BIN = path.join(bin, "opencode");
+  try {
+    assert.doesNotThrow(() => new RetentionPruner(root, 7));
+    assert.equal(fs.existsSync(toolOut), false);
+    assert.equal(fs.existsSync(capture), false, "no session delete was attempted");
+    const again = staleFile(toolOutputDir(root), "tool-out-2.txt");
+    const pruner = new RetentionPruner(root, 0);
+    assert.doesNotThrow(() => pruner.poll(root, 7));
+    assert.equal(fs.existsSync(again), false);
+    assert.equal(fs.existsSync(capture), false, "no session delete was attempted by poll");
+  } finally {
+    delete process.env.TUMWATER_OPENCODE_BIN;
+  }
 });
