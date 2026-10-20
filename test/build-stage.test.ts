@@ -9,6 +9,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { eventsLogPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { withReadOnlyDir } from "./helpers/fs-faults.js";
 
 // The build-stage helpers (src/build/build-stage.ts) — the redeploy's real filesystem effects,
 // exercised
@@ -415,14 +416,11 @@ test("pruneStaleStagings swallows every staging-root fault: the prune trails a s
 
   // Read and search without write (0o555): the stat now succeeds, the dir reads as stale, and
   // the removal itself fails — the "left for the next compile or swap" branch.
-  fs.chmodSync(stagingRoot, 0o555);
-  try {
+  withReadOnlyDir(stagingRoot, () => {
     assert.equal(pruneStaleStagings(root, path.join(root, "dist")), 0,
       "a failed removal is swallowed, not thrown");
     assert.equal(fs.existsSync(stale), true, "the unremovable staging survives one tick longer");
-  } finally {
-    fs.chmodSync(stagingRoot, 0o755);
-  }
+  });
 
   // And once the filesystem heals, the same prune removes it: the swallow never wedged anything.
   // (The failed rmSync already unlinked the marker, which freshened the dir's mtime — re-age.)

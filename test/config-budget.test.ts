@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { readJson } from "./helpers/json-read.js";
+import { withReadOnlyDir } from "./helpers/fs-faults.js";
 import { skipIfRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 import { setDailyBudgetUsd } from "../src/config/config-write.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
@@ -72,8 +73,7 @@ test("setDailyBudgetUsd reports a failed write and leaves the config untouched",
   saveConfig(dir, base);
   const file = path.join(dir, "tumwater.json");
   const before = fs.readFileSync(file, "utf8");
-  fs.chmodSync(dir, 0o555); // readable and searchable, not writable — the tmp write fails
-  try {
+  withReadOnlyDir(dir, () => { // not writable — the tmp write fails
     const r = setDailyBudgetUsd(dir, 25);
     assert.equal(r.ok, false, "a failed write is surfaced, never thrown");
     if (!r.ok) assert.ok(r.error.length > 0, "a non-empty error string for the UI to flash");
@@ -83,9 +83,7 @@ test("setDailyBudgetUsd reports a failed write and leaves the config untouched",
       [],
       "the failed write leaves no tmp remnant",
     );
-  } finally {
-    fs.chmodSync(dir, 0o755); // restore so temp-dir cleanup can remove it
-  }
+  });
 });
 
 // The writeJsonAtomic arm specifically: the lock (under .tumwater/state) must still be
@@ -101,14 +99,11 @@ test("setDailyBudgetUsd surfaces an atomic-write failure after the lock is taken
   const file = path.join(dir, "tumwater.json");
   const before = fs.readFileSync(file, "utf8");
   fs.mkdirSync(path.join(dir, ".tumwater", "state"), { recursive: true });
-  fs.chmodSync(dir, 0o555); // root read-only; .tumwater/state stays writable, so the lock succeeds
-  try {
+  withReadOnlyDir(dir, () => { // root read-only; .tumwater/state stays writable, so the lock succeeds
     const r = setDailyBudgetUsd(dir, 25);
     assert.equal(r.ok, false, "the failed atomic write is surfaced, never thrown");
     if (!r.ok) assert.ok(r.error.length > 0, "a non-empty error string for the UI to flash");
     assert.equal(fs.readFileSync(file, "utf8"), before, "the old config is untouched");
-  } finally {
-    fs.chmodSync(dir, 0o755); // restore so temp-dir cleanup can remove it
-  }
+  });
 });
 

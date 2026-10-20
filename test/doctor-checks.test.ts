@@ -46,6 +46,7 @@ import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { backdate } from "./helpers/backdate.js";
 import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
+import { withReadOnlyDir } from "./helpers/fs-faults.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 
 // Unit coverage for the pre-flight environment and repo checks
@@ -391,14 +392,11 @@ test("checkStateDir fails with the OS error when .tumwater is not writable", () 
   const root = makeRepo();
   const stateDir = path.join(root, ".tumwater");
   fs.mkdirSync(stateDir);
-  try {
-    fs.chmodSync(stateDir, 0o555);
+  withReadOnlyDir(stateDir, () => {
     const fail = checkStateDir(root);
     assert.equal(fail.level, "fail");
     assert.match(fail.detail, /not writable/);
-  } finally {
-    fs.chmodSync(stateDir, 0o755);
-  }
+  });
 });
 
 test("checkEventLog fails an events.jsonl whose permissions deny reading", { skip: runningAsRoot() }, () => {

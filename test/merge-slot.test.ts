@@ -32,6 +32,7 @@ import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
+import { withReadOnlyDir } from "./helpers/fs-faults.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import type { MergeEntry } from "../src/merge/merge-queue.js";
@@ -600,12 +601,7 @@ test("a failing marker write never throws — the merge proceeds and the old fra
   // The state directory gone read-only: the atomic write cannot create its tmp file. The
   // marker is display-only, so the call must swallow the failure rather than fail a merge.
   const dir = path.dirname(mergeStatePath(root));
-  fs.chmodSync(dir, 0o555);
-  try {
-    assert.doesNotThrow(() => setMergeStage(root, "improve", "reviewing"));
-  } finally {
-    fs.chmodSync(dir, 0o755);
-  }
+  withReadOnlyDir(dir, () => assert.doesNotThrow(() => setMergeStage(root, "improve", "reviewing")));
   assert.deepEqual(readMergeMarker(root), before, "the observers keep the previous frame");
 });
 

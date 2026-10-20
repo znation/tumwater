@@ -50,6 +50,25 @@ export function withThrowingFs<T>(name: string, err: unknown, body: () => T): T 
   }
 }
 
+/** Run `body` with directory `dir` readable and searchable but not writable (mode 0o555), then
+ * restore 0o755 so temp-dir cleanup can remove it — also when `body` throws or its promise
+ * rejects. Returns `body`'s result; an async `body` keeps the dir read-only until it settles.
+ * Callers skip under root first (`skipIfRoot`), where chmod cannot stop a write. */
+export function withReadOnlyDir<T>(dir: string, body: () => T): T {
+  fs.chmodSync(dir, 0o555);
+  const restore = (): void => fs.chmodSync(dir, 0o755);
+  let result: T;
+  try {
+    result = body();
+  } catch (e) {
+    restore();
+    throw e;
+  }
+  if (result instanceof Promise) return result.finally(restore) as T;
+  restore();
+  return result;
+}
+
 /** Wrap fs.openSync so the first open of `file` unlinks it instead — simulating a log
  * rotation rename landing between a reader's stat and its open (the race tail readers must
  * survive as "no data", not an ENOENT throw). Returns an undo function. */

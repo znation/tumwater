@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { readJson } from "./helpers/json-read.js";
+import { withReadOnlyDir } from "./helpers/fs-faults.js";
 import { skipIfRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 import { applyConfigRequest } from "../src/config/config-write.js";
 import { customLoopNames, defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
@@ -191,17 +192,14 @@ test("a request whose unlink fails is still applied, with the failed deletion su
   const wt = tmpdir();
   saveConfig(root, defaultConfig());
   writeRequest(wt, { customRoles: [{ name: "docs", task: "Keep the examples current." }] });
-  fs.chmodSync(wt, 0o555); // readable and searchable — the read succeeds, the unlink cannot
-  try {
+  withReadOnlyDir(wt, () => { // the read succeeds, the unlink cannot
     const result = applyConfigRequest(root, wt);
     assert.ok(result, "a present request file is never read as null");
     assert.deepEqual(result.applied, ["docs"], "the write happened before the failed cleanup");
     assert.deepEqual(customLoopNames(loadConfig(root)), ["docs"], "the role is live");
     assert.match(result.error ?? "", /could not be deleted/);
     assert.ok(fs.existsSync(configRequestPath(wt)), "the undeletable request is still on disk");
-  } finally {
-    fs.chmodSync(wt, 0o755); // restore so temp-dir cleanup can remove it
-  }
+  });
 });
 
 // The ??= precedence: a request that failed validation AND could not be deleted reports the
@@ -212,16 +210,13 @@ test("a validation failure outranks a failed deletion in the surfaced error", (t
   const wt = tmpdir();
   saveConfig(root, defaultConfig());
   writeRequest(wt, { customRoles: [{ name: "Docs", task: "uppercase name" }] });
-  fs.chmodSync(wt, 0o555);
-  try {
+  withReadOnlyDir(wt, () => {
     const result = applyConfigRequest(root, wt);
     assert.ok(result);
     assert.deepEqual(result.applied, []);
     assert.match(result.error ?? "", /customRoles\[0\]\.name/);
     assert.doesNotMatch(result.error ?? "", /could not be deleted/);
-  } finally {
-    fs.chmodSync(wt, 0o755);
-  }
+  });
   assert.ok(fs.existsSync(configRequestPath(wt)), "still undeletable after the failure");
 });
 

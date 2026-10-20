@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/concurrency/lock.js";
 import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
-import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
+import { errnoError, patchFsMethod, withReadOnlyDir } from "./helpers/fs-faults.js";
 import { backdate } from "./helpers/backdate.js";
 import { spawnReadyChild } from "./helpers/child-process.js";
 
@@ -192,17 +192,12 @@ test("withLock swallows a failed cleanup of a stale lock and waits instead of cr
   fs.mkdirSync(lock);
   fs.writeFileSync(path.join(lock, "pid"), "999999999"); // dead holder: stale by pid
   backdate(lock, 11 * 60 * 1000);
-  fs.chmodSync(root, 0o555); // no write on the parent: the stale dir cannot be removed
-  let ran = false;
-  try {
-    ran = await rejectedWithLock(
-      lock,
-      /timed out after 0\.7s waiting for lock/,
-      "the cleanup failure surfaces as the ordinary wait timeout, not the rmdir error",
-    );
-  } finally {
-    fs.chmodSync(root, 0o755);
-  }
+  // No write on the parent: the stale dir cannot be removed.
+  const ran = await withReadOnlyDir(root, () => rejectedWithLock(
+    lock,
+    /timed out after 0\.7s waiting for lock/,
+    "the cleanup failure surfaces as the ordinary wait timeout, not the rmdir error",
+  ));
   assert.ok(!ran, "never entered the critical section");
   assert.ok(fs.existsSync(lock), "the unremovable lock is left in place");
 });
@@ -216,15 +211,10 @@ test("withLock fails fast on a filesystem error that waiting cannot fix", async 
   // immediately instead of spinning to the deadline and blaming a phantom holder.
   const root = tmpdir();
   const lock = path.join(root, "blocked.lock");
-  fs.chmodSync(root, 0o555);
-  try {
-    await assert.rejects(
-      withLock(lock, async () => {}, 700),
-      /cannot acquire lock .*blocked\.lock: EACCES/,
-    );
-  } finally {
-    fs.chmodSync(root, 0o755);
-  }
+  await withReadOnlyDir(root, () => assert.rejects(
+    withLock(lock, async () => {}, 700),
+    /cannot acquire lock .*blocked\.lock: EACCES/,
+  ));
   assert.ok(!fs.existsSync(lock), "no lock dir is left behind");
 });
 
