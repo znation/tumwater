@@ -1170,3 +1170,94 @@ id, so a custom role can never shadow a feature or bugfix instance's state.
 
 **Pinned by.** `test/runner-ids.test.ts` — "a custom role name shaped like an instance id is a
 validation error".
+
+## Context shake: old bulky output becomes a recoverable pointer, never the recent window
+
+Every pi run loads `src/pi-extension/context-shake.ts`. Once the context fills past a crossing, it
+replaces old tool results with pointers through persisted `context_edit` entries. `shakePlan` is
+the pure selector; the default export `contextShake` is the thin adapter that maps pi's `turn_end`
+onto it and carries the summary note.
+
+### INV-V1: only an old, bulky, successful read or bash result is elided, and never twice
+
+**Guarantee.** A candidate is a `toolResult` from `read` or `bash` that is not an error, has a
+session entry id, is longer than `SHAKE_MIN_CHARS`, does not already start with `ELIDED_PREFIX`,
+and has at least the protected slice of estimated tokens newer than it. Edit, write, user and
+assistant messages are never touched.
+
+**Binds.** `src/pi-extension/context-shake.ts` (`shakePlan` and its private `isCandidate`,
+`SHAKE_MIN_CHARS`, `ELIDED_PREFIX`, `estimateTokens`).
+
+**Pinned by.** `test/context-shake.test.ts` — "shakePlan elides the old bulky result and leaves the
+newest slice alone", "shakePlan never selects edit, write, error, user or assistant messages",
+"shakePlan leaves short and already-elided results alone", "shakePlan leaves a long already-elided
+result alone instead of re-eliding it", "shakePlan skips a bulky result with no session entry to
+edit" and "a result exactly at the size floor is skipped while an over-floor companion is
+elided".
+
+### INV-V2: every pointer leads back to the full text
+
+**Guarantee.** A bash result is elided only with a recoverable path: pi's `details.fullOutputPath`,
+or else one that `writeFullOutput` returns. When neither exists, the result is kept. A read
+pointer names the file and a whole-line range that starts at the offset, after `nonNegativeNumber`
+heals it and it is floored, clamped to line 1.
+
+**Binds.** `src/pi-extension/context-shake.ts` (`shakePlan`, private `replacementFor`),
+`src/pi-extension/full-output.ts` (`writeFullOutput`).
+
+**Pinned by.** `test/context-shake.test.ts` — "a bash result without a pi full-output path gets
+one written", "a bash result with no recoverable path is kept rather than lost", "a read pointer
+names the file and the range it elided", "a read pointer counts the lines of a multi-line
+result", "a read pointer without a path or offset names the file from line 1", "a read pointer
+clamps a non-positive, non-finite, or missing offset to line 1", "a read pointer floors a
+fractional offset to a whole line" and "the adapter writes a bash result's full output and points
+the edit at it".
+
+### INV-V3: no pass runs on an unknown fill, below the crossing, or for less than the reclaim floor
+
+**Guarantee.** `shakePlan` is empty when the fill percentage cannot be known, when the fill is
+below the first crossing, or when the whole pass would reclaim less than the floor. `percentOf`
+uses a finite percent when pi gives one, else tokens over window; a non-finite or negative token
+count or window, or a window of 0, is unknown, not a fill. A team-sized context on the 1M primary
+therefore plans nothing.
+
+**Binds.** `src/pi-extension/context-shake.ts` (`shakePlan`, private `percentOf`,
+`SHAKE_MIN_RECLAIM_TOKENS`).
+
+**Pinned by.** `test/context-shake.test.ts` — "shakePlan stays empty below the first crossing",
+"shakePlan is empty when the whole pass would reclaim under the floor", "percentOf falls back to
+tokens/contextWindow when pi gives no percent", "percentOf ignores a non-finite percent and uses
+the token ratio instead", "percentOf reads a non-finite token count or window as unknowable, not
+as a fill" and "a team-sized context on the 1M primary plans nothing".
+
+### INV-V4: on a small window both passes stay under pi's compaction line
+
+**Guarantee.** `shakeLimits` returns the tuned `SHAKE_*` constants at and above the 128k reference
+window and when the window is unknown. Below 128k, the second pass sits
+`COMPACTION_MARGIN_PERCENT` under `compactionPercent(window)` and the first pass keeps its
+15-point lead. The protected slice and the reclaim floor scale by `windowScale`.
+
+**Binds.** `src/pi-extension/context-shake.ts` (`shakeLimits`, `SHAKE_PERCENT`,
+`SHAKE_MAX_PERCENT`, `SHAKE_PROTECTED_TOKENS`), `src/pi-extension/context-window.ts`
+(`compactionPercent`, `windowScale`, `REFERENCE_WINDOW_TOKENS`, `PI_COMPACTION_RESERVE_TOKENS`).
+
+**Pinned by.** `test/context-shake.test.ts` — "shakeLimits keeps the tuned thresholds at and above
+128k and when the window is unknown", "shakeLimits keeps both passes under pi's compaction line on
+a 64k window", "shakeLimits moves the passes down smoothly between 64k and 128k" and "a 64k run
+is shaken at its scaled crossing with its scaled protected slice".
+
+### INV-V5: the adapter shakes once per crossing, and its note rides exactly one tool result
+
+**Guarantee.** `contextShake` runs at most one pass when the first crossing is reached and at most
+one more when the run climbs to the second; a pass that plans nothing still uses up its crossing.
+A repeat `turn_end` above an already-used crossing returns nothing. Missing or unreducible usage
+and an empty context are no-ops. The summary note from `shakeNote` is appended to the next
+`tool_result` only, through `appendToolResultNote`.
+
+**Binds.** `src/pi-extension/context-shake.ts` (`contextShake`, `shakeNote`),
+`src/pi-extension/tool-result-content.ts` (`appendToolResultNote`),
+`src/pi-extension/context-usage.ts` (`readContextUsage`).
+
+**Pinned by.** `test/context-shake.test.ts` — "the adapter shakes once at 70%, again at 85%, and
+notes the next tool result", "the adapter shakes a 64k run at 57.5% and again at 72.5%" and "the
+adapter tolerates missing usage and an empty context".
