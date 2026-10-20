@@ -740,4 +740,31 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The completion key list contains `bootstrap.untilPlansDone` and `review.model`.
 - `npm run test:gate` passes.
 
+### `tumwater config unset` says what the key now resolves to, and says so plainly when the file never held it, so `config unset maxConcurrent` no longer reads as a change that did not happen (planned 2026-10-20 by the plan role; touches src/cli/config-commands.ts test/config-commands.test.ts docs/config.md)
+
+**Goal.** `config unset <key>` removes the file's value, but the key's effective value often stays the same. `tumwater init` writes the defaults into `tumwater.json`, so on a fresh project main's build prints `unset maxConcurrent (was 6)` and then `config get maxConcurrent` prints `6`. `unset idleBackoff` prints `unset idleBackoff (was {"initialSeconds":120,"factor":2,"maxSeconds":3600})` and `get` returns that same object. Both messages say a value went away when nothing changed. Running the same unset again, when the file no longer holds the key, prints `unset maxConcurrent`, which still reads as a removal even though `unsetConfigKey` changed nothing and left the file byte-identical. The confirmation should say what the key resolves to after the unset, and should say clearly when there was nothing to remove.
+
+**Approach (src/cli/config-commands.ts only; `unsetConfigKey` and its `{ ok, oldValue }` contract stay as they are).**
+- Move the nested ternary in `cmdConfig`'s `get` arm (the `map`, `tier`, `agent`, `role` and top-level reads of the loaded config) into a module-private `resolvedConfigValue(config: TumwaterConfig, parsed: ReturnType<typeof parseConfigKey>, key: string): unknown` (`ParsedConfigKey` is module-private in config-keys.ts, so name it through `parseConfigKey`), and have `get` call it. `get` keeps its output exactly, including JSON `null` for an absent key. If the planned `section` kind ("`tumwater config get|set|unset` reach one field of the fixed-shape sections") lands first, its `get` arm moves into the helper too.
+- In the `unset` arm, keep the `ParsedConfigKey` that `screenOperableKey(root, k)` already returns (`const { parsed } = …`). After a successful `unsetConfigKey`, read `loadConfigSafe(root).config`; when it is defined, set `now = resolvedConfigValue(config, parsed, k)`. When the reload fails, set `now` to undefined, so the message never depends on a reload succeeding. The confirmation then reads:
+  - removed, and `now` undefined: `unset <k> (was <old>)`, the same as today;
+  - removed, and `now` defined: `unset <k> (was <old>; now resolves to <now>)`;
+  - not in the file (`oldValue === undefined`), and `now` defined: `<k> is not set in tumwater.json, so nothing was removed (it resolves to <now>)`;
+  - not in the file, and `now` undefined: `<k> is not set in tumwater.json, so nothing was removed`.
+  `<old>` and `<now>` are `JSON.stringify` output, as today. The exit code stays 0 in every case: an absent key remains a successful no-op, as `unsetConfigKey`'s doc says.
+- The wording says "resolves to" and never "default", because some resolved values do not come from the defaults: a legacy alias (`agentBin`) feeds the `backends.<id>` view, and the role catalog seeds `roles.<id>.minRunIntervalSeconds`.
+- Not in scope: the GUI's `/api/config-unset` and the TUI editors, which call `unsetConfigKey` directly and keep their own flashes; `unsetConfigKey` itself; and the whole-config write that rematerializes defaults on every `set` (a later `config set` writes an unset `idleBackoff` back out — leave that alone).
+
+**Tests (test/config-commands.test.ts).** Update the four pinned strings in "unset removes a dotted role field, …" and "unset of a default-carrying key or a default-seeded role field the file never set is a true no-op" to the new no-op wording: `unset roles.qa.model` for the absent field; `maxConcurrent` and `quietHours`; and `roles.qa.minRunIntervalSeconds`, which now reads `… nothing was removed (it resolves to 7200)`. Keep each test's byte-identical file assertions. Add one test that seeds `{ maxConcurrent: 6, idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 } }` and asserts that `unset maxConcurrent` prints `unset maxConcurrent (was 6; now resolves to 6)` and that `unset idleBackoff` prints the `was …; now resolves to …` form with both objects. The existing `unset quietHours (was "23:00-07:00")` and `unset roles.qa.model (was "m-qa")` assertions must pass unchanged.
+
+**Docs.** In docs/config.md's `config unset` sentence ("removes one — the inverse of `set`, so a value reverts to its default …"), add that the confirmation names what the key now resolves to and says when the file never held the key.
+
+**Acceptance criteria.**
+- In a fresh `tumwater init` project, `config unset maxConcurrent` prints `unset maxConcurrent (was 6; now resolves to 6)`. A second `config unset maxConcurrent` prints `maxConcurrent is not set in tumwater.json, so nothing was removed (it resolves to 6)`, exits 0, and leaves the file byte-identical.
+- `config unset quietHours` with `"quietHours": "23:00-07:00"` in the file still prints `unset quietHours (was "23:00-07:00")`. With no `quietHours` in the file it prints `quietHours is not set in tumwater.json, so nothing was removed`.
+- `config unset roles.qa.minRunIntervalSeconds` on a file that never set it prints `roles.qa.minRunIntervalSeconds is not set in tumwater.json, so nothing was removed (it resolves to 7200)`.
+- `config get <key>` output is unchanged for every key kind; the existing `get` tests pass unchanged.
+- An unknown key, role or role field still fails with the same message (the "unset of an unknown key, role, or role field …" test passes unchanged).
+- `npm run test:gate` passes.
+
 ## Done
