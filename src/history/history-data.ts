@@ -404,14 +404,22 @@ const RUN_ROW_WINDOW_MEMO_MAX = 256;
  * read the row would either keep "Queued to land" after its change merged or misclaim an older
  * run's pin (BUGS.md 2026-09-30). The rows reuse the pure runRows with limit =
  * events.length, so pairing, role filtering, and the dash-on-unpaired rule stay exactly the
- * count view's. Pure over root: reads the event log, writes nothing. */
-export function readRunRowsSince(root: string, sinceMs: number, role: RoleScope): { rows: RunRow[]; covered: boolean } {
+ * count view's. `untilMs`, when given, ends the window that long ago. Pure over root: reads the
+ * event log, writes nothing. */
+export function readRunRowsSince(
+  root: string,
+  sinceMs: number,
+  role: RoleScope,
+  untilMs: number | null = null,
+): { rows: RunRow[]; covered: boolean } {
   // One backwards scan serves both the rows' window and the wider join read (see
   // readEventsSinceJoined): two readEventsSince calls re-scanned and re-parsed the same
   // log bytes — a whole duplicate window scan per `history --since`.
-  const { events, join, covered } = readEventsSinceJoined(root, sinceMs, RUN_ROW_JOIN_BACKSLACK_MS);
-  return {
-    rows: runRows(events, events.length, role, { events: join.events, floorTs: join.cutoff }),
-    covered,
-  };
+  const { cutoff, events, join, covered } = readEventsSinceJoined(root, sinceMs, RUN_ROW_JOIN_BACKSLACK_MS);
+  const rows = runRows(events, events.length, role, { events: join.events, floorTs: join.cutoff });
+  // `untilMs` ends the window that long ago, on the same `now` as the lower edge (cutoff +
+  // sinceMs - untilMs). It filters rows, not events, so the queued-row join and the run_start
+  // pairing read the same evidence as without it; `covered` is the far edge's and unchanged.
+  const upperTs = untilMs === null ? null : cutoff + sinceMs - untilMs;
+  return { rows: upperTs === null ? rows : rows.filter((r) => r.ts < upperTs), covered };
 }

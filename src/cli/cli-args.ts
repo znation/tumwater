@@ -281,8 +281,8 @@ export function failRivalShapes(subject: string, rival: string, why: string): ne
  * "logs --since …" instead of the malformed and missing-value forms naming a bare "--since".
  * Rival-flag rules stay in each command body, checked on the returned non-null value — so a
  * malformed or over-cap `--since` fails on its own wording before a rival-flag check fires,
- * the same precedence a command with only --since shows. `flag` defaults to `--since`; logs
- * reads its `--until` bound through the same idiom. */
+ * the same precedence a command with only --since shows. `flag` defaults to `--since`; logs and
+ * history read their `--until` bound through the same idiom. */
 export function parseSinceFlag(args: string[], label: string, maxMs: number, flag = "--since"): number | null {
   const raw = flagValue(args, flag);
   if (raw === null) return null;

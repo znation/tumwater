@@ -119,15 +119,18 @@ Usage:
                                    (--prompt also shows each run's exact prompt text)
   tumwater notify --test          Run the configured notify hook once with a synthetic event
                                    so the command can be checked before a real page
-  tumwater history [--role <id>[,<id>...]] [-n N] [-f/--follow] [--since <duration>] [--grep <text>]
+  tumwater history [--role <id>[,<id>...]] [-n N] [-f/--follow] [--since <duration>]
+                   [--until <duration>] [--grep <text>]
                    [--result <merged|none|refused|problems>[,...]] [--model <selector>[,...]]
                    [--summary] [--by role|model] [--json]
                                    One row per completed run, newest first — time, role,
                                    run number, result, duration, tokens/cost, and the
                                    summary (or error), each row one line; --since <duration>
                                    shows the window's runs instead of the last N (capped at
-                                   7d, like logs --since); --grep <text> keeps only rows whose
-                                   line matches, case-insensitively (like logs --grep);
+                                   7d, like logs --since); --until <duration> ends that
+                                   window the given duration ago (requires --since);
+                                   --grep <text> keeps only rows whose line matches,
+                                   case-insensitively (like logs --grep);
                                    -f prints the last N rows oldest first, then one row
                                    per run as it ends, until Ctrl+C or its parent exits (not
                                    with --since or --summary); with --json, one compact

@@ -42,9 +42,9 @@ export const HISTORY_BY_VALUE_ERROR = "history --by needs role or model";
  * run's start is paired from. */
 const HISTORY_FOLLOW_BUFFER_EVENTS = 2000;
 
-/** `tumwater history [--role <id>[,<id>...]] [-n N] [-f] [--since <duration>] [--grep <text>]
- * [--result <class>] [--model <selector>[,...]]`: print the last N completed runs, newest
- * first — or,
+/** `tumwater history [--role <id>[,<id>...]] [-n N] [-f] [--since <duration>]
+ * [--until <duration>] [--grep <text>] [--result <class>] [--model <selector>[,...]]`: print the
+ * last N completed runs, newest first — or,
  * with `--since`, the runs of a bounded past window over the same record, the same shape
  * `logs --since` and `report --since` speak. `--grep` keeps rows whose rendered line matches,
  * `--result` narrows to the listed outcome classes (changes/none/problems, the dashboard History
@@ -78,6 +78,10 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   }
   const followTail = follow ? readEventsTailWithEnd(root, HISTORY_FOLLOW_BUFFER_EVENTS) : null;
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
+  const untilMs = parseSinceFlag(rest, "history --until", LOGS_SINCE_MAX_MS, "--until");
+  if (untilMs !== null && sinceMs === null) fail("history --until requires --since");
+  if (untilMs !== null && sinceMs !== null && untilMs >= sinceMs)
+    fail(`history --until (${durationLabel(untilMs)}) must be shorter than --since (${durationLabel(sinceMs)})`);
   if (followTail !== null) {
     const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_RUNS) : HISTORY_DEFAULT_RUNS;
     // The seed goes through readRunRows, which widens its window until it finds `limit` rows;
@@ -86,7 +90,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   } else if (sinceMs !== null) {
     if (nRaw !== null) failRivalShapes("history --since", "-n", "a count and a window are rival shapes");
     const role = parseRoleListScope(root, rest);
-    const windowed = readRunRowsSince(root, sinceMs, role);
+    const windowed = readRunRowsSince(root, sinceMs, role, untilMs);
     rows = windowed.rows;
     covered = windowed.covered;
   } else {
@@ -192,7 +196,9 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
           ? `no runs matching "${grepPattern}"`
           : sinceMs === null
             ? "no runs yet"
-            : `no runs in ${durationLabel(sinceMs)}`,
+            : untilMs === null
+              ? `no runs in ${durationLabel(sinceMs)}`
+              : `no runs between ${durationLabel(sinceMs)} and ${durationLabel(untilMs)} ago`,
     );
     return;
   }

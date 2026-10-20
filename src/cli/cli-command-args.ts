@@ -59,7 +59,7 @@ export function parseDoctorChecks(positionals: string[]): DoctorCheckName[] | un
 }
 
 /** The `history` listing flags that take a separate value token. */
-const HISTORY_LISTING_VALUED_FLAGS = ["-n", "--since", "--grep", "--result", "--role", "--model", "--by"];
+const HISTORY_LISTING_VALUED_FLAGS = ["-n", "--since", "--until", "--grep", "--result", "--role", "--model", "--by"];
 
 /** True when `history`'s args are the one-run trail form (`history <role> <n>`, `history
  * <role> --last`): a token that is neither a flag nor the value of a listing-form valued flag.

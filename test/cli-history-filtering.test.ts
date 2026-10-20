@@ -607,3 +607,54 @@ test("an empty log keeps its own wording under --model", async () => {
   assert.equal(r.code, 0);
   assert.equal(r.stdout.trim(), "no runs yet");
 });
+
+test("history --since --until keeps only the runs that ended between the two edges", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history until window");
+  seedWindowedHistory(repo);
+
+  const r = await cli(repo, "history", "--since", "1h", "--until", "30m");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim().split("\n").length, 1, r.stdout);
+  assert.match(r.stdout, /clean\s+#2\s+no change\s+5m\s+tidied/);
+  assert.ok(!r.stdout.includes("new work"), r.stdout);
+  assert.ok(!r.stdout.includes("old work"), r.stdout);
+
+  const json = await cli(repo, "history", "--since", "1h", "--until", "30m", "--json");
+  const rows = (JSON.parse(json.stdout) as { rows: { role: string }[] }).rows;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.role, "clean");
+
+  const scoped = await cli(repo, "history", "--since", "1h", "--until", "30m", "--role", "feature");
+  assert.match(scoped.stdout, /no runs between 1h and 30m ago/);
+});
+
+test("history --until with an empty window names both edges", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history until empty");
+  seedWindowedHistory(repo);
+
+  const r = await cli(repo, "history", "--since", "1h", "--until", "50m");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no runs between 1h and 50m ago/);
+});
+
+test("history --until is refused without --since or when not shorter", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history until refused");
+  seedWindowedHistory(repo);
+
+  for (const args of [["--until", "1h"], ["-f", "--until", "1h"]]) {
+    const r = await cli(repo, "history", ...args);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /history --until requires --since/);
+  }
+  for (const until of ["2h", "1h"]) {
+    const r = await cli(repo, "history", "--since", "1h", "--until", until);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /history --until \(.*\) must be shorter than --since/);
+  }
+  const missing = await cli(repo, "history", "--since", "1h", "--until");
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /history --until needs a value/);
+});
