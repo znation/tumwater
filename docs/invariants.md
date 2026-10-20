@@ -1029,7 +1029,7 @@ While a re-enqueued attempt is pending, the authoring row keeps "queued". The `c
 hands each queued run the newest unclaimed pin at or before its end, so two runs never claim one
 pin.
 
-**Binds.** `src/history/history-data.ts` (`resolveQueuedResult`, `recoveredAttemptVerdict`,
+**Binds.** `src/history/history-queued.ts` (`resolveQueuedResult`, `recoveredAttemptVerdict`,
 `isRecoveryPin`, `endsChange`, `bucketMergeEvents`), `src/runner/leftover.ts` (`recoverLeftover`,
 the "recovered leftover work from " summary prefix).
 
@@ -1050,8 +1050,8 @@ since-read's `floorTs`. Pins and outcomes are bucketed per role (`bucketMergeEve
 `--role` filter or a role list never lends one role's verdict to another. A torn outcome falls
 back to its type's default text.
 
-**Binds.** `src/history/history-data.ts` (`resolveQueuedResult`, `attemptVerdict`,
-`bucketMergeEvents`, `runRows`).
+**Binds.** `src/history/history-queued.ts` (`resolveQueuedResult`, `attemptVerdict`,
+`bucketMergeEvents`), `src/history/history-data.ts` (`runRows`).
 
 **Pinned by.** `test/history-data.test.ts` — "a queued run whose merge is still in the pipeline
 keeps the raw label", "a queued run stays raw when no merge outcome matches its pinned sha", "a

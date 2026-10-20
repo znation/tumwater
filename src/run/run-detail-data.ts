@@ -7,7 +7,8 @@
  * Every datum rides the events the harness already writes, so this is a distillation of the
  * existing record, not a new one. The rendering half — the summary header, formatEvent, the
  * CLI command — lives in run-detail.ts. */
-import { HISTORY_SCAN_MAX_EVENTS, bucketMergeEvents, resolveQueuedResult } from "../history/history-data.js";
+import { HISTORY_SCAN_MAX_EVENTS } from "../history/history-data.js";
+import { bucketMergeEvents, resolveQueuedResult } from "../history/history-queued.js";
 import { eventUsage, readEvents, runSpanMs, runStartMap } from "../events/event-read.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import type { HarnessEvent } from "../events/events.js";

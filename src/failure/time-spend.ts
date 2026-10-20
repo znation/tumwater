@@ -8,7 +8,7 @@ import type { RunResult } from "../run/run-outcome.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventRole, eventUsage, runSpanMs, runStartMap } from "../events/event-read.js";
 import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
-import { resolveQueuedResult, bucketMergeEvents } from "../history/history-data.js";
+import { resolveQueuedResult, bucketMergeEvents } from "../history/history-queued.js";
 import { nonNegativeNumber, stringList } from "../files/json-object.js";
 import { getOrCreate, groupBy, rankByCount } from "../collections.js";
 
@@ -173,7 +173,7 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
   const emptyCell = (): SpendCell => ({ runs: 0, ms: 0, costUsd: 0 });
   const byRole = new Map<string, Record<"merged" | "no_change" | "error", SpendCell>>();
   const losses = new Map<string, LossDraft>();
-  // The merge evidence rides history-data.ts's bucketMergeEvents — the same buckets
+  // The merge evidence rides history-queued.ts's bucketMergeEvents — the same buckets
   // history's rows read — so the digest's join cannot drift from the rows' join.
   const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(allEvents);
   const rejectedByRunner = groupBy(

@@ -5,7 +5,7 @@
 
 /** Group items by a key, preserving first-seen key order and input order within each group.
  * The single home of the "append to a Map of arrays" step, shared by the event bucketers
- * (history-data.ts's bucketMergeEvents, failure/time-spend.ts's rejected-by-role pass) and
+ * (history-queued.ts's bucketMergeEvents, failure/time-spend.ts's rejected-by-role pass) and
  * the team-hold poll's observations-by-provider grouping (team-polls.ts's pollTeamHold), so
  * those sites cannot drift on how a missing key is seeded. Returns a fresh Map; the input is
  * never mutated. */
