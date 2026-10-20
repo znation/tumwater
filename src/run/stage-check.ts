@@ -43,7 +43,9 @@
  * anything that gets past the fix-up turn. `waitingNoteFinding` is staging-only and bugfix-only
  * for the same reason: it nudges a bugfix run that left a Progress note without the hold.
  * Like `planDependencyFinding`, `finishedDuplicateFindings` runs only at staging. The gate does
- * not run it, because the sweep that creates the second copy runs after it. */
+ * not run it, because the sweep that creates the second copy runs after it.
+ * `strayPlaceholderFinding` is staging-only too. It flags a `_None yet._` line the change left in a
+ * PLANS.md, BUGS.md or QUESTIONS.md section that still holds entries. */
 
 import path from "node:path";
 import { changedFiles } from "../git/git-diff.js";
@@ -55,7 +57,16 @@ import { secretLeakReason } from "../review/secret-leaks.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { readTextOrNull } from "../files/files.js";
-import { BACKLOG_FILES, FINISHED_ARCHIVES, finishedArchiveOf, parseEntryDetails, type FinishedArchive } from "../backlog/backlog-md.js";
+import {
+  BACKLOG_FILES,
+  FINISHED_ARCHIVES,
+  fenceAwareHeadingLines,
+  finishedArchiveOf,
+  headingTitle,
+  parseEntryDetails,
+  sectionBodyLines,
+  type FinishedArchive,
+} from "../backlog/backlog-md.js";
 import { DONE_DATE_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
 import { entryKey, planDependencyProblems, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -229,6 +240,39 @@ export function waitingNoteFinding(head: string, base: string): string | undefin
   );
 }
 
+/** The skeleton placeholder that marks an empty backlog section. */
+const PLACEHOLDER_LINE = "_None yet._";
+/** The live backlog files; the archives have no placeholder sections. */
+const PLACEHOLDER_FILES = ["PLANS.md", "BUGS.md", "QUESTIONS.md"] as const;
+
+/** Each `## ` section of `md` that holds the placeholder line outside a fence while also holding
+ * entries, mapped to its entry count. */
+function placeholderSections(md: string): Map<string, number> {
+  const found = new Map<string, number>();
+  for (const title of fenceAwareHeadingLines(md, "## ").map((l) => headingTitle(l, "## "))) {
+    if (!sectionBodyLines(md, title).some((l) => l.trim() === PLACEHOLDER_LINE)) continue;
+    const count = parseEntryDetails(md, title).length;
+    if (count > 0) found.set(title, count);
+  }
+  return found;
+}
+
+/** The finding for a section of `head` (the edited backlog file `file`) that holds entries and the
+ * empty-section placeholder while `base` (its text at the merge-base) did not, so damage already
+ * on main is not blamed on this change. Names the first such section in file order, with a count
+ * of the rest. */
+export function strayPlaceholderFinding(file: string, head: string, base: string): string | undefined {
+  const was = placeholderSections(base);
+  const stray = [...placeholderSections(head)].filter(([title]) => !was.has(title));
+  if (stray.length === 0) return undefined;
+  const [title, n] = stray[0]!;
+  return (
+    `${file}'s "## ${title}" section holds ${n} entr${n === 1 ? "y" : "ies"}, but this change left the ` +
+    `empty-section placeholder ${PLACEHOLDER_LINE} in it — delete that line: it marks a section with no ` +
+    `entries${moreSuffix(stray.length - 1)}`
+  );
+}
+
 /** The findings likely to get this uncommitted change rejected at merge, or an empty list when
  * it is clean: the merge gate's own deterministic checks plus the staging-only heuristics (plan
  * dependencies, the bugfix Waiting note, path drift). Checks the worktree at `wt` against
@@ -278,6 +322,13 @@ export async function stageCheckFindings(
     const base = await fileContentAt(wt, await changeBaseRev(wt, mainBranch), "BUGS.md").catch(() => undefined);
     const waiting = base === undefined ? undefined : waitingNoteFinding(head, base);
     if (waiting !== undefined) findings.push(waiting);
+  }
+  for (const file of PLACEHOLDER_FILES) {
+    if (!files.includes(file)) continue;
+    const head = readTextOrNull(path.join(wt, file)) ?? "";
+    const base = (await fileContentAt(wt, await changeBaseRev(wt, mainBranch), file).catch(() => undefined)) ?? "";
+    const stray = strayPlaceholderFinding(file, head, base);
+    if (stray !== undefined) findings.push(stray);
   }
   const protectedReason = await protectedEditReason(wt, mainBranch, files, role).catch(() => undefined);
   if (protectedReason) findings.push(protectedReason);

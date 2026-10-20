@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { FINISHED_ARCHIVES } from "../src/backlog/backlog-md.js";
-import { declaredNames, finishedDuplicateFindings, heldMovedFinding, pathTokens, planDependencyFinding, stageCheckFindings, waitingNoteFinding } from "../src/run/stage-check.js";
+import { declaredNames, finishedDuplicateFindings, heldMovedFinding, pathTokens, planDependencyFinding, stageCheckFindings, strayPlaceholderFinding, waitingNoteFinding } from "../src/run/stage-check.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -872,4 +872,27 @@ test("a basename-only reference is not reported", async () => {
   );
 
   assert.deepEqual(findings, []);
+});
+
+test("strayPlaceholderFinding flags a placeholder added to a section that still holds entries", () => {
+  const base = "# Plans\n\n## Planned\n\n### A\n\nBody.\n\n### B\n\nBody.\n\n## Done\n\n_None yet._\n";
+  const head = base.replace("### B\n\nBody.\n\n", "_None yet._\n\n");
+
+  assert.match(
+    strayPlaceholderFinding("PLANS.md", head, base)!,
+    /PLANS\.md's "## Planned" section holds 1 entry, but this change left the empty-section placeholder _None yet\._/,
+  );
+  assert.equal(strayPlaceholderFinding("PLANS.md", head, head), undefined);
+  assert.equal(strayPlaceholderFinding("PLANS.md", "# Plans\n\n## Planned\n\n_None yet._\n", base), undefined);
+  const fenced = "# Plans\n\n## Planned\n\n### A\n\n```\n_None yet._\n```\n";
+  assert.equal(strayPlaceholderFinding("PLANS.md", fenced, base), undefined);
+});
+
+test("a placeholder added to a non-empty BUGS.md section yields the stray-placeholder finding", async () => {
+  const { wt } = await repoWith({ "BUGS.md": "# Bugs\n\n## Open\n\n### One bug\n\nBody.\n" });
+  fs.appendFileSync(path.join(wt, "BUGS.md"), "\n_None yet._\n");
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "docs");
+
+  assert.equal(findings.filter((f) => f.includes("BUGS.md's \"## Open\" section holds 1 entry")).length, 1);
 });
