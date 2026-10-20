@@ -5,6 +5,34 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Logs role filter, part 2/2: `tumwater logs --role <id>[,<id>...]` filters the event feed to those roles' events, composing with `-f`, `-n`, `--since`, `--grep`, `--type`, `--count` and `--json` (planned 2026-10-19 by the plan role; "requires part 1/2 landed": part 1/2, `logs --transcript <id>`, above. Touches src/cli.ts src/cli/log-commands.ts src/cli/help.ts docs/cli.md test/cli-logs-filtering.test.ts test/cli-logs.test.ts test/cli-args.test.ts; done 2026-10-19 by the feature role)
+
+**Goal.** The dashboard's event search (`GET /api/logs?role=`, `handleLogs` in src/gui/gui-endpoints.ts) and the TUI Activity pane's role scope filter the event feed by role. The CLI cannot do this, and `--grep feature` also matches other roles' lines that mention the word. With part 1/2 landed, `--role` is free. This part makes `tumwater logs --role clean,dedupe -f` show only events filed under those roles. A comma list works as in `history --role`.
+
+**Approach.**
+- **src/cli.ts** `case "logs"`: add `ROLE_FLAG` back to the `rejectUnknownArgs` list, beside `LOGS_TRANSCRIPT_FLAG`.
+- **src/cli/log-commands.ts** `cmdLogs`:
+  - Parse with `parseRoleListScope(root, rest)` (src/cli/cli-args.ts). It returns null without reading config when the flag is absent, it accepts a comma list, and it fails on an unknown id with `unknownRoleMessage`.
+  - Build `roleFilter`: an event passes when `eventRole(e)` (src/events/event-read.ts) is in the list, or when `baseRoleOf(eventRole(e))` (src/roles/runner-ids.ts) is in it. So `--role feature` also covers `feature-2`'s events, as `status --role` covers instances.
+  - Add `roleFilter` to `feedFilter` with the same absent-or-matches rule, so the -n view, its follow and the tally all use it.
+  - `--role` is a rival of the `--transcript` view: call `rejectTranscriptViewRival(rest, "--role", true)` when the flag is present.
+  - It composes with everything else. That includes `--since`: the window path filters `events` through `roleFilter` as well as `typeFilter`, so `--role` does not join `--grep`'s `--since` rival list.
+  - Update the `cmdLogs` doc comment and the feed comments. As with `--grep`, `-n` bounds the scan, not the print.
+- **Empty-match text** (prose only, nothing under `--json`). The existing grep/type lines keep their wording when either of those flags is given. When `--role` is the only filter and nothing matches, the -n view and `--count` print `no events from <ids joined with ", ">`. The `--since` view prints `no events from <ids> in <durationLabel(ms)>`.
+- **src/cli/help.ts**: add `[--role <id>[,<id>...]]` to the event-feed usage line, after `[--since <duration>]`.
+- **docs/cli.md** "Check state" row: after the `--type` item, add `` `tumwater logs --role <id>` (only events filed under that role, a base role id taking its instances too; a comma list such as `--role clean,dedupe` shows either; composes with `-f`, `--since`, `--grep`, `--type`, `--count` and `--json`) ``.
+
+**Tests.**
+- test/cli-logs-filtering.test.ts, new "logs --role keeps only the listed roles' events". Seed events from `clean`, `dedupe`, `feature` and `feature-2`. Check that `--role clean` prints only clean's rows, that `--role clean,dedupe` prints both, that `--role feature` includes `feature-2`'s row, and that each composes with `--since 1h`, `--type`, `--grep`, `--count` and `--json`, the last printing only the matching raw events.
+- The same file, new "logs --role with no match names the roles": `--role qa` prints `no events from qa`, `--since 1h --role qa` prints `no events from qa in 1h`, and `--json --role qa` prints nothing.
+- test/cli-logs.test.ts: replace part 1/2's "logs --role is no longer the transcript view" with "logs --role rejects an unknown id and the --transcript view". `--role bogus` fails with the unknown-role message, `--role` with no value fails with `/--role needs a role id/`, and `--role clean --transcript clean` fails with a message that names `--transcript`.
+- test/cli-args.test.ts: `LOGS_SPECS` gains `ROLE_FLAG` again, and the expected flag-list message names both.
+
+**Acceptance criteria.**
+- The new tests pass. Every part 1/2 transcript test still passes unchanged.
+- `logs --role clean -f` streams only clean's events as they land. The follow already goes through `feedFilter`, and the composition test above covers that rule.
+- `npm run test:gate` passes.
+
 ### The dashboard's History "Show transcript" gets a "Show prompts" button that reloads the run's transcript with each agent run's prompt, the dashboard twin of `tumwater history <role> <n> --transcript --prompt` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. "Logs role filter, part 1/2" edits only the `/api/transcript` doc comment in src/gui/gui-endpoints.ts, not `handleTick`'s, so whichever lands second just rebases. The leftover-recovery and slot-reset plans touch src/runner/, src/git/ and src/build/, none of these files. Touches src/gui/gui-endpoints.ts src/ui/gui/gui-client-history.ts docs/how-it-works.md test/gui-server-api.test.ts test/gui-client-history.test.ts); done 2026-10-19 by the feature role
 
 **Goal.** `tumwater history <role> <n> --transcript --prompt` prints a past run's agent transcript together with the prompt each agent run was given. It does this by passing `{ includePrompts: true }` to `tickTranscriptLines` (src/tick/tick-detail.ts), which passes it on to `readRunTranscript` (src/ui/transcript-run.ts). The dashboard's History drill-down "Show transcript" button (`histTranscriptHtml`/`toggleHistTranscript`, src/ui/gui/gui-client-history.ts) fetches `/api/run?…&transcript=1`. `handleTick`'s `transcriptText` (src/gui/gui-endpoints.ts) calls `tickTranscriptLines` with four arguments, so the dashboard never shows the prompt. That prompt is the first thing an operator wants to see when a run went wrong. Close the gap the way the CLI does: prompts stay opt-in, because they are long.

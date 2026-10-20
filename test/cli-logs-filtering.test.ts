@@ -691,3 +691,70 @@ test("tumwater help logs documents --count", async () => {
   assert.equal(r.code, 0);
   assert.match(r.stdout, /--count/);
 });
+
+function seedRoleEvents(repo: string, now = Date.now()): void {
+  const rows: Array<[string, string, number]> = [
+    ["clean", "run_start", 1],
+    ["dedupe", "run_start", 2],
+    ["feature", "run_start", 3],
+    ["feature-2", "run_start", 4],
+    ["clean", "run_end", 1],
+  ];
+  writeLogLines(
+    eventsLogPath(repo),
+    rows.map(([source, type, run], i) => ({ ts: now - (rows.length - i) * 60_000, source, type, run })),
+  );
+}
+
+test("logs --role keeps only the listed roles' events", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs role filter");
+  seedRoleEvents(repo);
+
+  const clean = await cli(repo, "logs", "--role", "clean");
+  assert.equal(clean.code, 0, clean.stderr);
+  assert.match(clean.stdout, /run #1 started/);
+  assert.doesNotMatch(clean.stdout, /run #2 started|run #3 started|run #4 started/);
+
+  const both = await cli(repo, "logs", "--role", "clean,dedupe");
+  assert.match(both.stdout, /run #1 started/);
+  assert.match(both.stdout, /run #2 started/);
+  assert.doesNotMatch(both.stdout, /run #3 started/);
+
+  const feature = await cli(repo, "logs", "--role", "feature");
+  assert.match(feature.stdout, /run #3 started/);
+  assert.match(feature.stdout, /run #4 started/);
+  assert.doesNotMatch(feature.stdout, /run #1 started/);
+
+  const since = await cli(repo, "logs", "--role", "clean", "--since", "1h");
+  assert.match(since.stdout, /run #1 started/);
+  assert.doesNotMatch(since.stdout, /run #2 started/);
+
+  const typed = await cli(repo, "logs", "--role", "clean", "--type", "run_end", "--json");
+  const lines = typed.stdout.trim().split("\n").map((l) => JSON.parse(l));
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].type, "run_end");
+  assert.equal(lines[0].source, "clean");
+
+  const grep = await cli(repo, "logs", "--role", "dedupe", "--grep", "#2");
+  assert.match(grep.stdout, /run #2 started/);
+  assert.doesNotMatch(grep.stdout, /run #1 started/);
+
+  const count = await cli(repo, "logs", "--role", "clean", "--count", "--json");
+  assert.deepEqual(JSON.parse(count.stdout), { run_end: 1, run_start: 1 });
+});
+
+test("logs --role with no match names the roles", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs role empty");
+  seedRoleEvents(repo);
+
+  const plain = await cli(repo, "logs", "--role", "qa");
+  assert.match(plain.stdout, /no events from qa/);
+  const count = await cli(repo, "logs", "--role", "qa", "--count");
+  assert.match(count.stdout, /no events from qa/);
+  const since = await cli(repo, "logs", "--since", "1h", "--role", "qa");
+  assert.match(since.stdout, /no events from qa in 1h/);
+  const json = await cli(repo, "logs", "--json", "--role", "qa");
+  assert.equal(json.stdout.trim(), "");
+});

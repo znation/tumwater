@@ -96,7 +96,7 @@ Usage:
                                    roles still merges the built-in catalog per entry, so
                                    disable a role with roles.<id>.enabled false, not by
                                    omitting it
-  tumwater logs [-f/--follow] [-n N] [--since <duration>] [--grep <text>] [--type <event type>[,<event type>...]] [--count] [--json]
+  tumwater logs [-f/--follow] [-n N] [--since <duration>] [--role <id>[,<id>...]] [--grep <text>] [--type <event type>[,<event type>...]] [--count] [--json]
                                    Show (and follow) tumwater events; --since shows the
                                    events of the past window (capped at 7d); --grep shows
                                    only events whose type or rendered line matches,

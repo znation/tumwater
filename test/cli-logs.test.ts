@@ -189,13 +189,18 @@ test("logs --transcript validates the role id and reports a missing transcript",
   assert.match(r.stdout, /no transcript yet for clean/);
 });
 
-test("logs --role is no longer the transcript view", async () => {
+test("logs --role rejects an unknown id and the --transcript view", async () => {
   const repo = makeRepo();
-  await initProject(repo, "transcript cli test");
-  const r = await cli(repo, "logs", "--role", "clean");
-  assert.notEqual(r.code, 0);
-  assert.match(r.stderr, /valid flags for tumwater logs/);
-  assert.doesNotMatch(r.stderr, /no transcript yet/);
+  await initProject(repo, "logs role filter cli test");
+  const bad = await cli(repo, "logs", "--role", "bogus");
+  assert.notEqual(bad.code, 0);
+  assert.match(bad.stderr, /unknown role: bogus/);
+  const missing = await cli(repo, "logs", "--role");
+  assert.notEqual(missing.code, 0);
+  assert.match(missing.stderr, /--role needs a role id/);
+  const rival = await cli(repo, "logs", "--role", "clean", "--transcript", "clean");
+  assert.notEqual(rival.code, 0);
+  assert.match(rival.stderr, /--transcript/);
 });
 
 // User-defined roles are valid --transcript (logs) and --role (reset-counters, abort) targets.

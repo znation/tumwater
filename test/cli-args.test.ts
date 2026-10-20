@@ -142,6 +142,7 @@ test("parseRoleFlag accepts user-defined role names from a supplied id list", ()
 const LOGS_SPECS = [
   { names: ["-f", "--follow"] },
   { names: ["-n"], value: true, valueName: "<count>" },
+  { names: ["--role"], value: true, valueName: "<id>" },
   { names: ["--transcript"], value: true, valueName: "<id>", missingValue: LOGS_TRANSCRIPT_VALUE_ERROR },
 ];
 const GUI_SPECS = [
@@ -208,7 +209,7 @@ test("rejectUnknownArgs rejects unknown tokens with the command's valid flags li
 
   // The valid-flags list joins every spelling with "/" and appends the value name.
   const logs = expectFail(() => rejectUnknownArgs("logs", ["--rol"], LOGS_SPECS));
-  assert.match(logs.stderr, /-f\/--follow, -n <count>, --transcript <id>/);
+  assert.match(logs.stderr, /-f\/--follow, -n <count>, --role <id>, --transcript <id>/);
 });
 
 test("rejectUnknownArgs: valued flags claim their value token; duplicates and missing values fail", () => {

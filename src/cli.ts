@@ -218,6 +218,7 @@ async function main(): Promise<void> {
         typeFlagSpec(TYPE_VALUE_ERROR),
         JSON_FLAG,
         COUNT_FLAG,
+        ROLE_FLAG,
         LOGS_TRANSCRIPT_FLAG,
         PROMPT_FLAG,
       ]);
