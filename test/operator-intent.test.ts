@@ -424,3 +424,18 @@ test("requestWake pluralises the disabled clause and omits it when every target 
   const none = requestWake(rootWithDisabled("selfcheck"), ["clean"]);
   assert.doesNotMatch(none, /disabled/);
 });
+
+test("roleResumeMessage names a disabled role instead of promising runs", () => {
+  const root = rootWithDisabled("selfcheck");
+  const msg = roleResumeMessage(root, "selfcheck", true);
+  assert.match(msg, /it is disabled, so it still starts no runs/);
+  assert.match(msg, /tumwater config set roles\.selfcheck\.enabled true/);
+  assert.doesNotMatch(msg, /starts new runs again/);
+  assert.equal(roleResumeMessage(root, "selfcheck", false), "role selfcheck was not paused");
+});
+
+test("rolePauseMessage names a disabled role", () => {
+  const root = rootWithDisabled("selfcheck");
+  assert.match(rolePauseMessage(root, "selfcheck", true), /selfcheck is disabled/);
+  assert.equal(rolePauseMessage(root, "selfcheck", false), "role selfcheck is already paused");
+});

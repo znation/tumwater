@@ -172,13 +172,19 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}${disabledNote}`;
 }
 
+/** The ids among `roles` whose config entry is `enabled: false`; empty when the config
+ * cannot be read. */
+function disabledOf(root: string, roles: string[]): string[] {
+  const { config } = loadConfigCached(root);
+  if (!config) return [];
+  return roles.filter((id) => config.roles[baseRoleOf(id)]?.enabled === false);
+}
+
 /** The confirmation clause naming the woken roles that are disabled: a disabled role has no
  * runner, so the wake only ends its sleep. Empty when none is disabled or the config
  * cannot be read (the cached read, so a broken tumwater.json never makes a wake throw). */
 function disabledWakeNote(root: string, roles: string[]): string {
-  const { config } = loadConfigCached(root);
-  if (!config) return "";
-  const disabled = roles.filter((id) => config.roles[baseRoleOf(id)]?.enabled === false);
+  const disabled = disabledOf(root, roles);
   if (disabled.length === 0) return "";
   const one = disabled.length === 1;
   return (
@@ -328,7 +334,10 @@ export function rolePauseMessage(
   if (!changed) return `role ${role} is already paused`;
   const { when, tail } = markerApplyNote(root);
   const { forPhrase, note } = timedPauseBits(timed, now);
-  return `role ${role} paused${forPhrase} — it starts no new runs${when} (current runs finish; the rest of the team is unaffected)${note}${tail}`;
+  const disabledNote = disabledOf(root, [role]).length > 0
+    ? `; ${role} is disabled, so it starts no runs either way — the pause holds once you enable it`
+    : "";
+  return `role ${role} paused${forPhrase} — it starts no new runs${when} (current runs finish; the rest of the team is unaffected)${note}${disabledNote}${tail}`;
 }
 
 /** The per-role resume confirmation, shared between `tumwater resume --role` and the TUI's
@@ -343,7 +352,10 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
   const teamNote = isTeamPaused(root) && role !== DIRECTOR_ROLE
     ? " (the team pause is still active — `tumwater resume` lifts it)"
     : "";
-  return `role ${role} resumed — it starts new runs again${when}${teamNote}${tail}`;
+  const starts = disabledOf(root, [role]).length > 0
+    ? `it is disabled, so it still starts no runs — enable it with tumwater config set roles.${role}.enabled true`
+    : "it starts new runs again";
+  return `role ${role} resumed — ${starts}${when}${teamNote}${tail}`;
 }
 
 /** The `tumwater pause --for <duration>` cap: 90 days. A timed pause is meant to answer "step
