@@ -50,4 +50,35 @@ With the five calls swapped to `saveRunnerStateBestEffort`, the same scenarios r
 - docs/invariants.md: at the END of the file, after every section present when the change is made (CL's included, if it has merged), add `## Merge check attribution: a failed state save never fails the verdict`. Under it put `### INV-CM1: a red merge check attributed while role-state saves fail still deletes a rejected pin and logs review_rejected, or returns main_red with the pin kept, warning once per failed save`, in the Guarantee / Binds / Pinned by layout. Binds: `src/merge/merge-check-failures.ts` (`rejectChange`, `attributeRedCheck`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`). Pinned by: the new test's names, both loop variants. Before writing, run `grep -n '^### INV-C' docs/invariants.md | tail`. CL is reserved by the review-gate plan, and CM was free on 2026-10-20.
 - `npm run test:gate` passes. The cited test names exist verbatim (`grep -rF` them in test/).
 
+### Main revert: a heal prompt or reviewer hand-off that cannot be queued warns instead of throwing, so runMainRevert keeps its never-throws contract and its warning no longer claims a prompt it did not queue (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/baseline/main-revert.ts + test/main-revert.test.ts + docs/invariants.md)
+
+**Goal.** `runMainRevert` (src/baseline/main-revert.ts) is documented "Never throws", but its local `heal` closure is not guarded. `heal` calls `queueCulpritHeal` (src/baseline/main-red.ts), which reaches `enqueueRolePrompt`'s `writeTextAtomic` (src/inbox/inbox.ts), or the caller's `onFailed` (`sendReviewToRole` in src/merge/merge-drain.ts, also `enqueueRolePrompt`). Either can throw (ENOSPC, EACCES). Reproduced 2026-10-20 with a scratch copy of "a revert that conflicts leaves main alone and queues the heal prompt naming the culprit", with `writeFileSync` faulted (ENOSPC) for paths under `roleInboxDir(root, "bugfix")`. `runMainRevert` rejected with `Error: ENOSPC` and logged two warnings, `could not revert <sha>: reverting <sha> conflicted; … — queued the heal prompt for bugfix` and `revert of <sha> failed: ENOSPC — queued the heal prompt for bugfix`. Both claim a prompt that was never queued. The second comes from the outer `catch` running `heal` a second time, and that second throw is what escapes. Only `guardMergeTask` (src/merge/merge-pipeline.ts) catches it, adding a third warning, `merge task for main revert could not settle`.
+
+**Approach.** Change `src/baseline/main-revert.ts` only:
+- Make `heal` never throw. It returns the warning's suffix, keyed on the branch it actually took (`c.postReview && onFailed` decides between `onFailed` and `queueCulpritHeal`, as today):
+  - On success it returns today's text: `sent the reviewer's reasons to its role` or `queued the heal prompt for bugfix`.
+  - When the call throws it returns `could not send the reviewer's reasons to its role: <errorMessage(err)>` or `could not queue the heal prompt for bugfix: <errorMessage(err)>`.
+- Both failure sites (the `failure !== null` branch and the outer `catch`) call `heal` first and then log their existing warning with `— ${suffix}` in place of today's fixed ternary. Each failed revert therefore logs exactly one warning, and that warning says truthfully whether the hand-off was queued.
+- The outer `catch` still covers throws from the revert itself. Because `heal` no longer throws, a heal failure cannot re-enter that `catch`, and `runMainRevert` resolves.
+- Leave the doc comment's "Never throws" in place, and add one clause saying that a hand-off which cannot be queued is warned, not thrown.
+- No other file in src/ changes. `startRevert`'s `.finally` (`settlePostReview`) and `guardMergeTask` stay as they are.
+
+**Files.** src/baseline/main-revert.ts, test/main-revert.test.ts, docs/invariants.md.
+
+**Acceptance criteria.**
+- New test in test/main-revert.test.ts, "a conflicting revert whose heal prompt cannot be queued resolves and warns once that it was not queued":
+  - Set up with `redMain("improve", true)`. Fault `writeFileSync` with `patchFsMethod` + `errnoError("ENOSPC")` (test/helpers/fs-faults.ts) only for paths that start with `roleInboxDir(root, "bugfix")`, and restore the fault in `finally`.
+  - Assert that `runMainRevert(root, "main", defaultConfig(), found[0]!)` resolves, that `headSha(root)` is unchanged, that `queuedFiles(root, "bugfix")` is empty, and that `eventsOfType(root, "main_revert")` is empty.
+  - Assert that `warningMessages(root)` (test/fixtures/log-fixtures.ts) holds exactly one message that matches `/could not revert .*could not queue the heal prompt for bugfix: .*ENOSPC/`, and none that matches `/queued the heal prompt/` without the "could not" prefix.
+  - Before the fix this test fails, because `runMainRevert` rejects with ENOSPC.
+- New test, "a post-review revert whose reviewer hand-off throws resolves and warns that the reasons were not sent":
+  - Use the same red-main setup. Pass the culprit as `{ ...found[0]!, postReview: { reasons: ["r"] } }` and an `onFailed` that throws `new Error("EACCES")`.
+  - Assert that it resolves, and that exactly one warning matches `/could not send the reviewer's reasons to its role: EACCES/`.
+- The existing tests in test/main-revert.test.ts pass unchanged. In particular, "a revert that conflicts leaves main alone and queues the heal prompt naming the culprit" still queues exactly one bugfix prompt.
+- docs/invariants.md: at the END of the file, after every section present when the change is made, add `## Main revert: a hand-off that cannot be queued never fails the revert task`. Under it put `### INV-CO1: a failed automatic revert whose heal prompt or reviewer hand-off cannot be queued resolves, logs one warning saying the hand-off was not queued, and leaves main unchanged`, in the Guarantee / Binds / Pinned by layout:
+  - Binds: `src/baseline/main-revert.ts` (`runMainRevert`).
+  - Pinned by: both new tests' names.
+  - Before writing, run `grep -n '^### INV-C' docs/invariants.md | tail`. CL, CM and CN are already claimed, and CO was free on 2026-10-20.
+- `npm run test:gate` passes. The cited test names exist verbatim (`grep -rF` them in test/).
+
 ## Done
