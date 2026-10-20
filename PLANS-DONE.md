@@ -5,6 +5,24 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code run, part 10b/20: Convert the orchestrator's non-e2e test prose (planned 2026-10-16 by user, split 2026-10-20 by the plan role from part 10/20 after two rejected reviews; requires part 10a/20 landed; design in plans/terminology.md "Code names"; touches test/orchestrator-{launch,seams,scheduling,probe,defer,director,redeploy,once,fallback,divergence,start-event-best-effort}.test.ts) — done 2026-10-20 by the feature role
+
+**Goal.** Test-only, with no identifier left to compile-fix. The orchestrator's non-e2e tests say "run" in their comments, test titles, assertion messages and locals, and every changed line still reads as a sentence. Part 10a/20 renamed the identifiers these tests call.
+
+**Approach.**
+- The series rules and the prose rule of part 10a/20 apply unchanged.
+- Locals: in test/orchestrator-probe.test.ts, `ticksAt` → `runsAt` and `ticksAtTrip` → `runsByRoleAtTrip`, because a `runsAtTrip` local already exists there; `tickedFeature` → `ranFeature`; `tickIdx` in test/orchestrator-director.test.ts → `roleRunIdx`; `calls.ticks` in test/orchestrator-seams.test.ts's harness → `calls.runs`. Migrate remaining uses of 10a's `@deprecated` fixture aliases in these files.
+- Assertion messages next to a run count (`exit.runsDone`, `loadRunnerState(…).runs`) name what was counted rather than repeat the verb. For example, "the deferred role ran no tick" → "the deferred role got no run"; "nothing ticked past the seeded history" → "no run past the seeded history"; "the tick really ran" → "the run really happened"; "the director's recovery tick ran" → "the director got its recovery run"; "clean eventually ran its own tick" → "clean eventually got its own run"; "the review ran before the role's tick" → "the review finished before the role's run started"; "neither parked tick started its run mid-drain" → "neither parked run started mid-drain"; "the tick ran to completion" → "the run finished". Titles such as "… settles as deferred, runs no tick, and logs the episode" → "… settles as deferred, gets no run, and logs the episode". Reread every changed line in the diff as a sentence before finishing.
+
+**Files touched.** The eleven test files in the heading, and docs/invariants.md where it quotes a retitled test.
+
+**Acceptance criteria.**
+- `grep -nE '[Tt]ick|TICK'` over this part's test files prints only kept senses (mock-clock `tick(ms)`, serialized names, legacy fixtures marked `retired-name-ok`).
+- `grep -niE "mid-run run|\bran (its|a|the|no|one) (own |recovery |parked )?run\b|\bruns? (no|one|exactly one) run\b|started its run|\bruns? runs?\b|run's own run\b"` over this part's test files prints nothing.
+- docs/invariants.md quotes no title this part changed in its old form.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
 ### A `budget_paused` or `budget_fallback` page names the roles spending most today, so a cap reached without a prior warning still says where the money went (planned 2026-10-20 by the plan role; no dependency on any Planned entry; done 2026-10-20 by the feature role)
 
 **Goal.** The 2026-10-20 plan gave `budget_warning` a `topRoles` list and on purpose left the cap events alone. But the warning fires only while the gate is open (`warn = gate === "open" && …` in `pollBudgetGate`, src/gates/budget-gates.ts). So a poll that goes from under 80% straight past the cap logs only the transition event. The live log has this case: on 2026-09-30 a `budget_paused` ($15.04 of $15) and on 2026-10-01 three `budget_fallback` events had no `budget_warning` before them that day. `budget_paused` is on the notify allowlist (`NOTIFY_EVENT_TYPES`, src/events/notify.ts) and stops the team, so it is the page where knowing who spent the money matters most. Today the operator has to run `tumwater report` to find out.

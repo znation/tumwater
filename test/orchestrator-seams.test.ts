@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   awaitMergeForHandoff,
   p75RunDurationMs,
-  runTimedRoleTick,
+  runTimedRoleRun,
   sleepInterruptible,
 } from "../src/run/run-timing.js";
 import { pollTeamHold, type HoldInputs } from "../src/team/team-polls.js";
@@ -24,92 +24,92 @@ function stepHolds(
   return pollTeamHold(root, prevMap, runners, now).get(undefined)!;
 }
 import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
-import type { TickOutcome } from "../src/run/run-outcome.js";
+import type { RunOutcome } from "../src/run/run-outcome.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 
 // The orchestrator's exported unit-test seams (src/orchestrator/orchestrator.ts): the
 // permit-holding
-// wrapper that times a role tick for the p75 redeploy window (and the p75 itself), the
+// wrapper that times a role run for the p75 redeploy window (and the p75 itself), the
 // abort-wakeable poll sleep, and the restart hand-off's bounded merge wait. Both are small enough
 // to pin without a team — the live orchestrator loop around
 // them is the e2e tier's job — but each carries a documented edge case that could plausibly
 // break (an already-aborted signal that addEventListener alone would never fire; an aborted
-// tick whose duration must not drag the window down), and none of that was under any unit
+// run whose duration must not drag the window down), and none of that was under any unit
 // test before this file.
 
-/** Minimal recording harness for runTimedRoleTick: counts acquire/release, replays the given
- * tick outcomes, and serves a controllable fake clock (each call advances by `stepMs`). */
-function timedTickHarness(outcomes: TickOutcome[], stepMs = 100) {
-  const calls = { acquire: 0, release: 0, ticks: 0 };
+/** Minimal recording harness for runTimedRoleRun: counts acquire/release, replays the given
+ * run outcomes, and serves a controllable fake clock (each call advances by `stepMs`). */
+function timedRunHarness(outcomes: RunOutcome[], stepMs = 100) {
+  const calls = { acquire: 0, release: 0, runs: 0 };
   let nowMs = 0;
   return {
     calls,
     acquire: async () => void calls.acquire++,
     release: () => void calls.release++,
-    run: async (): Promise<TickOutcome> => outcomes[calls.ticks++] as TickOutcome,
+    run: async (): Promise<RunOutcome> => outcomes[calls.runs++] as RunOutcome,
     now: () => (nowMs += stepMs),
   };
 }
 
-test("runTimedRoleTick returns the tick's wall-clock duration measured by the now seam", async () => {
-  const h = timedTickHarness([{ result: "changed" }]);
-  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
+test("runTimedRoleRun returns the run's wall-clock duration measured by the now seam", async () => {
+  const h = timedRunHarness([{ result: "changed" }]);
+  const elapsed = await runTimedRoleRun(new AbortController().signal, h.acquire, h.release, h.run, h.now);
   assert.equal(elapsed, 100); // startedAt = 100 (first call), end = 200 (second call)
   assert.equal(h.calls.acquire, 1);
   assert.equal(h.calls.release, 1);
-  assert.equal(h.calls.ticks, 1);
+  assert.equal(h.calls.runs, 1);
 });
 
-test("runTimedRoleTick skips an already-aborted tick but still releases its permit", async () => {
-  const h = timedTickHarness([{ result: "changed" }]);
+test("runTimedRoleRun skips an already-aborted run but still releases its permit", async () => {
+  const h = timedRunHarness([{ result: "changed" }]);
   const controller = new AbortController();
-  controller.abort(); // Before the tick is even acquired: the documented regression —
+  controller.abort(); // Before the run is even acquired: the documented regression —
   // addEventListener alone would never notice an abort that already happened.
-  const elapsed = await runTimedRoleTick(controller.signal, h.acquire, h.release, h.run, h.now);
+  const elapsed = await runTimedRoleRun(controller.signal, h.acquire, h.release, h.run, h.now);
   assert.equal(elapsed, null);
-  assert.equal(h.calls.ticks, 0); // never started
-  assert.equal(h.calls.release, 1); // permit returned even though the tick never ran
+  assert.equal(h.calls.runs, 0); // never started
+  assert.equal(h.calls.release, 1); // permit returned even though the run never started
 });
 
-test("runTimedRoleTick returns null for an aborted tick outcome so it cannot drag the p75 window", async () => {
+test("runTimedRoleRun returns null for an aborted run outcome so it cannot drag the p75 window", async () => {
   for (const result of ["aborted", "user_aborted"] as const) {
-    const h = timedTickHarness([{ result }]);
-    const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
+    const h = timedRunHarness([{ result }]);
+    const elapsed = await runTimedRoleRun(new AbortController().signal, h.acquire, h.release, h.run, h.now);
     assert.equal(elapsed, null, `result ${result} must be excluded from the window`);
     assert.equal(h.calls.release, 1);
   }
-  // A non-aborted failure still measures: an errored tick is a real duration the window wants.
-  const h = timedTickHarness([{ result: "error" }]);
-  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
+  // A non-aborted failure still measures: an errored run is a real duration the window wants.
+  const h = timedRunHarness([{ result: "error" }]);
+  const elapsed = await runTimedRoleRun(new AbortController().signal, h.acquire, h.release, h.run, h.now);
   assert.equal(elapsed, 100);
 });
 
-test("runTimedRoleTick returns null for a tick that ended without work so the window is not sized to re-checks", async () => {
-  // The 2026-09-30 restart's drain window sampled 26 no_change re-checks out of 50 ticks and
-  // collapsed to 131 s — cutting a 14-minute coverage tick off minutes into its run. A tick
+test("runTimedRoleRun returns null for a run that ended without work so the window is not sized to re-checks", async () => {
+  // The 2026-09-30 restart's drain window sampled 26 no_change re-checks out of 50 runs and
+  // collapsed to 131 s — cutting a 14-minute coverage run off a few minutes in. A run
   // that ended with nothing to show (no_change, or skipped with nothing to run) says nothing
   // about how long the work the drain waits on takes, even when it did run the model.
   for (const result of ["no_change", "skipped"] as const) {
-    const h = timedTickHarness([{ result }]);
-    const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
+    const h = timedRunHarness([{ result }]);
+    const elapsed = await runTimedRoleRun(new AbortController().signal, h.acquire, h.release, h.run, h.now);
     assert.equal(elapsed, null, `result ${result} must be excluded from the window`);
     assert.equal(h.calls.release, 1);
   }
   // A work-bearing outcome still measures — queued included: the sample's whole point.
-  const h = timedTickHarness([{ result: "queued" }]);
-  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
+  const h = timedRunHarness([{ result: "queued" }]);
+  const elapsed = await runTimedRoleRun(new AbortController().signal, h.acquire, h.release, h.run, h.now);
   assert.equal(elapsed, 100);
 });
 
-test("runTimedRoleTick releases its permit when the tick throws", async () => {
-  const h = timedTickHarness([]);
-  const failing = async (): Promise<TickOutcome> => {
-    throw new Error("tick exploded");
+test("runTimedRoleRun releases its permit when the run throws", async () => {
+  const h = timedRunHarness([]);
+  const failing = async (): Promise<RunOutcome> => {
+    throw new Error("run exploded");
   };
   await assert.rejects(
-    runTimedRoleTick(new AbortController().signal, h.acquire, h.release, failing, h.now),
-    /tick exploded/,
+    runTimedRoleRun(new AbortController().signal, h.acquire, h.release, failing, h.now),
+    /run exploded/,
   );
   assert.equal(h.calls.release, 1); // the finally block, not the happy path
 });
@@ -151,11 +151,11 @@ test("sleepInterruptible returns without waiting on an already-aborted signal", 
 // invariant otherwise lives only in the e2e tier.
 test("a parked waiter holds no permit until acquire grants it, which the merge tier shares", async () => {
   const semaphore = new Semaphore(1);
-  // Permit holder: a role tick that holds the only slot until its (gated) tick completes.
+  // Permit holder: a role run that holds the only slot until its (gated) pi call completes.
   let holderAcquired = false;
   let releaseHolder = () => {};
   const gate = new Promise<void>((r) => (releaseHolder = r));
-  const holder = runTimedRoleTick(
+  const holder = runTimedRoleRun(
     new AbortController().signal,
     async () => {
       await semaphore.acquire(0);
@@ -164,7 +164,7 @@ test("a parked waiter holds no permit until acquire grants it, which the merge t
     () => semaphore.release(),
     async () => {
       await gate;
-      return { result: "changed" } as TickOutcome;
+      return { result: "changed" } as RunOutcome;
     },
   );
   while (!holderAcquired) await sleep(1);
@@ -172,23 +172,23 @@ test("a parked waiter holds no permit until acquire grants it, which the merge t
   // A parked waiter and a merge, both queued behind the one held permit. Each clears its
   // parked marker exactly as the orchestrator's wrapped acquire does.
   const parked: Record<string, number | undefined> = { waiter: 1, merge: 1 };
-  const waiter = runTimedRoleTick(
+  const waiter = runTimedRoleRun(
     new AbortController().signal,
     async () => {
       await semaphore.acquire(0);
       parked.waiter = undefined;
     },
     () => semaphore.release(),
-    async () => ({ result: "changed" } as TickOutcome),
+    async () => ({ result: "changed" } as RunOutcome),
   );
-  const merge = runTimedRoleTick(
+  const merge = runTimedRoleRun(
     new AbortController().signal,
     async () => {
       await semaphore.acquire(-1); // VERIFY_TIER: below every role tier
       parked.merge = undefined;
     },
     () => semaphore.release(),
-    async () => ({ result: "changed" } as TickOutcome),
+    async () => ({ result: "changed" } as RunOutcome),
   );
   await sleep(5);
   // Neither queued party holds a permit yet — the team serves at most the cap.
@@ -204,7 +204,7 @@ test("a parked waiter holds no permit until acquire grants it, which the merge t
   assert.equal(parked.merge, undefined);
 });
 
-// BUGS.md 2026-09-23 — the restart drain's `hold` was checked only at scheduling, so a tick
+// BUGS.md 2026-09-23 — the restart drain's `hold` was checked only at scheduling, so a run
 // reserved in an earlier poll and parked in the semaphore queue started a fresh pi run the
 // moment a slot freed mid-drain. The gate is re-checked when the permit is granted: the Repro,
 // against the real Semaphore — park waiters behind a held permit, flip the hold on, free the
@@ -216,7 +216,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
   let releaseHolder = () => {};
   const gate = new Promise<void>((r) => (releaseHolder = r));
   let holderAcquired = false;
-  const holder = runTimedRoleTick(
+  const holder = runTimedRoleRun(
     new AbortController().signal,
     async () => {
       await semaphore.acquire(1);
@@ -225,7 +225,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
     () => semaphore.release(),
     async () => {
       await gate;
-      return { result: "changed" } as TickOutcome;
+      return { result: "changed" } as RunOutcome;
     },
     Date.now,
     held,
@@ -236,7 +236,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
   const ran: string[] = [];
   const released: string[] = [];
   const parkedWaiter = (name: string) =>
-    runTimedRoleTick(
+    runTimedRoleRun(
       new AbortController().signal,
       () => semaphore.acquire(1),
       () => {
@@ -245,7 +245,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
       },
       async () => {
         ran.push(name);
-        return { result: "changed" } as TickOutcome;
+        return { result: "changed" } as RunOutcome;
       },
       Date.now,
       held,
@@ -257,16 +257,16 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
   hold = true; // the redeploy flips into `hold` while both are parked
   releaseHolder();
   assert.notEqual(await holder, null, "the permit holder that was already running finishes normally");
-  assert.equal(await first, null, "a tick turned away at its permit yields no drain sample");
+  assert.equal(await first, null, "a run turned away at its permit yields no drain sample");
   assert.equal(await second, null);
-  assert.deepEqual(ran, [], "neither parked tick started its run mid-drain");
+  assert.deepEqual(ran, [], "neither parked run started mid-drain");
   // Each released the permit it was handed, so the next waiter was granted it in turn and the
   // whole queue drained without starting anything — the permit is free again.
   assert.deepEqual(released, ["first", "second"]);
   let free = false;
   void semaphore.acquire(1).then(() => (free = true));
   await sleep(5);
-  assert.equal(free, true, "no permit leaked to a tick that never started");
+  assert.equal(free, true, "no permit leaked to a run that never started");
   semaphore.release();
 
   // Control: once the hold lifts, a waiter granted a permit starts as before.

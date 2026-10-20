@@ -20,6 +20,6 @@ test("runOrchestrator starts and finishes a once round when the events feed is u
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false, "the round exits on its own");
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the enabled role still ticked");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the enabled role still ran");
   });
 });

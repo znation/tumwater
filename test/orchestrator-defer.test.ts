@@ -4,23 +4,23 @@
  * its once-mode settle ran only in the e2e tier, so `npm test` (the declared check) reported
  * the block uncovered even though the behavior was verified. The rules live here:
  *
- * - Need over idleness: a due maintenance role whose last tick did nothing stays deferred
+ * - Need over idleness: a due maintenance role whose last run did nothing stays deferred
  *   while the backlog is open — in once mode the deferral is the role's round answer
- *   ("deferred"), the run_deferred event logs the episode, and no tick runs.
+ *   ("deferred"), the run_deferred event logs the episode, and nothing runs.
  * - Held entries are not need: a backlog whose entries are all refused/needs-review/blocked
  *   holds nothing feature or bugfix can take, so it does not defer a maintenance role — the
  *   work-merged verdict decides instead.
- * - Demand over need: a fresh operator wake (`wokenAt` newer than the last tick's end — the
+ * - Demand over need: a fresh operator wake (`wokenAt` newer than the last run's end — the
  *   same predicate isEligible's min-gap exemption keys on) overrides the deferral; an explicit
- *   "try again now" is a demand, not idle maintenance, so the role ticks even with the backlog
+ *   "try again now" is a demand, not idle maintenance, so the role runs even with the backlog
  *   open. No other test, unit or e2e, pins this rule.
  * - Episodes end and restart cleanly: across a live run's polls, a queued prompt that makes a
- *   deferred role due via its inbox silently ends the deferral episode (no event — the tick
+ *   deferred role due via its inbox silently ends the deferral episode (no event — the run
  *   itself is the answer), and the next scheduled deferral is a NEW episode that logs again.
  * - Search mode: bugfix is not a maintenance role, but while BUGS.md `## Open` is empty it
  *   defers like one — keyed on the work-merged verdict ALONE (the backlog-open shortcut must
- *   not stand in for the git-range query), so an idle search tick with nothing new on main
- *   waits and an empty backlog never blocks it from ticking once work has merged.
+ *   not stand in for the git-range query), so an idle search run with nothing new on main
+ *   waits and an empty backlog never blocks it from running once work has merged.
  */
 
 import test from "node:test";
@@ -42,7 +42,7 @@ import { withIdlePi } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
 
-/** The state a finished no_change tick on the current main head leaves on disk, due now. */
+/** The state a finished no_change run on the current main head leaves on disk, due now. */
 function idleDueState(repo: string) {
   return {
     ...freshRunnerState("clean"),
@@ -61,7 +61,7 @@ function openBacklog(repo: string): void {
   );
 }
 
-test("once: a due maintenance role with an open backlog settles as deferred, runs no tick, and logs the episode", async () => {
+test("once: a due maintenance role with an open backlog settles as deferred, gets no run, and logs the episode", async () => {
   const repo = await makeFastRepo("once unit deferral test", ["clean"]);
   openBacklog(repo);
   saveRunnerState(repo, idleDueState(repo));
@@ -69,8 +69,8 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "deferred", "the deferral is the role's round answer, not idle");
-    assert.equal(exit.runsDone?.get("clean"), 0, "the deferred role ran no tick");
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "nothing ticked past the seeded history");
+    assert.equal(exit.runsDone?.get("clean"), 0, "the deferred role got no run");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "no run past the seeded history");
     assert.deepEqual(
       eventsOfType(repo, "run_deferred").map((e) => e.source),
       ["clean"],
@@ -94,19 +94,19 @@ test("once: a backlog of only held entries does not defer a maintenance role —
   });
 });
 
-test("once: a fresh operator wake overrides the deferral — the demand ticks despite the open backlog", async () => {
+test("once: a fresh operator wake overrides the deferral — the demand runs despite the open backlog", async () => {
   const repo = await makeFastRepo("once unit wake-override test", ["clean"]);
   openBacklog(repo);
   saveRunnerState(repo, {
     ...idleDueState(repo),
     lastRunEndedAt: Date.now() - 60_000,
-    wokenAt: Date.now() - 1000, // newer than the last tick's end: an explicit "try again now"
+    wokenAt: Date.now() - 1000, // newer than the last run's end: an explicit "try again now"
   });
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(exit.runsDone?.get("clean"), 1, "the demand runs the tick the backlog would have deferred");
-    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the tick really ran");
+    assert.equal(exit.runsDone?.get("clean"), 1, "the demand gets the run the backlog would have deferred");
+    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the run really happened");
     assert.deepEqual(eventsOfType(repo, "run_deferred"), [], "no deferral episode: the demand preempted it");
   });
 });
@@ -116,7 +116,7 @@ test("once: bugfix in search mode defers on the work-merged verdict alone, backl
   // The backlog is left at initProject's empty template: BUGS.md `## Open` and PLANS.md
   // `## Planned` both empty, so workBacklogOpen is false and the deferral rests entirely on
   // the work-merged query — the seeded state's lastMainHead IS main's head, so nothing has
-  // merged since the idle tick and the search waits. The seed must carry the bugfix role
+  // merged since the idle run and the search waits. The seed must carry the bugfix role
   // itself: saveRunnerState keys the state file off the state's role field.
   saveRunnerState(repo, { ...idleDueState(repo), role: "bugfix" });
   await withIdlePi(async () => {
@@ -125,10 +125,10 @@ test("once: bugfix in search mode defers on the work-merged verdict alone, backl
     assert.equal(
       exit.settled?.get("bugfix"),
       "deferred",
-      "an idle search tick with nothing new on main defers even with the backlog empty",
+      "an idle search run with nothing new on main defers even with the backlog empty",
     );
-    assert.equal(exit.runsDone?.get("bugfix"), 0, "the searching bugfix ran no tick");
-    assert.equal(loadRunnerState(repo, "bugfix").runs, 1, "nothing ticked past the seeded history");
+    assert.equal(exit.runsDone?.get("bugfix"), 0, "the searching bugfix got no run");
+    assert.equal(loadRunnerState(repo, "bugfix").runs, 1, "no run past the seeded history");
     assert.deepEqual(
       eventsOfType(repo, "run_deferred").map((e) => e.source),
       ["bugfix"],
@@ -143,20 +143,20 @@ test("live: an inbox demand ends a deferral episode silently, and the next defer
   saveRunnerState(repo, idleDueState(repo));
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
-    // Episode one: the backlog defers the due maintenance tick and the event logs once.
+    // Episode one: the backlog defers the due maintenance run and the event logs once.
     await waitFor(() => eventsOfType(repo, "run_deferred").length >= 1, "the first deferral episode");
 
-    // A queued prompt makes the role due via its inbox — the demand runs the tick the
+    // A queued prompt makes the role due via its inbox — the demand gets the run the
     // backlog would have kept deferred, announced by a wake (reason inbox).
     submitRolePrompt(repo, "clean", "an explicit demand");
-    await awaitSettledRun(repo, "clean", 2, "the demand's tick to finish");
+    await awaitSettledRun(repo, "clean", 2, "the demand's run to finish");
     const wake = eventsOfType(repo, "wake").find((e) => e.source === "clean");
     assert.ok(wake, "the demand is announced with a wake event");
     assert.equal(wake?.reason, "inbox");
-    assert.equal(queuedRolePromptCount(repo, "clean"), 0, "the tick consumed the queued prompt");
+    assert.equal(queuedRolePromptCount(repo, "clean"), 0, "the run consumed the queued prompt");
 
     // The demand silently ended episode one. With the backlog still open, the role's next
-    // scheduled tick defers again — and that fresh episode logs its own run_deferred: the
+    // scheduled run defers again — and that fresh episode logs its own run_deferred: the
     // stale in-memory episode flag must not swallow it.
     await waitFor(() => eventsOfType(repo, "run_deferred").length >= 2, "the fresh deferral episode");
     assert.equal(loadRunnerState(repo, "clean").runs, 2, "still deferred: the backlog holds");

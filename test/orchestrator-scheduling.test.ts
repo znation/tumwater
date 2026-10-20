@@ -14,7 +14,7 @@ import type { WorkMergedCache } from "../src/scheduling/work-merged-cache.js";
 import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
-import { assembleTickPrompt } from "../src/run/run-prompt.js";
+import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { setRef } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
@@ -24,7 +24,7 @@ import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { HOUR } from "./helpers/oracles.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
-// holds the roles whose tick model is on P while roles on a healthy provider Q keep ticking,
+// holds the roles whose run model is on P while roles on a healthy provider Q keep running,
 // the reviewer's provider being held blocks EVERY role (with the review gate on, nothing
 // could merge), and — the seam the 2026-10-06 review called out as untested — a storm, its
 // lift, and the SUBSEQUENT poll run through scheduling end with the previously held role
@@ -33,7 +33,7 @@ import { HOUR } from "./helpers/oracles.js";
 const T0 = 1_000_000_000;
 
 /** A runner as the scheduling pass reads it (structural stand-in: role, config, and the
- * RunnerState fields isEligible touches — idle, never ticked, due now). */
+ * RunnerState fields isEligible touches — idle, never ran, due now). */
 function fakeRunner(role: string, config: TumwaterConfig): RoleRunner {
   return {
     role,
@@ -104,15 +104,15 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
   const held = heldProviders(holds);
   assert.deepEqual([...held], ["P"]);
 
-  // Roles on P start no tick; the role on Q keeps ticking (the reviewer is on Q too, so no
+  // Roles on P start no run; the role on Q keeps running (the reviewer is on Q too, so no
   // review-gate full block is in play here).
   const heldCtx = schedulingCtx(root, runners, roleProviders);
   heldCtx.heldProviders = held;
   heldCtx.reviewHeld = false;
   const reasonsHeld = await pollRunnerReasons(heldCtx);
-  assert.equal(reasonsHeld.has(runners[0]!), false, "a role on the held provider starts no tick");
+  assert.equal(reasonsHeld.has(runners[0]!), false, "a role on the held provider starts no run");
   assert.equal(reasonsHeld.has(runners[1]!), false, "its sibling on the same provider is held too");
-  assert.equal(reasonsHeld.has(runners[2]!), true, "a role on the healthy provider keeps ticking");
+  assert.equal(reasonsHeld.has(runners[2]!), true, "a role on the healthy provider keeps running");
 
   // The lift: P's hold re-opens at its deadline; heldProviders() reads nothing. The
   // subsequent poll admits the previously held roles again — a lifted hold never keeps
@@ -267,7 +267,7 @@ test("a claimed entry that merges releases the claim on the next poll", async ()
   assert.equal(feature.state.claim, undefined);
 });
 
-test("a released claim is saved to disk before the runner ticks again", async () => {
+test("a released claim is saved to disk before the runner runs again", async () => {
   const root = tmpdir("tumwater-scheduling-release-saved-");
   fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
   const config = twoFeatureInstances();
@@ -278,7 +278,7 @@ test("a released claim is saved to disk before the runner ticks again", async ()
   assert.equal(feature2.state.claim?.key, "beta");
   saveRunnerState(root, feature2.state);
   assert.equal(loadRunnerState(root, "feature-2").claim?.key, "beta");
-  // Both entries leave Planned: no free entry, so feature-2 is an idle extra and gets no tick.
+  // Both entries leave Planned: no free entry, so feature-2 is an idle extra and gets no run.
   fs.writeFileSync(path.join(root, "PLANS.md"), "# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n");
   await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roles()));
   assert.equal(feature2.state.claim, undefined);
@@ -296,14 +296,14 @@ test("lowering feature.instances releases a surplus instance's claim instead of 
   );
   assert.equal(feature2.state.claim?.key, "beta", "instance 2 starts holding the second entry");
   // Live reload lowers the instance count but leaves feature-2's runner in place; `runnerEnabled`
-  // skips its future ticks. Its claim must be released as `disabled`, freeing beta for a sibling
+  // skips its future runs. Its claim must be released as `disabled`, freeing beta for a sibling
   // instead of locking it until the 24h stale sweep.
   config.roles.feature = { enabled: true, instances: 1 };
   const reasons = await pollRunnerReasons(
     schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
   );
   assert.equal(feature2.state.claim, undefined, "the surplus instance's claim is released");
-  assert.equal(reasons.has(feature2), false, "the surplus instance starts no tick");
+  assert.equal(reasons.has(feature2), false, "the surplus instance starts no run");
   assert.equal(feature.state.claim?.key, "alpha", "the surviving instance keeps its own claim");
 });
 
@@ -339,7 +339,7 @@ test("pausing instance 1 under its feature-1 key releases its claim and leaves f
     pausedRoles: new Set(["feature-1"]),
   });
   assert.equal(feature.state.claim, undefined, "the paused instance 1 gives its entry back");
-  assert.equal(reasons.has(feature), false, "instance 1 starts no tick");
+  assert.equal(reasons.has(feature), false, "instance 1 starts no run");
   assert.equal(reasons.has(feature2), true, "feature-2 is not stopped");
   assert.equal(feature2.state.claim?.key, "beta");
 });
@@ -377,14 +377,14 @@ test("a busy unclaimed base holds the group so a new instance cannot take its en
   const feature = fakeRunner("feature", config);
   const feature2 = fakeRunner("feature-2", config);
   // The base took alpha while it was the only runner (single-runner bases record no claim) and
-  // is mid-tick when the live reload raises `instances` and spawns feature-2. The group must
+  // is mid-run when the live reload raises `instances` and spawns feature-2. The group must
   // hold assignment until the base settles rather than hand alpha to the sibling.
   feature.state.running = true;
   const reasons = await pollRunnerReasons(
     schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
   );
   assert.equal(feature2.state.claim, undefined, "the added instance is not assigned the base's in-flight entry");
-  assert.equal(reasons.has(feature2), false, "and it starts no tick while the group holds");
+  assert.equal(reasons.has(feature2), false, "and it starts no run while the group holds");
 });
 
 test("a base with an outstanding revision and no claim also holds the group", async () => {
@@ -400,9 +400,9 @@ test("a base with an outstanding revision and no claim also holds the group", as
     schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
   );
   assert.equal(feature2.state.claim, undefined, "the revision holds the group too");
-  // The holder itself must still tick: only its revision can settle the hold, so skipping it
+  // The holder itself must still run: only its revision can settle the hold, so skipping it
   // too deadlocks every instance (the 2026-10-09 team stall).
-  assert.equal(reasons.has(feature), true, "the base still ticks to finish its revision");
+  assert.equal(reasons.has(feature), true, "the base still runs to finish its revision");
   assert.equal(feature.state.claim, undefined, "and is assigned no new entry");
 });
 
@@ -454,16 +454,16 @@ test("the reviewer's provider being held blocks every role through scheduling, a
   ]);
 
   // A storm on the strong tier's provider P while the review gate is on: nothing could merge,
-  // so every role is blocked — not just roles ticking on P.
+  // so every role is blocked — not just roles running on P.
   const heldCtx = schedulingCtx(root, runners, roleProviders);
   heldCtx.reviewHeld = true;
   const reasonsHeld = await pollRunnerReasons(heldCtx);
-  assert.equal(reasonsHeld.size, 0, "no role starts a tick while the reviewer's provider is held");
+  assert.equal(reasonsHeld.size, 0, "no role starts a run while the reviewer's provider is held");
 
-  // When the review hold lifts, the roles tick again.
+  // When the review hold lifts, the roles run again.
   const openCtx = schedulingCtx(root, runners, roleProviders);
   const reasonsOpen = await pollRunnerReasons(openCtx);
-  assert.equal(reasonsOpen.size, 2, "both roles tick again once the review hold lifts");
+  assert.equal(reasonsOpen.size, 2, "both roles run again once the review hold lifts");
 });
 
 /** Put a directory where the append-only events log belongs: every logEvent under `root`
@@ -548,7 +548,7 @@ test("a run_deferred event survives an unwritable events feed", async () => {
   const c = schedulingCtx(root, [runner], new Map([["clean", undefined]]));
   c.workBacklogOpen = true;
   const reasons = await pollRunnerReasons(c);
-  assert.equal(reasons.has(runner), false, "the maintenance tick is still deferred");
+  assert.equal(reasons.has(runner), false, "the maintenance run is still deferred");
   assert.equal(c.deferredDue.get("clean"), true, "the deferral edge is still remembered");
 });
 
@@ -570,12 +570,12 @@ test("the bootstrap hold blocks maintenance through scheduling but admits plan a
   );
   ctx.bootstrapHeld = new Set(["clean"]);
   const reasons = await pollRunnerReasons(ctx);
-  assert.equal(reasons.has(runners[2]!), false, "a bootstrap-held maintenance role starts no tick");
-  assert.equal(reasons.has(runners[0]!), true, "plan keeps ticking during bootstrap");
-  assert.equal(reasons.has(runners[1]!), true, "feature keeps ticking during bootstrap");
+  assert.equal(reasons.has(runners[2]!), false, "a bootstrap-held maintenance role starts no run");
+  assert.equal(reasons.has(runners[0]!), true, "plan keeps running during bootstrap");
+  assert.equal(reasons.has(runners[1]!), true, "feature keeps running during bootstrap");
 });
 
-test("the maintenance quota holds a maintenance role; a fresh wake admits one tick anyway", async () => {
+test("the maintenance quota holds a maintenance role; a fresh wake admits one run anyway", async () => {
   const root = tmpdir("tumwater-scheduling-quota-");
   const runners = [fakeRunner("clean", defaultConfig()), fakeRunner("feature", defaultConfig())];
   const ctx = schedulingCtx(
@@ -588,16 +588,16 @@ test("the maintenance quota holds a maintenance role; a fresh wake admits one ti
   );
   ctx.maintenanceQuota = { allowance: 12, used: 12, held: true };
   const held = await pollRunnerReasons(ctx);
-  assert.equal(held.has(runners[0]!), false, "a quota-held maintenance role starts no tick");
+  assert.equal(held.has(runners[0]!), false, "a quota-held maintenance role starts no run");
   assert.equal(held.has(runners[1]!), true, "work roles are unaffected by the maintenance allowance");
 
   // A fresh operator wake is demand, not idle maintenance: it outranks the hold exactly as it
-  // does the bootstrap and need-based deferrals, so `tumwater wake clean` runs one tick.
+  // does the bootstrap and need-based deferrals, so `tumwater wake clean` starts one run.
   const clean = runners[0]!;
   clean.state.wokenAt = T0 + 5_000;
   clean.state.lastRunEndedAt = T0 + 1_000;
   const woken = await pollRunnerReasons(ctx);
-  assert.equal(woken.has(clean), true, "a fresh wake admits one tick while the quota holds");
+  assert.equal(woken.has(clean), true, "a fresh wake admits one run while the quota holds");
 });
 
 test("the allowance's in-flight headroom starts at most one of two due maintenance roles per poll", async () => {
@@ -640,8 +640,8 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   assert.equal(firstReasons.has(runners[0]!), true, "the first due role takes the open slot");
   assert.equal(firstReasons.has(runners[1]!), false, "the second waits its turn");
 
-  // The first tick ends without merge (so the merged count, and the allowance, are unchanged).
-  // Its backoff now makes it not due; the second takes the slot on the next poll — one tick,
+  // The first run ends without merge (so the merged count, and the allowance, are unchanged).
+  // Its backoff now makes it not due; the second takes the slot on the next poll — one run,
   // not two, between the two starts.
   runners[0]!.state.lastRunEndedAt = now;
   runners[0]!.state.nextRunAt = now + HOUR;
@@ -656,7 +656,7 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   second.maintenanceQuota = gate;
   const secondReasons = await pollRunnerReasons(second);
   assert.equal(secondReasons.has(runners[0]!), false, "the first role is back in its gap");
-  assert.equal(secondReasons.has(runners[1]!), true, "the second role starts one tick later");
+  assert.equal(secondReasons.has(runners[1]!), true, "the second role starts one run later");
 });
 
 test("an unassigned primary is told the entries its siblings hold, and the prompt names them", async () => {
@@ -675,7 +675,7 @@ test("an unassigned primary is told the entries its siblings hold, and the promp
   await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3], roleProviders));
   assert.equal(feature.state.claim, undefined);
   assert.equal(feature.state.heldElsewhere?.length, 2);
-  const result = assembleTickPrompt({ root, config, role: "feature", state: feature.state });
+  const result = assembleRunPrompt({ root, config, role: "feature", state: feature.state });
   assert.match(result?.prompt ?? "", /<held-entries>[\s\S]*do not pick, edit, or implement them/);
   assert.match(result?.prompt ?? "", /- ".*"/);
 });
@@ -693,7 +693,7 @@ test("a stale held-entries list is cleared once the role has no claim group", as
 });
 
 // The feature stand-down: a feature runner with no eligible plan skips its scheduled and
-// main-moved ticks, and a `run --once` round settles every skipped feature runner.
+// main-moved runs, and a `run --once` round settles every skipped feature runner.
 const ONE_REFUSED_PLAN = [
   "# Plans",
   "",
@@ -709,7 +709,7 @@ const ONE_REFUSED_PLAN = [
   "",
 ].join("\n");
 
-function tickedFeature(config: TumwaterConfig, role = "feature"): RoleRunner {
+function ranFeature(config: TumwaterConfig, role = "feature"): RoleRunner {
   const r = fakeRunner(role, config);
   r.state.runs = 1;
   r.state.nextRunAt = T0;
@@ -721,7 +721,7 @@ for (const [label, plans] of [["a refused-only PLANS.md", ONE_REFUSED_PLAN], ["n
   test(`a single feature runner stands down with ${label}`, async () => {
     const root = tmpdir("tumwater-scheduling-standdown-");
     if (plans) fs.writeFileSync(path.join(root, "PLANS.md"), plans);
-    const feature = tickedFeature(defaultConfig());
+    const feature = ranFeature(defaultConfig());
     const reasons = await pollRunnerReasons(schedulingCtx(root, [feature], new Map([["feature", undefined]])));
     assert.equal(reasons.has(feature), false);
     assert.equal(feature.state.skipReason, "no-free-entry");
@@ -747,7 +747,7 @@ test("a once round settles an extra feature instance with no free entry", async 
 test("a once round settles a primary feature runner with no eligible plan", async () => {
   const root = tmpdir("tumwater-scheduling-once-primary-");
   fs.writeFileSync(path.join(root, "PLANS.md"), ONE_REFUSED_PLAN);
-  const feature = tickedFeature(defaultConfig());
+  const feature = ranFeature(defaultConfig());
   const ctx = schedulingCtx(root, [feature], new Map([["feature", undefined]]));
   ctx.once = new OnceRound([feature], true);
   await pollRunnerReasons(ctx);
@@ -758,7 +758,7 @@ test("a nothing-eligible feature runner is still admitted on demand, startup, re
   const admitted = async (setup: (r: RoleRunner, root: string) => void, plans = ONE_REFUSED_PLAN) => {
     const root = tmpdir("tumwater-scheduling-standdown-admit-");
     fs.writeFileSync(path.join(root, "PLANS.md"), plans);
-    const r = tickedFeature(defaultConfig());
+    const r = ranFeature(defaultConfig());
     setup(r, root);
     const reasons = await pollRunnerReasons(schedulingCtx(root, [r], new Map([["feature", undefined]])));
     return reasons.has(r);
@@ -779,7 +779,7 @@ const OPEN_BUG = "### Live bug (found by x 2026-01-01)\n\nBody.\n";
 test("a bugfix runner whose open bugs are all held stands down", async () => {
   const root = tmpdir("tumwater-scheduling-bugfix-standdown-");
   fs.writeFileSync(path.join(root, "BUGS.md"), bugsFile(REFUSED_BUG));
-  const bugfix = tickedFeature(defaultConfig(), "bugfix");
+  const bugfix = ranFeature(defaultConfig(), "bugfix");
   const ctx = schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]]));
   ctx.openBugsNow = true;
   ctx.once = new OnceRound([bugfix], true);
@@ -796,7 +796,7 @@ test("a held-only bugfix runner is still admitted on demand, startup, revision, 
   const admitted = async (setup: (r: RoleRunner, root: string) => void, bugs = bugsFile(REFUSED_BUG)) => {
     const root = tmpdir("tumwater-scheduling-bugfix-admit-");
     fs.writeFileSync(path.join(root, "BUGS.md"), bugs);
-    const r = tickedFeature(defaultConfig(), "bugfix");
+    const r = ranFeature(defaultConfig(), "bugfix");
     setup(r, root);
     const ctx = schedulingCtx(root, [r], new Map([["bugfix", undefined]]));
     ctx.openBugsNow = true;
@@ -836,7 +836,7 @@ test("a due-now plan runner is admitted while PLANS.md has planning room, skippe
 
 test("a bugfix runner in search mode is not stood down", async () => {
   const root = tmpdir("tumwater-scheduling-bugfix-search-");
-  const bugfix = tickedFeature(defaultConfig(), "bugfix");
+  const bugfix = ranFeature(defaultConfig(), "bugfix");
   await pollRunnerReasons(schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]])));
   assert.notEqual(bugfix.state.skipReason, "no-free-entry");
 });

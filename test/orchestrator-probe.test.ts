@@ -1,16 +1,16 @@
 /** Unit-tier coverage for the orchestrator's fallback-probe admission
  * (src/orchestrator/orchestrator.ts's
  * start pass): once the demoted fallback's cool-down elapses, the orchestrator opens the paused
- * budget gate for exactly ONE role tick — the probe — and closes it again the moment that tick
+ * budget gate for exactly ONE role run — the probe — and closes it again the moment that run
  * is admitted (startFallbackProbe marks the breaker probing, so a second due role in the same
  * pass is turned away). Until now this wiring ran in no test at any tier: the breaker's state
  * machine has its own unit tests (fallback-breaker.test.ts) and the gate's verdicts theirs
- * (budget-gates.test.ts), but the orchestrator's "one tick's evidence per cool-down" admission
+ * (budget-gates.test.ts), but the orchestrator's "one run's evidence per cool-down" admission
  * was covered nowhere, so a wiring slip (never admitting the probe, or admitting a whole wave)
  * would leave a demoted fallback paused forever — or hammer a dead backend with a full
  * maxConcurrent wave every cool-down.
  *
- * The scenario, driven in-process against the fake pi: one $10 tick on the primary spends to
+ * The scenario, driven in-process against the fake pi: one $10 run on the primary spends to
  * the cap, the gate engages the free pair, and three consecutive failures on it trip the
  * breaker. The breaker's clock is injected (RunOptions.breakerNow) and the test advances it by
  * hand, so every cool-down boundary — the wake that must NOT pierce the demotion, the probe
@@ -42,14 +42,14 @@ function wakeAll(repo: string): void {
   fs.writeFileSync(path.join(repo, STATE_DIR, "wake.json"), JSON.stringify({}));
 }
 
-/** Role ticks started but not yet ended. The launch pass logs a tick's run_start before any
+/** Role runs started but not yet ended. The launch pass logs a run's run_start before any
  * I/O, and the orchestrator runs in-process, so once the test reads the log every admitted
- * tick is counted here. */
+ * run is counted here. */
 function roleRunsInFlight(repo: string): number {
   return eventsOfType(repo, "run_start").length - eventsOfType(repo, "run_end").length;
 }
 
-test("a demoted fallback admits exactly one probe tick per cool-down; other due roles wait", async () => {
+test("a demoted fallback admits exactly one probe run per cool-down; other due roles wait", async () => {
   const repo = await makeFastRepo("fallback probe admission test", ["feature", "helper"]);
   const cfg = fastConfig(["feature", "helper"]);
   cfg.maxDailyCostUsd = 10;
@@ -66,7 +66,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
 
   // The breaker's clock, advanced by hand: the cool-down deadline and its elapsed check read
   // only this, so an assertion about "the breaker still holds" cannot be outrun by a slow
-  // host. Scheduling and tick timing stay on the real clock. Every poll reads the clock once
+  // host. Scheduling and run timing stay on the real clock. Every poll reads the clock once
   // to weigh the cool-down, so the read counter turns "a poll ran" into a fact the test can
   // wait on, replacing the wall-clock sleeps whose length a loaded host could shorten.
   let breakerReads = 0;
@@ -94,16 +94,16 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     );
     const onFallback = () => fs.readFileSync(argsFile, "utf8").match(/--model qwen-free/g)?.length ?? 0;
     await waitFor(() => onFallback() >= 3, "the three tripping failures");
-    // Both roles fail in lockstep, so the other role's tick is usually still in flight when the
+    // Both roles fail in lockstep, so the other role's run is usually still in flight when the
     // third failure trips the breaker — a straggler admitted before the trip, which runs to its
     // own failure by design (recordFallbackTick). Its run_start precedes the worktree reset and
     // the pi spawn, so on a loaded host its argv line can appear after budget_paused and read as a
-    // pierced pause (BUGS.md 2026-10-07). The snapshot waits for every started tick to end; no
-    // new tick can start meanwhile, since admission reads the tripped breaker.
+    // pierced pause (BUGS.md 2026-10-07). The snapshot waits for every started run to end; no
+    // new run can start meanwhile, since admission reads the tripped breaker.
     await waitFor(() => roleRunsInFlight(repo) === 0, "the pre-trip stragglers to finish");
     const runsAtTrip = onFallback();
-    const ticksAt = (role: string) => loadRunnerState(repo, role).runs;
-    const ticksAtTrip = { feature: ticksAt("feature"), helper: ticksAt("helper") };
+    const runsAt = (role: string) => loadRunnerState(repo, role).runs;
+    const runsByRoleAtTrip = { feature: runsAt("feature"), helper: runsAt("helper") };
 
     // Read the deadline the orchestrator itself published rather than guessing from sleeps:
     // the breaker entry's probeAt is the invariant the assertions below move against.
@@ -124,18 +124,18 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     const readsBeforeHold = breakerReads;
     await waitFor(() => breakerReads >= readsBeforeHold + 2, "two polls to weigh the hold");
     assert.ok(clock.now() < firstProbeAt, "the wake leaves the breaker's clock inside the cool-down");
-    assert.equal(onFallback(), runsAtTrip, "a wake does not start a tick while the breaker holds");
+    assert.equal(onFallback(), runsAtTrip, "a wake does not start a run while the breaker holds");
     assert.deepEqual(
-      { feature: ticksAt("feature"), helper: ticksAt("helper") },
-      ticksAtTrip,
+      { feature: runsAt("feature"), helper: runsAt("helper") },
+      runsByRoleAtTrip,
       "the demoted pause holds both roles, wake or no wake",
     );
 
-    // Elapse the cool-down on the breaker's own clock: exactly ONE probe tick is admitted —
+    // Elapse the cool-down on the breaker's own clock: exactly ONE probe run is admitted —
     // the other due role waits for its verdict instead of joining a wave onto the dead backend.
     clock.advance(firstProbeAt - clock.now() + 1);
-    await waitFor(() => onFallback() === runsAtTrip + 1, "the first probe tick");
-    const prober = ticksAt("feature") > ticksAtTrip.feature ? "feature" : "helper";
+    await waitFor(() => onFallback() === runsAtTrip + 1, "the first probe run");
+    const prober = runsAt("feature") > runsByRoleAtTrip.feature ? "feature" : "helper";
     const waiter = prober === "feature" ? "helper" : "feature";
     // The failed probe re-opens the breaker with the cool-down doubled; waiting for the
     // published probeAt to move is how the test knows the evidence folded.
@@ -151,7 +151,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     await waitFor(() => breakerReads >= readsBeforeDouble + 2, "two polls to weigh the doubled hold");
     assert.ok(clock.now() < doubledProbeAt, "the injected clock still sits inside the doubled cool-down");
     assert.equal(onFallback(), runsAtTrip + 1, "one probe per cool-down, not a maxConcurrent wave");
-    assert.equal(ticksAt(waiter), ticksAtTrip[waiter as keyof typeof ticksAtTrip],
+    assert.equal(runsAt(waiter), runsByRoleAtTrip[waiter as keyof typeof runsByRoleAtTrip],
       "the second due role waits for the probe's verdict");
     assert.equal(
       eventsOfType(repo, "budget_paused").length,
@@ -163,8 +163,8 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     // first probe's error backed its role off the short ladder, so the still-due waiter is the
     // one role the window can admit.
     clock.advance(doubledProbeAt - clock.now() + 1);
-    await waitFor(() => onFallback() === runsAtTrip + 2, "the second probe tick");
-    assert.equal(ticksAt(waiter), ticksAtTrip[waiter as keyof typeof ticksAtTrip] + 1,
+    await waitFor(() => onFallback() === runsAtTrip + 2, "the second probe run");
+    assert.equal(runsAt(waiter), runsByRoleAtTrip[waiter as keyof typeof runsByRoleAtTrip] + 1,
       "the role that waited takes the next window's probe");
   } finally {
     clearTimeout(timeout);

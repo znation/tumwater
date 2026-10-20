@@ -26,12 +26,12 @@ function divergenceWarnings(repo: string): { message: string }[] {
     .filter((e) => e.type === "warning" && e.source === "tumwater" && e.message.includes("your checkout moved to"));
 }
 
-/** A settled tick on the configured role gates the baseline: the orchestrator has polled at
+/** A settled run on the configured role gates the baseline: the orchestrator has polled at
  * least once with the checkout still on `main`, so any warning found later is attributable. */
-async function awaitFirstTick(repo: string, role: string): Promise<void> {
+async function awaitFirstRun(repo: string, role: string): Promise<void> {
   await waitFor(
     () => loadRunnerState(repo, role).runs >= 1 && !loadRunnerState(repo, role).running,
-    `${role}'s first tick settled`,
+    `${role}'s first run settled`,
   );
 }
 
@@ -44,7 +44,7 @@ test("branch divergence: warns once per episode and re-arms when main returns", 
     pollMs: FAST_POLL_MS,
   });
   try {
-    await awaitFirstTick(repo, "clean");
+    await awaitFirstRun(repo, "clean");
     assert.equal(divergenceWarnings(repo).length, 0, "an on-main checkout never warns");
 
     // Diverge: the next poll names the branch, exactly once — a second poll of the same
@@ -88,7 +88,7 @@ test("an unwritable event log does not end the team on a divergence warning", as
     },
   );
   try {
-    await awaitFirstTick(repo, "clean");
+    await awaitFirstRun(repo, "clean");
     // Replace the event feed with a directory: every append inside the poll loop now throws
     // EISDIR (ENOSPC/EACCES behave the same). The divergence warning is a direct poll-loop
     // emission, so it must not take the team down with it.

@@ -1,6 +1,6 @@
 /** Unit-tier coverage for the orchestrator's self-redeploy wiring
  * (src/orchestrator/orchestrator.ts's
- * `if (redeploy)` block): the policy's verdict gates the team — a `hold` starts no new ticks
+ * `if (redeploy)` block): the policy's verdict gates the team — a `hold` starts no new runs
  * and its lift resumes them, a `restart` ends the run with restart: true — and the policy's
  * status() is published into orchestrator.json, at startup and again whenever it changes. The
  * gating `npm test` never ran this path; the redeploy e2e tier covers it, but only under
@@ -75,12 +75,12 @@ function events(repo: string, type: string): Record<string, unknown>[] {
     .filter((e) => e.type === type);
 }
 
-test("a redeploy hold starts no new ticks, and its lift resumes them", async () => {
+test("a redeploy hold starts no new runs, and its lift resumes them", async () => {
   const repo = await makeFastRepo("redeploy hold test", ["clean"]);
   const restore = fakePiIdle();
   const controller = new AbortController();
   // Several held polls, then the hold lifts: the team sits idle through the hold and the
-  // next due tick runs once it clears. The hold outlasts the observation window below — a
+  // next due run goes ahead once it clears. The hold outlasts the observation window below — a
   // poll takes longer than the poll interval (each awaits git subprocesses), so the step
   // count is generous on purpose.
   const { redeployer, polls } = scriptedRedeployer([
@@ -99,15 +99,15 @@ test("a redeploy hold starts no new ticks, and its lift resumes them", async () 
   });
   try {
     // Wait for four polls — every one of them answered "hold", so the assertion below is
-    // clock-free: an ungated team would have ticked on the very first polls (the startup
-    // tick is due immediately — the divergence test awaits one inside a few poll periods).
+    // clock-free: an ungated team would have run on the very first polls (the startup
+    // run is due immediately — the divergence test awaits one inside a few poll periods).
     await waitFor(() => polls() >= 4, "the orchestrator to poll through the hold");
-    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a hold starts no new ticks, director included");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a hold starts no new runs, director included");
 
-    // The hold lifts: the role's pending tick runs on the next polls.
+    // The hold lifts: the role's pending run goes ahead on the next polls.
     await waitFor(
       () => loadRunnerState(repo, "clean").runs >= 1 && !loadRunnerState(repo, "clean").running,
-      "the tick after the hold lifts",
+      "the run after the hold lifts",
     );
   } finally {
     controller.abort();
@@ -116,7 +116,7 @@ test("a redeploy hold starts no new ticks, and its lift resumes them", async () 
   }
 });
 
-test("a restart verdict ends the run with restart: true, before any tick starts", async () => {
+test("a restart verdict ends the run with restart: true, before any run starts", async () => {
   const repo = await makeFastRepo("redeploy restart test", ["clean"]);
   const restore = fakePiIdle();
   const controller = new AbortController();
@@ -131,7 +131,7 @@ test("a restart verdict ends the run with restart: true, before any tick starts"
   try {
     const exit = await withHangGuard(done, "restart verdict did not end the run");
     assert.deepEqual(exit, { restart: true }, "the daemon exit names the restart for the caller");
-    assert.equal(loadRunnerState(repo, "clean").runs, 0, "the first poll's verdict leaves no tick started");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "the first poll's verdict leaves no run started");
   } finally {
     controller.abort();
     restore();
@@ -172,18 +172,18 @@ test("the redeployer's build status is published at startup and republished when
   }
 });
 
-test("a restart verdict cuts off a permit-holding tick instead of draining it", async () => {
+test("a restart verdict cuts off a permit-holding run instead of draining it", async () => {
   const repo = await makeFastRepo("redeploy restart cutoff test", ["clean"]);
-  // The fake pi hangs far past the test: the role's startup tick stays a permit holder
+  // The fake pi hangs far past the test: the role's startup run stays a permit holder
   // parked inside the pi run until the restart's abort cuts it off. A "finished" line in
   // the run log would mean the shutdown drained the model run to completion instead.
   const runLog = path.join(tmpdir("restart-cutoff-"), "pi-runs.log");
   const script = `echo started >> '${runLog}'\nsleep 120\necho finished >> '${runLog}'\n`;
   const restore = fakePi(script);
   const controller = new AbortController();
-  // The restart verdict waits for the startup tick to park inside the hung pi run, so it is read
-  // with a tick in flight. A fixed count of idle polls raced the tick's worktree setup: under
-  // load the restart cut the tick off before pi ever started (2026-10-01 suite flake).
+  // The restart verdict waits for the startup run to park inside the hung pi process, so it is read
+  // with a run in flight. A fixed count of idle polls raced the run's worktree setup: under
+  // load the restart cut the run off before pi ever started (2026-10-01 suite flake).
   const piStarted = () => fs.existsSync(runLog) && fs.readFileSync(runLog, "utf8").includes("started");
   const { redeployer } = scriptedRedeployer([{ action: "restart" }], piStarted);
   const done = runRepoOrchestrator(repo, {
@@ -192,10 +192,10 @@ test("a restart verdict cuts off a permit-holding tick instead of draining it", 
     redeploy: redeployer,
   });
   try {
-    await waitFor(piStarted, "the role tick's pi run to start");
+    await waitFor(piStarted, "the role run's pi process to start");
     // A restart verdict must end the run on its own; if the abort path breaks, the race turns
     // the hang into a failure instead of a stalled suite. Armed only now, so a slow startup
-    // tick cannot spend the restart's budget.
+    // run cannot spend the restart's budget.
     const exit = await withHangGuard(done, "restart verdict did not end the run");
     assert.deepEqual(exit, { restart: true }, "the daemon exit names the restart for the caller");
     assert.equal(
@@ -203,10 +203,10 @@ test("a restart verdict cuts off a permit-holding tick instead of draining it", 
       false,
       "the in-flight pi run was cut off, not drained to completion",
     );
-    // The tick was started but never completed: the cut-off reservation hands itself back
+    // The run was started but never completed: the cut-off reservation hands itself back
     // with no run_end of its own to record.
     assert.ok(loadRunnerState(repo, "clean").running || loadRunnerState(repo, "clean").runs >= 1,
-      "the tick was in flight when the restart took effect");
+      "the run was in flight when the restart took effect");
   } finally {
     controller.abort();
     restore();

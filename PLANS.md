@@ -6,24 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Plain terms code run, part 10b/20: Convert the orchestrator's non-e2e test prose (planned 2026-10-16 by user, split 2026-10-20 by the plan role from part 10/20 after two rejected reviews; requires part 10a/20 landed; design in plans/terminology.md "Code names"; touches test/orchestrator-{launch,seams,scheduling,probe,defer,director,redeploy,once,fallback,divergence,start-event-best-effort}.test.ts)
-
-**Goal.** Test-only, with no identifier left to compile-fix. The orchestrator's non-e2e tests say "run" in their comments, test titles, assertion messages and locals, and every changed line still reads as a sentence. Part 10a/20 renamed the identifiers these tests call.
-
-**Approach.**
-- The series rules and the prose rule of part 10a/20 apply unchanged.
-- Locals: in test/orchestrator-probe.test.ts, `ticksAt` → `runsAt` and `ticksAtTrip` → `runsByRoleAtTrip`, because a `runsAtTrip` local already exists there; `tickedFeature` → `ranFeature`; `tickIdx` in test/orchestrator-director.test.ts → `roleRunIdx`; `calls.ticks` in test/orchestrator-seams.test.ts's harness → `calls.runs`. Migrate remaining uses of 10a's `@deprecated` fixture aliases in these files.
-- Assertion messages next to a run count (`exit.runsDone`, `loadRunnerState(…).runs`) name what was counted rather than repeat the verb. For example, "the deferred role ran no tick" → "the deferred role got no run"; "nothing ticked past the seeded history" → "no run past the seeded history"; "the tick really ran" → "the run really happened"; "the director's recovery tick ran" → "the director got its recovery run"; "clean eventually ran its own tick" → "clean eventually got its own run"; "the review ran before the role's tick" → "the review finished before the role's run started"; "neither parked tick started its run mid-drain" → "neither parked run started mid-drain"; "the tick ran to completion" → "the run finished". Titles such as "… settles as deferred, runs no tick, and logs the episode" → "… settles as deferred, gets no run, and logs the episode". Reread every changed line in the diff as a sentence before finishing.
-
-**Files touched.** The eleven test files in the heading, and docs/invariants.md where it quotes a retitled test.
-
-**Acceptance criteria.**
-- `grep -nE '[Tt]ick|TICK'` over this part's test files prints only kept senses (mock-clock `tick(ms)`, serialized names, legacy fixtures marked `retired-name-ok`).
-- `grep -niE "mid-run run|\bran (its|a|the|no|one) (own |recovery |parked )?run\b|\bruns? (no|one|exactly one) run\b|started its run|\bruns? runs?\b|run's own run\b"` over this part's test files prints nothing.
-- docs/invariants.md quotes no title this part changed in its old form.
-- No behavior change: the suite's test count is unchanged.
-- `npm run test` passes.
-
 ### Plain terms code run, part 11/20: Convert the orchestrator end-to-end tests (planned 2026-10-16 by user; requires parts 10a/20 and 10b/20 landed; design in plans/terminology.md "Code names"; touches test/orchestrator*.e2e.test.ts)
 
 **Goal.** Mechanical, test-only. The orchestrator e2e suites use run names in their helpers, locals, comments and test titles.
