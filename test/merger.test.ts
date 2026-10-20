@@ -533,6 +533,40 @@ for (const main of ["green", "red"] as const) {
   });
 }
 
+for (const main of ["green", "red"] as const) {
+  test(`an unwritable state file during a red merge check's attribution still settles its verdict (${main} main)`, async () => {
+    const { root, sha } = await pinnedFixture();
+    const tip = advanceMain(root, `main-enospc-${main}-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+    if (main === "green") noteGreenBaseline(tip);
+    const state = freshRunnerState(ROLE);
+    const { ctx } = makeCtx(root, state);
+    ctx.config = { ...ctx.config, check: { command: "echo 'error: planted merge failure'; exit 1" } };
+    assert.equal(await mergeApprovedChange(ctx, request(sha)), "merge_blocked");
+
+    const prefix = `${statePath(root, ROLE)}.tmp-`;
+    const restore = patchFsMethod("writeFileSync", (orig) => (...args: unknown[]) => {
+      if (typeof args[0] === "string" && args[0].startsWith(prefix)) throw errnoError("ENOSPC");
+      return orig(...args);
+    });
+    let second;
+    try {
+      second = await mergeApprovedChange(ctx, request(sha));
+    } finally {
+      restore();
+    }
+    if (main === "green") {
+      assert.equal(second, "rejected");
+      assert.equal(await refSha(root, REF), null, "the pin is gone");
+      assert.equal(eventsOfType(root, "review_rejected").length, 1);
+    } else {
+      assert.equal(second, "main_red");
+      assert.equal(await refSha(root, REF), sha, "the pin is kept");
+      assert.equal(eventsOfType(root, "review_rejected").length, 0);
+    }
+    assert.ok(warningMessages(root).some((m) => m.startsWith("could not save the role's state")));
+  });
+}
+
 // The first red of a patch's in-lock merge check is the retry that exists for load flakes — the
 // whole point is to re-merge a flaky test green. It is also the one signal that could name the
 // flaky test, and until now the reason was written only into lastError, which the leftover-recovery

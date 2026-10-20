@@ -1,7 +1,7 @@
 import { deleteRef, headOf, patchId } from "../git/git.js";
 import { mergeRefName } from "../paths.js";
 import { recordReview } from "../run/run-apply.js";
-import { saveRunnerState, type RunnerState } from "../runner/runner-state.js";
+import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
@@ -77,8 +77,9 @@ async function keepPinOrAttribute(
 }
 
 /** The terminal deterministic-reject sink shared by mergeBlocked and attributeRedCheck:
- * record the reject review, reset the unreviewed-failure streak, persist state, delete the
- * merge ref, and log review_rejected. The shared `_merge` checkout is left in place
+ * record the reject review, reset the unreviewed-failure streak, persist state best-effort
+ * (a failed save warns; the merge write-back saves the same state later), delete the merge
+ * ref, and log review_rejected, even on a full disk. The shared `_merge` checkout is left in place
  * (plans/worktree-pool.md, part 2c): it persists across merges like `_gate-main`, and a
  * rejection discards the pinned ref, not the checkout. Returns "rejected". review.ts's reject
  * path is a different sink — it resets the branch instead of deleting the ref — and keeps its
@@ -92,7 +93,7 @@ async function rejectChange(
 ): Promise<RunResult> {
   recordReview(state, "reject", reasons, head);
   state.unreviewFailures = 0;
-  saveRunnerState(ctx.root, state);
+  saveRunnerStateBestEffort(ctx.root, state);
   await deleteRef(ctx.root, mergeRefName(role));
   logEventBestEffort(ctx.root, { source: role, type: "review_rejected", head, reasons });
   return "rejected";
@@ -121,7 +122,7 @@ function keepForKnownFailures(
   if (!known) return null;
   state.lastError = `${label} failed only main's known failures, merge kept: ${known.join(", ")}`;
   warnEventBestEffort(ctx.root, role, `${label} fails only main's known failures: ${known.join(", ")}`);
-  saveRunnerState(ctx.root, state);
+  saveRunnerStateBestEffort(ctx.root, state);
   return "merge_blocked";
 }
 
@@ -213,8 +214,8 @@ export async function mergeBlocked(
  * it once main's head moves to one the watch has not found red, and leftover recovery holds it
  * until then. No verdict → reject, the
  * safe default, and the reasons say so. The verdict
- * is persisted before it returns. A red whose headline matches a flake the gate or a merge
- * retry recorded (isKnownFlake) is excused once per headline per pin
+ * is persisted best-effort before it returns. A red whose headline matches a flake the gate or
+ * a merge retry recorded (isKnownFlake) is excused once per headline per pin
  * (RunnerState.mergeFlakeExcused): "merge_blocked" with the ref kept, before main's verdict,
  * because that verdict is usually a cached green that would reject a change over a flaky test
  * (PLANS.md 2026-10-16, BUGS.md 2026-10-06). A repeat of the same headline is attributed as
@@ -233,7 +234,7 @@ export async function attributeRedCheck(
   // only live when the check produced a verdict.
   if (unverifiedTreeOutcome(red.outcome)) {
     state.lastError = `${label}: ${firstCheckReason(red)}`;
-    saveRunnerState(ctx.root, state);
+    saveRunnerStateBestEffort(ctx.root, state);
     return "merge_blocked";
   }
   const kept = keepForKnownFailures(ctx, role, label, red, state);
@@ -244,13 +245,13 @@ export async function attributeRedCheck(
     state.mergeFlakeExcused = key;
     state.lastError = `${label} failed: known-flaky failure, merge kept: ${headline}`;
     warnEventBestEffort(ctx.root, role, `${label}: known-flaky failure, merge kept: ${headline}`);
-    saveRunnerState(ctx.root, state);
+    saveRunnerStateBestEffort(ctx.root, state);
     return "merge_blocked";
   }
   const main = await mainTipVerdict(ctx.root, role, ctx.mainBranch, ctx.config);
   if (main.status === "red") {
     state.lastError = `${label} failed: ${mainRedNotMine(main.sha)}`;
-    saveRunnerState(ctx.root, state);
+    saveRunnerStateBestEffort(ctx.root, state);
     return "main_red";
   }
   const reasons = checkFailureReasons(red.check, red.outcome);

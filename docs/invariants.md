@@ -4184,3 +4184,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/runner/runner.ts` (`runContext`), `src/runner/runner-run.ts` (`runPhase`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
 **Pinned by.** `test/runner-fallback.test.ts` — "an unwritable state file cannot reject a run or turn it into an error — its fallback verdict still folds (skip ${skip})"; the title is a template over `skip` in {0, 1}.
+
+## Merge check attribution: a failed state save never fails the verdict
+
+### INV-CM1: a red merge check attributed while role-state saves fail still deletes a rejected pin and logs review_rejected, or returns main_red with the pin kept, warning once per failed save
+
+**Guarantee.** The sinks of a red in-lock merge check persist the role's state best-effort: a failed save (full disk, EACCES) warns instead of throwing, so a rejected change loses its pin and logs review_rejected, and a main-red change returns main_red with its pin kept. Only the reject and main-red saves are pinned; the unverified, known-flake and known-failures saves and the re-queue save share the swap without a test of their own.
+
+**Binds.** `src/merge/merge-check-failures.ts` (`rejectChange`, `attributeRedCheck`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
+
+**Pinned by.** `test/merger.test.ts` — "an unwritable state file during a red merge check's attribution still settles its verdict (green main)" and "an unwritable state file during a red merge check's attribution still settles its verdict (red main)".

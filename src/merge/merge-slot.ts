@@ -6,7 +6,7 @@ import { cachedBaselineVerdict } from "../baseline/main-baseline.js";
 import type { RunResult } from "../run/run-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
-import { saveRunnerState, saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
+import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { applyMergeOutcome, ERROR_STREAK_WARN } from "../run/run-apply.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
@@ -554,7 +554,7 @@ export async function requeueKeptChange(
   if (isMainRed) {
     const { sha: _sha, notBefore: _nb, retry: _r, ...rest } = entry;
     state.mainRedRetry = { head: (await branchHead(root, mainBranch)) ?? "", entry: rest };
-    saveRunnerState(root, state);
+    saveRunnerStateBestEffort(root, state);
     return;
   }
   if (queuedMerges(root).some((e) => e.role === entry.role)) return;
