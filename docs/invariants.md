@@ -2829,3 +2829,66 @@ pauses and resumes the canonical role", "an empty paused-roles set carries no de
 non-empty one carries its future deadline"; `test/team-state.test.ts` — "pauseRole with a
 deadline writes { roles, at, until } and expiry releases the set", "a non-finite per-role
 deadline is dropped on a rewrite instead of becoming an expired marker".
+
+## Worktree reclaim: a clean stays inside idle linked worktrees, removes only ignored files, and runs once per drop
+
+`src/team/reclaim.ts` deletes the gitignored files of idle harness worktrees (`git clean -fdX`)
+under disk pressure, when a worktree goes idle, and on `tumwater reclaim`.
+
+### INV-AW1: a clean refuses what it must not touch and removes only ignored files
+
+**Guarantee.** A clean throws, deleting nothing, outside `worktreesDir` or on a directory that is
+not a linked worktree. It returns false without cleaning a worktree in use by a run, and the
+refusal leaves no claim behind. It removes only ignored files, keeping tracked edits, untracked
+files and nested repositories, and counts as a reclaim only when git removed something.
+
+**Binds.** `src/team/reclaim.ts` (`reclaimWorktree`, `isLinkedWorktree`, `cleanIgnored`).
+
+**Pinned by.** `test/reclaim.test.ts` — "reclaimWorktree removes only gitignored files, keeping
+edits and nested repos", "reclaimWorktree throws and deletes nothing outside worktreesDir",
+"reclaimWorktree throws for a plain repo inside worktreesDir (not a linked worktree)" and
+"reclaimWorktree reports false when a worktree has nothing ignored to clean";
+`test/reclaim-guards.test.ts` — "reclaimWorktree refuses a worktree in use, deleting nothing, and
+cleans it once the use ends".
+
+### INV-AW2: candidates come least recently used first, and the unsafe ones are left out
+
+**Guarantee.** Candidates are ordered least recently used first, with resume-pending roles last.
+Reserved mirrors and in-use worktrees are left out. A never-seen worktree is seeded as used now and
+skipped for this pass, and the dry-run listing never seeds.
+
+**Binds.** `src/team/reclaim.ts` (`reclaimCandidates`, `inspectReclaimCandidates`).
+
+**Pinned by.** `test/reclaim.test.ts` — "reclaimCandidates seeds unknown worktrees as used and
+excludes them from the pass", "a non-finite registry timestamp reads as never seen, not as used
+forever", "reclaimCandidates orders least-recently-used first, resume-pending last, and skips
+reserved and in-use", "inspectReclaimCandidates lists idle age and ignored-path count without
+cleaning" and "inspectReclaimCandidates never seeds the use registry".
+
+### INV-AW3: a pass stops at the floor and logs one event with freed space clamped at zero
+
+**Guarantee.** A pressure pass stops once free space reaches the floor. An idle pass cleans only
+expired candidates. A guard failure skips that one candidate. A pass logs one `disk_reclaim`, and
+only when it cleaned something, with freed space as after minus before, clamped at zero. An
+unwritable event feed does not lose the result.
+
+**Binds.** `src/team/reclaim.ts` (`reclaimPass`, `isIdleExpired`).
+
+**Pinned by.** `test/reclaim.test.ts` — "reclaimPass cleans least-recently-used first and stops
+once the sampler reaches diskReclaimGB", "reclaimPass returns null and logs nothing when there is
+nothing to clean", "reclaimPass still returns its result when the events feed is unwritable",
+"reclaimPass idle mode cleans only worktrees unused past the threshold", "reclaimPass idle mode
+with idleHours 0 cleans nothing" and "reclaimPass continues past a guard-failing candidate and one
+with nothing to clean"; `test/reclaim-guards.test.ts` — "reclaimPass reports freed space as after
+minus before, clamped at zero when another writer consumed it".
+
+### INV-AW4: the controller starts one pressure pass per drop and arms idle passes at most hourly
+
+**Guarantee.** The controller starts one pressure pass per drop and then lets the disk hold
+engage, arms idle passes at most hourly, and runs a manual request over every candidate.
+
+**Binds.** `src/team/reclaim.ts` (`ReclaimController`).
+
+**Pinned by.** `test/reclaim.test.ts` — "ReclaimController runs one pass per drop, then lets the
+disk hold engage", "ReclaimController.pollIdle cleans once, throttles the next arm, and honors
+reclaimedAt" and "ReclaimController.requestManual runs a manual pass over every candidate".
