@@ -3664,6 +3664,18 @@ wait and lets a merge that finishes in time complete", "awaitMergeForHandoff abo
 window and waits for it to stop" and "awaitMergeForHandoff hands off without a merge still running
 after the abort, clearing its marker".
 
+### INV-BL3: an events feed that cannot be written never shortens the shutdown drain or makes it reject
+
+**Guarantee.** The announcements `drainInFlightWork` and `awaitMergeForHandoff` write to the events
+feed are best-effort. When the feed cannot be written, an operator stop still waits out the merge,
+a restart's hand-off still aborts past its window, and the drain resolves instead of rejecting.
+
+**Binds.** `src/run/run-timing.ts` (`drainInFlightWork`, `awaitMergeForHandoff`).
+
+**Pinned by.** `test/run-timing-edges.test.ts` — "an operator stop with an unwritable events feed
+still waits out the merge before it returns" and "a restart's hand-off with an unwritable events
+feed still aborts past its window and resolves".
+
 ## Git diff paths: a tree diff tells an unreadable answer from an empty one, lists both ends of a move, and decodes every name
 
 ### INV-BM1: a tree diff is null when git fails, `[]` when the trees match, and lists both ends of a move

@@ -5,6 +5,7 @@ import type { InFlightMerge } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { flushImmediate } from "./helpers/wait.js";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 
 // A run-timing guarantee the neighbouring files do not catch breaking: a restart's hand-off
 // folds every merge task into one wait that names all their roles.
@@ -15,7 +16,7 @@ function merge(promise: Promise<void>, roles: string[]): InFlightMerge {
 }
 
 /** A one-shot deadline scheduler the test fires by hand (see test/run-timing.test.ts). */
-function scriptedTimers(): { after: AfterDelay; delays: number[]; pending(): number } {
+function scriptedTimers(): { after: AfterDelay; delays: number[]; pending(): number; fire(): void } {
   const pending: Array<() => void> = [];
   const delays: number[] = [];
   return {
@@ -29,6 +30,7 @@ function scriptedTimers(): { after: AfterDelay; delays: number[]; pending(): num
     },
     delays,
     pending: () => pending.length,
+    fire: () => void pending.shift()?.(),
   };
 }
 
@@ -63,4 +65,59 @@ test("a restart's hand-off waits for every merge task and names all their roles"
   const w = warningMessages(root);
   assert.equal(w.length, 1);
   assert.match(w[0]!, /^restart waiting on the merge in progress for clean, dedupe \(deadline 5s\)$/);
+});
+
+/** Make every append to an events feed fail with ENOSPC; returns the undo. */
+function unwritableEventsFeed(): () => void {
+  return patchFsMethod("appendFileSync", (orig) => (file, ...rest) => {
+    if (typeof file === "string" && file.endsWith("events.jsonl")) throw errnoError("ENOSPC");
+    return (orig as (...a: unknown[]) => unknown)(file, ...rest);
+  });
+}
+
+test("an operator stop with an unwritable events feed still waits out the merge before it returns", async () => {
+  const root = tmpdir();
+  let resolveTask!: () => void;
+  const task = new Promise<void>((r) => (resolveTask = r));
+  const undo = unwritableEventsFeed();
+  try {
+    let settled = false;
+    const drain = drainInFlightWork(root, new Set(), new Set(), [merge(task, ["clean"])], false, 5_000, () => {}).then(
+      () => (settled = true),
+    );
+    await flushImmediate();
+    assert.equal(settled, false, "the unwritable feed did not end the drain before the merge settled");
+    resolveTask();
+    await drain;
+  } finally {
+    undo();
+  }
+});
+
+test("a restart's hand-off with an unwritable events feed still aborts past its window and resolves", async () => {
+  const root = tmpdir();
+  let resolveTask!: () => void;
+  const task = new Promise<void>((r) => (resolveTask = r));
+  const timers = scriptedTimers();
+  let aborts = 0;
+  const undo = unwritableEventsFeed();
+  try {
+    const drain = drainInFlightWork(
+      root,
+      new Set(),
+      new Set(),
+      [merge(task, ["clean"])],
+      true,
+      50,
+      () => void aborts++,
+      timers.after,
+    );
+    timers.fire();
+    await flushImmediate();
+    assert.equal(aborts, 1);
+    resolveTask();
+    await drain;
+  } finally {
+    undo();
+  }
 });

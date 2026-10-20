@@ -1,5 +1,5 @@
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
-import { warnEvent, TUMWATER_SOURCE } from "../events/events.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import type { InFlightMerge } from "../merge/merge-pipeline.js";
 import { mergeStatePath } from "../paths.js";
@@ -157,7 +157,8 @@ type HandoffMergeOutcome = "finished" | "aborted" | "abandoned";
  * new build. One still running a window after the abort (a step wedged past its own bound) is left
  * behind: its 4/5 marker is cleared here, since this process exits the moment the hand-off returns,
  * and its entries and pins survive exactly as a crash leaves them — the next generation's first
- * drain re-merges them. Exported as a unit-test seam, like runTimedRoleRun. */
+ * drain re-merges them. Its announcements are best-effort: an events feed that cannot be written
+ * does not shorten the wait. Exported as a unit-test seam, like runTimedRoleRun. */
 export async function awaitMergeForHandoff(
   root: string,
   merge: Pick<InFlightMerge, "promise" | "roles">,
@@ -167,21 +168,21 @@ export async function awaitMergeForHandoff(
 ): Promise<HandoffMergeOutcome> {
   const roles = merge.roles.join(", ");
   const deadline = `${windowMs / 1000}s`;
-  warnEvent(
+  warnEventBestEffort(
     root,
     TUMWATER_SOURCE,
     `restart waiting on the merge in progress for ${roles} (deadline ${deadline})`,
   );
   if (await settlesWithin(merge.promise, windowMs, after)) return "finished";
   abort();
-  warnEvent(
+  warnEventBestEffort(
     root,
     TUMWATER_SOURCE,
     `restart: the merge for ${roles} outlived its ${deadline} deadline — aborted; its pinned commits survive for the next restart`,
   );
   if (await settlesWithin(merge.promise, windowMs, after)) return "aborted";
   removeQuiet(mergeStatePath(root));
-  warnEvent(
+  warnEventBestEffort(
     root,
     TUMWATER_SOURCE,
     `restart: the aborted merge for ${roles} was still running ${deadline} later — restarting without it; its queue entries and pinned commits survive for the next restart`,
@@ -199,10 +200,11 @@ export async function awaitMergeForHandoff(
  * concurrent merger (a second Ctrl+C still forces the exit). On a restart the caller exits for
  * the next generation the moment this returns, and a merge is not bounded by one reviewer run
  * — a merge's check follows the verifications' — so the wait is a bounded hand-off that
- * announces itself (awaitMergeForHandoff; BUGS.md 2026-09-23). "The merge" is every merge task
- * at once — each verification holding a permit, and the merge — waited on (and, past the hand-off's
- * window, aborted) together under the roles of them all. The approved changes waiting for the
- * merge have no task, and a verification still parked for its permit has started nothing (a
+ * announces itself (awaitMergeForHandoff; BUGS.md 2026-09-23). The announcements are best-effort:
+ * an events feed that cannot be written does not shorten the wait. "The merge" is every merge task
+ * at once — each verification holding a permit, and the merge — waited on (and, past the
+ * hand-off's window, aborted) together under the roles of them all. The approved changes waiting
+ * for the merge have no task, and a verification still parked for its permit has started nothing (a
  * shutdown settles it at once; a restart's closed start gate at its grant): all of them keep their
  * entries and pins for the next start.
  */
@@ -237,7 +239,9 @@ export async function drainInFlightWork(
     // hand-off goes ahead without it too.
     if (outcome !== "abandoned") await runs;
   } else {
-    if (merge) warnEvent(root, TUMWATER_SOURCE, `shutdown waiting on the merge in progress for ${merge.roles.join(", ")}`);
+    if (merge) {
+      warnEventBestEffort(root, TUMWATER_SOURCE, `shutdown waiting on the merge in progress for ${merge.roles.join(", ")}`);
+    }
     await Promise.allSettled([runs, merge?.promise]);
   }
 }
