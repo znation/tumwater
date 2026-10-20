@@ -3232,3 +3232,67 @@ process, however the samples alternate with measurable ones.
 **Pinned by.** `test/disk-gate.test.ts` — "pollDiskGate: a null sample never holds and warns once
 per process"; `test/disk-gate-edges.test.ts` — "pollDiskGate: the floor itself does not hold, a
 null sample lifts an active hold, and the unmeasurable warning fires once per process".
+
+## Backlog index: every role's prompt lists the actionable entries and the newest closed ones by line range, marked with the same holds the claim gate reads
+
+`renderBacklogIndexBlock` in `src/backlog/backlog-index.ts` builds the `<backlog-index>` block that
+`src/run/run-prompt.ts` puts in every role's prompt.
+
+### INV-BE1: the actionable lines cover PLANS.md Planned, BUGS.md Open and QUESTIONS.md Open as `<start>-<end>: <title>`
+
+**Guarantee.** The actionable lines cover PLANS.md `## Planned`, BUGS.md `## Open` and QUESTIONS.md
+`## Open`, in that order. Each entry is `- <start>-<end>: <title>` with 1-based ranges, its stamp
+stripped and its title clipped to 160 characters. An empty backlog gives no block, and a changed
+file is re-read.
+
+**Binds.** `src/backlog/backlog-index.ts` (`renderBacklogIndexBlock`, `INDEX_SECTIONS`,
+`indexTitle`).
+
+**Pinned by.** `test/backlog-structure.test.ts` — "renderBacklogIndexBlock lists actionable entries
+with ranges and strips stamp suffixes", "renderBacklogIndexBlock re-reads a backlog file whose stat
+changed" and "renderBacklogIndexBlock returns undefined when the actionable sections are empty";
+`test/backlog-index-edges.test.ts` — "renderBacklogIndexBlock clips a long heading to 160
+characters, in the actionable and the closed lines alike".
+
+### INV-BE2: an entry carries its hold mark, and `[in flight by <role>]` while a live claim names it
+
+**Guarantee.** An entry carries the hold mark `entryHoldAgainst`/`holdMark`
+(`src/backlog/backlog-eligibility.ts`) give it, including a BUGS.md entry waiting on an unmerged
+plan, and `[in flight by <role>]` while any role's live claim names it.
+
+**Binds.** `src/backlog/backlog-index.ts` (`renderBacklogIndexBlock`);
+`src/backlog/backlog-eligibility.ts` (`entryHoldAgainst`, `holdMark`).
+
+**Pinned by.** `test/backlog-structure.test.ts` — "renderBacklogIndexBlock marks an entry carrying a
+Needs-replan note", "renderBacklogIndexBlock marks a held entry as blocked, refused or needing
+review", "renderBacklogIndexBlock blocks a BUGS.md entry whose prerequisite plan is unmerged",
+"renderBacklogIndexBlock marks an entry another role has claimed as in flight" and
+"renderBacklogIndexBlock marks an entry a parallel-work instance has claimed as in flight by that
+instance".
+
+### INV-BE3: only PLANS.md collapses a series' contiguous blocked parts into one line
+
+**Guarantee.** Only PLANS.md collapses a series' contiguous blocked parts into one line. Refused or
+claimed parts keep their own lines, and BUGS.md entries never collapse.
+
+**Binds.** `src/backlog/backlog-structure.ts` (`groupBlockedSeries`); `src/backlog/backlog-index.ts`
+(`collapseBlockedSeries`).
+
+**Pinned by.** `test/backlog-structure.test.ts` — "renderBacklogIndexBlock collapses a multi-part
+series' blocked parts to one line", "renderBacklogIndexBlock joins non-contiguous blocked parts into
+separate ranges", "renderBacklogIndexBlock keeps a refused and a claimed blocked part out of the
+collapsed line" and "renderBacklogIndexBlock does not collapse a BUGS.md entry blocked by a plan".
+
+### INV-BE4: at most five closed entries per kind follow, newest first, live section before archive
+
+**Guarantee.** After the actionable lines come at most five closed entries per kind, newest first:
+first from the live section, then from its archive file. They carry no hold mark or claimer.
+
+**Binds.** `src/backlog/backlog-index.ts` (`CLOSED_SECTIONS`, `RECENT_CLOSED_MAX`);
+`src/backlog/backlog-md.ts` (`FINISHED_ARCHIVES`).
+
+**Pinned by.** `test/backlog-structure.test.ts` — "renderBacklogIndexBlock lists the newest five Done
+entries with stripped stamps", "renderBacklogIndexBlock lists Fixed entries after the QUESTIONS.md
+Open lines" and "renderBacklogIndexBlock re-reads a Done section whose stat changed";
+`test/backlog-index-edges.test.ts` — "renderBacklogIndexBlock takes the newest five closed entries
+from the live section first, then its archive".
