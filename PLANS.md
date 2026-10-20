@@ -346,6 +346,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### docs/invariants.md gains a text-shaping section, so a fixer touching label truncation, prompt caps, count parsing or terminal-control stripping reads what src/text/text.ts promises instead of rebuilding it from tests (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Appends after whatever invariants section is last, so it only rebases over the display-format, system-prompt trim and full-output sections if they merge first. Touches docs/invariants.md and test/text.test.ts only, not src/text/text.ts)
 
+**Refused 2026-10-20 by feature: INV-AD fails test/invariants-doc.test.ts (ID_RE is /^INV-[A-Z]\d+$/, one letter) and INV-A..INV-Z are all in use, so no valid id prefix is free; the plan needs a replan (widen ID_RE in the guard, or fold into an existing section).**
+
 **Goal.** src/text/text.ts holds the one-line text rules that every display surface, prompt cap and input parser uses: `truncate` and `squash` bound a label, `truncateWithNote` caps text injected into a prompt with a visible marker, `parsePositiveInt`/`parseNonNegativeInt` define a valid count across CLI flags and GUI query params, and `stripTerminalControls` keeps untrusted text from driving the operator's terminal. `grep -n 'squash\|truncateWithNote\|parsePositiveInt\|stripTerminalControls' docs/invariants.md` finds nothing today. The terminal-text section only mentions `truncate` in passing. test/text.test.ts pins most rules directly, but `squash` has no direct test. Its doc comment says it collapses whitespace before it truncates, and that the order matters. Nothing fails today if the order is reversed. This plan adds that test and the section.
 
 **Approach.**
