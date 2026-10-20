@@ -601,6 +601,35 @@ test("the Workspace wait median chart draws one bar per timed day and seriesHasS
   assert.equal(seriesHasSlotWaitMedian(data), true);
 });
 
+test("the Check wait median chart draws one bar per timed day and seriesHasCheckWaitMedian gates it", () => {
+  interface Builders {
+    chartCommits(d: ReportData): string;
+    chartCheckWaitMedian(d: ReportData): string;
+    seriesHasCheckWaitMedian(d: ReportData): boolean;
+  }
+  const { chartCommits, chartCheckWaitMedian, seriesHasCheckWaitMedian } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["chartCommits", "chartCheckWaitMedian", "seriesHasCheckWaitMedian"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { checkWaitMedianMs: 40_000 }),
+    mkDay("2026-09-02"),
+    mkDay("2026-09-03", { checkWaitMedianMs: 180_000 }),
+  ]);
+  const svg = chartCheckWaitMedian(data);
+  const titles = [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles, ["2026-09-01: 40s median check wait", "2026-09-03: 3m median check wait"]);
+  const labels = (s: string) => (s.match(/<text [^>]*text-anchor='middle'/g) || []).length;
+  assert.equal(labels(svg), labels(chartCommits(data)));
+  assert.equal(seriesHasCheckWaitMedian(mk([mkDay("2026-09-01", { checkMedianMs: 5_000 }), mkDay("2026-09-02")])), false);
+  assert.equal(seriesHasCheckWaitMedian(data), true);
+});
+
 test("the Red merge checks chart draws one bar per red day and seriesHasCheckFailures gates it", () => {
   interface Builders {
     chartCommits(d: ReportData): string;

@@ -61,6 +61,9 @@ export interface UsageFold {
   /** ms of each slot_wait event that carries a positive waitedMs (a pooled workspace lease
    * that waited SLOT_WAIT_EVENT_MS or more for a free slot), unsorted. */
   slotWaitsMs: number[];
+  /** ms of each check_wait event that carries a positive waitedMs (a scoped check's wait for a
+   * check permit), unsorted. */
+  checkWaitsMs: number[];
   /** run_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
    * ticks that burned agent time and merged nothing without going through review. Split by role,
    * a parallel tally to runsByRole (never subtracted from it). */
@@ -238,6 +241,10 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // only event-logged at or above the 30 s threshold counts, so a 0 ms wait (a probe seam)
     // or a pre-waitedMs event adds nothing.
     pushPositiveWaitedMs(target.slotWaitsMs, ev);
+  } else if (ev.type === "check_wait") {
+    // The day report's check-slot wait median, mirroring the slot_wait push: only waits logged
+    // at or above the 30 s threshold count, so a 0 ms or pre-waitedMs event adds nothing.
+    pushPositiveWaitedMs(target.checkWaitsMs, ev);
   } else if (ev.type === "merge_done" || ev.type === "merge_failed") { 
     target.mergeRuns = (target.mergeRuns ?? 0) + 1;
     if (ev.type === "merge_failed") target.mergeFailed = (target.mergeFailed ?? 0) + 1;
@@ -298,6 +305,8 @@ interface DayFold {
   providerWaitsMs: number[];
   /** ms of each that-day slot_wait event that carries positive waitedMs, unsorted. */
   slotWaitsMs: number[];
+  /** ms of each that-day check_wait event that carries positive waitedMs, unsorted. */
+  checkWaitsMs: number[];
   failedRunsByRole: Record<string, number>;
   fallbacksByRole: Record<string, number>;
   imageReroutesByRole: Record<string, number>;
@@ -421,6 +430,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       mergeWaitsMs: [],
       providerWaitsMs: [],
       slotWaitsMs: [],
+      checkWaitsMs: [],
       failedRunsByRole: {},
       fallbacksByRole: {},
       imageReroutesByRole: {},

@@ -80,6 +80,9 @@ export interface ReportDay {
   /** Lower median of the day's workspace-slot waits (a pooled workspace lease wait, ms);
    * absent when the day has no slot_wait that carried a positive waitedMs. */
   slotWaitMedianMs?: number;
+  /** Lower median of the day's check-slot waits (a scoped check's wait for a maxConcurrentChecks
+   * permit, ms); absent when the day has no check_wait that carried a positive waitedMs. */
+  checkWaitMedianMs?: number;
   /** error-class run_end events per loop id; absent when the day has none (zero means
    * absent, so a failure-free day keeps its exact pre-feature shape). */
   failedRunsByRole?: Record<string, number>;
@@ -279,6 +282,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     mergeWaitsMs: [],
     providerWaitsMs: [],
     slotWaitsMs: [],
+    checkWaitsMs: [],
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -432,6 +436,8 @@ export function collectReport(root: string, days: number, role?: string): Report
         day.providerWaitMedianMs = lowerMedian(fold.providerWaitsMs);
       // A workspace wait is the pool's, not a role's, so only the team series carries it.
       if (fold.slotWaitsMs.length > 0) day.slotWaitMedianMs = lowerMedian(fold.slotWaitsMs);
+      // A check permit is the team's, not a role's, so only the team series carries it.
+      if (fold.checkWaitsMs.length > 0) day.checkWaitMedianMs = lowerMedian(fold.checkWaitsMs);
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.failedRunsByRole).length > 0)
         day.failedRunsByRole = fold.failedRunsByRole;

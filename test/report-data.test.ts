@@ -1099,6 +1099,26 @@ test("collectReport gives each day the lower median of its slot_wait waitedMs, t
   for (const d of collectReport(root, 3, "feature").series) assert.ok(!("slotWaitMedianMs" in d));
 });
 
+test("collectReport gives each day the lower median of its check_wait waitedMs, team scope only", () => {
+  const root = tmpdir();
+  const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra });
+  writeEvents(root, [
+    ev(at(0), "check_wait", { waitedMs: 40_000 }),
+    ev(at(0), "check_wait", { waitedMs: 200_000 }),
+    ev(at(1), "check_wait", {}), // no waitedMs: skipped, not counted as zero
+    ev(at(1), "check_wait", { waitedMs: 0 }), // a zero wait is not a check-slot wait
+    ev(at(2), "slot_wait", { waitedMs: 50_000 }), // a workspace wait is not a check wait
+  ]);
+  const data = collectReport(root, 3);
+  assert.equal(data.series[2]!.checkWaitMedianMs, 40_000);
+  assert.ok(!("checkWaitMedianMs" in data.series[1]!), "a day whose only waits are 0 ms or unmeasured has none");
+  assert.ok(!("checkWaitMedianMs" in data.series[0]!), "a day with only a slot_wait has none");
+  assert.ok(!("slotWaitMedianMs" in data.series[2]!), "a check_wait does not feed the slot-wait median");
+  assert.equal(data.series[0]!.slotWaitMedianMs, 50_000);
+  for (const d of collectReport(root, 3, "feature").series) assert.ok(!("checkWaitMedianMs" in d));
+});
+
 test("collectReport and collectReportSince tally run_start per model, zero meaning absent, team scope only", () => {
   const start = (ts: number, model?: string) =>
     JSON.stringify({ ts, loop: "feature", type: "run_start", run: 1, ...(model === undefined ? {} : { model }) });
