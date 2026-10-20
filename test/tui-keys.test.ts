@@ -1523,22 +1523,24 @@ test("Ctrl+O cycles the Activity type on view 0, opens the quiet editor on a Tra
   keys.handleKey(undefined, { name: "escape" });
 });
 
-test("Ctrl+Y toggles the History pane between the run rows and the per-role Summary table", () => {
+test("Ctrl+Y cycles the History pane through the run rows, the per-role Summary table and the per-model one", () => {
   const root = makeRoot();
   writeEvents(root, [
+    { ts: 1_699_999_990_000, loop: "feature", type: "run_start", run: 1, model: "m-a" },
+    { ts: 1_700_000_050_000, loop: "qa", type: "run_start", run: 1, model: "m-b" },
     { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 },
     { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "none", tokens: 50, costUsd: 0.05 },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
-  assert.equal(keys.state().historySummary, false, "History opens in the row view");
+  assert.equal(keys.state().historySummary, null, "History opens in the row view");
   const rows = keys.state().paneCache ?? "";
   assert.match(rows, /feature #1/, "the row view holds a #-run row");
   assert.match(rows, /qa #1/);
 
   keys.handleKey(undefined, { ctrl: true, name: "y" });
-  assert.equal(keys.state().historySummary, true, "Ctrl+Y turns the summary on");
+  assert.equal(keys.state().historySummary, "role", "Ctrl+Y turns the role summary on");
   const summary = keys.state().paneCache ?? "";
   const first = summary.split("\n")[0] ?? "";
   assert.match(first, /role/);
@@ -1551,7 +1553,19 @@ test("Ctrl+Y toggles the History pane between the run rows and the per-role Summ
   assert.doesNotMatch(summary, /#1/, "the summary holds no #-run row");
 
   keys.handleKey(undefined, { ctrl: true, name: "y" });
-  assert.equal(keys.state().historySummary, false, "a second Ctrl+Y restores the rows");
+  assert.equal(keys.state().historySummary, "model", "a second Ctrl+Y shows the model summary");
+  const models = keys.state().paneCache ?? "";
+  const mfirst = models.split("\n")[0] ?? "";
+  assert.match(mfirst, /model/);
+  assert.match(mfirst, /runs/);
+  assert.match(mfirst, /cost/);
+  assert.match(models, /^m-a\b/m);
+  assert.match(models, /^m-b\b/m);
+  assert.match(models, /^total\b/m);
+  assert.doesNotMatch(models, /#1/);
+
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().historySummary, null, "a third Ctrl+Y restores the rows");
   assert.match(keys.state().paneCache ?? "", /feature #1/);
 });
 
@@ -1562,11 +1576,11 @@ test("Ctrl+Y is inert while budget mode holds the prompt line", () => {
   keys.syncSnapshot(0, false, []);
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
   keys.handleKey(undefined, { ctrl: true, name: "y" });
-  assert.equal(keys.state().historySummary, true);
+  assert.equal(keys.state().historySummary, "role");
   keys.handleKey(undefined, { ctrl: true, name: "b" });
   assert.equal(keys.state().budgetMode, true);
   keys.handleKey(undefined, { ctrl: true, name: "y" });
-  assert.equal(keys.state().historySummary, true, "Ctrl+Y does nothing in budget mode");
+  assert.equal(keys.state().historySummary, "role", "Ctrl+Y does nothing in budget mode");
   keys.handleKey(undefined, { name: "escape" });
 });
 
@@ -1580,7 +1594,7 @@ test("Ctrl+Y opens the claude-reserve editor on Activity, flashes the busy messa
   // untouched (it names a different view's toggle).
   keys.handleKey(undefined, { ctrl: true, name: "y" });
   assert.equal(keys.state().claudeReserveMode, true, "Ctrl+Y on Activity opens the claude-reserve editor");
-  assert.equal(keys.state().historySummary, false, "the History Summary flag is unchanged");
+  assert.equal(keys.state().historySummary, null, "the History Summary flag is unchanged");
   assert.equal(keys.state().input, "", "unset claudeWindowReserve pre-fills empty");
   assert.match(keys.state().flash!, /claudeWindowReserve/);
   keys.handleKey(undefined, { ctrl: true, name: "y" });
@@ -1598,7 +1612,7 @@ test("Ctrl+Y opens the claude-reserve editor on Activity, flashes the busy messa
   // false off view 0, so the History arm runs.
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
   keys.handleKey(undefined, { ctrl: true, name: "y" });
-  assert.equal(keys.state().historySummary, true, "on History Ctrl+Y still toggles the Summary table");
+  assert.equal(keys.state().historySummary, "role", "on History Ctrl+Y still toggles the Summary table");
   assert.equal(keys.state().claudeReserveMode, false, "the claude-reserve editor does not open on History");
 });
 
@@ -3678,4 +3692,15 @@ test("Ctrl+A opens the team-model editor on Activity, still aborts a role's run 
   assert.equal(keys2.state().budgetMode, false);
   assert.ok(fs.existsSync(abortRequestPath(abortRoot, "feature")), "the per-role abort marker is written");
   assert.match(keys2.state().flash!, /abort requested for feature/);
+});
+
+test("the History model summary shows a run with no recorded start as (unknown)", () => {
+  const root = makeRoot();
+  writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.match(keys.state().paneCache ?? "", /^\(unknown\)/m);
 });

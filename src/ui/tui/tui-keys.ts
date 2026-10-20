@@ -195,9 +195,10 @@ interface TuiKeysState {
   /** The Backlog pane's active free-text search (the `/` editor), or null when none; names the
    * filtered active entries under the pane's `search:` header. */
   backlogGrep: string | null;
-  /** The History pane's session Summary toggle (Ctrl+Y): false shows the per-run row list, true
-   * the per-role tally (`history --summary`); named in the hint line. */
-  historySummary: boolean;
+  /** The History pane's session Summary toggle (Ctrl+Y): null shows the per-run row list, "role"
+   * the per-role tally (`history --summary`), "model" the per-model one (`--by model`); named in
+   * the hint line. */
+  historySummary: "role" | "model" | null;
   eventBudget: number;
   entryBudget: number;
   roleIds: string[];

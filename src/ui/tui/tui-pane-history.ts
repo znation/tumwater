@@ -6,10 +6,12 @@ import {
   readTickRows,
   readTickRowsSince,
   summarizeTickRows,
+  summarizeTickRowsByModel,
   tickRowsMatchingGrep,
   type HistoryResultClass,
+  type HistorySummaryGroup,
 } from "../../history/history-data.js";
-import { renderSummary } from "../../history/history-render.js";
+import { renderModelSummary, renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
 import { readTickDetail, type TickDetail } from "../../tick/tick-detail-data.js";
 import { renderTickDetail } from "../../tick/tick-detail.js";
@@ -43,10 +45,11 @@ export function createHistoryPane(
   // `tumwater history --grep` and the dashboard search use. null is no search; session-only
   // like the window/result/role, so the next Ctrl+T into History computes the cache with it.
   let historyGrep: string | null = null;
-  // The History pane's session Summary toggle (Ctrl+Y): false shows the per-run row list, true
-  // the per-role tally (`history --summary`). Session-only like the window/result/role/search,
-  // so the next Ctrl+T into History computes the cache with it.
-  let historySummary = false;
+  // The History pane's session Summary toggle (Ctrl+Y): null shows the per-run row list, "role"
+  // the per-role tally (`history --summary`), "model" the per-model one (`--summary --by model`).
+  // Session-only like the window/result/role/search, so the next Ctrl+T into History
+  // computes the cache with it.
+  let historySummary: HistorySummaryGroup | null = null;
   // Ctrl+N on the History pane swaps the row list for the newest completed tick's full event
   // trail (renderTickDetail over readTickDetail) — the same text `tumwater tick --last` and
   // the dashboard's History drill-down serve. Session-only like the other pane snapshots:
@@ -77,7 +80,7 @@ export function createHistoryPane(
     resultClass: HistoryResultClass | null,
     role: string | null,
     grep: string | null,
-    summary: boolean,
+    summary: HistorySummaryGroup | null,
   ): string => {
     const { rows, covered } = sinceMs === null
       ? { rows: readTickRows(session.root, HISTORY_DEFAULT_TICKS, role), covered: true }
@@ -95,7 +98,12 @@ export function createHistoryPane(
     // folded over exactly the rows the window/scope/result/search selected, so the three surfaces
     // cannot disagree. The non-empty guard matters: renderSummary always prints a header, so
     // without it an empty read would bypass the pane's no-rows / no-runs wording below.
-    const body = summary && filtered.length > 0 ? renderSummary(summarizeTickRows(filtered)) : historyPaneText(filtered);
+    const body =
+      summary === "role" && filtered.length > 0
+        ? renderSummary(summarizeTickRows(filtered))
+        : summary === "model" && filtered.length > 0
+          ? renderModelSummary(summarizeTickRowsByModel(filtered))
+          : historyPaneText(filtered);
     // null when no class is active, so the header/empty-body paths below only name a result
     // filter the session actually holds (cycleLabel(HISTORY_RESULTS, null) is the "all" label).
     const resultLabel = resultClass === null ? null : cycleLabel(HISTORY_RESULTS, resultClass);
@@ -273,14 +281,15 @@ export function createHistoryPane(
       return true;
     }
     if (key.ctrl && key.name === "y" && promptLineFree(ctx.es)) {
-      // Ctrl+Y toggles the History pane's Summary view (mnemonic: summar**Y**) — the same
-      // per-role tally `tumwater history --summary` and the dashboard History view print,
+      // Ctrl+Y cycles the History pane's views — rows, per-role Summary, per-model Summary,
+      // rows (mnemonic: summar**Y**) — the same tallies `tumwater history --summary [--by model]`
+      // and the dashboard History view print,
       // folded over the pane's already-selected rows. Guarded out of budget-edit and
       // role-prompt modes like Ctrl+S/O beside it. The class is session state: toggling it off
       // the History view only changes the label, and the next Ctrl+T into History computes the
       // cache with it; on the History view this handler re-reads and re-renders now and resets
       // the scroll so the changed body re-enters at its head.
-      historySummary = !historySummary;
+      historySummary = historySummary === null ? "role" : historySummary === "role" ? "model" : null;
       recompute();
       session.requestRender();
       return true;

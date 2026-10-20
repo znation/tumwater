@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The TUI History pane's `Ctrl+Y` cycles role summary → model summary → rows, the terminal twin of `tumwater history --summary --by model` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — the dashboard By-model entry edits src/gui and src/ui/gui, the pause/resume entry src/operator, the help lines and docs/cli.md's "Control the roles" row, fast-merge part 14/14 src/config, src/review and src/merge, and runner part 8/14 src/orchestrator, none of which is src/ui/tui; it shares docs/cli.md's "Watch run history" row with the dashboard By-model entry (a rebase: edit whichever wording is on main); the blocked plain-terms series renames identifiers in src/ui/tui only in far-behind parts, a rebase; touches src/ui/tui/tui-pane-history.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-frame.ts docs/cli.md test/tui-keys.test.ts test/tui-frame.test.ts; done 2026-10-19 by the feature role)
+
+**Goal.** `tumwater history --summary --by model` tallies runs per model (`summarizeTickRowsByModel` in src/history/history-data.ts, rendered by `renderModelSummary` in src/history/history-render.ts). The TUI History pane's `Ctrl+Y`, though, only flips between the run rows and the per-role table (`renderSummary`). So an operator watching a mixed-provider team in the terminal cannot see what each model merged or cost. This plan makes `Ctrl+Y` a three-step cycle: rows → per-role summary → per-model summary → rows. The model table is folded over the same rows the pane's window, role, result and search already selected. Out of scope: the dashboard (its own Planned entry), and any new key.
+
+**Approach.**
+- `src/ui/tui/tui-pane-history.ts`:
+  - Session state: `let historySummary = false;` becomes `let historySummary: HistorySummaryGroup | null = null;`. Here `type HistorySummaryGroup = (typeof HISTORY_SUMMARY_GROUPS)[number]`, imported from src/history/history-data.ts (`["role", "model"]`). Export the type from there if it is not already exported. `null` means the row list. Update the comment above it.
+  - `historyPaneCache`'s `summary: boolean` parameter becomes `summary: HistorySummaryGroup | null`. The body becomes: `"role"` with rows present → `renderSummary(summarizeTickRows(filtered))`; `"model"` with rows present → `renderModelSummary(summarizeTickRowsByModel(filtered))`; otherwise `historyPaneText(filtered)`. Keep the non-empty guard and its comment. Import both new helpers alongside the existing ones.
+  - The `Ctrl+Y` arm: replace `historySummary = !historySummary` with the cycle `null → "role" → "model" → null`. Write it inline as `historySummary = historySummary === null ? "role" : historySummary === "role" ? "model" : null;`. Keep the `promptLineFree(ctx.es)` guard, `recompute()` and `requestRender()`. Update the comment to name the three steps.
+  - `state()` returns `historySummary` unchanged by name, now with the new type.
+- `src/ui/tui/tui-keys.ts`: in the state interface, `historySummary: boolean` becomes `historySummary: "role" | "model" | null`, or the imported `HistorySummaryGroup | null`. Update the doc comment to name the cycle. `src/ui/tui/tui-panes.ts` and `src/ui/tui/tui.tsx` pass the value through unchanged and need no edit beyond what the compiler asks.
+- `src/ui/tui/tui-frame.ts`: the history view kind's `summary?: boolean` becomes `summary?: "role" | "model" | null`. The hint token `["Ctrl+Y", view.summary ? "rows" : "summary"]` names the next step: `!view.summary` → `"summary"`, `"role"` → `"by model"`, `"model"` → `"rows"`.
+- `docs/cli.md`:
+  - TUI-keys table, `Ctrl+Y` row: "on History, toggle the per-role Summary table" becomes "on History, cycle the per-role Summary table, the per-model table (`history --summary --by model`), and the run rows".
+  - "Watch run history" row: the clause "the TUI's History pane shows the same per-role summary with `Ctrl+Y`" also names the per-model table, as the second `Ctrl+Y` press.
+  - `test/tui-keys-doc.test.ts` compares only the set of Ctrl letters, so it needs no change.
+
+**Acceptance criteria.**
+- `test/tui-keys.test.ts`:
+  - The existing case "Ctrl+Y toggles the History pane between the run rows and the per-role Summary table" is renamed to say "cycles", and its assertions are updated: `historySummary` is `null` on entry and `"role"` after one `Ctrl+Y`, with the same per-role table assertions. The fixture gains `run_start` events with `model: "m-a"` for feature #1 and `model: "m-b"` for qa #1. A second `Ctrl+Y` gives `"model"`, and the pane's first line matches `/model/`, `/runs/` and `/cost/`. The pane has lines starting `m-a` and `m-b` and a `total` line, and no `#1`. A third `Ctrl+Y` gives `null` and restores `feature #1`.
+  - A `run_end` with no `run_start` shows as `(unknown)` in the model table.
+  - The budget-mode-inert and Activity-vs-History `Ctrl+Y` cases keep passing, with their `true`/`false` expectations updated to `"role"`/`null`.
+- `test/tui-frame.test.ts`: the hint assertions cover all three states: `summary: null` → `Ctrl+Y summary`, `"role"` → `Ctrl+Y by model`, `"model"` → `Ctrl+Y rows`.
+- `npm run test:gate` passes.
+
 ### The dashboard History view gains a "By model" summary mode, the twin of `tumwater history --summary --by model` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — none of them names src/gui, src/ui/gui, src/history or the history row of docs/cli.md; the blocked plain-terms parts that rename symbols in src/history mean a rebase at most; touches src/gui/gui-endpoints.ts src/ui/gui/gui-client-history.ts docs/cli.md test/gui-endpoints.test.ts test/gui-client-history.test.ts) — done 2026-10-19
 
 **Goal.** `tumwater history --summary --by model` (`summarizeTickRowsByModel`, src/history/history-data.ts) tallies runs per model, but its plan scoped the dashboard out. So the History view's Summary toggle can only group by role, and an operator watching a mixed-provider team in the browser cannot see what each model merged or cost. This plan adds a third mode, "By model", next to Table and Summary. It shows one row per model with the same columns, `(unknown)` for the null bucket, then the total. Out of scope: the TUI History pane (`Ctrl+Y` keeps the per-role table).

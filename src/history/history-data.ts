@@ -111,6 +111,9 @@ export function summarizeTickRows(rows: TickRow[]): { roles: HistorySummaryRow[]
 /** What `history --summary --by` accepts: the default per-role grouping or per-model. */
 export const HISTORY_SUMMARY_GROUPS = ["role", "model"] as const;
 
+/** One of HISTORY_SUMMARY_GROUPS. */
+export type HistorySummaryGroup = (typeof HISTORY_SUMMARY_GROUPS)[number];
+
 /** One model's tally: HistorySummaryRow's counts keyed by `model` instead of `role`. `null` is the
  * bucket of rows with no model (their start sat outside the scanned window or carried none). */
 export type HistoryModelSummaryRow = Omit<HistorySummaryRow, "role"> & { model: string | null };

@@ -188,8 +188,9 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+N run trail/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }), /Ctrl\+N history/);
   // The History pane names its Summary toggle in the Ctrl+Y hint, the summary or the rows.
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false, summary: false }), /Ctrl\+Y summary/);
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false, summary: true }), /Ctrl\+Y rows/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false, summary: null }), /Ctrl\+Y summary/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false, summary: "role" }), /Ctrl\+Y by model/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false, summary: "model" }), /Ctrl\+Y rows/);
   // Every view names Ctrl+D as quit; the director prompt line additionally names Ctrl+C.
   for (const v of [
     { kind: "activity", role: null, grep: null, type: null } as const,
