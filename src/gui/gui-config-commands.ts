@@ -44,7 +44,7 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
     sendJson(res, 500, { error: result.error });
     return;
   }
-  sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number, ...(result.unchanged ? { unchanged: true } : {}) });
+  sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number, ...unchangedFlag(result) });
 }
 
 /** Handle POST /api/role-cap: the dashboard role drawer's editor saves one role's daily cost
@@ -83,7 +83,7 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
   // exact, so the shared per-key validator + whole-config validateConfig apply unchanged.
   const result = setConfigKey(root, "maxDailyCostUsdPerRole." + baseRole, JSON.stringify(value));
   if (!result.ok) return configKeyError(res, "maxDailyCostUsdPerRole." + baseRole, result);
-  sendJson(res, 200, { ok: true, role: baseRole, maxDailyCostUsd: value as number, ...(result.unchanged ? { unchanged: true } : {}) });
+  sendJson(res, 200, { ok: true, role: baseRole, maxDailyCostUsd: value as number, ...unchangedFlag(result) });
 }
 
 /** Handle POST /api/role-interval: the role drawer's min run interval editor sets or clears
@@ -353,6 +353,13 @@ function configKeyError(res: http.ServerResponse, key: string, result: { error: 
   badRequest(res, `${key}: ${result.error}`);
 }
 
+/** The `unchanged: true` field a no-op config write adds to its 200 reply, or nothing when
+ * the write changed the file — spread into the body by the budget, role-cap, and config-set
+ * handlers. */
+function unchangedFlag(result: { unchanged?: boolean }): { unchanged?: true } {
+  return result.unchanged ? { unchanged: true } : {};
+}
+
 /** The set-or-clear write the two per-role JSON-config-key handlers (quiet hours, standing
  * instructions) share: an empty/whitespace `raw` unsets `key` (after `guardClear`, a per-call
  * check the clear arm runs first — quiet hours' unknown-role guard; instructions has none),
@@ -414,7 +421,7 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
   // exact (JSON.parse(JSON.stringify(v)) === v), so the shared write path applies unchanged.
   const result = setConfigKey(root, key, JSON.stringify(body.value));
   if (!result.ok) return configKeyError(res, key, result);
-  sendJson(res, 200, { ok: true, key, value: result.value, oldValue: result.oldValue, ...(result.unchanged ? { unchanged: true } : {}) });
+  sendJson(res, 200, { ok: true, key, value: result.value, oldValue: result.oldValue, ...unchangedFlag(result) });
 }
 
 /** Handle POST /api/config-unset: the Settings view's per-key Clear — one curated key removed,
