@@ -4,7 +4,7 @@
  * beside the other team gates (src/budget/budget.ts's budget gate, src/team/team-hold.ts's team
  * hold) — the orchestrator owns only the wiring. */
 
-import { isTeamPaused, pausedRoles } from "../team/team-state.js";
+import { pausedRoles, standingTeamPause } from "../team/team-state.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 
 /** The previous poll's pause state, so each pause/resume crossing logs exactly one event
@@ -42,9 +42,20 @@ export function newPauseGateState(): PauseGateState {
  * queued prompts simply wait in the inbox (the same effect the team pause has on the director).
  * In-flight ticks finish; only NEW ticks are blocked (the gate sits before isEligible). */
 export function pollPauseGates(root: string, state: PauseGateState): PauseGates {
-  const userPaused = isTeamPaused(root);
+  const marker = standingTeamPause(root);
+  const userPaused = marker !== null;
   if (userPaused !== state.prevUserPaused) {
-    logEventBestEffort(root, { source: TUMWATER_SOURCE, type: userPaused ? "team_paused" : "team_resumed" });
+    logEventBestEffort(
+      root,
+      marker
+        ? {
+            source: TUMWATER_SOURCE,
+            type: "team_paused",
+            ...(marker.until !== undefined ? { until: marker.until } : {}),
+            ...(marker.reason ? { reason: marker.reason } : {}),
+          }
+        : { source: TUMWATER_SOURCE, type: "team_resumed" },
+    );
     state.prevUserPaused = userPaused;
   }
   const pausedRolesNow = pausedRoles(root);

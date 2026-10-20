@@ -62,6 +62,13 @@ function minutes(ms: unknown): number {
   return Math.round(Number(finiteNumber(ms, 0)) / 60_000);
 }
 
+/** ` until HH:MM:SS` and `: reason` for a team_paused event, each "" when its field is absent or
+ * the wrong type (the corrupt-field rule windowResetPhrase applies). */
+function pauseSuffix(until: unknown, reason: unknown): string {
+  const ms = finiteNumber(until, null);
+  return `${ms === null ? "" : ` until ${formatTime(new Date(ms))}`}${typeof reason === "string" && reason.trim() ? `: ${reason}` : ""}`;
+}
+
 /** `, resets HH:MM` for a subscription-window event carrying resetsAt, or "" when the field is
  * absent or non-numeric (a torn line, or a window the account did not stamp) — the same
  * corrupt-field rule the other optional-field renderers apply. */
@@ -346,7 +353,7 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "team_paused":
       // Routine state change, like counters_reset — no warning prefix.
-      return `${teamPausePhrase()} (director keeps running)`;
+      return `${teamPausePhrase()}${pauseSuffix(e.until, e.reason)} (director keeps running)`;
     case "state_migrated":
       return `state migrated — ${textOr(e.detail)}`;
     case "team_resumed":

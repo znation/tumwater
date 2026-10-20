@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { newPauseGateState, pollPauseGates } from "../src/gates/pause-gates.js";
 import { pauseTeam, resumeTeam, pauseRole, resumeRole } from "../src/team/team-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { eventTypes } from "./fixtures/log-fixtures.js";
+import { eventTypes, eventsOfType } from "./fixtures/log-fixtures.js";
 
 test("pollPauseGates: quiet team — no gates, no events", () => {
   const root = tmpdir("pause-gates-");
@@ -25,6 +25,8 @@ test("pollPauseGates: team pause logs team_paused once, resume logs team_resumed
   pauseTeam(root);
   assert.equal(pollPauseGates(root, state).userPaused, true);
   assert.deepEqual(eventTypes(root, "team_paused", "team_resumed"), ["team_paused"]);
+  const plain = eventsOfType(root, "team_paused")[0]!;
+  assert.ok(!("until" in plain) && !("reason" in plain), "a plain pause logs neither field");
 
   // Still paused: the edge trigger must not re-log on the ~2s poll cadence.
   assert.equal(pollPauseGates(root, state).userPaused, true);
@@ -116,4 +118,15 @@ test("pollPauseGates: team and per-role gates are independent", () => {
     "team_paused",
     "team_resumed",
   ]);
+});
+
+test("pollPauseGates: team_paused carries the marker's until and reason", () => {
+  const root = tmpdir("pause-gates-");
+  const until = Date.now() + 3_600_000;
+  pauseTeam(root, until, "deploy freeze");
+  pollPauseGates(root, newPauseGateState());
+  const events = eventsOfType(root, "team_paused");
+  assert.equal(events.length, 1);
+  assert.equal(events[0]!.reason, "deploy freeze");
+  assert.equal(events[0]!.until, until);
 });

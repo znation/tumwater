@@ -11,6 +11,7 @@ import { cutSplitsSurrogatePair } from "../text/text.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
+import { formatTime } from "../text/datetime.js";
 import { shortSha } from "../text/format.js";
 import { deferredReasonText } from "../events/event-format.js";
 
@@ -107,6 +108,8 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "team_paused":
       text = teamPausePhrase();
+      if (finiteNumber(ev.until, null) !== null) text += ` until ${formatTime(new Date(finiteNumber(ev.until, 0)))}`;
+      if (typeof ev.reason === "string" && ev.reason.trim()) text += `: ${field(ev.reason)}`;
       break;
     case "team_resumed":
       text = teamResumePhrase();

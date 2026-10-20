@@ -68,7 +68,7 @@ export interface HarnessEvent {
     | "budget_resumed" // the cap was raised/disabled or a new local day started; roles tick again
     | "budget_handback" // at budget_resumed: the in-flight ticks still on the fallback were handed back to the primary (roles, provider, model); reason "window" when a used-up claude window reset rather than the budget
     | "fallback_switched" // a tier moved to a different step of its fallback chain, or back to its primary; carries `tiers` (tier → from, to, reason: window|reserve|cap|step-cap|overage|demoted|available; a null from/to is the primary)
-    | "team_paused" // operator pause via `tumwater pause`; roles stop starting new ticks, director exempt
+    | "team_paused" // operator pause via `tumwater pause`; roles stop starting new ticks, director exempt; carries `until` (ms epoch, timed pause only) and `reason` (the operator's `--reason`, when given) — events logged before carry neither
     | "team_resumed" // the pause was lifted (`tumwater resume`); roles tick again
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)
     | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role ticks again (carries role)

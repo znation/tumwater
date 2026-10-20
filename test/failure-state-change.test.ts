@@ -5,6 +5,7 @@ import {
   STATE_CHANGE_TOP,
   STATE_CHANGE_TYPES,
 } from "../src/failure/failure-state-change.js";
+import { formatTime } from "../src/text/datetime.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
 // describeStateChange is the wording half of the failure digest's Team state changes section:
@@ -113,6 +114,11 @@ test("budget_fallback and budget_resumed phrase the spend around the gate move",
 
 test("team and role pauses render fixed and role-named lines", () => {
   assert.equal(describeStateChange(ev({ type: "team_paused" })), "team paused — roles start no new runs");
+  const until = Date.UTC(2026, 9, 20, 14, 5, 0);
+  assert.equal(
+    describeStateChange(ev({ type: "team_paused", until, reason: "deploy freeze" })),
+    `team paused — roles start no new runs until ${formatTime(new Date(until))}: deploy freeze`,
+  );
   assert.equal(describeStateChange(ev({ type: "team_resumed" })), "team resumed — roles run again");
   assert.equal(
     describeStateChange(ev({ type: "role_paused", role: "steward" })),

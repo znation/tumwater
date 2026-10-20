@@ -214,6 +214,17 @@ test("formatEvent renders the team pause and resume events plainly", () => {
   );
   assert.ok(!paused.includes("warning"), `a deliberate pause is routine, not a warning: ${paused}`);
 
+  const until = Date.UTC(2026, 9, 20, 14, 5, 0);
+  const timed = formatEvent({ ts: 0, source: "tumwater", type: "team_paused", until, reason: "deploy freeze" } as never);
+  assert.ok(
+    timed.endsWith(
+      `team paused — roles start no new runs until ${formatTime(new Date(until))}: deploy freeze (director keeps running)`,
+    ),
+    timed,
+  );
+  const corrupt = formatEvent({ ts: 0, source: "tumwater", type: "team_paused", until: "soon", reason: 7 } as never);
+  assert.match(corrupt, /team paused — roles start no new runs \(director keeps running\)$/);
+
   const resumed = formatEvent({ ts: 0, source: "tumwater", type: "team_resumed" } as never);
   assert.match(resumed, /tumwater\s+team resumed — roles run again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
