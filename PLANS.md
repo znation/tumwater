@@ -698,4 +698,22 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - src/baseline/main-revert.ts and `revertCommitIn` are untouched (`git diff --stat` shows neither).
 - `npm run test:gate` passes.
 
+### `tumwater resume --role` and `pause --role` say when the role is disabled, so `resume --role selfcheck` no longer promises runs a disabled role never starts (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — the config-set entry edits src/config/config-write.ts and src/cli/config-commands.ts, the revert entry src/operator/revert.ts and src/operator/operator-commands.ts' revert commands; this one touches src/operator/operator-intent.ts, test/operator-intent.test.ts and docs/cli.md's "Control the roles" row)
+
+**Goal.** On a fresh project (selfcheck ships disabled), `tumwater resume --role selfcheck` after `pause --role selfcheck` prints `role selfcheck resumed — it starts new runs again; tumwater is not running, so it takes effect on the next `tumwater start`` (checked against main's built CLI on 2026-10-20). That is false: a disabled role has no runner, so it starts no runs however its pause stands. `pause --role selfcheck` likewise says `it starts no new runs` as if the pause were what holds it. `tumwater wake` already names disabled targets (`disabledWakeNote`, landed 2026-10-20); the pause/resume confirmations should do the same, with the same fix command.
+
+**Approach.**
+- In src/operator/operator-intent.ts, extract from `disabledWakeNote` a small helper `disabledOf(root, roles): string[]` (the `loadConfigCached` read and the `config.roles[baseRoleOf(id)]?.enabled === false` filter; `[]` when the config cannot be read). `disabledWakeNote` calls it; its wording and tests stay as they are.
+- `roleResumeMessage(root, role, changed)`: when `changed` and `disabledOf(root, [role])` is non-empty, replace the `it starts new runs again` clause with `it is disabled, so it still starts no runs — enable it with tumwater config set roles.<role>.enabled true`, keeping `${when}`, the team-pause note and `${tail}` as today. The `was not paused` no-op is unchanged.
+- `rolePauseMessage(root, role, changed, timed, now)`: when `changed` and the role is disabled, append `; <role> is disabled, so it starts no runs either way — the pause holds once you enable it` after the existing confirmation (before `${tail}` is fine; pick one and assert it). The `is already paused` no-op is unchanged.
+- Both functions are shared by the CLI (`cmdPause`/`cmdResume` in src/operator/operator-commands.ts) and the TUI's Ctrl+P (src/ui/tui/tui-editor-pause.ts), so neither caller changes.
+- docs/cli.md "Control the roles" row: one clause saying `pause`/`resume --role` name a disabled role, as the `wake` row does.
+
+**Files.** src/operator/operator-intent.ts, test/operator-intent.test.ts, docs/cli.md.
+
+**Acceptance criteria.**
+- New tests in test/operator-intent.test.ts, using the existing `rootWithDisabled` helper: `roleResumeMessage(rootWithDisabled("selfcheck"), "selfcheck", true)` contains `it is disabled, so it still starts no runs` and `tumwater config set roles.selfcheck.enabled true`, and does not contain `starts new runs again`; `rolePauseMessage(rootWithDisabled("selfcheck"), "selfcheck", true)` contains `selfcheck is disabled`; the `false` (no-op) arms for a disabled role return the existing `was not paused` / `is already paused` strings exactly.
+- The existing `rolePauseMessage …` and `roleResumeMessage …` tests pass unchanged (enabled role, no config: wording as before), as do the three `requestWake … disabled` tests.
+- `npm run test:gate` passes.
+
 ## Done
