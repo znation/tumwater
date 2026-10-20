@@ -30,7 +30,7 @@ import { roleNotesPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
+import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
 import { setConfigKey, unsetConfigKey } from "../config/config-write.js";
 
 /** `role`'s notebook-write flags: clear the note, or replace it from a file (`-` for stdin). */
@@ -224,7 +224,9 @@ function requireKnownRole(root: string, id: string): void {
  * `key` under `base`; else set it. `serialize` shapes the value `setConfigKey` stores (it
  * JSON-encodes nothing itself) and `display` gives the human phrase for the confirmation
  * line. The caller returns right after. The instructions branch keeps its own block: its
- * value is a file's text, so an empty value is a legitimate write, not a clear. */
+ * value is a file's text, so an empty value is a legitimate write, not a clear. A no-op (a
+ * value the key already resolves to, or a clear of a key the file never held) reports itself
+ * and writes nothing. */
 function writeRoleConfigKey(
   root: string,
   base: string,
@@ -238,11 +240,19 @@ function writeRoleConfigKey(
   if (clear || raw.trim() === "") {
     const result = unsetConfigKey(root, key);
     if (!result.ok) fail(result.error);
-    say(`${base}: ${noun} cleared`);
+    say(
+      result.oldValue === undefined
+        ? `${base}: ${noun} is not set in tumwater.json, so nothing was cleared`
+        : `${base}: ${noun} cleared`,
+    );
   } else {
     const result = setConfigKey(root, key, serialize(raw));
     if (!result.ok) fail(result.error);
-    say(`${base}: ${noun} set to ${display(raw)}`);
+    say(
+      result.unchanged
+        ? `${base}: ${noun} is already ${display(raw)}, so tumwater.json was not written`
+        : `${base}: ${noun} set to ${display(raw)}`,
+    );
   }
 }
 
@@ -394,10 +404,18 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (instancesWrite) {
     if (clearInstances && rest.includes("--instances")) fail("give --clear-instances or --instances, not both");
     if (rest.includes("--json")) fail("--json does not apply to an instances write");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    const loaded = loadConfigSafe(root);
+    const cfg = loaded.config ?? defaultConfig();
     if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
     const base = baseRoleOf(id);
     const n = flagValue(rest, "--instances") ?? "";
+    // An absent count already means 1 (instanceCount's default), so asking for 1 is a no-op —
+    // but only for a role that may split; any other role falls through to validateConfig's refusal.
+    // A tumwater.json that fails to load is no basis for "already": fall through to the failure.
+    if (loaded.config && !clearInstances && n.trim() === "1" && INSTANCE_ROLES.has(base) && cfg.roles[base]?.instances === undefined) {
+      say(`${base}: instances is already 1, so tumwater.json was not written`);
+      return;
+    }
     writeRoleConfigKey(root, base, clearInstances, n, `roles.${base}.instances`, "instances", (v) => v, (v) => v);
     return;
   }

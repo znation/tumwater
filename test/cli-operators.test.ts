@@ -565,15 +565,15 @@ test("role --quiet-hours and --clear-quiet-hours write the role's quiet hours", 
   const bytesAfterClear = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
   r = await cli(repo, "role", "feature", "--clear-quiet-hours");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /feature: quiet hours cleared/);
+  assert.match(r.stdout, /feature: quiet hours is not set in tumwater.json, so nothing was cleared/);
   assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytesAfterClear, "clearing an unset key writes nothing");
   r = await cli(repo, "role", "feature", "--quiet-hours", "");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /feature: quiet hours cleared/);
+  assert.match(r.stdout, /feature: quiet hours is not set in tumwater.json, so nothing was cleared/);
   assert.equal(config().quietHoursPerRole, undefined);
   r = await cli(repo, "role", "feature", "--quiet-hours", "   ");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /feature: quiet hours cleared/);
+  assert.match(r.stdout, /feature: quiet hours is not set in tumwater.json, so nothing was cleared/);
   assert.equal(config().quietHoursPerRole, undefined);
 
   // A malformed window fails with checkQuietHours's message naming the key, leaving the
@@ -655,6 +655,7 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
   const bytesAfterCapClear = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
   r = await cli(repo, "role", "feature", "--clear-cap");
   assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: daily cap is not set in tumwater.json, so nothing was cleared/);
   assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytesAfterCapClear, "clearing an unset key writes nothing");
   r = await cli(repo, "role", "feature", "--min-run-interval", "");
   assert.equal(r.code, 0);
@@ -662,7 +663,7 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
   assert.equal(config().roles.feature.minRunIntervalSeconds, undefined);
   r = await cli(repo, "role", "feature", "--clear-min-run-interval");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /feature: min run interval cleared/);
+  assert.match(r.stdout, /feature: min run interval is not set in tumwater.json, so nothing was cleared/);
   assert.equal(config().roles.feature.minRunIntervalSeconds, undefined);
 
   // A malformed cap fails with checkDailyBudgetUsd's message naming the key, leaving the
@@ -756,13 +757,35 @@ test("role --instances/--clear-instances write the role's parallel-runner count"
   const bytesAfterClear = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
   r = await cli(repo, "role", "feature", "--clear-instances");
   assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: instances is not set in tumwater.json, so nothing was cleared/);
   assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytesAfterClear, "clearing an unset key writes nothing");
+  // An absent count resolves to 1, so asking for 1 is a no-op that writes nothing.
+  r = await cli(repo, "role", "feature", "--instances", "1");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: instances is already 1, so tumwater.json was not written/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytesAfterClear, "instances 1 on an unset key writes nothing");
+  // A role that may not split still gets validateConfig's refusal, not the no-op shortcut.
+  r = await cli(repo, "role", "director", "--instances", "1");
+  assert.notEqual(r.code, 0);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytesAfterClear, "a refused write leaves the file alone");
   r = await cli(repo, "role", "feature", "--instances", "2");
   assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: instances set to 2/);
+  r = await cli(repo, "role", "feature", "--instances", "2");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: instances is already 2, so tumwater.json was not written/);
   r = await cli(repo, "role", "feature", "--instances", "");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /feature: instances cleared/);
   assert.equal(config().roles.feature.instances, undefined);
+
+  // A tumwater.json that fails to load is no basis for "already 1": the write fails instead.
+  const goodJson = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
+  r = await cli(repo, "role", "feature", "--instances", "1");
+  assert.notEqual(r.code, 0);
+  assert.doesNotMatch(r.stdout, /already/);
+  fs.writeFileSync(path.join(repo, "tumwater.json"), goodJson);
 
   // A malformed count fails with validateConfig's message naming the key, leaving the file
   // unchanged.
@@ -894,6 +917,13 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
   assert.match(r.stdout, /feature: model set to anthropic\/claude-sonnet-4/);
   assert.equal(config().roles.feature.model, "anthropic/claude-sonnet-4");
 
+  // The same model again is reported as already set and writes nothing.
+  const beforeSame = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--model", "anthropic/claude-sonnet-4");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: model is already anthropic\/claude-sonnet-4, so tumwater.json was not written/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeSame);
+
   // A misspelled tier name refuses and leaves the file untouched (no legacy provider is set yet).
   const beforeTypo = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
   r = await cli(repo, "role", "feature", "--model", "strnog");
@@ -951,13 +981,14 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
     const bytes = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
     r = await cli(repo, "role", "feature", clearFlag);
     assert.equal(r.code, 0, field);
+    assert.match(r.stdout, new RegExp(`feature: ${field} is not set in tumwater.json, so nothing was cleared`));
     assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytes, `${field} clear of an unset key writes nothing`);
     r = await cli(repo, "role", "feature", flag, "");
     assert.equal(r.code, 0, field);
-    assert.match(r.stdout, new RegExp(`feature: ${field} cleared`));
+    assert.match(r.stdout, new RegExp(`feature: ${field} is not set in tumwater.json, so nothing was cleared`));
     r = await cli(repo, "role", "feature", flag, "   ");
     assert.equal(r.code, 0, field);
-    assert.match(r.stdout, new RegExp(`feature: ${field} cleared`));
+    assert.match(r.stdout, new RegExp(`feature: ${field} is not set in tumwater.json, so nothing was cleared`));
   }
 
   // A malformed thinking level fails with checkModelTripleField's message naming the key and
