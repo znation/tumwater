@@ -44,37 +44,37 @@ test("the third consecutive provider failure trips fallback with the default coo
   assert.equal(s.reason, "server");
   assert.equal(modelFallbackActive(s, 300), true);
   assert.equal(modelFallbackProbe(s, 300), false);
-  // The probe opens exactly at probeAt: at that instant ticks run the primary again.
+  // The probe opens exactly at probeAt: at that instant runs use the primary again.
   assert.equal(modelFallbackProbe(s, 300 + MODEL_FALLBACK_COOLDOWN_MS), true);
   assert.equal(modelFallbackActive(s, 300 + MODEL_FALLBACK_COOLDOWN_MS), false);
 });
 
-test("an answering run clears the running count", () => {
+test("an answering agent run clears the running count", () => {
   const one = recordModelFallback(undefined, fold("provider-failure", 1));
   const two = recordModelFallback(one, fold("provider-failure", 2));
   assert.equal(recordModelFallback(two, fold("answered", 3)), undefined);
 });
 
-test("an inconclusive run leaves the running count alone", () => {
+test("an inconclusive agent run leaves the running count alone", () => {
   const one = recordModelFallback(undefined, fold("provider-failure", 1));
   const two = recordModelFallback(one, fold("provider-failure", 2));
   assert.equal(recordModelFallback(two, fold("inconclusive", 3)), two, "an abort is no evidence");
 });
 
-test("a fallback tick leaves the episode in place, a failed probe doubles, a clean probe ends it", () => {
+test("a fallback run leaves the episode in place, a failed probe doubles, a clean probe ends it", () => {
   let tripped: ModelFallbackState | undefined;
   for (let i = 0; i < MODEL_FALLBACK_FAILURES; i++)
     tripped = recordModelFallback(tripped, fold("provider-failure", i + 1));
   assert.ok(tripped);
-  const afterFallbackTick = recordModelFallback(tripped, fold("provider-failure", 10, false));
-  assert.equal(afterFallbackTick, tripped, "a fallback tick neither returns nor re-trips");
+  const afterFallbackRun = recordModelFallback(tripped, fold("provider-failure", 10, false));
+  assert.equal(afterFallbackRun, tripped, "a fallback run neither returns nor re-trips");
   const afterFailedProbe = recordModelFallback(tripped, fold("provider-failure", 20, true));
   assert.equal(afterFailedProbe?.cooldownMs, MODEL_FALLBACK_COOLDOWN_MS * 2);
   assert.equal(afterFailedProbe?.probeAt, 20 + MODEL_FALLBACK_COOLDOWN_MS * 2);
   assert.equal(recordModelFallback(tripped, fold("answered", 30, true)), undefined);
 });
 
-test("an inconclusive probe leaves the episode active so the next tick re-probes", () => {
+test("an inconclusive probe leaves the episode active so the next run re-probes", () => {
   const tripped: ModelFallbackState = {
     failures: 0,
     since: 1,
@@ -99,7 +99,7 @@ test("a failed probe doubles the cooldown up to the cap", () => {
   assert.equal(next?.probeAt, 1000 + MODEL_FALLBACK_MAX_COOLDOWN_MS);
 });
 
-test("modelFallbackVerdict reads provider evidence from the run, not the tick", () => {
+test("modelFallbackVerdict reads provider evidence from the agent run, not the run", () => {
   const base = {
     ok: false,
     transientRateLimit: false,
@@ -119,7 +119,7 @@ test("modelFallbackVerdict reads provider evidence from the run, not the tick", 
   );
   assert.equal(modelFallbackVerdict({ ...base, aborted: true }), "inconclusive");
   assert.equal(modelFallbackVerdict({ ...base, timedOut: true }), "inconclusive");
-  // A blind image read is deliberate (the runner killed the authoring run), not a provider
+  // A blind image read is deliberate (the runner killed the authoring agent run), not a provider
   // failure — inconclusive, so it never trips or ends a fallback episode.
   assert.equal(modelFallbackVerdict({ ...base, imageBlind: { path: "/x/shot.png" } }), "inconclusive");
 });

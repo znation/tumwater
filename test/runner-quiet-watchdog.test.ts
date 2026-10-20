@@ -1,4 +1,4 @@
-/** The runner e2e suite's quiet-watchdog slice — the tick's hang detection and its kill
+/** The runner e2e suite's quiet-watchdog slice — the run's hang detection and its kill
  * semantics, extracted from runner-4.test.ts (2026-09-29) so the topic has a name instead of a
  * row in a numbered grab-bag. The suite's slices run one test FILE per process (each file gets
  * its own process and PATH, which fakePi's global PATH swap requires — see runner-4.test.ts's
@@ -20,7 +20,7 @@ import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
-// Quiet watchdog: the run is killed when pi stops making *progress* (message/turn/tool
+// Quiet watchdog: the agent run is killed when pi stops making *progress* (message/turn/tool
 // boundary events, and content-bearing streaming deltas — a content-free keepalive never
 // counts), not merely when it stops running fast.
 // These tests run it on logical time (watchdogClock, test/helpers/wait.ts): each waits for the fake
@@ -37,34 +37,34 @@ test("a pi run that goes silent is killed as hung and never commits partial work
     async () => {
       const config = defaultConfig();
       config.quietTimeoutSeconds = 3;
-      config.runTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
+      config.runTimeoutSeconds = 3600; // The watchdog, not the run timeout, must fire.
       const clock = watchdogClock(t);
       const runner = makeRoleRunner(repo, "improve", config);
       const before = mainSha(repo);
-      const tick = runner.run();
+      const pendingRun = runner.run();
       // The kill must come only once the shim has spoken and reached `echo partial` — the
       // "partial edit survives" assertion below is about the kill, not about shell startup.
       await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
       await waitForLogLines(piLogPath(repo, "improve"), "starting work");
       clock.advance(15_000); // silence well past the 3 s window
-      const outcome = await tick;
+      const outcome = await pendingRun;
       assert.equal(outcome.result, "quiet_killed");
       assert.match(runner.state.lastError ?? "", /killed as hung: no agent progress/);
       assert.equal(mainSha(repo), before, "nothing merged on main");
       assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
       // The kill is non-destructive (BUGS.md 2026-09-12): the partial edit survives in the
-      // worktree and the next tick resumes the session instead of resetting it away.
+      // worktree and the next run resumes the session instead of resetting it away.
       assert.ok(
         fs.existsSync(path.join(roleWt(repo, "improve"), "partial.txt")),
         "the partial edit survives the kill",
       );
-      assert.equal(runner.state.resumePending, true, "the next tick resumes this one");
+      assert.equal(runner.state.resumePending, true, "the next run resumes this one");
     },
   );
 });
 
 // The stall warning (BUGS.md 2026-09-13 sibling): a tool call open and silent past the
-// threshold names itself in the event feed while the run is still alive — before this, a hung
+// threshold names itself in the event feed while the agent run is still alive — before this, a hung
 // command was invisible until the quiet watchdog's kill.
 
 test("a stalled tool call warns in the event feed with the command named", async (t) => {
@@ -83,10 +83,10 @@ test("a stalled tool call warns in the event feed with the command named", async
       config.toolCallStallSeconds = 2; // ...but the warning lands first, 3s ahead of it
       const clock = watchdogClock(t);
       const runner = makeRoleRunner(repo, "improve", config);
-      const tick = runner.run();
+      const pendingRun = runner.run();
       await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
       clock.advance(30_000); // past the stall threshold, then past the quiet window
-      const outcome = await tick;
+      const outcome = await pendingRun;
       assert.equal(outcome.result, "quiet_killed");
       const warnings = warningMessages(repo);
       assert.ok(
@@ -121,22 +121,23 @@ test("a slow but talkative pi run is not killed by the quiet watchdog", async (t
     const clock = watchdogClock(t);
     const runner = makeRoleRunner(repo, "improve", config);
     let settled = false;
-    const tick = runner.run().finally(() => (settled = true));
+    const pendingRun = runner.run().finally(() => (settled = true));
     const log = piLogPath(repo, "improve");
-    // A killed run prints nothing more: stop feeding it and let the assertion name the result.
+    // A killed agent run prints nothing more: stop feeding it and let the assertion name the
+    // result.
     for (let k = 0; k < gaps && (await waitForLogLines(log, "turn_start", k + 1, () => settled)); k++) {
       clock.advance(3_000);
       fs.writeFileSync(go(k), "");
     }
-    const outcome = await tick;
+    const outcome = await pendingRun;
     assert.equal(outcome.result, "no_change", "run completed despite taking longer than the quiet window");
   });
 });
 
-test("a run whose only output is content-bearing deltas is not killed by the quiet watchdog", async (t) => {
+test("an agent run whose only output is content-bearing deltas is not killed by the quiet watchdog", async (t) => {
   const repo = await initializedRepo();
   // A long thinking block on a slow model emits nothing but message_update deltas for its whole
-  // duration, and those deltas carry real content — so the run is alive and generating, not
+  // duration, and those deltas carry real content — so the agent run is alive and generating, not
   // hung, and the watchdog must not kill it (BUGS.md 2026-10-17). Same logical-time shape as
   // the talkative-run test above: one delta per 3 s gap against a 10 s window. 27 s, not 18 s:
   // a run with no progress at all gets the doubled window (bytes without progress), so a
@@ -159,21 +160,22 @@ test("a run whose only output is content-bearing deltas is not killed by the qui
     const clock = watchdogClock(t);
     const runner = makeRoleRunner(repo, "improve", config);
     let settled = false;
-    const tick = runner.run().finally(() => (settled = true));
+    const pendingRun = runner.run().finally(() => (settled = true));
     const log = piLogPath(repo, "improve");
-    // A killed run prints nothing more: stop feeding it and let the assertion name the result.
+    // A killed agent run prints nothing more: stop feeding it and let the assertion name the
+    // result.
     for (let k = 0; k < gaps && (await waitForLogLines(log, "message_update", k + 1, () => settled)); k++) {
       clock.advance(3_000);
       fs.writeFileSync(go(k), "");
     }
-    const outcome = await tick;
-    assert.equal(outcome.result, "no_change", "a run streaming content-bearing deltas is alive, not hung");
+    const outcome = await pendingRun;
+    assert.equal(outcome.result, "no_change", "an agent run streaming content-bearing deltas is alive, not hung");
   });
 });
 
 test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
   const repo = await initializedRepo();
-  // Speaks first — a byte-silent run is never quiet-killed anyway, so silence only tests the
+  // Speaks first — a byte-silent agent run is never quiet-killed anyway, so silence only tests the
   // switch once progress has flowed — then stays silent until the test says go.
   const go = path.join(tmpdir(), "go");
   await withPi(
@@ -187,11 +189,11 @@ test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
       config.quietTimeoutSeconds = 0;
       const clock = watchdogClock(t);
       const runner = makeRoleRunner(repo, "improve", config);
-      const tick = runner.run();
+      const pendingRun = runner.run();
       await waitForLogLines(piLogPath(repo, "improve"), "turn_start");
       clock.advance(120_000); // two minutes of silence: any window at all would have fired
       fs.writeFileSync(go, "");
-      const outcome = await tick;
+      const outcome = await pendingRun;
       assert.equal(outcome.result, "no_change");
     },
   );
@@ -223,18 +225,18 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
       const controller = new AbortController();
       const runner = makeRoleRunner(repo, "improve", config, "main", controller.signal);
       let settled = false;
-      const tick = runner.run().finally(() => (settled = true));
+      const pendingRun = runner.run().finally(() => (settled = true));
       // Half a second of watchdog time per fresh keepalive, so bytes keep landing as the clock
-      // runs — a watchdog that let raw bytes, or a content-free delta, count as progress would
-      // never fire. Ten windows' worth bounds it: the abort then ends a run the watchdog
+      // runs — a watchdog that let raw bytes, or a content-free delta, count as progress
+      // would never fire. Ten windows' worth bounds it: the abort then ends a run the watchdog
       // failed to kill.
       const log = piLogPath(repo, "improve");
       for (let k = 1; k <= 40 && (await waitForLogLines(log, "message_update", k, () => settled)); k++) {
         clock.advance(500);
       }
       controller.abort(); // a no-op once the watchdog has killed the run
-      const outcome = await tick;
-      assert.equal(outcome.result, "quiet_killed", "a zombie stream is a hung run, not an unfulfilled timeout");
+      const outcome = await pendingRun;
+      assert.equal(outcome.result, "quiet_killed", "a zombie stream is a hung agent run, not an unfulfilled timeout");
       assert.match(runner.state.lastError ?? "", /killed as hung: no agent progress/);
     },
   );

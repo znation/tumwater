@@ -12,11 +12,11 @@ import { assistantLine } from "./pi-events.js";
 export interface Recording {
   warns: string[];
   usage: PiRunResult[];
-  /** The seam hold key (seamHoldKey of the run's config) each foldUsage call carried, in
-   * parallel to `usage` — a claude run folds `claude`, not the role's pi provider. */
+  /** The seam hold key (seamHoldKey of the agent run's config) each foldUsage call carried, in
+   * parallel to `usage` — a claude agent run folds `claude`, not the role's pi provider. */
   foldProviders: (string | undefined)[];
   /** Runs folded through foldMergeUsage (merge/review/conflict) — kept apart so a test
-   * can prove those never charge the tick's pre-edit prefix. */
+   * can prove those never charge the run's pre-edit prefix. */
   mergeUsage: PiRunResult[];
   /** The seam hold key each foldMergeUsage call carried, parallel to `mergeUsage`. */
   mergeFoldProviders: (string | undefined)[];

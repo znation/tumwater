@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code run, part 9b/20: Convert the agent wrapper and model fallback, agent runs first (planned 2026-10-16 by user, split 2026-10-20 by the plan role from part 9/20 after three rejected reviews; requires part 8/20 landed; design in plans/terminology.md "Code names"; touches src/runner/runner-pi.ts model-fallback.ts runner-fallback.ts + test/runner-{fallback,pi,pi-claude,pi-followups,pi-retry,quiet-watchdog,transient-retry}.test.ts + test/model-fallback.test.ts + test/fixtures/runner-pi-fixtures.ts; done 2026-10-20)
+
+**Goal.** The agent wrapper and model fallback use run wording without ever calling two different things "run": every existing "run" that means one agent invocation reads "agent run" first, then "tick" becomes "run". Part 9a/20 converts the rest of the runner; the two parts touch disjoint files and merge in either order.
+
+**Why the split.** Part 9/20 was rejected three times on 2026-10-20, each time for the same thing: a plain tick → run swap in these files. runner-pi.ts already uses "run" about 120 times, mostly for an agent run. The swap produced "the run's own run budget" (runner-pi.ts module comment and the transient-retry doc comment), "The signal a run's own runs watch" (`RunnerPiHost`), "Only the authoring run of a run is evidence" (model-fallback.ts module comment and test/runner-fallback.test.ts), the title "modelFallbackVerdict reads provider evidence from the run, not the run" (test/model-fallback.test.ts), "each run makes exactly one recorded run" and "one run per failing run" (test/runner-fallback.test.ts assertion messages), "one generous hint cannot eat the run's own run budget" (test/runner-pi-retry.test.ts), "folded into the run's usage like every other run" (runner-pi.ts, and test/runner-pi-followups.test.ts's "counters like every other run"), and a local `tick` renamed `runDone` that leaked into prose as "the runDone timeout" (test/runner-quiet-watchdog.test.ts).
+
+**Approach.**
+- The series rules of part 9a/20 apply unchanged (identifier table, kept senses, legacy readers, aliases, rewrap, leave the entry in `## Planned`).
+- Pass 1, before touching any "tick": in each file this part owns, read every whole-word `run`/`runs`/`run's` in comments, test titles and assertion messages (`grep -nwE "runs?|run's"`), and rewrite the ones meaning one pi/agent invocation as "agent run" (or the existing narrower term where it fits: "authoring run", "review run", "follow-up turn"). A bare "run" left after this pass means a role run.
+- Pass 2: apply the tick → run rules. Then reread every changed line as a sentence.
+- test/runner-quiet-watchdog.test.ts: the `const tick = runner.run()` promise → `pendingRun`; the `runTimeoutSeconds` comment reads "the run timeout"; the resume assertion reads "the next run resumes this one".
+- Identifiers in src/runner/runner-pi.ts that name a pi invocation (`foldUsage(run: PiRunResult …)` and the like) keep their names; only prose and tick-word identifiers change.
+
+**Files touched.** src/runner/runner-pi.ts, model-fallback.ts, runner-fallback.ts, test/fixtures/runner-pi-fixtures.ts, and the tests in the heading.
+
+**Acceptance criteria.**
+- `grep -nE '[Tt]ick|TICK'` over this part's src and test files prints only kept senses.
+- `grep -nE "run's own run\b|the authoring run of a run|from the run, not the run|one run per failing run|one recorded run|run's own runs|like every other run|runDone"` over this part's files prints nothing.
+- The model-fallback test title reads "… from the agent run, not the run" (or equivalent naming both kinds), and test/runner-fallback.test.ts and model-fallback.ts say "agent run" wherever they contrast an agent run with its run.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
 ### Plain terms code run, part 9a/20: Convert runner state, recovery, leftover and revision (planned 2026-10-16 by user, split 2026-10-20 by the plan role from part 9/20 after three rejected reviews; requires part 8/20 landed; design in plans/terminology.md "Code names"; touches src/runner/runner-state.ts runner-recovery.ts leftover.ts revision.ts src/roles/runner-ids.ts + src/runner/runner.ts's two imports + test/runner-{counters,ids,interrupted,leftover-recovery,merge-conflicts,prompt-requeue,recovery,red-main,refusal,state}.test.ts + test/revision.test.ts + test/leftover.test.ts + test/fixtures/runner-fixtures.ts; done 2026-10-20 by the feature role)
 
 **Goal.** Runner state, recovery, leftover handling and revision use run wording, and `finishAbortedRunPhase` and `finishRecoveryRunPhase` replace their tick names. Part 9b/20 converts the agent wrapper; the two parts touch disjoint files and merge in either order.

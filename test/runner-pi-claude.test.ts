@@ -15,7 +15,7 @@ import { makeHost, flagValue } from "./fixtures/runner-pi-fixtures.js";
 // The claude backend's RunnerPi behavior (plans/agent-backends.md): the native log and
 // unmapped-event warnings, no within-run retry for a subscription usage-window rejection,
 // and the caller-computed --max-budget-usd cap for an API-billed non-director authoring run.
-test("a claude run keeps its native log and surfaces unmapped-event warnings", async () => {
+test("a claude agent run keeps its native log and surfaces unmapped-event warnings", async () => {
   const root = tmpdir();
   await withClaudeReplay([
     claudeUnknown("mystery_event"),
@@ -53,7 +53,7 @@ test("a subscription claude rejected window earns no within-run retry", async ()
     assert.equal(result.ok, false);
     assert.equal(result.billing, "subscription");
     assert.equal(result.transientRateLimit, true);
-    // The retry's bounded wait cannot outlast the window hold, so the tick ends after one
+    // The retry's bounded wait cannot outlast the window hold, so the run ends after one
     // attempt and the kept session resumes once the hold lifts (plans/agent-backends.md part 6e).
     assert.equal(readRunBlocks(fake.argvFile).length, 1, "one attempt, no retry");
     assert.deepEqual(sleeps, [], "no wait is spent on a retry the window would reject anyway");
@@ -80,7 +80,7 @@ test("an API-billed claude authoring run carries the remaining team budget as --
   });
 });
 
-test("a per-role cap lowers the claude run's --max-budget-usd below the team's remaining", async () => {
+test("a per-role cap lowers the claude agent run's --max-budget-usd below the team's remaining", async () => {
   const root = tmpdir();
   await withClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })], async (fake) => {
     writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
@@ -97,7 +97,7 @@ test("a per-role cap lowers the claude run's --max-budget-usd below the team's r
   });
 });
 
-test("a fallback step's own cap lowers the claude run's --max-budget-usd to the step's remaining budget", async () => {
+test("a fallback step's own cap lowers the claude agent run's --max-budget-usd to the step's remaining budget", async () => {
   const root = tmpdir();
   await withClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })], async (fake) => {
     writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
@@ -121,7 +121,8 @@ test("a fallback step's own cap lowers the claude run's --max-budget-usd to the 
 
 // PLANS.md "Agent backends, part 7a/7", objection 1: the per-role cap is keyed by BASE role
 // and sums the whole instance group's spend, matching the scheduler's role-cap gate. A
-// `feature-2` run must see `maxDailyCostUsdPerRole.feature`, not a nonexistent `feature-2` key.
+// `feature-2` agent run must see `maxDailyCostUsdPerRole.feature`, not a nonexistent `feature-2`
+// key.
 test("a per-role cap sums a multi-instance role's spend and keys on the base role", async () => {
   const root = tmpdir();
   await withClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })], async (fake) => {
@@ -168,7 +169,7 @@ test("a subscription account and the director both pass no --max-budget-usd", as
 
     const blocks = readRunBlocks(fake.argvFile);
     assert.equal(blocks.length, 2);
-    assert.equal(flagValue(blocks[0]!, "--max-budget-usd"), undefined, "subscription runs are exempt");
+    assert.equal(flagValue(blocks[0]!, "--max-budget-usd"), undefined, "subscription agent runs are exempt");
     assert.equal(flagValue(blocks[1]!, "--max-budget-usd"), undefined, "the director is exempt");
   });
 });

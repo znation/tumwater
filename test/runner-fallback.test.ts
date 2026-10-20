@@ -1,15 +1,15 @@
 /** The model-fallback state machine, tested at both levels.
  *
- * The whole-tick runner-wiring tests first (PLANS.md "Model failure fallback, part 1/2"):
- * consecutive provider-class failures trip the episode and the next tick runs the role's tier
- * fallback pair, a clean probe tick after the cooldown returns to the primary and emits the
+ * The whole-run runner-wiring tests first (PLANS.md "Model failure fallback, part 1/2"):
+ * consecutive provider-class failures trip the episode and the next run uses the role's tier
+ * fallback pair, a clean probe run after the cooldown returns to the primary and emits the
  * ended event, and a role with no fallback configured never trips. The regression tests in the
- * middle pin the review's objections: only the AUTHORING run of a tick is evidence, and a tick
- * that never invoked pi is no probe.
+ * middle pin the review's objections: only the AUTHORING agent run within a run is evidence, and a
+ * run that never invoked pi is no probe.
  *
  * The FOLD tests at the very bottom unit-test src/runner/runner-fallback.ts's
  * foldModelFallbackPhase directly — the started/ended event payloads and the clear-on-config-drop
- * paths only exercised indirectly by the whole-tick runner tests above. */
+ * paths only exercised indirectly by the whole-run runner tests above. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -31,9 +31,9 @@ import type { FallbackRunContext } from "../src/runner/runner-run.js";
 import { foldModelFallbackPhase } from "../src/runner/runner-fallback.js";
 import { readEvents } from "../src/events/event-read.js";
 
-/** A fake pi that records each run's --provider/--model flags then fails the run with an
+/** A fake pi that records each agent run's --provider/--model flags then fails the run with an
  * HTTP 503 backend error. `server` is a backend kind the transient retry does NOT cover, so
- * each tick makes exactly one recorded run. */
+ * each run makes exactly one recorded agent run. */
 function failingRecorder(argsFile: string): string {
   return [
     `m=""; p=""; n=""`,
@@ -44,7 +44,7 @@ function failingRecorder(argsFile: string): string {
   ].join("\n");
 }
 
-test("three provider failures trip fallback; the next tick runs the fallback pair", async () => {
+test("three provider failures trip fallback; the next run uses the fallback pair", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "fb-trip.log");
   const config = defaultConfig();
@@ -61,13 +61,13 @@ test("three provider failures trip fallback; the next tick runs the fallback pai
     assert.equal(started[0]!.model, "f1");
     assert.equal(started[0]!.reason, "server");
     const runs = readRunLines(argsFile);
-    assert.equal(runs.length, 4, "one run per failing tick (503 is not transient-retried)");
+    assert.equal(runs.length, 4, "each failing run makes one agent run (503 is not transient-retried)");
     assert.match(runs[0]!, /model=m1 provider=primary/);
-    assert.match(runs[3]!, /model=f1 provider=backup/, "the fourth tick ran the fallback pair");
+    assert.match(runs[3]!, /model=f1 provider=backup/, "the fourth run used the fallback pair");
   });
 });
 
-test("a clean probe tick after the cooldown returns to primary and ends the episode", async () => {
+test("a clean probe run after the cooldown returns to primary and ends the episode", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "fb-probe.log");
   const marker = path.join(tmpdir(), "fb-probe-phase");
@@ -75,7 +75,7 @@ test("a clean probe tick after the cooldown returns to primary and ends the epis
   config.model = "primary/m1";
   config.fallback = "backup/f1";
   const runner = makeRoleRunner(repo, "clean", config);
-  // Three recorded 503s trip the episode; the fourth run idles so the probe succeeds.
+  // Three recorded 503s trip the episode; the fourth agent run idles so the probe succeeds.
   const script = [
     `m=""; p=""; n=""`,
     `while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; --provider) p="$2";; -n) n="$2";; esac; shift; done`,
@@ -93,7 +93,7 @@ test("a clean probe tick after the cooldown returns to primary and ends the epis
     for (let i = 0; i < 3; i++) assert.equal((await runner.run()).result, "error");
     assert.equal(eventsOfType(repo, "model_fallback_started").length, 1);
     assert.ok(runner.state.modelFallback);
-    // Fast-forward the cooldown: the next tick is the due probe on the primary.
+    // Fast-forward the cooldown: the next run is the due probe on the primary.
     runner.state.modelFallback.probeAt = Date.now() - 1;
     assert.equal((await runner.run()).result, "no_change");
   });
@@ -123,14 +123,14 @@ test("a role with no fallback configured never trips and keeps its primary argv"
   });
 });
 
-test("a fallback-episode tick's missing-SUMMARY follow-up runs on the fallback pair too", async () => {
+test("a fallback-episode run's missing-SUMMARY follow-up runs on the fallback pair too", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "fb-summary.log");
   const marker = path.join(tmpdir(), "fb-summary-phase");
   const config = defaultConfig();
   config.model = "primary/m1";
   config.fallback = "backup/f1";
-  // Three 503s trip the episode; the fourth (fallback) tick edits the worktree and ends
+  // Three 503s trip the episode; the fourth (fallback) run edits the worktree and ends
   // without a SUMMARY, so the harness issues its one follow-up turn — which must ride the
   // same fallback pair, not the primary the episode abandoned.
   const script = [
@@ -145,7 +145,7 @@ test("a fallback-episode tick's missing-SUMMARY follow-up runs on the fallback p
     `  exit 1`,
     `fi`,
     `for a in "$@"; do case "$a" in *"did not include the required closing block"*)`,
-    `  printf '%s\\n' '${assistantLine("SUMMARY: Fallback tick\\nWHY: test\\nRISK: none\\nVERIFIED: none")}'`,
+    `  printf '%s\\n' '${assistantLine("SUMMARY: Fallback run\\nWHY: test\\nRISK: none\\nVERIFIED: none")}'`,
     `  exit 0;; esac; done`,
     `echo x > x.txt`,
     `printf '%s\\n' '${assistantLine("did it, no summary")}'`,
@@ -158,7 +158,7 @@ test("a fallback-episode tick's missing-SUMMARY follow-up runs on the fallback p
   });
   const runs = readRunLines(argsFile);
   assert.equal(runs.length, 5, JSON.stringify(runs));
-  assert.match(runs[3]!, /model=f1 provider=backup/, "the fallback tick ran the pair");
+  assert.match(runs[3]!, /model=f1 provider=backup/, "the fallback run used the pair");
   assert.match(runs[4]!, /model=f1 provider=backup/, "its SUMMARY follow-up ran the same pair");
 });
 
@@ -175,7 +175,7 @@ test("removing the fallback config mid-episode clears the episode on the next pr
     cooldownMs: 5 * 60_000,
     reason: "server",
   };
-  // A live edit (or a `"pause"`) drops the pair: the tick runs the primary, and its clean
+  // A live edit (or a `"pause"`) drops the pair: the run uses the primary, and its clean
   // answer ends the episode instead of leaving a stale "on fallback" mark with no pair.
   runner.config = { ...config, fallback: undefined };
   await withIdlePi(async () => {
@@ -188,7 +188,7 @@ test("removing the fallback config mid-episode clears the episode on the next pr
   assert.equal(ended[0]!.model, "m1");
 });
 
-test("runProvider and runConfig name the pair the next tick will actually use", async () => {
+test("runProvider and runConfig name the pair the next run will actually use", async () => {
   const repo = await initializedRepo();
   const config = defaultConfig();
   config.model = "primary/m1";
@@ -211,7 +211,7 @@ test("runProvider and runConfig name the pair the next tick will actually use", 
   assert.equal(runner.runProvider(now), "primary", "no fallback pair means the primary provider");
 });
 
-test("a due probe tick that never invokes pi leaves the episode active", async () => {
+test("a due probe run that never invokes pi leaves the episode active", async () => {
   const repo = await initializedRepo();
   const config = defaultConfig();
   config.model = "primary/m1";
@@ -238,8 +238,8 @@ test("a provider failure the transient retry recovers does not count against the
   config.model = "primary/m1";
   config.fallback = "backup/f1";
   // Every odd attempt severs the stream (a kind the retry covers); every even attempt idles.
-  // Each tick therefore ends on a clean authoring run, while its first attempt still stamps
-  // the tick's lastBackendFailure — evidence the fold must NOT read.
+  // Each run therefore ends on a clean authoring run, while its first attempt still stamps
+  // the run's lastBackendFailure — evidence the fold must NOT read.
   const script = [
     `attempt_file="${marker}"`,
     `if [ -f "$attempt_file" ]; then n=$(cat "$attempt_file"); else n=0; fi`,
@@ -253,13 +253,13 @@ test("a provider failure the transient retry recovers does not count against the
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "clean", config);
     for (let i = 0; i < 3; i++) assert.equal((await runner.run()).result, "no_change");
-    assert.equal(runner.lastBackendFailure?.kind, "stream-severed", "the failed attempts did stamp the tick");
+    assert.equal(runner.lastBackendFailure?.kind, "stream-severed", "the failed attempts did stamp the run");
     assert.equal(runner.state.modelFallback, undefined, "the authoring run answered, so no trip");
     assert.equal(eventsOfType(repo, "model_fallback_started").length, 0);
   });
 });
 
-test("an unwritable events feed cannot reject a tick — its fallback verdict still folds and saves", async () => {
+test("an unwritable events feed cannot reject a run — its fallback verdict still folds and saves", async () => {
   const repo = await initializedRepo();
   const config = defaultConfig();
   config.model = "primary/m1";
@@ -277,11 +277,11 @@ test("an unwritable events feed cannot reject a tick — its fallback verdict st
   fs.mkdirSync(eventsLogPath(repo), { recursive: true });
   await withIdlePi(async () => {
     // Before the fix the run_start append rejected run() itself, before runOnce's try; after
-    // it, every event write on the tick path is best-effort and the run resolves normally.
+    // it, every event write on the run path is best-effort and the agent run resolves normally.
     assert.equal((await runner.run()).result, "no_change");
   });
   assert.equal(runner.state.modelFallback, undefined, "the probe verdict folded despite the dead feed");
-  assert.equal(loadRunnerState(repo, "clean").running, false, "the end-of-tick save ran");
+  assert.equal(loadRunnerState(repo, "clean").running, false, "the end-of-run save ran");
 });
 
 // --- foldModelFallbackPhase unit tests ------------------------------------------------------
@@ -384,10 +384,10 @@ test("dropping the pair ends an active episode, naming the primary and its durat
   assert.equal(h.saves, 1);
 });
 
-test("dropping the pair keeps an active episode when the run is inconclusive", () => {
+test("dropping the pair keeps an active episode when the agent run is inconclusive", () => {
   const h = harness(inFallback);
   h.fold(null, false, abortEvidence);
-  assert.equal(h.state.modelFallback, inFallback, "an aborted run is no evidence about the primary");
+  assert.equal(h.state.modelFallback, inFallback, "an aborted agent run is no evidence about the primary");
   assert.equal(h.saves, 0);
   assert.deepEqual(readEvents(h.root), []);
 });
@@ -398,7 +398,7 @@ test("the third provider failure starts the episode and logs the started event",
   const started = onlyEvent(h.root);
   assert.equal(started.type, "model_fallback_started");
   assert.equal(started.source, "feature");
-  assert.equal(started.provider, "groq", "the event names the pair ticks will run on");
+  assert.equal(started.provider, "groq", "the event names the pair the following runs use");
   assert.equal(started.model, "llama-free");
   assert.equal(started.reason, "rate-limit");
   assert.ok((h.state.modelFallback?.since ?? 0) > 0, "the episode is in fallback");
@@ -416,7 +416,7 @@ test("a successful probe ends the episode and logs the ended event", () => {
   assert.equal(h.saves, 1);
 });
 
-test("a fallback tick (not a probe) leaves the episode and state untouched", () => {
+test("a fallback run (not a probe) leaves the episode and state untouched", () => {
   const h = harness(inFallback);
   h.fold(FALLBACK, false, rateLimited);
   assert.equal(h.state.modelFallback, inFallback);

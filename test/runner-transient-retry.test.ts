@@ -1,6 +1,6 @@
-/** The runner's transient-retry topic: when a tick's pi run dies on a retriable backend
- * failure (a predict-stream timeout, a provider 429), the harness retries the run once
- * and the retry's verdict stands in for the tick. Split out of runner-3.test.ts
+/** The runner's transient-retry topic: when a run's agent run dies on a retriable backend
+ * failure (a predict-stream timeout, a provider 429), the harness retries the agent run once
+ * and the retry's verdict stands in for the run. Split out of runner-3.test.ts
  * (2026-09-30) so the file name says what it pins, like runner-refusal.test.ts and
  * runner-quiet-watchdog.test.ts before it — each test FILE gets its own process (and its
  * own PATH, which fakePi's global PATH swap requires), so a topic file is also its own
@@ -18,7 +18,7 @@ import { sleepRecorder } from "./fakes/time.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { APPROVE_PI, assistantLine, errorLine } from "./fixtures/pi-events.js";
 
-test("a transient model-server timeout is retried once and the tick succeeds (regression)", async () => {
+test("a transient model-server timeout is retried once and the run succeeds (regression)", async () => {
   const repo = await initializedRepo();
   // The phase file doubles as the retry counter (test/fakes/transient.ts): attempt 1 fails
   // on the timeout class, attempt 2 — the harness's one retry — idles.
@@ -26,7 +26,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "clean");
     const outcome = await runner.run();
-    assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
+    assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the run");
     assert.ok(!runner.state.lastError);
     const warnings = warningMessages(repo);
     assert.ok(
@@ -39,10 +39,10 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
   });
 });
 
-test("a provider 429 rate-limit rejection is retried once and the tick succeeds (regression, BUGS.md 2026-09-21)", async () => {
+test("a provider 429 rate-limit rejection is retried once and the run succeeds (regression, BUGS.md 2026-09-21)", async () => {
   const repo = await initializedRepo();
   const marker = path.join(tmpdir(), "phase-429");
-  // Attempt 1 (the tick's pi run): the provider rejects the request with 429 — the team's
+  // Attempt 1 (the run's agent run): the provider rejects the request with 429 — the team's
   // single largest error source, and by definition retryable. Attempt 2 (the harness retry):
   // the limit has passed and the request succeeds. The failure class lives in the shared
   // test-fake catalog (test/fakes/transient.ts) so the next retry test pays no cost again.
@@ -56,15 +56,15 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     const runner = makeRoleRunner(repo, "clean", defaultConfig(), "main", undefined, sleep);
     const before = Date.now();
     const outcome = await runner.run();
-    assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
+    assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the run");
     assert.ok(!runner.state.lastError);
     const warnings = warningMessages(repo);
     assert.ok(
       warnings.some((w) => w.includes('rate-limited the request (429')),
       `expected a rate-limit retry warning, got: ${JSON.stringify(warnings)}`,
     );
-    // The run that ended on the 429 is this role's input to the orchestrator's team-wide hold
-    // (BUGS.md 2026-09-21 "A 429 storm still has no team-wide hold"), even though the tick's
+    // The agent run that ended on the 429 is this role's input to the orchestrator's team-wide hold
+    // (BUGS.md 2026-09-21 "A 429 storm still has no team-wide hold"), even though the run's
     // retry went on to succeed: it is evidence the provider was limiting the team at that time.
     assert.ok(runner.lastRateLimit, "the 429 is recorded on the runner");
     assert.ok(runner.lastRateLimit.at >= before && runner.lastRateLimit.at <= Date.now());
@@ -74,14 +74,14 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
 });
 
 // Self-explaining commit bodies (plans/commit-bodies.md item b): the trailer's turn count is
-// the sum over this tick's PRE-COMMIT runs — main attempt plus, on a transient model-server
+// the sum over this run's PRE-COMMIT agent runs — main attempt plus, on a transient model-server
 // timeout, the one resumed retry. runRolePi folds both into runTurns via foldUsage before
-// buildCommitMessage assembles the trailer, so a retried CHANGED tick's commit must read the
+// buildCommitMessage assembles the trailer, so a retried CHANGED run's commit must read the
 // combined count (the no_change regression above never commits, so its trailer is unobservable).
-test("a transient-retry changed tick's trailer sums both runs' turns", async () => {
+test("a transient-retry changed run's trailer sums both agent runs' turns", async () => {
   const repo = await initializedRepo();
   const marker = path.join(tmpdir(), "phase");
-  // Attempt 1 (the tick's pi run): two assistant turns of work, then LM Studio kills the
+  // Attempt 1 (the run's agent run): two assistant turns of work, then LM Studio kills the
   // idle predict stream — a failed run with transientServerTimeout set. The errored final
   // message is itself an assistant message_end, so attempt 1 counts as THREE turns. Attempt
   // 2 (the harness retry, detected by the phase file): one more turn that finishes the work.
@@ -105,8 +105,8 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
     const outcome = await runner.run();
     assert.equal(outcome.result, "queued", "the retry's work is committed and enqueued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
-    // The trailer sums both runs' turns (3 + 1) — and only them: the reviewer run folds
-    // after the commit. Peak ctx is the retry run's 42; attempt 1 carried no usage.
+    // The trailer sums both agent runs' turns (3 + 1) — and only them: the reviewer run folds
+    // after the commit. Peak ctx is the retry agent run's 42; attempt 1 carried no usage.
     const body = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(body, /^Run: improve #\d+ · turns 4 · ctx 42$/m);
   });

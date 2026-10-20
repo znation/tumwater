@@ -14,16 +14,16 @@ interface FallbackContext {
   save(): void;
 }
 
-/** Fold one AUTHORING run's verdict into the role's model-fallback state
- * (src/runner/model-fallback.ts) and emit the episode's started/ended events. Only the run
- * that actually happened is evidence: a tick that never invoked pi (a skipped director
+/** Fold one AUTHORING agent run's verdict into the role's model-fallback state
+ * (src/runner/model-fallback.ts) and emit the episode's started/ended events. Only the agent run
+ * that actually happened is evidence: a run that never invoked pi (a skipped director
  * inbox, a recovered leftover, a red-main block) returns from runOnce before this is
- * reached, and modelFallbackVerdict reports an aborted/killed/timed-out run as
+ * reached, and modelFallbackVerdict reports an aborted/killed/timed-out agent run as
  * inconclusive — so neither can end an episode without the primary having answered.
  * A role whose tier resolves to no fallback pair never trips, and an episode persisted from a
  * config that HAD a pair is cleared when a live edit removes it (or sets it to "pause"), so a
  * stale "on fallback" mark cannot outlive the config that created it. Persists on any state
- * change; the tick's own finalize save carries it too. */
+ * change; the run's own finalize save carries it too. */
 export function foldModelFallbackPhase(
   ctx: FallbackContext,
   fallbackCtx: FallbackRunContext,
@@ -37,8 +37,8 @@ export function foldModelFallbackPhase(
   const wasIn = prior !== undefined && prior.since > 0;
   if (fallbackCtx.fallback === null) {
     // No fallback pair resolves any more: the feature is off for this role. End a persisted
-    // episode (the primary just ran, so this tick IS the return), and drop any pre-trip count
-    // so a later config starts from zero. A killed/aborted/timed-out run is no verdict, so it
+    // episode (the primary just ran, so this run IS the return), and drop any pre-trip count
+    // so a later config starts from zero. A killed/aborted/timed-out agent run is no verdict, so it
     // leaves the episode in place exactly as it does on a configured fallback.
     if (prior === undefined) return;
     if (wasIn && verdict === "inconclusive") return;

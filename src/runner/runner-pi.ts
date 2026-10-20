@@ -21,16 +21,16 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
 
 /** Upper bound on how long the transient retry waits out a provider's Retry-After hint
- * before re-attempting a rate-limited run. Honoring the hint is the point; capping it is
- * what keeps one generous hint from consuming the tick's own run budget (the retry gets a
- * full fresh run budget, so a wait larger than the cap would spend the tick waiting, not
+ * before re-attempting a rate-limited agent run. Honoring the hint is the point; capping it is
+ * what keeps one generous hint from consuming the run's own agent run budget (the retry gets a
+ * full fresh agent run budget, so a wait larger than the cap would spend the run waiting, not
  * working). */
 const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
 
 /** What a hint-less 429 waits before its one retry. With no Retry-After from the provider, the
  * team's own constants state the refill physics: team/team-hold.ts's base hold is one minute,
  * "the shortest pause that lets the bucket refill". Retrying sooner re-enters the same exhausted
- * per-minute bucket the first request just emptied and burns the tick's only retry on a
+ * per-minute bucket the first request just emptied and burns the run's only retry on a
  * near-certain second 429. A present hint always wins instead; the cap above still bounds
  * whatever the wait ends up being. */
 const RATE_LIMIT_NO_HINT_RETRY_S = Math.round(HOLD_BASE_MS / 1000);
@@ -75,7 +75,7 @@ function authoringBudgetCap(
     cap = Math.min(cap, perRole - spent);
   }
   // A fallback step with its own cap (applyFallbackModel's fallbackStepCaps, set only on the
-  // derived view) lowers the run to what is left of the step's budget for the day.
+  // derived view) lowers the agent run to what is left of the step's budget for the day.
   const stepCap = cfg.fallbackStepCaps?.[pair];
   if (stepCap !== undefined) cap = Math.min(cap, stepCap - pairDailyCost(states, pair, now));
   // Round the subtraction's floating-point residue off so the argv carries a clean number.
@@ -85,7 +85,7 @@ function authoringBudgetCap(
 
 /** What the extracted pi-run plumbing needs from its owning runner. The runner supplies live
  * accessors, not copies: `config()` and `runNumber()` are read at every call so the
- * orchestrator's live-reload (which swaps the config object under the runner) and the tick
+ * orchestrator's live-reload (which swaps the config object under the runner) and the run
  * lifecycle stay authoritative without any notification path. */
 interface RunnerPiHost {
   readonly root: string;
@@ -93,17 +93,17 @@ interface RunnerPiHost {
   config(): TumwaterConfig;
   /** The harness shutdown signal (may be undefined — PiRunOptions.signal is optional). */
   readonly signal?: AbortSignal;
-  /** The signal a tick's own runs watch: harness shutdown OR per-tick user abort. */
+  /** The signal a run's own agent runs watch: harness shutdown OR per-run user abort. */
   runSignal(): AbortSignal;
   warn(message: string): void;
-  /** Fold an authoring run's usage. `provider` is that run's seam hold key
-   * (seamHoldKey of the run's config), which the fold stamps onto the team-hold's rate-limit
+  /** Fold an authoring run's usage. `provider` is that agent run's seam hold key
+   * (seamHoldKey of the agent run's config), which the fold stamps onto the team-hold's rate-limit
    * and backend-failure observations so a storm is blamed on the backend that actually failed
    * (PLANS.md "Mixed claude + pi fleets, part 2/4"). */
   foldUsage(run: PiRunResult, provider?: string, pair?: string): void;
-  /** Fold a merge/review run's usage into the authoring role's counters WITHOUT touching
-   * the tick's pre-edit prefix (RunUsage.fold's authoring=false): the reviewer's and conflict
-   * resolver's context is not the authoring tick's pre-edit search. `provider` is the review
+  /** Fold a merge/review agent run's usage into the authoring role's counters WITHOUT touching
+   * the run's pre-edit prefix (RunUsage.fold's authoring=false): the reviewer's and conflict
+   * resolver's context is not the authoring run's pre-edit search. `provider` is the review
    * seam's hold key — a 429 storm on a claude reviewer must hold `claude`, not the pi author's
    * provider. */
   foldMergeUsage(run: PiRunResult, provider?: string, pair?: string): void;
@@ -115,18 +115,17 @@ interface RunnerPiHost {
 }
 
 /** The pi-invocation plumbing of one role's runner, extracted from RoleRunner
- * (src/runner/runner.ts): the shared per-runner wiring for every run (role config, session dir,
- * raw log, abort
- * signal), the one bounded transient-failure retry all runs share, the merge slot's
- * run (which watches only the shutdown signal), and the tick's SUMMARY follow-up turn.
- * It owns HOW a runner talks to pi; the RoleRunner tick state machine owns WHAT runs happen
- * and folds every run's spend back through the host's foldUsage (authoring) or
+ * (src/runner/runner.ts): the shared per-runner wiring for every agent run (role config, session
+ * dir, raw log, abort signal), the one bounded transient-failure retry all agent runs share, the
+ * merge slot's agent run (which watches only the shutdown signal), and the run's SUMMARY follow-up
+ * turn. It owns HOW a runner talks to pi; the RoleRunner state machine owns WHAT agent runs happen
+ * and folds every agent run's spend back through the host's foldUsage (authoring) or
  * foldMergeUsage (merge/review). */
 export class RunnerPi {
   constructor(private readonly host: RunnerPiHost) {}
 
-  /** The shared per-runner wiring for every pi run this tick makes in worktree `wt`: the
-   * role-resolved config, this runner's session dir and raw log, and the per-tick abort signal.
+  /** The shared per-runner wiring for every agent run this run makes in worktree `wt`: the
+   * role-resolved config, this runner's session dir and raw log, and the per-run abort signal.
    * One place for those derivations — a new PiRunOptions field touches only here instead of
    * drifting between the author run and the SUMMARY follow-up. Callers override what differs
    * (the follow-up's capped timeouts, the merge's shutdown-only signal). */
@@ -140,9 +139,9 @@ export class RunnerPi {
     notesPath?: string,
   ): PiRunOptions {
     // A caller-supplied config (the merge conflict resolver's strong-tier one,
-    // plans/model-tiers.md part 4/8) replaces the role's own for that one run; the role's
+    // plans/model-tiers.md part 4/8) replaces the role's own for that one agent run; the role's
     // config is the default for every other caller. Resolved once here so the native-log path
-    // names the same agent the run actually uses.
+    // names the agent that run actually uses.
     const resolved = config ?? configForRole(this.host.config(), this.host.role);
     const maxBudgetUsd =
       kind === "author"
@@ -152,7 +151,7 @@ export class RunnerPi {
       cwd: wt,
       prompt,
       ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
-      // Every run names its kind explicitly; the marker it writes is the dashboards' demux
+      // Every agent run names its kind explicitly; the marker it writes is the dashboards' demux
       // key, so parts 2/5 and 4/5 may put author and gate runs in the same worktree.
       kind,
       config: resolved,
@@ -172,12 +171,12 @@ export class RunnerPi {
       onToolCallStalled: (message) => this.host.warn(message),
       onLeftoversSwept: (message) => this.host.warn(message),
       // The translator's unmapped-native-type and cost_unknown warnings reach the event feed
-      // as their own warning events, once per run.
+      // as their own warning events, once per agent run.
       onAgentWarning: (warning) => this.host.warn(`agent_unknown_event: ${warning}`),
-      // A run that read an image its model cannot see (plans/image-input.md "Detecting a
+      // An agent run that read an image its model cannot see (plans/image-input.md "Detecting a
       // blind read"): the runner killed the authoring run (action "fail") or a gate run
       // merely recorded it ("logged") — each logged here with this runner's identity so the
-      // feed names who, on which tick, read which file on which blind model.
+      // feed names who, on which run, read which file on which blind model.
       onBlindRead: (path, action) =>
         logEventBestEffort(this.host.root, {
           source: this.host.role,
@@ -194,8 +193,8 @@ export class RunnerPi {
    * of runRolePi — role config, session dir, raw log, transient-failure retry — with usage
    * folded into the authoring runner's counters, but watching ONLY the harness shutdown signal
    * (which may be undefined — PiRunOptions.signal is optional): a merge is outside any
-   * tick, so `tumwater abort --role` (which targets a tick's per-tick abort controller) must
-   * never reach it, and the stale per-tick controller of a finished tick must not abort it
+   * run, so `tumwater abort --role` (which targets a run's per-run abort controller) must
+   * never reach it, and the stale per-run controller of a finished run must not abort it
    * either. Session naming is the caller's (the reviewer composes its own from
    * ReviewContext.tick; merge-to-main.ts keeps its conflict-resolver naming through
    * MergerContext.runPi).
@@ -218,11 +217,11 @@ export class RunnerPi {
   /** The merge gate's reviewer runs (review.ts's review run and verdict follow-up): the
    * same shared transient-retry wiring — a 429 in the gate waits its hint out and retries
    * once, exactly like an authoring run (BUGS.md 2026-10-01) — with one folding difference:
-   * the FINAL run's usage is folded by the gate's caller (merge-core's foldUsage of
+   * the FINAL agent run's usage is folded by the gate's caller (merge-core's foldUsage of
    * gate.run / gate.followUpRun), so only a RETRIED first attempt is folded here. That fold
    * is not optional: it stamps the team-wide rate-limit hold's input before the wait, and
    * it is the only record the failed attempt's spend would ever get.
-   * Takes full PiRunOptions because the gate's two runs differ in everything but the runner
+   * Takes full PiRunOptions because the gate's two agent runs differ in everything but the runner
    * they charge (config, session dir and name, label, tool-call callbacks, signal).
    */
   async runGatePi(opts: PiRunOptions): Promise<PiRunResult> {
@@ -238,22 +237,23 @@ export class RunnerPi {
    * kind), pi itself crashing on a torn server chunk (a JSON.parse failure on its stderr),
    * and the provider rate-limiting the request with HTTP 429 (where the provider's
    * Retry-After hint, when sent, is waited out first — capped, so one provider's generosity
-   * cannot eat the tick's own run budget). A harness-killed or quiet-killed run never takes
-   * the transient-retry path: its session is intact but resuming it would just re-hit
-   * whatever hung, burning another full quiet timeout. A run whose `--resume` target the
+   * cannot eat the run's own agent run budget). A harness-killed or quiet-killed agent run never
+   * takes the transient-retry path: its session is intact but resuming it would just re-hit
+   * whatever hung, burning another full quiet timeout. An agent run whose `--resume` target the
    * backend no longer holds (`PiRunResult.resumeMissing`) is not retried here: continuing is
-   * impossible and this layer has no fresh tick prompt to hand a new session, so the failed
-   * run is returned and its kept worktree resumes as a `handoff` on the next tick
+   * impossible and this layer has no fresh run prompt to hand a new session, so the failed
+   * agent run is returned and its kept worktree resumes as a `handoff` on the next run
    * (src/run/run-resume.ts).
    * Extracted verbatim from runRolePi so the rule lives in one place
    * (574a14c's runnerPiOpts move was the wiring half of the same single-source-of-truth).
    */
-  /** Part 6c/7: demote a catalog-free opencode model the first time a run bills it. Observed
-   * here — the fold chokepoint every run of the runner passes through — because it is the one
-   * place that has the run's resolved model (opts.config) and its cost (the run) together, and
-   * it holds the runner's root and role for the cache and the event feed. pi and claude runs
-   * have no opencode catalog entry and no-op. Best-effort like observeClaudeAccount: an
-   * unwritable cache or event feed must not fail the run that observed it. */
+  /** Part 6c/7: demote a catalog-free opencode model the first time an agent run bills it. Observed
+   * here — the fold chokepoint every agent run of the runner passes through — because it is the one
+   * place that has the agent run's resolved model (opts.config) and its cost (the agent run)
+   * together, and it holds the runner's root and role for the cache and the event feed. pi and
+   * claude agent runs have no opencode catalog entry and no-op. Best-effort like
+   * observeClaudeAccount: an unwritable cache or event feed must not fail the agent run that
+   * observed it. */
   private observeFreeModelCost(run: PiRunResult, config: ResolvedModelConfig): void {
     if (config.agent !== "opencode") return;
     try {
@@ -263,36 +263,37 @@ export class RunnerPi {
         { source: this.host.role },
       );
     } catch {
-      // The next priced run demotes it; nothing this run depends on is lost.
+      // The next priced run demotes it; nothing this agent run depends on is lost.
     }
   }
 
   private async runWithTransientRetry(
     opts: PiRunOptions,
-    /** runGatePi only: skip folding the FINAL returned run (the caller folds it), while a
+    /** runGatePi only: skip folding the FINAL returned agent run (the caller folds it), while a
      * retried first attempt still folds — its spend and its rate-limit hold stamp must not
      * vanish just because the gate routes its own folding. Default folds everything, the
      * authoring and merge behavior. */
     { foldFinal = true, authoring = true }: { foldFinal?: boolean; authoring?: boolean } = {},
   ): Promise<PiRunResult> {
-    // The fold every attempt takes: an authoring run charges the runner's tick counters
+    // The fold every attempt takes: an authoring run charges the runner's run counters
     // (foldUsage); a merge, reviewer, or conflict-resolution run charges the same cost and
-    // prompt-token totals but never the tick's pre-edit prefix (foldMergeUsage).
-    // The seam this run actually ran on, as the team hold keys it (seamHoldKey): the fold
+    // prompt-token totals but never the run's pre-edit prefix (foldMergeUsage).
+    // The seam this agent run actually ran on, as the team hold keys it (seamHoldKey): the fold
     // stamps the rate-limit and backend-failure observations with it, so a storm on a claude
     // reviewer holds `claude` and a pi author on a different provider stays open. opts.config
-    // is always the run's own resolved seam (reviewRunConfig for the reviewer, the role's
+    // is always the agent run's own resolved seam (reviewRunConfig for the reviewer, the role's
     // config or fallback pair for the author), so this names the backend that failed.
     const provider = seamHoldKey(opts.config);
-    // The run's model pair name, the key of the per-step daily spend (RunnerState.dayCostByPair).
+    // The agent run's model pair name, the key of the per-step daily spend
+    // (RunnerState.dayCostByPair).
     const pair = seamPairName(opts.config);
     const fold = (run: PiRunResult): void =>
       authoring ? this.host.foldUsage(run, provider, pair) : this.host.foldMergeUsage(run, provider, pair);
-    // The run re-keys the calling tick's provider lease to the provider THIS run uses, if it is
-    // not already there (plans/provider-concurrency.md §5): a budget handback or a model-failure
-    // switch that moved this run onto another seam moves the tick's lease with it, so a
-    // claude-authored tick whose gate run lands on omlx is counted there. No-op when the tick
-    // carries no lease (a bare RunnerPi unit test, `tumwater tick`).
+    // The agent run re-keys the calling run's provider lease to the provider THIS agent run uses,
+    // if it is not already there (plans/provider-concurrency.md §5): a budget handback or a
+    // model-failure switch that moved this agent run onto another seam moves the run's lease with
+    // it, so a claude-authored run whose gate agent run lands on omlx is counted there. No-op when
+    // the run carries no lease (a bare RunnerPi unit test, `tumwater history`).
     await ensureProviderLease(opts.config);
     const pi = await runPi(opts);
     this.warnFallbackClone(pi);
@@ -308,7 +309,7 @@ export class RunnerPi {
       !pi.ok &&
       // A subscription claude usage-window rejection is not the 429 the retry's minute-scale
       // wait beats: the window resets hours out, so a within-run retry is guaranteed to fail
-      // after burning up to RATE_LIMIT_RETRY_AFTER_CAP_S. The tick ends and the kept session
+      // after burning up to RATE_LIMIT_RETRY_AFTER_CAP_S. The run ends and the kept session
       // resumes once the team hold lifts (plans/agent-backends.md §8, part 6e).
       !subscriptionWindowRejected(pi)
     ) {
@@ -331,13 +332,13 @@ export class RunnerPi {
       // pi crash is a failure of the local path, retried at once, while a 429 must wait its
       // per-minute bucket out. A hint-less 429 defaults to that minute-scale refill pause
       // instead of 0 — an immediate retry lands in the same exhausted bucket and burns the
-      // tick's only retry (BUGS.md 2026-09-25). A present hint wins; the cap bounds either.
+      // run's only retry (BUGS.md 2026-09-25). A present hint wins; the cap bounds either.
       // A hint of 0 (or any non-positive value) is no usable hint — "retry now" is exactly
       // the burned-retry bug a hint-less 429 causes — so it falls back to the refill pause
       // just like a missing hint, keeping the warning text and the actual wait in agreement.
       // The timeout kind (BUGS.md 2026-09-30) takes that same minute-scale pause: the
       // provider accepted the request and failed to answer it, an overload shape — an
-      // immediate re-request lands at the back of the same queue and burns the tick's only
+      // immediate re-request lands at the back of the same queue and burns the run's only
       // retry, so the retry waits the refill pause out first.
       const hintS =
         pi.retryAfterSeconds && pi.retryAfterSeconds > 0 ? pi.retryAfterSeconds : RATE_LIMIT_NO_HINT_RETRY_S;
@@ -348,7 +349,7 @@ export class RunnerPi {
           : 0;
       if (waitS > 0) await (this.host.sleep?.(waitS * 1000) ?? sleepFor(waitS * 1000));
       // Within-run continuity only: resume the session the first attempt created, so its
-      // partial progress is not re-done. The next tick still starts fresh.
+      // partial progress is not re-done. The next run still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
       this.warnFallbackClone(retry);
       this.observeFreeModelCost(retry, opts.config);
@@ -361,17 +362,17 @@ export class RunnerPi {
     return pi;
   }
 
-  /** The backend-kind floor (BUGS.md 2026-09-29): a failed run that ended on a
+  /** The backend-kind floor (BUGS.md 2026-09-29): a failed agent run that ended on a
    * provider-backend failure (connection down, 5xx, model load) still warns — parity with
    * the 429 branch above, so any episode is visible from the feed alone instead of living
-   * only in per-tick error events an operator must aggregate by hand. The team-wide hold
+   * only in per-run error events an operator must aggregate by hand. The team-wide hold
    * (src/team/team-hold.ts) and the storm alarms judge the spread; this line is the per-run
-   * floor under them, not a retry: a dead backend is not something an immediate re-run beats.
-   * Applied to whichever run is returned (BUGS.md 2026-10-09): the retry's returned run is a
-   * second, independent run the retry predicate was never applied to, so a retry that dies
-   * on an uncovered kind must warn exactly as a first attempt does. A run the retry predicate
-   * DID admit on a backend kind (stream-severed/timeout) is excluded, so the warning's "does
-   * not cover this kind" stays true and a retry failing on a covered kind emits no such line
+   * floor under them, not a retry: a dead backend is not something an immediate agent re-run beats.
+   * Applied to whichever agent run is returned (BUGS.md 2026-10-09): the retry's returned agent run
+   * is a second, independent agent run the retry predicate was never applied to, so a retry that
+   * dies on an uncovered kind must warn exactly as a first attempt does. An agent run the retry
+   * predicate DID admit on a backend kind (stream-severed/timeout) is excluded, so the warning's
+   * "does not cover this kind" stays true and a retry failing on a covered kind emits no such line
    * (BUGS.md 2026-10-09 review). */
   private warnBackendKindFloor(run: PiRunResult): void {
     if (
@@ -397,10 +398,10 @@ export class RunnerPi {
     return run.transientBackend && (run.backendKind === "stream-severed" || run.backendKind === "timeout");
   }
 
-  /** One warning per run whose model id pi could not resolve exactly (BUGS.md 2026-10-06):
-   * pi cloned the provider's default model, so the run is priced and windowed as that default
+  /** One warning per agent run whose model id pi could not resolve exactly (BUGS.md 2026-10-06):
+   * pi cloned the provider's default model, so the agent run is priced and windowed as that default
    * while the operator's config says otherwise — unconditionally visible from the feed alone.
-   * A no-op for the ordinary run that printed no such stderr line. */
+   * A no-op for the ordinary agent run that printed no such stderr line. */
   private warnFallbackClone(run: PiRunResult): void {
     if (!run.fallbackClone) return;
     this.host.warn(
@@ -409,17 +410,17 @@ export class RunnerPi {
   }
 
   /** Run pi for this runner's authoring run in worktree `wt`: the shared per-runner wiring and
-   * the transient-failure retry, with usage folded into the tick's counters. It is the ONE
+   * the transient-failure retry, with usage folded into the run's counters. It is the ONE
    * entry point that carries the role notebook (PLANS.md "Role notebook": TUMWATER_NOTES_PATH,
-   * read by the `tumwater-notes` command): every other run (runRolePi's merge/conflict path,
+   * read by the `tumwater-notes` command): every other agent run (runRolePi's merge/conflict path,
    * runMergePi, runGatePi) leaves it unset, and the director is excluded because its work is
    * the operator's prompt, not a recurring search.
    *
-   * Every run starts a FRESH pi session: context never accumulates across ticks, so ticks start
+   * Every agent run starts a FRESH pi session: context never accumulates across runs, so runs start
    * cheap (small prefill), never inherit a near-full window, and durable knowledge lives where
    * the prompt makes pi read it — README/PLANS/BUGS, the code itself, and the role's own note.
    * `resume` continues the role's most recent session instead — used only when picking up
-   * a tick that a harness shutdown interrupted. */
+   * a run that a harness shutdown interrupted. */
   async runAuthoringPi(
     wt: string,
     prompt: string,
@@ -434,7 +435,7 @@ export class RunnerPi {
 
   /** The notebook path an authoring run carries: the role's note file, or undefined for the
    * director, which has no notebook. The SUMMARY/stage-fix follow-ups share the authoring
-   * tick's session and must carry the same notes wiring — every invocation reads the path
+   * run's session and must carry the same notes wiring — every invocation reads the path
    * from TUMWATER_NOTES_PATH in the environment, so the follow-up re-passes the same path. */
   private authorNotesPath(): string | undefined {
     return this.host.role === DIRECTOR_ROLE
@@ -442,10 +443,11 @@ export class RunnerPi {
       : roleNotesPath(this.host.root, this.host.role);
   }
 
-  /** The shared authoring/conflict run wiring WITHOUT the role notebook. The merge pipeline's
+  /** The shared authoring/conflict agent run wiring WITHOUT the role notebook. The merge pipeline's
    * conflict resolver reaches pi through this (plans/merge-queue.md), and a conflict resolution
    * is not the role's recurring search: it must not carry the notes tool or rewrite the note.
-   * Authoring ticks run through runAuthoringPi above, which is the only notebook-carrying path. */
+   * An authoring agent run goes through runAuthoringPi above, which is the only notebook-carrying
+   * path. */
   async runRolePi(
     wt: string,
     prompt: string,
@@ -454,7 +456,7 @@ export class RunnerPi {
     config?: ResolvedModelConfig,
   ): Promise<PiRunResult> {
     // The refusal-note merge (runner.ts's merge) reaches pi here, in the ROLE's own worktree,
-    // so its runs demux as author — exactly the verdict the pre-part-1/5 cwd test gave them.
+    // so its agent runs demux as author — exactly the verdict the pre-part-1/5 cwd test gave them.
     // The shared-worktree conflict resolver goes through runMergePi and demuxes as gate.
     return this.runWithTransientRetry(
       this.runnerPiOpts(wt, prompt, sessionName, "author", resume, config),
@@ -472,24 +474,25 @@ export class RunnerPi {
   private static readonly STAGE_FIX_TIMEOUT_S = 600;
 
   /** The shared body of the two `--continue` follow-up turns (requestSummary and
-   * requestStageFix): guard on a resumable session, resolve the tick's effective config, and
+   * requestStageFix): guard on a resumable session, resolve the run's effective config, and
    * run one capped turn on the runner's shared transient-retry wiring. Both follow-ups must keep
    * the same session guard and capped-config discipline, so the two read one assembly here;
    * `suffix` names the turn in its session name and `timeoutS` is its hard cap, while both
    * share the quiet watchdog value (SUMMARY_REQUEST_QUIET_S). Null when there is no session to
-   * continue; the run is returned even when it failed so the caller can honor a shutdown abort.
+   * continue; the agent run is returned even when it failed so the caller can honor a shutdown
+   * abort.
    *
-   * The follow-up continues this tick's own session, so it must run on the same pair that
-   * session ran on: the caller passes the tick's effective config (the fallback pair while a
+   * The follow-up continues this run's own session, so it must run on the same pair that
+   * session ran on: the caller passes the run's effective config (the fallback pair while a
    * model-fallback episode is active). A caller without one rides the role's own config. The
    * shared per-runner wiring (runnerPiOpts) takes the follow-up's hard caps overriding the
-   * authoring run's budget: one short reply on a warm session. The run takes the runner's SHARED
-   * transient-failure retry (BUGS.md 2026-10-01): a 429 on the follow-up turn waits its
+   * authoring run's budget: one short reply on a warm session. The agent run takes the runner's
+   * SHARED transient-failure retry (BUGS.md 2026-10-01): a 429 on the follow-up turn waits its
    * Retry-After hint out and retries once on the same session, exactly like the authoring run,
-   * the merge slot's run, and the gate's reviewer runs it mirrors. The caps bound BOTH
+   * the merge slot's agent run, and the gate's reviewer agent runs it mirrors. The caps bound BOTH
    * attempts (the retry inherits this capped config), so a flaky provider cannot stretch the
    * follow-up past its budget by more than one capped turn. The wiring folds every attempt
-   * (the failed 429 before the wait), and the returned final run is folded here by the wiring
+   * (the failed 429 before the wait), and the returned final agent run is folded here by the wiring
    * itself — no second fold at the call site. */
   private async requestFollowUp(
     wt: string,
@@ -500,9 +503,9 @@ export class RunnerPi {
   ): Promise<PiRunResult | null> {
     const cfg = config ?? configForRole(this.host.config(), this.host.role);
     const dir = sessionDir(this.host.root, this.host.role);
-    // The follow-up continues THIS tick's author session. The backend's own resumable rule
+    // The follow-up continues THIS run's author session. The backend's own resumable rule
     // keeps it honest: pi would reach the newest file, claude its recorded id, so a conflict
-    // resolver's gate run in the same dir cannot be mistaken for this tick's session. The
+    // resolver's gate run in the same dir cannot be mistaken for this run's session. The
     // claude config dir rides along so a claude team's resume looks under its own dir.
     if (
       !agentSessionResumable(
@@ -530,10 +533,10 @@ export class RunnerPi {
     });
   }
 
-  /** Ask the tick's own pi session (--continue) for the missing SUMMARY block: one tightly
-   * bounded turn, folded into the tick's usage like every other run. Null when there is no
+  /** Ask the run's own pi session (--continue) for the missing SUMMARY block: one tightly
+   * bounded turn, folded into the run's usage like every other agent run. Null when there is no
    * session to continue (pi never wrote one) — the caller then derives a subject itself. The
-   * run is returned even when it failed so the caller can honor a shutdown abort. */
+   * agent run is returned even when it failed so the caller can honor a shutdown abort. */
   async requestSummary(wt: string, config?: ResolvedModelConfig, overLength?: number): Promise<PiRunResult | null> {
     return this.requestFollowUp(
       wt,
@@ -544,9 +547,9 @@ export class RunnerPi {
     );
   }
 
-  /** Ask the tick's own pi session (--continue) to fix the pre-queue self-check's findings:
-   * one bounded turn, folded into the tick's usage like every other run. Null when there is no
-   * session to continue — the caller then warns and lets the gate judge. The run is returned
+  /** Ask the run's own pi session (--continue) to fix the pre-queue self-check's findings:
+   * one bounded turn, folded into the run's usage like every other agent run. Null when there is no
+   * session to continue — the caller then warns and lets the gate judge. The agent run is returned
    * even when it failed so the caller can honor a shutdown abort. */
   async requestStageFix(
     wt: string,
@@ -567,16 +570,16 @@ export class RunnerPi {
 /** The runner's shared pi wiring as merge code reaches it, split into the two halves the
  * merge contexts need. `RunsPi` is one pi run in `wt` through the runner's shared wiring
  * (role config, session dir, raw log, transient-failure retry — src/runner/runner-pi.ts);
- * `FoldsUsage` adds one run's spend to the owning runner's counters exactly once (the reviewer
- * and conflict-resolution runs charge to the authoring role). Declared once here so the contract
- * — and its wording — cannot drift apart across the four contexts that restate it:
+ * `FoldsUsage` adds one agent run's spend to the owning runner's counters exactly once (the
+ * reviewer and conflict-resolution runs charge to the authoring role). Declared once here so the
+ * contract — and its wording — cannot drift apart across the four contexts that restate it:
  * MergerContext and BatchRoleWiring carry all three halves (PiRunWiring), MergeContext only
  * the resolver's runner (its runPi folds usage internally), and ApprovedMerge only the fold.
  *
- * `runPi`'s optional fourth argument is the config that ONE run executes on (plans/
+ * `runPi`'s optional fourth argument is the config that ONE agent run executes on (plans/
  * model-tiers.md part 4/8): the conflict resolver passes the strong tier's config there while
- * the authoring runs keep the role's own. The runner's wiring forwards it to runRolePi; a run
- * without it rides the role's config unchanged. */
+ * the authoring runs keep the role's own. The runner's wiring forwards it to runRolePi; an agent
+ * run without it rides the role's config unchanged. */
 export interface RunsPi {
   runPi(wt: string, prompt: string, sessionName: string, config?: ResolvedModelConfig): Promise<PiRunResult>;
 }
@@ -588,15 +591,15 @@ export interface GateRunsPi {
   runGatePi(opts: PiRunOptions): Promise<PiRunResult>;
 }
 
-/** One run's spend folded into the owning runner's usage counters exactly once — the
+/** One agent run's spend folded into the owning runner's usage counters exactly once — the
  * reviewer's and conflict-resolution's runs charge to the authoring role, so the folding
- * belongs to the runner, not to the run itself (the runner's runPi wiring,
+ * belongs to the runner, not to the agent run itself (the runner's runPi wiring,
  * src/runner/runner-run.ts). */
 export interface FoldsUsage {
   foldUsage(run: PiRunResult): void;
 }
 
-/** A merge context that runs pi through the runner's shared wiring and folds each run's
+/** A merge context that runs pi through the runner's shared wiring and folds each agent run's
  * usage: both halves (RunsPi + FoldsUsage). MergerContext and BatchRoleWiring extend this;
  * contexts needing only one half extend that half instead (MergeContext, ApprovedMerge). */
 export interface PiRunWiring extends RunsPi, GateRunsPi, FoldsUsage {}

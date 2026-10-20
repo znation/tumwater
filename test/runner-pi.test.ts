@@ -14,13 +14,13 @@ import { makeHost, recordingFakePi, runArgs } from "./fixtures/runner-pi-fixture
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 
 // RunnerPi (src/runner/runner-pi.ts) is the pi-invocation plumbing of one role's runner: the shared
-// per-runner wiring (role config, session dir, raw log, per-tick abort signal) as it reaches
+// per-runner wiring (role config, session dir, raw log, per-run abort signal) as it reaches
 // the role and merge runs, the role notebook an authoring run carries, and the merge
-// run's shutdown-only signal. Tested through a fake pi on PATH, so real spawning and parsing
+// agent run's shutdown-only signal. Tested through a fake pi on PATH, so real spawning and parsing
 // are in the runner. (The shared transient retry is in runner-pi-retry.test.ts; the SUMMARY and
 // stage-fix follow-ups in runner-pi-followups.test.ts; the claude backend in
 // runner-pi-claude.test.ts.)
-test("runRolePi runs a fresh named session and folds one usage into the tick", async () => {
+test("runRolePi runs a fresh named session and folds one usage into the run", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
   const restore = recordingFakePi(args);
@@ -32,8 +32,8 @@ test("runRolePi runs a fresh named session and folds one usage into the tick", a
     assert.match(line, /-n tumwater-feature-1-author/, "fresh session is named, not resumed");
     assert.ok(!line.includes("--continue"), "a fresh session must not pass --continue");
     assert.ok(line.endsWith("work the backlog"), "the prompt reaches pi (stdin, appended last by the fake)");
-    assert.equal(usage.length, 1, "one run, one foldUsage");
-    assert.equal(usage[0], result, "the foldUsage'd run IS the returned run");
+    assert.equal(usage.length, 1, "one agent run, one foldUsage");
+    assert.equal(usage[0], result, "the foldUsage'd agent run IS the returned agent run");
   } finally {
     restore();
   }
@@ -53,12 +53,12 @@ test("runRolePi demuxes as author and runMergePi as gate (marker kind, not cwd)"
     const all = fs.readFileSync(piLogPath(root, "feature"), "utf8").replace(/,"ts":\d+/g, "").split("\n");
     assert.ok(
       all.includes(JSON.stringify({ type: "tumwater_run", kind: "gate", agent: "pi" })),
-      "runMergePi's run writes a gate marker",
+      "runMergePi's agent run writes a gate marker",
     );
   });
 });
 
-test("runRolePi with resume passes --continue so a shutdown-interrupted tick resumes its session", async () => {
+test("runRolePi with resume passes --continue so a shutdown-interrupted run resumes its session", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
   const restore = recordingFakePi(args);
@@ -75,7 +75,7 @@ test("runRolePi with resume passes --continue so a shutdown-interrupted tick res
 });
 
 // The role notebook (PLANS.md "Role notebook"): runAuthoringPi is the ONE path that exports
-// TUMWATER_NOTES_PATH to the child. Every other run must leave it unset — a review, merge, or
+// TUMWATER_NOTES_PATH to the child. Every other agent run must leave it unset — a review, merge, or
 // conflict-resolution run is not the role's recurring search and must not rewrite the note —
 // and the director has no notebook at all.
 function envRecordingFakePi(envFile: string): () => void {
@@ -134,17 +134,17 @@ test("conflict, merge, and review runs carry no notebook", async () => {
       nativeLogFile: path.join(root, "native.jsonl"),
       label: "review",
     });
-    // One empty env line per run: the variable exists in neither child's environment.
-    assert.equal(fs.readFileSync(env, "utf8"), "\n\n\n", "none of the three runs exports a notebook path");
+    // One empty env line per agent run: the variable exists in neither child's environment.
+    assert.equal(fs.readFileSync(env, "utf8"), "\n\n\n", "none of the three agent runs exports a notebook path");
   } finally {
     restore();
   }
 });
 
 // The conflict resolver rides the strong tier (plans/model-tiers.md part 4/8): runRolePi's
-// explicit config replaces the role's own for that one run, and the argv shows it. With only
+// explicit config replaces the role's own for that one agent run, and the argv shows it. With only
 // `default` declared the resolver's argv is unchanged from the un-tiered wiring.
-test("runRolePi's explicit config replaces the role's config in that run's argv", async () => {
+test("runRolePi's explicit config replaces the role's config in that agent run's argv", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
   const restore = recordingFakePi(args);
@@ -196,10 +196,10 @@ test("with only default declared, the resolver's config argv is unchanged from t
 });
 
 // The merge path's resolver wiring: runMergePi takes the same optional config and must
-// forward it to the run's argv — the merger lambdas pass the strong tier's config through
+// forward it to the agent run's argv — the merger lambdas pass the strong tier's config through
 // (plans/model-tiers.md part 4/8), and a dropped argument would silently demote the resolver
 // to the role's own model.
-test("runMergePi's explicit config replaces the role's config in that run's argv", async () => {
+test("runMergePi's explicit config replaces the role's config in that agent run's argv", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
   const restore = recordingFakePi(args);
@@ -223,16 +223,16 @@ test("runMergePi's explicit config replaces the role's config in that run's argv
   }
 });
 
-test("runMergePi ignores the tick's per-tick runSignal — an aborted tick must not abort a queued merge", async () => {
+test("runMergePi ignores the run's own runSignal — an aborted run must not abort a queued merge", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
   const restore = recordingFakePi(args);
   try {
     const { runnerPi, usage, mergeUsage, abortRunSignal } = makeHost(root);
-    abortRunSignal(); // the stale per-tick controller of a finished (or aborted) tick
+    abortRunSignal(); // the stale per-run controller of a finished (or aborted) run
     const result = await runnerPi.runMergePi(root, "resolve the conflict", "tumwater-feature-review");
     assert.equal(result.ok, true, "the merge runs to completion");
-    assert.equal(usage.length, 0, "a merge run never folds through the tick's authoring fold");
+    assert.equal(usage.length, 0, "a merge agent run never folds through the run's authoring fold");
     assert.equal(mergeUsage.length, 1, "it folds through foldMergeUsage instead");
     assert.match(runArgs(args)[0]!, /resolve the conflict/);
   } finally {

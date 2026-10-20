@@ -15,10 +15,10 @@ import { claudeInit, claudeResult } from "./fixtures/claude-events.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { makeHost, recordingFakePi, runArgs } from "./fixtures/runner-pi-fixtures.js";
 
-// RunnerPi's one-reply follow-up turns (src/runner/runner-pi.ts): requestSummary asks the tick's
+// RunnerPi's one-reply follow-up turns (src/runner/runner-pi.ts): requestSummary asks the run's
 // own session for the missing SUMMARY block, and requestStageFix asks it to address review
 // findings. Both resume the authoring session through the shared transient retry, carry the
-// role notebook like the authoring run, and fold their spend into the tick's counters.
+// role notebook like the authoring run, and fold their spend into the run's counters.
 // Tested through a fake pi on PATH.
 test("requestSummary returns null when the role has no resumable session", async () => {
   const root = tmpdir();
@@ -59,7 +59,7 @@ test("requestSummary refuses a session whose newest ledger line names another ag
   }
 });
 
-test("requestSummary resumes the tick's session and folds its usage", async () => {
+test("requestSummary resumes the run's session and folds its usage", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
   const restore = recordingFakePi(args, {
@@ -70,12 +70,12 @@ test("requestSummary resumes the tick's session and folds its usage", async () =
     fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
     const { runnerPi, usage } = makeHost(root);
     const result = await runnerPi.requestSummary(root);
-    assert.ok(result, "a resumable session produces a run");
+    assert.ok(result, "a resumable session produces an agent run");
     assert.equal(result!.ok, true);
     assert.match(result!.finalText, /tidied the parser/);
     assert.equal(usage.length, 1);
     assert.match(runArgs(args)[0]!, /--continue/, "the follow-up continues the authoring session");
-    assert.match(fs.readFileSync(args, "utf8"), /required closing block/, "the run asks for the SUMMARY block, not a free-form reply");
+    assert.match(fs.readFileSync(args, "utf8"), /required closing block/, "the agent run asks for the SUMMARY block, not a free-form reply");
   } finally {
     restore();
   }
@@ -119,7 +119,7 @@ test("a follow-up that runs on a claude seam writes its native log under that se
     async () => {
       // The role's own config is a PI seam; the follow-up we hand it runs on the claude seam
       // (a model-failure fallback to the other backend). Resolving that seam through
-      // configForRole gives a well-formed run config.
+      // configForRole gives a well-formed agent run config.
       const roleCfg = defaultConfig();
       roleCfg.agent = "pi";
       const claudeCfg = defaultConfig();
@@ -138,7 +138,7 @@ test("a follow-up that runs on a claude seam writes its native log under that se
       assert.equal(agentSessionResumable(dir, { kind: "author", agent: "claude" }), true, "the seeded claude session is resumable");
       // The SUMMARY follow-up now continues that claude session.
       const result = await runnerPi.requestSummary(root, claudeSeam);
-      assert.ok(result, "a resumable claude session produces a run");
+      assert.ok(result, "a resumable claude session produces an agent run");
       assert.match(fs.readFileSync(nativeLogPath(root, "feature", "claude"), "utf8"), /"type":"result"/, "the follow-up's native log lands at the claude seam path");
       assert.ok(!fs.existsSync(nativeLogPath(root, "feature", "pi")), "no pi native log for a claude follow-up");
     },
@@ -161,13 +161,13 @@ test("requestSummary's 429 takes the shared transient retry: warns, waits the hi
     fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
     const { runnerPi, warns, usage, sleeps } = makeHost(root);
     const result = await runnerPi.requestSummary(root);
-    assert.ok(result, "a resumable session produces a run");
+    assert.ok(result, "a resumable session produces an agent run");
     assert.equal(result!.ok, true, "the retry succeeds on the warm session");
     assert.match(result!.finalText, /SUMMARY: tidied src/, "the retry delivers the SUMMARY block");
     assert.equal(usage.length, 2, "both attempts fold — the failed 429 before the wait");
     assert.match(warns[0]!, /rate-limited the request \(429, retry after 3s\)/);
     assert.deepEqual(sleeps, [3000], "the hint is waited out before the retry");
-    // The SUMMARY request prompt is multi-line, so the argv log (one `$*` line per run,
+    // The SUMMARY request prompt is multi-line, so the argv log (one `$*` line per agent run,
     // split at the prompt's newlines) cannot be read per line — count the resume flags over
     // the whole recording instead: both attempts continue the authoring session, and the
     // follow-up never re-names it.
@@ -180,11 +180,11 @@ test("requestSummary's 429 takes the shared transient retry: warns, waits the hi
   }
 });
 
-test("requestSummary returns the run even when it failed and still folds its usage", async () => {
-  // The follow-up asks the tick's own session for the missing SUMMARY block; the run can
+test("requestSummary returns the agent run even when it failed and still folds its usage", async () => {
+  // The follow-up asks the run's own session for the missing SUMMARY block; the agent run can
   // fail like any other (provider error, nonzero exit). The doc'd contract says the caller
-  // gets the run back regardless — it must be able to honor a shutdown abort on it — and
-  // the failed attempt's spend is folded into the tick's counters like every other run.
+  // gets the agent run back regardless — it must be able to honor a shutdown abort on it — and
+  // the failed attempt's spend is folded into the run's counters like every other agent run.
   const root = tmpdir();
   const args = path.join(root, "args");
   await withPi(`printf '%s\\n' "$*" >> "${args}"\nprintf '%s\\n' 'model exploded' >&2\nexit 1`, async () => {
@@ -192,14 +192,14 @@ test("requestSummary returns the run even when it failed and still folds its usa
     fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
     const { runnerPi, usage } = makeHost(root);
     const result = await runnerPi.requestSummary(root);
-    assert.ok(result, "a failed run is returned, not null — null means there was no session to ask");
+    assert.ok(result, "a failed agent run is returned, not null — null means there was no session to ask");
     assert.equal(result!.ok, false);
     assert.match(result!.errorMessage ?? "", /model exploded/, "the failure's stderr names the cause");
-    assert.equal(usage.length, 1, "one run, one foldUsage — failures included");
-    assert.equal(usage[0], result, "the foldUsage'd run IS the returned run");
+    assert.equal(usage.length, 1, "one agent run, one foldUsage — failures included");
+    assert.equal(usage[0], result, "the foldUsage'd agent run IS the returned agent run");
     const recorded = fs.readFileSync(args, "utf8");
     assert.match(recorded, /--continue/, "the failure still continued the authoring session");
-    assert.match(recorded, /required closing block/, "the failed run asked for the SUMMARY block");
+    assert.match(recorded, /required closing block/, "the failed agent run asked for the SUMMARY block");
   });
 });
 
@@ -217,7 +217,7 @@ test("requestStageFix returns null when the role has no resumable session", asyn
   }
 });
 
-test("requestStageFix resumes the tick's session with the findings and folds its usage", async () => {
+test("requestStageFix resumes the run's session with the findings and folds its usage", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
   const restore = recordingFakePi(args, {
@@ -231,19 +231,19 @@ test("requestStageFix resumes the tick's session with the findings and folds its
       "task id is missing",
       "stray file in the diff",
     ]);
-    assert.ok(result, "a resumable session produces a run");
+    assert.ok(result, "a resumable session produces an agent run");
     assert.equal(result!.ok, true);
     assert.match(result!.finalText, /addressed both faults/);
-    assert.equal(usage.length, 1, "one run, one foldUsage");
-    assert.equal(usage[0], result, "the foldUsage'd run IS the returned run");
-    // The stage-fix prompt is multi-line, so the argv log (one `$*` line per run, split at the
-    // prompt's newlines) cannot be read per line — assert over the whole recording instead.
+    assert.equal(usage.length, 1, "one agent run, one foldUsage");
+    assert.equal(usage[0], result, "the foldUsage'd agent run IS the returned agent run");
+    // The stage-fix prompt is multi-line, so the argv log (one `$*` line per agent run, split at
+    // the prompt's newlines) cannot be read per line — assert over the whole recording instead.
     const recorded = fs.readFileSync(args, "utf8");
     assert.match(recorded, /--continue/, "the fix-up continues the authoring session");
     assert.ok(!recorded.includes('-n '), "the fix-up never re-names the session");
     assert.match(recorded, /task id is missing/, "the first finding is in the prompt");
     assert.match(recorded, /stray file in the diff/, "the second finding is in the prompt");
-    assert.match(recorded, /closing block again/, "the run asks for the closing block again");
+    assert.match(recorded, /closing block again/, "the agent run asks for the closing block again");
   } finally {
     restore();
   }
