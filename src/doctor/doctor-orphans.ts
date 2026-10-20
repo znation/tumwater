@@ -232,7 +232,7 @@ export async function checkOrphans(
   const more = orphans.length - listed.length;
   const count = `${plural(orphans.length, "orphaned process", "orphaned processes")} (PPID 1)`;
   return failOutcome(`${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}` +
-      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans) kills each with its descendants" +
+      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants" +
       (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : ""));
 }
 

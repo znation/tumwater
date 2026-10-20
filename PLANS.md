@@ -500,19 +500,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### The doctor's orphans row names the TUI Health tab's Ctrl+K among the ways to kill the orphans it lists, so an operator reading it in the TUI is pointed at the key on the tab they are looking at (planned 2026-10-20 by the plan role; independent of every Planned entry. Touches src/doctor/doctor-orphans.ts and test/doctor-orphans.test.ts. The blocked Plain terms series reword comments in src/doctor/ but rename no identifier this entry uses; whichever lands second only rebases)
-
-**Goal.** When `checkOrphans` (src/doctor/doctor-orphans.ts) finds orphans, its failing detail ends `— nothing reaps these; \`tumwater doctor --kill-orphans\` (or the dashboard Health card's Kill orphans) kills each with its descendants`. Kill orphans part 2/2 (PLANS-DONE.md, done 2026-10-20) added a third way to do the same kill: Ctrl+K pressed twice on the TUI Health tab (src/ui/tui/tui-pane-health.ts). That tab shows this same doctor row, and the row still sends a TUI reader to the CLI or the dashboard. docs/cli.md already lists all three ways in the `doctor` row ("…and so does the TUI Health tab's Ctrl+K pressed twice") and in the `Ctrl+K` (twice) key row. The doctor line is the only place that leaves the TUI out.
-
-**Approach.**
-- In `checkOrphans`, change the parenthetical in the failing detail to `(or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice)`. Leave the rest of the sentence as it is. That includes "nothing reaps these": `reapPreviousTeamOrphans` runs only at team start, and only on orphans whose run marks name the predecessor orchestrator. A listed orphan caught by argv or cwd is never reaped automatically, and while a team is running nothing reaps any of them.
-- The ok and warn outcomes, the per-orphan items, and the cwd-unreadable suffix stay unchanged.
-
-**Tests.** In test/doctor-orphans.test.ts, update the three exact `detail` expectations that end with `(or the dashboard Health card's Kill orphans) kills each with its descendants` to the new parenthetical. The `/; and 2 more — nothing reaps these/` regex assertion still matches as written. Check with `grep -rn "Health card's Kill orphans)" src test` that no other file pins the old string. When this was planned, only src/doctor/doctor-orphans.ts, test/doctor-orphans.test.ts and docs/cli.md matched. docs/cli.md matches only in its `Ctrl+K` key-row prose, which stays.
-
-**Acceptance criteria.**
-- `tumwater doctor` with an orphan present prints an orphans row whose remedy names `tumwater doctor --kill-orphans`, the dashboard Health card's Kill orphans, and the TUI Health tab's Ctrl+K pressed twice.
-- No other doctor row or outcome changes.
-- `npm run test:gate` passes.
-
 ## Done

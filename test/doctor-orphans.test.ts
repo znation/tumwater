@@ -45,7 +45,7 @@ test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, t
       "pid 8198 (age 18:34:12, cpu 0:41.20) node .tumwater/worktrees/perf/dist/src/cli.js run; " +
       "pid 88052 (age 2-21:44:01, cpu 0:03.12, +2 descendants) node dist/test/test-runner.js; " +
       "pid 73241 (age 07:24:10, cpu 0:02.50) node .tumwater/worktrees/qa/dist/src/cli.js gui --port 41602 --all-interfaces" +
-      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans) kills each with its descendants",
+      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants",
   });
   // One cwd lookup, over the parentless processes argv did not already settle — never the
   // workers (they have a parent) and never the absolute-argv match.
@@ -102,7 +102,7 @@ test("checkOrphans catches a marked leak outside the worktrees once its harness 
     detail:
       "1 orphaned process (PPID 1): " +
       `pid 3100 (age 11:22:33, cpu 1:02.30) node /tmp/twprobe/server.js (run ${dead}-deadbeef; tumwater ${dead} exited)` +
-      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans) kills each with its descendants",
+      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants",
   });
 });
 
@@ -168,7 +168,7 @@ test("checkOrphans asks cwds only of parentless processes this user can inspect"
     level: "fail",
     detail:
       "1 orphaned process (PPID 1): pid 10 (age 01:00, cpu 0:00.10, +1 descendant) node dist/test/test-runner.js" +
-      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans) kills each with its descendants",
+      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants",
   });
   assert.deepEqual(asked, [[10]]);
 });
