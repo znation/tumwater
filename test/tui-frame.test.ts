@@ -155,6 +155,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "health" }), /Ctrl\+R re-run checks/);
   assert.match(hint({ kind: "health" }), /Ctrl\+E reclaim disk/);
   assert.match(hint({ kind: "health" }), /Ctrl\+N test notify/);
+  assert.match(hint({ kind: "health" }), /Ctrl\+K kill orphans/);
   assert.match(hint({ kind: "health" }), /Ctrl\+X retire/);
   assert.match(hint({ kind: "health", problems: false }), /Ctrl\+O all checks/);
   assert.match(hint({ kind: "health", problems: true }), /Ctrl\+O problems only/);

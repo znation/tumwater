@@ -524,29 +524,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### Kill orphans, part 2/2: the TUI Health pane's Ctrl+K twice kills the orphaned processes, the terminal twin of the dashboard's Kill orphans (planned 2026-10-20 by the plan role; requires part 1/2 landed for `orphanKillLines` and the `OrphanKillReport` export. Touches src/ui/tui/tui-keys.ts, src/ui/tui/tui-pane-session.ts, src/ui/tui/tui-panes.ts, src/ui/tui/tui-pane-health.ts, src/ui/tui/tui-frame.ts, docs/cli.md, test/tui-keys.test.ts, test/tui-frame.test.ts. Plain terms code run 15/20 later renames code in src/ui/tui/; this entry renames nothing)
-
-**Goal.** The TUI's Health pane already has Ctrl+R (re-run), Ctrl+E (reclaim) and Ctrl+N (test notify) as twins of dashboard actions. It has no twin for the Kill orphans button from part 1/2. A terminal operator who sees the orphans row fail should be able to reap the processes without leaving the TUI.
-
-**Approach.**
-- src/ui/tui/tui-keys.ts: add a `killOrphans?(root: string): Promise<OrphanKillReport>` seam to the deps beside `runDoctor`, defaulting to `(r) => killOrphans(r)` from src/doctor/doctor-orphans.ts, and pass it into the session deps the same way `runDoctor: runDoctorSeam` is passed.
-- src/ui/tui/tui-pane-session.ts: add `killOrphans(root)` to `TuiPanesDeps` and to the session, beside `runDoctor`. Add the armed pair `armedKillOrphans: boolean` and `killOrphansArmed: boolean`, both initially false and documented like `armedNotes`/`notesClearArmed`.
-- src/ui/tui/tui-panes.ts: `beginKey` moves `killOrphansArmed` into `armedKillOrphans` and clears `killOrphansArmed`, the same as the other armed pairs. Extend its doc comment to say that only the Health Ctrl+K branch reads `armedKillOrphans`.
-- src/ui/tui/tui-pane-health.ts: in `handleKey`, add a `key.ctrl && key.name === "k" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 7` branch. If `session.armedKillOrphans` is false, set `session.killOrphansArmed = true` and flash `press Ctrl+K again to kill the orphaned processes the orphans check lists — any other key keeps them`. If it is true, flash `killing orphaned processes …` and call `session.killOrphans(session.root)`. When that resolves, flash `orphanKillLines(report).join("; ")`, then `run()`, `session.paneScroll = 0` and `requestRender()`, the same order Ctrl+E uses. A rejection goes to `session.flashError`. Write the comment block in the style of the Ctrl+E/Ctrl+N blocks. Ctrl+K is not bound on any view outside the prompt-line editor (src/ui/tui/tui-input.ts), and `promptLineFree` keeps that editor's kill-line binding.
-- src/ui/tui/tui-frame.ts: the `health` hint list gets `["Ctrl+K", "kill orphans"]` after `["Ctrl+N", "test notify"]`.
-- docs/cli.md: add a `Ctrl+K` row to the TUI key table (Health: twice kills the orphaned processes, like `tumwater doctor --kill-orphans` and the dashboard Health card's Kill orphans). The Audit row's `doctor` text names the TUI's Health Ctrl+K beside the dashboard button.
-
-**Tests.**
-- test/tui-keys.test.ts, beside "Ctrl+N on the Health view runs the notify hook once and flashes the outcome": "Ctrl+K twice on the Health view kills the orphans and flashes the lines". With an injected `killOrphans` that counts calls and resolves `{ killed: [{ pid: 4242, command: "node x", descendants: 0 }], failed: [] }`, the first Ctrl+K makes no call and flashes the press-again note. The second makes one call, flashes `killed pid 4242 node x`, and calls the injected `runDoctor` again.
-- Same file: "a key between two Ctrl+K presses on the Health view disarms the kill". The sequence Ctrl+K, Ctrl+O, Ctrl+K makes no call.
-- Same file: "Ctrl+K off the Health view never kills". Ctrl+K twice on Activity makes no call.
-- test/tui-frame.test.ts: the health hint matches `/Ctrl\+K kill orphans/`.
-
-**Acceptance criteria.**
-- On the Health pane, Ctrl+K arms and a second consecutive Ctrl+K runs `killOrphans` once. The flash shows the same lines `doctor --kill-orphans` prints (joined with `; `), and the checks re-run.
-- Any other key between the two presses cancels the kill. Ctrl+K on other views, and in the prompt-line editor, behaves as it does today.
-- `npm run test:gate` passes.
-
 ### A merge blocked by a dirty primary checkout names the files git refused to overwrite, instead of cutting git's error off at "would be overwritten by merge:" (planned 2026-10-20 by the plan role; independent of every Planned entry. Touches src/merge/merge-git.ts and test/merge-git.test.ts. Plain terms code run 18/20 later renames code in src/merge/ but no identifier this entry uses or adds; whichever lands second only rebases)
 
 **Goal.** When the primary checkout is on main, a merge fast-forwards it with `git merge --ff-only` (`ffMainToOrWhy`, src/merge/merge-git.ts). If the checkout holds uncommitted edits to a file the merge changes, or untracked files the merge would create, git refuses. It lists the files on tab-indented lines below a `… would be overwritten by merge:` header. `ffFailureReason` keeps only the first line of the error, so both callers' warnings (`mergeToMain` in src/merge/merge-to-main.ts, the stacked fast-forward in src/merge/merge-stack.ts) end at that colon. Between 21:26 and 21:39 UTC on 2026-10-19 the event log held 10 such `merge blocked: fast-forward failed: … Your local changes to the following files would be overwritten by merge:` warnings, from plan, director, feature-3 and feature-2. None of them said which file to commit or remove. The warning should name the files.

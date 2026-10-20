@@ -29,6 +29,8 @@ export interface TuiPaneEditorState {
   instructionsEditFor: string | null;
   /** The Activity view's Ctrl+Y claude-window-reserve mode holds the prompt line. */
   claudeReserveMode: boolean;
+  /** The prompt line's typed text, when the caller carries it (the editors' state does). */
+  input?: string;
 }
 
 /** The per-keypress read `createTuiKeys` passes to every pane arm — the editor flags the

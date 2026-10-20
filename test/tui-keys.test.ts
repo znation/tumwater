@@ -3374,6 +3374,74 @@ test("Ctrl+N on the Health view runs the notify hook once and flashes the outcom
   assert.deepEqual(lines, ["merge_failed|tumwater|tumwater notify --test"]);
 });
 
+function killOrphansHarness(onView: number) {
+  const root = makeRoot();
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "ok",
+  } as DoctorReport;
+  let kills = 0;
+  let doctors = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => {
+      doctors += 1;
+      return Promise.resolve(report);
+    },
+    killOrphans: () => {
+      kills += 1;
+      return Promise.resolve({ killed: [{ pid: 4242, command: "node x", descendants: 0 }], failed: [] });
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < onView; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  return { keys, kills: () => kills, doctors: () => doctors };
+}
+
+test("Ctrl+K twice on the Health view kills the orphans and flashes the lines", async () => {
+  const h = killOrphansHarness(7);
+  assert.equal(h.keys.state().view, 7);
+  await Promise.resolve();
+  const before = h.doctors();
+  h.keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(h.kills(), 0);
+  assert.match(h.keys.state().flash!, /press Ctrl\+K again to kill the orphaned processes/);
+  h.keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(h.kills(), 1);
+  await waitFor(() => (h.keys.state().flash ?? "").includes("killed pid 4242 node x"), "the kill flash");
+  assert.equal(h.keys.state().flash, "killed pid 4242 node x");
+  assert.equal(h.doctors(), before + 1);
+});
+
+test("a key between two Ctrl+K presses on the Health view disarms the kill", () => {
+  const h = killOrphansHarness(7);
+  h.keys.handleKey(undefined, { ctrl: true, name: "k" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "o" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(h.kills(), 0);
+});
+
+test("Ctrl+K on the Health view with text typed on the prompt line kills no orphans", () => {
+  const h = killOrphansHarness(7);
+  h.keys.handleKey("x", { name: "x" });
+  assert.equal(h.keys.state().input, "x");
+  h.keys.handleKey(undefined, { ctrl: true, name: "k" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(h.kills(), 0);
+});
+
+test("Ctrl+K off the Health view never kills", () => {
+  const h = killOrphansHarness(0);
+  h.keys.handleKey(undefined, { ctrl: true, name: "k" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(h.kills(), 0);
+});
+
 test("Ctrl+N on the Health view with no notify configured flashes the missing-setting wording and leaves the report", async () => {
   const root = makeRoot();
   const report: DoctorReport = {

@@ -3,6 +3,7 @@ import type { TickDetail } from "../../run/run-detail-data.js";
 import { runDetailStat } from "../../run/run-detail.js";
 import { collectTeamChanges, collectRoleChange, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { runDoctor } from "../../doctor/doctor.js";
+import { killOrphans, type OrphanKillReport } from "../../doctor/doctor-orphans.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { commitOperatorBacklogEdit } from "../../backlog/backlog-commit.js";
@@ -33,6 +34,9 @@ interface TuiKeysDeps {
   /** Seam for the Health tab's checks; defaults to `runDoctor` so tests need not probe
    * binaries or git. */
   runDoctor?(root: string): Promise<DoctorReport>;
+  /** Seam for the Health tab's Ctrl+K orphan kill; defaults to `killOrphans` so tests need not
+   * scan the process table or signal anything. */
+  killOrphans?(root: string): Promise<OrphanKillReport>;
   /** The transcript Change mode's async collector; production uses change-data's
    * collectRoleChange. Injectable so tests can resolve a fixed view without git plumbing. */
   collectChange?(root: string, role: string): Promise<RoleChangeView>;
@@ -249,6 +253,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const { root } = deps;
   const collectPending = deps.collectPending ?? collectTeamChanges;
   const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r, undefined, undefined, "never"));
+  const killOrphansSeam = deps.killOrphans ?? ((r: string) => killOrphans(r));
   const collectChange = deps.collectChange ?? collectRoleChange;
   const tickStat = deps.tickStat ?? runDetailStat;
   // The project-status pane's flat entry list (plans, bugs, questions, then the newest done plans
@@ -290,6 +295,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     commitBacklogEdit,
     collectPending,
     runDoctor: runDoctorSeam,
+    killOrphans: killOrphansSeam,
     collectChange,
     tickStat,
   });

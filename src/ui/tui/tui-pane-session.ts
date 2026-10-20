@@ -2,6 +2,7 @@
 import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import type { TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
+import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
 import type { TickDetail } from "../../run/run-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
 import type { HistoryResultClass } from "../../history/history-data.js";
@@ -30,6 +31,7 @@ export interface TuiPanesDeps {
   commitBacklogEdit(file: string, subject: string): void;
   collectPending(root: string): Promise<TeamChangeView>;
   runDoctor(root: string): Promise<DoctorReport>;
+  killOrphans(root: string): Promise<OrphanKillReport>;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
   tickStat(root: string, detail: TickDetail): Promise<string>;
 }
@@ -142,6 +144,10 @@ export interface TuiPaneSession {
   armedNotes: string | null;
   /** The transcript pane's armed role for a second Ctrl+X; moved to `armedNotes` by beginKey. */
   notesClearArmed: string | null;
+  /** The armed orphan kill (first Ctrl+K on the Health pane), read by the second. */
+  armedKillOrphans: boolean;
+  /** The Health pane's pending second Ctrl+K; moved to `armedKillOrphans` by beginKey. */
+  killOrphansArmed: boolean;
   root: string;
   now(): number;
   requestRender(): void;
@@ -151,6 +157,7 @@ export interface TuiPaneSession {
   commitBacklogEdit(file: string, subject: string): void;
   collectPending(root: string): Promise<TeamChangeView>;
   runDoctor(root: string): Promise<DoctorReport>;
+  killOrphans(root: string): Promise<OrphanKillReport>;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
   tickStat(root: string, detail: TickDetail): Promise<string>;
 }
@@ -171,6 +178,8 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     releaseArmed: null,
     armedNotes: null,
     notesClearArmed: null,
+    armedKillOrphans: false,
+    killOrphansArmed: false,
     root: deps.root,
     now: deps.now,
     requestRender: deps.requestRender,
@@ -180,6 +189,7 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     commitBacklogEdit: deps.commitBacklogEdit,
     collectPending: deps.collectPending,
     runDoctor: deps.runDoctor,
+    killOrphans: deps.killOrphans,
     collectChange: deps.collectChange,
     tickStat: deps.tickStat,
   };

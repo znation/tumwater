@@ -37,7 +37,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   const brief = createBriefPane(session);
 
   /** Every key starts disarmed; only the backlog Ctrl+X/Ctrl+R branches read `armed`/
-   * `armedRelease` and only the notebook Ctrl+X branch reads `armedNotes`. */
+   * `armedRelease`, only the notebook Ctrl+X branch reads `armedNotes`, and only the Health
+   * Ctrl+K branch reads `armedKillOrphans`. */
   const beginKey = (): void => {
     session.armed = session.cancelArmed;
     session.cancelArmed = null;
@@ -45,6 +46,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     session.releaseArmed = null;
     session.armedNotes = session.notesClearArmed;
     session.notesClearArmed = null;
+    session.armedKillOrphans = session.killOrphansArmed;
+    session.killOrphansArmed = false;
   };
 
   /** The per-key pane snapshot the editors' open arms read. */
@@ -137,6 +140,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       if (health.handleKey?.(key, ctx)) return true;
       return report.handleKey?.(key, ctx) ?? false;
     }
+    if (key.ctrl && key.name === "k") return health.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "s") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "p") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "y") return history.handleKey?.(key, ctx) ?? false;

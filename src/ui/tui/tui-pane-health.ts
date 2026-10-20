@@ -1,5 +1,6 @@
 // vocabulary: plain
 import { renderDoctor, renderDoctorProblems } from "../../doctor/doctor-render.js";
+import { orphanKillLines } from "../../doctor/doctor-orphans.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { runManualReclaim } from "../../operator/operator-intent.js";
 import { testNotifyHook } from "../../cli/notify-command.js";
@@ -101,6 +102,39 @@ export function createHealthPane(session: TuiPaneSession) {
               ? "notify is not configured (set `notify` in tumwater.json)"
               : outcome.message,
           );
+          session.requestRender();
+        },
+        (err: unknown) => {
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
+      return true;
+    }
+    if (key.ctrl && key.name === "k" && promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7) {
+      // Ctrl+K on the Health pane, pressed twice, kills the orphaned processes the orphans check
+      // lists, each with its descendants — the terminal twin of `tumwater doctor --kill-orphans`
+      // and the dashboard Health card's Kill orphans, all reached through the same killOrphans.
+      // The first press only arms (beginKey disarms on any other key) and flashes what a second
+      // press does; the second flashes the same lines the CLI prints, joined with "; ", then
+      // re-runs the checks so the orphans row reflects the kill. A failure flashes instead of
+      // killing the TUI. Ctrl+K stays the prompt-line editor's kill-line while text is typed
+      // or an editor holds the line, and is unbound on every other view.
+      if (!session.armedKillOrphans) {
+        session.killOrphansArmed = true;
+        session.flashMessage(
+          "press Ctrl+K again to kill the orphaned processes the orphans check lists — any other key keeps them",
+        );
+        session.requestRender();
+        return true;
+      }
+      session.flashMessage("killing orphaned processes …");
+      session.requestRender();
+      void session.killOrphans(session.root).then(
+        (report) => {
+          session.flashMessage(orphanKillLines(report).join("; "));
+          run();
+          session.paneScroll = 0;
           session.requestRender();
         },
         (err: unknown) => {

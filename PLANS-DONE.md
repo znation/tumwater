@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Kill orphans, part 2/2: the TUI Health pane's Ctrl+K twice kills the orphaned processes, the terminal twin of the dashboard's Kill orphans (planned 2026-10-20 by the plan role; requires part 1/2 landed for `orphanKillLines` and the `OrphanKillReport` export. Touches src/ui/tui/tui-keys.ts, src/ui/tui/tui-pane-session.ts, src/ui/tui/tui-panes.ts, src/ui/tui/tui-pane-health.ts, src/ui/tui/tui-frame.ts, docs/cli.md, test/tui-keys.test.ts, test/tui-frame.test.ts. Plain terms code run 15/20 later renames code in src/ui/tui/; this entry renames nothing, done 2026-10-20 by the feature role)
+
+**Goal.** The TUI's Health pane already has Ctrl+R (re-run), Ctrl+E (reclaim) and Ctrl+N (test notify) as twins of dashboard actions. It has no twin for the Kill orphans button from part 1/2. A terminal operator who sees the orphans row fail should be able to reap the processes without leaving the TUI.
+
+**Approach.**
+- src/ui/tui/tui-keys.ts: add a `killOrphans?(root: string): Promise<OrphanKillReport>` seam to the deps beside `runDoctor`, defaulting to `(r) => killOrphans(r)` from src/doctor/doctor-orphans.ts, and pass it into the session deps the same way `runDoctor: runDoctorSeam` is passed.
+- src/ui/tui/tui-pane-session.ts: add `killOrphans(root)` to `TuiPanesDeps` and to the session, beside `runDoctor`. Add the armed pair `armedKillOrphans: boolean` and `killOrphansArmed: boolean`, both initially false and documented like `armedNotes`/`notesClearArmed`.
+- src/ui/tui/tui-panes.ts: `beginKey` moves `killOrphansArmed` into `armedKillOrphans` and clears `killOrphansArmed`, the same as the other armed pairs. Extend its doc comment to say that only the Health Ctrl+K branch reads `armedKillOrphans`.
+- src/ui/tui/tui-pane-health.ts: in `handleKey`, add a `key.ctrl && key.name === "k" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 7` branch. If `session.armedKillOrphans` is false, set `session.killOrphansArmed = true` and flash `press Ctrl+K again to kill the orphaned processes the orphans check lists — any other key keeps them`. If it is true, flash `killing orphaned processes …` and call `session.killOrphans(session.root)`. When that resolves, flash `orphanKillLines(report).join("; ")`, then `run()`, `session.paneScroll = 0` and `requestRender()`, the same order Ctrl+E uses. A rejection goes to `session.flashError`. Write the comment block in the style of the Ctrl+E/Ctrl+N blocks. Ctrl+K is not bound on any view outside the prompt-line editor (src/ui/tui/tui-input.ts), and `promptLineFree` keeps that editor's kill-line binding.
+- src/ui/tui/tui-frame.ts: the `health` hint list gets `["Ctrl+K", "kill orphans"]` after `["Ctrl+N", "test notify"]`.
+- docs/cli.md: add a `Ctrl+K` row to the TUI key table (Health: twice kills the orphaned processes, like `tumwater doctor --kill-orphans` and the dashboard Health card's Kill orphans). The Audit row's `doctor` text names the TUI's Health Ctrl+K beside the dashboard button.
+
+**Tests.**
+- test/tui-keys.test.ts, beside "Ctrl+N on the Health view runs the notify hook once and flashes the outcome": "Ctrl+K twice on the Health view kills the orphans and flashes the lines". With an injected `killOrphans` that counts calls and resolves `{ killed: [{ pid: 4242, command: "node x", descendants: 0 }], failed: [] }`, the first Ctrl+K makes no call and flashes the press-again note. The second makes one call, flashes `killed pid 4242 node x`, and calls the injected `runDoctor` again.
+- Same file: "a key between two Ctrl+K presses on the Health view disarms the kill". The sequence Ctrl+K, Ctrl+O, Ctrl+K makes no call.
+- Same file: "Ctrl+K off the Health view never kills". Ctrl+K twice on Activity makes no call.
+- test/tui-frame.test.ts: the health hint matches `/Ctrl\+K kill orphans/`.
+
+**Acceptance criteria.**
+- On the Health pane, Ctrl+K arms and a second consecutive Ctrl+K runs `killOrphans` once. The flash shows the same lines `doctor --kill-orphans` prints (joined with `; `), and the checks re-run.
+- Any other key between the two presses cancels the kill. Ctrl+K on other views, and in the prompt-line editor, behaves as it does today.
+- `npm run test:gate` passes.
+
 ### A run whose end-of-run sweep had to kill processes it left running logs a warning naming the role and the count, so a leaking role shows up in the event feed instead of the sweep's count being discarded (planned 2026-10-20 by the plan role; independent of every Planned entry. Touches src/process/run-marker.ts, src/agent/run-agent.ts, src/runner/runner-pi.ts, test/run-marker.test.ts and test/pi-process.test.ts. The blocked Plain terms code parts reword src/runner/runner-pi.ts and src/agent/run-agent.ts, but they rename no identifier this entry uses or adds; whichever lands second only rebases; done 2026-10-20)
 
 **Goal.** When pi exits, the exit hook in `runAgent` (src/agent/run-agent.ts) calls `sweepRunMarker(runMarker)` (src/process/run-marker.ts). That sends SIGTERM to every process still carrying the run's `TUMWATER_RUN` mark and returns how many it signaled, but the hook throws the number away (`void sweepRunMarker(runMarker).catch(() => {})`). So nobody can tell which role's runs leave servers, watchers or `logs -f` followers running. BUGS.md's open entry about two leaked `logs -f` processes had to be traced by hand. When a run that tumwater did not kill leaves marked processes running, the run should log one warning under its role, giving the run kind and how many processes the sweep signaled. Runs that tumwater kills (abort, deadline, quiet watchdog, blind image read) are excluded: their process group got SIGTERM moments before the sweep scans, so members that are still exiting would be counted and every killed run would raise a false leak.
