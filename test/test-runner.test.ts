@@ -278,7 +278,7 @@ test("suiteGitEnv appends maintenance.auto=false after any env-injected git conf
 });
 
 test("suiteEnv drops every variable the harness resolves, so a team-started suite matches a hand-run one", () => {
-  // BUGS.md 2026-09-28: resolveAgentBin prefers TUMWATER_PI_BIN to PATH, and a team's build
+  // BUGS.md 2026-09-28: resolveBackendBin prefers TUMWATER_PI_BIN to PATH, and a team's build
   // checks and pi tool calls inherit the operator's export, so every fake-pi test spawned the
   // binary it named instead of the shim the test had put on PATH. The same leak applies to the
   // other harness-resolved variables, so suiteEnv clears them too.
@@ -295,7 +295,7 @@ test("suiteEnv drops every variable the harness resolves, so a team-started suit
   };
   const scratch = tmpdir("suite-env-");
   const env = suiteEnv(scratch, base);
-  assert.equal("TUMWATER_PI_BIN" in env, false, "resolveAgentBin must fall through to the fakes on PATH");
+  assert.equal("TUMWATER_PI_BIN" in env, false, "resolveBackendBin must fall through to the fakes on PATH");
   assert.equal(SUPERVISED_ENV in env, false, "a CLI child's `run` must take its supervisor half");
   assert.equal(SUPERVISOR_PID_ENV in env, false, "an inherited supervisor pid must not outlive the supervisor it named");
   assert.equal("TUMWATER_NOTES_PATH" in env, false, "a non-authoring run must not carry a note");

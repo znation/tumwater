@@ -2,7 +2,7 @@
 /** Installing the per-team `tumwater-notes` shim every backend's run finds on its PATH
  * (plans/notes-command.md "Reaching it from a run"): run-agent calls `ensureNotesShim(root)`
  * before building each invocation, and the backend prepends the returned dir to the run's
- * PATH (agentBaseEnv's `binDir`, src/process/run-marker.ts). The shim is a two-line `sh`
+ * PATH (backendBaseEnv's `binDir`, src/process/run-marker.ts). The shim is a two-line `sh`
  * script that execs the compiled notes CLI, so a model's shell — pi's, Claude Code's or
  * OpenCode's — runs the same command on every backend.
  *

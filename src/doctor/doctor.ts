@@ -13,7 +13,7 @@ import { shortSha } from "../text/format.js";
 import type { CheckOutcome } from "./outcome.js";
 import type { DoctorCheckName } from "./doctor-check-names.js";
 import {
-  checkAgentBinary,
+  checkBackendBinary,
   checkBrief,
   checkBootstrap,
   checkBuild,
@@ -42,7 +42,7 @@ import {
   type DoctorReport,
 } from "./doctor-checks.js";
 import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackChain, checkFallbackModel, checkImageInput, checkOpencode, checkTierModels } from "./doctor-model-checks.js";
-import { agentQualifiedSelector } from "../config/config-views.js";
+import { backendQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleQueuedMerges, checkStaleBugs, checkStalePrompts, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkValidationGaps, checkWaitingBugs } from "./doctor-backlog.js";
 
@@ -82,7 +82,7 @@ export async function runDoctor(
   const routing: DoctorReport["routing"] = config
     ? seamsInUse(config).map((s) => ({
         label: s.label,
-        selector: s.model !== undefined ? agentQualifiedSelector({ ...s, model: s.model }) : "no model declared",
+        selector: s.model !== undefined ? backendQualifiedSelector({ ...s, model: s.model }) : "no model declared",
         backend: s.agent ?? "pi",
       }))
     : [];
@@ -124,7 +124,7 @@ export async function runDoctor(
     { name: "claude version", run: () => checkClaudeVersion(root, pathEnv) },
     { name: "opencode version", run: () => checkOpencodeVersion(root, pathEnv) },
     { name: "opencode", run: () => checkOpencode(root, pathEnv) },
-    { name: "backend binary", run: () => checkAgentBinary(root, pathEnv) },
+    { name: "backend binary", run: () => checkBackendBinary(root, pathEnv) },
     // The transcript total is informational and only read when a seam routes to claude.
     { name: "claude transcripts", run: () => checkClaudeTranscripts(config) },
     // The receive-side guards name what a running team skips, so an operator tool meant for the

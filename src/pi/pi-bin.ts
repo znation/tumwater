@@ -10,7 +10,7 @@ import { envPath, findOnPath } from "../files/files.js";
  * The spawn (src/agent/run-agent.ts) resolves through each backend's resolveBin; the startup
  * gate (gates/startup-gate.ts) walks every enabled seam's backend through the same resolution and
  * executability rule, and doctor (doctor/doctor-checks.ts) asks them for every backend in use
- * (agentsInUse, the startup gate's rule). Each surface quotes this module's wording, so the
+ * (backendsInUse, the startup gate's rule). Each surface quotes this module's wording, so the
  * executability verdict and the pi text cannot drift between them. Split out of
  * gates/readiness.ts, which keeps the repo preconditions' shared wording: the backend binary is
  * the backends' own concern, so its resolution lives beside the spawn instead of in the gate
@@ -181,15 +181,3 @@ export function resolveBinForBackend(
 ): ResolvedBackendBin {
   return resolveBackendBin(config, backend.id, { binEnv: backend.binEnv, defaultBin: backend.defaultBin });
 }
-
-/** @deprecated Use backendMissingMessage. */
-export const agentMissingMessage = backendMissingMessage;
-
-/** @deprecated Use findBackendBinary. */
-export const findAgentBinary = findBackendBinary;
-
-/** @deprecated Use resolveBackendBin. */
-export const resolveAgentBin = resolveBackendBin;
-
-/** @deprecated Use backendBinSourceLabelFor. */
-export const agentBinSourceLabelFor = backendBinSourceLabelFor;

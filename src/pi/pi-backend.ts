@@ -6,7 +6,7 @@
 
 import { piArgs } from "./pi-args.js";
 import { resolveBinForBackend, type ResolvedBackendBin } from "./pi-bin.js";
-import { agentBaseEnv, withNotesPath } from "../process/run-marker.js";
+import { backendBaseEnv, withNotesPath } from "../process/run-marker.js";
 import { isPermanentConfigError, matchBackendFailure } from "./pi-failure.js";
 import { hasResumableSession, sessionResumable } from "../agent/session-ledger.js";
 import type {
@@ -61,7 +61,7 @@ export const piBackend: AgentBackend = {
       continueSession: run.continueSession,
       agentBin: run.agentBin,
     });
-    const env = withNotesPath(agentBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
+    const env = withNotesPath(backendBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
     return { args, stdin: run.prompt, env };
   },
 

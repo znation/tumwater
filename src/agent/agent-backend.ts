@@ -192,12 +192,3 @@ export function backendSessionResumable(
   if (backend?.resumable) return backend.resumable(dir, opts, configDir);
   return hasResumableSession(dir);
 }
-
-/** @deprecated Use DEFAULT_BACKEND. */
-export const DEFAULT_AGENT = DEFAULT_BACKEND;
-
-/** @deprecated Use backendById. */
-export const agentBackend = backendById;
-
-/** @deprecated Use backendSessionResumable. */
-export const agentSessionResumable = backendSessionResumable;

@@ -110,7 +110,7 @@ export function runStartMap(events: HarnessEvent[]): Map<string, number> {
 /** The run_start pairing's model selectors: `${role}#${run}` → the run's model when its
  * run_start carries a non-empty string `model` (the agent-qualified selector string — a
  * per-role override, a fallback, or the primary — that the status rows carry; see
- * config-views.ts's agentQualifiedSelector). A run_start with no `model`, or an empty or
+ * config-views.ts's backendQualifiedSelector). A run_start with no `model`, or an empty or
  * non-string one, adds no entry, so `tumwater history`'s model cell renders empty for a start
  * that named none — exactly the empty-usage convention applied to cells. The finite-`ts`
  * guard rides runStartEvents, the one home of the pairing. */

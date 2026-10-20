@@ -15,10 +15,10 @@ import {
   teamWorkspaceMessage,
 } from "./readiness.js";
 import { owningTeamRoot } from "../paths.js";
-import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
+import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 import { refreshOpencodeCatalog, type CatalogFetch } from "../agent/opencode/opencode-catalog.js";
-import { agentBackend } from "../agent/agent-backend.js";
+import { backendById } from "../agent/agent-backend.js";
 // Register the built-in pi and claude adapters into the registry this module reads (see
 // unregisteredBackendInUse) — importing run-agent.ts is the one place they register.
 import "../agent/run-agent.js";
@@ -101,15 +101,15 @@ export async function runStartupCheck(
   }
   // Fail fast instead of starting roles whose every run dies with "spawn <bin> ENOENT". Every
   // enabled seam's agent — the top-level `agent` plus each enabled role's resolved view and the
-  // reviewer — resolves through the same resolveAgentBin the spawn uses (and doctor's pi check);
-  // a missing one names its own agent's binary, not pi's. resolveAgentBin normalizes path-shaped
+  // reviewer — resolves through the same resolveBackendBin the spawn uses (and doctor's pi check);
+  // a missing one names its own agent's binary, not pi's. resolveBackendBin normalizes path-shaped
   // values against THIS process's cwd, which every generation inherits, so what is checked here
   // is exactly what the runs spawn.
-  for (const agent of agentsInUse(config)) {
-    const resolved = resolveAgentBin(config, agent);
-    // The shared executability rule (pi/pi-bin.ts's findAgentBinary — the one doctor's pi check
+  for (const agent of backendsInUse(config)) {
+    const resolved = resolveBackendBin(config, agent);
+    // The shared executability rule (pi/pi-bin.ts's findBackendBinary — the one doctor's pi check
     // asks too), so a seam's missing binary reads the same way on both surfaces.
-    if (!findAgentBinary(resolved)) return { problem: agentMissingMessage(resolved, agent) };
+    if (!findBackendBinary(resolved)) return { problem: backendMissingMessage(resolved, agent) };
   }
   // Seed the claude account state before the first run (plans/agent-backends.md part 6a):
   // `claude auth status` decides subscription vs API key, and an existing file is left alone.
@@ -117,7 +117,7 @@ export async function runStartupCheck(
   // process: runStartupCheck is also the redeploy/supervisor poll's ask (runStartupProblem),
   // and a logged-out claude would otherwise spawn a bounded probe on every poll. If the seed
   // fails, the first claude run's observation fills the file in.
-  if (!claudeSeedAttempted.has(root) && agentsInUse(config).includes("claude")) {
+  if (!claudeSeedAttempted.has(root) && backendsInUse(config).includes("claude")) {
     claudeSeedAttempted.add(root);
     seedClaudeAccount(root, config);
   }
@@ -126,13 +126,13 @@ export async function runStartupCheck(
   // reads every opencode seam NOT free (the safe direction for the budget gate). Mirroring the
   // claude seed above, it runs once per root per process when a model job routes to opencode;
   // a failed fetch keeps the last good cache (or an empty one) and never blocks startup.
-  if (!opencodeSeedAttempted.has(root) && agentsInUse(config).includes("opencode")) {
+  if (!opencodeSeedAttempted.has(root) && backendsInUse(config).includes("opencode")) {
     opencodeSeedAttempted.add(root);
     await refreshOpencodeCatalog(root, {
       providers: opencodeProviders(config),
       // Probe the configured opencode binary (not a different one on PATH) for the version, so
       // the freshness check compares against the binary the team actually runs.
-      cliBin: resolveAgentBin(config, "opencode").bin,
+      cliBin: resolveBackendBin(config, "opencode").bin,
       fetch: opencodeSeed.fetch,
       now: opencodeSeed.now,
     });
@@ -173,7 +173,7 @@ export function opencodeProviders(config: TumwaterConfig): string[] {
  * as a fallback, the resolver, or the director is checked exactly like a primary seam.
  * One list the startup gate and doctor's binary check share, so a route the harness would
  * spawn is checked on both surfaces. */
-export function agentsInUse(config: TumwaterConfig): string[] {
+export function backendsInUse(config: TumwaterConfig): string[] {
   return [...new Set(seamsInUse(config).map((s) => s.agent ?? "pi"))];
 }
 
@@ -185,7 +185,7 @@ export function agentsInUse(config: TumwaterConfig): string[] {
  * can serve. After the opencode adapter lands (part 5/7) this stays the general rule for any
  * future id. */
 export function unregisteredBackendInUse(config: TumwaterConfig): string | undefined {
-  return agentsInUse(config).find((agent) => agentBackend(agent) === undefined);
+  return backendsInUse(config).find((agent) => backendById(agent) === undefined);
 }
 
 /** runStartupCheck reduced to its verdict: the message a generation would fail on right now, or

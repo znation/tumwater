@@ -21,7 +21,7 @@ import { randomUUID } from "node:crypto";
 import { resolvedBackendConfig } from "../../config/config-views.js";
 import { MODEL_TIERS } from "../../config/config-schema.js";
 import { routeModel } from "../../config/model-selector.js";
-import { agentBaseEnv, withNotesPath } from "../../process/run-marker.js";
+import { backendBaseEnv, withNotesPath } from "../../process/run-marker.js";
 import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
 import { expandHomeTilde } from "../../files/files.js";
 import { claudeArgs } from "./claude-args.js";
@@ -192,12 +192,12 @@ export const claudeBackend: AgentBackend = {
       // adapter forwards it; a subscription run or the director passes none (part 7a/7).
       ...(run.maxBudgetUsd !== undefined ? { maxBudgetUsd: run.maxBudgetUsd } : {}),
     });
-    // agentBaseEnv applies the run marker and the macOS preload (shared with the pi adapter);
+    // backendBaseEnv applies the run marker and the macOS preload (shared with the pi adapter);
     // claudeEnv layers the backend's own scrub-and-set on top. The notes path rides beside
     // the marker the same way pi's adapter carries it (withNotesPath); from part 2/4 the run
     // saves its note through the `tumwater-notes` command on PATH, so no MCP server reaches the
     // run and `--strict-mcp-config` (always in claude-args.ts) keeps it that way.
-    const base = withNotesPath(agentBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
+    const base = withNotesPath(backendBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
     const env = claudeEnv(base, {
       quietTimeoutSeconds: run.config.quietTimeoutSeconds,
       ...(expandedConfigDir !== undefined ? { configDir: expandedConfigDir } : {}),

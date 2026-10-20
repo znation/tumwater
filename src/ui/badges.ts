@@ -225,12 +225,12 @@ export function budgetBadge(
   const tierEntries = fallbackTierEntries(budget.tiers);
   // The backend-default label when the engaged pair names neither half: `<agent> default`
   // (plans/agent-backends.md part 4f/7), `pi default` for a pi team as before.
-  const agentDefault = `${budget.backend && budget.backend !== "pi" ? budget.backend : "pi"} default`;
+  const backendDefault = `${budget.backend && budget.backend !== "pi" ? budget.backend : "pi"} default`;
   const fallback =
     teamBudgetGate(budget) === "fallback"
       ? tierEntries.length >= 2
         ? ` · over-cap model: ${tierEntries.join(", ")} (cost n/a)`
-        : ` · over-cap model: ${fallbackDisplayPair(budget.fallback, agentDefault)} (cost n/a)`
+        : ` · over-cap model: ${fallbackDisplayPair(budget.fallback, backendDefault)} (cost n/a)`
       : "";
   const forecast =
     budget.capHitAt !== null

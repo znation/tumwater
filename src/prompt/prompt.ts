@@ -421,9 +421,9 @@ export function buildDirectorPrompt(
   /** Rendered actionable backlog index (see backlog-index.ts); the run prompt carries it
    * too, so the director can route against the same bounded view of the backlog. */
   backlogIndex?: string,
-  /** The agent backend the director resolves to, selecting the prompt dialect (./dialect.ts).
+  /** The backend the director resolves to, selecting the prompt dialect (./dialect.ts).
    * Omitted: pi's dialect. */
-  agent?: string,
+  backend?: string,
   /** The director's `roles.director.instructions` override — its run prompt is otherwise the
    * user's request. Omitted: no `Additional standing instructions` block, exactly as today. */
   extraInstructions?: string,
@@ -492,6 +492,6 @@ with a warning, so such a request is guidance to record per the routing rules, n
 can make.`,
   );
   // A director run is never assigned an entry.
-  parts.push(commonRules(check, briefFile, undefined, dialectFor(agent)).trim());
+  parts.push(commonRules(check, briefFile, undefined, dialectFor(backend)).trim());
   return parts.join("\n\n");
 }

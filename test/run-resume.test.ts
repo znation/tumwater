@@ -66,7 +66,7 @@ function plan(
   root: string,
   s: RunnerState,
   opts: {
-    runPrompt?: (agent?: string, compact?: boolean) => string | null;
+    runPrompt?: (backend?: string, compact?: boolean) => string | null;
     pending?: PendingPrompt;
     agent?: string;
   } = {},
@@ -108,8 +108,8 @@ test("a fresh run hands the effective agent to the prompt assembly", () => {
   let seen: string | undefined = "unset";
   const p = plan(dir, s, {
     agent: "claude",
-    runPrompt: (agent) => {
-      seen = agent;
+    runPrompt: (backend) => {
+      seen = backend;
       return "assembled";
     },
   });

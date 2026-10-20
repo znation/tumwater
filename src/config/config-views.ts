@@ -432,9 +432,3 @@ export function fallbackDisplayPair(
   if (p.provider !== undefined) return p.provider;
   return backendDefault;
 }
-
-/** @deprecated Use resolvedBackendConfig. */
-export const resolvedAgentConfig = resolvedBackendConfig;
-
-/** @deprecated Use backendQualifiedSelector. */
-export const agentQualifiedSelector = backendQualifiedSelector;

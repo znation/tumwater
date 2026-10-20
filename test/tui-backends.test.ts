@@ -122,7 +122,7 @@ test("Ctrl+X pre-fills compact JSON from a set backends", async () => {
 });
 
 // Saving over a file that carries the legacy top-level `agentBin` collapses to the single
-// `backends.pi.bin` spelling: the whole-section set runs collapseAgentAliases, so the file
+// `backends.pi.bin` spelling: the whole-section set runs collapseBackendAliases, so the file
 // never holds both forms.
 test("Ctrl+X saving over a legacy agentBin leaves exactly the backends.pi.bin spelling", async () => {
   const repo = await makeTuiRepo();

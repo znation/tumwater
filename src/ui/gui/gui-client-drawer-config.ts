@@ -24,7 +24,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     const rows = [];
     // A role that runs on pi's own saved default carries no provider/model but a piDefault
     // selector (rolePayload's resolvedModelFields leaves both undefined), and the CLI's
-    // Model line names that default (<agent> default (<selector>), agentDefault). Mirror
+    // Model line names that default (<agent> default (<selector>), backendDefault). Mirror
     // that branch so the drawer names the model a default pi team actually runs on.
     const defaultLine = typeof view.piDefault === "string"
       ? (view.backend && view.backend !== "pi" ? view.backend : "pi") + " default (" + view.piDefault + ")"

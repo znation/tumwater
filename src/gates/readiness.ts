@@ -4,7 +4,7 @@
  * refuses a swap on it) and doctor.ts reports each one individually, but every surface
  * describes the same problems — so the wording lives here once and cannot drift.
  * `GIT_MISSING_MESSAGE` (git/git-run.ts) is the sibling for a machine with no git binary; the
- * agent-binary preconditions (resolveAgentBin, findAgentBinary, piMissingMessage) live beside
+ * agent-binary preconditions (resolveBackendBin, findBackendBinary, piMissingMessage) live beside
  * the spawn in pi/pi-bin.ts. */
 export const NOT_A_REPO_MESSAGE = "not a git repository (run `git init` first)";
 export const NO_COMMITS_MESSAGE =

@@ -531,7 +531,7 @@ test("checkTierModels checks a pi fallback's provider", async () => {
 });
 
 // The claude checks' stand-down (without a claude seam) and the binary check's agent list
-// (agentsInUse) both derive from the one seamsInUse list, so a fallback-only claude can never
+// (backendsInUse) both derive from the one seamsInUse list, so a fallback-only claude can never
 // disagree: covered above for the checks, and by the startup-gate fallback test for the seed.
 test("a claude-only fallback is reported by the doctor's binary/credential/version checks together", async () => {
   const root = readyRepo();
@@ -539,7 +539,7 @@ test("a claude-only fallback is reported by the doctor's binary/credential/versi
   const bin = tmpdir("doctor-claude-fallback-2-");
   writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
   // Both surfaces see claude — the auth check runs (not "no model jobs run on claude") proving
-  // claudeSeamsInUse is true, which is exactly what the binary check's agentsInUse reports too.
+  // claudeSeamsInUse is true, which is exactly what the binary check's backendsInUse reports too.
   const auth = await checkClaudeAuth(root, bin);
   assert.ok(!auth.detail.includes("no model jobs run on claude"), `a fallback claude is in use: ${auth.detail}`);
 });

@@ -23,7 +23,7 @@ import {
 import type { RunnerPi } from "./runner-pi.js";
 import {
   modelSelectorField,
-  resolvedAgentConfig,
+  resolvedBackendConfig,
   reviewRunConfig,
   scheduleConfigForRole,
   seamHoldKey,
@@ -35,7 +35,7 @@ import { imageReroute, seamImageInput } from "../agent/image-input.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planRunStart, type RunStartPlan } from "../run/run-resume.js";
-import { DEFAULT_AGENT } from "../agent/agent-backend.js";
+import { DEFAULT_BACKEND } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { seamAgent } from "../config/model-selector.js";
 import { modelTrailerLine } from "../git/commit-message.js";
@@ -85,7 +85,7 @@ export interface RunnerRunContext {
   warn(message: string): void;
   /** The signal a run's pi runs watch: harness shutdown OR this run's abort controller. */
   runSignal(): AbortSignal;
-  runPrompt(agent?: string): string | null;
+  runPrompt(backend?: string): string | null;
   /** Which pair set an image reroute may look among (plans/image-input.md "Reroute target"
    * "Regime"): the free fallback pairs while the budget gate is on fallback or the role is
    * in a model-fallback episode, else the primary tiers. Delegates to the runner's rule. */
@@ -346,11 +346,11 @@ export async function runOncePhase(
     role: ctx.role,
     state: s,
     pending: ctx.pending,
-    runPrompt: (agent) => ctx.runPrompt(agent),
-    agent: cfg.agent ?? DEFAULT_AGENT,
+    runPrompt: (backend) => ctx.runPrompt(backend),
+    agent: cfg.agent ?? DEFAULT_BACKEND,
     // The team's configured claude config dir, so planRunStart's claude resume guard looks
     // under the same dir the run's env writes its transcript to (note 4/4). Unset → undefined.
-    claudeConfigDir: resolvedAgentConfig(cfg, "claude").configDir,
+    claudeConfigDir: resolvedBackendConfig(cfg, "claude").configDir,
     // A director with no prompt but a kept merge pin still goes through the run, for its recovery.
     recoveryOnly:
       ctx.role === DIRECTOR_ROLE && ctx.pending.get() === null && (await hasUnmergedPin(ctx.root, ctx.role)),

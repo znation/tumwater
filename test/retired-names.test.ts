@@ -55,6 +55,35 @@ const RETIRED: readonly RetiredFamily[] = [
     // `tumwater run`'s old code names; "run" is the new word, so they cannot be words.
     identifiers: ["cmdRun", "RUN_FLAG_SPECS", "superviseRun", "superviseRunCommand", "spawnRunChild"],
   },
+  { family: "notebook → notes", words: ["notebook", "notebooks"], fileWords: ["notebook"], allow: [] },
+  {
+    family: "initial prompt → brief",
+    words: [],
+    fileWords: [],
+    allow: [],
+    identifiers: ["initialPrompt", "readInitialPrompt", "editInitialPrompt", "replaceInitialPrompt", "INITIAL_PROMPT_MAX_CHARS"],
+  },
+  {
+    // Not the words `dry` or `telemetry`: they still mean a dry run and generic telemetry.
+    family: "role ids",
+    words: [],
+    fileWords: [],
+    allow: [],
+    identifiers: ["telemetryDigest", "TELEMETRY_DIGEST_DAYS", "dryRow", "dryFailedAt"],
+  },
+  {
+    // Not `agent`/`agents`/`agentBin`: they are live legacy config keys and ids.
+    family: "agent selector → backend",
+    words: [],
+    fileWords: [],
+    allow: [],
+    identifiers: [
+      "AgentId", "AGENT_IDS", "isAgentId", "DEFAULT_AGENT", "AgentConfig", "AgentBinConfig", "AGENT_KEYS",
+      "resolveAgentBin", "findAgentBinary", "checkAgentBinary", "agentMissingMessage", "agentsInUse",
+      "collapseAgentAliases", "resolvedAgentConfig", "agentQualifiedSelector", "AGENT_DEFAULT_MODELS",
+      "agentBaseEnv", "agentBinSourceLabel", "agentSessionResumable",
+    ],
+  },
 ];
 
 /** Repo-relative files whose identifiers are skipped (their file names are still checked). */

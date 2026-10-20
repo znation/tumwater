@@ -6,7 +6,7 @@ import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import { isAgentId } from "../config/model-selector.js";
+import { isBackendId } from "../config/model-selector.js";
 import type { RoleViewPayload } from "./role-view.js";
 
 /** The terminal's view of one role — what `tumwater role <id>` prints, rendered as Markdown
@@ -79,7 +79,7 @@ function modelPair(provider: string | undefined, model: string | undefined): str
 
 /** The backend's own-default label when no model resolves: `<agent> default` — pi's
  * historical `pi default` for the pi backend, `claude default` for claude (part 4f/7). */
-function agentDefault(p: RoleViewPayload): string {
+function backendDefault(p: RoleViewPayload): string {
   return `${p.backend !== "pi" ? p.backend : "pi"} default`;
 }
 
@@ -91,10 +91,10 @@ function modelLine(p: RoleViewPayload): string {
   // pi's own saved default (part 2/2): the formatted selector already carries its thinking
   // level (piDefault is formatted with the effective thinking winning), so the separate
   // ` (thinking: …)` suffix is dropped for this case only.
-  if (p.piDefault) return `${agentDefault(p)} (${p.piDefault})`;
+  if (p.piDefault) return `${backendDefault(p)} (${p.piDefault})`;
   const pair = modelPair(p.provider, p.model);
   const thinking = p.thinking ? ` (thinking: ${p.thinking})` : "";
-  if (!pair) return `${agentDefault(p)}${thinking}`;
+  if (!pair) return `${backendDefault(p)}${thinking}`;
   const agent = p.backend !== "pi" ? `${p.backend}/` : "";
   return `${agent}${pair}${thinking}`;
 }
@@ -107,17 +107,17 @@ function modelLine(p: RoleViewPayload): string {
  * pi fleets, part 3/4" gap 7). */
 function fallbackPairLabel(
   fb: { provider?: string; model?: string; backend?: string },
-  agentDefault: string,
+  backendDefault: string,
 ): string {
   const agentBackend =
     (fb.backend !== undefined && fb.backend !== "pi" ? fb.backend : undefined) ??
-    (fb.provider !== undefined && isAgentId(fb.provider) ? fb.provider : undefined);
+    (fb.provider !== undefined && isBackendId(fb.provider) ? fb.provider : undefined);
   if (fb.model !== undefined) {
     if (agentBackend !== undefined) return `${agentBackend}/${fb.model}`;
     return fb.provider !== undefined ? `${fb.provider}/${fb.model}` : fb.model;
   }
   if (fb.provider !== undefined) return fb.provider;
-  return agentDefault;
+  return backendDefault;
 }
 
 /** Why a tier moved down its fallback chain, as the role view words it. */
@@ -238,13 +238,13 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   // Model failure fallback, part 2/2: name the off-model pair, when the episode began, and
   // the provider-class failure that tripped it, so `tumwater role <id>` explains the state.
   if (p.modelFallback) {
-    const pair = fallbackPairLabel(p.modelFallback, agentDefault(p));
+    const pair = fallbackPairLabel(p.modelFallback, backendDefault(p));
     lines.push(
       `- Model fallback: ${pair} — on fallback since ${formatTimestamp(p.modelFallback.since)} (primary failing: ${p.modelFallback.reason})`,
     );
   }
   if (p.fallback) {
-    const pair = fallbackPairLabel(p.fallback, agentDefault(p));
+    const pair = fallbackPairLabel(p.fallback, backendDefault(p));
     lines.push(`- Over-cap model: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
   }
   const running = chainStepLine(p);

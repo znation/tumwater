@@ -40,11 +40,11 @@ import {
   teamWorkspaceMessage,
   NO_COMMITS_MESSAGE,
 } from "../gates/readiness.js";
-import { agentBinSourceLabelFor, agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
+import { backendBinSourceLabelFor, backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
-import { resolvedAgentConfig } from "../config/config-views.js";
+import { resolvedBackendConfig } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { enforcedKeyCaps } from "../concurrency/semaphore.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
@@ -60,7 +60,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
-import { agentsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
+import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
 import { claudeSeamsInUse, opencodeSeamsInUse, piSeamsInUse, AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { boundedProbe } from "./probe.js";
@@ -130,7 +130,7 @@ export function checkNodeVersion(
 /** git binary — fail with the shared GIT_MISSING_MESSAGE so every entry point reports the
  * same fix for a machine without git installed. Takes an explicit PATH so tests can exercise
  * the missing branch by passing "" (no PATH mutation, no spawning). The agent-binary check's
- * rule is richer (bare name vs path-shaped) and lives in pi/pi-bin.ts's findAgentBinary. */
+ * rule is richer (bare name vs path-shaped) and lives in pi/pi-bin.ts's findBackendBinary. */
 export function checkGitBinary(pathEnv: string = envPath()): CheckOutcome {
   const found = findOnPath("git", pathEnv);
   if (!found) return failOutcome(GIT_MISSING_MESSAGE);
@@ -246,35 +246,35 @@ export function checkBootstrap(
  * whenever the value is not the PATH default, so a configured binary is never mistaken for the
  * ambient one; a missing one fails with that agent's own message, so a wrong claude path never
  * reads as a missing pi. */
-function agentBinaryCheck(
-  config: Parameters<typeof resolveAgentBin>[0],
+function backendBinaryCheck(
+  config: Parameters<typeof resolveBackendBin>[0],
   agent: string,
   pathEnv: string,
 ): CheckOutcome {
-  const resolved = resolveAgentBin(config, agent);
-  const found = findAgentBinary(resolved, pathEnv);
-  if (!found) return failOutcome(agentMissingMessage(resolved, agent));
+  const resolved = resolveBackendBin(config, agent);
+  const found = findBackendBinary(resolved, pathEnv);
+  if (!found) return failOutcome(backendMissingMessage(resolved, agent));
   if (resolved.source === "default") return okOutcome(found);
-  const from = agentBinSourceLabelFor(agent, resolved.source);
+  const from = backendBinSourceLabelFor(agent, resolved.source);
   return okOutcome(`${found} — resolved from ${from}`);
 }
 
 /** Agent binary (plans/portability.md §5/7) — every agent an enabled seam resolves to
- * (agentsInUse, the startup gate's rule), resolved through the same resolveAgentBin the spawn
+ * (backendsInUse, the startup gate's rule), resolved through the same resolveBackendBin the spawn
  * uses, so doctor and the harness can never disagree about which binary runs (a malformed
  * tumwater.json resolves to the pi default; checkInit reports the config problem separately).
- * Executability is pi/pi-bin.ts's shared findAgentBinary — the same bare-name PATH lookup,
+ * Executability is pi/pi-bin.ts's shared findBackendBinary — the same bare-name PATH lookup,
  * path-shaped accessSync(X_OK) rule, and null-on-unusable verdict the startup gate asks — so
- * doctor cannot pass a binary the gate would reject. resolveAgentBin normalizes path-shaped
+ * doctor cannot pass a binary the gate would reject. resolveBackendBin normalizes path-shaped
  * values against the process cwd at resolution time, so what doctor tests is exactly what
  * spawns. A claude-only team checks claude, not pi. The check fails on the first missing
  * binary, naming its agent; an ok detail joins each agent's resolved path and source. */
-export function checkAgentBinary(
+export function checkBackendBinary(
   root: string,
   pathEnv: string = envPath(),
 ): CheckOutcome {
   const { config } = loadConfigSafe(root);
-  const agents = config !== undefined ? agentsInUse(config) : ["pi"];
+  const agents = config !== undefined ? backendsInUse(config) : ["pi"];
   // A seam backend with no registered adapter in this build can never run; naming that beats
   // the binary check (which would pass an installed binary only to fall through to pi). The
   // same rule and wording as the startup gate's. After opencode's adapter lands (part 5/7)
@@ -284,7 +284,7 @@ export function checkAgentBinary(
     return failOutcome(`backend ${unregistered} is configured but this build has no adapter for it`);
   const checks = agents.map((agent) => ({
     agent,
-    outcome: agentBinaryCheck(config ?? {}, agent, pathEnv),
+    outcome: backendBinaryCheck(config ?? {}, agent, pathEnv),
   }));
   const failed = checks.find(({ outcome }) => outcome.level === "fail");
   if (failed) return failed.outcome;
@@ -340,7 +340,7 @@ export function checkClaudeTranscripts(
 ): CheckOutcome {
   if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
   if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
-  const configDir = resolvedAgentConfig(config, "claude").configDir;
+  const configDir = resolvedBackendConfig(config, "claude").configDir;
   const dir = path.join(claudeConfigDir(env, homeDir, configDir), "projects");
   let slugs: string[];
   try {
@@ -398,8 +398,8 @@ export function checkPiExtensions(
   const parts: string[] = [];
   // Installed pi packages (pi list, bounded): each stdout line a package name. A probe that
   // cannot run or produces nothing contributes nothing; the rest still name what team runs skip.
-  const resolved = resolveAgentBin(config, "pi");
-  const piBin = findAgentBinary(resolved, pathEnv);
+  const resolved = resolveBackendBin(config, "pi");
+  const piBin = findBackendBinary(resolved, pathEnv);
   if (piBin !== null) {
     try {
       const stdout = spawnSync(piBin, ["list"], {
@@ -484,7 +484,7 @@ export function checkFunes(
   if (findOnPath("funes", pathEnv) === null) return null;
   const notes: string[] = [];
   if (claudeSeamsInUse(config)) {
-    const configDir = resolvedAgentConfig(config, "claude").configDir;
+    const configDir = resolvedBackendConfig(config, "claude").configDir;
     const plugin = path.join(homeDir, ".funes", "integrations", "claude-plugin");
     if (configDir === undefined && fs.existsSync(plugin)) {
       return warnOutcome(

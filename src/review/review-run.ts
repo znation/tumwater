@@ -1,6 +1,6 @@
 // vocabulary: plain
 import { APPROVED_PATCH_IDS_MAX, REVIEW_RESUME_LIMIT, saveRunnerState, type RunnerState } from "../runner/runner-state.js";
-import { modelSelectorField, resolvedAgentConfig, reviewRunConfig } from "../config/config-views.js";
+import { modelSelectorField, resolvedBackendConfig, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
 import { changeBaseRev, headOf } from "../git/git.js";
@@ -10,7 +10,7 @@ import { nativeLogPath, piLogPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildReviewPrompt, buildReviewResumePrompt } from "../prompt/gate-prompts.js";
-import { agentSessionResumable } from "../agent/agent-backend.js";
+import { backendSessionResumable } from "../agent/agent-backend.js";
 import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../run/run-apply.js";
@@ -84,7 +84,7 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
   // The team claude config dir (plans/notes-command.md "Keeping funes out of team runs"), so
   // a claude review's resume guard looks under the same dir the review run writes its transcript
   // to — a team that set one must resume under it, not the default ~/.claude.
-  const claudeConfigDir = resolvedAgentConfig(config, "claude").configDir;
+  const claudeConfigDir = resolvedBackendConfig(config, "claude").configDir;
   // A progressing timeout left this run's session for the next attempt (RunnerState.reviewResume):
   // resume it only while the patch is unchanged (the same diff), the resume budget lasts, and
   // the directory still holds a gate session to `--continue`. Otherwise the stale marker is
@@ -94,7 +94,7 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
     priorResume !== undefined &&
     priorResume.patchId === reviewedPatchId &&
     priorResume.attempts < REVIEW_RESUME_LIMIT &&
-    agentSessionResumable(priorResume.sessionDir, {
+    backendSessionResumable(priorResume.sessionDir, {
       kind: "gate",
       agent: reviewCfg.agent ?? "pi",
     }, claudeConfigDir);
@@ -388,7 +388,7 @@ async function settleUnparsedReview(
     // holds a gate session to resume earns the marker (and the "continues this review"
     // wording). Without this a backend that leaves no session file would record a resume the
     // next attempt silently declines, reviewing from scratch anyway.
-    agentSessionResumable(reviewSessionDir, {
+    backendSessionResumable(reviewSessionDir, {
       kind: "gate",
       agent: reviewCfg.agent ?? "pi",
     }, claudeConfigDir);

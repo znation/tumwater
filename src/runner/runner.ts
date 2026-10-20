@@ -252,8 +252,8 @@ export class RoleRunner {
    * runner records it as pending — re-queued if the run ends without fulfilling it. Null when
    * the runner has nothing to run (an empty director inbox); a role runner's assembly never
    * returns null. */
-  private runPrompt(agent?: string): string | null {
-    const assembled = assembleRunPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
+  private runPrompt(backend?: string): string | null {
+    const assembled = assembleRunPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, backend });
     if (assembled === null) return null;
     if (assembled.userPrompt !== null) {
       logEventBestEffort(this.root, { source: this.role, type: "prompt_taken", run: this.state.runs, preview: promptPreview(assembled.userPrompt) });
@@ -361,7 +361,7 @@ export class RoleRunner {
       save: () => this.save(),
       warn: (message) => this.warn(message),
       runSignal: () => this.runSignal(),
-      runPrompt: (agent) => this.runPrompt(agent),
+      runPrompt: (backend) => this.runPrompt(backend),
       rerouteRegime: (now) => this.rerouteRegime(now),
       get recoveryFailure() {
         return self.recoveryFailure;

@@ -14,7 +14,7 @@ import { randomInt } from "node:crypto";
 import zlib from "node:zlib";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { PiStreamParser } from "../pi/pi-stream.js";
-import { resolveAgentBin } from "../pi/pi-bin.js";
+import { resolveBackendBin } from "../pi/pi-bin.js";
 import { imageProbesPath } from "../paths.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { boundedProbe } from "./probe.js";
@@ -253,7 +253,7 @@ export async function runImageProbe(
     ? envBin.includes("/")
       ? path.resolve(envBin)
       : envBin
-    : resolveAgentBin(config).bin;
+    : resolveBackendBin(config).bin;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-image-probe-"));
   const wrong: string[] = []; // the per-attempt "answered …" detail for a wrong answer
   const misread: boolean[] = []; // whether each wrong answer was a (wrong) 4-digit number

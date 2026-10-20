@@ -41,11 +41,11 @@ interface RunPromptInput {
    * not dequeued, so assembling a preview can never consume a queued request. Everything
    * else — brief, principles, check, the state-derived notes — is assembled identically. */
   preview?: boolean;
-  /** The effective agent backend this run RUNS on — the model-fallback pair while an episode
+  /** The effective backend this run RUNS on — the model-fallback pair while an episode
    * is active — selecting the prompt dialect. planRunStart passes the same `cfg.agent` the
    * authoring run gets, so a fallback seam's prompt cannot speak the primary's dialect.
    * Omitted: the role's primary `configForRole(config, role).agent`. */
-  agent?: string;
+  backend?: string;
 }
 
 /** The repo paths the entry at `file` lines `range` names that are absent from the checkout at
@@ -111,7 +111,7 @@ function flakyChecksNote(root: string): string | undefined {
  * re-queue it if the run leaves it unfulfilled; `userPromptFile` is the queue file it came
  * from, so that bookkeeping can clean the prompt's attachments by that file's stem. */
 export function assembleRunPrompt(
-  { root, config, role, state, preview = false, agent }: RunPromptInput,
+  { root, config, role, state, preview = false, backend }: RunPromptInput,
 ): { prompt: string; userPrompt: string | null; userPromptFile: string | null } | null {
   // The brief's owning file (TUMWATER.md first, README.md as the compatibility path —
   // plans/portability.md §7a/7), named in both prompt builders' rules instead of a hardcoded
@@ -142,7 +142,7 @@ export function assembleRunPrompt(
     if (!dequeued) return null;
     userPrompt = stripNotBeforeMarker(dequeued);
     userPromptFile = entry?.file ?? null;
-    prompt = buildDirectorPrompt(userPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent, config.roles[DIRECTOR_ROLE]?.instructions);
+    prompt = buildDirectorPrompt(userPrompt, principles, check, brief, undefined, backlogIndex, backend ?? configForRole(config, DIRECTOR_ROLE).agent, config.roles[DIRECTOR_ROLE]?.instructions);
   } else {
     // The role id keys its inbox and notes; every lookup ABOUT the role — catalog charter,
     // instructions, the qa/selfcheck/clean blocks — resolves through the base role, so
@@ -230,7 +230,7 @@ export function assembleRunPrompt(
       check,
       gateCommand: gateCommandOf(config),
       briefFile: brief,
-      agent: agent ?? configForRole(config, role).agent,
+      agent: backend ?? configForRole(config, role).agent,
       assigned,
       // A per-role prompt queued by `tumwater prompt --role <id>` rides as an explicit user
       // request block; its text is also the run's userPrompt,

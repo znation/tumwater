@@ -134,6 +134,3 @@ export function formatModelSelector(triple: ModelSelector): string {
   const base = triple.provider ? `${triple.provider}/${triple.model}` : triple.model;
   return triple.thinking ? `${base}:${triple.thinking}` : base;
 }
-
-/** @deprecated Use isBackendId. */
-export const isAgentId = isBackendId;

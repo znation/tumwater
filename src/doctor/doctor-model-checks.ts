@@ -8,14 +8,14 @@ import { opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-
 import { opencodeDbPath } from "../paths.js";
 import { readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
-import { configForRole, resolvedAgentConfig } from "../config/config-views.js";
+import { configForRole, resolvedBackendConfig } from "../config/config-views.js";
 import { fallbackPair, resolveTierFallbacks, seamsInUse, tierChainSteps } from "../config/config-fallbacks.js";
 import { cacheReadUnpriced, fallbackModelPair, piModelsPath, piPairFree, piProviderBaseUrl, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
-import { isAgentId } from "../config/model-selector.js";
+import { isBackendId } from "../config/model-selector.js";
 import { imageReroute, seamImageInput } from "../agent/image-input.js";
 import { modelLabel, usesPiModels } from "../agent/backend-traits.js";
-import { agentBackend } from "../agent/agent-backend.js";
+import { backendById } from "../agent/agent-backend.js";
 import {
   imageProbeEntryFresh,
   imageProbeKey,
@@ -32,7 +32,7 @@ import { envPath } from "../files/files.js";
 import { modelPairName, pairDailyCost } from "../budget/budget.js";
 import { formatBytes, usd, usdCap } from "../text/format.js";
 import { loadRunnerStates } from "./doctor-holds.js";
-import { resolveAgentBin } from "../pi/pi-bin.js";
+import { resolveBackendBin } from "../pi/pi-bin.js";
 import { parsePiModelImages, readPiListedModels, writePiListedModels } from "../pi/pi-listed-models.js";
 import { agree } from "../text/phrases.js";
 import { formatDate, formatTime } from "../text/datetime.js";
@@ -143,7 +143,7 @@ export async function checkFallbackChain(
   for (const { tier, step, pair } of steps) {
     // A provider that names a backend other than pi (claude today; opencode from part 2) never
     // asks pi for a base URL or runs pi's price probe — only a pi step may.
-    const nonPiBackend = isAgentId(pair.provider) && pair.provider !== "pi";
+    const nonPiBackend = isBackendId(pair.provider) && pair.provider !== "pi";
     const base = !nonPiBackend && pair.provider ? piProviderBaseUrl(modelsPath, pair.provider) : null;
     const local = base !== null && isLocalUrl(base);
     const up = local ? await probe(`${base}/models`) : null;
@@ -236,17 +236,17 @@ export function piSeamsInUse(config: TumwaterConfig): boolean {
 }
 
 /** The default credential probe: run the resolved agent binary's own auth check for one provider
- * and read `ready` out of its JSON. The binary resolves exactly as the spawn does (resolveAgentBin
- * — the same source a real run would launch), so doctor tests the auth of the pi it would actually
- * run. Never throws; every failure mode ends on "unknown". The bounded subprocess is the shared
- * boundedProbe (probe.ts), also used by the claude probes. */
+ * and read `ready` out of its JSON. The binary resolves exactly as the spawn does
+ * (resolveBackendBin — the same source a real run would launch), so doctor tests the auth of
+ * the pi it would actually run. Never throws; every failure mode ends on "unknown". The bounded
+ * subprocess is the shared boundedProbe (probe.ts), also used by the claude probes. */
 export async function piProviderAuth(
   config: TumwaterConfig,
   provider: string,
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<ProviderAuth> {
-  const resolved = resolveAgentBin(config);
+  const resolved = resolveBackendBin(config);
   const result = await boundedProbe(
     resolved.bin,
     ["auth", "check", "--provider", provider, "--json"],
@@ -287,7 +287,7 @@ export async function piListedModels(
   root?: string,
 ): Promise<Set<string> | null> {
   const result = await boundedProbe(
-    resolveAgentBin(config).bin,
+    resolveBackendBin(config).bin,
     ["--list-models"],
     childEnv({ PATH: pathEnv }),
     timeoutMs,
@@ -320,7 +320,7 @@ function claudeProbe(
   // with backends.claude.configDir writes and reads elsewhere — the very mismatch doctor exists
   // to surface. Mirror backends.run's expansion: only claude accepts configDir, and unset leaves
   // today's env byte-identical.
-  const configDir = resolvedAgentConfig(config, "claude").configDir;
+  const configDir = resolvedBackendConfig(config, "claude").configDir;
   const expandedConfigDir =
     configDir !== undefined ? claudeConfigDir(process.env, os.homedir(), configDir) : undefined;
   const env = claudeEnv(childEnv({ PATH: pathEnv }), {
@@ -463,9 +463,9 @@ export async function checkClaudeVersion(
  * undercount it (BUGS.md 2026-10-06). When one of PI_SMOL_MODEL / PI_SLOW_MODEL / PI_PLAN_MODEL is
  * set the check also reports that tumwater does not read it — the variables are oh-my-pi's, pi
  * ignores them, and with omp as `agentBin` they still reach omp through the inherited environment
- * (src/pi/pi-backend.ts, built on src/process/run-marker.ts's agentBaseEnv) — pointing at the tier
- * keys that do the same job (`model.small` / `model.strong`). `auth` is injectable so tests need no
- * pi on PATH; `env` so the PI_* branches stay hermetic. */
+ * (src/pi/pi-backend.ts, built on src/process/run-marker.ts's backendBaseEnv) — pointing at the
+ * tier keys that do the same job (`model.small` / `model.strong`). `auth` is injectable so tests
+ * need no pi on PATH; `env` so the PI_* branches stay hermetic. */
 export async function checkTierModels(
   root: string,
   modelsPath: string = piModelsPath(),
@@ -518,7 +518,7 @@ export async function checkTierModels(
   // Reserved agent ids: a pi provider whose name is an agent backend's id can never reach pi
   // (the provider segment wins the routing), so its definitions are unreachable — warn.
   if (providers) {
-    const reserved = [...providers.keys()].filter(isAgentId);
+    const reserved = [...providers.keys()].filter(isBackendId);
     if (reserved.length > 0)
       warns.push(
         `pi's definitions (${modelsPath}) declare provider ${reserved.map((p) => `"${p}"`).join(", ")} — the name is reserved for an agent backend, so model ids under it never reach pi`,
@@ -691,7 +691,7 @@ export async function checkImageInput(
     const agent = seam.agent;
     // A backend that registers an imageInput hook trusts the hook (claude today, which reads
     // every model); a backend without one is probed through its model catalog.
-    if (agent !== undefined && agentBackend(agent)?.imageInput !== undefined) {
+    if (agent !== undefined && backendById(agent)?.imageInput !== undefined) {
       readsItems.push(label(agent, seam.provider, seam.model));
       continue;
     }

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { pidAlive } from "../src/process/process.js";
 import { systemProcessProbe } from "../src/process/process-table.js";
 import {
-  agentBaseEnv,
+  backendBaseEnv,
   leftoversSweptMessage,
   makeRunMarker,
   pidsMarkedInPs,
@@ -54,17 +54,17 @@ test("runMarkerEnv appends to an inherited mark and makes fresh markers unique",
   assert.equal(runMarkerEnv({}, marker).TUMWATER_RUN, marker, "no inherited mark means just this one");
 });
 
-test("agentBaseEnv prepends a given binDir to PATH (the notes shim dir)", () => {
+test("backendBaseEnv prepends a given binDir to PATH (the notes shim dir)", () => {
   const marker = makeRunMarker(4242);
   // No binDir: today's behavior, PATH untouched.
-  const plain = agentBaseEnv(marker, { PATH: "/usr/bin:/bin" }, undefined);
+  const plain = backendBaseEnv(marker, { PATH: "/usr/bin:/bin" }, undefined);
   assert.equal(plain.PATH, "/usr/bin:/bin");
   assert.equal(plain.TUMWATER_RUN, marker);
   // A binDir puts the notes shim dir first, ahead of an existing PATH.
-  const withBin = agentBaseEnv(marker, { PATH: "/usr/bin:/bin" }, "/rt/.tumwater/bin");
+  const withBin = backendBaseEnv(marker, { PATH: "/usr/bin:/bin" }, "/rt/.tumwater/bin");
   assert.equal(withBin.PATH, `/rt/.tumwater/bin${path.delimiter}/usr/bin:/bin`);
   // An undefined PATH becomes just the binDir.
-  assert.equal(agentBaseEnv(marker, {}, "/rt/.tumwater/bin").PATH, "/rt/.tumwater/bin");
+  assert.equal(backendBaseEnv(marker, {}, "/rt/.tumwater/bin").PATH, "/rt/.tumwater/bin");
 });
 
 test("pidsMarkedInPs picks the marked rows only, never the scanner itself", () => {

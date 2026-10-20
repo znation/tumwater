@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { RunnerState } from "../runner/runner-state.js";
-import { agentSessionResumable } from "../agent/agent-backend.js";
+import { backendSessionResumable } from "../agent/agent-backend.js";
 import { latestSession } from "../agent/session-ledger.js";
 import { RETRIABLE_MERGE_RESULTS } from "../merge/merge-core.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
@@ -59,7 +59,7 @@ export function planRunStart(opts: {
    * runPrompt() so the dequeued user request is recorded as pending exactly as before. The
    * effective `agent` below is passed through so the prompt speaks the dialect of the backend
    * the run actually runs on, not the role's primary. */
-  runPrompt: (agent?: string) => string | null;
+  runPrompt: (backend?: string) => string | null;
   /** The backend this run would run on, for the resume decision: a newest author ledger line
    * naming another agent hands off instead of resuming. Defaults to pi, the historical
    * backend. */
@@ -107,7 +107,7 @@ export function planRunStart(opts: {
   // claude resumes an id (safe across a newer gate line). A backend with no `resumable` hook
   // falls back to the backend-neutral session-file check.
   const resumable = resumePending && !resumeMissing
-    ? agentSessionResumable(dir, { kind: "author", agent }, opts.claudeConfigDir)
+    ? backendSessionResumable(dir, { kind: "author", agent }, opts.claudeConfigDir)
     : false;
   const resumableSession = resumable;
   // A newest line our backend cannot resume is not ours to continue: another kind's or

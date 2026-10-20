@@ -89,7 +89,7 @@ export interface RunnerState {
    * that the backend no longer holds the session it tried to `--resume` (claude's "No
    * conversation found", or a pruned session). The transcript file the resume guard checks
    * can outlive the conversation — the fake leaves one, and a torn/empty file can — so the
-   * next run must hand off on this verdict rather than trust `agentSessionResumable` and
+   * next run must hand off on this verdict rather than trust `backendSessionResumable` and
    * re-resume a session that is gone (BUGS.md 2026-10-09). Set only alongside
    * `resumePending` and cleared with it at run start. */
   resumeMissing?: boolean;

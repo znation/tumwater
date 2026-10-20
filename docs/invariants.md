@@ -31,13 +31,13 @@ other.
 ### INV-A1: one rule decides which backend binaries the team needs
 
 **Guarantee.** The set of backends the team will actually spawn is computed once by
-`agentsInUse`, so doctor checks exactly the binaries the startup gate would require — neither a
+`backendsInUse`, so doctor checks exactly the binaries the startup gate would require — neither a
 binary the team never runs nor a missing one it does.
 
-**Binds.** `src/gates/startup-gate.ts` (`agentsInUse`), `src/doctor/doctor-checks.ts`
-(`checkAgentBinary`), `src/pi/pi-bin.ts` (`resolveAgentBin`).
+**Binds.** `src/gates/startup-gate.ts` (`backendsInUse`), `src/doctor/doctor-checks.ts`
+(`checkBackendBinary`), `src/pi/pi-bin.ts` (`resolveBackendBin`).
 
-**Pinned by.** `test/doctor-checks.test.ts` — "checkAgentBinary checks the enabled seams'
+**Pinned by.** `test/doctor-checks.test.ts` — "checkBackendBinary checks the enabled seams'
 agents, not always pi" (a claude-only team passes with `claude` present and fails when it is
 absent, rather than checking pi).
 
@@ -2190,12 +2190,12 @@ mark, reads it and sweeps by it.
 **Guarantee.** `makeRunMarker` returns the harness pid, a hyphen and 12 hex digits of fresh random
 bytes, so two runs of one harness never share a mark. `runMarkerEnv` appends the new mark to an
 inherited `TUMWATER_RUN` value, comma-separated, and sets it alone when none was inherited.
-`agentBaseEnv` builds every backend's environment from it and prepends a given `binDir` to PATH.
+`backendBaseEnv` builds every backend's environment from it and prepends a given `binDir` to PATH.
 
-**Binds.** `src/process/run-marker.ts` (`makeRunMarker`, `runMarkerEnv`, `agentBaseEnv`).
+**Binds.** `src/process/run-marker.ts` (`makeRunMarker`, `runMarkerEnv`, `backendBaseEnv`).
 
 **Pinned by.** `test/run-marker.test.ts` — "runMarkerEnv appends to an inherited mark and makes fresh
-markers unique" and "agentBaseEnv prepends a given binDir to PATH (the notes shim dir)".
+markers unique" and "backendBaseEnv prepends a given binDir to PATH (the notes shim dir)".
 
 ### INV-AL2: a process carries a mark only when one comma-separated value equals it exactly, empty values are no mark, and the reader's own pid is never reported
 

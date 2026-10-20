@@ -82,7 +82,7 @@ test("an explicit agent override selects the dialect over the config's primary",
     config: defaultConfig(),
     role: "coverage",
     state: state({ role: "coverage" }),
-    agent: "claude",
+    backend: "claude",
   });
   assert.ok(result);
   assert.match(result.prompt, /tumwater-notes write <<'TUMWATER_NOTES'/, "the override's run names the notes command");

@@ -5,8 +5,8 @@
  * return the run even when it failed, so the caller can honor a shutdown abort and fold the
  * spend; null means there was no session to continue. */
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { agentSessionResumable } from "../agent/agent-backend.js";
-import { reviewRunConfig, resolvedAgentConfig } from "../config/config-views.js";
+import { backendSessionResumable } from "../agent/agent-backend.js";
+import { reviewRunConfig, resolvedBackendConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { nativeLogPath, piLogPath } from "../paths.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../prompt/gate-prompts.js";
@@ -39,7 +39,7 @@ async function runFollowupTurn(
   // pi continue would actually reach; claude resumes its recorded id (looked up under the
   // team's config dir, so a team that set one continues under it).
   if (
-    !agentSessionResumable(dir, { kind: "gate", agent: cfg.agent ?? "pi" }, resolvedAgentConfig(ctx.config, "claude").configDir)
+    !backendSessionResumable(dir, { kind: "gate", agent: cfg.agent ?? "pi" }, resolvedBackendConfig(ctx.config, "claude").configDir)
   ) {
     return null;
   }

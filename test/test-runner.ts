@@ -273,7 +273,7 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  * and what the run itself exported, while a suite run by hand does not. Each one the harness
  * resolves out of the environment is dropped here, so a suite a run starts exercises exactly
  * what a hand-run suite does:
- * - TUMWATER_PI_BIN outranks PATH in resolveAgentBin, so an operator's override (a wrapper
+ * - TUMWATER_PI_BIN outranks PATH in resolveBackendBin, so an operator's override (a wrapper
  *   around the real pi, plans/portability.md) displaced every fake pi the suite puts on PATH:
  *   the fake-pi tests ran the agent it named (BUGS.md 2026-09-28). Tests of the variable set it
  *   themselves; test/fakes/fake-pi.ts drops it too, for a file run directly with `node --test`.

@@ -587,9 +587,3 @@ export const CUSTOM_TASK_MAX_CHARS = 4096;
  * capped like a custom role's task: unbounded text would be a standing per-run cost (and
  * could crowd the prompt toward the model's context ceiling). */
 export const ROLE_INSTRUCTIONS_MAX_CHARS = 4096;
-
-/** @deprecated Use BACKEND_IDS. */
-export const AGENT_IDS = BACKEND_IDS;
-
-/** @deprecated Use BACKEND_KEYS. */
-export const AGENT_KEYS = BACKEND_KEYS;

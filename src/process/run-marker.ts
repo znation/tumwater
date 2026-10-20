@@ -54,7 +54,7 @@ export function runMarkerEnv(base: NodeJS.ProcessEnv, marker: string): NodeJS.Pr
  * given, is prepended to PATH — run-agent passes the notes shim dir (notesShimDir) so every
  * run finds the `tumwater-notes` command first (plans/notes-command.md "Reaching it from a
  * run"). */
-export function agentBaseEnv(
+export function backendBaseEnv(
   marker: string,
   base: NodeJS.ProcessEnv = process.env,
   binDir?: string,
@@ -75,7 +75,7 @@ const NOTES_PATH_VAR = "TUMWATER_NOTES_PATH";
  * adapter's run spec carries one only for authoring runs, so every other run leaves the
  * variable untouched (and an inherited value survives). Kept out of runMarkerEnv so the two
  * environment concerns — cross-group attribution and the notes — stay separate; shared here
- * beside agentBaseEnv because all three adapters (pi, claude, opencode) build their run
+ * beside backendBaseEnv because all three adapters (pi, claude, opencode) build their run
  * environment from it. */
 export function withNotesPath(base: NodeJS.ProcessEnv, notesPath?: string): NodeJS.ProcessEnv {
   if (!notesPath) return base;

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  checkAgentBinary,
+  checkBackendBinary,
   checkBootstrap,
   checkBrief,
   checkBuild,
@@ -97,14 +97,14 @@ test("checkGitBinary resolves git from the given PATH and fails with the shared 
   assert.deepEqual(missing, { level: "fail", detail: GIT_MISSING_MESSAGE });
 });
 
-test("checkAgentBinary resolves the default pi from the given PATH and fails with the install hint when absent", () => {
+test("checkBackendBinary resolves the default pi from the given PATH and fails with the install hint when absent", () => {
   const root = readyRepo();
   const binDir = fakeBins("pi");
-  const ok = checkAgentBinary(root, binDir);
+  const ok = checkBackendBinary(root, binDir);
   assert.equal(ok.level, "ok");
   assert.equal(ok.detail, path.join(binDir, "pi"));
 
-  const missing = checkAgentBinary(root, "");
+  const missing = checkBackendBinary(root, "");
   assert.equal(missing.level, "fail");
   assert.match(missing.detail, /install it/);
 });
@@ -112,10 +112,10 @@ test("checkAgentBinary resolves the default pi from the given PATH and fails wit
 // The PATH parameter defaults to `envPath()` (the process PATH, or "") — a PATH deleted
 // from the environment entirely must hit the same empty-PATH fail as an explicitly empty
 // one, not read `undefined` as a search path.
-test("checkGitBinary and checkAgentBinary treat an unset PATH as empty", () => {
+test("checkGitBinary and checkBackendBinary treat an unset PATH as empty", () => {
   withEnv("PATH", undefined, () => {
     assert.deepEqual(checkGitBinary(), { level: "fail", detail: GIT_MISSING_MESSAGE });
-    const agent = checkAgentBinary(readyRepo());
+    const agent = checkBackendBinary(readyRepo());
     assert.equal(agent.level, "fail");
     assert.match(agent.detail, /install it/);
   });
@@ -124,13 +124,13 @@ test("checkGitBinary and checkAgentBinary treat an unset PATH as empty", () => {
 // plans/portability.md §5/7: a configured agent binary must be reported with its source, so
 // a configured binary is never mistaken for the ambient one — and a wrong one must not read
 // as "pi is not installed".
-test("checkAgentBinary names the resolved path and TUMWATER_PI_BIN as its source", () => {
+test("checkBackendBinary names the resolved path and TUMWATER_PI_BIN as its source", () => {
   const root = readyRepo();
   const binDir = fakeBins("wrapped-pi");
   const bin = path.join(binDir, "wrapped-pi");
   process.env.TUMWATER_PI_BIN = bin;
   try {
-    const ok = checkAgentBinary(root, ""); // PATH deliberately empty: only the override resolves
+    const ok = checkBackendBinary(root, ""); // PATH deliberately empty: only the override resolves
     assert.equal(ok.level, "ok");
     assert.equal(ok.detail, `${bin} — resolved from TUMWATER_PI_BIN`);
   } finally {
@@ -139,7 +139,7 @@ test("checkAgentBinary names the resolved path and TUMWATER_PI_BIN as its source
 
   process.env.TUMWATER_PI_BIN = path.join(binDir, "no-such-bin");
   try {
-    const missing = checkAgentBinary(root, "");
+    const missing = checkBackendBinary(root, "");
     assert.equal(missing.level, "fail");
     assert.match(missing.detail, new RegExp(`${binDir}/no-such-bin[^ ]* from TUMWATER_PI_BIN`));
     assert.match(missing.detail, /install it/);
@@ -148,17 +148,17 @@ test("checkAgentBinary names the resolved path and TUMWATER_PI_BIN as its source
   }
 });
 
-test("checkAgentBinary resolves agentBin from tumwater.json — bare name via PATH, path via accessSync", () => {
+test("checkBackendBinary resolves agentBin from tumwater.json — bare name via PATH, path via accessSync", () => {
   const binDir = fakeBins("pi-stub");
 
   // A bare name resolves through the same PATH lookup the git check uses, and the ok
   // detail names both the resolved path and the config source.
   const bareRepo = readyRepo();
   writeConfig(bareRepo, { agentBin: "pi-stub" });
-  const bareOk = checkAgentBinary(bareRepo, binDir);
+  const bareOk = checkBackendBinary(bareRepo, binDir);
   assert.equal(bareOk.level, "ok");
   assert.equal(bareOk.detail, `${path.join(binDir, "pi-stub")} — resolved from agentBin in tumwater.json`);
-  const bareMissing = checkAgentBinary(bareRepo, "");
+  const bareMissing = checkBackendBinary(bareRepo, "");
   assert.equal(bareMissing.level, "fail");
   assert.match(bareMissing.detail, /"pi-stub" from agentBin in tumwater\.json/);
 
@@ -166,54 +166,54 @@ test("checkAgentBinary resolves agentBin from tumwater.json — bare name via PA
   // fails naming the value, its source, and the install hint.
   const pathRepo = readyRepo();
   writeConfig(pathRepo, { agentBin: path.join(binDir, "pi-stub") });
-  const pathOk = checkAgentBinary(pathRepo, "");
+  const pathOk = checkBackendBinary(pathRepo, "");
   assert.equal(pathOk.level, "ok");
   assert.equal(pathOk.detail, `${path.join(binDir, "pi-stub")} — resolved from agentBin in tumwater.json`);
 
   const goneRepo = readyRepo();
   const gone = path.join(binDir, "gone-pi");
   writeConfig(goneRepo, { agentBin: gone });
-  const goneOut = checkAgentBinary(goneRepo, "");
+  const goneOut = checkBackendBinary(goneRepo, "");
   assert.equal(goneOut.level, "fail");
   assert.match(goneOut.detail, new RegExp(`"${gone}" from agentBin in tumwater\\.json`));
   assert.match(goneOut.detail, /install it/);
 });
 
-test("checkAgentBinary falls back to the default when tumwater.json is malformed", () => {
+test("checkBackendBinary falls back to the default when tumwater.json is malformed", () => {
   // A broken config must not throw inside a check: checkInit reports it separately, and the
   // pi check still stands on its own default resolution.
   const root = makeRepo();
   writeMalformedJson(path.join(root, "tumwater.json"));
-  const out = checkAgentBinary(root, fakeBins("pi"));
+  const out = checkBackendBinary(root, fakeBins("pi"));
   assert.equal(out.level, "ok");
   assert.match(out.detail, /pi$/);
 });
 
 // A claude-only team must not fail on a missing pi: the check follows the enabled seams'
-// agents (the startup gate's agentsInUse), not always pi.
-test("checkAgentBinary checks the enabled seams' agents, not always pi", () => {
+// agents (the startup gate's backendsInUse), not always pi.
+test("checkBackendBinary checks the enabled seams' agents, not always pi", () => {
   const root = readyRepo();
   writeConfig(root, { agent: "claude" });
 
-  const present = checkAgentBinary(root, fakeBins("claude"));
+  const present = checkBackendBinary(root, fakeBins("claude"));
   assert.equal(present.level, "ok");
   assert.match(present.detail, /claude/);
 
-  const missing = checkAgentBinary(root, "");
+  const missing = checkBackendBinary(root, "");
   assert.equal(missing.level, "fail");
   assert.match(missing.detail, /claude not found/);
 });
 
-test("checkAgentBinary joins each agent's verdict for a mixed pi and claude team", () => {
+test("checkBackendBinary joins each agent's verdict for a mixed pi and claude team", () => {
   const root = readyRepo();
   writeConfig(root, { agent: "claude", roles: { coverage: { model: "pi/some-model" } } });
 
-  const both = checkAgentBinary(root, fakeBins("claude", "pi"));
+  const both = checkBackendBinary(root, fakeBins("claude", "pi"));
   assert.equal(both.level, "ok");
   assert.match(both.detail, /^claude: .*claude; pi: .*pi$/);
 
   // One missing agent fails the whole check, naming that agent.
-  const onlyClaude = checkAgentBinary(root, fakeBins("claude"));
+  const onlyClaude = checkBackendBinary(root, fakeBins("claude"));
   assert.equal(onlyClaude.level, "fail");
   assert.match(onlyClaude.detail, /pi not found/);
 });
@@ -223,10 +223,10 @@ test("checkAgentBinary joins each agent's verdict for a mixed pi and claude team
 // falling through to pi. The no-registered-adapter guard this test originally stood in for
 // (a build with no adapter for a configured backend) now has no reachable trigger — pi,
 // claude and opencode are all registered and no provider maps to any other id.
-test("checkAgentBinary fails on a registered opencode seam with no installed binary, naming it", () => {
+test("checkBackendBinary fails on a registered opencode seam with no installed binary, naming it", () => {
   const root = readyRepo();
   writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
-  const out = checkAgentBinary(root, fakeBins("pi"));
+  const out = checkBackendBinary(root, fakeBins("pi"));
   assert.equal(out.level, "fail");
   assert.match(
     out.detail,

@@ -85,7 +85,7 @@ export function createBackendsEditor(session: TuiEditorSession): TuiEditorModule
       // while `pi` collapses to the literal string, and validateConfig's section block owns
       // the value's truth (a non-object or a non-object entry is rejected with nothing
       // written). Because the key is the whole section, the setter's top-level arm runs
-      // collapseAgentAliases so a legacy `agentBin`/`piArgs` can never sit beside the new
+      // collapseBackendAliases so a legacy `agentBin`/`piArgs` can never sit beside the new
       // `backends.pi` spelling. Both write tumwater.json atomically and the running
       // orchestrator picks the change up on its next poll. An invalid value flashes and STAYS
       // in edit mode so the operator can fix it; success restores the saved prompt text.
