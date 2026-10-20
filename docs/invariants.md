@@ -667,3 +667,92 @@ creates the archive from `archiveTemplate`.
 **Pinned by.** `test/backlog-archive.test.ts` — "the sweep moves nothing while legacy entries sit in
 the live section and no archive exists" and "the bulk archive moves the whole body, one-line records
 included, or all but the newest kept entries".
+
+## Provider concurrency: every run holds one team permit and at most one provider slot
+
+The counting semaphore (`maxConcurrent`) bounds how many runs the team has in flight, and its
+per-key caps (`maxConcurrentPerProvider`) bound how many of those sit on one provider. A run's
+lease moves with it: it is re-keyed to the provider the run actually uses, and it is released once.
+The build-check cap (`check-permit.ts`) and the cross-process mutex (`lock.ts`) are separate
+subsystems and not covered here.
+
+### INV-P1: admission needs both a team permit and the provider key's headroom, and a full key never delays another
+
+**Guarantee.** `acquireLease(tier, key)` is granted only while the team total has a free permit and
+the key, when it has a cap (`enforcedKeyCaps`), has headroom. A parked waiter whose key is full does
+not hold back a waiter for another key, and waiters for one key are granted in FIFO order.
+
+**Binds.** `src/concurrency/semaphore.ts` (`Semaphore.acquireLease`, `enforcedKeyCaps`),
+`src/merge/merge-pipeline.ts`.
+
+**Pinned by.** `test/semaphore.test.ts` — "semaphore bounds concurrency" and "two keys fill
+independently: a full key never delays a free key, FIFO within a key";
+`test/orchestrator-permits.e2e.test.ts` — "maxConcurrentPerProvider caps role-run admission per
+provider while others run beside (part 2/5)" and "a verify's reviewer and a role run on the same
+capped provider never overlap, while another provider runs beside (part 3/5)".
+
+### INV-P2: a cap change never preempts, and permits never leak
+
+**Guarantee.** Growing a cap wakes parked waiters up to the new headroom and no further. Shrinking
+below the in-use count stops nothing already in flight and grants nothing until releases drain under
+the cap. Repeated resizes leave the counts whole, and capacity is fully restored after a burst.
+
+**Binds.** `src/concurrency/semaphore.ts` (`setCapacity`, `setKeyCaps`),
+`src/config/config-live.ts`.
+
+**Pinned by.** `test/semaphore.test.ts` — "growing capacity wakes queued acquirers up to the new
+headroom, never beyond it", "shrinking below current in-use admits no new work until releases drain
+under the cap", "shrinking a key below its in-use preempts nothing and grants nothing until releases
+drain", "repeated grow/shrink cycles leak no permits and starve no waiter" and "capacity fully
+restores after a burst: no slot leak".
+
+### INV-P3: wait order is by tier, FIFO within a tier, and the reserve holds a permit for work roles
+
+**Guarantee.** Parked waiters are ordered by tier, a lower tier ahead of a higher one, and FIFO
+within a tier. A higher tier is not starved: once no lower-tier waiter is parked, it drains FIFO.
+The reserve withholds permits from tier 1 and above (maintenance), so a work acquirer finds one
+free; the verify and merge tiers ignore the reserve.
+
+**Binds.** `src/concurrency/semaphore.ts` (`acquire`, `acquireLease`).
+
+**Pinned by.** `test/semaphore.test.ts` — "a lower-tier arrival jumps ahead of parked higher-tier
+waiters, FIFO within a tier", "tier ordering never starves a higher tier: once no lower-tier waiter
+is parked, it drains FIFO", "a reserve keeps a permit free for a work acquirer while maintenance
+sits at its cap" and "the verify and merge tiers ignore the reserve";
+`test/orchestrator-permits.e2e.test.ts` — "the director's run starts immediately while every
+maxConcurrent slot is busy".
+
+### INV-P4: a lease follows its run to the provider it actually uses, and a re-key cannot deadlock
+
+**Guarantee.** A run on another key re-keys its lease, returning the old key first. A parked re-key
+holds only its team permit and is granted ahead of admission waiters for that key. Releasing a lease
+whose re-key is parked cancels the grant without taking the target slot. A forced lease may exceed
+a full key by one holder and blocks grants until the key drains under the cap. Without a lease in
+context, `ensureProviderLease` does nothing.
+
+**Binds.** `src/concurrency/provider-lease.ts` (`withProviderLease`, `ensureProviderLease`),
+`src/concurrency/semaphore.ts` (`SemaphoreLease.rekey`, `forceLease`), `src/merge/merge-drain.ts`,
+`src/merge/merge-verify.ts`.
+
+**Pinned by.** `test/provider-lease.test.ts` — "ensureProviderLease is a no-op without a lease in
+context", "a run on a different key re-keys: it releases the old key and takes the new one" and "a
+re-key to a full provider parks (holding no key) and is granted when it drains";
+`test/semaphore.test.ts` — "rekey gives the old key back first, and a parked re-key beats a parked
+admission for the key", "releasing a lease while its re-key to a full key is parked cancels the
+grant and never steals the target", "a forced lease overshoots a full key by one holder, blocking
+grants until it drains under the cap" and "re-key waiters hold a team permit only, so the key always
+drains (no deadlock)".
+
+### INV-P5: no provider slot is held while waiting for a worktree pool slot
+
+**Guarantee.** Before it parks on a busy worktree pool, a lease is re-keyed to no key
+(`dropProviderLeaseKey`), so it keeps its team permit but gives the provider slot back. A run
+waiting for a pool slot therefore cannot block the drain of a key that a parked re-key is waiting
+on.
+
+**Binds.** `src/concurrency/provider-lease.ts` (`dropProviderLeaseKey`), `src/git/worktree-pool.ts`
+(its `acquire`).
+
+**Pinned by.** `test/provider-lease.test.ts` — "dropProviderLeaseKey returns the held key without
+giving up the team permit"; `test/orchestrator-permits.e2e.test.ts` — "two runs on one provider and
+a single worktree slot both finish (pool-slot wait rule, part 4/5)".
