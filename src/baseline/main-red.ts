@@ -71,7 +71,8 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
  * queued per-role prompt makes the role due by itself (`isEligible`, scheduling.ts, returns
  * `{ run: true, reason: "inbox" }` on a non-empty inbox before any interval, backoff, or
  * deferral check), and `pollRunnerReasons` skips the need-based deferral block for reason
- * `inbox`, so no scheduler change is needed. */
+ * `inbox`, so no scheduler change is needed. A heal prompt that cannot be queued is warned under
+ * `foundBy` and clears the heal key, never thrown. */
 function warnMainRedOnce(
   root: string,
   red: { sha: string; script?: string; outputTail?: string[]; failingTests?: string[] },
@@ -101,7 +102,15 @@ function warnMainRedOnce(
   if (lastHealKey === healKey) return;
   lastHealKey = healKey;
   if (baseRoleOf(foundBy) !== BUGFIX_ROLE) {
-    enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(red.sha));
+    try {
+      enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(red.sha));
+    } catch (err) {
+      // Clear the key so a later verification retries the heal. lastMainRedSha stays set, so a
+      // second call for this same SHA still returns early: the retry comes with the next red
+      // SHA or a fresh process.
+      lastHealKey = null;
+      warnEventBestEffort(root, foundBy, `could not queue the heal prompt for bugfix: ${errorMessage(err)}`);
+    }
   }
 }
 

@@ -5,7 +5,9 @@ import path from "node:path";
 import { mainRedGate, mainRedHealPrompt } from "../src/baseline/main-red.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { shortSha } from "../src/text/format.js";
-import { mainRedHolds } from "./fixtures/log-fixtures.js";
+import { roleInboxDir } from "../src/paths.js";
+import { mainRedHolds, warningMessages } from "./fixtures/log-fixtures.js";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { baselineFixture, fakeNpm } from "./fixtures/runner-fixtures.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -51,6 +53,41 @@ test("a failing set queues one heal prompt in any order, and queues another afte
     newCommit();
     assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
     assert.equal(queuedRolePrompts(root, "bugfix").length, 2, "the set returning after green is healed again");
+  } finally {
+    restore();
+  }
+});
+
+test("a heal prompt that cannot be queued warns, lets the gate resolve, and is queued at the next red commit", async () => {
+  const script = "echo '✖ heal-gamma (1ms)'; exit 1";
+  const { root, wt } = baselineFixture("coverage", script);
+  const restore = fakeNpm(script);
+  let n = 100;
+  const newCommit = (): void => {
+    fs.writeFileSync(path.join(root, "index.js"), `// ${++n}\n`);
+    sh(root, "git", "add", "-A");
+    sh(root, "git", "commit", "-q", "-m", `commit-${n}`);
+    sh(wt, "git", "reset", "--hard", "main");
+  };
+  try {
+    newCommit();
+    const inbox = roleInboxDir(root, "bugfix");
+    const undo = patchFsMethod("writeFileSync", (orig) => (...args: unknown[]) => {
+      if (typeof args[0] === "string" && args[0].startsWith(inbox)) throw errnoError("ENOSPC");
+      return orig(...args);
+    });
+    try {
+      assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
+    } finally {
+      undo();
+    }
+    assert.equal(queuedRolePrompts(root, "bugfix").length, 0);
+    const warnings = warningMessages(root).filter((m) => /could not queue the heal prompt for bugfix: .*ENOSPC/.test(m));
+    assert.equal(warnings.length, 1, warningMessages(root).join("\n"));
+
+    newCommit();
+    assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
+    assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "the next red commit queues the heal");
   } finally {
     restore();
   }

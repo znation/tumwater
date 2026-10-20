@@ -4204,3 +4204,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/baseline/main-revert.ts` (`runMainRevert`).
 
 **Pinned by.** `test/main-revert.test.ts` — "a conflicting revert whose heal prompt cannot be queued resolves and warns once that it was not queued" and "a post-review revert whose reviewer hand-off throws resolves and warns that the reasons were not sent".
+
+## Red-main healer: a heal prompt that cannot be queued never fails the gate
+
+### INV-CP1: a red main whose heal prompt cannot be queued resolves the gate, warns once that the prompt was not queued, and queues it at the next red verification
+
+**Guarantee.** `warnMainRedOnce` catches a failed heal-prompt enqueue (full disk, EACCES), warns under the verifying role and clears the heal key, so `mainRedGate` resolves instead of rejecting and the next red SHA queues the prompt again. The `mainTipVerdict` attribution path goes through the same guard but is not pinned by this test.
+
+**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedGate`).
+
+**Pinned by.** `test/main-red-heal.test.ts` — "a heal prompt that cannot be queued warns, lets the gate resolve, and is queued at the next red commit".
