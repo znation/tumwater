@@ -1929,3 +1929,58 @@ translators cannot drift apart on the sum or the envelope.
 
 **Pinned by.** `test/json-object.test.ts` — "canonicalUsageBlock sums the four counts into
 totalTokens and wraps the cost".
+
+## Queue files: one file per entry, ordered by name, and a missing queue reads as empty
+
+The director's prompt inbox (`src/inbox/inbox.ts`) and the durable merge queue
+(`src/merge/merge-queue.ts`) both list, name, stamp and remove entries through
+`src/files/file-queue.ts`. Keeping those rules in one file stops the ordering and the race
+handling from drifting between the two queues.
+
+### INV-AG1: a listing is the exact-extension entries oldest first by filename, a missing or non-directory queue reads as empty, and any other read error is thrown
+
+**Guarantee.** `listQueueFiles` returns the full paths of the entries whose names end in exactly
+the given extension (case-sensitive), sorted by filename. A directory that is missing (ENOENT) or a
+path that is not a directory (ENOTDIR) reads as an empty list; any other read error, such as EACCES,
+is thrown, so an unreadable queue never reads as an empty one and hides queued work.
+
+**Binds.** `src/files/file-queue.ts` (`listQueueFiles`).
+
+**Pinned by.** `test/file-queue.test.ts` — "listQueueFiles reads a missing directory as an empty
+queue", "listQueueFiles keeps only matching extensions, oldest-first by filename", "listQueueFiles
+reads a queue path that is a regular file as an empty queue" and "listQueueFiles rethrows an
+unreadable queue directory instead of reading it as empty".
+
+### INV-AG2: an entry's name sorts by stamp, then by zero-padded sequence, with the pid keeping two processes apart
+
+**Guarantee.** `queueFileName` returns `<stamp>-<seq padded to 6 digits>-<pid><ext>`. Names with
+same-width stamps sort by stamp first, then by the padded sequence (10 after 9), and the pid is
+part of the name so two processes using the same stamp and sequence do not collide.
+
+**Binds.** `src/files/file-queue.ts` (`queueFileName`).
+
+**Pinned by.** `test/file-queue.test.ts` — "queueFileName orders across processes and breaks ties
+with seq and pid".
+
+### INV-AG3: a stamp is read back only from a leading run of exactly 13 digits, and anything else is unstamped
+
+**Guarantee.** `queueFileStamp` returns the number from a name that starts with exactly 13 digits
+followed by `-`, which is the stamp `queueFileName` wrote. A shorter or longer digit run, a name with
+no digits and the empty string return null, never a guessed date.
+
+**Binds.** `src/files/file-queue.ts` (`queueFileStamp`).
+
+**Pinned by.** `test/file-queue.test.ts` — "queueFileStamp round-trips queueFileName's stamp and
+rejects non-conforming names".
+
+### INV-AG4: removing an entry that already vanished reports false, and any other removal error is thrown
+
+**Guarantee.** `removeQueueFile` returns true when it removed the file and false when the file was
+already gone (ENOENT), the normal race with a concurrent dequeue or cancel. Any other error is
+rethrown.
+
+**Binds.** `src/files/file-queue.ts` (`removeQueueFile`).
+
+**Pinned by.** `test/file-queue.test.ts` — "removeQueueFile reports true for a file it removed",
+"removeQueueFile reports false for a file that already vanished" and "removeQueueFile rethrows
+errors other than ENOENT".

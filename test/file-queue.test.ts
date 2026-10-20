@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { listQueueFiles, queueFileStamp, queueFileName, removeQueueFile } from "../src/files/file-queue.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("listQueueFiles reads a missing directory as an empty queue", () => {
   const dir = path.join(tmpdir(), "does-not-exist");
@@ -85,4 +85,22 @@ test("listQueueFiles reads a queue path that is a regular file as an empty queue
   const squat = path.join(dir, "not-a-dir");
   fs.writeFileSync(squat, "a stale file");
   assert.deepEqual(listQueueFiles(squat, ".json"), []);
+});
+
+test("listQueueFiles rethrows an unreadable queue directory instead of reading it as empty", (t) => {
+  if (runningAsRoot()) {
+    t.skip("root reads any directory, so there is no EACCES to provoke");
+    return;
+  }
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "1000-000001-1.json"), "");
+  fs.chmodSync(dir, 0o000);
+  try {
+    assert.throws(() => listQueueFiles(dir, ".json"), (err: NodeJS.ErrnoException) => {
+      assert.equal(err.code, "EACCES");
+      return true;
+    });
+  } finally {
+    fs.chmodSync(dir, 0o755);
+  }
 });
