@@ -283,7 +283,8 @@ export async function mergeApproved(
       abandon = true; // main unreadable or a pick conflicted: one-at-a-time from here
       break;
     } else if (outcome.kind === "blocked") {
-      // The race was lost on every attempt — main is moving faster than a check completes.
+      // The race was lost on every attempt (main is moving faster than a check completes), or
+      // the primary checkout holds files the stack changes (found before the check).
       // Every change not yet merged keeps its ref with "merge_blocked": leftover recovery
       // re-merges each through its own gate + tryMerge, whose in-lock check cannot lose it.
       for (let s = front; s < entries.length; s++) await emit(s, "merge_blocked");

@@ -295,7 +295,7 @@ async function ffFailureReason(
   }
   const blockers = overwriteBlockers(errorMessage(err));
   if (blockers.uncommitted.length > 0 || blockers.untracked.length > 0) {
-    return overwriteBlockedReason(blockers);
+    return `fast-forward failed: ${overwriteBlockedReason(blockers)}`;
   }
   return `fast-forward failed: ${errorMessage(err).trim().split("\n")[0]}`;
 }
@@ -325,7 +325,8 @@ export function overwriteBlockers(gitError: string): OverwriteBlockers {
 
 const MAX_BLOCKERS_LISTED = 5;
 
-/** The warning for a fast-forward a dirty primary checkout blocks: up to 5 files per group. */
+/** Why a dirty primary checkout blocks a merge: up to 5 files per group. Callers prefix it with
+ * their own stage (`fast-forward failed: `, or none from the pre-flight). */
 export function overwriteBlockedReason(blockers: OverwriteBlockers): string {
   const list = (names: string[]): string =>
     names.slice(0, MAX_BLOCKERS_LISTED).join(", ") +
@@ -334,7 +335,47 @@ export function overwriteBlockedReason(blockers: OverwriteBlockers): string {
   if (blockers.uncommitted.length > 0) groups.push(`uncommitted: ${list(blockers.uncommitted)}`);
   if (blockers.untracked.length > 0) groups.push(`untracked: ${list(blockers.untracked)}`);
   const where = `the primary checkout (${groups.join("; ")})`;
-  return `fast-forward failed: the merge would overwrite files in ${where} — commit, stash or remove them there`;
+  return `the merge would overwrite files in ${where} — commit, stash or remove them there`;
+}
+
+/** The primary checkout's dirty paths a merge to `tip` would overwrite, read before any check
+ * runs: null when the checkout is not on main (the ref push touches no working tree), when
+ * nothing the merge changes is dirty, or when a git read fails — the fast-forward still decides. */
+export async function primaryCheckoutBlockers(
+  root: string,
+  mainBranch: string,
+  tip: string,
+): Promise<OverwriteBlockers | null> {
+  if ((await currentBranch(root)) !== mainBranch) return null;
+  const diff = await gitTry(root, "diff", "--no-renames", "--name-only", mainBranch, tip);
+  const status = await gitTry(
+    root, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all",
+  );
+  if (diff === null || status === null) return null;
+  const changed = gitLines(diff);
+  const untrackedSet = new Set<string>();
+  const dirtySet = new Set<string>();
+  const records = status.split("\0");
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i]!;
+    if (rec.length < 4) continue;
+    const xy = rec.slice(0, 2);
+    const file = rec.slice(3);
+    if (xy === "??") {
+      untrackedSet.add(file);
+      continue;
+    }
+    dirtySet.add(file);
+    if (xy.startsWith("R") || xy.startsWith("C")) {
+      const source = records[++i];
+      if (source) dirtySet.add(source);
+    }
+  }
+  const out: OverwriteBlockers = {
+    uncommitted: changed.filter((f) => dirtySet.has(f)),
+    untracked: changed.filter((f) => untrackedSet.has(f)),
+  };
+  return out.uncommitted.length > 0 || out.untracked.length > 0 ? out : null;
 }
 
 /** Boolean form of ffMainToOrWhy for callers that need no reason. */

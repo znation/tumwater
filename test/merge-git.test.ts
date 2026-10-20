@@ -12,6 +12,7 @@ import {
   hasConflictMarkers,
   mainCommitsTouching,
   overwriteBlockedReason,
+  primaryCheckoutBlockers,
   overwriteBlockers,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
@@ -265,4 +266,25 @@ test("ffMainToOrWhy returns null when the fast-forward succeeds", async () => {
   fs.writeFileSync(path.join(wt, "ok.txt"), "ok\n");
   commitIn(wt, "ok change");
   assert.equal(await ffMainToOrWhy(root, headSha(wt), "main"), null);
+});
+
+test("primaryCheckoutBlockers names only the dirty paths the merge changes", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(root, "shared.txt"), "s\n");
+  commitIn(root, "add shared");
+  sh(wt, "git", "reset", "--hard", "main");
+  fs.writeFileSync(path.join(wt, "shared.txt"), "branch\n");
+  fs.writeFileSync(path.join(wt, "fresh.txt"), "branch\n");
+  commitIn(wt, "branch change");
+  const tip = headSha(wt);
+  assert.equal(await primaryCheckoutBlockers(root, "main", tip), null);
+  fs.writeFileSync(path.join(root, "shared.txt"), "dirty\n");
+  fs.writeFileSync(path.join(root, "fresh.txt"), "dirty\n");
+  fs.writeFileSync(path.join(root, "other.txt"), "dirty\n");
+  assert.deepEqual(await primaryCheckoutBlockers(root, "main", tip), {
+    uncommitted: ["shared.txt"],
+    untracked: ["fresh.txt"],
+  });
+  sh(root, "git", "checkout", "-q", "-b", "side");
+  assert.equal(await primaryCheckoutBlockers(root, "main", tip), null);
 });

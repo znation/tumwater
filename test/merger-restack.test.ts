@@ -6,7 +6,7 @@ import { BATCH_RESTACK_ATTEMPTS } from "../src/merge/merge-stack.js";
 import { refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { withApprovePi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
@@ -213,5 +213,24 @@ test("a red stack check that does not reproduce bisects: both changes merge, nei
     assert.equal(folded.get("beta")!.length, 1, "nor for beta");
     assert.equal(eventsOfType(root, "review_rejected").length, 0, "nobody rejected");
     assert.equal(eventsOfType(root, "merged").length, 2);
+  });
+});
+
+test("a batch whose files are dirty in the primary checkout is blocked before its check", async () => {
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+  const mainBefore = mainSha(root);
+  fs.writeFileSync(path.join(root, "alpha.txt"), "dirty\n");
+  await withApprovePi(async () => {
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["merge_blocked", "merge_blocked"]);
+    assert.equal(batchChecks(root).length, 0);
+    const warnings = warningMessages(root);
+    assert.deepEqual(
+      warnings.filter((w) => w.startsWith("merge blocked:")),
+      ["merge blocked: the merge would overwrite files in the primary checkout (untracked: alpha.txt) — commit, stash or remove them there"],
+    );
+    assert.ok(!warnings.some((w) => w.includes("fast-forward failed")));
+    assert.equal(mainSha(root), mainBefore);
   });
 });

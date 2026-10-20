@@ -16,7 +16,7 @@ import { exemptSkipBlockReason } from "./merge-to-main.js";
 import { logNewQuestions } from "./merge-questions.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { ffMainToOrWhy } from "./merge-git.js";
+import { ffMainToOrWhy, overwriteBlockedReason, primaryCheckoutBlockers } from "./merge-git.js";
 import { syncRootInstall } from "../build/dep-install.js";
 import { withLock } from "../concurrency/lock.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
@@ -131,6 +131,8 @@ export type StackOutcome =
  * build (the reasoning verifyMerge's exempt arm applies) — and runs the same cross-checks
  * that arm runs, the backlog heading structure and the false-fix claim; one that fails either
  * returns `conflict`, so the per-change fallback applies the gate's own verdict per change.
+ * A primary checkout on main that holds uncommitted or untracked files the stack changes
+ * returns `blocked` before any check runs, with no re-stack.
  * On `landed` every entry's ref is deleted and the red-main baseline is seeded with the tip
  * when a check PASSED on exactly it — a skipped check seeds nothing, like verifyMerge's
  * exempt arm. The check's events log under the first entry's role. */
@@ -154,6 +156,12 @@ async function mergeStackIn(ctx: MergeScopeContext, wtPath: string, entries: rea
     if (assembled === null) return { kind: "conflict" }; // main unreadable or a pick conflicted
     const { base, mergeDone } = assembled;
     const tip = mergeDone.at(-1)!.sha;
+    // A dirty primary checkout is one `git status` away: block before the check, not after it.
+    const dirty = await primaryCheckoutBlockers(ctx.root, ctx.mainBranch, tip);
+    if (dirty !== null) {
+      warnEventBestEffort(ctx.root, mergeDone.at(-1)!.role, `merge blocked: ${overwriteBlockedReason(dirty)}`);
+      return { kind: "blocked" };
+    }
     // The expensive deterministic half, shared: ONE run over the combined tree. Outcome
     // routing — null: no declared check, merge directly; "failed": red or a merge-scope
     // timeout, the caller bisects; "skipped": no npm / broken toolchain (the helper warned),

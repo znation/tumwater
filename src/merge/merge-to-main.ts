@@ -9,6 +9,8 @@ import {
   conflictedFiles,
   continueRebase,
   ffMainToOrWhy,
+  overwriteBlockedReason,
+  primaryCheckoutBlockers,
   hasConflictMarkers,
   mainCommitsTouching,
   rebaseOntoMain,
@@ -166,6 +168,11 @@ async function tryMerge(
     // main moved between commit and merge, which under concurrency is the common case (review
     // runs outside this lock).
     const target = await headOf(wt, "HEAD");
+    const dirty = await primaryCheckoutBlockers(ctx.root, ctx.mainBranch, target);
+    if (dirty !== null) {
+      warnEventBestEffort(ctx.root, ctx.role, `merge blocked: ${overwriteBlockedReason(dirty)}`);
+      return "merge_blocked";
+    }
     if (!(await verifyMerge(ctx, wt, target, verifiedHead)))
       return "merge_blocked";
     const mainBefore = await headOf(ctx.root, ctx.mainBranch);
