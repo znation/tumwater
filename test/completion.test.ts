@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { allRoleIds } from "../src/roles/roles.js";
+import { DOCTOR_CHECK_NAMES } from "../src/doctor/doctor-check-names.js";
 import { completionConfigKeys, completionScript, completionSpec } from "../src/cli/completion.js";
 import { HELP, helpStanzas } from "../src/cli/help.js";
 import { cli } from "./helpers/cli-harness.js";
@@ -240,4 +241,22 @@ test("the fish script completes role ids as the first argument of role, history 
 
 test("the fish script parses under fish when fish is installed", { skip: !fishInstalled }, async () => {
   await run("fish", ["--no-execute", "-c", completionScript("fish")]);
+});
+
+test("the bash script completes doctor check names, escaping spaces and apostrophes", async () => {
+  const script = completionScript("bash");
+  assert.deepEqual(await complete(script, ["tumwater", "doctor", "im"], 2), ["image\\ input"]);
+  assert.deepEqual(await complete(script, ["tumwater", "doctor", "mai"], 2), ["maintenance\\ allowance", "main\\'s\\ check"]);
+  assert.deepEqual(await complete(script, ["tumwater", "doctor", "image\\ in"], 2), ["image\\ input"]);
+  assert.equal((await complete(script, ["tumwater", "doctor", ""], 2)).length, DOCTOR_CHECK_NAMES.length);
+  assert.deepEqual(await complete(script, ["tumwater", "doctor", "repo", "or"], 3), ["orphans"]);
+  assert.deepEqual(await complete(script, ["tumwater", "doctor", "--pr"], 2), ["--problems"]);
+  assert.ok(!(await complete(script, ["tumwater", "status", ""], 2)).includes("image\\ input"));
+  for (const name of DOCTOR_CHECK_NAMES) assert.match(name, /^[a-z0-9' -]+$/i);
+});
+
+test("the fish script completes doctor check names", () => {
+  const lines = fishScriptLines();
+  assert.ok(lines.some((l) => l.includes("__tumwater_doctor_checks") && l.includes(`"main's check"`) && l.includes(`"image input"`)));
+  assert.ok(lines.some((l) => l.includes("__fish_seen_subcommand_from doctor") && l.includes(`-a "(__tumwater_doctor_checks)"`)));
 });

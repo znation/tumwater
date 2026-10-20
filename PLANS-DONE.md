@@ -5,6 +5,41 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Shell completion completes `tumwater doctor` check names, quoting the multi-word ones (`image\ input`, `main\'s\ check`), so `tumwater doctor im<Tab>` finishes a name the operator would otherwise copy from the report (planned 2026-10-19 by the plan role; no dependency on any Planned entry. It follows the done plan "`tumwater doctor <check>...` runs only the named checks", which left check-name completion out of scope. None of the Planned entries touches these files. This one touches src/cli/completion.ts, test/completion.test.ts, docs/cli.md — done 2026-10-19)
+
+**Goal.** `tumwater doctor <check>...` takes check names as positionals, matched ignoring case against `DOCTOR_CHECK_NAMES` (src/doctor/doctor-check-names.ts). `tumwater completion bash|zsh|fish` offers only doctor's flags there, so the operator has to type a name exactly or copy it from a full report. Many names have spaces (`git binary`, `image input`, `models for each tier`), and `main's check` has an apostrophe, so the names must reach the command line quoted. After this change, every positional word after `doctor` that does not start with `-` completes to the check names. Names come back escaped (`image\ input`, `main\'s\ check`), or raw when the operator opened a quote (`"image in<Tab>`).
+
+**Approach.** All edits are in src/cli/completion.ts. Import `DOCTOR_CHECK_NAMES` from `../doctor/doctor-check-names.js`, a leaf module with no imports.
+- **bash/zsh** (`bashScript`). Before the `if [ "$COMP_CWORD" -eq 1 ]` block, add a branch that fires when `"${COMP_WORDS[1]}" = doctor`, `COMP_CWORD -ge 2` and `"$cur" != -*`. Do **not** use `compgen -W`: it re-parses its word list with shell quoting, which drops the apostrophe in `main's check`. This was checked on bash 3.2 (macOS /bin/bash). The branch body was checked in the same run under bash 3.2 and under zsh with bashcompinit's `emulate sh`, and both printed the outcomes listed here:
+  ```
+  local word="$cur" quote="" name
+  case "$word" in \"*|\'*) quote="${word:0:1}"; word="${word:1}";; esac
+  word="${word//\\/}"
+  for name in <each DOCTOR_CHECK_NAMES entry, double-quoted>; do
+    if [[ "$name" == "$word"* ]]; then
+      if [ -n "$quote" ]; then COMPREPLY+=("$name"); else COMPREPLY+=("$(printf '%q' "$name")"); fi
+    fi
+  done
+  return 0
+  ```
+  (In the TS template literal, escape `$`/`\` as the surrounding lines do.) Declare `quote`, `word` and `name` with `local`, as shown. Do not use `${!arr[@]}`, because zsh's bashcompinit fails on it with "bad substitution". Do not use `"${arr[@]// /\\ }"`, because bash 3.2 joins the elements under a non-default IFS. zsh needs no separate code: bashcompinit's `_bash_complete` un-quotes COMPREPLY with `(Q)` and adds the names through `compadd`. Build the list with a small module constant: `DOCTOR_CHECK_WORDS = DOCTOR_CHECK_NAMES.map((n) => `"${n}"`).join(" ")`. Give it a doc comment saying the names hold no `"`, `$`, backtick or `\`, so plain double quotes are exact, and that a test pins this.
+- **fish** (`fishScript`). Push a function line `function __tumwater_doctor_checks; printf '%s\n' <the same double-quoted names>; end` next to `__tumwater_argc`. Fish double quotes keep `'` literal. Then push `complete -c tumwater -n "__fish_seen_subcommand_from doctor" -a "(__tumwater_doctor_checks)"`. Command-substitution output splits on newlines only, so each multi-word name stays one candidate, and fish escapes the inserted candidate itself.
+- **docs/cli.md**. In the `tumwater completion bash|zsh|fish` clause, after `tier names after `role <id> --model``, add `, and check names after `doctor``. Grep for the clause; do not read the file whole.
+
+**Acceptance criteria** (test/completion.test.ts, through the existing `complete(script, words, cword)` helper; the words are single-quoted there, so pass `"image\\ in"` as a JS string):
+- New test "the bash script completes doctor check names, escaping spaces and apostrophes":
+  - `["tumwater","doctor","im"]`, cword 2, gives `["image\\ input"]`.
+  - `["tumwater","doctor","mai"]` gives `["maintenance\\ allowance","main\\'s\\ check"]`, in list order. Do not type an apostrophe into a test word: the helper wraps each word in single quotes.
+  - `["tumwater","doctor","image\\ in"]` gives `["image\\ input"]`.
+  - `["tumwater","doctor",""]` gives `DOCTOR_CHECK_NAMES.length` entries.
+  - `["tumwater","doctor","repo","or"]`, cword 3, gives `["orphans"]` (later positionals complete too).
+  - `["tumwater","doctor","--pr"]` still gives `["--problems"]`.
+  - `["tumwater","status",""]`, cword 2, offers no check name. Assert it does not include `"image\\ input"`.
+- The same test asserts every `DOCTOR_CHECK_NAMES` entry matches `/^[a-z0-9' -]+$/i`, which pins the double-quoting assumption.
+- A fish assertion (in the existing fish line tests, via `fishScriptLines()`): one line defines `__tumwater_doctor_checks` and contains `"main's check"` and `"image input"`, and one line has `__fish_seen_subcommand_from doctor` together with `-a "(__tumwater_doctor_checks)"`. The existing "the fish script parses under fish when fish is installed" test passes.
+- The existing completion tests pass unchanged, including `bash -n` on the script.
+- `npm run test:gate` passes.
+
 ### Inside a team workspace, the ungated commands (`report`, `backlog`, `questions`, `role`, `bug`/`plan --list`/`--show`) refuse with the owning team root, so `tumwater role <id> --model` can no longer seed a phantom `tumwater.json` in a slot (planned 2026-10-19 by the plan role; independent of every eligible Planned entry. Touches src/cli/cli-repo-gate.ts, src/cli.ts (the `report` case), src/cli/cli-query-commands.ts, src/backlog/backlog-cli.ts, plus a new test/cli-team-workspace.test.ts; done 2026-10-19 by the feature role)
 
 **Goal.** The done plan "Inside a team workspace (`<root>/.tumwater/worktrees/<slot>`), `tumwater init` refuses and every gated command names the owning team root…" covered `init` and the commands that call `requireReadyRepo`. Several commands skip that gate on purpose, because each one degrades to empty output in a directory that was never initialized. Inside a workspace, that degraded output is wrong. Measured 2026-10-19 with main's built CLI in a temp `R/.tumwater/worktrees/_slot-1` git repo:

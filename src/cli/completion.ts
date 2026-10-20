@@ -7,6 +7,7 @@ import { AGENT_IDS, AGENT_KEYS, CLAUDE_AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS,
 import { DOTTED_MAP_KEYS } from "../config/config-keys.js";
 import { HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS } from "../history/history-data.js";
 import { templateIds } from "../init/init-templates.js";
+import { DOCTOR_CHECK_NAMES } from "../doctor/doctor-check-names.js";
 import { allRoleIds } from "../roles/roles.js";
 import { EVENT_TYPE_LABELS } from "../events/event-labels.js";
 import { HELP, helpStanzas } from "./help.js";
@@ -122,6 +123,10 @@ const EVENT_TYPE_CODES = Object.keys(EVENT_TYPE_LABELS).sort();
  * completes the moment THINKING_LEVELS grows. */
 const THINKING_LEVEL_WORDS = [...THINKING_LEVELS];
 
+/** The doctor check names, each in plain double quotes, for the scripts to loop over. The names
+ * hold no `"`, `$`, backtick or `\`, so plain double quotes are exact; a test pins this. */
+const DOCTOR_CHECK_WORDS = DOCTOR_CHECK_NAMES.map((n) => `"${n}"`).join(" ");
+
 function bashScript(help: string): string {
   const spec = completionSpec(help);
   const arms = spec.commands.map((command) => {
@@ -147,6 +152,17 @@ function bashScript(help: string): string {
     `  local cur="\${COMP_WORDS[COMP_CWORD]}"`,
     `  local prev="\${COMP_WORDS[COMP_CWORD-1]}"`,
     `  COMPREPLY=()`,
+    `  if [ "\${COMP_WORDS[1]}" = doctor ] && [ "$COMP_CWORD" -ge 2 ] && [[ "$cur" != -* ]]; then`,
+    `    local word="$cur" quote="" name`,
+    `    case "$word" in \\"*|\\'*) quote="\${word:0:1}"; word="\${word:1}";; esac`,
+    `    word="\${word//\\\\/}"`,
+    `    for name in ${DOCTOR_CHECK_WORDS}; do`,
+    `      if [[ "$name" == "$word"* ]]; then`,
+    `        if [ -n "$quote" ]; then COMPREPLY+=("$name"); else COMPREPLY+=("$(printf '%q' "$name")"); fi`,
+    `      fi`,
+    `    done`,
+    `    return 0`,
+    `  fi`,
     `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ ${ROLE_POSITIONAL_COMMANDS.map((c) => `"\${COMP_WORDS[1]}" == ${c}`).join(" || ")} ]] && [[ "$cur" != -* ]]; }; then`,
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --roles 2>/dev/null)" -- "$cur") )`,
     `    return 0`,
@@ -218,6 +234,7 @@ function fishScript(help: string): string {
     `# tumwater completion (generated from \`tumwater help\`)`,
     `complete -c tumwater -f`,
     `function __tumwater_argc; count (commandline -opc); end`,
+    `function __tumwater_doctor_checks; printf '%s\\n' ${DOCTOR_CHECK_WORDS}; end`,
     `complete -c tumwater -n __fish_use_subcommand -a "${spec.commands.join(" ")}"`,
   ];
   for (const command of spec.commands) {
@@ -230,6 +247,7 @@ function fishScript(help: string): string {
   lines.push(
     `complete -c tumwater -n "__fish_seen_subcommand_from ${ROLE_POSITIONAL_COMMANDS.join(" ")}; and test (__tumwater_argc) -eq 2" -a "(tumwater completion --roles 2>/dev/null)"`,
     `complete -c tumwater -n "__fish_seen_subcommand_from config; and __fish_seen_subcommand_from get set unset; and test (__tumwater_argc) -eq 3" -a "(tumwater completion --config-keys 2>/dev/null)"`,
+    `complete -c tumwater -n "__fish_seen_subcommand_from doctor" -a "(__tumwater_doctor_checks)"`,
     ``,
   );
   return lines.join("\n");
