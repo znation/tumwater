@@ -145,6 +145,10 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
       );
     const result = setConfigKey(root, key ?? "", raw);
     if (!result.ok) fail(result.error);
+    if ((result as { unchanged?: true }).unchanged) {
+      say(`${canonicalConfigKey(key ?? "")} is already ${JSON.stringify((result as { value: unknown }).value)}, so tumwater.json was not written`);
+      return;
+    }
     say(`set ${canonicalConfigKey(key ?? "")} to ${JSON.stringify((result as { value: unknown }).value)}`);
     const note = (result as { note?: string }).note;
     if (note) say(`note: ${note}`);

@@ -344,3 +344,23 @@ test("get reads one field of a fixed-shape section and refuses a typo'd field", 
   assert.match(bad.stderr, /unknown review field "modle"/);
   assert.match(bad.stderr, /did you mean `model`\?/);
 });
+
+test("set of the value a key already resolves to says already and writes nothing", async () => {
+  const root = makeRepo();
+  writeConfig(root, { model: "m1", maxDailyCostUsdPerRole: { qa: 3 } });
+  const file = path.join(root, "tumwater.json");
+  const before = fs.readFileSync(file);
+  const top = await attemptAsync(() => cmdConfig(root, ["set", "model", "m1"]));
+  assert.ok(!top.exited);
+  assert.equal(top.stdout, 'model is already "m1", so tumwater.json was not written\n');
+  const field = await attemptAsync(() => cmdConfig(root, ["set", "roles.selfcheck.enabled", "false"]));
+  assert.ok(!field.exited);
+  assert.match(field.stdout, /^roles\.selfcheck\.enabled is already false, /);
+  const map = await attemptAsync(() => cmdConfig(root, ["set", "maxDailyCostUsdPerRole.qa", "3"]));
+  assert.ok(!map.exited);
+  assert.match(map.stdout, /^maxDailyCostUsdPerRole\.qa is already 3, /);
+  assert.deepEqual(fs.readFileSync(file), before, "no write: the bytes are identical");
+  const changed = await attemptAsync(() => cmdConfig(root, ["set", "model", "m2"]));
+  assert.equal(changed.stdout, 'set model to "m2"\n');
+  assert.equal((readJson(file) as { model?: string }).model, "m2");
+});

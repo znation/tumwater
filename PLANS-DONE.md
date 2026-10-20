@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater config set <key> <value>` says `already` and writes nothing when the key already resolves to that value (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — the `role <id> --enable`/`--disable` entry makes the same "already" change in src/cli/cli-query-commands.ts and calls setConfigKey only when the state differs, so the two do not overlap; this one touches src/config/config-write.ts, src/cli/config-commands.ts, test/config-commands.test.ts and docs/cli.md's `tumwater config` row); done 2026-10-20 by the feature role
+
+**Goal.** On a fresh project, `tumwater config set maxConcurrent 6` exits 0 and prints `set maxConcurrent to 6`, and `config set roles.selfcheck.enabled false` prints `set roles.selfcheck.enabled to false` (checked against main's built CLI on 2026-10-20). Neither changed anything: 6 is the resolved run cap and selfcheck ships disabled. The confirmation reads as if the command did something, so an operator who expected a change learns nothing. `config unset` already reports its no-op (`<key> is not set in tumwater.json, so nothing was removed`); `set` should do the same.
+
+**Approach.**
+- **src/config/config-write.ts `setConfigKey`.** Each arm of both `writeConfigMutation` callbacks (the dotted one: `map`, `tier`, `section`, `agent`, role field; and the top-level one) already computes `oldValue` from the loaded, defaults-merged config. Right after that, in each arm, add `if (isDeepStrictEqual(oldValue, value)) return cfg;`. Import `isDeepStrictEqual` from `node:util`. `writeConfigMutation` already treats `mutated === cfg` as "write nothing" (the unset no-op), so the file stays byte-identical. Set a local `unchanged` flag in that branch. Add `unchanged?: true` to the ok result type and return it as `{ ok: true, value, oldValue, unchanged: true }`. The `tier` arm's object-entry `note` cannot apply when unchanged: a string value never deep-equals an object entry. Extend the function's doc comment with one sentence: a value equal to the resolved one is a no-op that writes nothing and returns `unchanged`. The comparison uses the resolved value, not the file's raw text, because the resolved value is what the runtime reads. Setting a key to its default when the file omits it therefore changes no behavior and is reported as already set.
+- **src/cli/config-commands.ts `cmdConfig`'s `set` branch.** When `result.unchanged`, print `${k} is already ${JSON.stringify(value)}, so tumwater.json was not written` (with `k = canonicalConfigKey(key ?? "")`) and return before the `note:` lines. Exit code stays 0. The bare-`roles` note is skipped too, because nothing was replaced. Otherwise keep the `set … to …` line unchanged.
+- Leave the TUI editors and GUI routes that call `setConfigKey` alone. They ignore the new field, and they now just skip a redundant rewrite.
+
+**Tests (test/config-commands.test.ts).** Add `test("set of the value a key already resolves to says already and writes nothing", …)`:
+- With `writeConfig(root, { model: "m1" })`, `cmdConfig(root, ["set", "model", "m1"])` prints exactly `model is already "m1", so tumwater.json was not written\n`, does not exit, and leaves the file bytes unchanged (compare `fs.readFileSync` before and after).
+- A dotted role field: `set roles.selfcheck.enabled false` on the same project, where selfcheck is disabled by the catalog default, prints `roles.selfcheck.enabled is already false, …`, and the bytes are unchanged.
+- A dotted map key already in the file (e.g. `maxDailyCostUsdPerRole.qa`, written first) set to the same number prints `already` and leaves the bytes unchanged.
+- A different value still prints `set … to …` and writes.
+
+Leave the existing tests as they are. If one fails because it re-sets a key to its current value and expected a write, report it and change that test's input value, not the new rule.
+
+**Docs.** In docs/cli.md's `tumwater config` row, after the `config set` description, add that a value the key already resolves to is reported as `already` and nothing is written.
+
+**Acceptance criteria.**
+- On a fresh `tumwater init` project, `tumwater config set maxConcurrent 6` prints `maxConcurrent is already 6, so tumwater.json was not written` and exits 0, and tumwater.json is byte-identical before and after.
+- `tumwater config set maxConcurrent 3` still prints `set maxConcurrent to 3` and writes 3.
+- A type-invalid or unknown-key `config set` fails exactly as before. The validation arms run before the new comparison, and `perKeyValidator` and the field checks are untouched.
+- `npm run test:gate` passes.
+
 ### Plain terms code run, part 1/20: Move src/tick to src/run and the run command module to cli-start (planned 2026-10-16 by user, done 2026-10-20; requires Plain terms code runner 16/16 landed; design in plans/terminology.md "Code names"; touches src/tick/ + src/ui/tick-progress-model.ts + src/cli/cli-run.ts + test/tick-*.test.ts + test/cli-run*.test.ts + test/helpers/run-live-harness.ts + every importer + docs/invariants.md + DEVELOPMENT.md + test/invariants-doc.test.ts)
 
 **Goal.** Mechanical. The run pipeline's modules, the run-progress model, the `tumwater start` command module and their tests move to their final names, with every import path and path citation updated and no identifier changed.

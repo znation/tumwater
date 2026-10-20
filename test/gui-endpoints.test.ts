@@ -1330,12 +1330,13 @@ test("handleRoleEnable maps an instance id to its base role's key and accepts th
   assert.deepEqual(inst.data, { ok: true, role: "feature", message: "feature: enabled" });
   let onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal((onDisk.roles as { feature: Record<string, unknown> }).feature.enabled, true);
-  // The director is accepted (harmless — it cannot be disabled) and its key is written.
+  // The director is accepted (harmless — it cannot be disabled); it already resolves enabled, so
+  // setConfigKey writes nothing.
   const dir = await serveRoleEnable(root, { role: "director" });
   assert.equal(dir.captured.status, 200);
   assert.deepEqual(dir.data, { ok: true, role: "director", message: "director: enabled" });
   onDisk = readJson(configPath(root)) as Record<string, unknown>;
-  assert.equal((onDisk.roles as { director: Record<string, unknown> }).director.enabled, true);
+  assert.equal((onDisk.roles as Record<string, unknown>).director, undefined);
 });
 
 test("handleRoleEnable rejects a missing, blank, non-string, or unknown role without writing", async () => {

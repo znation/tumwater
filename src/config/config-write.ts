@@ -8,6 +8,7 @@
  * addressed and given per-key value screeners — lives in config-keys.ts (both the write
  * verbs here and the read side / doctor share it). */
 import fs from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import { modelTierMap, type TumwaterConfig } from "./config-schema.js";
 import { configPath, configLockPath, configRequestPath, CONFIG_BASENAME } from "../paths.js";
 import { errorMessage } from "../text/text.js";
@@ -141,15 +142,18 @@ interface ConfigRecord {
  * ROLE_ENTRY_KEYS (a did-you-mean suggestion otherwise, via text/suggest.ts's typoSuffix); a
  * typo'd role id and a type-invalid value are left for validateConfig to reject with its own
  * actionable message. Returns the parsed value and the previous one so the caller can
- * confirm the change; on any failure the file is untouched (see writeConfigMutation). */
+ * confirm the change; on any failure the file is untouched
+ * (see writeConfigMutation). A value equal to the resolved one is a no-op: nothing is written and
+ * the result carries `unchanged`. */
 export function setConfigKey(
   root: string,
   key: string,
   rawValue: string,
-): { ok: true; value: unknown; oldValue: unknown; note?: string } | { ok: false; error: string } {
+): { ok: true; value: unknown; oldValue: unknown; note?: string; unchanged?: true } | { ok: false; error: string } {
   key = canonicalConfigKey(key);
   const parsed = parseConfigKey(key);
   if (parsed.kind === "error") return fail(parsed.error);
+  let unchanged = false; // set by a mutation callback when value equals the resolved one
   let value: unknown;
   try {
     value = JSON.parse(rawValue);
@@ -181,6 +185,10 @@ export function setConfigKey(
       if (parsed.kind === "map") {
         const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
         oldValue = existing[parsed.role];
+        if (isDeepStrictEqual(oldValue, value)) {
+          unchanged = true;
+          return cfg;
+        }
         const next = { ...cfg, [parsed.map]: { ...existing, [parsed.role]: value } };
         return preservingFileRoles(root, next);
       }
@@ -192,6 +200,10 @@ export function setConfigKey(
         // there and nothing is written.
         const existing = modelTierMap(record.model);
         oldValue = existing[parsed.tier];
+        if (isDeepStrictEqual(oldValue, value)) {
+          unchanged = true;
+          return cfg;
+        }
         const next = { ...cfg, model: { ...existing, [parsed.tier]: value } } as unknown as TumwaterConfig;
         return preservingFileRoles(root, next);
       }
@@ -200,6 +212,10 @@ export function setConfigKey(
         // writeConfigMutation owns the value type, so a bad value fails there and writes nothing.
         const existing = (record[parsed.section] as Record<string, unknown> | undefined) ?? {};
         oldValue = existing[parsed.field];
+        if (isDeepStrictEqual(oldValue, value)) {
+          unchanged = true;
+          return cfg;
+        }
         const next = { ...cfg, [parsed.section]: { ...existing, [parsed.field]: value } };
         return preservingFileRoles(root, next);
       }
@@ -210,6 +226,10 @@ export function setConfigKey(
         const agents = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
         const entry = { ...(agents[parsed.id] ?? {}) };
         oldValue = entry[parsed.field];
+        if (isDeepStrictEqual(oldValue, value)) {
+          unchanged = true;
+          return cfg;
+        }
         entry[parsed.field] = value;
         agents[parsed.id] = entry;
         const next = { ...cfg, backends: agents } as unknown as TumwaterConfig;
@@ -231,6 +251,10 @@ export function setConfigKey(
       const rawEntryCandidate = rawRoles[parsed.id];
       const rawEntry = objectOrEmpty(rawEntryCandidate);
       oldValue = record.roles?.[parsed.id]?.[parsed.field];
+      if (isDeepStrictEqual(oldValue, value)) {
+          unchanged = true;
+          return cfg;
+        }
       const roles = {
         ...rawRoles,
         [parsed.id]: { ...rawEntry, [parsed.field]: value },
@@ -241,6 +265,7 @@ export function setConfigKey(
       return { ...cfg, roles } as unknown as TumwaterConfig;
     });
     if (!result.ok) return result;
+    if (unchanged) return { ok: true, value, oldValue, unchanged: true };
     // A string replaces a whole object tier entry, so its `backend` goes with it.
     if (parsed.kind === "tier" && isJsonObject(oldValue)) {
       const dropped =
@@ -279,6 +304,10 @@ export function setConfigKey(
   let oldValue: unknown;
   const result = writeConfigMutation(root, (cfg) => {
     oldValue = (cfg as unknown as Record<string, unknown>)[key];
+    if (isDeepStrictEqual(oldValue, value)) {
+          unchanged = true;
+          return cfg;
+        }
     const next = { ...cfg, [key]: value };
     // `roles` merges per-entry at load (overlayDefaults seeds the catalog and lets the file
     // override one entry), so an unrelated whole-config write must not re-expand the file's
@@ -306,6 +335,7 @@ export function setConfigKey(
     return next;
   });
   if (!result.ok) return result;
+  if (unchanged) return { ok: true, value, oldValue, unchanged: true };
   return { ok: true, value, oldValue };
 }
 
