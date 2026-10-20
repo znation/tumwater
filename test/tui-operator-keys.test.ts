@@ -191,7 +191,7 @@ test("Ctrl+W then a duration schedules the viewed role's wake", async () => {
     tui.key(undefined, "w", { ctrl: true });
     typeText(tui, "2h");
     tui.key(undefined, "return");
-    const wakes = listWakes(repo, "clean", Date.now());
+    const wakes = listWakes(repo, ["clean"], Date.now());
     assert.equal(wakes.length, 1);
     assert.ok(Math.abs(wakes[0]!.atMs - (Date.now() + 7_200_000)) < 60_000);
     assert.match(tui.lastFrame(), /wake scheduled for clean/);
@@ -207,7 +207,7 @@ test("Ctrl+W then 'cancel' drops the viewed role's scheduled wakes", async () =>
     typeText(tui, "cancel");
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /cancelled 1 scheduled wake for clean/);
-    assert.deepEqual(listWakes(repo, "clean", Date.now()), []);
+    assert.deepEqual(listWakes(repo, ["clean"], Date.now()), []);
   });
 });
 

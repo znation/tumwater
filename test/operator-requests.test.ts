@@ -518,12 +518,28 @@ test("cancelScheduledWakes with a role drops only that role", () => {
   const only = scheduledWake(root, "1-1-aa.json", ["qa"], at);
   const shared = scheduledWake(root, "2-1-bb.json", ["qa", "feature"], at);
   const other = scheduledWake(root, "3-1-cc.json", ["feature"], at);
-  assert.equal(cancelScheduledWakes(root, "qa"), 2);
+  assert.equal(cancelScheduledWakes(root, ["qa"]), 2);
   assert.equal(fs.existsSync(only), false);
   const rewritten = readJsonFile<{ roles: string[]; notBeforeMs: number }>(shared);
   assert.deepEqual(rewritten?.roles, ["feature"]);
   assert.equal(rewritten?.notBeforeMs, at);
   assert.deepEqual(readJsonFile<{ roles: string[] }>(other)?.roles, ["feature"]);
+});
+
+test("cancelScheduledWakes with a role list drops each listed role", () => {
+  const root = tmpdir();
+  const at = Date.now() + 60_000;
+  const a = scheduledWake(root, "1-1-aa.json", ["qa"], at);
+  const b = scheduledWake(root, "2-1-bb.json", ["qa", "feature", "clean"], at);
+  const c = scheduledWake(root, "3-1-cc.json", ["clean"], at);
+  const d = scheduledWake(root, "4-1-dd.json", ["feature"], at);
+  assert.equal(cancelScheduledWakes(root, ["qa", "clean"]), 3);
+  assert.equal(fs.existsSync(a), false);
+  assert.equal(fs.existsSync(c), false);
+  const rewritten = readJsonFile<{ roles: string[]; notBeforeMs: number }>(b);
+  assert.deepEqual(rewritten?.roles, ["feature"]);
+  assert.equal(rewritten?.notBeforeMs, at);
+  assert.deepEqual(readJsonFile<{ roles: string[] }>(d)?.roles, ["feature"]);
 });
 
 test("cancelScheduledWakes tolerates a missing directory", () => {

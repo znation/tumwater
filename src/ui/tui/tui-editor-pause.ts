@@ -245,7 +245,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
           return true;
         }
         try {
-          const message = wakeParsed.cancel ? cancelWakes(session.root, target!) : requestWake(session.root, [target!], wakeParsed.inMs);
+          const message = wakeParsed.cancel ? cancelWakes(session.root, [target!]) : requestWake(session.root, [target!], wakeParsed.inMs);
           exitPauseEditMode();
           session.flashMessage(message);
         } catch (err) {

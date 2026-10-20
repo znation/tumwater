@@ -430,7 +430,7 @@ Usage:
   tumwater wake [--role <id>[,<id>...]] [--in <dur> | --cancel | --list [--json]]
                                    Wake sleeping roles — the named roles (or all) run
                                    within one poll; --in schedules the wake for later;
-                                   --cancel drops pending scheduled wakes;
+                                   --cancel drops pending scheduled wakes (the named roles' share);
                                    --list shows every pending scheduled wake, earliest first
                                    (--json for scripts)
   tumwater reclaim [--dry-run]     Reclaim gitignored build outputs from every

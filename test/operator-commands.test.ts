@@ -1,3 +1,4 @@
+import { requestWake } from "../src/operator/operator-intent.js";
 import { sleep } from "./helpers/wait.js";
 import test from "node:test";
 import { readJson, readScheduledWakes } from "./helpers/json-read.js";
@@ -506,12 +507,17 @@ test("wake and reset-counters: a comma list with an unknown id writes no marker"
   assert.match(await expectFailAsync(() => cmdResetCounters(root, ["--role", ","])), /--role needs a role id/);
 });
 
-test("wake --cancel and --list reject a comma list of roles", async () => {
+test("wake --cancel and --list take a comma list of roles", async () => {
   const root = tmpdir();
-  for (const flag of ["--cancel", "--list"]) {
-    const stderr = await expectFailAsync(() => cmdWake(root, [flag, "--role", "clean,dedupe"]));
-    assert.match(stderr, /wake --cancel and --list take one --role id/);
-  }
+  for (const role of ["clean", "dedupe", "coverage"]) requestWake(root, [role], 3_600_000);
+  const listed = await expectOk(() => cmdWake(root, ["--list", "--json", "--role", "clean,dedupe"]));
+  const wakes = JSON.parse(listed.stdout) as { roles: string[] }[];
+  assert.deepEqual(wakes.map((w) => w.roles).sort(), [["clean"], ["dedupe"]]);
+  assert.match(await expectFailAsync(() => cmdWake(root, ["--cancel", "--role", "clean,ghost"])), /unknown role: ghost/);
+  assert.equal(readScheduledWakes(root).length, 3);
+  const cancelled = await expectOk(() => cmdWake(root, ["--cancel", "--role", "clean, dedupe,clean"]));
+  assert.match(cancelled.stdout, /cancelled 2 scheduled wakes for clean, dedupe/);
+  assert.deepEqual(readScheduledWakes(root).map((w) => w.roles), [["coverage"]]);
 });
 
 // --- the operator pause's reason (`pause --reason <text>`) ---

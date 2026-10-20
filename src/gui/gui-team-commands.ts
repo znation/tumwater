@@ -128,7 +128,7 @@ export async function handleWake(req: http.IncomingMessage, res: http.ServerResp
 export async function handleWakeCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readRoleBody(req, res, '{"role": "feature"}', root, true);
   if (!body) return;
-  sendJson(res, 200, { ok: true, message: cancelWakes(root, body.role as string | undefined) });
+  sendJson(res, 200, { ok: true, message: cancelWakes(root, body.role === undefined ? undefined : [body.role as string]) });
 }
 
 /** Resume a row: lift every marker key that pauses this role id (its own, its base role's, and

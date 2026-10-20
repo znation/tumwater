@@ -121,11 +121,6 @@ function targetRoles(root: string, args: string[]): string[] {
   return namedRoleList(root, args) ?? Object.keys(loadConfig(root).roles);
 }
 
-/** wake --cancel and --list scope to one role: a comma list fails with that, not "unknown role". */
-function failOnRoleList(args: string[]): void {
-  if ((flagValue(args, "--role") ?? "").includes(",")) fail("wake --cancel and --list take one --role id");
-}
-
 /** `tumwater reset-counters [--role <id>[,<id>...]]`: zero the per-loop counters shown in the
  * dashboards so a fresh observation window can begin. Scheduling fields and pi session
  * continuity are untouched: loops keep sleeping/waking exactly as before. */
@@ -139,8 +134,8 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
  * sleeping until their backoff expires. With `--in`, the wake is scheduled: the marker is
  * written now but consumed no earlier than now + duration, the same shape `pause --for`'s
  * auto-resume takes — the wake applies at the deadline, not at submit. With `--cancel`, the
- * pending scheduled wakes (or the named role's share) are dropped instead; no wake is
- * written. With `--list`, every pending scheduled wake (or the named role's)
+ * pending scheduled wakes (or the named roles' share) are dropped instead; no wake is
+ * written. With `--list`, every pending scheduled wake (or the named roles')
  * is printed, earliest first — `--json` as an array of {roles, atMs}; read-only. */
 export async function cmdWake(root: string, args: string[]): Promise<void> {
   // `--in <duration>` (the scheduled wake): the command's own gate (runMarkerCommand's
@@ -153,18 +148,15 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   if (args.includes("--list")) {
     if (inRaw !== null || args.includes("--cancel")) fail("wake --list cannot be combined with --in or --cancel");
     const now = Date.now();
-    failOnRoleList(args);
-    const role = namedRole(root, args) ?? undefined;
-    const wakes = listWakes(root, role, now);
-    say(args.includes("--json") ? JSON.stringify(wakes) : renderWakeList(wakes, now, role));
+    const roles = namedRoleList(root, args) ?? undefined;
+    const wakes = listWakes(root, roles, now);
+    say(args.includes("--json") ? JSON.stringify(wakes) : renderWakeList(wakes, now, roles));
     return;
   }
   if (args.includes("--json")) fail("wake --json requires --list");
   if (args.includes("--cancel")) {
     if (inRaw !== null) fail("wake --cancel and --in cannot be combined");
-    failOnRoleList(args);
-    const role = namedRole(root, args);
-    say(cancelWakes(root, role ?? undefined));
+    say(cancelWakes(root, namedRoleList(root, args) ?? undefined));
     return;
   }
   const inMs = inRaw !== null ? parseDurationFlag("wake --in", inRaw) : undefined;

@@ -355,8 +355,9 @@ test("cancelWakes reports what it dropped, team-wide or for one role", () => {
   assert.equal(cancelWakes(root), "no scheduled wake pending");
   requestWake(root, ["feature"], 60_000);
   requestWake(root, ["qa", "docs"], 90_000);
-  assert.equal(cancelWakes(root, "nope"), "no scheduled wake pending for nope");
-  assert.equal(cancelWakes(root, "qa"), "cancelled 1 scheduled wake for qa");
+  assert.equal(cancelWakes(root, ["nope"]), "no scheduled wake pending for nope");
+  assert.equal(cancelWakes(root, ["nope", "ghost"]), "no scheduled wake pending for nope, ghost");
+  assert.equal(cancelWakes(root, ["qa"]), "cancelled 1 scheduled wake for qa");
   assert.deepEqual(readScheduledWakes(root).map((w) => w.roles).sort(), [["docs"], ["feature"]]);
   assert.equal(cancelWakes(root), "cancelled 2 scheduled wakes");
   assert.deepEqual(readScheduledWakes(root), []);
@@ -365,7 +366,8 @@ test("cancelWakes reports what it dropped, team-wide or for one role", () => {
 test("renderWakeList numbers wakes and words the empty case", () => {
   const now = 1_000_000;
   assert.equal(renderWakeList([], now), "no scheduled wake pending");
-  assert.equal(renderWakeList([], now, "qa"), "no scheduled wake pending for qa");
+  assert.equal(renderWakeList([], now, ["qa"]), "no scheduled wake pending for qa");
+  assert.equal(renderWakeList([], now, ["qa", "clean"]), "no scheduled wake pending for qa, clean");
   assert.equal(
     renderWakeList([{ roles: ["qa"], atMs: now + 45 * 60_000 }, { roles: ["feature", "qa"], atMs: now + 2 * 3_600_000 }], now),
     "1. in 45m — qa\n2. in 2h — feature, qa",
@@ -379,5 +381,6 @@ test("listWakes filters by role and keeps full roles lists, earliest first", () 
   requestWake(root, ["qa"], 60_000);
   const now = Date.now();
   assert.deepEqual(listWakes(root, undefined, now).map((w) => w.roles), [["qa"], ["clean"], ["feature", "qa"]]);
-  assert.deepEqual(listWakes(root, "feature", now).map((w) => w.roles), [["feature", "qa"]]);
+  assert.deepEqual(listWakes(root, ["feature"], now).map((w) => w.roles), [["feature", "qa"]]);
+  assert.deepEqual(listWakes(root, ["clean", "feature"], now).map((w) => w.roles), [["clean"], ["feature", "qa"]]);
 });

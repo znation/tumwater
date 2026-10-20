@@ -91,31 +91,31 @@ export function requestResetCounters(root: string, roles: string[]): string {
 
 /** The empty-list wording both wake-list renderers share — `cancelWakes`'s no-op arm and
  * `renderWakeList`'s empty list: one literal so the two surfaces cannot drift on what an
- * operator sees when nothing is pending, plus a ` for <role>` suffix when the view was
+ * operator sees when nothing is pending, plus a ` for <roles>` suffix when the view was
  * role-scoped. */
-function noWakePending(role?: string): string {
-  return `no scheduled wake pending${role ? ` for ${role}` : ""}`;
+function noWakePending(roles?: string[]): string {
+  return `no scheduled wake pending${roles ? ` for ${roles.join(", ")}` : ""}`;
 }
 
 /** Drop pending scheduled wakes (`tumwater wake --cancel`, the dashboard's POST /api/wake-cancel):
- * every pending wake, or only `role`'s share of them. Returns the confirmation the CLI prints
- * verbatim and the GUI flashes, so the surfaces cannot drift on wording. */
-export function cancelWakes(root: string, role?: string): string {
-  const n = cancelScheduledWakes(root, role);
-  const forRole = role ? ` for ${role}` : "";
-  return n > 0 ? `cancelled ${plural(n, "scheduled wake")}${forRole}` : noWakePending(role);
+ * every pending wake, or only the named roles' share of them. Returns the confirmation the CLI
+ * prints verbatim and the GUI flashes, so the surfaces cannot drift on wording. */
+export function cancelWakes(root: string, roles?: string[]): string {
+  const n = cancelScheduledWakes(root, roles);
+  const forRole = roles ? ` for ${roles.join(", ")}` : "";
+  return n > 0 ? `cancelled ${plural(n, "scheduled wake")}${forRole}` : noWakePending(roles);
 }
 
-/** The pending scheduled wakes (`tumwater wake --list`), earliest first; with `role`, only the
- * wakes naming that loop. Entries keep their full roles list. Read-only. */
-export function listWakes(root: string, role: string | undefined, now: number): { roles: string[]; atMs: number }[] {
+/** The pending scheduled wakes (`tumwater wake --list`), earliest first; with `roles`, only the
+ * wakes naming any of them. Entries keep their full roles list. Read-only. */
+export function listWakes(root: string, roles: string[] | undefined, now: number): { roles: string[]; atMs: number }[] {
   const wakes = pendingScheduledWakes(root, now);
-  return role ? wakes.filter((w) => w.roles.includes(role)) : wakes;
+  return roles ? wakes.filter((w) => w.roles.some((r) => roles.includes(r))) : wakes;
 }
 
 /** `wake --list`'s text: one numbered line per wake, or the empty wording `cancelWakes` uses. */
-export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: number, role?: string): string {
-  if (wakes.length === 0) return noWakePending(role);
+export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: number, roles?: string[]): string {
+  if (wakes.length === 0) return noWakePending(roles);
   return wakes
     .map((w, i) => `${i + 1}. in ${humanUntil(w.atMs, now)} — ${w.roles.join(", ")}`)
     .join("\n");

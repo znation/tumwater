@@ -5,6 +5,37 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater wake --cancel` and `wake --list` take a comma-separated `--role` list, so the scheduled-wake views match plain `wake --role clean,dedupe` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry. The in-flight `abort --role` entry also edits src/operator/operator-commands.ts and test/operator-commands.test.ts, but only `cmdAbort` and its tests, which this entry does not touch; done 2026-10-19 by the feature role)
+
+**Goal.** `tumwater wake --role clean,dedupe` (immediate or `--in 45m`) accepts a comma list. `wake --cancel --role clean,dedupe` and `wake --list --role clean,dedupe` do not: `failOnRoleList` (src/operator/operator-commands.ts) rejects them with `wake --cancel and --list take one --role id`. So an operator who scheduled one wake for two roles cannot cancel or list that same pair in one command. Accept the list in both branches. A single id and no `--role` behave exactly as now.
+
+**Approach.**
+- `src/operator/operator-requests.ts` `cancelScheduledWakes(root, role?: string)` becomes `cancelScheduledWakes(root, roles?: string[])`. `undefined` keeps the current behavior: every pending file is removed. With a list, a file naming none of `roles` is skipped. Otherwise every listed role is dropped from the file's roles: the file is removed if none remain, or rewritten with the rest (same `at` and `notBeforeMs`). The count stays one per file touched. Update the doc comment.
+- `src/operator/operator-intent.ts`:
+  - `cancelWakes(root, roles?: string[])` passes the list through. Its ` for <role>` suffix becomes ` for ${roles.join(", ")}`.
+  - `noWakePending(roles?: string[])` gets the same suffix.
+  - `listWakes(root, roles: string[] | undefined, now)` keeps a wake when `w.roles.some((r) => roles.includes(r))`. Entries still carry their full roles list.
+  - `renderWakeList(wakes, now, roles?: string[])` passes `roles` to `noWakePending`.
+  - Update the doc comments: "the named role's share" becomes "the named roles' share".
+- `src/operator/operator-commands.ts` `cmdWake`: delete `failOnRoleList` and its two calls. In the `--list` and `--cancel` branches, replace `namedRole(root, args)` with `namedRoleList(root, args) ?? undefined`. `namedRoleList` already resolves every piece before anything is touched, dedupes, and fails with `ROLE_VALUE_ERROR` on `--role ,`. Update `cmdWake`'s doc comment.
+- Callers that keep one role wrap it in an array: the GUI's `handleWakeCancel` (src/gui/gui-team-commands.ts) passes `body.role === undefined ? undefined : [body.role as string]`, and the TUI's Ctrl+W cancel in src/ui/tui/tui-editor-pause.ts passes `cancelWakes(session.root, [target!])`. Grep `cancelWakes(\|listWakes(\|renderWakeList(\|cancelScheduledWakes(` across src/ and test/ to be sure no other caller exists.
+- `src/cli/help.ts`: the `wake` usage line already shows `[--role <id>[,<id>...]]`. Change `--cancel drops pending scheduled wakes;` to `--cancel drops pending scheduled wakes (the named roles' share);`.
+- `docs/cli.md`, "Control the roles" row: `tumwater wake --cancel [--role <id>]` and `tumwater wake --list [--role <id>] [--json]` become `[--role <id>[,<id>...]]`.
+
+**Files touched.** src/operator/operator-requests.ts, src/operator/operator-intent.ts, src/operator/operator-commands.ts, src/gui/gui-team-commands.ts, src/ui/tui/tui-editor-pause.ts, src/cli/help.ts, docs/cli.md, test/operator-requests.test.ts, test/operator-intent.test.ts, test/operator-commands.test.ts.
+
+**Acceptance criteria.**
+- In test/operator-requests.test.ts, "cancelScheduledWakes with a role drops only that role" passes `["qa"]` and keeps its assertions. New test, "cancelScheduledWakes with a role list drops each listed role": the wake files are `["qa"]`, `["qa", "feature", "clean"]`, `["clean"]` and `["feature"]`. `cancelScheduledWakes(root, ["qa", "clean"])` returns 3. The first and third files are gone, the second is rewritten to `["feature"]` with its `notBeforeMs` kept, and the fourth is untouched.
+- In test/operator-intent.test.ts, the existing `cancelWakes` and `listWakes` tests pass with their role arguments wrapped in arrays. Add these assertions:
+  - `cancelWakes(root, ["nope", "ghost"])` returns `no scheduled wake pending for nope, ghost`.
+  - `listWakes(root, ["clean", "feature"], now)` returns `[["clean"], ["feature", "qa"]]`.
+  - `renderWakeList([], now, ["qa", "clean"])` returns `no scheduled wake pending for qa, clean`.
+- In test/operator-commands.test.ts, "wake --cancel and --list reject a comma list of roles" is replaced by "wake --cancel and --list take a comma list of roles". It schedules wakes for `["clean"]`, `["dedupe"]` and `["coverage"]` via `requestWake(root, [...], 3_600_000)`.
+  - `cmdWake(root, ["--list", "--json", "--role", "clean,dedupe"])` prints exactly the clean and dedupe wakes.
+  - `cmdWake(root, ["--cancel", "--role", "clean, dedupe,clean"])` prints `cancelled 2 scheduled wakes for clean, dedupe`, and only the coverage wake remains.
+  - `["--cancel", "--role", "clean,ghost"]` fails with `/unknown role: ghost/` and cancels nothing.
+- `npm run test:gate` passes. The GUI and TUI tests already covering wake-cancel pass with no change to what they assert.
+
 ### The dashboard's `/api/report` and `/api/failures` take a comma-separated `?role=` list, the server twin of `tumwater report --role clean,dedupe` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — fast merge 14/14 edits the merge path, runner 9/14 status data and scheduling, and the abort and wake entries src/operator; this one touches src/gui/gui-endpoints.ts, test/gui-report.test.ts and test/gui-endpoints.test.ts) — done 2026-10-19
 
 **Goal.** `tumwater report --role clean,dedupe` sums the usage report and failure digest over the listed roles, and the collectors behind it (`collectReport`, `collectReportSince` in src/report/report-data.ts; `collectFailureReport`, `collectFailureReportSince` in src/failure/failure-data.ts) already take `role?: string | readonly string[]`. The dashboard endpoints do not: `reportScope` (src/gui/gui-endpoints.ts) passes the whole `?role=` value to `rejectBadRole` (src/gui/gui-args.ts), so `GET /api/report?role=clean,dedupe` is a 400 `unknown role "clean,dedupe"`. Accept the comma list on both endpoints, in both the days and `sinceMs` shapes. A single id, an absent `?role=`, and the existing 400s behave as now. The client's Role picker (src/ui/gui/gui-client-report.ts) stays a single-select. It sends one id, which is still valid, so the client does not change.

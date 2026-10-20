@@ -220,23 +220,23 @@ export function pendingScheduledWakes(root: string, now: number): { roles: strin
 
 /** Drop the pending scheduled wakes (`tumwater wake --cancel`), returning how many files it
  * removed or rewrote. Only files whose deadline still lies ahead are touched; due and corrupt
- * files stay the consumer's to apply. Without `role` each pending file is removed. With `role`,
- * files not naming it are skipped, a file naming only it is removed, and a file naming others
- * too is rewritten without it (same `at` and `notBeforeMs`). */
-export function cancelScheduledWakes(root: string, role?: string): number {
+ * files stay the consumer's to apply. Without `roles` each pending file is removed. With `roles`,
+ * files naming none of them are skipped, a file left with no role is removed, and a file naming
+ * others too is rewritten without the listed ones (same `at` and `notBeforeMs`). */
+export function cancelScheduledWakes(root: string, roles?: string[]): number {
   let count = 0;
   for (const file of scheduledWakeFiles(root)) {
     if (!wakeNotDue(file)) continue;
-    if (role === undefined) {
+    if (roles === undefined) {
       removeQuiet(file);
       count++;
       continue;
     }
-    const roles = requestedRoles(file);
-    if (!roles?.includes(role)) continue;
+    const named = requestedRoles(file);
+    if (!named?.some((r) => roles.includes(r))) continue;
     const marker = readJsonFile<{ at?: unknown; notBeforeMs?: unknown }>(file);
     if (!marker) continue;
-    const rest = roles.filter((r) => r !== role);
+    const rest = named.filter((r) => !roles.includes(r));
     if (rest.length === 0) removeQuiet(file);
     else writeJsonAtomic(file, { at: marker.at, roles: rest, notBeforeMs: marker.notBeforeMs });
     count++;
