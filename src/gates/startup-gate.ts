@@ -16,7 +16,13 @@ import {
 import { owningTeamRoot } from "../paths.js";
 import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
-import { refreshOpencodeCatalog, type CatalogFetch } from "../agent/opencode/opencode-catalog.js";
+import {
+  opencodeCatalogStale,
+  readOpencodeCache,
+  refreshOpencodeCatalog,
+  type CatalogFetch,
+} from "../agent/opencode/opencode-catalog.js";
+import { errorMessage } from "../text/text.js";
 import { backendById } from "../agent/agent-backend.js";
 // Register the built-in pi and claude adapters into the registry this module reads (see
 // unregisteredBackendInUse) — importing run-agent.ts is the one place they register.
@@ -151,6 +157,37 @@ export function seedOpencodeCatalog(
     now: opts.now,
     warn: opts.warn,
   });
+}
+
+/** How long a running team waits between attempts to refetch a missing or stale opencode
+ * catalog. */
+export const OPENCODE_CATALOG_RETRY_MS = 60 * 60 * 1000;
+
+/** The poll-driven catalog refresh: a running team refetches a missing or stale catalog, so a
+ * failed startup fetch or a days-long run does not price by nothing or by an old copy. The poll
+ * path checks only the cache's age. It skips the `opencode --version` comparison, so no binary is
+ * spawned on every poll; the version check still runs inside refreshOpencodeCatalog once a
+ * refresh is due. The throttle starts at construction (the startup check has just tried) and
+ * moves on every attempt, so a fetch that keeps failing warns at most once per
+ * OPENCODE_CATALOG_RETRY_MS, through refreshOpencodeCatalog's own fetch-failed warning. */
+export function newOpencodeCatalogRefresh(
+  root: string,
+  seed: OpenCodeSeedOptions,
+  warn: (message: string) => void,
+): { poll(config: TumwaterConfig): void } {
+  const clock = seed.now ?? Date.now;
+  let lastAttempt = clock();
+  return {
+    poll(config) {
+      if (!backendsInUse(config).includes("opencode")) return;
+      if (clock() - lastAttempt < OPENCODE_CATALOG_RETRY_MS) return;
+      if (!opencodeCatalogStale(readOpencodeCache(root), clock())) return;
+      lastAttempt = clock();
+      void seedOpencodeCatalog(root, config, { ...seed, warn }).catch((err: unknown) =>
+        warn(`open code model catalog refresh failed: ${errorMessage(err)}`),
+      );
+    },
+  };
 }
 
 /** Roots this process has already attempted a claude-account seed for (see runStartupCheck),

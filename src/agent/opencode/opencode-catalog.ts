@@ -243,6 +243,12 @@ interface OpencodeRefreshOptions {
   warn?: (message: string) => void;
 }
 
+/** Whether the cache is missing or older than CATALOG_CACHE_TTL_MS at `now`. The age rule
+ * refreshOpencodeCatalog and the poll-driven refresh (newOpencodeCatalogRefresh) share. */
+export function opencodeCatalogStale(cache: OpencodeCatalogCache, now: number): boolean {
+  return cache.fetchedAt === 0 || now - cache.fetchedAt >= CATALOG_CACHE_TTL_MS;
+}
+
 /** Return a cache fresh enough to price by, fetching and persisting when the current one is
  * missing, stale (older than 24 h) or fetched by a different `opencode --version`. A failed
  * fetch keeps the old cache (logging one warning) so the team still prices by the last good
@@ -253,8 +259,7 @@ export async function refreshOpencodeCatalog(root: string, opts: OpencodeRefresh
   const version = opts.cliVersion !== undefined ? opts.cliVersion : readCliVersion(opts.cliBin);
   const current = readOpencodeCache(root);
   const fresh =
-    current.fetchedAt !== 0 &&
-    now - current.fetchedAt < CATALOG_CACHE_TTL_MS &&
+    !opencodeCatalogStale(current, now) &&
     (version === undefined || current.cliVersion === version);
   if (fresh) return current;
   let body: unknown;

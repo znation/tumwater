@@ -24,47 +24,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### OpenCode catalog: a running team refetches a stale or missing models catalog, at most once an hour (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/gates/startup-gate.ts + src/agent/opencode/opencode-catalog.ts + src/orchestrator/orchestrator.ts + src/orchestrator/orchestrator-poll.ts + test/startup-gate.test.ts + docs/invariants.md)
-
-**Goal.** The opencode models catalog (`.tumwater/state/opencode-models.json`) is fetched at only two points: `runStartupCheck`, once per root per process (`opencodeSeedAttempted`), and a live edit that first routes a seam to opencode (`liveOpencodeSeedAttempted` in src/config/config-live.ts). Both go through `seedOpencodeCatalog` (src/gates/startup-gate.ts). Nothing fetches it again while the team runs. `CATALOG_CACHE_TTL_MS` (24 h) in src/agent/opencode/opencode-catalog.ts is consulted only at those two points. This causes two problems:
-- A team whose startup fetch failed (a network blip at boot) has no cache. `refreshOpencodeCatalog` returns an empty catalog and writes nothing. `pollBudgetGate` (src/gates/budget-gates.ts) reads `readOpencodeCache(root)` every poll, and its comment says an absent catalog makes every opencode seam read NOT free. So at the daily cap, the budget gate holds the team's free opencode runs until someone restarts it.
-- A team that runs for days prices by a catalog that is days old, although the cache claims a 24 h trust window.
-
-**Approach.**
-1. src/agent/opencode/opencode-catalog.ts:
-   - Add `export function opencodeCatalogStale(cache: OpencodeCatalogCache, now: number): boolean`. It returns `cache.fetchedAt === 0 || now - cache.fetchedAt >= CATALOG_CACHE_TTL_MS`.
-   - Use it for the age half of `fresh` in `refreshOpencodeCatalog`, so the rule lives in one place. Keep the version comparison where it is.
-2. src/gates/startup-gate.ts:
-   - Add `export const OPENCODE_CATALOG_RETRY_MS = 60 * 60 * 1000`.
-   - Add `export function newOpencodeCatalogRefresh(root: string, seed: OpenCodeSeedOptions, warn: (message: string) => void): { poll(config: TumwaterConfig): void }`. Its clock is `const clock = seed.now ?? Date.now`. It holds `let lastAttempt = clock()`, set at construction because the startup check has just tried, so the first polls after boot do not refetch.
-   - `poll(config)` is synchronous and returns early in three cases: `!backendsInUse(config).includes("opencode")`; `clock() - lastAttempt < OPENCODE_CATALOG_RETRY_MS`; or `!opencodeCatalogStale(readOpencodeCache(root), clock())`.
-   - Otherwise `poll` sets `lastAttempt = clock()` and calls `void seedOpencodeCatalog(root, config, { ...seed, warn }).catch((err: unknown) => warn(\`open code model catalog refresh failed: ${errorMessage(err)}\`))`. Import `readOpencodeCache` and `opencodeCatalogStale` from the catalog module, and `errorMessage` from ../text/text.js if it is not already imported.
-   - Doc comment: the poll path checks only the cache's age. It skips the `opencode --version` comparison, so no binary is spawned on every poll; the version check still runs inside `refreshOpencodeCatalog` once a refresh is due. A fetch that keeps failing warns at most once per `OPENCODE_CATALOG_RETRY_MS`, through `refreshOpencodeCatalog`'s existing "open code model catalog fetch failed; keeping the cached copy" warning.
-3. src/orchestrator/orchestrator.ts: after `const { emit, warn } = bestEffortEventLogger(root)`, build `const opencodeCatalogRefresh = newOpencodeCatalogRefresh(root, {}, warn)` and add it to the poll context object.
-4. src/orchestrator/orchestrator-poll.ts: add `opencodeCatalogRefresh: ReturnType<typeof newOpencodeCatalogRefresh>` to `PollContext` (a type-only import). Call `ctx.opencodeCatalogRefresh.poll(liveConfig)` right after `ctx.retentionPruner.poll(...)`. It is unconditional, so `--once` passes too: the throttle starts at construction, and a short round never reaches the hour.
-5. test/startup-gate.test.ts: add two tests. Both share this setup:
-   - `const root = makeRepo()` and a clock `let t = 1_000`.
-   - A config `const config = structuredClone(defaultConfig())` (import `defaultConfig` from ../src/config/config.js), with `config.backends = { opencode: { bin: <a writeScript "exit 0" opencode in a tmpdir> } }` and `config.review = { ...config.review, enabled: true, backend: "opencode", model: "deepseek-v4.1-flash-free" }`. This is the same routing `opencodeRouting` in test/config-live.test.ts uses.
-   - Collect the warnings in an array.
-   - A `settle()` that awaits `new Promise((r) => setImmediate(r))`.
-
-   Test "newOpencodeCatalogRefresh refetches a missing or stale catalog at most once per retry interval, only while opencode is routed". The fetch counts `calls` and returns `{ opencode: { models: { "deepseek-v4.1-flash-free": { cost: { input: 0, output: 0 } } } } }`. Build the refresher with `{ fetch, now: () => t }`, then:
-   - (a) Poll at `t = 1_000` with no cache on disk, then settle: `calls === 0` (the retry throttle).
-   - (b) Set `t = 1_000 + OPENCODE_CATALOG_RETRY_MS`, poll, settle: `calls === 1`, and `readOpencodeCache(root).fetchedAt === t`.
-   - (c) Set `t += OPENCODE_CATALOG_RETRY_MS`, poll, settle: `calls === 1` (the cache is fresh).
-   - (d) Set `t = readOpencodeCache(root).fetchedAt + 24 * 60 * 60 * 1000`, poll a pi-only `structuredClone(defaultConfig())`, settle: `calls === 1` (opencode is not routed).
-   - (e) Poll `config` at the same `t`, settle: `calls === 2`.
-
-   Test "a failing periodic catalog refresh warns once per retry interval and never throws out of poll". The fetch throws `new Error("offline")`. Set `t = 1_000 + OPENCODE_CATALOG_RETRY_MS`, then assert `doesNotThrow(() => r.poll(config))` and settle. Poll again at the same `t` and settle. Assert that exactly one collected warning starts with `open code model catalog fetch failed`.
-6. docs/invariants.md: append the section "## OpenCode catalog refresh: a running team re-fetches a stale catalog" after the last section, in the Guarantee / Binds / Pinned by layout, with `### INV-CD1: the poll refetches a missing or stale opencode catalog at most once per OPENCODE_CATALOG_RETRY_MS, only while opencode is routed, and never throws`. Binds: `src/gates/startup-gate.ts` (`newOpencodeCatalogRefresh`) and `src/agent/opencode/opencode-catalog.ts` (`opencodeCatalogStale`). Pinned by: the two new tests, cited by full name. On 2026-10-20 CA had merged, CB was merged, and CC was reserved by the worktree-pool release plan, so CD was free. Re-check with `grep -n '^### INV-' docs/invariants.md | tail` and the Planned entries, and take the next free prefix if CD is gone.
-
-**Acceptance criteria.**
-- Each of these mutations fails the first new test: dropping the `lastAttempt` throttle fails step (a); dropping the `opencodeCatalogStale` check fails step (c); dropping the `backendsInUse` check fails step (d).
-- With `lastAttempt` set only after a success (not on every attempt), the second new test fails, because it sees two warnings.
-- The existing opencode tests in test/startup-gate.test.ts, test/config-live.test.ts and test/opencode-catalog.test.ts pass unchanged.
-- `npm run test:gate` passes.
-- Each test name cited in INV-CD1 exists verbatim (`grep -rF` it in test/).
-
 ### Doctor: one throwing check becomes a fail row instead of aborting the whole report, and a failed image-probe cache write keeps the fresh verdicts (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/doctor/doctor.ts + src/doctor/doctor-model-checks.ts + test/doctor.test.ts + test/doctor-model-checks.test.ts + docs/invariants.md)
 
 **Goal.** `runDoctor` (src/doctor/doctor.ts) runs its checks in a loop with `const outcome = await step.run();` and no try. So when any one check throws, the whole report rejects. `tumwater doctor` (src/cli.ts), the dashboard's doctor endpoint (src/gui/gui-endpoints.ts) and the TUI Health pane (src/ui/tui/tui-pane-health.ts) then get no rows at all, not even the checks that passed. Most checks catch their own errors (`checkBrief`, `checkStateDir`, `findOrphans`). One known site does not: `checkImageInput` (src/doctor/doctor-model-checks.ts) ends its probe loop with `if (probedAny) writeImageProbeCache(root, probes);`, which has no try. With `--reprobe` or "missing", that write comes after the live model probes have already run (and been paid for). If the write fails (`writeJsonAtomic` on a full disk or a read-only `.tumwater/state`), the fresh verdicts are lost and `tumwater doctor` crashes.

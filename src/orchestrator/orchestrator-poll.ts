@@ -37,6 +37,7 @@ import { redeployTarget } from "../baseline/main-baseline.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import type { RetentionPruner } from "./retention.js";
+import type { newOpencodeCatalogRefresh } from "../gates/startup-gate.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { p75RunDurationMs } from "../run/run-timing.js";
 import { pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";
@@ -69,6 +70,7 @@ export interface PollContext {
   liveReload: ReturnType<typeof newLiveConfigReload>;
   notifier: ReturnType<typeof newNotifier>;
   retentionPruner: RetentionPruner;
+  opencodeCatalogRefresh: ReturnType<typeof newOpencodeCatalogRefresh>;
   mainWatch: ReturnType<typeof createMainWatch>;
   workMergedSince: WorkMergedCache;
   deferredDue: Map<string, boolean>;
@@ -138,6 +140,8 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
   // src/orchestrator/retention.ts. The live config (last-known-good while the file is broken or
   // missing) drives the check, like the budget gate.
   ctx.retentionPruner.poll(root, liveConfig.sessionRetentionDays);
+  // A missing or stale opencode catalog is refetched at most once an hour while opencode is routed.
+  ctx.opencodeCatalogRefresh.poll(liveConfig);
 
   // launchservicesd's Mach-port budget (src/process/launch-services.ts owns it):
   // a background sample at most every 15 minutes, and a warning days before the kernel

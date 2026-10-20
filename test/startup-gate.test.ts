@@ -12,14 +12,14 @@ import {
   teamWorkspaceMessage,
   NO_COMMITS_MESSAGE,
 } from "../src/gates/readiness.js";
-import { opencodeProviders, repoNotReady, runStartupCheck, runStartupProblem, unregisteredBackendInUse, type OpenCodeSeedOptions } from "../src/gates/startup-gate.js";
+import { newOpencodeCatalogRefresh, OPENCODE_CATALOG_RETRY_MS, opencodeProviders, repoNotReady, runStartupCheck, runStartupProblem, unregisteredBackendInUse, type OpenCodeSeedOptions } from "../src/gates/startup-gate.js";
 import { registerAgentBackend, type AgentBackend } from "../src/agent/agent-backend.js";
 import { gitInit, makeRepo, sh, teamWorkspace, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { setEnv } from "./helpers/env.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
-import { loadConfig } from "../src/config/config.js";
+import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { claudeAccountPath, opencodeModelsPath } from "../src/paths.js";
 import { writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { readOpencodeCache, type CatalogFetch } from "../src/agent/opencode/opencode-catalog.js";
@@ -369,4 +369,62 @@ test("a team workspace without tumwater.json names the owning team root instead 
   const { root, slot } = teamWorkspace();
   assert.equal(await repoNotReady(slot), teamWorkspaceMessage(root));
   assert.equal(await repoNotReady(makeRepo()), NOT_INITIALIZED_MESSAGE);
+});
+
+/** The shared setup of the periodic-refresh tests: an opencode-routed config and a settle. */
+function opencodeRefreshSetup() {
+  const root = makeRepo();
+  const bin = path.join(tmpdir(), "opencode");
+  writeScript(bin, "exit 0");
+  const config = structuredClone(defaultConfig());
+  config.backends = { opencode: { bin } };
+  config.review = { ...config.review, enabled: true, backend: "opencode", model: "deepseek-v4.1-flash-free" };
+  const warnings: string[] = [];
+  const settle = () => new Promise((r) => setImmediate(r));
+  return { root, config, warnings, settle };
+}
+
+test("newOpencodeCatalogRefresh refetches a missing or stale catalog at most once per retry interval, only while opencode is routed", async () => {
+  const { root, config, warnings, settle } = opencodeRefreshSetup();
+  let t = 1_000;
+  let calls = 0;
+  const fetch = (async () => {
+    calls++;
+    return { opencode: { models: { "deepseek-v4.1-flash-free": { cost: { input: 0, output: 0 } } } } };
+  }) as CatalogFetch;
+  const r = newOpencodeCatalogRefresh(root, { fetch, now: () => t }, (m) => warnings.push(m));
+  r.poll(config);
+  await settle();
+  assert.equal(calls, 0, "the retry throttle holds the first polls after boot");
+  t = 1_000 + OPENCODE_CATALOG_RETRY_MS;
+  r.poll(config);
+  await settle();
+  assert.equal(calls, 1);
+  assert.equal(readOpencodeCache(root).fetchedAt, t);
+  t += OPENCODE_CATALOG_RETRY_MS;
+  r.poll(config);
+  await settle();
+  assert.equal(calls, 1, "a fresh cache is not refetched");
+  t = readOpencodeCache(root).fetchedAt + 24 * 60 * 60 * 1000;
+  r.poll(structuredClone(defaultConfig()));
+  await settle();
+  assert.equal(calls, 1, "opencode is not routed");
+  r.poll(config);
+  await settle();
+  assert.equal(calls, 2);
+});
+
+test("a failing periodic catalog refresh warns once per retry interval and never throws out of poll", async () => {
+  const { root, config, warnings, settle } = opencodeRefreshSetup();
+  const fetch = (async () => {
+    throw new Error("offline");
+  }) as CatalogFetch;
+  let t = 1_000;
+  const r = newOpencodeCatalogRefresh(root, { fetch, now: () => t }, (m) => warnings.push(m));
+  t = 1_000 + OPENCODE_CATALOG_RETRY_MS;
+  assert.doesNotThrow(() => r.poll(config));
+  await settle();
+  r.poll(config);
+  await settle();
+  assert.equal(warnings.filter((m) => m.startsWith("open code model catalog fetch failed")).length, 1);
 });

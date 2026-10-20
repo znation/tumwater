@@ -4076,3 +4076,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/git/worktree-pool.ts` (`freeSlot`, `tryClaim`, `prepareLeased`).
 
 **Pinned by.** `test/worktree-pool.test.ts` — "a release whose slots.json write fails warns instead of throwing, and the next lease reclaims the slot"; "a release whose use-record write fails still frees the slot".
+
+## OpenCode catalog refresh: a running team re-fetches a stale catalog
+
+### INV-CD1: the poll refetches a missing or stale opencode catalog at most once per OPENCODE_CATALOG_RETRY_MS, only while opencode is routed, and never throws
+
+**Guarantee.** While a team runs, each poll refetches the opencode models catalog when the cache is missing or older than its 24 h trust window, only when a seam routes to opencode, and at most once per `OPENCODE_CATALOG_RETRY_MS` (the throttle starts at construction and moves on every attempt, failed or not). The poll checks the cache's age only; it never throws, and a failed fetch warns once per interval.
+
+**Binds.** `src/gates/startup-gate.ts` (`newOpencodeCatalogRefresh`); `src/agent/opencode/opencode-catalog.ts` (`opencodeCatalogStale`).
+
+**Pinned by.** `test/startup-gate.test.ts` — "newOpencodeCatalogRefresh refetches a missing or stale catalog at most once per retry interval, only while opencode is routed"; "a failing periodic catalog refresh warns once per retry interval and never throws out of poll".

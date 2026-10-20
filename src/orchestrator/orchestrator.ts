@@ -34,6 +34,7 @@ import { queueCulpritHeal } from "../baseline/main-red.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import { RetentionPruner } from "./retention.js";
+import { newOpencodeCatalogRefresh } from "../gates/startup-gate.js";
 import { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import {
   drainInFlightWork,
@@ -298,6 +299,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // notifier/quiet-file cleanup or mask an in-flight error. The feed is the failure; the poll
   // and the shutdown still run.
   const { emit, warn } = bestEffortEventLogger(root);
+  const opencodeCatalogRefresh = newOpencodeCatalogRefresh(root, {}, warn);
 
   const ctx: PollContext = {
     root,
@@ -321,6 +323,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     liveReload,
     notifier,
     retentionPruner,
+    opencodeCatalogRefresh,
     mainWatch,
     workMergedSince,
     deferredDue,
