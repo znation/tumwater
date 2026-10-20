@@ -273,6 +273,38 @@ test("history --result narrows to one outcome class and composes with --json", a
   assert.deepEqual(payload.rows.map((r) => [r.role, r.result]), [["bugfix", "error"]]);
 });
 
+test("history --result takes a comma list of outcome classes", async () => {
+  const repo = await seededHistoryRepo();
+  const none = await cli(repo, "history", "--result", "none");
+  const problems = await cli(repo, "history", "--result", "problems");
+  const both = await cli(repo, "history", "--result", "none,problems");
+  assert.equal(both.code, 0);
+  const lines = both.stdout.trim().split("\n");
+  // Column widths follow the listed rows, so compare rows with whitespace runs collapsed.
+  const flat = (out: string) => out.trim().split("\n").map((l) => l.replace(/\s+/g, " "));
+  assert.deepEqual(flat(both.stdout), [...flat(problems.stdout), ...flat(none.stdout)]);
+  for (const form of [" none , problems ", "none,none,problems"]) {
+    assert.equal((await cli(repo, "history", "--result", form)).stdout, both.stdout);
+  }
+  const json = await cli(repo, "history", "--result", "none,problems", "--json");
+  const payload = JSON.parse(json.stdout) as { rows: Array<{ role: string }> };
+  assert.equal(payload.rows.length, lines.length);
+
+  const summary = await cli(repo, "history", "--result", "merged,refused", "--summary");
+  assert.equal(summary.code, 0);
+
+  const empty = await cli(repo, "history", "--result", "refused,problems", "--role", "clean");
+  assert.match(empty.stdout, /no runs with result "refused,problems"/);
+
+  const bad = await cli(repo, "history", "--result", "none,problms");
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /got "problms"/);
+  assert.match(bad.stderr, /problems/);
+  const comma = await cli(repo, "history", "--result", ",");
+  assert.equal(comma.code, 1);
+  assert.match(comma.stderr, /history --result needs a value/);
+});
+
 test("--result refused gets its own class, so a deliberate refusal stops folding into problems", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history refused");

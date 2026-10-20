@@ -30,9 +30,9 @@ export const HISTORY_RESULT_VALUE_ERROR = "history --result needs a value";
 /** `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>] [--result
  * <class>]`: print the last N completed ticks, newest first — or, with `--since`, the ticks of a
  * bounded past window over the same record, the same shape `logs --since` and `report --since`
- * speak. `--grep` keeps rows whose rendered line matches, and `--result` narrows to one outcome
- * class (changes/none/problems, the dashboard History filter's buckets); both compose with
- * --role, -n, and --since. Read-only: stdout only, no state file created — a missing or empty
+ * speak. `--grep` keeps rows whose rendered line matches, and `--result` narrows to the listed
+ * outcome classes (changes/none/problems, the dashboard History filter's buckets); both compose
+ * with --role, -n, and --since. Read-only: stdout only, no state file created — a missing or empty
  * event log prints `no runs yet` and exits 0. */
 export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the row set case-insensitively against the WYSIWYG row line (plus a
@@ -77,22 +77,31 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // be false (`no runs matching "widget"` when feature #7 does match). The GUI draws the same
   // line between a search and its outcome filter.
   const afterGrep = rows.length;
-  // `--result <class>` narrows to one outcome bucket, reading the same canonical historyClass
-  // rule the dashboard's History filter applies (shared from history-data.ts, not copied). It
-  // composes with --role, -n, --since, and --grep, so no rival-shape rule: a missing or empty
-  // value fails with its own wording, and an unknown class names the accepted ones (the gotSuffix
-  // shape the other flag validators use, plus a did-you-mean hint for a near-miss of a real
-  // result — the same typoSuffix treatment `logs --type` gives its codes). Applied after --grep,
-  // over the same rows both the table
+  // `--result <class>[,<class>...]` narrows to the listed outcome buckets, reading the same
+  // canonical historyClass rule the dashboard's History filter applies (shared from
+  // history-data.ts, not copied). It composes with --role, -n, --since, and --grep, so no
+  // rival-shape rule: a missing or empty value fails with its own wording, and an unknown
+  // class names the accepted ones (the gotSuffix shape the other flag validators use, plus a
+  // did-you-mean hint for a near-miss of a real result — the same typoSuffix treatment
+  // `logs --type` gives its codes). Applied after --grep, over the same rows both the table
   // and --json serialize.
   const resultRaw = flagValue(rest, "--result");
-  let resultClass: HistoryResultClass | null = null;
+  let resultClasses: HistoryResultClass[] | null = null;
   if (resultRaw !== null) {
     if (resultRaw === undefined || resultRaw === "") fail(HISTORY_RESULT_VALUE_ERROR);
-    resultClass = parseHistoryResultClass(resultRaw);
-    if (resultClass === null)
-      fail(`history --result must be one of ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(", ")}${gotSuffix(resultRaw)}${typoSuffix(resultRaw, Object.values(HISTORY_RESULT_FLAG_NAMES))}`);
-    rows = rows.filter((r) => historyClass(r.result) === resultClass);
+    // A comma list names several classes; the first unknown piece fails with its own hint.
+    const pieces = resultRaw.split(",").map((p) => p.trim()).filter((p) => p !== "");
+    if (pieces.length === 0) fail(HISTORY_RESULT_VALUE_ERROR);
+    const parsed: HistoryResultClass[] = [];
+    for (const piece of pieces) {
+      const cls = parseHistoryResultClass(piece);
+      if (cls === null)
+        fail(`history --result must be one of ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(", ")}${gotSuffix(piece)}${typoSuffix(piece, Object.values(HISTORY_RESULT_FLAG_NAMES))}`);
+      if (!parsed.includes(cls)) parsed.push(cls);
+    }
+    const wanted = parsed;
+    resultClasses = wanted;
+    rows = rows.filter((r) => wanted.includes(historyClass(r.result)));
   }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
@@ -116,8 +125,8 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     // empty-log/window prose is the true one — the dashboard's History view draws the same
     // line. A grep that admitted nothing keeps its own wording regardless of --result.
     say(
-      resultClass !== null && afterGrep > 0
-        ? `no runs with result "${resultClass}"`
+      resultClasses !== null && afterGrep > 0
+        ? `no runs with result "${resultClasses.join(",")}"`
         : grepPattern !== null
           ? `no runs matching "${grepPattern}"`
           : sinceMs === null
