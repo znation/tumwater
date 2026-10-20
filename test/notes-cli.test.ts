@@ -249,3 +249,33 @@ test("writeRoleNote rethrows the original failure when the temp cleanup itself f
     );
   });
 });
+
+/** A note path that is a directory, so writing it fails and reading it fails with EISDIR. */
+function directoryNote(): string {
+  const notes = path.join(tmpdir(), "notes", "feature.md");
+  fs.mkdirSync(notes, { recursive: true });
+  return notes;
+}
+
+function assertOneLineRefusal(res: ReturnType<typeof run>, prefix: string): void {
+  assert.equal(res.status, 1);
+  assert.ok(res.stderr.startsWith(prefix), res.stderr);
+  assert.equal(res.stderr.split("\n").filter((l) => l.trim() !== "").length, 1, res.stderr);
+  assert.ok(!res.stderr.includes("    at "), "no stack trace");
+  assert.equal(res.stdout, "");
+}
+
+test("write to a note that cannot be written exits 1 with one 'could not save the note' line and no stack trace", () => {
+  assertOneLineRefusal(run(["write"], directoryNote(), "hi"), "could not save the note: ");
+});
+
+test("clear on a note that cannot be written exits 1 with one 'could not clear the note' line", () => {
+  assertOneLineRefusal(run(["clear"], directoryNote()), "could not clear the note: ");
+});
+
+test("show on a note that cannot be read exits 1 naming the failure instead of printing nothing", () => {
+  const res = run(["show"], directoryNote());
+  assert.equal(res.status, 1);
+  assert.ok(res.stderr.startsWith("could not read the note: "), res.stderr);
+  assert.equal(res.stdout, "");
+});

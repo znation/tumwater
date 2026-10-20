@@ -4246,3 +4246,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/baseline/main-revert.ts` (`routeMainCulprit`) and its one caller in `src/orchestrator/orchestrator.ts`.
 
 **Pinned by.** `test/main-revert.test.ts` — "a skipped culprit whose heal prompt cannot be queued resolves and warns once that it was not queued" and "a named culprit starts its revert, and a skipped one queues the heal prompt instead".
+
+## Notes command: a note file that fails refuses in one line, never a stack trace
+
+### INV-CS1: tumwater-notes write, clear and show on a note file that cannot be written or read exit 1 with one stderr line naming the failure, and show never reports an unreadable note as empty
+
+**Guarantee.** A note write or clear that fails (ENOSPC, EACCES, a directory in the way) prints one "could not save the note: <error>" or "could not clear the note: <error>" line to stderr and exits 1, with no stack trace. `show` reads through `readTextIfExists`: a missing note prints nothing and exits 0, while any other read failure prints "could not read the note: <error>" and exits 1 with empty stdout.
+
+**Binds.** `src/notes-cli.ts` (`writeNote`, `readNote`, `main`).
+
+**Pinned by.** `test/notes-cli.test.ts` — "write to a note that cannot be written exits 1 with one 'could not save the note' line and no stack trace", "clear on a note that cannot be written exits 1 with one 'could not clear the note' line" and "show on a note that cannot be read exits 1 naming the failure instead of printing nothing".

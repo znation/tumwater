@@ -13,12 +13,12 @@
  *   show             print the note (nothing when there is none)
  *   clear            empty the note
  *
- * Exits 0 on success, 1 on a refusal (empty input, over-cap note, or no
- * TUMWATER_NOTES_PATH), and 2 with usage for an unknown subcommand (a known subcommand with
- * bad arguments refuses with usage and exit 1). */
+ * Exits 0 on success, 1 on a refusal (empty input, over-cap note, a note file that cannot be
+ * written or read, or no TUMWATER_NOTES_PATH), and 2 with usage for an unknown subcommand (a
+ * known subcommand with bad arguments refuses with usage and exit 1). */
 
 import fs from "node:fs";
-import { readTextOrNull } from "./files/files.js";
+import { readTextIfExists } from "./files/files.js";
 import { errorMessage } from "./text/text.js";
 import { validateRoleNote, writeRoleNote } from "./agent/role-notes-write.js";
 
@@ -36,9 +36,10 @@ function readStdin(): string {
   return fs.readFileSync(0, "utf8");
 }
 
-/** Read the note's current text; a missing note reads as empty (show prints nothing). */
+/** Read the note's current text; a missing note reads as empty (show prints nothing). Any
+ * other read failure (EACCES, EISDIR) throws, so it is never mistaken for an empty note. */
 function readNote(): string {
-  return readTextOrNull(NOTES_PATH!) ?? "";
+  return readTextIfExists(NOTES_PATH!) ?? "";
 }
 
 /** Refuse with `message` on stderr and exit 1 — the exit code for every expected refusal. */
@@ -54,7 +55,11 @@ function writeNote(text: string): number {
   }
   const error = validateRoleNote(text);
   if (error) return refuse(error);
-  writeRoleNote(NOTES_PATH!, text);
+  try {
+    writeRoleNote(NOTES_PATH!, text);
+  } catch (err) {
+    return refuse(`could not save the note: ${errorMessage(err)}`);
+  }
   process.stdout.write(`notes saved (${Buffer.byteLength(text, "utf8")} bytes)\n`);
   return 0;
 }
@@ -82,11 +87,21 @@ function main(): number {
       return refuse(USAGE);
     case "show":
       if (flag !== undefined) return refuse(USAGE);
-      process.stdout.write(readNote());
+      let note: string;
+      try {
+        note = readNote();
+      } catch (err) {
+        return refuse(`could not read the note: ${errorMessage(err)}`);
+      }
+      process.stdout.write(note);
       return 0;
     case "clear":
       if (flag !== undefined) return refuse(USAGE);
-      writeRoleNote(NOTES_PATH, "");
+      try {
+        writeRoleNote(NOTES_PATH, "");
+      } catch (err) {
+        return refuse(`could not clear the note: ${errorMessage(err)}`);
+      }
       process.stdout.write("notes cleared\n");
       return 0;
     default:
