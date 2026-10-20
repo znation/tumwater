@@ -39,7 +39,7 @@ export function instanceIndex(id: string): number {
 }
 
 /** The instance count configured for a runner id's base role (`roles.<base>.instances`, default
- * 1). A caller tells a multi-instance base (whose unassigned ticks stage claims for their
+ * 1). A caller tells a multi-instance base (whose unassigned runs stage claims for their
  * siblings) from a single-runner one by this. */
 export function configuredInstances(config: TumwaterConfig, id: string): number {
   const role = config.roles[baseRoleOf(id)];

@@ -38,9 +38,9 @@ export function makeRoleRunner(
   return new RoleRunner(repo, role, config, mainBranch, signal, sleep);
 }
 
-/** The directory a role's tick runs (or ran) in, resolving the pooled layout: the slot leased
+/** The directory a role's run runs (or ran) in, resolving the pooled layout: the slot leased
  * for the role, else the slot pinned for it, else the free slot it released most recently,
- * else the legacy `.tumwater/worktrees/<role>` path. Non-director ticks lease a slot since
+ * else the legacy `.tumwater/worktrees/<role>` path. Non-director runs lease a slot since
  * plans/worktree-pool.md part 4b, so a test that reads a role's checkout resolves it here
  * instead of assuming the legacy path. */
 export function roleWt(root: string, role: string): string {
@@ -54,14 +54,14 @@ export function roleWt(root: string, role: string): string {
   return worktreePath(root, role);
 }
 
-/** Drive a director tick whose merge review is aborted once the verification's pooled checkout
- * appears: the tick commits and pins (result "queued"), the merge runs under its own
+/** Drive a director run whose merge review is aborted once the verification's pooled checkout
+ * appears: the run commits and pins (result "queued"), the merge runs under its own
  * AbortSignal, and the abort kills the hung reviewer (the fake pi script loops on the
  * VERDICT review prompt and sleeps). Asserts the fail-closed shape a shutdown and
  * `tumwater abort` share at the runner level — nothing merged, the pin survives for next-start
- * recovery, the queue entry is dropped, and the completed tick consumed the prompt — so the
+ * recovery, the queue entry is dropped, and the completed run consumed the prompt — so the
  * user-abort (runner-5.test.ts) and shutdown (runner-leftover-recovery.test.ts) tests state only
- * their framing. Only meaningful for a director tick, whose merge carries the review. */
+ * their framing. Only meaningful for a director run, whose merge carries the review. */
 export async function runAbortedDirectorMerge(repo: string): Promise<void> {
   await withPi(
     [
@@ -75,7 +75,7 @@ export async function runAbortedDirectorMerge(repo: string): Promise<void> {
         enqueuePrompt(repo, "ship the hello file");
         const runner = makeRoleRunner(repo, "director");
         const outcome = await runner.run();
-        assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the merge's");
+        assert.equal(outcome.result, "queued", "the run ends at the pin; the review is the merge's");
         const head = headMerge(repo);
         assert.ok(head, "the merge is queued");
         const merge = mergeHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
@@ -86,7 +86,7 @@ export async function runAbortedDirectorMerge(repo: string): Promise<void> {
 
         // Fail closed: nothing merged — the role worktree is clean at main and the pin survives
         // the abort for next-start recovery. The queue entry is dropped; the prompt was consumed
-        // by the completed tick, so recovery rides the pin, never a re-queued prompt.
+        // by the completed run, so recovery rides the pin, never a re-queued prompt.
         assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
         const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("director")).trim();
         assert.ok(pinned.length === 40, "the pin survived the aborted merge");
@@ -105,7 +105,7 @@ export async function runAbortedDirectorMerge(repo: string): Promise<void> {
   );
 }
 
-/** Register an existing checkout as a slot pinned for `role`: the shape an interrupted tick
+/** Register an existing checkout as a slot pinned for `role`: the shape an interrupted run
  * leaves behind (its slot pinned with the branch checked out and its edits uncommitted), so a
  * test can seed that state without depending on the legacy path. The lease with
  * `{ keep: true }` then chooses it and preserves it. */
@@ -197,7 +197,7 @@ function seedOneCounter(repo: string, role: string): void {
   s.commits = 3;
   s.generatedTokens = 424242;
   s.totalCostUsd = 1.5;
-  s.peakContextTokens = 65536; // last tick's peak — cleared by the reset
+  s.peakContextTokens = 65536; // last run's peak — cleared by the reset
   s.nextRunAt = Date.now() + 60_000;
   s.backoffSeconds = 15;
   s.lastMainHead = "deadbeef";

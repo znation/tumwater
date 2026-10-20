@@ -13,14 +13,14 @@ import { withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 // Refusal handling (plans/refusal-and-thrash.md): the TUMWATER_REFUSED sentinel routes a
-// tick to handleRefusal, where only the markdown objection note may merge — it is the durable
-// record that blocks the entry for later ticks. Non-markdown half-work is discarded and the
+// run to handleRefusal, where only the markdown objection note may merge — it is the durable
+// record that blocks the entry for later runs. Non-markdown half-work is discarded and the
 // note commit merges directly (md-only diffs are review-exempt by construction). The sentinel
 // is detected ONLY as an anchored line with a non-negating reason (BUGS.md 2026-09-23): a
 // bare sentinel or a `TUMWATER_REFUSED: none` on an ordinary reply is not a refusal, and a
 // refusal contradicted by its own SUMMARY beside real work keeps the work.
 
-test("a refused tick merges only its markdown note, discards code changes, and skips review", async () => {
+test("a refused run merges only its markdown note, discards code changes, and skips review", async () => {
   const repo = await initializedRepo();
   // The fake pi counts its invocations in a file OUTSIDE the worktree: exactly one run is
   // expected (the author). A second invocation would mean the note commit went through the
@@ -58,7 +58,7 @@ test("a refused tick merges only its markdown note, discards code changes, and s
   });
 });
 
-test("a bare sentinel over work is not a refusal: the tick runs the normal flow (regression)", async () => {
+test("a bare sentinel over work is not a refusal: the run runs the normal flow (regression)", async () => {
   // BUGS.md 2026-09-23: the old whole-reply substring scan treated a bare sentinel mention
   // as a refusal and destroyed the work. An anchored line with no reason declares nothing.
   const repo = await initializedRepo();
@@ -78,7 +78,7 @@ test("a bare sentinel over work is not a refusal: the tick runs the normal flow 
 });
 
 test("a reply ending TUMWATER_REFUSED: none merges its work instead of refusing (regression)", async () => {
-  // The exact shape that discarded two tested bugfix ticks (BUGS.md 2026-09-23): an ordinary
+  // The exact shape that discarded two tested bugfix runs (BUGS.md 2026-09-23): an ordinary
   // work-completed reply whose trailing line fills the sentinel in like a report field.
   const repo = await initializedRepo();
   await withPi(

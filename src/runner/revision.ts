@@ -93,7 +93,7 @@ async function pickBase(wt: string, mainBranch: string, sha: string): Promise<st
 }
 
 /** Re-apply a rejected change `sha` onto current main as uncommitted edits in `wt`
- * (plans/revise-rejected.md): the author's next tick starts from the rejected diff instead of
+ * (plans/revise-rejected.md): the author's next run starts from the rejected diff instead of
  * re-deriving it. `git cherry-pick --no-commit <merge-base>..<sha>` leaves the edits in the
  * worktree without committing; a conflict confined to the backlog's insert-only shape is settled
  * on the way (pickSettlingBacklog). On any other git failure — most often a conflict with what
@@ -121,7 +121,7 @@ export async function applyRevision(wt: string, mainBranch: string, sha: string)
  * insert-only conflicts on the way (pickSettlingBacklog), so only files that settler cannot
  * settle keep markers. A conflicted pick is NOT aborted: its sequencer state is quit, a mixed
  * `git reset` drops the index's unmerged entries so the marker-bearing files are plain
- * working-tree edits the tick can commit normally, and `{ applied: true, conflicted }` is
+ * working-tree edits the run can commit normally, and `{ applied: true, conflicted }` is
  * returned. A failure with no unmerged paths (a missing object, a bad revision) aborts, resets
  * to main, and returns `{ applied: false }` so the caller falls back to a fresh start. Never
  * throws for a git-level failure. */
@@ -138,7 +138,7 @@ export async function applyWithConflicts(
   const picked = await pickSettlingBacklog(wt, base, sha);
   if (picked.status === "conflicted") {
     // Keep the marker-bearing files, drop only the index's unmerged stage entries: a mixed
-    // reset leaves the working tree untouched, so the markers are uncommitted edits the tick
+    // reset leaves the working tree untouched, so the markers are uncommitted edits the run
     // stages and commits like any other author work.
     await gitTry(wt, "reset");
     return { applied: true, conflicted: picked.files };

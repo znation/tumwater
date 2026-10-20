@@ -13,7 +13,7 @@ import { allRoleIds } from "../roles/roles.js";
 
 /** The runner's persisted state file — one JSON object per role under .tumwater/ — and the
  * observation-window counter reset: fresh-state defaults, the tolerant load, the atomic
- * save, and zeroCounters. The scheduling POLICY that mutates this state from tick outcomes
+ * save, and zeroCounters. The scheduling POLICY that mutates this state from run outcomes
  * and operator wakes — the outcome application and resume limits in run-apply.ts, the
  * clock arithmetic (backoff ladders, wakes, yield ring) in backoff.ts; the generic file
  * helpers are src/files/files.ts and the JSON convention
@@ -37,37 +37,37 @@ export interface RunnerState {
   nextRunAt: number;
   /** Current backoff in seconds (0 = not backing off). */
   backoffSeconds: number;
-  /** main HEAD observed at the end of the last tick; a different HEAD wakes the runner. */
+  /** main HEAD observed at the end of the last run; a different HEAD wakes the runner. */
   lastMainHead: string;
   /** The role's recent yield as a ring of one-char codes, oldest first: `L` for a merge
-   * (a `changed`/`queued` tick) and `n` for a counted empty tick — every result except the
+   * (a `changed`/`queued` run) and `n` for a counted empty run — every result except the
    * error class (`error`/`aborted`/`quiet_killed`, which are no evidence of yield either
    * way) and the ring keeps the last YIELD_RING entries. Read by yieldMultiplier
-   * (backoff.ts) to stretch the role's min-tick gap while it keeps finding nothing;
+   * (backoff.ts) to stretch the role's min-run gap while it keeps finding nothing;
    * persisted because the gap decision must survive a restart like the rest of the
    * schedule. Absent on states written before the field existed — reads as an empty ring,
    * multiplier 1. */
   recentOutcomes?: string;
   /** The last COMPLETED result and its summary — the pair the dashboards' "last result" cell
-   * renders. A `queued` tick never writes it (run-apply.ts's applyTickOutcome): its change is
+   * renders. A `queued` run never writes it (run-apply.ts's applyTickOutcome): its change is
    * still in flight, which the state column already shows, so the pair keeps the prior outcome
    * until the merge resolves and applyMergeOutcome records the merge's own. */
   lastResult?: TickResult;
   lastSummary?: string;
-  /** The summary a `queued` tick reported for the change it pinned (the text its run_end
+  /** The summary a `queued` run reported for the change it pinned (the text its run_end
    * carries, high-friction annotation included), keyed by that change's sha. Held back from
    * `lastSummary` while the change waits, then paired with the merge's result by
    * applyMergeOutcome, which clears it — so after a merge the cell reads the merge's
-   * outcome next to the summary of the change it merged, never next to the prior tick's.
+   * outcome next to the summary of the change it merged, never next to the prior run's.
    * Persisted: the merge queue is durable, so the merge can resolve in a later process. */
   queuedSummary?: { sha: string; summary: string };
   lastRunStartedAt?: number;
   lastRunEndedAt?: number;
-  /** True while a tick is in flight (best-effort; cleared on orchestrator start). */
+  /** True while a run is in flight (best-effort; cleared on orchestrator start). */
   running?: boolean;
-  /** Epoch ms since the orchestrator reserved this runner but its tick still waits in the
+  /** Epoch ms since the orchestrator reserved this runner but its run still waits in the
    * semaphore queue: it holds no maxConcurrent permit and runs no pi yet. Transient — set
-   * by the orchestrator, cleared the moment the permit is granted (and defensively on tick
+   * by the orchestrator, cleared the moment the permit is granted (and defensively on run
    * outcome / orchestrator start) — and never persisted, so dashboards can render the
    * parked waiter as `awaiting slot` and keep the active-state rows equal to the real
    * permit holders (BUGS.md 2026-09-24). */
@@ -79,70 +79,70 @@ export interface RunnerState {
    * Transient like `parkedSince` — never persisted — and absent for a team-total waiter
    * (no key) or the director (which never queues), so both render exactly as before. */
   parkedOn?: string;
-  /** True when the last tick was interrupted mid-task — aborted by a harness shutdown, or
+  /** True when the last run was interrupted mid-task — aborted by a harness shutdown, or
    * truncated at the model's context ceiling — with its pi session (and any uncommitted
-   * worktree edits, for shutdowns) left in place: the next tick resumes that session
-   * (--continue) instead of starting fresh. Consumed (cleared) by that tick; set again only
+   * worktree edits, for shutdowns) left in place: the next run resumes that session
+   * (--continue) instead of starting fresh. Consumed (cleared) by that run; set again only
    * by another interruption, so a failing resume falls back to a fresh start. */
   resumePending?: boolean;
   /** True when the run that set `resumePending` reported via `PiRunResult.resumeMissing`
    * that the backend no longer holds the session it tried to `--resume` (claude's "No
    * conversation found", or a pruned session). The transcript file the resume guard checks
    * can outlive the conversation — the fake leaves one, and a torn/empty file can — so the
-   * next tick must hand off on this verdict rather than trust `agentSessionResumable` and
+   * next run must hand off on this verdict rather than trust `agentSessionResumable` and
    * re-resume a session that is gone (BUGS.md 2026-10-09). Set only alongside
-   * `resumePending` and cleared with it at tick start. */
+   * `resumePending` and cleared with it at run start. */
   resumeMissing?: boolean;
   /** Why a pending resume happened when it was not a cut-off: "hung-tool" when the quiet
    * watchdog killed a run on a stalled tool call, so the bridge prompt names that cause (and
-   * warns against re-running the hung command unchanged); "timeout" when the tick deadline
+   * warns against re-running the hung command unchanged); "timeout" when the run deadline
    * fired on a run still making progress — a slow run, not a failed one — so the bridge asks
    * for the smallest finish against the same limit; "budget-resumed" when the budget gate
-   * reopened and the in-flight fallback tick was handed back to the primary model
+   * reopened and the in-flight fallback run was handed back to the primary model
    * (PLANS.md 2026-09-30); "rate-limit" when a subscription claude usage window rejected the
    * run, so the bridge names the held window rather than a restart (plans/agent-backends.md
    * part 6e); "budget-capped" when an API-billed claude run hit its per-run `--max-budget-usd`
-   * cap, so the next tick hands the kept worktree off to the fallback seam (part 7a/7);
+   * cap, so the next run hands the kept worktree off to the fallback seam (part 7a/7);
    * "image-reroute" when an authoring run read an image its model cannot see and the next
-   * tick hands the kept worktree off to an image-capable peer tier (plans/image-input.md
-   * part 4/5). Cleared with resumePending at tick start; absent for restart/cut-off resumes,
+   * run hands the kept worktree off to an image-capable peer tier (plans/image-input.md
+   * part 4/5). Cleared with resumePending at run start; absent for restart/cut-off resumes,
    * whose causes are derived. */
   resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute";
-  /** Queue file holding the user prompt a resume-owning tick re-queued: the interrupted pi
+  /** Queue file holding the user prompt a resume-owning run re-queued: the interrupted pi
    * session still owns that request in its context, so the resume must reclaim exactly this
    * file as its own user prompt — the resume's fulfillment consumes it, and only its failure
-   * paths re-queue it — instead of leaving the copy queued for a later fresh tick to run the
-   * same request twice. Cleared at every tick's start; reclaimed only by a tick that resumes. */
+   * paths re-queue it — instead of leaving the copy queued for a later fresh run to run the
+   * same request twice. Cleared at every run's start; reclaimed only by a run that resumes. */
   resumePromptFile?: string;
   /** Epoch ms of the last operator wake (`tumwater wake`, or the auto-wake a queued
    * per-role prompt sends) that cleared this runner's schedule. Scheduling input, not
-   * observation: isEligible exempts the role's min-tick interval when the wake is newer
-   * than the last tick's end, so an explicit "try again now" brings a slow-clock runner
-   * (qa, steward) in within one poll instead of waiting out the interval it ticked inside
+   * observation: isEligible exempts the role's min-run interval when the wake is newer
+   * than the last run's end, so an explicit "try again now" brings a slow-clock runner
+   * (qa, steward) in within one poll instead of waiting out the interval it ran inside
    * — the same exemption the director's inbox already grants user prompts. Self-clearing:
-   * the next tick's end re-stamps lastRunEndedAt past the wake, restoring the ordinary
+   * the next run's end re-stamps lastRunEndedAt past the wake, restoring the ordinary
    * gap without a separate erase. */
   wokenAt?: number;
-  /** Consecutive ticks that ended truncated at the context ceiling. Bounds cut-off resumes:
-   * past the limit the runner abandons the runaway task and falls back to a fresh tick. */
+  /** Consecutive runs that ended truncated at the context ceiling. Bounds cut-off resumes:
+   * past the limit the runner abandons the runaway task and falls back to a fresh run. */
   cutOffStreak?: number;
-  /** Consecutive ticks ended by the quiet watchdog (`quiet_killed`). Bounds quiet-kill
+  /** Consecutive runs ended by the quiet watchdog (`quiet_killed`). Bounds quiet-kill
    * resumes: while at or under the limit the runner resumes the starved session promptly,
-   * past it the runner abandons the session and takes a fresh tick on the idle ladder, so a
+   * past it the runner abandons the session and takes a fresh run on the idle ladder, so a
    * session the backend will not schedule cannot retry immediately forever (BUGS.md
    * 2026-09-18). Reset by any non-quiet-kill outcome. */
   quietKillStreak?: number;
-  /** Consecutive failed ticks: an `error`-result tick OR one whose leftover recovery left a
+  /** Consecutive failed runs: an `error`-result run OR one whose leftover recovery left a
    * merge pin behind (TickOutcome.recoveryFailure). While at or past the warning threshold
    * (run-apply.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
    * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
-   * identical tick failures looked like a quiet team; BUGS.md 2026-09-21: a dead reviewer
-   * backend left every recovery merge failing silently and reset this streak each tick).
-   * A review-rejected merge counts in too (BUGS.md 2026-09-30): the authoring tick ends
+   * identical run failures looked like a quiet team; BUGS.md 2026-09-21: a dead reviewer
+   * backend left every recovery merge failing silently and reset this streak each run).
+   * A review-rejected merge counts in too (BUGS.md 2026-09-30): the authoring run ends
    * `queued`, which preserves the streak, and applyMergeOutcome's rejected branch is the
    * accumulation point; a merged change resets it. Reset by any other completed result. */
   consecutiveErrors?: number;
-  /** Consecutive completed ticks that ended `no_change`. Observational only — the resting
+  /** Consecutive completed runs that ended `no_change`. Observational only — the resting
    * state cell's ` · no change ×N` suffix (status-model.ts rolePhase) — so a runner that keeps
    * waking and returning nothing to do stops reading as an ordinary idle; a legitimately idle
    * maintenance runner with an empty backlog can hold a long streak and that is expected, so it
@@ -152,11 +152,11 @@ export interface RunnerState {
   /** Where in its cycle the runner was when it last persisted state: "review" means the
    * interruption hit during the review gate, so any uncommitted worktree edits are the
    * reviewer's stray output (discarded on resume), not author work. Set + saved around the
-   * reviewer run; cleared at tick end alongside `running`. */
+   * reviewer run; cleared at run end alongside `running`. */
   phase?: "pi" | "review";
   /** The most recent review-gate outcome for this runner: what was decided, why, and which
-   * branch HEAD it covered. A reject's reasons are injected into the role's next tick prompt
-   * — every tick starts a fresh session, so this is the only cross-tick memory of what was
+   * branch HEAD it covered. A reject's reasons are injected into the role's next run prompt
+   * — every run starts a fresh session, so this is the only cross-run memory of what was
    * built and why it failed. */
   lastReview?: {
     verdict: string;
@@ -203,11 +203,11 @@ export interface RunnerState {
    * conflicts with main, or its revision re-apply conflicted (PLANS.md "Robust conflict
    * landing, part 2/2"): its sha, when, why, the revision round when the hand-back is a
    * revision, and whether the re-apply onto current main has happened yet. The author's next
-   * non-resume tick re-applies the sha with conflict markers left as ordinary uncommitted
+   * non-resume run re-applies the sha with conflict markers left as ordinary uncommitted
    * edits, appends the hand-back note, and deletes the merge ref. The record then lives
    * exactly as long as the resolved change: while it is queued or pinned for its merge, a
    * conflict at the cap discards it rather than handing it back a second time. It is cleared
-   * when that change merges or is rejected (run-apply.ts), and when a tick neither commits the
+   * when that change merges or is rejected (run-apply.ts), and when a run neither commits the
    * marker edits nor leaves a session to resume them (no_change, a deliberate user_aborted, or
    * an error/quiet-kill with no resume), nor while a rejected change's revision still owes
    * them. Absent for a runner with no hand-back, so older state files read unchanged. */
@@ -219,17 +219,17 @@ export interface RunnerState {
     applied: boolean;
   };
   /** This role's active model-fallback episode (src/runner/model-fallback.ts): set once
-   * consecutive provider-class failures on the primary trip it, cleared by a probe tick on
+   * consecutive provider-class failures on the primary trip it, cleared by a probe run on
    * the primary that answers without a provider failure. Absent means the role runs its
    * primary model, so existing state files read unchanged. Persisted: an episode must survive
    * a restart like the schedule does. */
   modelFallback?: ModelFallbackState;
-  /** The one-shot image-input reroute a blind-read tick left for the next tick
+  /** The one-shot image-input reroute a blind-read run left for the next run
    * (plans/image-input.md "Rerunning on a model that can read images"): the target tier and
    * the resolved target seam (provider/model/thinking), plus `from` (the selector string of
-   * the model the blind run was on) and `path` (the image file it read). The next tick starts
+   * the model the blind run was on) and `path` (the image file it read). The next run starts
    * directly on the target in a FRESH session over the kept worktree, never `--continue`;
-   * the field is cleared at that tick's start. Persisted like modelFallback (healed); absent
+   * the field is cleared at that run's start. Persisted like modelFallback (healed); absent
    * for a runner with no pending reroute, so older state files read unchanged. */
   imageReroute?: {
     tier: "small" | "default" | "strong";
@@ -239,10 +239,10 @@ export interface RunnerState {
     from?: string;
     path?: string;
   };
-  /** True while the CURRENT tick is an image-input reroute — it started on the image-capable
+  /** True while the CURRENT run is an image-input reroute — it started on the image-capable
    * target (from a blind-read handoff or an attachment preflight) instead of the runner's own
    * tier. Read by the verdict's one-hop guard, which fails a blind read during a rerouted
-   * tick instead of rerouting it again. Transient: reset at every tick start. */
+   * run instead of rerouting it again. Transient: reset at every run start. */
   imageRerouteActive?: boolean;
   /** The pinned change a merge failed to review on a permanent provider configuration error
    * (a 4xx other than 408/429): the request can never succeed until the model config changes,
@@ -268,15 +268,15 @@ export interface RunnerState {
    * kept once per headline, and a repeat of the same headline is attributed. Cleared when the
    * change merges or is rejected. */
   mergeFlakeExcused?: string;
-  /** Tokens the model generated in this runner's current or last completed tick — a per-tick
-   * window (runner-run.ts resets it at tick start), not a lifetime total. */
+  /** Tokens the model generated in this runner's current or last completed run — a per-run
+   * window (runner-run.ts resets it at run start), not a lifetime total. */
   generatedTokens: number;
-  /** Largest single-request context of this runner's current or last completed tick (per-tick
-   * window, reset at tick start). */
+  /** Largest single-request context of this runner's current or last completed run (per-run
+   * window, reset at run start). */
   peakContextTokens: number;
   totalCostUsd: number;
   /** Local calendar day (YYYY-MM-DD) that `dayCostUsd` belongs to; a stale or missing stamp
-   * reads as $0 today — spend before this field existed is unknown, and a tick crossing local
+   * reads as $0 today — spend before this field existed is unknown, and a run crossing local
    * midnight attributes its spend to the new day. See plans/daily-cost-budget.md. */
   dayStamp?: string;
   /** This runner's spend for `dayStamp`'s local day (the daily cost budget window). Deliberately
@@ -298,7 +298,7 @@ export interface RunnerState {
    * instances.md "Claims", part 4/7): its file, the stamp-free key (backlog-eligibility.ts's
    * entryKey) that survives a done stamp or a Refused note, the verbatim heading at
    * assignment, when it was assigned, and whether the harness assigned it (`assigned`) or an
-   * unassigned tick moved it at staging (`staged`). Persisted with the runner's state, so a
+   * unassigned run moved it at staging (`staged`). Persisted with the runner's state, so a
    * crash, resume, revision or leftover recovery carries it with no extra store. Absent for a
    * runner with no claim, so existing state files read unchanged. */
   claim?: {
@@ -309,7 +309,7 @@ export interface RunnerState {
     source: "assigned" | "staged";
   };
   /** Titles of the entries siblings hold while this instance runs unassigned (nothing free to
-   * claim): set by the scheduling poll, read by the tick prompt's exclusion note, so a primary
+   * claim): set by the scheduling poll, read by the run prompt's exclusion note, so a primary
    * does not author an entry a sibling already holds. Cleared whenever the poll finds nothing
    * held or assigns a claim. */
   heldElsewhere?: string[];
@@ -340,7 +340,7 @@ const SKIP_REASONS: readonly string[] = [
   "deferred-plans-full",
 ];
 
-/** A new RunnerState for one role, before its first tick. */
+/** A new RunnerState for one role, before its first run. */
 export function freshRunnerState(role: string): RunnerState {
   return {
     role,
@@ -394,7 +394,7 @@ function healOptionalNumber<T extends object, K extends keyof T>(rec: T, key: K)
 
 /** Heal one persisted nested record: absent stays absent; a present non-object (a string,
  * number, NaN, null, or array) is dropped to undefined — every consumer of these records reads
- * them with property access or mutation (merge-core sets `lastReview.exhausted`, tick-apply
+ * them with property access or mutation (merge-core sets `lastReview.exhausted`, run-apply
  * adds to `mergeConflicts.count`), and property access on a torn scalar reads undefined where
  * the mutation throws "Cannot create property … on string" in a strict ES module; a present
  * object keeps its shape with each numeric field repaired by `heal`. */
@@ -486,7 +486,7 @@ export function loadRunnerState(root: string, role: string): RunnerState {
       v.at = healNumber(v.at, 0);
       // The one nested non-numeric slot whose foreign type throws rather than reads odd: the
       // rejected-review notes build a numbered list from `reasons` (numberedList's `.map`), so
-      // a hand-edited scalar or a missing field would crash the next tick's prompt. Rebuild it
+      // a hand-edited scalar or a missing field would crash the next run's prompt. Rebuild it
       // to its string entries — the same "the field is unusable, start it over" repair the
       // numeric fields get.
       v.reasons = Array.isArray(v.reasons)
@@ -548,9 +548,9 @@ export function loadRunnerState(root: string, role: string): RunnerState {
       v.probeAt = healNumber(v.probeAt, 0);
       v.cooldownMs = healNumber(v.cooldownMs, 0);
     });
-  // The image-reroute marker is a one-shot nested record consumed by the next tick; a torn
+  // The image-reroute marker is a one-shot nested record consumed by the next run; a torn
   // scalar is dropped (its consumers read/mutate fields), and the tier is repaired to a
-  // known tier name so a corrupt tier cannot route a rerouted tick to a phantom seam.
+  // known tier name so a corrupt tier cannot route a rerouted run to a phantom seam.
   if (s.imageReroute !== undefined) {
     const healed = healRecord(s.imageReroute, () => {});
     s.imageReroute =
@@ -563,7 +563,7 @@ export function loadRunnerState(root: string, role: string): RunnerState {
 
 /** Persist the runner's state atomically via writeJsonAtomic, so a crash mid-write cannot
  * leave a torn file behind. Its per-pid tmp name matters here: two processes can write one
- * role's state concurrently — the orchestrator saves at tick end and around its review gate
+ * role's state concurrently — the orchestrator saves at run end and around its review gate
  * while `tumwater reset-counters` rewrites the same file from the CLI process — and per-pid
  * names give each writer its own tmp with a clean last-writer-wins. */
 export function saveRunnerState(root: string, state: RunnerState): void {
@@ -573,9 +573,9 @@ export function saveRunnerState(root: string, state: RunnerState): void {
 /** Zero the accumulated counters (runs, commits, tokens, cost) so a fresh observation
  * window can begin. Pure: returns a new state and preserves everything else — scheduling
  * fields (nextRunAt, backoffSeconds), wake tracking (lastMainHead), and the last-result
- * fields. peakContextTokens is zeroed too: under per-tick semantics it holds the runner's
- * last completed tick's peak, so a fresh window must clear it or sleeping runners keep
- * showing their old value until they next tick. The daily cost budget window (dayStamp/
+ * fields. peakContextTokens is zeroed too: under per-run semantics it holds the runner's
+ * last completed run's peak, so a fresh window must clear it or sleeping runners keep
+ * showing their old value until they next run. The daily cost budget window (dayStamp/
  * dayCostUsd) is deliberately NOT zeroed: the budget is a safety valve, not an observation
  * window — zeroing today's spend would let the cap be bypassed by running reset-counters.
  */
@@ -596,7 +596,7 @@ export function stateSkipReason(
   return "idle";
 }
 
-/** True when the runner still owes follow-up work for its current task after a tick: a rejected
+/** True when the runner still owes follow-up work for its current task after a run: a rejected
  * change it must revise (state.revision) or a session it must resume (state.resumePending).
  * Both keep the instance bound to the same task, so the claim-release rule
  * (run/run-finalize.ts), the conflict-handback rule (run/run-apply.ts), and claims.ts's

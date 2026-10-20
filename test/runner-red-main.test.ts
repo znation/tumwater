@@ -46,7 +46,7 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
     assert.equal(outcome.summary, "code merges blocked until main is green");
     assert.ok(!fs.existsSync(marker), "no pi run starts while main is red");
 
-    // A second tick on the same SHA: cached red — still no pi run and npm test did not re-run.
+    // A second run on the same SHA: cached red — still no pi run and npm test did not re-run.
     const again = await runner.run();
     assert.equal(again.result, "main_red");
     assert.ok(!fs.existsSync(marker));
@@ -75,7 +75,7 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
 
     // The run_end lines carry the result + summary for the dashboards' last-result column,
     // and the error field names what broke (BUGS.md 2026-09-28): the failure digest's error
-    // clusters include main_red ticks, so the event itself must carry the cause.
+    // clusters include main_red runs, so the event itself must carry the cause.
     const ends = eventsOfType(repo, "run_end");
     assert.equal(ends.length, 2);
     assert.equal(String(ends[1]?.result), "main_red");
@@ -111,7 +111,7 @@ test("a green main passes the baseline check and authoring proceeds normally", a
   }
 });
 
-test("an exempt role ticks normally while main is red — its markdown-only diff still merges", async () => {
+test("an exempt role runs normally while main is red — its markdown-only diff still merges", async () => {
   const repo = await initializedRepo();
   makeMainRed(repo, path.join(tmpdir(), "npm-runs"));
   const marker = path.join(tmpdir(), "pi-invoked");
@@ -157,7 +157,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
       assert.ok(fs.existsSync(marker), "its pi run started");
 
       const run = fs.readFileSync(promptsFile, "utf8");
-      assert.ok(run.includes("<main-red>"), "the tick prompt carries the red-main block");
+      assert.ok(run.includes("<main-red>"), "the run prompt carries the red-main block");
       assert.ok(run.includes("baseline-failure-line"), "…naming the failure headline");
       assert.ok(run.includes("test"), "…and the failing script");
 
@@ -172,7 +172,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
   );
 });
 
-test("after a fix merges on main, the next tick re-checks the new SHA and authoring resumes", async () => {
+test("after a fix merges on main, the next run re-checks the new SHA and authoring resumes", async () => {
   const repo = await initializedRepo();
   const counter = path.join(tmpdir(), "npm-runs");
   makeMainRed(repo, counter);
@@ -190,12 +190,12 @@ test("after a fix merges on main, the next tick re-checks the new SHA and author
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "fix the suite");
 
-    // The next fresh tick resets to the new main and re-checks it — no waiting out backoff.
+    // The next fresh run resets to the new main and re-checks it — no waiting out backoff.
     const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "authoring resumed once main is green");
-    // Grew past tick one's single red run: the baseline check re-ran for the new SHA. (The
+    // Grew past run one's single red run: the baseline check re-ran for the new SHA. (The
     // review gate's own pre-check of main + changes appends too, so allow more than two.)
     assert.ok(
       fs.readFileSync(counter, "utf8").trim().split("\n").length >= 2,
@@ -210,7 +210,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
   // The baseline check's environmental-skip branch: when the detected check cannot RUN
   // (npm missing from PATH), a blocked role must warn and still spend its authoring run —
   // never block as main_red. Main is made genuinely red below so that warn-and-proceed is
-  // the ONLY reason this tick can merge: a fail-closed regression would return "main_red"
+  // the ONLY reason this run can merge: a fail-closed regression would return "main_red"
   // forever on any machine without npm.
   const repo = await initializedRepo();
   makeMainRed(repo, path.join(tmpdir(), "npm-runs"));
@@ -246,7 +246,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
 
     // The baseline check's warning names the missing npm and that the MAIN BASELINE check was
     // skipped — distinct from the gate's own pre-check warning ("skipping build check"), which
-    // this tick also logs. Both prove warn-and-proceed at their respective layers.
+    // this run also logs. Both prove warn-and-proceed at their respective layers.
     const warnings = readEvents(repo).filter((e) => e.type === "warning" && e.source === "feature");
     assert.ok(
       warnings.some((w) => String(w.message ?? "") === "no npm on PATH; skipping main baseline check"),

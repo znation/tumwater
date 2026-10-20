@@ -15,7 +15,7 @@ import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/runner/leftover.ts's recoverLeftover — the salvage path that puts a commit
 // a
-// previous tick left unmerged back on the durable merge queue (merge-queue speed 3c: the slot is
+// previous run left unmerged back on the durable merge queue (merge-queue speed 3c: the slot is
 // main's one writer): normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch
 // when a crash landed in the commit→pin window. The queue and the ref mechanics are real; no
 // merge runs here. The runner e2e tests (test/runner-leftover-recovery.test.ts) drive the queued
@@ -25,7 +25,7 @@ import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 const ROLE = "improve";
 
 function makeCtx(root: string, wt: string): LeftoverContext {
-  return { root, role: ROLE, mainBranch: "main", tick: 7, wt };
+  return { root, role: ROLE, mainBranch: "main", runNumber: 7, wt };
 }
 
 /** A repo with one commit NOT contained in main, pinned by the merge ref — the leftover to
@@ -81,9 +81,9 @@ test("a pinned commit not in main is put on the merge queue, not merged", async 
   assert.deepEqual(
     events.filter((e) => e.type === "merge_queued").map((e) => [e.commit, e.summary]),
     [[sha, "recovered leftover work from improve: stranded work"]],
-    "the enqueue is logged like a fresh tick's",
+    "the enqueue is logged like a fresh run's",
   );
-  assert.equal(events.filter((e) => e.type === "merged").length, 0, "no in-tick merge");
+  assert.equal(events.filter((e) => e.type === "merged").length, 0, "no in-run merge");
 });
 
 test("a pin whose merges hit the merge-conflict cap is handed back, not re-queued", async () => {
@@ -329,7 +329,7 @@ test("a handed-back commit with no readable subject falls back to the bare sha l
 // recoverLeftover's event writes are best-effort (src/events/events.ts): the enqueue, the pin
 // delete, and the unpinned return are durable before the warning/log runs, so an unwritable
 // events feed (ENOSPC, EACCES, the path replaced by a directory) must not throw out of recovery
-// and turn a completed salvage into a tick error. Fault injected as in
+// and turn a completed salvage into a run error. Fault injected as in
 // test/gate-event-best-effort.test.ts — a directory where events.jsonl belongs, so every append
 // throws EISDIR while the rest of the root still writes.
 test("a pinned leftover is still queued when the events feed is unwritable", async () => {

@@ -490,7 +490,7 @@ async function runWithWorktreePhase(
       root: ctx.root,
       role: ctx.role,
       mainBranch: ctx.mainBranch,
-      tick: s.runs,
+      runNumber: s.runs,
       wt,
       mergeConflicts: s.mergeConflicts,
       conflictHandback: s.conflictHandback,

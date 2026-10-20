@@ -1,4 +1,4 @@
-/** The runner e2e suite's interrupted-tick slice — ticks that end without a normal commit:
+/** The runner e2e suite's interrupted-run slice — runs that end without a normal commit:
  * cut-offs at the context ceiling (and their resume-streak limit), aborted runs, the resumes
  * that continue their sessions, and quiet-killed hangs. Extracted from runner.test.ts
  * (2026-09-30) so the topic has a name instead of a row in a grab-bag. The suite's slices run
@@ -23,17 +23,17 @@ import { fakePi, logFlagsTo, logPromptsTo, readRunBlocks, withPi } from "./fakes
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
-/** One "improve" tick against a fake pi that writes `partial.txt` then hangs: wait for the
- * edit to land, abort the tick, and assert it settled as `"aborted"`. The fake pi is stopped
+/** One "improve" run against a fake pi that writes `partial.txt` then hangs: wait for the
+ * edit to land, abort the run, and assert it settled as `"aborted"`. The fake pi is stopped
  * before return, so the caller can install its next one. The abort waits for the edit rather
  * than a fixed timer: under parallel load a timer can fire before the fake pi even starts,
  * leaving no edits for the following run to keep. */
-async function abortHungImproveTick(repo: string): Promise<void> {
+async function abortHungImproveRun(repo: string): Promise<void> {
   const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
   try {
     const controller = new AbortController();
     const runner = makeRoleRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    const tick = runner.run();
+    const pendingRun = runner.run();
     try {
       await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
     } catch (err) {
@@ -41,7 +41,7 @@ async function abortHungImproveTick(repo: string): Promise<void> {
       throw err;
     }
     controller.abort();
-    assert.equal((await tick).result, "aborted");
+    assert.equal((await pendingRun).result, "aborted");
   } finally {
     restore();
   }
@@ -57,7 +57,7 @@ function seedInterruptedPiSession(repo: string): string {
 }
 
 /** Seed that interrupted session and then record a NEWER author ledger line from another
- * agent (claude), so the newest author session is not the tick's to --continue and the tick
+ * agent (claude), so the newest author session is not the run's to --continue and the run
  * hands off to a fresh session instead. */
 function seedInterruptedHandoffSession(repo: string): void {
   const dir = seedInterruptedPiSession(repo);
@@ -158,7 +158,7 @@ test("an aborted run merges nothing, does not back off, and marks itself resumab
 test("a resumed run continues the interrupted session and keeps the worktree edits", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  await abortHungImproveTick(repo);
+  await abortHungImproveRun(repo);
   let restore = () => {};
   try {
     // The aborted run's pi session is on disk (the fake pi writes none, so seed one).
@@ -167,7 +167,7 @@ test("a resumed run continues the interrupted session and keeps the worktree edi
     // Next launch: a new runner (state comes from disk) resumes and finishes the task.
     restore = fakePi(
       [
-        // The resumed tick's commit goes through the review gate before merging.
+        // The resumed run's commit goes through the review gate before merging.
         APPROVE_PI,
         logFlagsTo(argsFile),
         `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'`,
@@ -190,17 +190,17 @@ test("a resumed run continues the interrupted session and keeps the worktree edi
 });
 
 // plans/agent-backends.md "Sessions": when the newest author session in the dir belongs to
-// another agent, pi's --continue would reach a session that is not this tick's. The tick must
+// another agent, pi's --continue would reach a session that is not this run's. The run must
 // run a FRESH session over the same unreset worktree, and the bridge must point it at the
 // interrupted edits so a fresh context does not silently overwrite or abandon them.
 test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  await abortHungImproveTick(repo);
+  await abortHungImproveRun(repo);
   let restore = () => {};
   try {
     // The aborted run wrote its own pi session and ledger line; append a NEWER author line for
-    // another agent. The newest author session is now not this tick's to --continue.
+    // another agent. The newest author session is now not this run's to --continue.
     seedInterruptedHandoffSession(repo);
 
     // The handoff runs a fresh session and finishes the task; it must not --continue, and its
@@ -238,7 +238,7 @@ test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits"
 test("a cross-agent handoff over an interrupted revision keeps its edits and carries the round", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  await abortHungImproveTick(repo);
+  await abortHungImproveRun(repo);
   let restore = () => {};
   try {
     // The rejected diff adds the very path the kept edit left untracked, so a re-apply
@@ -250,7 +250,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
     );
     await setRef(repo, rejectedRefName("improve"), sha);
     // The aborted run's session, then a NEWER author line for another agent: the newest author
-    // session is not this tick's to --continue, so the tick hands off.
+    // session is not this run's to --continue, so the run hands off.
     seedInterruptedHandoffSession(repo);
 
     restore = fakePi(
@@ -267,7 +267,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
     assert.equal((await resumed.run()).result, "queued");
     assert.equal(eventsOfType(repo, "revision").length, 0, "no re-apply runs on a handoff");
     // The handoff is a FRESH session and run-prompt suppresses the rejected-review note while
-    // state.revision is set, so the revision note must ride this tick's prompt.
+    // state.revision is set, so the revision note must ride this run's prompt.
     const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /is revision 1\b/, "the fresh handoff is told it is revising the rejected change");
     assert.match(run, /fix it/, "the fresh handoff receives the review objections");
@@ -287,7 +287,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
 // way — re-applying collides with the kept edits, fails, and resets them.
 test("a cross-agent handoff does not re-apply a pending conflict hand-back", async () => {
   const repo = await initializedRepo();
-  await abortHungImproveTick(repo);
+  await abortHungImproveRun(repo);
   let restore = () => {};
   try {
     const sha = pinOffMain(
@@ -330,7 +330,7 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
 test("a cross-agent handoff re-sends an already-applied merge hand-back note", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  await abortHungImproveTick(repo);
+  await abortHungImproveRun(repo);
   let restore = () => {};
   try {
     const sha = pinOffMain(
@@ -338,7 +338,7 @@ test("a cross-agent handoff re-sends an already-applied merge hand-back note", a
       (d) => fs.writeFileSync(path.join(d, "partial.txt"), "handed back\n"),
       "the handed-back work",
     );
-    // The interrupted tick had already applied the hand-back: the markers are in the kept
+    // The interrupted run had already applied the hand-back: the markers are in the kept
     // worktree as ordinary edits (applyWithConflicts reset the index).
     fs.writeFileSync(
       path.join(roleWt(repo, "improve"), "partial.txt"),
@@ -366,12 +366,12 @@ test("a cross-agent handoff re-sends an already-applied merge hand-back note", a
   }
 });
 
-// The revision-with-conflicts variant: the interrupted tick applied a revision hand-back, so a
+// The revision-with-conflicts variant: the interrupted run applied a revision hand-back, so a
 // fresh handoff must carry BOTH the revision note and the conflict-handback note.
 test("a cross-agent handoff over an applied revision conflict carries both notes", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  await abortHungImproveTick(repo);
+  await abortHungImproveRun(repo);
   let restore = () => {};
   try {
     const sha = pinOffMain(
@@ -415,7 +415,7 @@ test("a cross-agent handoff over an applied revision conflict carries both notes
 });
 
 // BUGS.md 2026-09-12 (fixed 2026-09-13): a hung tool call used to land as a timeout error
-// whose next-tick reset discarded the run's work. The kill must now preserve session + edits,
+// whose next-run reset discarded the run's work. The kill must now preserve session + edits,
 // resume them promptly, and name the real cause in the bridge so the session does not re-run
 // the hung command unchanged.
 test("a quiet-killed run keeps its edits and resumes promptly instead of discarding", async (t) => {
@@ -437,13 +437,13 @@ test("a quiet-killed run keeps its edits and resumes promptly instead of discard
   );
   try {
     const runner = makeRoleRunner(repo, "improve", config);
-    const tick = runner.run();
+    const pendingRun = runner.run();
     // Wait for the half-done edit to land: a fixed timer can fire before the fake pi even
     // starts under parallel load. The watchdog kills the run itself — no abort controller.
     await waitForFile(path.join(roleWt(repo, "improve"), "kept.txt"));
     await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
     clock.advance(20_000);
-    assert.equal((await tick).result, "quiet_killed");
+    assert.equal((await pendingRun).result, "quiet_killed");
     assert.ok(
       fs.existsSync(path.join(roleWt(repo, "improve"), "kept.txt")),
       "the edits survive the kill",

@@ -600,7 +600,7 @@ test("leftover recovery rebuilds a revision's round from its commit trailer", as
   const sha = headSha(root);
   await setRef(root, mergeRefName(role), sha);
 
-  const recovered = await recoverLeftover({ root, role, mainBranch: "main", tick: 8, wt: root });
+  const recovered = await recoverLeftover({ root, role, mainBranch: "main", runNumber: 8, wt: root });
 
   assert.equal(recovered?.kind, "enqueued");
   assert.equal(recovered?.kind === "enqueued" ? recovered.entry.revisionRound : undefined, 1);

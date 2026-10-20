@@ -2,7 +2,7 @@
  * `tumwater reset-counters`) and wake() (of `tumwater wake`). Both are plain state mutations
  * with no pi involvement, so they need no fake shim and live in their own small file rather
  * than the duration-balanced runner halves. Their invariants are anything but trivial: both
- * must mutate the EXISTING state object in place (a tick in flight holds the same reference,
+ * must mutate the EXISTING state object in place (a run in flight holds the same reference,
  * and a swap here wedges the runner until restart — the bug orchestrator.e2e.test.ts records),
  * zero/persist exactly their own fields, and leave the result visible on disk. */
 
@@ -47,16 +47,16 @@ test("resetCounters zeroes the observation counters, preserves scheduling and wa
   assert.equal(s.backoffSeconds, 300);
   assert.equal(s.lastMainHead, "deadbeef");
   assert.equal(s.lastResult, "no_change");
-  assert.equal(s.running, true, "an in-flight tick's running flag must survive");
+  assert.equal(s.running, true, "an in-flight run's running flag must survive");
 
   const disk = loadRunnerState(runner.root, runner.role);
   assert.equal(disk.runs, 0, "the zeroed counters are persisted, not just in-memory");
   assert.equal(disk.nextRunAt, 1234567890, "the preserved scheduling fields are persisted too");
 });
 
-test("resetCounters mutates the existing state object, so an in-flight tick's end-of-tick save stays authoritative", async () => {
+test("resetCounters mutates the existing state object, so an in-flight run's end-of-run save stays authoritative", async () => {
   const runner = await runnerInRepo();
-  // The reference a mid-tick bookkeeping save would hold.
+  // The reference a mid-run bookkeeping save would hold.
   const inflight = runner.state;
   runner.state.runs = 7;
 
@@ -64,7 +64,7 @@ test("resetCounters mutates the existing state object, so an in-flight tick's en
 
   assert.equal(runner.state, inflight, "the state object must not be replaced");
 
-  // Now the in-flight tick ends and saves ITS bookkeeping over the same object: the counter
+  // Now the in-flight run ends and saves ITS bookkeeping over the same object: the counter
   // it wrote and its own schedule must both reach disk, and the pre-reset values must not
   // resurrect (the documented wedged-runner failure mode).
   inflight.runs = 8;
@@ -98,6 +98,6 @@ test("wake clears backoff in memory and on disk, and only the backoff", async ()
   assert.equal(disk.backoffSeconds, 0);
   assert.equal(disk.nextRunAt, s.nextRunAt);
 
-  // In place, like resetCounters: the in-flight tick's reference sees the wake.
+  // In place, like resetCounters: the in-flight run's reference sees the wake.
   assert.equal(runner.state.nextRunAt, disk.nextRunAt);
 });

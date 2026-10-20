@@ -1,5 +1,5 @@
 /** Direct unit tests for src/runner/runner-recovery.ts — the three recovery phases split out of
- * RoleRunner's tick lifecycle. The runner suites drive them end-to-end, but no test file imports
+ * RoleRunner's run lifecycle. The runner suites drive them end-to-end, but no test file imports
  * the module, so the contract each arm is chosen on (which pending-prompt policy runs, which
  * leftover kind maps to which outcome, and what survives a failed pin) has no direct
  * assertions. These pin those arms with a recording context; a real initialized worktree is
@@ -14,8 +14,8 @@ import { inboxSize } from "../src/inbox/inbox.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import type { MergeEntry } from "../src/merge/merge-queue.js";
 import {
-  finishAbortedTickPhase,
-  finishRecoveryTickPhase,
+  finishAbortedRunPhase,
+  finishRecoveryRunPhase,
   pinAndResetPhase,
 } from "../src/runner/runner-recovery.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
@@ -72,45 +72,45 @@ test("pinAndResetPhase pins the sha and resets the worktree to main on success",
   assert.equal(headSha(wt), mainSha(root), "the branch moved back to main once the pin held the commit");
 });
 
-test("finishAbortedTickPhase discards the request and the work on an explicit user abort", async () => {
+test("finishAbortedRunPhase discards the request and the work on an explicit user abort", async () => {
   const { root, wt } = await initializedWorktree();
   const { ctx, pending } = makeCtx(root);
   pending.record("please do x");
 
-  const outcome = await finishAbortedTickPhase(ctx, "please do x", wt, true, false);
+  const outcome = await finishAbortedRunPhase(ctx, "please do x", wt, true, false);
   assert.deepEqual(outcome, { result: "user_aborted" });
   assert.equal(pending.get(), null, "the abort is the answer: the request is dropped, not requeued");
   assert.equal(inboxSize(root, "improve"), 0);
   assert.equal(headSha(wt), mainSha(root), "the half-done work is discarded");
 });
 
-test("finishAbortedTickPhase requeues the prompt for resume on a plain shutdown", async () => {
+test("finishAbortedRunPhase requeues the prompt for resume on a plain shutdown", async () => {
   const root = await initializedRepo();
   const { ctx, pending } = makeCtx(root);
   pending.record("please do x");
 
   // No worktree is touched on this arm — only the prompt is handed back for a resumed session.
-  const outcome = await finishAbortedTickPhase(ctx, "please do x", path.join(root, "unused"), false, false);
+  const outcome = await finishAbortedRunPhase(ctx, "please do x", path.join(root, "unused"), false, false);
   assert.deepEqual(outcome, { result: "aborted" });
   assert.equal(inboxSize(root, "improve"), 1, "the shutdown requeues the unfulfilled request");
 });
 
-test("finishAbortedTickPhase names a budget handback as the resume cause", async () => {
+test("finishAbortedRunPhase names a budget handback as the resume cause", async () => {
   const root = await initializedRepo();
   const { ctx, pending } = makeCtx(root);
   pending.record("please do x");
 
-  const outcome = await finishAbortedTickPhase(ctx, "please do x", path.join(root, "unused"), false, true);
+  const outcome = await finishAbortedRunPhase(ctx, "please do x", path.join(root, "unused"), false, true);
   assert.deepEqual(outcome, { result: "aborted", resumeCause: "budget-resumed" });
   assert.equal(inboxSize(root, "improve"), 1);
 });
 
-test("finishRecoveryTickPhase fails an unpinned leftover without resetting the worktree", async () => {
+test("finishRecoveryRunPhase fails an unpinned leftover without resetting the worktree", async () => {
   const root = await initializedRepo();
   const { ctx, pending, state } = makeCtx(root);
   pending.record("please do x");
 
-  const outcome = await finishRecoveryTickPhase(
+  const outcome = await finishRecoveryRunPhase(
     ctx,
     { kind: "unpinned", sha: "abcdef1234" },
     "please do x",
@@ -121,14 +121,14 @@ test("finishRecoveryTickPhase fails an unpinned leftover without resetting the w
   assert.equal(outcome.recoveredLeftover, true);
   assert.equal(state.lastError, `failed to pin leftover ${shortSha("abcdef1234")} by its merge ref; left for the next run's recovery`);
   assert.equal(pending.get(), null);
-  assert.equal(inboxSize(root, "improve"), 1, "the tick's request is requeued since nothing ran it");
+  assert.equal(inboxSize(root, "improve"), 1, "the run's request is requeued since nothing ran it");
 });
 
-test("finishRecoveryTickPhase ends error on a held pin and keeps its message", async () => {
+test("finishRecoveryRunPhase ends error on a held pin and keeps its message", async () => {
   const root = await initializedRepo();
   const { ctx, state } = makeCtx(root);
 
-  const outcome = await finishRecoveryTickPhase(
+  const outcome = await finishRecoveryRunPhase(
     ctx,
     { kind: "held", sha: "sha1", message: "reviewer config is broken" },
     null,
@@ -140,23 +140,23 @@ test("finishRecoveryTickPhase ends error on a held pin and keeps its message", a
   assert.equal(inboxSize(root, "improve"), 0, "a null prompt enqueues nothing");
 });
 
-test("finishRecoveryTickPhase maps an already-queued pin to queued without a recovery failure", async () => {
+test("finishRecoveryRunPhase maps an already-queued pin to queued without a recovery failure", async () => {
   const root = await initializedRepo();
   const { ctx, failures } = makeCtx(root);
   const entry: MergeEntry = { role: "improve", sha: "sha1", run: 3, summary: "the summary", highFriction: true, enqueuedAt: 0 };
 
-  const outcome = await finishRecoveryTickPhase(ctx, { kind: "already_queued", entry }, null, path.join(root, "unused"), "prior failure");
+  const outcome = await finishRecoveryRunPhase(ctx, { kind: "already_queued", entry }, null, path.join(root, "unused"), "prior failure");
   assert.deepEqual(outcome, { result: "queued", summary: "the summary", commit: "sha1", highFriction: true, recoveredLeftover: true });
-  assert.deepEqual(failures, [], "nothing was enqueued this tick, so no prior failure is carried");
+  assert.deepEqual(failures, [], "nothing was enqueued this run, so no prior failure is carried");
 });
 
-test("finishRecoveryTickPhase queues a freshly enqueued pin, resets the worktree, and carries the prior failure", async () => {
+test("finishRecoveryRunPhase queues a freshly enqueued pin, resets the worktree, and carries the prior failure", async () => {
   const { root, wt } = await initializedWorktree();
   const { ctx, failures } = makeCtx(root);
   const entry: MergeEntry = { role: "improve", sha: "sha1", run: 4, summary: "the summary", enqueuedAt: 0 };
   fs.writeFileSync(path.join(wt, "dirty.txt"), "uncommitted leftover\n");
 
-  const outcome = await finishRecoveryTickPhase(ctx, { kind: "enqueued", entry }, null, wt, "the prior failure");
+  const outcome = await finishRecoveryRunPhase(ctx, { kind: "enqueued", entry }, null, wt, "the prior failure");
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.commit, "sha1");
   assert.equal(outcome.recoveredLeftover, true);

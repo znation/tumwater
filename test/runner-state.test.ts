@@ -76,7 +76,7 @@ test("saveRunnerState creates the state dir and round-trips without leaving a te
 });
 
 // Two processes hammering one role's state file concurrently — the real-world shape: the
-// orchestrator saves at tick end and around its review gate while `tumwater reset-counters`
+// orchestrator saves at run end and around its review gate while `tumwater reset-counters`
 // rewrites the same file from the CLI process. With per-pid tmp names each writer owns its
 // own tmp, so neither rename can ENOENT and the final file is always one complete state
 // (last writer wins), never bytes mixed from both writers.
@@ -258,7 +258,7 @@ test("loadRunnerState heals a foreign-typed lastReview.reasons to an empty list"
   ensureParentDir(file);
   // reasons is the one nested non-numeric slot whose foreign type throws rather than merely
   // reading odd: the rejected-review notes build a numbered list from it (numberedList's
-  // `.map`), so a hand-edited "because" or a dropped field would crash the next tick's prompt
+  // `.map`), so a hand-edited "because" or a dropped field would crash the next run's prompt
   // builder. Heal it to its string entries, or [] when it is not an array at all.
   const cases: Array<[unknown, string[]]> = [
     ["because", []],
@@ -375,7 +375,7 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
   s.commits = 5;
   s.generatedTokens = 987654;
   s.totalCostUsd = 3.14;
-  s.peakContextTokens = 131072; // last tick's peak — must be cleared too
+  s.peakContextTokens = 131072; // last run's peak — must be cleared too
   s.nextRunAt = 1_700_000_000_000;
   s.backoffSeconds = 30;
   s.lastMainHead = "abc123";
@@ -391,9 +391,9 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
   assert.equal(z.commits, 0);
   assert.equal(z.generatedTokens, 0);
   assert.equal(z.totalCostUsd, 0);
-  // Per-tick semantics: peak ctx holds the last completed tick's peak, so a fresh
+  // Per-run semantics: peak ctx holds the last completed run's peak, so a fresh
   // observation window clears it — sleeping runners would otherwise keep showing their old
-  // value until they next tick.
+  // value until they next run.
   assert.equal(z.peakContextTokens, 0);
   // Scheduling, wake tracking, and last-result fields are untouched.
   assert.equal(z.nextRunAt, s.nextRunAt);

@@ -1,4 +1,4 @@
-/** The prompt-requeue survival cluster: a queued request must outlive every tick that
+/** The prompt-requeue survival cluster: a queued request must outlive every run that
  * dequeues it but cannot fulfill — a red-main gate, a failed resume, and a crash after the
  * dequeue all hand the prompt back to its queue. This exercises the durable-copy policy
  * src/inbox/pending-prompt.ts implements. Split from the numbered runner-2.test.ts grab-bag so the
@@ -18,9 +18,9 @@ import { defaultConfig } from "../src/config/config.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
 // criterion (b), red-gate arm: a per-role prompt is dequeued
-// before the red-main gate runs (the gate needs the assembled prompt), so a blocked tick MUST
+// before the red-main gate runs (the gate needs the assembled prompt), so a blocked run MUST
 // put it back — the pending field is memory-only, and a prompt lost here never runs.
-test("a role prompt queued while main is red survives the blocked tick", async () => {
+test("a role prompt queued while main is red survives the blocked run", async () => {
   const repo = await initializedRepo();
   const counter = path.join(tmpdir(), "npm-runs-role-prompt");
   makeMainRed(repo, counter);
@@ -33,18 +33,18 @@ test("a role prompt queued while main is red survives the blocked tick", async (
     assert.ok(!fs.existsSync(marker), "no pi run starts while main is red");
 
     // The dequeued prompt is back in the feature queue — not the director's — ready for the
-    // next tick once main is green.
+    // next run once main is green.
     assert.deepEqual(dequeueRolePrompt(repo, "feature"), "check the flow");
     assert.equal(dequeueRolePrompt(repo, "feature"), null);
     assert.equal(dequeuePrompt(repo), null);
   });
 });
 
-// A resume-owning tick (cut-off, quiet-kill, shutdown) re-queues its user prompt as the durable
+// A resume-owning run (cut-off, quiet-kill, shutdown) re-queues its user prompt as the durable
 // copy, but the resumed session still owns that request in its context: the resume must reclaim
 // exactly that copy as its own user prompt, or a fulfilling resume leaves it queued and a later
-// fresh tick runs the same request a second time (BUGS.md 2026-09-25).
-test("a cut-off tick's requeued role prompt is reclaimed by the resume, not run twice", async () => {
+// fresh run runs the same request a second time (BUGS.md 2026-09-25).
+test("a cut-off run's requeued role prompt is reclaimed by the resume, not run twice", async () => {
   const repo = await initializedRepo();
   const promptsFile = path.join(tmpdir(), "prompts-reclaim.log");
   const counter = path.join(tmpdir(), "reclaim-count");
@@ -62,17 +62,17 @@ test("a cut-off tick's requeued role prompt is reclaimed by the resume, not run 
       const first = await runner.run();
       assert.equal(first.result, "no_change");
       assert.equal(first.cutOff, true, "run 1 was cut off at the context ceiling");
-      assert.equal(runner.state.resumePending, true, "the next tick resumes the compacted session");
-      assert.match(fs.readFileSync(promptsFile, "utf8"), /flubbernator/, "tick 1 ran the queued prompt");
+      assert.equal(runner.state.resumePending, true, "the next run resumes the compacted session");
+      assert.match(fs.readFileSync(promptsFile, "utf8"), /flubbernator/, "run 1 ran the queued prompt");
       assert.deepEqual(queuedRolePrompts(repo, "perf"), ["fix the flubbernator"], "the durable copy is queued");
 
       const second = await runner.run();
       assert.equal(second.result, "no_change");
       const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 2);
-      assert.match(runs[1]!, /--continue/, "tick 2 resumed the cut-off session");
-      // The fulfilling resume consumed the requeued copy: nothing is left for a fresh tick to run
-      // again. Pre-fix the copy stayed queued and tick 3 re-ran the same request.
+      assert.match(runs[1]!, /--continue/, "run 2 resumed the cut-off session");
+      // The fulfilling resume consumed the requeued copy: nothing is left for a fresh run to run
+      // again. Pre-fix the copy stayed queued and run 3 re-ran the same request.
       assert.deepEqual(queuedRolePrompts(repo, "perf"), [], "the resume consumed the requeued prompt");
       assert.equal(runner.state.resumePromptFile, undefined, "the reclaim record is consumed");
 
@@ -80,8 +80,8 @@ test("a cut-off tick's requeued role prompt is reclaimed by the resume, not run 
       assert.equal(third.result, "no_change");
       const runs3 = readRunBlocks(promptsFile);
       assert.equal(runs3.length, 3);
-      assert.doesNotMatch(runs3[2]!, /--continue/, "tick 3 is fresh again");
-      assert.doesNotMatch(runs3[2]!, /flubbernator/, "tick 3 does not re-run the fulfilled request");
+      assert.doesNotMatch(runs3[2]!, /--continue/, "run 3 is fresh again");
+      assert.doesNotMatch(runs3[2]!, /flubbernator/, "run 3 does not re-run the fulfilled request");
     },
   );
 });
@@ -108,25 +108,25 @@ test("a failed resume re-queues the reclaimed prompt, so the request is not lost
       const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 3);
       assert.doesNotMatch(runs[1]!, /flubbernator/, "the resume bridge does not re-send the request text");
-      assert.match(runs[2]!, /flubbernator/, "the fresh tick after the failed resume retries the request");
+      assert.match(runs[2]!, /flubbernator/, "the fresh run after the failed resume retries the request");
     },
   );
 });
 
 // BUGS.md 2026-10-06: a resume that dies on the provider's error turn (one assistant message
 // with empty content and stopReason "error") adds no work of its own, so a dirty worktree holds
-// only the interrupted tick's half-done edits. The fix must end the tick `error`, keep those
+// only the interrupted run's half-done edits. The fix must end the run `error`, keep those
 // edits, AND re-queue the dequeued per-role prompt through requeueForResume so the next resume
-// reclaims exactly that copy — re-queueing it unrecorded would leave it queued for a fresh tick
+// reclaims exactly that copy — re-queueing it unrecorded would leave it queued for a fresh run
 // to run the same request twice (BUGS.md 2026-09-25's reclaim invariant).
 test("a resume that fails on the provider's error turn keeps the edits and requeues the prompt for reclaim", async () => {
   const { root, wt } = await initializedWorktree("perf");
   const promptsFile = path.join(tmpdir(), "prompts-error-turn.log");
   const counter = path.join(tmpdir(), "error-turn-count");
-  // The interrupted tick's leftovers: a half-done edit, its session, and the per-role prompt it
+  // The interrupted run's leftovers: a half-done edit, its session, and the per-role prompt it
   // had re-queued for the resume (recorded in resumePromptFile, as requeueForResume leaves it).
   fs.writeFileSync(path.join(wt, "partial.txt"), "partial\n");
-  // The interrupted tick's slot was pinned for the role: register this checkout as that slot
+  // The interrupted run's slot was pinned for the role: register this checkout as that slot
   // so the resume leases the same directory and keeps the edits.
   pinWorktreeAsSlot(root, "perf", wt);
   fs.mkdirSync(sessionDir(root, "perf"), { recursive: true });
@@ -140,10 +140,10 @@ test("a resume that fails on the provider's error turn keeps the edits and reque
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(root, "perf");
-      runner.state.resumePending = true; // what the interrupted tick left behind
+      runner.state.resumePending = true; // what the interrupted run left behind
       runner.state.resumePromptFile = queuedFile;
       const first = await runner.run();
-      assert.equal(first.result, "error", "a resume that produced no content of its own ends the tick error");
+      assert.equal(first.result, "error", "a resume that produced no content of its own ends the run error");
       assert.equal(first.commit, undefined, "nothing was committed");
       assert.ok(fs.existsSync(path.join(wt, "partial.txt")), "the interrupted edits stay uncommitted");
       assert.equal(runner.state.resumePending, true, "the edits and session are kept for the next resume");
@@ -151,11 +151,11 @@ test("a resume that fails on the provider's error turn keeps the edits and reque
       assert.deepEqual(queuedRolePrompts(root, "perf"), ["fix the flubbernator"], "the durable copy is queued");
       const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 1, "the error turn needed no missing-SUMMARY follow-up");
-      assert.match(runs[0]!, /--continue/, "the failed tick was the resume");
+      assert.match(runs[0]!, /--continue/, "the failed run was the resume");
       assert.doesNotMatch(runs[0]!, /flubbernator/, "the resume bridge does not re-send the request text");
 
       // The next resume fulfills the task: it reclaims the exact queued copy, so nothing is left
-      // for a later fresh tick to run a second time.
+      // for a later fresh run to run a second time.
       const second = await runner.run();
       assert.equal(second.result, "queued");
       assert.deepEqual(queuedRolePrompts(root, "perf"), [], "the resume consumed the requeued prompt");
@@ -164,11 +164,11 @@ test("a resume that fails on the provider's error turn keeps the edits and reque
   );
 });
 
-// The prompt is dequeued (or reclaimed) into memory before the tick's environment work starts,
+// The prompt is dequeued (or reclaimed) into memory before the run's environment work starts,
 // so an exception between the dequeue and the pi run leaves the request only in the pending
-// field — memory the failed tick drops. The queue is the durable store, so the catch must
+// field — memory the failed run drops. The queue is the durable store, so the catch must
 // re-queue whatever is still pending, like every unfulfilled outcome does.
-test("a tick that throws after dequeuing the prompt re-queues it instead of losing it", async () => {
+test("a run that throws after dequeuing the prompt re-queues it instead of losing it", async () => {
   const repo = await initializedRepo();
   const marker = path.join(tmpdir(), "pi-invoked-crash");
   await withPi(`touch '${marker}'`, async () => {
@@ -180,7 +180,7 @@ test("a tick that throws after dequeuing the prompt re-queues it instead of losi
     const outcome = await runner.run();
     assert.equal(outcome.result, "error");
     assert.ok(!fs.existsSync(marker), "no pi run starts before the crash");
-    // The dequeued prompt survived the crash in its queue, ready for the next tick.
+    // The dequeued prompt survived the crash in its queue, ready for the next run.
     assert.deepEqual(
       queuedRolePrompts(repo, "perf"),
       ["fix the flubbernator"],
@@ -189,7 +189,7 @@ test("a tick that throws after dequeuing the prompt re-queues it instead of losi
   });
 });
 
-test("a tick that dequeues a role prompt logs one prompt_taken naming the tick", async () => {
+test("a run that dequeues a role prompt logs one prompt_taken naming the run", async () => {
   const repo = await initializedRepo();
   await withPi(`printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
     enqueueRolePrompt(repo, "perf", "fix the flubbernator");

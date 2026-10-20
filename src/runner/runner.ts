@@ -27,8 +27,8 @@ import {
   type RunnerRunContext,
 } from "./runner-run.js";
 import {
-  finishAbortedTickPhase,
-  finishRecoveryTickPhase,
+  finishAbortedRunPhase,
+  finishRecoveryRunPhase,
   pinAndResetPhase,
 } from "./runner-recovery.js";
 import { foldModelFallbackPhase } from "./runner-fallback.js";
@@ -262,9 +262,9 @@ export class RoleRunner {
     return assembled.prompt;
   }
 
-  /** Thin delegate to finishAbortedTickPhase (src/runner/runner-recovery.ts). */
+  /** Thin delegate to finishAbortedRunPhase (src/runner/runner-recovery.ts). */
   private async finishAbortedRun(userPrompt: string | null, wt: string): Promise<RunOutcome> {
-    return finishAbortedTickPhase(this.runContext(), userPrompt, wt, this.userAborted, this.handedBack);
+    return finishAbortedRunPhase(this.runContext(), userPrompt, wt, this.userAborted, this.handedBack);
   }
 
   /** Thin delegate to pinAndResetPhase (src/runner/runner-recovery.ts). */
@@ -272,14 +272,14 @@ export class RoleRunner {
     return pinAndResetPhase(this.runContext(), wt, sha);
   }
 
-  /** Thin delegate to finishRecoveryTickPhase (src/runner/runner-recovery.ts). */
+  /** Thin delegate to finishRecoveryRunPhase (src/runner/runner-recovery.ts). */
   private async finishRecoveryRun(
     recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
     userPrompt: string | null,
     wt: string,
     priorMergeFailure: string | undefined,
   ): Promise<RunOutcome> {
-    return finishRecoveryTickPhase(this.runContext(), recovered, userPrompt, wt, priorMergeFailure);
+    return finishRecoveryRunPhase(this.runContext(), recovered, userPrompt, wt, priorMergeFailure);
   }
 
   /** Fold one pi run's usage into the run's counters and the lifetime totals — the

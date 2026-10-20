@@ -21,19 +21,19 @@ interface RecoveryContext {
   setRecoveryFailure(message: string | undefined): void;
 }
 
-/** Finish a tick whose pi run was killed mid-flight — shared by the author-run and review-
+/** Finish a run whose agent run was killed mid-flight — shared by the author-run and review-
  * gate abort branches, which have identical semantics; only what the kill left behind
  * differs (half-done edits vs. the fully committed change under review), and
  * resetWorktreeToMain discards both. A user-initiated abort is a decision, not an
  * interruption: discard the work AND do NOT requeue a director prompt (the explicit stop IS
  * the answer to that request; shutdowns still requeue), backing off normally instead of
- * resuming promptly. Known limitation: if the marker was consumed while this tick sat in its
- * short git-only commit/merge window (no pi run in flight), the flag takes effect at the next
- * model-run boundary within the tick — or, for a tick that reaches no further pi run,
+ * resuming promptly. Known limitation: if the marker was consumed while this run sat in its
+ * short git-only commit/merge window (no agent run in flight), the flag takes effect at the next
+ * agent-run boundary within the run — or, for a run that reaches no further agent run,
  * completes normally and the abort had no effect; re-issuing is the remedy.
  * `userAborted`/`handedBack` are read from the runner's live flags: an explicit abort discards
  * the request; a budget handback names its resume cause; a plain shutdown requeues the prompt. */
-export async function finishAbortedTickPhase(
+export async function finishAbortedRunPhase(
   ctx: RecoveryContext,
   userPrompt: string | null,
   wt: string,
@@ -50,9 +50,9 @@ export async function finishAbortedTickPhase(
   }
   // Shutdown mid-run: fail closed — a director prompt goes back to the inbox like any other
   // unfulfilled abort (mid-review the commit stays on the branch for re-review; mid-author-
-  // run its half-done edits are discarded by the next tick's reset). A role's re-queued
+  // run its half-done edits are discarded by the next run's reset). A role's re-queued
   // prompt rides the resume that follows (mid-review the fresh recovery dequeues it like any
-  // other tick instead — the flag is cleared and never reclaimed there).
+  // other run instead — the flag is cleared and never reclaimed there).
   ctx.pending.requeueForResume(ctx.state, userPrompt);
   // A budget handback is an interruption with a named cause: the resumed session's bridge
   // prompt says the run was moved back to the primary model, not that the harness restarted.
@@ -62,7 +62,7 @@ export async function finishAbortedTickPhase(
 /** Pin `sha` by this role's merge ref and free the worktree (plans/merge-queue.md invariant
  * 4): the pin must exist BEFORE resetWorktreeToMain moves the branch, or the commit is
  * orphaned. Returns false when the pin write failed — the caller then leaves the commit on its
- * branch (no reset) and defers to next-tick recovery, which adopts it into the pin scheme.
+ * branch (no reset) and defers to next-run recovery, which adopts it into the pin scheme.
  * After a successful pin the review gate and the rebase run in the verification's leased pool
  * slot, never in this worktree (merge queue 2/5). */
 export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: string): Promise<boolean> {
@@ -77,19 +77,19 @@ export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: st
   return true;
 }
 
-/** End a tick whose leftover recovery found work to salvage (src/runner/leftover.ts) without an
+/** End a run whose leftover recovery found work to salvage (src/runner/leftover.ts) without an
  * authoring run — the leftover owns the role's one merge ref until its merge resolves. A
- * tick's dequeued user prompt goes back to its queue, since nothing ran it. A pin put on
- * the merge queue ends the tick `queued` exactly like a fresh changed tick (the merge-queue
+ * run's dequeued user prompt goes back to its queue, since nothing ran it. A pin put on
+ * the merge queue ends the run `queued` exactly like a fresh changed run (the merge-queue
  * interlock then holds the role until the slot merges it) and frees the worktree, the pin now
  * holding the commit. When the pin is left over from a merge that failed non-terminally
  * (`priorMergeFailure`), re-queuing it is a retry of a PERSISTENT failure the `queued` result
  * cannot express, so it rides the outcome's recoveryFailure into the error streak and the
  * warning that names the stuck gate (BUGS.md 2026-09-21). A role whose merge is still queued
  * ends `queued` on that entry — nothing enqueued twice, nothing reset. A leftover that could
- * not be pinned stays on the branch and the tick fails like a fresh tick's failed pin. Every
- * arm is `recoveredLeftover`: no model ran, so the tick is no evidence about the backend. */
-export async function finishRecoveryTickPhase(
+ * not be pinned stays on the branch and the run fails like a fresh run's failed pin. Every
+ * arm is `recoveredLeftover`: no model ran, so the run is no evidence about the backend. */
+export async function finishRecoveryRunPhase(
   ctx: RecoveryContext,
   recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
   userPrompt: string | null,
