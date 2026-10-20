@@ -202,7 +202,7 @@ export interface TickRow {
  * unpadded number (the caller adds the `#` prefix), and a null `durationMs` (the tick's start
  * sits outside the scanned window) shows the em dash rather than a fabricated duration. */
 export interface TickRowCells {
-  loop: string;
+  role: string;
   tick: string;
   result: string;
   model: string;
@@ -212,7 +212,7 @@ export interface TickRowCells {
 
 export function tickRowCells(row: TickRow): TickRowCells {
   return {
-    loop: roleLabel(row.role),
+    role: roleLabel(row.role),
     tick: String(row.run),
     result: eventTypeLabel(row.result),
     model: row.model ?? "",
@@ -234,7 +234,7 @@ export function tickRowLine(
   const c = tickRowCells(row);
   return [
     row.time,
-    pad("loop", c.loop), // vocabulary-ok: column key, not shown
+    pad("role", c.role), // vocabulary-ok: column key, not shown
     `#${pad("tick", c.tick)}`, // vocabulary-ok: column key, not shown
     pad("result", c.result),
     pad("model", c.model),

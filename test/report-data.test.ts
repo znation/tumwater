@@ -23,16 +23,16 @@ test("collectReport buckets run_end/merged events by local day and totals them",
   const root = tmpdir();
   writeEvents(root, [
     // Out of the 5-day window (7 days ago) — must not count.
-    JSON.stringify({ ts: at(6), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 999 }),
-    JSON.stringify({ ts: at(4), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(6), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 999 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(4), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 500, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
     // No tokens/costUsd fields — counts as a tick with zero spend (omitted when zero in the log).
-    JSON.stringify({ ts: at(4), loop: "bugfix", type: "run_end", run: 3, result: "no_change" }),
+    JSON.stringify({ ts: at(4), loop: "bugfix", type: "run_end", run: 3, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
     "this line is not json", // malformed lines are ignored
-    JSON.stringify({ ts: at(3), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
+    JSON.stringify({ ts: at(3), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }), // retired-name-ok: legacy event field in a fixture
     // Gap day (at 2) stays zero-filled.
-    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", run: 5, result: "changed", tokens: 1500, costUsd: 1.25 }),
-    JSON.stringify({ ts: at(0), loop: "steward", type: "merged", commit: "def5678", summary: "y" }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 6, result: "no_change", tokens: 10 }),
+    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", run: 5, result: "changed", tokens: 1500, costUsd: 1.25 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "steward", type: "merged", commit: "def5678", summary: "y" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 6, result: "no_change", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 5);
 
@@ -80,12 +80,12 @@ test("collectReport buckets run_end/merged events by local day and totals them",
 test("collectReport folds review_rejected events into per-day per-role rejections", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected" }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected" }),
-    JSON.stringify({ ts: at(0), loop: "qa", type: "review_rejected" }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "qa", type: "review_rejected" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
     // Merely merge a commit is not a rejection: it must fold no rejection anywhere.
-    JSON.stringify({ ts: at(1), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
+    JSON.stringify({ ts: at(1), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 4);
   const today = data.series[data.series.length - 1];
@@ -108,10 +108,10 @@ test("collectReport folds review_rejected events into per-day per-role rejection
 test("collectReportSince folds review_rejected events into the window totals", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "review_rejected" }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "qa", type: "review_rejected" }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "review_rejected" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "qa", type: "review_rejected" }), // retired-name-ok: legacy event field in a fixture
     // Outside the 6 h window — must not count.
-    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "review_rejected" }),
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "review_rejected" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReportSince(root, 6 * HOUR);
   assert.deepEqual(data.rejectionsByRole, { feature: 1, qa: 1 });
@@ -120,11 +120,11 @@ test("collectReportSince folds review_rejected events into the window totals", (
 test("collectReport splits merged events by base role and by work/maintenance tier", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature-2", type: "merged", commit: "a" }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "merged", commit: "b" }),
-    JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "c" }),
-    JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "d" }),
-    JSON.stringify({ ts: at(0), loop: "readme", type: "merged", commit: "e" }),
+    JSON.stringify({ ts: at(0), loop: "feature-2", type: "merged", commit: "a" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "merged", commit: "b" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "c" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "d" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "readme", type: "merged", commit: "e" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 1);
   // The instance suffix folds into its base role, and the tier split names work vs upkeep.
@@ -144,13 +144,13 @@ test("collectReport skips a future-dated or timestamp-less event instead of fold
   // day key is not a number, so the fold never sees them at all.
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(4), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(4), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
     // Dated two days into the future: no bucket exists for it.
-    JSON.stringify({ ts: at(-2), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 9999 }),
+    JSON.stringify({ ts: at(-2), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 9999 }), // retired-name-ok: legacy event field in a fixture
     // ts present but not a number; eventDayKey returns null for it.
-    JSON.stringify({ ts: "not-a-timestamp", loop: "bugfix", type: "run_end", run: 3, result: "changed", tokens: 8888 }),
+    JSON.stringify({ ts: "not-a-timestamp", loop: "bugfix", type: "run_end", run: 3, result: "changed", tokens: 8888 }), // retired-name-ok: legacy event field in a fixture
     // ts omitted entirely.
-    JSON.stringify({ loop: "dedupe", type: "run_end", run: 4, result: "changed", tokens: 7777 }),
+    JSON.stringify({ loop: "dedupe", type: "run_end", run: 4, result: "changed", tokens: 7777 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 5);
   // Only the in-window, well-timestamped event counts; the others vanish without a trace.
@@ -165,10 +165,10 @@ test("collectReport skips a future-dated or timestamp-less event instead of fold
 test("collectReport folds merge_done/merge_failed usage into the day and totals, with the merge share named", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: at(0), loop: "docs", type: "merge_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "docs", type: "merge_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 3);
   const today = data.series[2];
@@ -200,10 +200,10 @@ test("collectReport reads a grown event log with bounded backwards I/O", () => {
   // in-window events: the tail scan must stop at the window, not rescan the file.
   const lines: unknown[] = [];
   for (let i = 0; i < 2500; i++) {
-    lines.push(JSON.stringify({ ts: at(40), loop: "feature", type: "run_end", run: i, result: "no_change", tokens: 1 }));
+    lines.push(JSON.stringify({ ts: at(40), loop: "feature", type: "run_end", run: i, result: "no_change", tokens: 1 })); // retired-name-ok: legacy event field in a fixture
   }
-  lines.push(JSON.stringify({ ts: at(3), loop: "bugfix", type: "merged", commit: "aaa", summary: "old" }));
-  lines.push(JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 9, result: "changed", tokens: 777 }));
+  lines.push(JSON.stringify({ ts: at(3), loop: "bugfix", type: "merged", commit: "aaa", summary: "old" })); // retired-name-ok: legacy event field in a fixture
+  lines.push(JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 9, result: "changed", tokens: 777 })); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, lines);
 
   const data = collectReport(root, 7);
@@ -216,9 +216,9 @@ test("collectReport reads a grown event log with bounded backwards I/O", () => {
 
 test("collectReport does not double-count an event appended between the cache's stat and its read", () => {
   const root = tmpdir();
-  const first = JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100 });
+  const first = JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100 }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [first]);
-  const second = JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 50 });
+  const second = JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 50 }); // retired-name-ok: legacy event field in a fixture
   const log = eventsLogPath(root);
   // Reproduce the full-re-read race: the fold records the outer stat's size as the offset it
   // will append from, then the event lands, then readWindowEvents scans the grown file and
@@ -608,14 +608,14 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
     // Oldest: 7h ago — outside the 6h window (and older than the cutoff instant, so it proves
     // the retained log reaches back past the window start even when its local day matches the
     // cutoff's own day, the case a day-keyed read cannot decide).
-    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 999 }),
-    JSON.stringify({ ts: ago(6.5 * HOUR), loop: "feature", type: "merged", commit: "old1234", summary: "outside" }),
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 999 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(6.5 * HOUR), loop: "feature", type: "merged", commit: "old1234", summary: "outside" }), // retired-name-ok: legacy event field in a fixture
     // Inside the window: two ticks and one commit.
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "bugfix", type: "run_end", run: 3, result: "no_change" }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "inside" }),
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "bugfix", type: "run_end", run: 3, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "inside" }), // retired-name-ok: legacy event field in a fixture
     // Future-dated: dropped, matching collectReport's day-map guard.
-    JSON.stringify({ ts: Date.now() + HOUR, loop: "feature", type: "run_end", run: 4, result: "changed", tokens: 5000, costUsd: 9 }),
+    JSON.stringify({ ts: Date.now() + HOUR, loop: "feature", type: "run_end", run: 4, result: "changed", tokens: 5000, costUsd: 9 }), // retired-name-ok: legacy event field in a fixture
     "this line is not json", // malformed lines are ignored
   ]);
   const data = collectReportSince(root, 6 * HOUR);
@@ -638,11 +638,11 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
 test("collectReportSince folds merge_done/merge_failed usage into the window totals", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(2 * HOUR), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "docs", type: "merge_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
+    JSON.stringify({ ts: ago(2 * HOUR), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "docs", type: "merge_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }), // retired-name-ok: legacy event field in a fixture
     // Outside the 6h window: must not count.
-    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "merge_done", commit: "old1234", summary: "old", tokens: 9_999, costUsd: 9 }),
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "merge_done", commit: "old1234", summary: "old", tokens: 9_999, costUsd: 9 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReportSince(root, 6 * HOUR);
   assert.equal(data.totals.mergeRuns, 2);
@@ -658,9 +658,9 @@ test("collectReportSince folds merge_done/merge_failed usage into the window tot
 test("collectReportSince aggregation matches a same-seed collectReport slice", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 321, costUsd: 0.2 }),
-    JSON.stringify({ ts: ago(5 * 60_000), loop: "bugfix", type: "run_end", run: 2, result: "no_change", tokens: 11 }),
-    JSON.stringify({ ts: ago(2 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 321, costUsd: 0.2 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "bugfix", type: "run_end", run: 2, result: "no_change", tokens: 11 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(2 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const since = collectReportSince(root, HOUR);
   assert.equal(since.totals.runs, 2);
@@ -687,8 +687,8 @@ test("collectReportSince proves coverage on a same-day log start and notes a log
   // predates the cutoff — no rotation note may fire.
   const proven = tmpdir();
   writeEvents(proven, [
-    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "run_end", run: 1, result: "no_change" }),
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "run_end", run: 2, result: "no_change" }),
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "run_end", run: 1, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "run_end", run: 2, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
   ]);
   assert.equal(collectReportSince(proven, 6 * HOUR).coversFullWindow, true);
   assert.ok(!renderSinceReportMarkdown(collectReportSince(proven, 6 * HOUR)).includes("rotated"));
@@ -698,7 +698,7 @@ test("collectReportSince proves coverage on a same-day log start and notes a log
   // the possible truncation instead of silently presenting a sparse window as complete.
   const truncated = tmpdir();
   writeEvents(truncated, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "no_change" }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const t = collectReportSince(truncated, 6 * HOUR);
   assert.equal(t.coversFullWindow, false);
@@ -751,11 +751,11 @@ test("collectReportSince treats an empty or missing event log as fully covered, 
 test("collectReport scopes the day series and totals to one role, leaving team cells off", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234" }),
-    JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "def5678" }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "aaa", tokens: 40, costUsd: 0.4 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 100, costUsd: 0.2 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "def5678" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "aaa", tokens: 40, costUsd: 0.4 }), // retired-name-ok: legacy event field in a fixture
   ]);
   writeBacklogFile(root, "PLANS.md", [{ heading: "## Done", body: `- A (done ${dayKey(at(0))}; commit 1)` }]);
   writeBacklogFile(root, "BUGS.md", [{ heading: "## Fixed", body: `- B (fixed ${dayKey(at(0))}; commit 2)` }]);
@@ -807,9 +807,9 @@ test("collectReport scopes an instance id to its base role, aggregating its sibl
   // inside the HOUR window below — the case this fixture tests.
   const recent = (ms: number): number => Math.max(ago(ms), at(0, 0));
   writeEvents(root, [
-    JSON.stringify({ ts: recent(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: recent(9 * 60_000), loop: "feature-2", type: "run_end", run: 1, result: "changed", tokens: 300, costUsd: 0.3 }),
-    JSON.stringify({ ts: recent(8 * 60_000), loop: "feature-2", type: "merged", commit: "abc1234" }),
+    JSON.stringify({ ts: recent(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: recent(9 * 60_000), loop: "feature-2", type: "run_end", run: 1, result: "changed", tokens: 300, costUsd: 0.3 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: recent(8 * 60_000), loop: "feature-2", type: "merged", commit: "abc1234" }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   // The scope normalizes to the base role, so the instance's usage and its sibling's commits
@@ -840,11 +840,11 @@ test("collectReport scopes an instance id to its base role, aggregating its sibl
 test("collectReportSince scopes a trailing window to one role, excluding the merge share", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
-    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
-    JSON.stringify({ ts: ago(8 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
-    JSON.stringify({ ts: ago(7 * 60_000), loop: "clean", type: "merged", commit: "def5678" }),
-    JSON.stringify({ ts: ago(6 * 60_000), loop: "feature", type: "merge_done", commit: "aaa", tokens: 40, costUsd: 0.4 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 100, costUsd: 0.2 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(8 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(7 * 60_000), loop: "clean", type: "merged", commit: "def5678" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(6 * 60_000), loop: "feature", type: "merge_done", commit: "aaa", tokens: 40, costUsd: 0.4 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const scoped = collectReportSince(root, HOUR, "feature");
@@ -878,7 +878,7 @@ test("subscription runs total as notional spend, never in the cost totals", () =
     lines.push(
       JSON.stringify({
         ts: at(0),
-        loop: "feature",
+        loop: "feature", // retired-name-ok: legacy event field in a fixture
         type: "run_end",
         run: i + 1,
         result: "changed",
@@ -898,14 +898,14 @@ test("subscription runs total as notional spend, never in the cost totals", () =
 
 test("collectReport carries notionalByRole per role id and narrows it for a role scope", () => {
   const root = tmpdir();
-  const tick = (loop: string, n: number) =>
-    JSON.stringify({ ts: at(0), loop, type: "run_end", run: n, result: "changed", notionalCostUsd: 2, billing: "subscription" });
+  const tick = (loop: string, n: number) => // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop, type: "run_end", run: n, result: "changed", notionalCostUsd: 2, billing: "subscription" }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [tick("feature", 1), tick("feature-2", 2), tick("plan", 3)]);
   const day = collectReport(root, 1).series[0];
   assert.deepEqual(day?.notionalByRole, { feature: 2, "feature-2": 2, plan: 2 });
   assert.deepEqual(collectReport(root, 1, "feature").series[0]?.notionalByRole, { feature: 4 });
   const empty = tmpdir();
-  writeEvents(empty, [JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed" })]);
+  writeEvents(empty, [JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed" })]); // retired-name-ok: legacy event field in a fixture
   assert.equal("notionalByRole" in (collectReport(empty, 1).series[0] ?? {}), false);
 });
 
@@ -914,7 +914,7 @@ test("collectReport carries notionalByRole per role id and narrows it for a role
 test("a subscription merge's spend is notional, never in the cost totals", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc", tokens: 40, costUsd: 0.5, notionalCostUsd: 2 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc", tokens: 40, costUsd: 0.5, notionalCostUsd: 2 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const data = collectReport(root, 1);
@@ -932,8 +932,8 @@ test("a subscription merge's spend is notional, never in the cost totals", () =>
 test("collectReport scopes notional spend to the role, like cost", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", notionalCostUsd: 3 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 1, result: "changed", notionalCostUsd: 5 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", notionalCostUsd: 3 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 1, result: "changed", notionalCostUsd: 5 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const scoped = collectReport(root, 1, "feature");
@@ -948,8 +948,8 @@ test("collectReport scopes notional spend to the role, like cost", () => {
 test("collectReportSince scopes notional spend to the role, like cost", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", notionalCostUsd: 3 }),
-    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", run: 1, result: "changed", notionalCostUsd: 5 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", notionalCostUsd: 3 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", run: 1, result: "changed", notionalCostUsd: 5 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const scoped = collectReportSince(root, HOUR, "feature");
@@ -959,14 +959,14 @@ test("collectReportSince scopes notional spend to the role, like cost", () => {
 
 test("collectReport and collectReportSince count model_fallback_started per role, zero meaning absent", () => {
   const root = tmpdir();
-  const started = (ts: number, loop: string) => JSON.stringify({ ts, loop, type: "model_fallback_started" });
+  const started = (ts: number, loop: string) => JSON.stringify({ ts, loop, type: "model_fallback_started" }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     started(todayTs(), "feature"),
     started(todayTs(), "feature"),
     started(todayTs(), "qa"),
     started(at(1), "feature-2"),
-    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "model_fallback_ended", durationMs: 5000 }),
-    JSON.stringify({ ts: at(2), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 1 }),
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "model_fallback_ended", durationMs: 5000 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(2), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 3);
   assert.ok(!("fallbacksByRole" in (data.series[0] ?? {})), "a day with none carries no key");
@@ -983,16 +983,16 @@ test("collectReport and collectReportSince count model_fallback_started per role
 
 test("collectReport and collectReportSince count image_reroute per role, zero meaning absent", () => {
   const root = tmpdir();
-  const reroute = (ts: number, loop: string, preflight: boolean) =>
-    JSON.stringify({ ts, loop, type: "image_reroute", preflight });
+  const reroute = (ts: number, loop: string, preflight: boolean) => // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts, loop, type: "image_reroute", preflight }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     reroute(todayTs(), "feature", true),
     reroute(todayTs(), "feature", false),
     reroute(todayTs(), "qa", true),
     reroute(at(1), "feature-2", false),
-    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "image_blind" }),
-    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "model_fallback_started" }),
-    JSON.stringify({ ts: at(2), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 1 }),
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "image_blind" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "model_fallback_started" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(2), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 3);
   assert.ok(!("imageReroutesByRole" in (data.series[0] ?? {})), "a day with none carries no key");
@@ -1010,7 +1010,7 @@ test("collectReport and collectReportSince count image_reroute per role, zero me
 test("collectReport gives each day the lower median of its passing full-suite checks, team scope only", () => {
   const root = tmpdir();
   const check = (status: string, scope: string, durationMs: number) =>
-    JSON.stringify({ ts: at(0), loop: "lander", type: "build_check", status, scope, durationMs });
+    JSON.stringify({ ts: at(0), loop: "lander", type: "build_check", status, scope, durationMs }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     check("passed", "merge", 60_000),
     check("passed", "batch", 120_000),
@@ -1027,7 +1027,7 @@ test("collectReport gives each day the lower median of its passing full-suite ch
 test("collectReport counts each day's red full-suite merge checks, team scope only", () => {
   const root = tmpdir();
   const check = (status: string, scope: string) =>
-    JSON.stringify({ ts: at(0), loop: "lander", type: "build_check", status, scope });
+    JSON.stringify({ ts: at(0), loop: "lander", type: "build_check", status, scope }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     check("failed", "merge"),
     check("failed", "batch"),
@@ -1047,7 +1047,7 @@ test("collectReport counts each day's red full-suite merge checks, team scope on
 test("collectReport gives each day the lower median of its merge_done queuedMs, team scope only", () => {
   const root = tmpdir();
   const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
-    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra });
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     ev(at(0), "merge_done", { queuedMs: 60_000 }),
     ev(at(0), "merge_done", { queuedMs: 300_000 }),
@@ -1066,7 +1066,7 @@ test("collectReport gives each day the lower median of its merge_done queuedMs, 
 test("collectReport gives each day the lower median of its provider_wait waitedMs, team scope only", () => {
   const root = tmpdir();
   const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
-    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra });
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     ev(at(0), "provider_wait", { waitedMs: 40_000 }),
     ev(at(0), "provider_wait", { waitedMs: 200_000 }),
@@ -1084,7 +1084,7 @@ test("collectReport gives each day the lower median of its provider_wait waitedM
 test("collectReport gives each day the lower median of its slot_wait waitedMs, team scope only", () => {
   const root = tmpdir();
   const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
-    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra });
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     ev(at(0), "slot_wait", { waitedMs: 40_000 }),
     ev(at(0), "slot_wait", { waitedMs: 200_000 }),
@@ -1102,7 +1102,7 @@ test("collectReport gives each day the lower median of its slot_wait waitedMs, t
 test("collectReport gives each day the lower median of its check_wait waitedMs, team scope only", () => {
   const root = tmpdir();
   const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
-    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra });
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     ev(at(0), "check_wait", { waitedMs: 40_000 }),
     ev(at(0), "check_wait", { waitedMs: 200_000 }),
@@ -1121,14 +1121,14 @@ test("collectReport gives each day the lower median of its check_wait waitedMs, 
 
 test("collectReport and collectReportSince tally run_start per model, zero meaning absent, team scope only", () => {
   const start = (ts: number, model?: string) =>
-    JSON.stringify({ ts, loop: "feature", type: "run_start", run: 1, ...(model === undefined ? {} : { model }) });
+    JSON.stringify({ ts, loop: "feature", type: "run_start", run: 1, ...(model === undefined ? {} : { model }) }); // retired-name-ok: legacy event field in a fixture
   const root = tmpdir();
   writeEvents(root, [
     start(todayTs(), "acme/m1"),
     start(todayTs(), "acme/m2"),
     start(todayTs(), "acme/m1"),
     start(todayTs()), // no configured model: contributes no key
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 3);
   assert.deepEqual(data.series[2]?.runsByModel, { "acme/m1": 2, "acme/m2": 1 }, "counts modelled starts, skips the model-less one");
@@ -1159,7 +1159,7 @@ test("collectReport and collectReportSince tally run_start per model, zero meani
 
 test("collectReport and collectReportSince tally merge_failed by reason, zero meaning absent, team scope only", () => {
   const failed = (ts: number, result?: string) =>
-    JSON.stringify({ ts, loop: "feature", type: "merge_failed", run: 1, ...(result === undefined ? {} : { result }) });
+    JSON.stringify({ ts, loop: "feature", type: "merge_failed", run: 1, ...(result === undefined ? {} : { result }) }); // retired-name-ok: legacy event field in a fixture
   const root = tmpdir();
   writeEvents(root, [
     failed(todayTs(), "rejected"),
@@ -1195,22 +1195,22 @@ test("collectReport and collectReportSince tally merge_failed by reason, zero me
 
   // A log with no merge_failed: the team day omits the field and --since returns an empty map.
   const plain = tmpdir();
-  writeEvents(plain, [JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed" })]);
+  writeEvents(plain, [JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed" })]); // retired-name-ok: legacy event field in a fixture
   assert.ok(!("mergeFailedByReason" in collectReport(plain, 2).series[0]!), "a failure-free team day omits the field");
   assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).mergeFailedByReason, {});
 });
 
 test("collectReport and collectReportSince tally run_deferred by reason, zero meaning absent, team scope only", () => {
   const deferred = (ts: number, reason?: string) =>
-    JSON.stringify({ ts, loop: "feature", type: "run_deferred", run: 1, ...(reason === undefined ? {} : { reason }) });
+    JSON.stringify({ ts, loop: "feature", type: "run_deferred", run: 1, ...(reason === undefined ? {} : { reason }) }); // retired-name-ok: legacy event field in a fixture
   const root = tmpdir();
   writeEvents(root, [
     deferred(todayTs(), "backlog"),
     deferred(todayTs(), "no-work"),
     deferred(todayTs(), "backlog"),
     deferred(todayTs()), // no reason: folds as no-work, matching deferredReasonText's fallback
-    JSON.stringify({ ts: at(1), loop: "feature", type: "run_deferred", reason: "plans-full" }),
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 }),
+    JSON.stringify({ ts: at(1), loop: "feature", type: "run_deferred", reason: "plans-full" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 3);
   assert.deepEqual(data.series[2]?.deferredByReason, { backlog: 2, "no-work": 2 }, "counts reasons and folds the reason-less one into no-work");
@@ -1233,7 +1233,7 @@ test("collectReport and collectReportSince tally run_deferred by reason, zero me
   // A deferral-free window: no run_deferred at all, so the team day and --since omit the
   // field and print no line.
   const plain = tmpdir();
-  writeEvents(plain, [JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 })]);
+  writeEvents(plain, [JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 })]); // retired-name-ok: legacy event field in a fixture
   assert.ok(!("deferredByReason" in collectReport(plain, 2).series[0]!), "a deferral-free team day omits the field");
   assert.ok(!("deferredByReason" in collectReportSince(plain, 2 * 24 * HOUR)), "a deferral-free --since omits the field");
   assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*Deferred runs by reason:/);

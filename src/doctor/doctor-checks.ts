@@ -66,8 +66,8 @@ import { childEnv } from "../process/process.js";
 import { opencodeBackend, OPENCODE_MIN_VERSION } from "../agent/opencode/opencode-backend.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import { spawnSync } from "node:child_process";
-import { loadLoopState } from "../runner/runner-state.js";
-import { INSTANCE_ROLES, loopEnabled, loopIds } from "../roles/runner-ids.js";
+import { loadRunnerState } from "../runner/runner-state.js";
+import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 
@@ -832,7 +832,7 @@ export async function checkLeftoverRoleBranches(root: string, config?: TumwaterC
   for (const branch of await listBranches(root)) {
     if (!branch.startsWith(prefix)) continue;
     const id = branch.slice(prefix.length);
-    if (!id || id.includes("/") || id === DIRECTOR_ROLE || loopEnabled(config, id)) continue;
+    if (!id || id.includes("/") || id === DIRECTOR_ROLE || runnerEnabled(config, id)) continue;
     if (known.has(id) || CUSTOM_NAME_RE.test(id)) retirable.push(id);
     else unknown.push(branch);
   }
@@ -880,8 +880,8 @@ export function checkWorkInstances(
 ): CheckOutcome {
   if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
   const claims: Array<{ id: string; title: string; key: string; at: number; file: string }> = [];
-  for (const id of loopIds(config)) {
-    const claim = loadLoopState(root, id).claim;
+  for (const id of runnerIds(config)) {
+    const claim = loadRunnerState(root, id).claim;
     if (claim) claims.push({ id, title: claim.title, key: claim.key, at: claim.at, file: claim.file });
   }
   const gone = claims.filter((c) => !listedKeys(root, c.id).has(c.key));

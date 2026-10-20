@@ -510,7 +510,7 @@ test("snapshot and renderStatus cover all enabled roles", async () => {
 
   const snap = snapshot(repo);
   assert.equal(snap.running, false);
-  assert.ok(snap.loops.some((l) => l.role === "clean" && l.runs === 3));
+  assert.ok(snap.roles.some((l) => l.role === "clean" && l.runs === 3));
   const text = renderStatus(repo, snap);
   assert.match(text, /not running/);
   assert.match(text, /tidy something/);

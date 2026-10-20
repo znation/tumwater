@@ -57,10 +57,10 @@ test("handleReport serves seeded usage as JSON: status, content-type, and real t
   const root = tmpdir();
   writeEvents(root, [
     // Out of the 5-day window — must not count in any total.
-    JSON.stringify({ ts: at(6), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 999 }),
-    JSON.stringify({ ts: at(4), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 500, costUsd: 0.5 }),
-    JSON.stringify({ ts: at(3), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
-    JSON.stringify({ ts: at(0), loop: "steward", type: "merged", commit: "def5678", summary: "y" }),
+    JSON.stringify({ ts: at(6), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 999 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(4), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 500, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(3), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "steward", type: "merged", commit: "def5678", summary: "y" }), // retired-name-ok: legacy event field in a fixture
   ]);
   // A PLANS.md Done entry dated today counts as one feature done in the window.
   writeBacklogFile(root, "PLANS.md", [
@@ -106,7 +106,7 @@ test("handleFailures serves the digest as JSON markdown, empty and after an erro
   // A seeded error tick surfaces as a real outcome row in the same digest.
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 1, result: "error" }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 1, result: "error" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const seeded = await serveFailures(root);
   const markdown = (seeded.data as { markdown: string }).markdown;
@@ -129,9 +129,9 @@ test("handleReport serves the trailing-window totals as { markdown } when ?since
   const now = Date.now();
   writeEvents(root, [
     // 30 min old — inside a 1 h window; counts.
-    JSON.stringify({ ts: now - 30 * 60 * 1000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1234 }),
+    JSON.stringify({ ts: now - 30 * 60 * 1000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1234 }), // retired-name-ok: legacy event field in a fixture
     // 3 h old — outside a 1 h window; must not count.
-    JSON.stringify({ ts: now - 3 * 60 * 60 * 1000, loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 9999 }),
+    JSON.stringify({ ts: now - 3 * 60 * 60 * 1000, loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 9999 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const { captured, data } = await serveReport(root, "?sinceMs=3600000");
@@ -149,8 +149,8 @@ test("handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role", 
   const root = tmpdir();
   const now = Date.now();
   writeEvents(root, [
-    JSON.stringify({ ts: now - 10 * 60 * 1000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10 }),
-    JSON.stringify({ ts: now - 10 * 60 * 1000, loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 20 }),
+    JSON.stringify({ ts: now - 10 * 60 * 1000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: now - 10 * 60 * 1000, loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 20 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   assert.equal((await serveReport(root, "?sinceMs=604800001")).captured.status, 400, "above the 7d cap is a 400, not a clamp");
@@ -170,7 +170,7 @@ test("handleFailures serves the windowed digest as { markdown } when ?sinceMs is
   const root = tmpdir();
   const now = Date.now();
   writeEvents(root, [
-    JSON.stringify({ ts: now - 10 * 60 * 1000, loop: "bugfix", type: "run_end", run: 1, result: "error", error: "pi exited 1" }),
+    JSON.stringify({ ts: now - 10 * 60 * 1000, loop: "bugfix", type: "run_end", run: 1, result: "error", error: "pi exited 1" }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const { captured, data } = await serveFailures(root, "?sinceMs=3600000");
@@ -369,9 +369,9 @@ function serveHistory(root: string, query = "") {
 test("handleLogs serves the matched tail oldest-first as feed items, composing grep and role", async () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: 1000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "added a thing" },
-    { ts: 2000, loop: "bugfix", type: "merge_failed", commit: "abc1234", status: "rejected" },
-    { ts: 3000, loop: "feature", type: "run_end", run: 2, result: "no_change", summary: "nothing here" },
+    { ts: 1000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "added a thing" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 2000, loop: "bugfix", type: "merge_failed", commit: "abc1234", status: "rejected" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 3000, loop: "feature", type: "run_end", run: 2, result: "no_change", summary: "nothing here" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { captured, data } = await serveLogs(root, "?grep=added");
   const events = (data as { events: { ts: number; source: string; type: string; result?: string; message: string }[] }).events;
@@ -404,9 +404,9 @@ test("handleLogs serves the matched tail oldest-first as feed items, composing g
 test("handleLogs bounds the scanned tail by n, defaults it, and rejects a bad n", async () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: 1000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "match me" },
-    { ts: 2000, loop: "feature", type: "run_end", run: 2, result: "changed", summary: "later one" },
-    { ts: 3000, loop: "feature", type: "run_end", run: 3, result: "changed", summary: "latest one" },
+    { ts: 1000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "match me" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 2000, loop: "feature", type: "run_end", run: 2, result: "changed", summary: "later one" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 3000, loop: "feature", type: "run_end", run: 3, result: "changed", summary: "latest one" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const scan = await serveLogs(root, "?grep=match&n=2");
   assert.deepEqual((scan.data as { events: unknown[] }).events, [], "the match is older than the last 2 events");
@@ -420,7 +420,7 @@ test("handleLogs bounds the scanned tail by n, defaults it, and rejects a bad n"
 
 test("the live server routes GET /api/logs to the slice handler", async () => {
   const root = tmpdir();
-  writeEvents(root, [{ ts: 1000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "routed" }]);
+  writeEvents(root, [{ ts: 1000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "routed" }]); // retired-name-ok: legacy event field in a fixture
   const { server, base } = await startLocalGui(root);
   try {
     const res = await fetch(base + "/api/logs?n=10&role=feature");
@@ -469,10 +469,10 @@ test("handleHistory ?summary folds the served rows into an additive per-role sum
   // hold every row. The two changes-class ticks are at 50m (feature) and 15m (clean) ago, so
   // the newest change is clean's, at now - 900_000.
   writeEvents(root, [
-    { ts: now - 3_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 },
-    { ts: now - 1_800_000, loop: "feature", type: "run_end", run: 2, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 },
-    { ts: now - 900_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "c", tokens: 300, costUsd: 0.03 },
-    { ts: now - 300_000, loop: "clean", type: "run_end", run: 2, result: "error", summary: "d", tokens: 400, costUsd: 0.04 },
+    { ts: now - 3_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 1_800_000, loop: "feature", type: "run_end", run: 2, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 900_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "c", tokens: 300, costUsd: 0.03 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 300_000, loop: "clean", type: "run_end", run: 2, result: "error", summary: "d", tokens: 400, costUsd: 0.04 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { captured, data } = await serveHistory(root, "?n=50&summary=1");
   assert.equal(captured.status, 200);
@@ -512,11 +512,11 @@ test("handleHistory ?summary also folds the served rows per model", async () => 
   const root = tmpdir();
   const now = Date.now();
   writeEvents(root, [
-    { ts: now - 3_000_000, loop: "feature", type: "run_start", run: 1, model: "m-b" },
-    { ts: now - 2_990_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 },
-    { ts: now - 1_800_000, loop: "clean", type: "run_start", run: 1, model: "m-a" },
-    { ts: now - 1_790_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 },
-    { ts: now - 300_000, loop: "qa", type: "run_end", run: 1, result: "error", summary: "c", tokens: 50, costUsd: 0.01 },
+    { ts: now - 3_000_000, loop: "feature", type: "run_start", run: 1, model: "m-b" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 2_990_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 1_800_000, loop: "clean", type: "run_start", run: 1, model: "m-a" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 1_790_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 300_000, loop: "qa", type: "run_end", run: 1, result: "error", summary: "c", tokens: 50, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
   ]);
   type Rows = Parameters<typeof summarizeTickRowsByModel>[0];
   interface Body { rows: Rows; modelSummary: { models: { model: string | null }[] } }
@@ -534,11 +534,11 @@ test("handleHistory ?model keeps exact selectors in both shapes, before the summ
   const root = tmpdir();
   const now = Date.now();
   writeEvents(root, [
-    { ts: now - 3_000_000, loop: "feature", type: "run_start", run: 1, model: "m-b" },
-    { ts: now - 2_990_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 },
-    { ts: now - 1_800_000, loop: "clean", type: "run_start", run: 1, model: "m-a" },
-    { ts: now - 1_790_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 },
-    { ts: now - 300_000, loop: "qa", type: "run_end", run: 1, result: "error", summary: "c", tokens: 50, costUsd: 0.01 },
+    { ts: now - 3_000_000, loop: "feature", type: "run_start", run: 1, model: "m-b" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 2_990_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 1_800_000, loop: "clean", type: "run_start", run: 1, model: "m-a" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 1_790_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 300_000, loop: "qa", type: "run_end", run: 1, result: "error", summary: "c", tokens: 50, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
   ]);
   type Rows = Parameters<typeof summarizeTickRowsByModel>[0];
   interface Body { rows: Rows & { role: string }[]; modelSummary: unknown }
@@ -562,11 +562,11 @@ function serveTick(root: string, query: string) {
 test("handleTick serves one run's collector payload plus its pre-rendered text", async () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }),
-    JSON.stringify({ ts: 2_000, loop: "clean", type: "review_verdict", verdict: "approve" }),
-    JSON.stringify({ ts: 47_000, loop: "clean", type: "run_end", run: 3, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 }),
+    JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: 2_000, loop: "clean", type: "review_verdict", verdict: "approve" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: 47_000, loop: "clean", type: "run_end", run: 3, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 }), // retired-name-ok: legacy event field in a fixture
     // Another role's same-numbered tick must not leak into clean's block.
-    JSON.stringify({ ts: 48_000, loop: "feature", type: "run_end", run: 3, result: "no_change" }),
+    JSON.stringify({ ts: 48_000, loop: "feature", type: "run_end", run: 3, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const { captured, data } = await serveTick(root, "?role=clean&run=3");
   const detail = readTickDetail(root, "clean", 3);
@@ -586,9 +586,9 @@ test("handleTick serves one run's collector payload plus its pre-rendered text",
 test("handleTick's stat names a pinned commit that is not in the repository", async () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }),
-    JSON.stringify({ ts: 2_000, loop: "clean", type: "merge_queued", commit: "abcdef1234567890abcdef1234567890abcdef12" }),
-    JSON.stringify({ ts: 3_000, loop: "clean", type: "run_end", run: 3, result: "changed" }),
+    JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: 2_000, loop: "clean", type: "merge_queued", commit: "abcdef1234567890abcdef1234567890abcdef12" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: 3_000, loop: "clean", type: "run_end", run: 3, result: "changed" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const { data } = await serveTick(root, "?role=clean&run=3");
   assert.match((data as { stat: string }).stat, /^\(commit [0-9a-f]+ is not in this repository\)$/);
@@ -597,8 +597,8 @@ test("handleTick's stat names a pinned commit that is not in the repository", as
 test("handleTick's error cases: role and run 400s, a missed run 404", async () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }),
-    JSON.stringify({ ts: 2_000, loop: "clean", type: "run_end", run: 3, result: "no_change" }),
+    JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: 2_000, loop: "clean", type: "run_end", run: 3, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
   ]);
   // The role is a target here, not a filter: missing and unknown are 400s naming the valid ids.
   assert.equal((await serveTick(root, "?run=3")).captured.status, 400);

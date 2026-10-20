@@ -39,7 +39,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { teamWorkspaceMessage } from "../src/gates/readiness.js";
 import { headSha, teamWorkspace, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { TUMWATER_SOURCE, logEvent, type HarnessEvent } from "../src/events/events.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { bootstrapLatchPath, slotWorktreePath, worktreesDir } from "../src/paths.js";
@@ -402,7 +402,7 @@ test("checkStateDir fails with the OS error when .tumwater is not writable", () 
 
 test("checkEventLog fails an events.jsonl whose permissions deny reading", { skip: runningAsRoot() }, () => {
   const root = makeRepo();
-  writeEvents(root, [{ ts: Date.now(), loop: "feature", type: "run_end" }]);
+  writeEvents(root, [{ ts: Date.now(), loop: "feature", type: "run_end" }]); // retired-name-ok: legacy event field in a fixture
   const log = path.join(root, ".tumwater", "log", "events.jsonl");
   fs.chmodSync(log, 0o000);
   try {
@@ -438,12 +438,12 @@ test("checkEventLog passes an absent log, fails an unreadable one, and passes a 
   const damaged = makeRepo();
   fs.mkdirSync(path.join(damaged, ".tumwater", "log", "events.jsonl"), { recursive: true });
   writeLogLines(path.join(damaged, ".tumwater", "log", "events.jsonl.1"), [
-    { ts: Date.now(), loop: "feature", type: "run_end" },
+    { ts: Date.now(), loop: "feature", type: "run_end" }, // retired-name-ok: legacy event field in a fixture
   ]);
   assert.equal(checkEventLog(damaged).level, "fail");
 
   const good = makeRepo();
-  writeEvents(good, [{ ts: Date.now(), loop: "feature", type: "run_end" }]);
+  writeEvents(good, [{ ts: Date.now(), loop: "feature", type: "run_end" }]); // retired-name-ok: legacy event field in a fixture
   assert.equal(checkEventLog(good).level, "ok");
 });
 
@@ -727,8 +727,8 @@ test("checkWorkInstances warns on a gone claim, a stale claim, and too few slots
   writeConfig(root, { roles: { feature: { instances: 2 } } });
   fs.writeFileSync(path.join(root, "PLANS.md"), twoPlansDoc());
   const now = Date.now();
-  saveLoopState(root, {
-    ...freshLoopState("feature-2"),
+  saveRunnerState(root, {
+    ...freshRunnerState("feature-2"),
     claim: { file: "PLANS.md", key: "alpha", title: "Alpha", at: now - 25 * 3_600_000, source: "assigned" },
   });
   const stale = checkWorkInstances(root, loadConfig(root), now);
@@ -736,8 +736,8 @@ test("checkWorkInstances warns on a gone claim, a stale claim, and too few slots
   assert.match(stale.detail, /claimed plan "Alpha" \(feature-2\) has been idle 25h/);
 
   // A claim whose key is no longer listed under ## Planned.
-  saveLoopState(root, {
-    ...freshLoopState("feature-2"),
+  saveRunnerState(root, {
+    ...freshRunnerState("feature-2"),
     claim: { file: "PLANS.md", key: "gone", title: "Gone", at: now, source: "assigned" },
   });
   assert.match(checkWorkInstances(root, loadConfig(root), now).detail, /claimed plan "Gone" \(feature-2\) names an entry no longer listed/);
@@ -754,13 +754,13 @@ test("checkWorkInstances names each claim by its file and counts plans and bugs 
   fs.writeFileSync(path.join(root, "PLANS.md"), twoPlansDoc());
   fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n### An open bug\n\n## Fixed\n\n_None yet._\n");
   const now = Date.now();
-  saveLoopState(root, {
-    ...freshLoopState("feature-2"),
+  saveRunnerState(root, {
+    ...freshRunnerState("feature-2"),
     claim: { file: "PLANS.md", key: "alpha", title: "Alpha", at: now, source: "assigned" },
   });
   const bugClaim = (at: number) =>
-    saveLoopState(root, {
-      ...freshLoopState("bugfix-2"),
+    saveRunnerState(root, {
+      ...freshRunnerState("bugfix-2"),
       claim: { file: "BUGS.md", key: "an open bug", title: "An open bug", at, source: "assigned" },
     });
   bugClaim(now);
@@ -1150,7 +1150,7 @@ test("checkFlakyChecks ignores flake warnings older than the window", () => {
   const root = readyRepo();
   // An old event outside the 24h window, stamped directly with writeEvents so its ts is ancient.
   writeEvents(root, [
-    { ts: Date.now() - 48 * 3_600_000, loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}old test failed` },
+    { ts: Date.now() - 48 * 3_600_000, loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}old test failed` }, // retired-name-ok: legacy event field in a fixture
   ]);
   assert.deepEqual(checkFlakyChecks(root), { level: "ok", detail: "no check flapped more than once in the last 24h" });
 });

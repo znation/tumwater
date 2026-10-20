@@ -161,15 +161,15 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     // exempt director's own `director working` tick (BUGS.md 2026-10-06), so accept that phase
     // too — the same live set the GUI's row actions read. A director merge still carries
     // `merge …` (inFlight true) because rolePhase checks the merge marker first.
-    const director = status.loops.find((r) => r.role === "director");
-    keys.syncSnapshot(snap.budget.capUsd, snap.budget.free, snap.loops.map((l) => l.role),
+    const director = status.roles.find((r) => r.role === "director");
+    keys.syncSnapshot(snap.budget.capUsd, snap.budget.free, snap.roles.map((l) => l.role),
       director?.inFlight === true || director?.phase.startsWith("director working") === true);
     const s = keys.state(); // the handler's state this frame renders
     const roleIds = s.roleIds;
     const view = s.view;
     // What needs the operator — the dashboard's alert banners (team-alerts.ts's teamAlerts), as
     // attention lines under the header. Each consumes one line of the height budget.
-    const attention = alertLines(teamAlerts(snap, openQuestions(root), status.loops, Date.now(), refusedEntryTitles(root)), width);
+    const attention = alertLines(teamAlerts(snap, openQuestions(root), status.roles, Date.now(), refusedEntryTitles(root)), width);
     const statusLines = [status.lines[0] ?? [], ...attention, ...status.lines.slice(1)];
     // Numbered previews of prompts queued for the director, between the table and the
     // activity pane: what will run next, in execution order. Each line consumes exactly

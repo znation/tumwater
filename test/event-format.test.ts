@@ -121,8 +121,8 @@ test("formatEvent renders a corrupt event's role as ? like the reports", () => {
   // The event log is read without a filter, so a torn or hand-edited event with no role (or
   // an empty one) reaches this renderer. String(undefined) printed the literal "undefined" in
   // the role column; eventRole's "?" is the rule the usage report and failure digest apply.
-  for (const loop of [undefined, ""]) {
-    const line = formatEvent({ ts: 0, loop, type: "wake", reason: "main moved" } as never);
+  for (const source of [undefined, ""]) {
+    const line = formatEvent({ ts: 0, source, type: "wake", reason: "main moved" } as never);
     assert.ok(line.includes("?"), `corrupt loop must render ?: ${line}`);
     assert.ok(!line.includes("undefined"), `corrupt loop must not render undefined: ${line}`);
   }

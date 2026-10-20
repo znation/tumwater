@@ -143,7 +143,7 @@ test("compare.cjs builds repo/author/core metrics and the OSS spread, and prints
   assert.equal(k[firstRepo]["??"], 0);
   assert.equal(k.Tumwater["??"], 1000 / 2);
   assert.equal(k.Tumwater.if, 1000 / 2);
-  assert.equal(k.Tumwater.loops, 2000 / 2);
+  assert.equal(k.Tumwater["loops"], 2000 / 2);
   assert.equal(k.Tumwater["?."], 1000 / 2);
   assert.equal(k.Tumwater.case, 0);
   assert.equal(k.Claude.case, 1000 / 4);

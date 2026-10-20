@@ -568,7 +568,7 @@ test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
     root,
     Array.from({ length: 20 }, (_, i) => ({
       ts: 1_700_000_000_000 + i * 60_000,
-      loop: "clean",
+      loop: "clean", // retired-name-ok: legacy event field in a fixture
       type: "run_start",
       run: i + 1,
     })),
@@ -618,8 +618,8 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
   const root = makeRoot();
   // Twelve events per role: the unfiltered tail pages, and so does each role's own set.
   writeEvents(root, [
-    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "run_start", run: i + 1 })),
-    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "clean", type: "run_start", run: i + 1 })),
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "run_start", run: i + 1 })), // retired-name-ok: legacy event field in a fixture
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "clean", type: "run_start", run: i + 1 })), // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
@@ -654,9 +654,9 @@ test("Ctrl+O on the Activity view cycles the present event types and filters the
   // Two roles, three present types: `feature` carries run_start and run_end, `clean` only
   // wake, so a team-wide cycle turns over all three while the feature scope holds two.
   writeEvents(root, [
-    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "run_start", run: i + 1 })),
-    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "feature", type: "run_end", run: i + 1, result: "changed" })),
-    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_001_400_000 + i * 60_000, loop: "clean", type: "wake", run: i + 1 })),
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "run_start", run: i + 1 })), // retired-name-ok: legacy event field in a fixture
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "feature", type: "run_end", run: i + 1, result: "changed" })), // retired-name-ok: legacy event field in a fixture
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_001_400_000 + i * 60_000, loop: "clean", type: "wake", run: i + 1 })), // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
@@ -701,8 +701,8 @@ test("Ctrl+O on the Activity view cycles the present event types and filters the
 test("the `/` search filters the Activity feed and clears on an empty line", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "widget landed" },
-    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "gizmo swept" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "widget landed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "gizmo swept" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
@@ -738,7 +738,7 @@ test("the `/` search filters the Activity feed and clears on an empty line", () 
 test("the Activity and History `/` searches are independent, and `/` elsewhere types into the prompt", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "widget landed" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "widget landed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature"]);
@@ -835,7 +835,7 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
     root,
     Array.from({ length: 12 }, (_, i) => ({
       ts: 1_700_000_000_000 + i * 60_000,
-      loop: "feature",
+      loop: "feature", // retired-name-ok: legacy event field in a fixture
       type: "run_end",
       run: i + 1,
       result: "changed",
@@ -868,8 +868,8 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
 test("Ctrl+N on the History pane swaps the rows for the newest completed run's trail", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 },
-    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "work" },
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "work" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
@@ -894,8 +894,8 @@ test("Ctrl+N on the History pane swaps the rows for the newest completed run's t
 function historyTrailRoot(): string {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 },
-    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "work" },
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "work" }, // retired-name-ok: legacy event field in a fixture
   ]);
   return root;
 }
@@ -1034,10 +1034,10 @@ test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () =>
   const root = makeRoot();
   // clean's tick is newer than qa's, so the team read and the qa-scoped read differ.
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "qa", type: "run_start", run: 1 },
-    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" },
-    { ts: 1_700_000_120_000, loop: "clean", type: "run_start", run: 1 },
-    { ts: 1_700_000_180_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "clean work" },
+    { ts: 1_700_000_000_000, loop: "qa", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_120_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_180_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "clean work" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean", "qa"]);
@@ -1057,12 +1057,12 @@ test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () =>
 function steppingRoot(): string {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 },
-    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "clean one" },
-    { ts: 1_700_000_120_000, loop: "qa", type: "run_start", run: 1 },
-    { ts: 1_700_000_180_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" },
-    { ts: 1_700_000_240_000, loop: "clean", type: "run_start", run: 2 },
-    { ts: 1_700_000_300_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "clean two" },
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "clean one" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_120_000, loop: "qa", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_180_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_240_000, loop: "clean", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_300_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "clean two" }, // retired-name-ok: legacy event field in a fixture
   ]);
   return root;
 }
@@ -1118,12 +1118,12 @@ test("Ctrl+P with the trail off does nothing, and Ctrl+N or Ctrl+G after it star
 function filterRoot(): string {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 },
-    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "failed", summary: "clean broke" },
-    { ts: 1_700_000_120_000, loop: "qa", type: "run_start", run: 1 },
-    { ts: 1_700_000_180_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" },
-    { ts: 1_700_000_240_000, loop: "clean", type: "run_start", run: 2 },
-    { ts: 1_700_000_300_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "clean two" },
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "failed", summary: "clean broke" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_120_000, loop: "qa", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_180_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_240_000, loop: "clean", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_300_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "clean two" }, // retired-name-ok: legacy event field in a fixture
   ]);
   return root;
 }
@@ -1201,10 +1201,10 @@ test("a late stat from the run Ctrl+P left does not overwrite the stepped-to tra
 test("a roster change that retires the trail's scope re-reads it from the team", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "qa", type: "run_start", run: 1 },
-    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" },
-    { ts: 1_700_000_120_000, loop: "clean", type: "run_start", run: 1 },
-    { ts: 1_700_000_180_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "clean work" },
+    { ts: 1_700_000_000_000, loop: "qa", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_120_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_180_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "clean work" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean", "qa"]);
@@ -1224,8 +1224,8 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
   // One failed feature tick with tokens: it lands in the usage report's totals and the
   // failure digest's per-role table, so scoping to clean changes both renders.
   writeEvents(root, [
-    { ts: Date.now(), loop: "feature", type: "run_start", run: 1 },
-    { ts: Date.now(), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 500, costUsd: 0.5 },
+    { ts: Date.now(), loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: Date.now(), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 500, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
@@ -1269,8 +1269,8 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
   const root = makeRoot();
   // One failed feature tick with tokens, so the Usage body carries the collected `role` line.
   writeEvents(root, [
-    { ts: Date.now(), loop: "feature", type: "run_start", run: 1 },
-    { ts: Date.now(), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 500, costUsd: 0.5 },
+    { ts: Date.now(), loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: Date.now(), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 500, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   // The roster names an instance; the scoped collectors fold it into `feature`.
@@ -1301,9 +1301,9 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
   // One completed run per role, so each exact-role scope has its own row set: feature-2 is
   // a distinct scope, unlike the report panes' base-role aggregation.
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
-    { ts: 1_700_000_060_000, loop: "feature-2", type: "run_end", run: 1, result: "none" },
-    { ts: 1_700_000_120_000, loop: "clean", type: "run_end", run: 1, result: "changed" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "feature-2", type: "run_end", run: 1, result: "none" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_120_000, loop: "clean", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "feature-2", "clean"]);
@@ -1391,8 +1391,8 @@ test("syncSnapshot recomputes an on-screen report pane when it clears a retired 
   const root = makeRoot();
   // A failed feature tick with tokens: scoping to the team and to feature render differently.
   writeEvents(root, [
-    { ts: Date.now(), loop: "feature", type: "run_start", run: 1 },
-    { ts: Date.now(), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 500, costUsd: 0.5 },
+    { ts: Date.now(), loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: Date.now(), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 500, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
@@ -1413,8 +1413,8 @@ test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and r
   const now = Date.now();
   // One tick 30 minutes old (inside 1h) and one three days old (only inside 7d).
   writeEvents(root, [
-    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
-    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 2, result: "changed" },
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 2, result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => now);
   keys.syncSnapshot(0, false, []);
@@ -1452,7 +1452,7 @@ test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and r
 
 test("Ctrl+S is inert in the prompt-line modes and off the History view only moves the label", () => {
   const root = makeRoot();
-  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]);
+  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]); // retired-name-ok: legacy event field in a fixture
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
@@ -1495,8 +1495,8 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
   // distinct token counts so the windowed usage totals name which ticks they aggregated. Both
   // are errors so the failure digest's window tick count names the same split.
   writeEvents(root, [
-    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "error", tokens: 100 },
-    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 2, result: "error", tokens: 1_000_000 },
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "error", tokens: 100 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 2, result: "error", tokens: 1_000_000 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => now);
   keys.syncSnapshot(0, false, []);
@@ -1545,7 +1545,7 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
 
 test("Ctrl+E is inert in the prompt-line modes and off the report views only moves the label", () => {
   const root = makeRoot();
-  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "error", tokens: 100 }]);
+  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "error", tokens: 100 }]); // retired-name-ok: legacy event field in a fixture
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
@@ -1611,10 +1611,10 @@ test("Ctrl+O cycles the History pane's outcome class, filters rows by historyCla
   const root = makeRoot();
   const now = Date.now();
   writeEvents(root, [
-    { ts: now - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
-    { ts: now - 50_000, loop: "feature", type: "run_end", run: 2, result: "no_change" },
-    { ts: now - 40_000, loop: "feature", type: "run_end", run: 3, result: "error" },
-    { ts: now - 30_000, loop: "feature", type: "run_end", run: 4, result: "refused" },
+    { ts: now - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 50_000, loop: "feature", type: "run_end", run: 2, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 40_000, loop: "feature", type: "run_end", run: 3, result: "error" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 30_000, loop: "feature", type: "run_end", run: 4, result: "refused" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => now);
   keys.syncSnapshot(0, false, []);
@@ -1666,8 +1666,8 @@ test("Ctrl+O composes with the Ctrl+S window and names an emptied filter", () =>
   const now = Date.now();
   // The only "changed" tick is three days old; a "no_change" tick sits inside 1h.
   writeEvents(root, [
-    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "no_change" },
-    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 2, result: "changed" },
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 2, result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => now);
   keys.syncSnapshot(0, false, []);
@@ -1697,7 +1697,7 @@ test("Ctrl+O over a zero-row read keeps the pane's no-ticks note, not a filter-e
 
 test("Ctrl+O cycles the Activity type on view 0, opens the quiet editor on a Transcript, and is inert in the prompt-line modes", () => {
   const root = makeRoot();
-  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]);
+  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]); // retired-name-ok: legacy event field in a fixture
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
@@ -1737,10 +1737,10 @@ test("Ctrl+O cycles the Activity type on view 0, opens the quiet editor on a Tra
 test("Ctrl+Y cycles the History pane through the run rows, the per-role Summary table and the per-model one", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_699_999_990_000, loop: "feature", type: "run_start", run: 1, model: "m-a" },
-    { ts: 1_700_000_050_000, loop: "qa", type: "run_start", run: 1, model: "m-b" },
-    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 },
-    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "none", tokens: 50, costUsd: 0.05 },
+    { ts: 1_699_999_990_000, loop: "feature", type: "run_start", run: 1, model: "m-a" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_050_000, loop: "qa", type: "run_start", run: 1, model: "m-b" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "none", tokens: 50, costUsd: 0.05 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
@@ -1782,7 +1782,7 @@ test("Ctrl+Y cycles the History pane through the run rows, the per-role Summary 
 
 test("Ctrl+Y is inert while budget mode holds the prompt line", () => {
   const root = makeRoot();
-  writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]);
+  writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]); // retired-name-ok: legacy event field in a fixture
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
@@ -1797,7 +1797,7 @@ test("Ctrl+Y is inert while budget mode holds the prompt line", () => {
 
 test("Ctrl+Y opens the claude-reserve editor on Activity, flashes the busy message in budget mode, and keeps the History Summary toggle off Activity", () => {
   const root = makeRoot();
-  writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }]);
+  writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }]); // retired-name-ok: legacy event field in a fixture
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
 
@@ -1830,8 +1830,8 @@ test("Ctrl+Y opens the claude-reserve editor on Activity, flashes the busy messa
 test("Ctrl+Y's summary folds the History pane's exact-role scope, not the team read", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
-    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "none" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "none" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "qa"]);
@@ -1848,8 +1848,8 @@ test("Ctrl+Y's summary folds the History pane's exact-role scope, not the team r
 test("the `/` search filters the History pane through tickRowGrepHaystack and clears on an empty line", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
-    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 2, result: "changed" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 2, result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
@@ -1889,8 +1889,8 @@ test("the `/` search filters the History pane through tickRowGrepHaystack and cl
 test("`/` opens a search on Activity and History with an empty line, types elsewhere, and search mode owns the line", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
-    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 2, result: "changed" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 2, result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(50, false, ["clean"]);
@@ -3907,7 +3907,7 @@ test("Ctrl+A opens the team-model editor on Activity, still aborts a role's run 
 
 test("the History model summary shows a run with no recorded start as (unknown)", () => {
   const root = makeRoot();
-  writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]);
+  writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }]); // retired-name-ok: legacy event field in a fixture
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history

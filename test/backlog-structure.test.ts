@@ -18,7 +18,7 @@ import {
 import { renderBacklogIndexBlock } from "../src/backlog/backlog-index.js";
 import { DONE_DATE_RE, FIXED_DATE_RE } from "../src/backlog/backlog.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-structure.ts — the stranded-plan detector (plans, part
@@ -665,10 +665,10 @@ test("renderBacklogIndexBlock marks an entry another role has claimed as in flig
   // `feature` claimed the plan and its merge is queued (the move to Done merges later), so every
   // other role's shared index must read it as taken rather than list it as open work.
   const owner = {
-    ...loadLoopState(dir, "feature"),
+    ...loadRunnerState(dir, "feature"),
     claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,
   };
-  saveLoopState(dir, owner);
+  saveRunnerState(dir, owner);
   const block = renderBacklogIndexBlock(dir) ?? "";
   assert.match(block, /- 3-4: Volume slider \[in flight by feature\]/);
 });
@@ -684,10 +684,10 @@ test("renderBacklogIndexBlock marks an entry a parallel-work instance has claime
   // built-in catalog never names; the shared index must still read it as taken by that
   // instance rather than list the plan as open for every other base to re-implement.
   const owner = {
-    ...loadLoopState(dir, "feature-2"),
+    ...loadRunnerState(dir, "feature-2"),
     claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,
   };
-  saveLoopState(dir, owner);
+  saveRunnerState(dir, owner);
   const block = renderBacklogIndexBlock(dir) ?? "";
   assert.match(block, /- 3-4: Volume slider \[in flight by feature-2\]/);
 });
@@ -775,10 +775,10 @@ test("renderBacklogIndexBlock keeps a refused and a claimed blocked part out of 
   // The parallel-work instance `feature` owns part 3/6, so it must keep its own in-flight line
   // instead of being swallowed by the collapsed series.
   const owner = {
-    ...loadLoopState(dir, "feature"),
+    ...loadRunnerState(dir, "feature"),
     claim: { file: "PLANS.md", key: "t, part 3/6: c", title: "T, part 3/6: c", at: 1, source: "assigned" } as const,
   };
-  saveLoopState(dir, owner);
+  saveRunnerState(dir, owner);
   const block = renderBacklogIndexBlock(dir) ?? "";
   assert.match(block, /- 3-4: T, part 1\/6: a\n/);
   // The refused part and the claimed part keep their own lines and are not counted.

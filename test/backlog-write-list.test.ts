@@ -5,7 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { entryKey } from "../src/backlog/backlog-eligibility.js";
 import { openBugs, plannedPlans, entryAgeSuffix } from "../src/backlog/backlog.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
@@ -338,8 +338,8 @@ test("plan --list marks the entry a role is working on, and --json carries inPro
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
   const p1 = "Export series, part 1/2: add export (planned 2026-10-01)";
-  saveLoopState(repo, {
-    ...loadLoopState(repo, "feature-2"),
+  saveRunnerState(repo, {
+    ...loadRunnerState(repo, "feature-2"),
     claim: { file: "PLANS.md", key: entryKey(p1), title: p1, at: 1, source: "assigned" },
   });
   const r = await cli(repo, "plan", "--list");

@@ -13,7 +13,7 @@ import path from "node:path";
 import { worktreesDir } from "../paths.js";
 import { git, gitTry } from "../git/git-run.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { loadLoopState } from "../runner/runner-state.js";
+import { loadRunnerState } from "../runner/runner-state.js";
 import { BYTES_PER_GB, sampleFreeBytes } from "../gates/disk-gate.js";
 import { subdirectoryNames } from "../files/files.js";
 import {
@@ -97,7 +97,7 @@ export function reclaimCandidates(
       name,
       lastUsedAt: record.lastUsedAt,
       ...(typeof record.reclaimedAt === "number" ? { reclaimedAt: record.reclaimedAt } : {}),
-      resumePending: loadLoopState(root, name).resumePending === true,
+      resumePending: loadRunnerState(root, name).resumePending === true,
     });
   }
   candidates.sort((a, b) => {

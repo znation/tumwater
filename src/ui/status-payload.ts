@@ -63,7 +63,7 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     const slot = { name: g.series, label: `${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)})` };
     for (const r of g.rows) planSeries[r.i] = slot;
   }
-  const roles = snap.loops.map((s) => {
+  const roles = snap.roles.map((s) => {
     // roleRowCells single-homes the per-role tail read + metrics + phase derivation the
     // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
     // drift apart.
@@ -253,7 +253,7 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     paused: snap.paused,
     pausedRoles: snap.pausedRoles,
     // The role ids the scheduler treats as paused by the marker; the dashboards read this.
-    pausedLoops: snap.pausedLoops,
+    pausedLoops: snap.pausedRunners, // retired-name-ok: serialized /api and --json key
     // The per-role cap's held roles (part 2/2): an idle
     // role in this set reads `cap paused` — the rolePhase ladder names it, and `status
     // --json` carries the raw set beside pausedRoles so scripts read the same verdict.

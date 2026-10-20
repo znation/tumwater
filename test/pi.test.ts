@@ -22,7 +22,7 @@ import { messageUpdateHasContent, toolUpdateHasContent } from "../src/pi/pi-even
 import { startPiWatchdogs } from "../src/pi/pi-watchdogs.js";
 import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { gitOnlyBinDir, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logFlagsTo, readRunLines, withIdlePi, withPi } from "./fakes/fake-pi.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
@@ -502,7 +502,7 @@ test("every tick starts a fresh pi session", async () => {
   await withPi(
     [logFlagsTo(argsFile), `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "clean");
+      const runner = makeRoleRunner(repo, "clean");
       await runner.tick();
       await runner.tick();
       const runs = readRunLines(argsFile);
@@ -524,7 +524,7 @@ test("a context-exceeded error fails the tick with the real cause", async () => 
       `exit 1`,
     ].join("\n"),
     async () => {
-      const runner = makeLoopRunner(repo, "clean");
+      const runner = makeRoleRunner(repo, "clean");
       assert.equal((await runner.tick()).result, "error");
       assert.ok(runner.state.lastError, "the error is surfaced on the loop state");
     },
@@ -662,7 +662,7 @@ test("a missing pi binary fails the tick with an error", async () => {
   const binDir = gitOnlyBinDir();
   const restorePath = pathReplace(binDir);
   try {
-    const runner = makeLoopRunner(repo, "clean");
+    const runner = makeRoleRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.match(String(runner.state.lastError), /failed to spawn pi/);

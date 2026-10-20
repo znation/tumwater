@@ -4,7 +4,7 @@ import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkM
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseTeam, pauseRole } from "../src/team/team-state.js";
 import { todayStamp } from "../src/budget/budget.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { humanSeconds } from "../src/text/datetime.js";
@@ -107,7 +107,7 @@ const BNOW = new Date(2026, 9, 12, 12, 0).getTime();
 function budgetRoot(spend: Record<string, number>, stamp = todayStamp(BNOW)): string {
   const root = tmpdir("tw-budget-");
   for (const [role, usd] of Object.entries(spend)) {
-    saveLoopState(root, { ...freshLoopState(role), dayCostUsd: usd, dayStamp: stamp });
+    saveRunnerState(root, { ...freshRunnerState(role), dayCostUsd: usd, dayStamp: stamp });
   }
   return root;
 }
@@ -173,7 +173,7 @@ const mcfg = (c: object = {}): TumwaterConfig =>
   qcfg({ maintenancePerWorkMerge: 2, roles: { feature: { enabled: true }, clean: { enabled: true } }, ...c });
 function mergedRoot(role: string, n: number): string {
   const root = tmpdir("tw-mq-");
-  writeEvents(root, Array.from({ length: n }, (_, i) => ({ ts: MNOW - 3_600_000, loop: role, type: "merged", commit: `m${i}` })));
+  writeEvents(root, Array.from({ length: n }, (_, i) => ({ ts: MNOW - 3_600_000, loop: role, type: "merged", commit: `m${i}` }))); // retired-name-ok: legacy event field in a fixture
   return root;
 }
 
@@ -192,10 +192,10 @@ test("checkMaintenanceQuota: a full window warns and names the held loops", () =
 
 test("checkMaintenanceQuota: a dead team's running flag is not in flight", () => {
   const root = mergedRoot("clean", 11);
-  saveLoopState(root, { ...freshLoopState("clean"), running: true });
+  saveRunnerState(root, { ...freshRunnerState("clean"), running: true });
   assert.match(checkMaintenanceQuota(root, mcfg(), false, MNOW).detail, /^11\/12 /);
   const live = mergedRoot("clean", 11);
-  saveLoopState(live, { ...freshLoopState("clean"), running: true });
+  saveRunnerState(live, { ...freshRunnerState("clean"), running: true });
   assert.equal(checkMaintenanceQuota(live, mcfg(), true, MNOW).level, "warn");
 });
 
@@ -275,7 +275,7 @@ test("checkClaudeWindow: overage, an elapsed reset, a warning, and no windows ar
 function streakRoot(streaks: Record<string, number>, lastError = "boom"): string {
   const root = tmpdir("tw-streak-");
   for (const [id, n] of Object.entries(streaks)) {
-    saveLoopState(root, { ...freshLoopState(id), consecutiveErrors: n, lastError });
+    saveRunnerState(root, { ...freshRunnerState(id), consecutiveErrors: n, lastError });
   }
   return root;
 }
@@ -335,7 +335,7 @@ const RED = "main abc is red (npm test: 2 failing) — authoring skipped until m
 
 function redRoot(extra: Record<string, unknown> = {}): string {
   const root = tmpdir("tw-mainred-");
-  saveLoopState(root, { ...freshLoopState("feature"), lastResult: "main_red", lastError: RED, lastRunEndedAt: 1000, ...extra });
+  saveRunnerState(root, { ...freshRunnerState("feature"), lastResult: "main_red", lastError: RED, lastRunEndedAt: 1000, ...extra });
   return root;
 }
 
@@ -361,7 +361,7 @@ test("checkMainRed: a loop with a queued summary is ok", () => {
 
 test("checkMainRed: a passed merge check newer than the red tick retires the hold", () => {
   const root = redRoot();
-  writeEvents(root, [{ ts: 2000, loop: "feature", type: "build_check", scope: "merge", status: "passed" }]);
+  writeEvents(root, [{ ts: 2000, loop: "feature", type: "build_check", scope: "merge", status: "passed" }]); // retired-name-ok: legacy event field in a fixture
   assert.equal(checkMainRed(root, bcfg({})).level, "ok");
 });
 
@@ -374,8 +374,8 @@ test("checkMainRed: the detail names the bugfix loop as repairer only when one i
 
 const PH_NOW = Date.now();
 
-const providerHold = (o: Record<string, unknown>): Record<string, unknown> => ({ loop: "harness", type: "rate_limit_hold", ts: PH_NOW, holdMs: 3600_000, kind: "rate-limit", roles: ["feature", "qa"], ...o });
-const providerResumed = (o: Record<string, unknown>): Record<string, unknown> => ({ loop: "harness", type: "rate_limit_resumed", ts: PH_NOW + 10_000, kind: "rate-limit", ...o });
+const providerHold = (o: Record<string, unknown>): Record<string, unknown> => ({ loop: "harness", type: "rate_limit_hold", ts: PH_NOW, holdMs: 3600_000, kind: "rate-limit", roles: ["feature", "qa"], ...o }); // retired-name-ok: legacy event field in a fixture
+const providerResumed = (o: Record<string, unknown>): Record<string, unknown> => ({ loop: "harness", type: "rate_limit_resumed", ts: PH_NOW + 10_000, kind: "rate-limit", ...o }); // retired-name-ok: legacy event field in a fixture
 
 function phRoot(lines: unknown[]): string {
   const root = tmpdir("tw-hold-");
@@ -415,7 +415,7 @@ test("checkProviderHolds: a provider-undefined hold names pi's default backend",
 });
 
 test("checkProviderHolds: other event types are ignored", () => {
-  const out = checkProviderHolds(phRoot([{ loop: "feature", type: "run_end", ts: PH_NOW, tokens: 1 }, { loop: "feature", type: "merge_done", ts: PH_NOW, commit: "a" }]), PH_NOW);
+  const out = checkProviderHolds(phRoot([{ loop: "feature", type: "run_end", ts: PH_NOW, tokens: 1 }, { loop: "feature", type: "merge_done", ts: PH_NOW, commit: "a" }]), PH_NOW); // retired-name-ok: legacy event field in a fixture
   assert.deepEqual(out, { level: "ok", detail: "no provider holds" });
 });
 

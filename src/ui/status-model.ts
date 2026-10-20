@@ -330,7 +330,7 @@ export function roleRowCells(
     live,
     // The per-role pause reads the same `paused` cell as the team pause: one flag to
     // rolePhase covers both gates (status-model has no per-role branch of its own).
-    snap.paused || snap.pausedLoops.includes(s.role),
+    snap.paused || snap.pausedRunners.includes(s.role),
     mergeForRole(snap.mergeQueue, s.role),
     // The snapshot's newest merge-scope check lets a stale main-red phase retire itself
     // between ticks (BUGS.md 2026-09-30) — the banner (teamAlerts) reads this same phase.
@@ -358,7 +358,7 @@ export function roleRowCells(
     // A timed per-role pause's deadline — only when the role itself is individually paused
     // (in `pausedRoles`) and not under a team-wide pause, matching the GUI's phaseDetail
     // guard, so the team pause (whose countdown rides the header badge) never double-appends.
-    snap.paused || !snap.pausedLoops.includes(s.role) ? undefined : snap.pausedRolesUntil,
+    snap.paused || !snap.pausedRunners.includes(s.role) ? undefined : snap.pausedRolesUntil,
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
@@ -479,5 +479,3 @@ function displayTokenMetrics(
   };
 }
 
-/** @deprecated Use rolePhase. */
-export const loopPhase = rolePhase;

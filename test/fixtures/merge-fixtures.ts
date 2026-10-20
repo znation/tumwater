@@ -102,7 +102,7 @@ export async function pumpUntil(
 /** Keep polling in the background (for mid-flight assertions); `stop` ends the loop. */
 export function pump(ctx: MergePipelineContext, p: MergePipeline): { stop: () => Promise<void> } {
   let running = true;
-  const loop = (async () => {
+  const pumpDone = (async () => {
     while (running) {
       await drainMergeQueue(ctx, p);
       await sleep(50);
@@ -111,7 +111,7 @@ export function pump(ctx: MergePipelineContext, p: MergePipeline): { stop: () =>
   return {
     stop: async () => {
       running = false;
-      await loop;
+      await pumpDone;
     },
   };
 }

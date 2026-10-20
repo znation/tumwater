@@ -25,8 +25,8 @@ test("collectBudget aggregates the daily spend and drives the pause sets", async
   const got = collectBudget(
     repo,
     cfg,
-    snap.loops,
-    snap.loops.map((l) => l.role),
+    snap.roles,
+    snap.roles.map((l) => l.role),
     false,
     readOrchestratorInfo(repo),
     modelsFile,
@@ -53,8 +53,8 @@ test("collectBudget prices an opencode-free team free (part 6b/7)", async () => 
   const got = collectBudget(
     repo,
     cfg,
-    snap.loops,
-    snap.loops.map((l) => l.role),
+    snap.roles,
+    snap.roles.map((l) => l.role),
     false,
     readOrchestratorInfo(repo),
     modelsFile,

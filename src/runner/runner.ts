@@ -389,7 +389,3 @@ export class RoleRunner {
   }
 }
 
-/** @deprecated Use RoleRunner. */
-export const LoopRunner = RoleRunner;
-/** @deprecated Use RoleRunner. */
-export type LoopRunner = RoleRunner;

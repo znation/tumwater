@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../../src/config/config.js";
-import { freshLoopState } from "../../src/runner/runner-state.js";
+import { freshRunnerState } from "../../src/runner/runner-state.js";
 import { reviewAheadOfMain } from "../../src/review/review.js";
 import { runPi } from "../../src/pi/pi.js";
 import { reviewRunSessionDir } from "../../src/paths.js";
@@ -46,15 +46,15 @@ export async function gateFixture(): Promise<{ root: string; wt: string; head: s
   return { root, wt, head: await headOf(wt, "HEAD") };
 }
 
-/** The common gate-test shape in one call: a brand-new LoopState plus one reviewAheadOfMain
+/** The common gate-test shape in one call: a brand-new RunnerState plus one reviewAheadOfMain
  * run over it. `overrides` replaces whole context fields (`config`, `signal`,
  * `buildCheckTimeoutMs`, ...) the way `{ ...gateCtx(root, wt), x }` did inline. */
 export async function reviewGate(
   root: string,
   wt: string,
   overrides: Partial<Parameters<typeof reviewAheadOfMain>[0]> = {},
-): Promise<{ state: ReturnType<typeof freshLoopState>; result: Awaited<ReturnType<typeof reviewAheadOfMain>> }> {
-  const state = freshLoopState(ROLE);
+): Promise<{ state: ReturnType<typeof freshRunnerState>; result: Awaited<ReturnType<typeof reviewAheadOfMain>> }> {
+  const state = freshRunnerState(ROLE);
   const result = await reviewAheadOfMain({ ...gateCtx(root, wt), ...overrides }, state);
   return { state, result };
 }

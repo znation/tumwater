@@ -32,7 +32,7 @@ import { parseJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
 import { modelPairName, pairDailyCost } from "../budget/budget.js";
 import { formatBytes, usd, usdCap } from "../text/format.js";
-import { loadLoopStates } from "./doctor-holds.js";
+import { loadRunnerStates } from "./doctor-holds.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
 import { agree } from "../text/phrases.js";
 import { formatDate, formatTime } from "../text/datetime.js";
@@ -134,7 +134,7 @@ export async function checkFallbackChain(
   if ("level" in config) return config;
   const steps = tierChainSteps(config);
   if (steps.length === 0) return okOutcome("none configured");
-  const states = loadLoopStates(root, config);
+  const states = loadRunnerStates(root, config);
   const providers = readPiProviders(modelsPath);
   const account = readClaudeAccount(root);
   const now = Date.now();

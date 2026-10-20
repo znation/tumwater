@@ -29,7 +29,7 @@ import {
 } from "../src/backlog/backlog-eligibility.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-eligibility.ts (plans, parallel-work-instances,
@@ -252,10 +252,10 @@ test("eligibleEntries holds a plan another role's base has claimed, but keeps th
   // `feature` takes the plan the way a real tick does (a queued merge keeps its claim until the
   // move tunes into main); a second plan-consuming role must not be handed the same entry.
   const owner = {
-    ...loadLoopState(dir, "feature"),
+    ...loadRunnerState(dir, "feature"),
     claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,
   };
-  saveLoopState(dir, owner);
+  saveRunnerState(dir, owner);
   // The owner's own base keeps the plan eligible (its release rules run unchanged)…
   assert.deepEqual(eligibleEntries(dir, "feature").map((e) => e.key), ["volume slider"]);
   // …while another base reads it as taken, so `improve` cannot re-implement it.
@@ -274,10 +274,10 @@ test("eligibleEntries holds a plan claimed by a parallel-work instance against e
   // .tumwater/state/feature-2.json — outside the built-in catalog allRoleIds enumerates. It
   // must still hold the plan against every other base, or `improve` re-implements it.
   const owner = {
-    ...loadLoopState(dir, "feature-2"),
+    ...loadRunnerState(dir, "feature-2"),
     claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,
   };
-  saveLoopState(dir, owner);
+  saveRunnerState(dir, owner);
   // Another base reads the instance's claim as in flight…
   assert.deepEqual(eligibleEntries(dir, "improve"), []);
   // …while the instance's own base keeps it eligible for its release rules.
@@ -437,8 +437,8 @@ test("backlogInProgress names the runner holding each entry's claim; inProgressM
   assert.deepEqual(backlogInProgress(dir), { plans: [null, null], bugs: [null] });
   const claim = (key: string, title: string, file: "PLANS.md" | "BUGS.md") =>
     ({ file, key, title, at: 1, source: "assigned" }) as const;
-  saveLoopState(dir, { ...loadLoopState(dir, "feature-2"), claim: claim("volume slider", "Volume slider", "PLANS.md") });
-  saveLoopState(dir, { ...loadLoopState(dir, "bugfix"), claim: claim("crash on start", "Crash on start", "BUGS.md") });
+  saveRunnerState(dir, { ...loadRunnerState(dir, "feature-2"), claim: claim("volume slider", "Volume slider", "PLANS.md") });
+  saveRunnerState(dir, { ...loadRunnerState(dir, "bugfix"), claim: claim("crash on start", "Crash on start", "BUGS.md") });
   assert.deepEqual(backlogInProgress(dir), { plans: ["feature-2", null], bugs: ["bugfix"] });
   assert.equal(inProgressMark(null), "");
   assert.equal(inProgressMark("feature-2"), " [working on it: feature #2]");

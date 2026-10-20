@@ -224,7 +224,7 @@ export function renderStatusSpans(
   snap: StatusSnapshot,
   maxWidth?: number,
   scoped = false,
-): { lines: StatusLine[]; loops: StatusRoleRow[] } {
+): { lines: StatusLine[]; roles: StatusRoleRow[] } {
   const name = projectName(root);
   const lines: StatusLine[] = [];
   // One clock read per render, shared by the timed-pause badge's countdown and every row's
@@ -302,7 +302,7 @@ export function renderStatusSpans(
     const n = snap.roleInbox[role] ?? 0;
     return n > 0 ? ` p:${n}` : "";
   };
-  const withMetrics = snap.loops.map((s) => {
+  const withMetrics = snap.roles.map((s) => {
     // roleRowCells single-homes the per-role tail read + metrics + phase derivation the GUI
     // payload (status-payload.ts) repeats, so the two dashboards cannot drift apart.
     const cells = roleRowCells(snap, root, s);
@@ -371,7 +371,7 @@ export function renderStatusSpans(
     "",
     compactTokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
     compactTokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
-    usd(snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0)),
+    usd(snap.roles.reduce((sum, s) => sum + s.totalCostUsd, 0)),
     // The team's today-spend, from the snapshot's budget block — the same number the header
     // badge reads, so table and badge cannot drift. While the orchestrator runs that figure is
     // the scheduler's live sum over its in-memory states, which can sit ABOVE the per-role
@@ -380,7 +380,7 @@ export function renderStatusSpans(
     // the point (BUGS.md 2026-09-30). Not running, the snapshot derives the block from these
     // same roles, so cells and total agree by construction.
     // A role-scoped table adds up the rows shown instead: the team figure would not match them.
-    usd(scoped ? snap.loops.reduce((sum, s) => sum + dailyCost(s), 0) : snap.budget.spentUsd),
+    usd(scoped ? snap.roles.reduce((sum, s) => sum + dailyCost(s), 0) : snap.budget.spentUsd),
     "",
     "",
     "",
@@ -452,17 +452,17 @@ export function renderStatusSpans(
   lines.push(fmt(totalsRow, "bold"));
   // One footnote under the table when any custom role exists — explains the asterisk without
   // taking a column. Absent (byte-identical table) on a team with no user-defined roles.
-  if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* custom role", tone: "dim" }]);
+  if (snap.roles.some((l) => l.custom)) lines.push([{ text: "* custom role", tone: "dim" }]);
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.
-  return { lines: maxWidth === undefined ? lines : lines.map((l) => clipSpans(l, maxWidth)), loops: roles };
+  return { lines: maxWidth === undefined ? lines : lines.map((l) => clipSpans(l, maxWidth)), roles };
 }
 
 /** Render the status table shared by `tumwater status` and the TUI as plain text (see
  * renderStatusSpans). When `maxWidth` is given, wide cells are clipped so no line exceeds it
  * (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number, scoped = false): string {
-  const { lines, loops: roles } = renderStatusSpans(root, snap, maxWidth, scoped);
+  const { lines, roles } = renderStatusSpans(root, snap, maxWidth, scoped);
   // The team-attention banners (team-alerts.ts) drop under the header's blank line here, on
   // the CLI-only plain-text surface — the same spelled-out banners the dashboard and TUI draw,
   // from the one shared source, so the CLI/GUI/TUI cannot drift on wording. One QUESTIONS.md

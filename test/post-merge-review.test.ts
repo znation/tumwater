@@ -9,8 +9,8 @@ import { drainPostReviews } from "../src/merge/merge-post-review.js";
 import { drainMerge } from "../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
 import { addPostReview, readPostReviews } from "../src/review/post-merge-review.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
-import type { LoopRunner } from "../src/runner/runner.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
+import type { RoleRunner } from "../src/runner/runner.js";
 import { rejectedRefName } from "../src/paths.js";
 import { gateFixture, reviewGate } from "./fixtures/gate-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
@@ -43,13 +43,13 @@ test("a listed role's change passes the gate with no reviewer run; an unlisted r
   });
 });
 
-function fakeRunner(role: string, verdict: string): LoopRunner {
+function fakeRunner(role: string, verdict: string): RoleRunner {
   return {
     role,
     baseRole: role,
-    state: freshLoopState(role),
+    state: freshRunnerState(role),
     runGatePi: async () => ({ ok: true, verdictText: verdict }),
-  } as unknown as LoopRunner;
+  } as unknown as RoleRunner;
 }
 
 function setup(verdict: string) {

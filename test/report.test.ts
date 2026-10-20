@@ -94,9 +94,9 @@ test("report folds revision events into Revisions by role, beside Rejections by 
   // must render rejections and revisions as two independent lines, and --json must carry the
   // new revisionsByRole field only on the day(s) that have one (zero-means-absent).
   writeEvents(root, [
-    JSON.stringify({ ts: at(1), loop: "feature", type: "review_rejected" }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }),
-    JSON.stringify({ ts: at(0), loop: "clean", type: "revision", action: "conflict", round: 2, sha: "def" }),
+    JSON.stringify({ ts: at(1), loop: "feature", type: "review_rejected" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "revision", action: "conflict", round: 2, sha: "def" }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const md = await runCli(root, "report", "--days", "2");
@@ -115,7 +115,7 @@ test("report folds revision events into Revisions by role, beside Rejections by 
 test("report renders 'Revisions by role: -' when the window has no revision events", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = await runCli(root, "report", "--days", "1");
   assert.equal(md.code, 0);
@@ -125,8 +125,8 @@ test("report renders 'Revisions by role: -' when the window has no revision even
 test("report --since narrows Revisions by role to the scoped base role", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "revision", action: "conflict", round: 1, sha: "def" }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "revision", action: "conflict", round: 1, sha: "def" }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const team = await runCli(root, "report", "--since", "6h");
@@ -151,10 +151,10 @@ test("report folds error-class run_ends into Failed runs by role, beside Revisio
   // their own line, --json must carry failedRunsByRole only on the day that has failures
   // (zero-means-absent), and the failed tally must never subtract from Runs by role.
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 10 }),
-    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "merge_conflict", tokens: 5 }),
-    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", run: 3, result: "changed", tokens: 20 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "merge_conflict", tokens: 5 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", run: 3, result: "changed", tokens: 20 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const md = await runCli(root, "report", "--days", "2");
@@ -173,8 +173,8 @@ test("report folds error-class run_ends into Failed runs by role, beside Revisio
 test("report --since folds failed ticks by role and narrows to the scoped base role", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 10 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 2, result: "no_change", tokens: 5 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 2, result: "no_change", tokens: 5 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const team = await runCli(root, "report", "--since", "6h");
@@ -198,10 +198,10 @@ test("report folds refused run_ends into Refusals by role, beside Revisions by r
   // refusal is a deliberate outcome (result "refused") — not error-class — so it gets its own
   // line and must never join Failed runs by role, while Runs by role still counts it.
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "refused", tokens: 10 }),
-    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "refused", tokens: 5 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 3, result: "changed", tokens: 20 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "refused", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "refused", tokens: 5 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 3, result: "changed", tokens: 20 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const md = await runCli(root, "report", "--days", "2");
@@ -220,8 +220,8 @@ test("report folds refused run_ends into Refusals by role, beside Revisions by r
 test("report --since folds refused ticks by role and narrows to the scoped base role", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "refused", tokens: 10 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 2, result: "refused", tokens: 5 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "refused", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 2, result: "refused", tokens: 5 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const team = await runCli(root, "report", "--since", "6h");
@@ -408,9 +408,9 @@ test("renderReportMarkdown folds providerCost into Cost by provider and Estimate
   // notional spend ride two run_ends' providerCost, and a merge's reviewer spend keys to
   // the reviewer's provider.
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 1.5, providerCost: { deepinfra: { costUsd: 1.5, notionalCostUsd: 0 } } }),
-    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "changed", tokens: 20, notionalCostUsd: 2, providerCost: { claude: { costUsd: 0, notionalCostUsd: 2 } } }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", tokens: 5, costUsd: 0.4, providerCost: { claude: { costUsd: 0.4, notionalCostUsd: 0 } } }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 1.5, providerCost: { deepinfra: { costUsd: 1.5, notionalCostUsd: 0 } } }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "changed", tokens: 20, notionalCostUsd: 2, providerCost: { claude: { costUsd: 0, notionalCostUsd: 2 } } }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", tokens: 5, costUsd: 0.4, providerCost: { claude: { costUsd: 0.4, notionalCostUsd: 0 } } }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = renderReportMarkdown(collectReport(root, 2));
   // The parallel provider line: real spend per provider, the merge's reviewer spend folding
@@ -432,7 +432,7 @@ test("renderReportMarkdown folds providerCost into Cost by provider and Estimate
 test("report omits Cost by provider and the provider JSON maps when no event carries providerCost", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = renderReportMarkdown(collectReport(root, 2));
   assert.ok(!md.includes("Cost by provider"), "no providerCost renders no provider line");
@@ -446,9 +446,9 @@ test("report omits Cost by provider and the provider JSON maps when no event car
 test("--since sums per-provider spend across the window into Cost by provider", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(5 * HOUR), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }),
-    JSON.stringify({ ts: ago(2 * HOUR), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 8, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }),
-    JSON.stringify({ ts: ago(HOUR), loop: "plan", type: "run_end", run: 3, result: "changed", tokens: 5, notionalCostUsd: 1, providerCost: { claude: { costUsd: 0, notionalCostUsd: 1 } } }),
+    JSON.stringify({ ts: ago(5 * HOUR), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(2 * HOUR), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 8, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(HOUR), loop: "plan", type: "run_end", run: 3, result: "changed", tokens: 5, notionalCostUsd: 1, providerCost: { claude: { costUsd: 0, notionalCostUsd: 1 } } }), // retired-name-ok: legacy event field in a fixture
   ]);
   const json = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
   // Summed across the window like costByRole: both deepinfra runs fold into one provider cell.
@@ -486,8 +486,8 @@ test("renderReportMarkdown prints a Tokens by role line ranked by tokens desc, i
 test("tumwater report prints the Markdown report and validates --days", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(3), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 313 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 42 }),
+    JSON.stringify({ ts: at(3), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 313 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 42 }), // retired-name-ok: legacy event field in a fixture
   ]);
   writeBacklogFile(root, "PLANS.md", [
     { heading: "## Planned" },
@@ -719,8 +719,8 @@ test("tumwater report --since prints the window totals and validates its flags",
   // The event log is append-only and chronological: seed oldest first, like every log the
   // harness itself writes (a reverse-ordered log is malformed input, not a coverage case).
   writeEvents(root, [
-    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "run_end", run: 2, result: "no_change", tokens: 999 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 777, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "run_end", run: 2, result: "no_change", tokens: 999 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 777, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const ok = await runCli(root, "report", "--since", "6h");
@@ -761,9 +761,9 @@ test("tumwater report --since prints the window totals and validates its flags",
 test("tumwater report --since prints Commits/Estimated by role and --json carries them", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
-    JSON.stringify({ ts: ago(9 * 60_000), loop: "clean", type: "merged", commit: "def5678" }),
-    JSON.stringify({ ts: ago(8 * 60_000), loop: "plan", type: "run_end", run: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "clean", type: "merged", commit: "def5678" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(8 * 60_000), loop: "plan", type: "run_end", run: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const md = await runCli(root, "report", "--since", "6h");
@@ -813,8 +813,8 @@ test("report --days above the shared bound fails fast with the offending value",
 test("report --json --days prints the collector's payload; the Markdown render is untouched", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(3), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "no_change", tokens: 42 }),
+    JSON.stringify({ ts: at(3), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "no_change", tokens: 42 }), // retired-name-ok: legacy event field in a fixture
   ]);
   writeBacklogFile(root, "PLANS.md", [
     { heading: "## Planned" },
@@ -850,8 +850,8 @@ test("report --since --role omits Estimated by role when the scoped role spent n
   // The team window has notional spend (plan's tick), but feature spends none — scoping to
   // feature must drop the line/field, not render an empty "Estimated by role: -".
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "plan", type: "run_end", run: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }),
-    JSON.stringify({ ts: ago(9 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "plan", type: "run_end", run: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
@@ -871,8 +871,8 @@ test("report --since --role omits Estimated by role when the scoped role spent n
 test("report --json --since prints the window totals with the coverage proof", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "run_end", run: 2, result: "no_change", tokens: 999 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 777, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "run_end", run: 2, result: "no_change", tokens: 999 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 777, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const json = await runCli(root, "report", "--json", "--since", "6h");
@@ -900,8 +900,8 @@ test("report --json --since prints the window totals with the coverage proof", a
 test("report --json carries the merge fields in totals and the day series", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const json = await runCli(root, "report", "--json", "--days", "2");
   assert.equal(json.code, 0);
@@ -917,9 +917,9 @@ test("report --json carries the merge fields in totals and the day series", asyn
 test("report --json --days carries mergeFailed on the day and totals when a merge fails; merges 2 runs with 1 failed", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const json = await runCli(root, "report", "--json", "--days", "2");
   assert.equal(json.code, 0);
@@ -943,7 +943,7 @@ test("report --json --days carries mergeFailed on the day and totals when a merg
 test("report --json leaves mergeFailed absent on a failure-free window", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
   assert.equal(parsed.totals.mergeRuns, 1);
@@ -957,9 +957,9 @@ test("report --json leaves mergeFailed absent on a failure-free window", async (
 test("report --json --since carries mergeFailed when a merge fails and omits it otherwise", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: ago(4 * 60_000), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: ago(3 * 60_000), loop: "feature", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(4 * 60_000), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(3 * 60_000), loop: "feature", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
   assert.equal(parsed.totals.mergeRuns, 2);
@@ -967,7 +967,7 @@ test("report --json --since carries mergeFailed when a merge fails and omits it 
 
   const clean = makeRepo();
   writeEvents(clean, [
-    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--since", "6h")).out);
   assert.equal(cleanParsed.totals.mergeRuns, 1);
@@ -979,8 +979,8 @@ test("team day report breaks merge outcomes down by role, folding instances into
   // feature-2's destination event must aggregate under feature (the same base-role keying as
   // Commits by role); bufixes' merge_failed bounces off the gate under bugfix.
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature-2", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "feature-2", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = await runCli(root, "report", "--days", "2");
   assert.equal(md.code, 0);
@@ -1003,11 +1003,11 @@ test("team day report and --since break merge failures down by reason; scoped an
   // Two rejections and a conflict today, a result-less legacy event and a blocked ff
   // yesterday: the reason line ranks count desc then code asc.
   writeEvents(root, [
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "merge_failed", commit: "a1", summary: "x", result: "rejected" }),
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "merge_failed", commit: "a2", summary: "x", result: "rejected" }),
-    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "merge_failed", commit: "b1", summary: "y", result: "merge_conflict" }),
-    JSON.stringify({ ts: todayTs(), loop: "docs", type: "merge_failed", commit: "c1", summary: "z" }),
-    JSON.stringify({ ts: at(1), loop: "feature", type: "merge_failed", commit: "a3", summary: "x", result: "merge_blocked" }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "merge_failed", commit: "a1", summary: "x", result: "rejected" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "merge_failed", commit: "a2", summary: "x", result: "rejected" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "merge_failed", commit: "b1", summary: "y", result: "merge_conflict" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "docs", type: "merge_failed", commit: "c1", summary: "z" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(1), loop: "feature", type: "merge_failed", commit: "a3", summary: "x", result: "merge_blocked" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = await runCli(root, "report", "--days", "2");
   assert.equal(md.code, 0);
@@ -1034,7 +1034,7 @@ test("team day report and --since break merge failures down by reason; scoped an
 test("a merge-free report prints no Merge failures by reason line", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x" }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = await runCli(root, "report", "--days", "2");
   assert.equal(md.code, 0);
@@ -1046,7 +1046,7 @@ test("a merge-free report prints no Merge failures by reason line", async () => 
 test("team day report omits Merge failures by role when none fail; a merge-free window omits both", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = await runCli(root, "report", "--days", "2");
   assert.equal(md.code, 0);
@@ -1057,7 +1057,7 @@ test("team day report omits Merge failures by role when none fail; a merge-free 
 test("role-scoped day report omits the merge lines (merge runs are the merge slot's)", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = await runCli(root, "report", "--role", "feature", "--days", "2");
   assert.equal(md.code, 0);
@@ -1069,8 +1069,8 @@ test("role-scoped day report omits the merge lines (merge runs are the merge slo
 test("team report --since breaks merge outcomes by role and the scoped --since omits them; JSON carries the maps", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature-2", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: ago(4 * 60_000), loop: "bugfix", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature-2", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(4 * 60_000), loop: "bugfix", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = await runCli(root, "report", "--since", "6h");
   assert.equal(md.code, 0);
@@ -1090,11 +1090,11 @@ test("team report --since breaks merge outcomes by role and the scoped --since o
 test("team report tallies deferred maintenance runs by reason; scoped and deferral-free reports omit them", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: todayTs(5 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }),
-    JSON.stringify({ ts: todayTs(4 * 60_000), loop: "feature", type: "run_deferred", reason: "no-work" }),
-    JSON.stringify({ ts: todayTs(3 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }),
-    JSON.stringify({ ts: todayTs(2 * 60_000), loop: "feature", type: "run_deferred" }), // no reason: folds as no-work
-    JSON.stringify({ ts: todayTs(1 * 60_000), loop: "feature", type: "run_deferred", reason: "plans-full" }),
+    JSON.stringify({ ts: todayTs(5 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(4 * 60_000), loop: "feature", type: "run_deferred", reason: "no-work" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(3 * 60_000), loop: "feature", type: "run_deferred", reason: "backlog" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(2 * 60_000), loop: "feature", type: "run_deferred" }), // no reason: folds as no-work // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(1 * 60_000), loop: "feature", type: "run_deferred", reason: "plans-full" }), // retired-name-ok: legacy event field in a fixture
   ]);
   // The day report prints the tally beside the other per-role breakdowns (count desc, code
   // asc), and --since carries the same window map.
@@ -1121,7 +1121,7 @@ test("team report tallies deferred maintenance runs by reason; scoped and deferr
 
   // A deferral-free window prints no line and omits the field.
   const clean = makeRepo();
-  writeEvents(clean, [JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 })]);
+  writeEvents(clean, [JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 })]); // retired-name-ok: legacy event field in a fixture
   const cleanMd = await runCli(clean, "report", "--days", "3");
   assert.ok(!cleanMd.out.includes("**Deferred runs by reason:"), "no deferral prints no line");
   assert.ok(!("deferredByReason" in JSON.parse((await runCli(clean, "report", "--json", "--days", "3")).out).series[0]));
@@ -1134,7 +1134,7 @@ test("report --json omits mergedByRole/mergeFailedByRole when no role has either
 
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
   assert.deepEqual(parsed.series[parsed.series.length - 1].mergedByRole, { feature: 1 });
@@ -1142,7 +1142,7 @@ test("report --json omits mergedByRole/mergeFailedByRole when no role has either
   // fills mergedByRole, and a failure-free window's mergeFailedByRole stays empty.
   const sinceRoot = makeRepo();
   writeEvents(sinceRoot, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const since = JSON.parse((await runCli(sinceRoot, "report", "--json", "--since", "6h")).out);
   assert.deepEqual(since.mergedByRole, { feature: 1 });
@@ -1190,8 +1190,8 @@ test("renderReportMarkdown scopes a role report: role line, no backlog tail, sco
 test("tumwater report --role scopes the report, scopes --since/--json, and validates the flag", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 313, costUsd: 0.31 }),
-    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 42, costUsd: 0.04 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 313, costUsd: 0.31 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 42, costUsd: 0.04 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const scoped = await runCli(root, "report", "--role", "feature");
@@ -1291,9 +1291,9 @@ test("renderReportMarkdown prints notional spend by role and per commit only whe
 test("report --json carries fallbacksByRole on the day and --since report that have fallback episodes", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "model_fallback_started" }),
-    JSON.stringify({ ts: todayTs(), loop: "qa", type: "model_fallback_started" }),
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "model_fallback_started" }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "model_fallback_started" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "qa", type: "model_fallback_started" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "model_fallback_started" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = await runCli(root, "report", "--days", "1");
   assert.match(md.out, /\*\*Fallbacks by role:\*\* feature — 2 · qa — 1/);
@@ -1306,9 +1306,9 @@ test("report --json carries fallbacksByRole on the day and --since report that h
 test("report --json carries imageReroutesByRole on the day and --since report that have image reroutes", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "image_reroute", preflight: true }),
-    JSON.stringify({ ts: todayTs(), loop: "qa", type: "image_reroute", preflight: false }),
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "image_reroute", preflight: false }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "image_reroute", preflight: true }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "qa", type: "image_reroute", preflight: false }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "image_reroute", preflight: false }), // retired-name-ok: legacy event field in a fixture
   ]);
   const md = await runCli(root, "report", "--days", "1");
   assert.match(md.out, /\*\*Image reroutes by role:\*\* feature — 2 · qa — 1/);
@@ -1439,9 +1439,9 @@ test("renderReportMarkdown prints Check wait median for the days that carry one,
 test("report --role takes a comma list and sums the listed roles", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5 }),
-    JSON.stringify({ ts: ago(20 * 60_000), loop: "dedupe", type: "run_end", run: 1, result: "changed", tokens: 20, costUsd: 0.25 }),
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 40, costUsd: 1 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(20 * 60_000), loop: "dedupe", type: "run_end", run: 1, result: "changed", tokens: 20, costUsd: 0.25 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 40, costUsd: 1 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const day = JSON.parse((await runCli(root, "report", "--role", "clean,dedupe", "--json", "--days", "1")).out);
@@ -1465,9 +1465,9 @@ test("report --role takes a comma list and sums the listed roles", async () => {
 test("report --failures --role takes a comma list and scopes the digest to those roles", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 1, result: "error", tokens: 1 }),
-    JSON.stringify({ ts: ago(20 * 60_000), loop: "dedupe", type: "run_end", run: 1, result: "error", tokens: 1 }),
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 1 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 1, result: "error", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(20 * 60_000), loop: "dedupe", type: "run_end", run: 1, result: "error", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const out = await runCli(root, "report", "--failures", "--role", "clean,dedupe", "--json");
   assert.equal(out.code, 0);

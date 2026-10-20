@@ -94,13 +94,13 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
     name: "loop-to-source",
     apply(ev) {
       const e = ev as Record<string, unknown>;
-      if (typeof e.loop === "string") { // vocabulary-ok: legacy field name read from old logs
+      if (typeof e.loop === "string") { // vocabulary-ok: legacy field name read from old logs // retired-name-ok: legacy field, read permanently
         if (e.type === "claim" && e.source === "staged" && !("origin" in e)) {
           e.origin = e.source;
           delete e.source;
         }
-        e.source = e.loop; // vocabulary-ok: legacy field name read from old logs
-        delete e.loop; // vocabulary-ok: legacy field name read from old logs
+        e.source = e.loop; // vocabulary-ok: legacy field name read from old logs // retired-name-ok: legacy field, read permanently
+        delete e.loop; // vocabulary-ok: legacy field name read from old logs // retired-name-ok: legacy field, read permanently
       }
       if (e.source === "harness") e.source = TUMWATER_SOURCE; // vocabulary-ok: legacy event source read from old logs
     },

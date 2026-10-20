@@ -100,16 +100,16 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // merged event's `commit` field, exactly as writeMergeOutcome logs it. A gate-scope
   // check verifies a role worktree, not main — it never qualifies.
   writeEvents(repo, [
-    { ts: base, loop: "lander", type: "build_check", scope: "gate", status: "passed" },
+    { ts: base, loop: "lander", type: "build_check", scope: "gate", status: "passed" }, // retired-name-ok: legacy event field in a fixture
     {
       ts: base + 1000,
-      loop: "lander",
+      loop: "lander", // retired-name-ok: legacy event field in a fixture
       type: "build_check",
       scope: "merge",
       status: "passed",
       counts: { tests: 10, pass: 9, fail: 0, skipped: 1 },
     },
-    { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) },
+    { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) }, // retired-name-ok: legacy event field in a fixture
   ]);
   const mergeDone = snapshot(repo).mainCheck;
   assert.ok(mergeDone, "mainCheck present after a merge check");
@@ -129,9 +129,9 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // A newer baseline check with no merged event after it: the check ran ON main's tip, so the
   // sha is main's current head. A gate-scope check never displaces a merge-scope one.
   writeEvents(repo, [
-    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" },
-    { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) },
-    { ts: base + 5000, loop: "bugfix", type: "build_check", scope: "baseline", status: "failed" },
+    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) }, // retired-name-ok: legacy event field in a fixture
+    { ts: base + 5000, loop: "bugfix", type: "build_check", scope: "baseline", status: "failed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const baseline = snapshot(repo).mainCheck;
   assert.ok(baseline, "mainCheck present after a baseline check");
@@ -146,11 +146,11 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // inside it — every event after the check is newer, so one window holds the whole derivation.
   const busy = makeRepo();
   writeEvents(busy, [
-    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" },
-    { ts: base + 1000, loop: "lander", type: "merge_done", commit: "b".repeat(40) },
+    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: base + 1000, loop: "lander", type: "merge_done", commit: "b".repeat(40) }, // retired-name-ok: legacy event field in a fixture
     ...Array.from({ length: 300 }, (_, i) => ({
       ts: base + 2000 + i,
-      loop: "feature",
+      loop: "feature", // retired-name-ok: legacy event field in a fixture
       type: "wake",
       reason: "quiet tick filler",
     })),
@@ -164,11 +164,11 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // loss log rotation imposes) instead of scanning without end on every poll.
   const capped = makeRepo();
   writeEvents(capped, [
-    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" },
-    { ts: base + 1000, loop: "lander", type: "merge_done", commit: "c".repeat(40) },
+    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: base + 1000, loop: "lander", type: "merge_done", commit: "c".repeat(40) }, // retired-name-ok: legacy event field in a fixture
     ...Array.from({ length: 6_000 }, (_, i) => ({
       ts: base + 2000 + i,
-      loop: "feature",
+      loop: "feature", // retired-name-ok: legacy event field in a fixture
       type: "wake",
       reason: "over-cap filler",
     })),
@@ -184,7 +184,7 @@ test("a merge-scope check with a foreign status reads as no mainCheck", () => {
   const repo = makeRepo();
   const base = Date.now();
   writeEvents(repo, [
-    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "running" },
+    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "running" }, // retired-name-ok: legacy event field in a fixture
   ]);
   assert.equal(snapshot(repo).mainCheck, undefined, "a malformed status is dropped, not narrowed");
   const payload = statusPayload(repo) as { mainCheckBadge: string };
@@ -249,7 +249,7 @@ test("snapshot tolerates a foreign fallbackDemotions shape in orchestrator.json"
   assert.equal(snap!.running, true, "the running orchestrator still reads as running");
 });
 
-test("pausedLoops holds the role ids the scheduler treats as paused by the marker", async () => {
+test("pausedRunners holds the role ids the scheduler treats as paused by the marker", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
   const config = loadConfig(repo);
@@ -257,10 +257,10 @@ test("pausedLoops holds the role ids the scheduler treats as paused by the marke
   saveConfig(repo, config);
   fs.mkdirSync(path.dirname(pausedRolesPath(repo)), { recursive: true });
   fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: ["feature"], at: Date.now() }));
-  const whole = snapshot(repo).pausedLoops;
+  const whole = snapshot(repo).pausedRunners;
   assert.ok(whole.includes("feature") && whole.includes("feature-2"), "a whole-role pause holds every instance");
   fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: ["feature-1"], at: Date.now() }));
   const snap = snapshot(repo);
   assert.deepEqual(snap.pausedRoles, ["feature-1"]);
-  assert.deepEqual(snap.pausedLoops, ["feature"]);
+  assert.deepEqual(snap.pausedRunners, ["feature"]);
 });

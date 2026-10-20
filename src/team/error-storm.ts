@@ -22,7 +22,7 @@ import { ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 export const ERROR_STORM_ROLES = 3;
 
 /** One role's error streak as the orchestrator reads it from the runner's persisted state
- * (LoopState.consecutiveErrors/lastError — the same fields the per-role warning reads). */
+ * (RunnerState.consecutiveErrors/lastError — the same fields the per-role warning reads). */
 export interface ErrorStormObservation {
   role: string;
   /** The role's consecutive tick failures; 0 when it is healthy, and absent when a torn or

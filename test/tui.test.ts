@@ -290,9 +290,9 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
   // append is the controllable path): ticks across two roles on two days plus one merge.
   const eventsFile = path.join(repo, ".tumwater", "log", "events.jsonl");
   writeLogLines(eventsFile, [
-      JSON.stringify({ ts: atNoon(1), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
-      JSON.stringify({ ts: atNoon(0), loop: "clean", type: "run_end", run: 2, result: "no_change", tokens: 150 }),
-      JSON.stringify({ ts: atNoon(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
+      JSON.stringify({ ts: atNoon(1), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
+      JSON.stringify({ ts: atNoon(0), loop: "clean", type: "run_end", run: 2, result: "no_change", tokens: 150 }), // retired-name-ok: legacy event field in a fixture
+      JSON.stringify({ ts: atNoon(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }), // retired-name-ok: legacy event field in a fixture
     ]);
 
   await withTui(repo, async (tui) => {
@@ -543,7 +543,7 @@ test("PgUp/PgDn page the Activity feed back through the event tail and resume th
     repo,
     Array.from({ length: 60 }, (_, i) => ({
       ts: 1_700_000_000_000 + i * 60_000,
-      loop: "clean",
+      loop: "clean", // retired-name-ok: legacy event field in a fixture
       type: "run_start",
       run: i + 1,
     })),
@@ -580,9 +580,9 @@ test("Ctrl+G scopes the Activity feed and `/` searches it, narrowing what the pa
   // The repo's one enabled role is clean; seed a feature event too so a clean scope can be
   // seen to drop another role's event from the feed.
   writeEvents(repo, [
-    { ts: 1_700_000_000_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "widget landed" },
-    { ts: 1_700_000_060_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "gizmo swept" },
-    { ts: 1_700_000_120_000, loop: "clean", type: "run_end", run: 2, result: "no_change", summary: "tidy imports" },
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "widget landed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "gizmo swept" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_120_000, loop: "clean", type: "run_end", run: 2, result: "no_change", summary: "tidy imports" }, // retired-name-ok: legacy event field in a fixture
   ]);
 
   await withTui(repo, async (tui) => {

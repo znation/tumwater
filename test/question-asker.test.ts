@@ -7,7 +7,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { questionAsker } from "../src/backlog/question-answer.js";
 import { wakeQuestionAsker } from "../src/operator/operator-intent.js";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { wakeRequestPath } from "../src/paths.js";
 
 // Answering a question wakes the role named in the heading's `(asked by <role> …)` clause.
@@ -23,7 +23,7 @@ test("wakeQuestionAsker wakes a known asker and no one else", async () => {
   await initProject(repo, "question asker");
   const text = wakeQuestionAsker(repo, "Q? (asked by plan 2026-10-12)");
   assert.equal(typeof text, "string");
-  assert.ok((loadLoopState(repo, "plan").nextRunAt ?? 0) <= Date.now());
+  assert.ok((loadRunnerState(repo, "plan").nextRunAt ?? 0) <= Date.now());
   fs.rmSync(wakeRequestPath(repo), { force: true });
   assert.equal(wakeQuestionAsker(repo, "Q? (asked by nobody 2026-10-12)"), null);
   assert.equal(wakeQuestionAsker(repo, "Q? no clause"), null);

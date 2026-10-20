@@ -22,11 +22,11 @@ import { seededHistoryRepo } from "./fixtures/history-fixtures.js";
 function seedWindowedHistory(repo: string, now = Date.now()): void {
   const age = (ms: number) => now - ms;
   writeEvents(repo, [
-    { ts: age(2 * 86_400_000), loop: "feature", type: "run_end", run: 1, result: "changed", summary: "old work" },
-    { ts: age(50 * 60_000), loop: "clean", type: "run_start", run: 2 },
-    { ts: age(45 * 60_000), loop: "clean", type: "run_end", run: 2, result: "no_change", summary: "tidied" },
-    { ts: age(30 * 60_000), loop: "feature", type: "run_start", run: 3 },
-    { ts: age(10 * 60_000), loop: "feature", type: "run_end", run: 3, result: "changed", summary: "new work", tokens: 1200, costUsd: 0.01 },
+    { ts: age(2 * 86_400_000), loop: "feature", type: "run_end", run: 1, result: "changed", summary: "old work" }, // retired-name-ok: legacy event field in a fixture
+    { ts: age(50 * 60_000), loop: "clean", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: age(45 * 60_000), loop: "clean", type: "run_end", run: 2, result: "no_change", summary: "tidied" }, // retired-name-ok: legacy event field in a fixture
+    { ts: age(30 * 60_000), loop: "feature", type: "run_start", run: 3 }, // retired-name-ok: legacy event field in a fixture
+    { ts: age(10 * 60_000), loop: "feature", type: "run_end", run: 3, result: "changed", summary: "new work", tokens: 1200, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
   ]);
 }
 
@@ -87,8 +87,8 @@ test("history --since prints the hedged rotation note after the table, table mod
   // window's coverage (rotation or idleness — the hedged phrasing stays true either way).
   const now = Date.now();
   writeEvents(repo, [
-    { ts: now - 10 * 60_000, loop: "clean", type: "run_start", run: 1 },
-    { ts: now - 5 * 60_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "tidied" },
+    { ts: now - 10 * 60_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 5 * 60_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "tidied" }, // retired-name-ok: legacy event field in a fixture
   ]);
 
   const r = await cli(repo, "history", "--since", "1h");
@@ -163,7 +163,7 @@ test("history --grep treats a flag-shaped pattern as text, not a flag", async ()
   const repo = makeRepo();
   await initProject(repo, "cli history grep impersonation");
   writeEvents(repo, [
-    { ts: 1787222691956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "reverted --since handling" },
+    { ts: 1787222691956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "reverted --since handling" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const r = await cli(repo, "history", "--grep", "--since");
   assert.equal(r.code, 0);
@@ -309,8 +309,8 @@ test("--result refused gets its own class, so a deliberate refusal stops folding
   const repo = makeRepo();
   await initProject(repo, "cli history refused");
   writeEvents(repo, [
-    { ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "refused", summary: "declined" },
-    { ts: Date.now() - 30_000, loop: "bugfix", type: "run_end", run: 2, result: "error", error: "pi unreachable" },
+    { ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "refused", summary: "declined" }, // retired-name-ok: legacy event field in a fixture
+    { ts: Date.now() - 30_000, loop: "bugfix", type: "run_end", run: 2, result: "error", error: "pi unreachable" }, // retired-name-ok: legacy event field in a fixture
   ]);
 
   const refused = await cli(repo, "history", "--result", "refused");
@@ -455,11 +455,11 @@ test("history --role takes a comma list of role ids", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history role list");
   writeEvents(repo, [
-    { ts: 1787222691956, loop: "feature", type: "run_start", run: 7 },
-    { ts: 1787222695956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "added a widget" },
-    { ts: 1787222700000, loop: "clean", type: "run_end", run: 3, result: "no_change" },
-    { ts: 1787222760000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "pi unreachable" },
-    { ts: 1787222800000, loop: "feature", type: "run_end", run: 8, result: "no_change" },
+    { ts: 1787222691956, loop: "feature", type: "run_start", run: 7 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222695956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "added a widget" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222700000, loop: "clean", type: "run_end", run: 3, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222760000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "pi unreachable" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222800000, loop: "feature", type: "run_end", run: 8, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const roles = async (...a: string[]) => {
     const r = await cli(repo, "history", "--json", ...a);
@@ -506,13 +506,13 @@ test("history --summary --by model tallies runs per model", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history by model");
   writeEvents(repo, [
-    { ts: 1000, loop: "feature", type: "run_start", run: 1, model: "acme/m1" },
-    { ts: 2000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "w" },
-    { ts: 3000, loop: "clean", type: "run_start", run: 2, model: "acme/m2" },
-    { ts: 4000, loop: "clean", type: "run_end", run: 2, result: "no_change" },
-    { ts: 5000, loop: "feature", type: "run_start", run: 3, model: "acme/m1" },
-    { ts: 6000, loop: "feature", type: "run_end", run: 3, result: "no_change" },
-    { ts: 7000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "x" },
+    { ts: 1000, loop: "feature", type: "run_start", run: 1, model: "acme/m1" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 2000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "w" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 3000, loop: "clean", type: "run_start", run: 2, model: "acme/m2" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 4000, loop: "clean", type: "run_end", run: 2, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 5000, loop: "feature", type: "run_start", run: 3, model: "acme/m1" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 6000, loop: "feature", type: "run_end", run: 3, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 7000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "x" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const r = await cli(repo, "history", "--summary", "--by", "model");
   assert.equal(r.code, 0);
@@ -542,13 +542,13 @@ test("history --summary --by model tallies runs per model", async () => {
 
 function writeModelFixture(repo: string): void {
   writeEvents(repo, [
-    { ts: 1000, loop: "feature", type: "run_start", run: 1, model: "acme/m1" },
-    { ts: 2000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "w" },
-    { ts: 3000, loop: "clean", type: "run_start", run: 2, model: "acme/m2" },
-    { ts: 4000, loop: "clean", type: "run_end", run: 2, result: "no_change" },
-    { ts: 5000, loop: "feature", type: "run_start", run: 3, model: "acme/m1" },
-    { ts: 6000, loop: "feature", type: "run_end", run: 3, result: "no_change" },
-    { ts: 7000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "x" },
+    { ts: 1000, loop: "feature", type: "run_start", run: 1, model: "acme/m1" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 2000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "w" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 3000, loop: "clean", type: "run_start", run: 2, model: "acme/m2" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 4000, loop: "clean", type: "run_end", run: 2, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 5000, loop: "feature", type: "run_start", run: 3, model: "acme/m1" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 6000, loop: "feature", type: "run_end", run: 3, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 7000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "x" }, // retired-name-ok: legacy event field in a fixture
   ]);
 }
 
@@ -563,8 +563,8 @@ test("history --model keeps only the runs that started on the listed models", as
   assert.match(rows[0] ?? "", /feature\s+#?3\b/);
   assert.match(rows[1] ?? "", /feature\s+#?1\b/);
   const both = await cli(repo, "history", "--model", "acme/m1,acme/m2", "--json");
-  const parsed = JSON.parse(both.stdout) as { rows: Array<{ role?: string; loop?: string }> };
-  assert.deepEqual(parsed.rows.map((r) => r.role ?? r.loop), ["feature", "clean", "feature"]);
+  const parsed = JSON.parse(both.stdout) as { rows: Array<{ role?: string }> };
+  assert.deepEqual(parsed.rows.map((r) => r.role), ["feature", "clean", "feature"]);
   assert.equal((await cli(repo, "history", "--model", "acme/m1,acme/m1")).stdout, one.stdout);
   for (const sel of ["acme/M1", "m1"]) {
     const r = await cli(repo, "history", "--model", sel);

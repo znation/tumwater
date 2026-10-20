@@ -62,9 +62,6 @@ export function runnerEnabled(config: TumwaterConfig, id: string): boolean {
   return instanceIndex(id) <= runnerCount(config, baseRoleOf(id));
 }
 
-/** @deprecated Use runnerEnabled. */
-export const loopEnabled = runnerEnabled;
-
 /** Every runner id the config says should exist, in `config.roles` order: each enabled role's
  * bare id, then `<id>-2`…`<id>-M` for the `INSTANCE_ROLES` at their runner count
  * (runnerCount: twice the configured instances once there is more than one). Other roles and
@@ -83,9 +80,6 @@ export function runnerIds(config: TumwaterConfig): string[] {
   }
   return ids;
 }
-
-/** @deprecated Use runnerIds. */
-export const loopIds = runnerIds;
 
 /** The pause-marker key for a runner id. Instance 1's runner id is the bare role id, which as a
  * pause key would mean the whole role, so while the role runs several instances instance 1 pauses
@@ -106,5 +100,3 @@ export function runnerPaused(paused: ReadonlySet<string>, runnerId: string): boo
   );
 }
 
-/** @deprecated Use runnerPaused. */
-export const loopPaused = runnerPaused;

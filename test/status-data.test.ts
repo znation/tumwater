@@ -67,7 +67,7 @@ test("snapshot lists one row per role id for a multi-instance role (part 5b/7)",
   const config = loadConfig(repo);
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 2 };
   saveConfig(repo, config);
-  const ids = snapshot(repo).loops.map((l) => l.role);
+  const ids = snapshot(repo).roles.map((l) => l.role);
   assert.equal(ids.includes("feature"), true);
   assert.equal(ids.includes("feature-2"), true);
 });
@@ -98,32 +98,32 @@ test("snapshot survives a broken tumwater.json and recovers when it is fixed", a
   const repo = makeRepo();
   await initProject(repo, "test project");
   // Baseline: every catalog role but the opt-in selfcheck enabled by default.
-  assert.equal(snapshot(repo).loops.length, allRoleIds().length - 1);
+  assert.equal(snapshot(repo).roles.length, allRoleIds().length - 1);
 
   // A valid config that disables one role becomes the last known-good one.
   const cfg = loadConfig(repo);
   cfg.roles.dedupe!.enabled = false;
   saveConfig(repo, cfg);
   let snap = snapshot(repo);
-  assert.ok(!snap.loops.some((l) => l.role === "dedupe"));
+  assert.ok(!snap.roles.some((l) => l.role === "dedupe"));
 
   // The file breaks mid-edit (invalid JSON): observers must not throw.
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{ still editing");
   snap = snapshot(repo);
   // The last known-good role set is kept: dedupe stays hidden and nothing crashes.
-  assert.ok(!snap.loops.some((l) => l.role === "dedupe"));
+  assert.ok(!snap.roles.some((l) => l.role === "dedupe"));
 
   // A validation error (valid JSON, invalid value) is equally survivable.
   writeConfig(repo, { maxConcurrent: "six" });
-  assert.ok(snapshot(repo).loops.length > 0);
+  assert.ok(snapshot(repo).roles.length > 0);
 
   // Repair with a different valid config: the fresh load takes effect again.
   cfg.roles.dedupe!.enabled = true;
   cfg.roles.clean!.enabled = false;
   saveConfig(repo, cfg);
   snap = snapshot(repo);
-  assert.ok(snap.loops.some((l) => l.role === "dedupe"));
-  assert.ok(!snap.loops.some((l) => l.role === "clean"));
+  assert.ok(snap.roles.some((l) => l.role === "dedupe"));
+  assert.ok(!snap.roles.some((l) => l.role === "clean"));
 });
 
 test("snapshot serves unchanged runner state from the stat-keyed cache without re-reading", async () => {
@@ -132,16 +132,16 @@ test("snapshot serves unchanged runner state from the stat-keyed cache without r
   const state = freshRunnerState("clean");
   state.runs = 3;
   saveRunnerState(repo, state);
-  assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.runs, 3); // populates the cache
+  assert.equal(snapshot(repo).roles.find((l) => l.role === "clean")!.runs, 3); // populates the cache
 
   withCountedReads(
     (reads) => {
       const snap = snapshot(repo);
-      assert.equal(snap.loops.find((l) => l.role === "clean")!.runs, 3); // unchanged — served from cache
+      assert.equal(snap.roles.find((l) => l.role === "clean")!.runs, 3); // unchanged — served from cache
       assert.equal(reads(), 0); // no re-read of the state file at all
       // Each poll still gets its own objects: mutating one snapshot must not poison later ones.
-      snap.loops.find((l) => l.role === "clean")!.runs = 99;
-      assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.runs, 3);
+      snap.roles.find((l) => l.role === "clean")!.runs = 99;
+      assert.equal(snapshot(repo).roles.find((l) => l.role === "clean")!.runs, 3);
     },
     (file) => typeof file === "string" && file.endsWith(`${path.sep}state${path.sep}clean.json`),
   );
@@ -153,7 +153,7 @@ test("snapshot serves unchanged runner state from the stat-keyed cache without r
   bumped.runs = 4;
   saveRunnerState(repo, bumped);
   backdate(path.join(repo, ".tumwater", "state", "clean.json"), -5000);
-  assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.runs, 4);
+  assert.equal(snapshot(repo).roles.find((l) => l.role === "clean")!.runs, 4);
 });
 
 test("snapshot reads the orchestrator info file once per poll", async () => {
@@ -183,20 +183,20 @@ test("snapshot reads the orchestrator info file once per poll", async () => {
 test("snapshot rows carry the custom flag matching the config", async () => {
   const repo = makeRepo();
   await initProject(repo, "custom flag test");
-  assert.ok(snapshot(repo).loops.every((l) => !l.custom), "built-ins unmarked by default");
+  assert.ok(snapshot(repo).roles.every((l) => !l.custom), "built-ins unmarked by default");
 
   const cfg = loadConfig(repo);
   cfg.customRoles.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
   let snap = snapshot(repo);
-  assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom), "listed custom is marked");
+  assert.ok(snap.roles.some((l) => l.role === "nightly" && l.custom), "listed custom is marked");
   assert.ok(
-    snap.loops.filter((l) => !l.custom).length >= allRoleIds().length - 1,
+    snap.roles.filter((l) => !l.custom).length >= allRoleIds().length - 1,
     "every enabled built-in stays unmarked",
   );
 
   // The file breaks mid-edit: the last known-good config keeps marking the custom.
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{ still editing");
   snap = snapshot(repo);
-  assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom), "broken file keeps last-known-good customs");
+  assert.ok(snap.roles.some((l) => l.role === "nightly" && l.custom), "broken file keeps last-known-good customs");
 });

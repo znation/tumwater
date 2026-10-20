@@ -421,12 +421,12 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
 
 test("claude_window_limited with tiers says the work moves; budget_handback reason window names the window", () => {
   const moved = formatEvent({
-    ts: 0, loop: "harness", type: "claude_window_limited", windowType: "five_hour",
+    ts: 0, loop: "harness", type: "claude_window_limited", windowType: "five_hour", // retired-name-ok: legacy event field in a fixture
     tiers: { default: "free/qwen-free", strong: "free/qwen-free" },
   } as never);
   assert.match(moved, /claude model jobs move to /);
   assert.match(moved, /free\/qwen-free/);
-  const back = formatEvent({ ts: 0, loop: "harness", type: "budget_handback", roles: ["feature"], reason: "window" } as never);
+  const back = formatEvent({ ts: 0, loop: "harness", type: "budget_handback", roles: ["feature"], reason: "window" } as never); // retired-name-ok: legacy event field in a fixture
   assert.match(back, /claude subscription window reset/);
 });
 

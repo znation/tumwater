@@ -15,7 +15,7 @@ import { runCli } from "./helpers/cli-harness.js";
 test("collectFailureReport memoizes an unchanged log and re-reads a changed one", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const first = collectFailureReport(root, 1);
   const second = collectFailureReport(root, 1);
@@ -23,8 +23,8 @@ test("collectFailureReport memoizes an unchanged log and re-reads a changed one"
   // A changed log — the append below grows the file, changing its identity — must re-derive
   // rather than serve the memo.
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
-    { ts: at(0), loop: "bugfix", type: "run_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const third = collectFailureReport(root, 1);
   assert.notEqual(third, first, "a changed log re-derives the digest");
@@ -34,11 +34,11 @@ test("collectFailureReport memoizes an unchanged log and re-reads a changed one"
 test("collectFailureReport tallies run_end results per role", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
-    { ts: at(0), loop: "bugfix", type: "run_end", result: "no_change" },
-    { ts: at(0), loop: "", type: "run_end", result: "queued" }, // empty loop id → "?"
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "", type: "run_end", result: "queued" }, // empty loop id → "?" // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   assert.equal(data.runs, 5);
@@ -57,8 +57,8 @@ test("equal-total roles tie in ascending key order in the outcome and time-spend
   // into reverse-alphabetical order).
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "zed", type: "run_end", result: "changed" },
-    { ts: at(0), loop: "alpha", type: "run_end", result: "no_change" },
+    { ts: at(0), loop: "zed", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "alpha", type: "run_end", result: "no_change" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   assert.deepEqual(
@@ -76,14 +76,14 @@ test("equal-total roles tie in ascending key order in the outcome and time-spend
 test("a main_red tick's cause is clustered with the run errors, not left a bare count", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "organize", type: "run_end", result: "main_red",
+    { ts: at(0), loop: "organize", type: "run_end", result: "main_red", // retired-name-ok: legacy event field in a fixture
       error: "main abc1234 is red (test: boom) — authoring skipped until main is green" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
     // A cause-less main_red still itemizes, under a placeholder: the section's selection
     // predicate is the Outcome table's own (raw result), so a run_end counted above can never
     // vanish from the one section built to itemize it (BUGS.md 2026-09-30).
-    { ts: at(0), loop: "improve", type: "run_end", result: "main_red" },
-    { ts: at(0), loop: "qa", type: "run_end", result: "error", error: "" },
+    { ts: at(0), loop: "improve", type: "run_end", result: "main_red" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "qa", type: "run_end", result: "error", error: "" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   assert.equal(data.errors.total, 4, "the error column plus every main_red cell, caused or not");
@@ -119,11 +119,11 @@ test("a main_red tick's cause is clustered with the run errors, not left a bare 
 test("error strings differing only in volatile parts cluster; exit codes stay distinct", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "ENOENT /Users/a/one.ts deadbeef0" },
-    { ts: at(0), loop: "bugfix", type: "run_end", result: "error", error: "ENOENT /Users/b/two.ts cafebabe1" },
-    { ts: at(0), loop: "clean", type: "run_end", result: "error", error: "ENOENT /Users/c/three.ts 1234567" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited 1" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "ENOENT /Users/a/one.ts deadbeef0" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "error", error: "ENOENT /Users/b/two.ts cafebabe1" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "clean", type: "run_end", result: "error", error: "ENOENT /Users/c/three.ts 1234567" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited 1" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited null" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   assert.equal(data.errors.clusters.length, 3);
@@ -140,10 +140,10 @@ test("error strings differing only in volatile parts cluster; exit codes stay di
 test("review rejections cluster on (role, reasons[0]), not role alone", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "review_rejected", head: "a".repeat(40), reasons: ["too big"] },
-    { ts: at(0), loop: "feature", type: "review_rejected", head: "b".repeat(40), reasons: ["half done"] },
-    { ts: at(0), loop: "feature", type: "review_rejected", head: "c".repeat(40), reasons: ["too big"] },
-    { ts: at(0), loop: "bugfix", type: "review_rejected", head: "d".repeat(40), reasons: [] },
+    { ts: at(0), loop: "feature", type: "review_rejected", head: "a".repeat(40), reasons: ["too big"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "review_rejected", head: "b".repeat(40), reasons: ["half done"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "review_rejected", head: "c".repeat(40), reasons: ["too big"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "review_rejected", head: "d".repeat(40), reasons: [] }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const find = (role: string, example: string) =>
@@ -160,13 +160,13 @@ test("run errors cluster only on error-result ticks; merge review failures get t
     // A tick that did NOT end as an error but carries a stale `lastError` — the merge slot
     // wrote the shared slot during leftover recovery. It must not be counted as a tick error
     // (BUGS.md 2026-09-21).
-    { ts: at(0), loop: "clean", type: "run_end", result: "no_change", error: 'review failed: 429 "Rate limit exceeded"' },
-    { ts: at(0), loop: "dedupe", type: "run_end", result: "queued", error: 'review failed: 429 "Rate limit exceeded"' },
+    { ts: at(0), loop: "clean", type: "run_end", result: "no_change", error: 'review failed: 429 "Rate limit exceeded"' }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "dedupe", type: "run_end", result: "queued", error: 'review failed: 429 "Rate limit exceeded"' }, // retired-name-ok: legacy event field in a fixture
     // The merge failure itself is surfaced from its own event.
-    { ts: at(0), loop: "clean", type: "review_failed", head: "a".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
-    { ts: at(0), loop: "dedupe", type: "review_failed", head: "b".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
+    { ts: at(0), loop: "clean", type: "review_failed", head: "a".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "dedupe", type: "review_failed", head: "b".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" }, // retired-name-ok: legacy event field in a fixture
     // A real tick error still clusters.
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const errorTotal = data.outcomes.reduce((n, o) => n + (o.counts.error ?? 0), 0);
@@ -190,7 +190,7 @@ test("run errors cluster only on error-result ticks; merge review failures get t
 
 test("a window longer than the retained log is reported as partial", () => {
   const root = tmpdir();
-  writeEvents(root, [{ ts: at(2), loop: "feature", type: "run_end", result: "error", error: "boom" }]);
+  writeEvents(root, [{ ts: at(2), loop: "feature", type: "run_end", result: "error", error: "boom" }]); // retired-name-ok: legacy event field in a fixture
   const data = collectFailureReport(root, 5);
   assert.equal(data.partial, true);
   assert.equal(data.emptyLog, false);
@@ -205,8 +205,8 @@ test("a prior window the retained log cannot prove is reported as partial too �
   // silently presenting skewed deltas as a real trend.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(5), loop: "feature", type: "run_end", result: "error", error: "boom" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
+    { ts: at(5), loop: "feature", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 5);
   assert.equal(data.partial, true, "the oldest retained event does not predate the read window's start");
@@ -216,7 +216,7 @@ test("a prior window the retained log cannot prove is reported as partial too �
 
 test("a log retaining only events outside the read span says so, not 'no events retained'", () => {
   const root = tmpdir();
-  writeEvents(root, [{ ts: at(30), loop: "feature", type: "run_end", result: "changed" }]);
+  writeEvents(root, [{ ts: at(30), loop: "feature", type: "run_end", result: "changed" }]); // retired-name-ok: legacy event field in a fixture
   const data = collectFailureReport(root, 5);
   assert.equal(data.hasEvents, false);
   assert.equal(data.emptyLog, false);
@@ -265,7 +265,7 @@ test("a readable archive does not mask an unreadable live log", () => {
   fs.rmSync(live, { recursive: true, force: true });
   fs.mkdirSync(live, { recursive: true }); // a directory at the live log path
   writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl.1"), [
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 5);
   assert.equal(data.logState, "unreadable");
@@ -299,19 +299,19 @@ test("every digest table's separator has one delimiter cell per header cell", ()
   // One result column (the join has nothing to separate, so the defect cannot show), one role
   // across several results, and several roles across several results — the shape the
   // 2026-09-21 digest broke on.
-  const fixtures: Record<string, { loop: string; result: string }[]> = {
-    "one role, one result": [{ loop: "feature", result: "changed" }],
+  const fixtures: Record<string, { loop: string; result: string }[]> = { // retired-name-ok: legacy event field in a fixture
+    "one role, one result": [{ loop: "feature", result: "changed" }], // retired-name-ok: legacy event field in a fixture
     "one role, several results": [
-      { loop: "feature", result: "changed" },
-      { loop: "feature", result: "no_change" },
-      { loop: "feature", result: "error" },
+      { loop: "feature", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+      { loop: "feature", result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+      { loop: "feature", result: "error" }, // retired-name-ok: legacy event field in a fixture
     ],
     "several roles, several results": [
-      { loop: "feature", result: "changed" },
-      { loop: "bugfix", result: "no_change" },
-      { loop: "bugfix", result: "rejected" },
-      { loop: "clean", result: "quiet_killed" },
-      { loop: "qa", result: "error" },
+      { loop: "feature", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+      { loop: "bugfix", result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+      { loop: "bugfix", result: "rejected" }, // retired-name-ok: legacy event field in a fixture
+      { loop: "clean", result: "quiet_killed" }, // retired-name-ok: legacy event field in a fixture
+      { loop: "qa", result: "error" }, // retired-name-ok: legacy event field in a fixture
     ],
   };
   for (const [name, ticks] of Object.entries(fixtures)) {
@@ -338,9 +338,9 @@ test("every digest table's separator has one delimiter cell per header cell", ()
 test("deltas report new roles as absent, not an infinite increase", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "error" },
-    { ts: at(1), loop: "bugfix", type: "run_end", result: "no_change" },
-    { ts: at(1), loop: "bugfix", type: "run_end", result: "no_change" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(1), loop: "bugfix", type: "run_end", result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(1), loop: "bugfix", type: "run_end", result: "no_change" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.deltas.find((d) => d.role === "feature");
@@ -362,18 +362,18 @@ test("deltas count quiet kills and rejections per role, both windows", () => {
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
     // Preceding window (yesterday): feature had a quiet kill, a rejection, an error, a pass.
-    { ts: at(1), loop: "feature", type: "run_end", result: "quiet_killed" },
-    { ts: at(1), loop: "feature", type: "run_end", result: "queued" },
-    { ts: at(1), loop: "feature", type: "review_rejected", head: head("a"), reasons: ["too big"] },
-    { ts: at(1), loop: "feature", type: "run_end", result: "error" },
-    { ts: at(1), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(1), loop: "feature", type: "run_end", result: "quiet_killed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(1), loop: "feature", type: "run_end", result: "queued" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(1), loop: "feature", type: "review_rejected", head: head("a"), reasons: ["too big"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(1), loop: "feature", type: "run_end", result: "error" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(1), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
     // Current window (today): feature again, and bugfix appears for the first time.
-    { ts: at(0), loop: "feature", type: "run_end", result: "quiet_killed" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "queued" },
-    { ts: at(0), loop: "feature", type: "review_rejected", head: head("b"), reasons: ["too big"] },
-    { ts: at(0), loop: "bugfix", type: "run_end", result: "quiet_killed" },
-    { ts: at(0), loop: "bugfix", type: "run_end", result: "queued" },
-    { ts: at(0), loop: "bugfix", type: "review_rejected", head: head("c"), reasons: ["too big"] },
+    { ts: at(0), loop: "feature", type: "run_end", result: "quiet_killed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "queued" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "review_rejected", head: head("b"), reasons: ["too big"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "quiet_killed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "queued" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "review_rejected", head: head("c"), reasons: ["too big"] }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
 
@@ -407,10 +407,10 @@ test("a nonzero error rate never rounds to 0%, and a partial rate never to 100%"
   // 399 errors in 400 ticks is 99.75%, which rounds to "100%". Those two keep one decimal.
   const root = tmpdir();
   const events: object[] = [];
-  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "feature", type: "run_end", result: "changed" });
-  events.push({ ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" });
-  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "bugfix", type: "run_end", result: "error", error: "boom" });
-  events.push({ ts: at(0), loop: "bugfix", type: "run_end", result: "changed" });
+  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "feature", type: "run_end", result: "changed" }); // retired-name-ok: legacy event field in a fixture
+  events.push({ ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" }); // retired-name-ok: legacy event field in a fixture
+  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "bugfix", type: "run_end", result: "error", error: "boom" }); // retired-name-ok: legacy event field in a fixture
+  events.push({ ts: at(0), loop: "bugfix", type: "run_end", result: "changed" }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, events);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   assert.match(md, /\| feature \| — → 400 \| — → 0\.3% \|/);
@@ -425,8 +425,8 @@ test("the top-N cluster sections mark their cut: remainder line, no silent trunc
   const events: object[] = [];
   const roles = ["bugfix", "coverage", "dedupe", "feature", "perf", "qa", "selfcheck"];
   roles.forEach((role, i) => {
-    events.push({ ts: at(0), loop: role, type: "review_rejected", head: String(i).padStart(40, String(i)), reasons: [`reject ${role}`] });
-    events.push({ ts: at(0), loop: role, type: "run_end", result: "queued" });
+    events.push({ ts: at(0), loop: role, type: "review_rejected", head: String(i).padStart(40, String(i)), reasons: [`reject ${role}`] }); // retired-name-ok: legacy event field in a fixture
+    events.push({ ts: at(0), loop: role, type: "run_end", result: "queued" }); // retired-name-ok: legacy event field in a fixture
   });
   writeEvents(root, events);
   const data = collectFailureReport(root, 1);
@@ -445,7 +445,7 @@ test("the top-N cluster sections mark their cut: remainder line, no silent trunc
   assert.match(md, /_\+2 more clusters holding 2 rejections_/);
   // The review-failure section shares the mechanism.
   for (const role of roles.slice(0, 7)) {
-    events.push({ ts: at(0), loop: role, type: "review_failed", head: "f".repeat(40), message: `verdict garbled ${role}` });
+    events.push({ ts: at(0), loop: role, type: "review_failed", head: "f".repeat(40), message: `verdict garbled ${role}` }); // retired-name-ok: legacy event field in a fixture
   }
   writeEvents(root, events);
   const data2 = collectFailureReport(root, 1);
@@ -462,8 +462,8 @@ test("the rejection remainder cross-checks the Deltas column even for reasons-le
   // that gap: K = the Deltas total minus what is itemized.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "review_rejected", head: "a".repeat(40), reasons: ["too big"] },
-    { ts: at(0), loop: "qa", type: "review_rejected", head: "b".repeat(40) }, // no reasons field at all
+    { ts: at(0), loop: "feature", type: "review_rejected", head: "a".repeat(40), reasons: ["too big"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "qa", type: "review_rejected", head: "b".repeat(40) }, // no reasons field at all // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   assert.equal(data.rejections.total, 2, "the section's total matches the Deltas column");
@@ -480,32 +480,32 @@ test("the digest renders under 8 KB however bad the window was", () => {
     for (let i = 0; i < 40; i++) {
       lines.push({
         ts: at(0),
-        loop: role,
+        loop: role, // retired-name-ok: legacy event field in a fixture
         type: "run_end",
         result: i % 3 === 0 ? "error" : "changed",
         error: i % 3 === 0 ? `boom ${i} at /Users/a/very/deep/path/file${i}.ts sha${i.toString(16).padStart(8, "0")}` : undefined,
       });
     }
     for (let i = 0; i < 10; i++) {
-      lines.push({ ts: at(0), loop: role, type: "warning", message: `warning ${i} on ${role} at /Users/a/b/c${i}.ts` });
-      lines.push({ ts: at(0), loop: role, type: "review_rejected", reasons: [`reason ${i} for ${role}`] });
+      lines.push({ ts: at(0), loop: role, type: "warning", message: `warning ${i} on ${role} at /Users/a/b/c${i}.ts` }); // retired-name-ok: legacy event field in a fixture
+      lines.push({ ts: at(0), loop: role, type: "review_rejected", reasons: [`reason ${i} for ${role}`] }); // retired-name-ok: legacy event field in a fixture
     }
     for (let i = 0; i < 3; i++) {
-      lines.push({ ts: at(0), loop: role, type: "merge_failed", result: i % 2 ? "merge_conflict" : "merge_blocked" });
+      lines.push({ ts: at(0), loop: role, type: "merge_failed", result: i % 2 ? "merge_conflict" : "merge_blocked" }); // retired-name-ok: legacy event field in a fixture
     }
     for (let i = 0; i < 5; i++) {
-      lines.push({ ts: at(0), loop: role, type: "merged", commit: i.toString(16).padStart(40, "0"), summary: `land ${i} `.repeat(20) });
+      lines.push({ ts: at(0), loop: role, type: "merged", commit: i.toString(16).padStart(40, "0"), summary: `land ${i} `.repeat(20) }); // retired-name-ok: legacy event field in a fixture
     }
   }
   // Transition events must not grow the digest with the window either. These include the shapes
   // that broke the section when it capped only line count: a 40-char role id and a
   // config_changed whose keys array and key strings are effectively unbounded.
   for (let i = 0; i < 20; i++) {
-    lines.push({ ts: at(0), loop: `role${i}`, type: "run_deferred" });
+    lines.push({ ts: at(0), loop: `role${i}`, type: "run_deferred" }); // retired-name-ok: legacy event field in a fixture
   }
-  lines.push({ ts: at(0), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3.8-27B-MLX-oQ4e-mtp" });
-  lines.push({ ts: at(0), loop: "harness", type: "build_stale", build: "b".repeat(40), head: "c".repeat(40), aheadCommits: 12 });
-  lines.push({ ts: at(0), loop: "h".repeat(40), type: "config_changed", keys: Array.from({ length: 200 }, (_, i) => `a.very.deeply.nested.configuration.key.number.${i}`) });
+  lines.push({ ts: at(0), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3.8-27B-MLX-oQ4e-mtp" }); // retired-name-ok: legacy event field in a fixture
+  lines.push({ ts: at(0), loop: "harness", type: "build_stale", build: "b".repeat(40), head: "c".repeat(40), aheadCommits: 12 }); // retired-name-ok: legacy event field in a fixture
+  lines.push({ ts: at(0), loop: "h".repeat(40), type: "config_changed", keys: Array.from({ length: 200 }, (_, i) => `a.very.deeply.nested.configuration.key.number.${i}`) }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, lines);
   const md = renderFailureMarkdown(collectFailureReport(root, 14));
   // 8 KB: the 6 KB the digest bounded at before, plus the time-and-spend section's worst
@@ -518,9 +518,9 @@ test("the digest renders under 8 KB however bad the window was", () => {
 test("the digest replays harness decisions so a wrong response is visible", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 12), loop: "feature", type: "run_end", result: "error", error: "oMLX prefill memory guard rejected this prompt" },
-    { ts: at(0, 13), loop: "harness", type: "team_paused" },
-    { ts: at(0, 23), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3-32B" },
+    { ts: at(0, 12), loop: "feature", type: "run_end", result: "error", error: "oMLX prefill memory guard rejected this prompt" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 13), loop: "harness", type: "team_paused" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 23), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3-32B" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   assert.match(md, /## Team state changes/);
@@ -541,9 +541,9 @@ test("the digest replays a failure-caused role pause and a model fallback", () =
   // never the harness's response to them.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 12), loop: "docs", type: "run_end", result: "error", error: "boom" },
-    { ts: at(0, 13), loop: "harness", type: "role_streak_paused", role: "docs", streak: 10 },
-    { ts: at(0, 14), loop: "feature", type: "model_fallback_started", provider: "groq", model: "llama-3-free", reason: "rate limit" },
+    { ts: at(0, 12), loop: "docs", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 13), loop: "harness", type: "role_streak_paused", role: "docs", streak: 10 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 14), loop: "feature", type: "model_fallback_started", provider: "groq", model: "llama-3-free", reason: "rate limit" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   const section = md.slice(md.indexOf("## Team state changes"), md.indexOf("## Outcome by role"));
@@ -557,7 +557,7 @@ test("the digest replays a failure-caused role pause and a model fallback", () =
 
 test("the digest omits the state changes section when the window held none", () => {
   const root = tmpdir();
-  writeEvents(root, [{ ts: at(0), loop: "feature", type: "run_end", result: "changed" }]);
+  writeEvents(root, [{ ts: at(0), loop: "feature", type: "run_end", result: "changed" }]); // retired-name-ok: legacy event field in a fixture
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   assert.doesNotMatch(md, /## Team state changes/);
 });
@@ -568,10 +568,10 @@ test("a state changes section over the newest-6 cap names its remainder instead 
   // declared hidden, not silently amputated.
   const events = Array.from({ length: 9 }, (_, i) => ({
     ts: at(0, 10 + i),
-    loop: "harness",
+    loop: "harness", // retired-name-ok: legacy event field in a fixture
     type: "run_deferred",
   }));
-  writeEvents(root, [{ ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" }, ...events]);
+  writeEvents(root, [{ ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" }, ...events]); // retired-name-ok: legacy event field in a fixture
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   const section = md.slice(md.indexOf("## Team state changes"), md.indexOf("## Outcome by role"));
   assert.match(section, /\+3 older transitions hidden/);
@@ -592,7 +592,7 @@ test("a merged list over the newest-10 cap names its remainder instead of readin
   // older ones were cut — a busy window must not read as a 10-merge day (BUGS.md 2026-09-23).
   const merges = Array.from({ length: 12 }, (_, i) => ({
     ts: at(0, 8 + i),
-    loop: "feature",
+    loop: "feature", // retired-name-ok: legacy event field in a fixture
     type: "merged",
     commit: `${String(i).padStart(2, "0")}${"a".repeat(38)}`,
     summary: `change ${i}`,
@@ -678,7 +678,7 @@ test("each harness state transition renders its own bounded line", () => {
   ];
   for (const [ev, expected] of cases) {
     const root = tmpdir();
-    writeEvents(root, [{ ts: at(0), loop: "harness", ...ev }]);
+    writeEvents(root, [{ ts: at(0), loop: "harness", ...ev }]); // retired-name-ok: legacy event field in a fixture
     const md = renderFailureMarkdown(collectFailureReport(root, 1));
     assert.ok(md.includes(expected), `${String(ev.type)}: expected ${JSON.stringify(expected)} in:\n${md}`);
   }
@@ -687,9 +687,9 @@ test("each harness state transition renders its own bounded line", () => {
 test("tumwater report --failures prints the digest and shares the --days bound", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "merged", commit: "abc1234", summary: "land a thing" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited null" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "merged", commit: "abc1234", summary: "land a thing" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const ok = await runCli(root, "report", "--failures");
   assert.equal(ok.code, 0);
@@ -711,7 +711,7 @@ test("tumwater report --failures prints the digest and shares the --days bound",
 test("report --failures --json prints the digest's collected data", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", run: 1, result: "error", error: "pi exited null", durationMs: 5_000, costUsd: 0.02 },
+    { ts: at(0), loop: "feature", type: "run_end", run: 1, result: "error", error: "pi exited null", durationMs: 5_000, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const ok = await runCli(root, "report", "--failures", "--json");
   assert.equal(ok.code, 0);
@@ -724,7 +724,7 @@ test("report --failures --json prints the digest's collected data", async () => 
 test("the digest's JSON carries no retired key at any depth", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", durationMs: 5_000, costUsd: 0.02 },
+    { ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", durationMs: 5_000, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--failures", "--json")).out) as unknown;
   const keys = new Set<string>();
@@ -748,8 +748,8 @@ test("collectFailureReportSince counts only the trailing window and compares the
   const root = tmpdir();
   // Append-only, chronological: seed oldest first, like every log the harness writes.
   writeEvents(root, [
-    { ts: ago(8 * HOUR), loop: "feature", type: "run_end", result: "error", error: "prior failure" },
-    { ts: ago(1 * HOUR), loop: "feature", type: "run_end", result: "error", error: "recent failure" },
+    { ts: ago(8 * HOUR), loop: "feature", type: "run_end", result: "error", error: "prior failure" }, // retired-name-ok: legacy event field in a fixture
+    { ts: ago(1 * HOUR), loop: "feature", type: "run_end", result: "error", error: "recent failure" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReportSince(root, 6 * HOUR);
   assert.equal(data.sinceMs, 6 * HOUR);
@@ -786,7 +786,7 @@ test("an empty since window ignores earlier same-day events outside both windows
   // read (readWindowEvents) reaches it while it lies in neither the current window nor the equal
   // prior window. It must not count as "the window held events" and suppress the empty line.
   writeEvents(root, [
-    { ts: ago(12 * HOUR + 60_000), loop: "feature", type: "run_end", result: "changed" },
+    { ts: ago(12 * HOUR + 60_000), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReportSince(root, 6 * HOUR);
   assert.equal(data.runs, 0);
@@ -801,7 +801,7 @@ test("an empty since window ignores earlier same-day events outside both windows
 test("tumwater report --failures --since prints the windowed digest and validates its flags", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: ago(1 * HOUR), loop: "feature", type: "run_end", result: "error", error: "recent failure" },
+    { ts: ago(1 * HOUR), loop: "feature", type: "run_end", result: "error", error: "recent failure" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const ok = await runCli(root, "report", "--failures", "--since", "6h");
   assert.equal(ok.code, 0);
@@ -848,7 +848,7 @@ test("the loss-cause ranking's top-5 cut discloses its remainder, like every oth
   writeEvents(root, [
     ...["a", "b", "c", "d", "e", "f", "g"].map((m, i) => ({
       ts: at(0),
-      loop: `role${i}`,
+      loop: `role${i}`, // retired-name-ok: legacy event field in a fixture
       type: "run_end",
       result: "error",
       error: `failure ${m}`,
@@ -865,11 +865,11 @@ test("the loss-cause ranking's top-5 cut discloses its remainder, like every oth
 test("the digest reports per-role prompt-token medians and the pre-edit share", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed", promptTokens: 100, preEditPromptTokens: 40 },
-    { ts: at(0), loop: "feature", type: "run_end", result: "no_change", promptTokens: 300, preEditPromptTokens: 20 },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed", promptTokens: 100, preEditPromptTokens: 40 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "no_change", promptTokens: 300, preEditPromptTokens: 20 }, // retired-name-ok: legacy event field in a fixture
     // A tick without the prompt-token fields contributes nothing and does not zero the median.
-    { ts: at(0), loop: "feature", type: "run_end", result: "queued" },
-    { ts: at(0), loop: "bugfix", type: "run_end", result: "changed", promptTokens: 50, cacheReadTokens: 40, preEditPromptTokens: 50 },
+    { ts: at(0), loop: "feature", type: "run_end", result: "queued" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "changed", promptTokens: 50, cacheReadTokens: 40, preEditPromptTokens: 50 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.promptStats.find((r) => r.role === "feature");
@@ -902,7 +902,7 @@ test("a non-finite prompt-token reading contributes nothing, not Infinity", () =
 test("a log without prompt-token fields renders no prompt section", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed", tokens: 500 },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed", tokens: 500 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   assert.deepEqual(data.promptStats, []);
@@ -912,18 +912,18 @@ test("a log without prompt-token fields renders no prompt section", () => {
 test("collectFailureReport scopes every section to one base role", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" },
-    { ts: at(0, 9), loop: "qa", type: "run_end", result: "error", error: "qa boom" },
-    { ts: at(0, 10), loop: "feature", type: "warning", message: "feature warn" },
-    { ts: at(0, 10), loop: "qa", type: "warning", message: "qa warn" },
-    { ts: at(0, 11), loop: "feature", type: "review_rejected", reasons: ["feature rejection"] },
-    { ts: at(0, 11), loop: "qa", type: "review_rejected", reasons: ["qa rejection"] },
-    { ts: at(0, 12), loop: "feature", type: "merged", commit: "aaaaaaa", summary: "land feature" },
-    { ts: at(0, 12), loop: "qa", type: "merged", commit: "bbbbbbb", summary: "land qa" },
+    { ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 9), loop: "qa", type: "run_end", result: "error", error: "qa boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "feature", type: "warning", message: "feature warn" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "qa", type: "warning", message: "qa warn" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 11), loop: "feature", type: "review_rejected", reasons: ["feature rejection"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 11), loop: "qa", type: "review_rejected", reasons: ["qa rejection"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "feature", type: "merged", commit: "aaaaaaa", summary: "land feature" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "qa", type: "merged", commit: "bbbbbbb", summary: "land qa" }, // retired-name-ok: legacy event field in a fixture
     // The role-scoped harness transitions log with source "harness" and name the affected role:
     // a scoped digest keeps the named role's and drops the other's.
-    { ts: at(0, 13), loop: "harness", type: "role_streak_paused", role: "qa", streak: 3 },
-    { ts: at(0, 13), loop: "harness", type: "role_cap_paused", role: "feature", spentUsd: 1.5, capUsd: 1.5 },
+    { ts: at(0, 13), loop: "harness", type: "role_streak_paused", role: "qa", streak: 3 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 13), loop: "harness", type: "role_cap_paused", role: "feature", spentUsd: 1.5, capUsd: 1.5 }, // retired-name-ok: legacy event field in a fixture
   ]);
 
   const team = collectFailureReport(root, 1);
@@ -959,9 +959,9 @@ test("collectFailureReport scopes every section to one base role", () => {
 test("a scoped digest folds an instance id into its base role group", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" },
-    { ts: at(0, 9), loop: "feature-2", type: "run_end", result: "error", error: "sibling boom" },
-    { ts: at(0, 9), loop: "qa", type: "run_end", result: "changed" },
+    { ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 9), loop: "feature-2", type: "run_end", result: "error", error: "sibling boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 9), loop: "qa", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1, "feature-2");
   assert.equal(data.role, "feature");
@@ -975,8 +975,8 @@ test("a scoped digest for a role with no events reports the empty window", () =>
   // A pre-window event proves the log's coverage so the empty line is "no events in the last
   // …" rather than the empty-log wording.
   writeEvents(root, [
-    { ts: at(10), loop: "feature", type: "run_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(10), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1, "qa");
   assert.equal(data.role, "qa");
@@ -991,8 +991,8 @@ test("a scoped digest for a role with no events reports the empty window", () =>
 test("a scoped partial window names the log's retention date, not the role's own first event", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(5), loop: "feature", type: "run_end", result: "error", error: "feature boom" },
-    { ts: at(0), loop: "qa", type: "run_end", result: "error", error: "qa boom" },
+    { ts: at(5), loop: "feature", type: "run_end", result: "error", error: "feature boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "qa", type: "run_end", result: "error", error: "qa boom" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 5, "qa");
   assert.equal(data.partial, true);
@@ -1005,9 +1005,9 @@ test("the loss-ranking renders a refused cause with its summary, and bare withou
   // digest must name it — `refused on <role> — <summary>` — rather than fold it into no_change.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "refused",
+    { ts: at(0), loop: "feature", type: "run_end", result: "refused", // retired-name-ok: legacy event field in a fixture
       summary: "blocks entry X: it violates a principle", durationMs: 3_600_000, costUsd: 0.5 },
-    { ts: at(0, 1), loop: "bugfix", type: "run_end", result: "refused", durationMs: 1_800_000, costUsd: 0.2 },
+    { ts: at(0, 1), loop: "bugfix", type: "run_end", result: "refused", durationMs: 1_800_000, costUsd: 0.2 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const md = renderFailureMarkdown(data);
@@ -1023,9 +1023,9 @@ test("the loss-ranking renders a refused cause with its summary, and bare withou
 test("the digest's table headers and section titles use plain terms, not raw result codes", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "no_change" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   const section = (title: string): string => {
@@ -1051,12 +1051,12 @@ test("collectFailureReport keeps singleton merge-check and stall warnings past s
   const events: Array<Record<string, unknown>> = [];
   for (let k = 0; k < 7; k++) {
     for (let i = 0; i < 2; i++) {
-      events.push({ ts: at(0), loop: "feature", type: "warning", message: `housekeeping kind${"abcdefg"[k]} repeated` });
+      events.push({ ts: at(0), loop: "feature", type: "warning", message: `housekeeping kind${"abcdefg"[k]} repeated` }); // retired-name-ok: legacy event field in a fixture
     }
   }
-  events.push({ ts: at(0), loop: "feature", type: "warning", message: "landing check red (kept for one re-land): test a" });
-  events.push({ ts: at(0), loop: "feature", type: "warning", message: "merge check failed (kept for one retry): test b" });
-  events.push({ ts: at(0), loop: "feature", type: "warning", message: "tool call stalled: bash — no exit for 9m" });
+  events.push({ ts: at(0), loop: "feature", type: "warning", message: "landing check red (kept for one re-land): test a" }); // retired-name-ok: legacy event field in a fixture
+  events.push({ ts: at(0), loop: "feature", type: "warning", message: "merge check failed (kept for one retry): test b" }); // retired-name-ok: legacy event field in a fixture
+  events.push({ ts: at(0), loop: "feature", type: "warning", message: "tool call stalled: bash — no exit for 9m" }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, events);
   const keys = collectFailureReport(root, 1).warnings.clusters.map((c) => c.example);
   assert.equal(keys.filter((e) => e.startsWith("merge check failed")).length, 2, "both tests' merge warnings survive, old wording pooled to the new");
@@ -1066,13 +1066,13 @@ test("collectFailureReport keeps singleton merge-check and stall warnings past s
 test("the digest lists merge failures by result and role, with the role's preceding warning as the reason", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 1), loop: "dedupe", type: "warning", message: "merge check failed (kept for one retry)" },
-    { ts: at(0, 2), loop: "dedupe", type: "merge_failed", result: "merge_blocked" },
-    { ts: at(0, 3), loop: "feature", type: "merge_failed", result: "merge_blocked" },
-    { ts: at(0, 4), loop: "plan", type: "merge_failed", result: "merge_conflict" },
+    { ts: at(0, 1), loop: "dedupe", type: "warning", message: "merge check failed (kept for one retry)" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "dedupe", type: "merge_failed", result: "merge_blocked" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 3), loop: "feature", type: "merge_failed", result: "merge_blocked" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 4), loop: "plan", type: "merge_failed", result: "merge_conflict" }, // retired-name-ok: legacy event field in a fixture
     // Rejections and review errors have their own sections and must not fill this one.
     ...Array.from({ length: 8 }, (_, i) => ({
-      ts: at(0, 10 + i), loop: `role${i}`, type: "merge_failed", result: i % 2 ? "rejected" : "review_error",
+      ts: at(0, 10 + i), loop: `role${i}`, type: "merge_failed", result: i % 2 ? "rejected" : "review_error", // retired-name-ok: legacy event field in a fixture
     })),
   ]);
   const data = collectFailureReport(root, 1);
@@ -1088,7 +1088,7 @@ test("the merge-failure section caps at 10 clusters and counts the rest as hidde
   const root = tmpdir();
   writeEvents(root, [
     ...Array.from({ length: 12 }, (_, i) => ({
-      ts: at(0, 1 + i), loop: `role${i}`, type: "merge_failed", result: "merge_blocked",
+      ts: at(0, 1 + i), loop: `role${i}`, type: "merge_failed", result: "merge_blocked", // retired-name-ok: legacy event field in a fixture
     })),
   ]);
   const data = collectFailureReport(root, 1);

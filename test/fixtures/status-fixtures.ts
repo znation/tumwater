@@ -55,7 +55,7 @@ export function snapshotWith(
       /** The model-fallback episode tag (status-data's active-episode row field), which a
        * literal RunnerState does not carry — a test passes it to exercise the `on fallback`
        * name-cell suffix. */
-      fallback?: StatusSnapshot["loops"][number]["fallback"];
+      fallback?: StatusSnapshot["roles"][number]["fallback"];
       /** The role's image-input surface (plans/image-input.md "Surfaces", part 5/5), which
        * a literal RunnerState does not carry — a test passes it to exercise the images alert. */
       imageInput?: boolean | null;
@@ -100,7 +100,7 @@ export function snapshotWith(
     questions: 0,
     // `custom` is display-only metadata snapshot() computes per row; the fixture defaults it
     // to false so existing all-built-in tables stay byte-identical.
-    loops: roles.map((partial) => ({
+    roles: roles.map((partial) => ({
       ...freshRunnerState(partial.role),
       ...partial,
       custom: partial.custom ?? false,
@@ -113,7 +113,7 @@ export function snapshotWith(
     budget,
     paused,
     pausedRoles,
-    pausedLoops: pausedRoles,
+    pausedRunners: pausedRoles,
     capPaused,
     bootstrapHeld,
     maintenanceQuota,

@@ -221,8 +221,8 @@ test("teamDownEvent carries generation, code or signal, and a reason only when o
   assert.deepEqual(diagnosed, { source: TUMWATER_SOURCE, type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" });
   const bare = teamDownEvent({ generation: 1, exit: { code: null, signal: "SIGKILL" }, crashLoop: false }, null);
   assert.deepEqual(bare, { source: TUMWATER_SOURCE, type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" }, "no guess");
-  const loop = teamDownEvent({ generation: 6, exit: { code: RESTART_EXIT_CODE, signal: null }, crashLoop: true }, null);
-  assert.match(String(loop.reason), new RegExp(`restarted itself more than ${MAX_RAPID_RESPAWNS} times within 60s`));
+  const crashed = teamDownEvent({ generation: 6, exit: { code: RESTART_EXIT_CODE, signal: null }, crashLoop: true }, null);
+  assert.match(String(crashed.reason), new RegExp(`restarted itself more than ${MAX_RAPID_RESPAWNS} times within 60s`));
 });
 
 // The production spawner is tested against a real child process — the only way to pin the argv/

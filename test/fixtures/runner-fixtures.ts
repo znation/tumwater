@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../../src/config/config.js";
-import { LoopRunner } from "../../src/runner/runner.js";
+import { RoleRunner } from "../../src/runner/runner.js";
 import { freshRunnerState, loadRunnerState, saveRunnerState, type RunnerState } from "../../src/runner/runner-state.js";
 import { recordDailyCost } from "../../src/budget/budget.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
@@ -34,12 +34,9 @@ export function makeRoleRunner(
   mainBranch = "main",
   signal?: AbortSignal,
   sleep?: (ms: number) => Promise<void>,
-): LoopRunner {
-  return new LoopRunner(repo, role, config, mainBranch, signal, sleep);
+): RoleRunner {
+  return new RoleRunner(repo, role, config, mainBranch, signal, sleep);
 }
-
-/** @deprecated Use makeRoleRunner. */
-export const makeLoopRunner = makeRoleRunner;
 
 /** The directory a role's tick runs (or ran) in, resolving the pooled layout: the slot leased
  * for the role, else the slot pinned for it, else the free slot it released most recently,

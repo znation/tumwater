@@ -20,7 +20,7 @@ import { ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { mergeRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { headMerge, queueDepth } from "../src/merge/merge-queue.js";
-import { loopPhase } from "../src/ui/status-model.js";
+import { rolePhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeRoleRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/runner-fixtures.js";
 import { mergeHead, mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
@@ -520,8 +520,8 @@ test("a persistent recovery review failure feeds the error streak and reads fail
         ),
         `expected one warning naming the review failure, got: ${JSON.stringify(warnings)}`,
       );
-      // Both dashboards read their phase from loopPhase.
-      assert.equal(loopPhase(runner.state, true), "failing", "the dashboards read failing, not sleeping");
+      // Both dashboards read their phase from rolePhase.
+      assert.equal(rolePhase(runner.state, true), "failing", "the dashboards read failing, not sleeping");
       // The failure kept the pin for another attempt.
       assert.equal(
         sh(repo, "git", "rev-parse", "--verify", mergeRefName("improve")).trim().length,

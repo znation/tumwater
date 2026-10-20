@@ -5,6 +5,35 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code runner, part 14/16: Rename the remaining loop identifiers and retire the old runner names (planned 2026-10-16 by user, replanned 2026-10-19 by the plan role after review rejection; requires part 13/16 landed; design in plans/terminology.md "Code names" and "Guards"; touches every src/ and test/ file with a loop identifier + test/retired-names.test.ts) — done 2026-10-19
+
+Replanned 2026-10-19 by the plan role. The single 14/14 sweep was rejected after three review rounds. It rewrote "loop" meaning iteration to "role" in comments, which made them false, and its commit message claimed repairs it had not made. The sweep had about 150 identifier hits and about 250 comment lines in src/, with more in test/, which is too much prose to judge site by site in one run. This part therefore renames **identifiers only**. Comment and test-title wording moves to parts 15/16 (src/) and 16/16 (test/).
+
+**Goal.** No identifier or file name in src/ or test/ uses "loop" for a role or its worker. Every deprecated alias from this series is gone, and test/retired-names.test.ts fails if an old runner identifier comes back.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and identifiers where "loop" means a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields such as the `loop:` key in event fixtures, `--json`/`/api` keys, config keys, env vars) are out of scope. Name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose, so rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+- Work list: `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' src test` minus the kept names above, plus bare `loop`/`loops` bindings (`grep -rnE '\b(const|let|var)\s+loops?\b|\(loops?[,)]|\bloops?\s*=>' src test`). Hit counts are highest in src/doctor/doctor-holds.ts (`loopIds`, `loopPaused`, `loadLoopStates`, `const loops = …`), src/doctor/doctor-checks.ts, src/git/worktree-pool.ts, src/team/team-polls.ts, src/ui/gui/gui-client-roles.ts and their tests.
+- Comments: edit only those that name an identifier you renamed, so they name the new identifier. Leave every other comment and test title alone, even one that says "loop" for a role. Parts 15/16 and 16/16 own those, and a stray prose edit here is out of scope.
+- Delete every remaining `@deprecated` alias this series added after migrating its last users. Run `grep -rn '@deprecated Use' src test` to find them. Today they are in src/runner/runner-state.ts, src/runner/runner.ts, src/roles/runner-ids.ts, src/ui/status-model.ts and test/fixtures/runner-fixtures.ts.
+- Append a `runner` family to the guard in test/retired-names.test.ts, in the existing `{ family, words, fileWords, allow }` shape, with `words: ["loop", "loops"]` and `fileWords: ["loop", "loops"]`. Put these in `allow`, each with its reason comment: `pollLoop`, `crashLoop`, `onCrashLoop`, the live legacy config key `customLoops`, and `CustomLoop`, `customLoopNames` and `CUSTOM_LOOP_KEYS` until Plain terms code cleanup part 2/7 renames them. Rename a leftover JavaScript-loop variable called `loop` to say what it holds instead of allowing it. Legacy readers use the guard's existing exemptions (`LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines, `retired-name-ok:start`/`end` regions). Add no new mechanism.
+- Run the guard and fix what it reports, for example a temp-dir prefix such as `tmpdir("loop-ids-cap-")` → `tmpdir("runner-ids-cap-")`.
+- Commit message: list the serialized leftovers. Claim no comment repair, because this part makes none beyond renamed-identifier references.
+
+**Files touched.** The files the work list greps name; the alias declarations listed above; test/retired-names.test.ts.
+
+**Acceptance criteria.**
+- `grep -rn '@deprecated Use' src test` lists none of this series' old names.
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' src test` lists only `loopback*`, `pollLoop`, `crashLoop`/`onCrashLoop`, `customLoop*`/`CUSTOM_LOOP_*`, and sites the retired-names guard exempts.
+- Every `-` line in `git diff -U0 main -- src test` that contains "loop" in a comment is a comment naming a renamed identifier. No other comment or test title changes.
+- test/retired-names.test.ts holds the `runner` family and passes. Adding `const loopState = 1;` to any src/ module makes it fail (check locally, do not commit).
+- `npm run test` passes.
+
 ### Inside a team workspace (`<root>/.tumwater/worktrees/<slot>`), `tumwater init` refuses and every gated command names the owning team root instead of answering "not initialized — run `tumwater init`" (planned 2026-10-19 by the plan role; independent of every eligible Planned entry: none names src/gates/, src/init/init.ts or src/paths.ts; runner part 14/16 renames loop identifiers across src and test, src/doctor included, so a shared file such as src/doctor/doctor-checks.ts is a rebase either way; touches src/paths.ts + src/gates/readiness.ts + src/gates/startup-gate.ts + src/init/init.ts + src/doctor/doctor-checks.ts + test/paths.test.ts + test/startup-gate.test.ts + test/init.test.ts + test/doctor-checks.test.ts, done 2026-10-19)
 
 **Goal.** A role's run, an operator's shell, or a `logs -f` left behind in a slot runs with its cwd in a team workspace. That checkout has no `tumwater.json` (the file is untracked) and no `.tumwater`. The CLI's root is `repoToplevel(process.cwd())`, so the root is the workspace. Today this goes wrong in two ways:

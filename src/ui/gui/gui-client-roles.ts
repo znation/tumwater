@@ -125,16 +125,16 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
       ? " · no change ×" + l.noChangeStreak : "";
     if (info.key === "sleeping") return (backoff || (next === "-" ? "" : next === "now" ? "wakes now" : "wakes in " + next)) + note + noChange;
     if (info.key === "queued") return (backoff || info.detail) + note + noChange;
-    if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedLoops || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(Math.max(0, Math.round((d.pausedRolesUntil - Date.now()) / 1000)));
+    if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedLoops || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(Math.max(0, Math.round((d.pausedRolesUntil - Date.now()) / 1000))); // retired-name-ok: serialized /api key
     return info.detail + noChange;
   }
   function roleCells(l, d) {
     const info = phaseInfo(l.phase);
-    const paused = (d.pausedLoops || []).includes(l.role);
+    const paused = (d.pausedLoops || []).includes(l.role); // retired-name-ok: serialized /api key
     const queued = (d.roleInbox || {})[l.role] || 0;
     const detail = phaseDetail(l, info, d);
     const stalled = info.live && STALL.test(l.phase);
-    const name = "<div class='loop-name'><button type='button' class='linkish role' data-open='" + esc(l.role) + "' title='Open " + esc(roleLabel(l.role)) + "'>" + esc(roleLabel(l.role)) + "</button>" + // vocabulary-ok: CSS class the stylesheet and tests match
+    const name = "<div class='role-name'><button type='button' class='linkish role' data-open='" + esc(l.role) + "' title='Open " + esc(roleLabel(l.role)) + "'>" + esc(roleLabel(l.role)) + "</button>" +
       (l.custom ? "<span class='tag' title='A custom role from tumwater.json'>custom</span>" : "") +
       (l.modelTier ? "<span class='tag' title='The model tier this role resolves at'>" + esc(l.modelTier) + "</span>" : "") +
       (l.fallback ? "<span class='tag t-amber' title='Running on the model fallback while its primary keeps failing provider-class errors'>fallback</span>" : "") +
@@ -216,7 +216,7 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
       rows.push({ key: "g" + gi, cls: "group", group: true, cells: [esc(g[0]) + "<span class='badge'>" + byGroup[gi].length + "</span>"] });
       for (const l of byGroup[gi]) {
         const { info, cells } = roleCells(l, d);
-        rows.push({ key: "l:" + l.role, role: l.role, cls: "loop clickable" + (info.live ? " live" : "") + (selected === l.role ? " selected" : ""), cells }); // vocabulary-ok: CSS class the stylesheet and tests match
+        rows.push({ key: "l:" + l.role, role: l.role, cls: "role-row clickable" + (info.live ? " live" : "") + (selected === l.role ? " selected" : ""), cells });
       }
     });
     if (!rows.length) rows.push({ key: "empty", cls: "group", group: true, cells: ["No roles are enabled in tumwater.json"] });

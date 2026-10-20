@@ -19,7 +19,7 @@ import {
 import { beginWorktreeUse } from "../src/git/worktree-use.js";
 import { readEvents } from "../src/events/event-read.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { eventsLogPath, worktreeUsePath, worktreesDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
@@ -125,8 +125,8 @@ test("reclaimCandidates orders least-recently-used first, resume-pending last, a
     cleanup: { lastUsedAt: 200 },
   });
   // cleanup is oldest but has a pending resume, so it must be cleaned after the others.
-  const state = loadLoopState(root, "cleanup");
-  saveLoopState(root, { ...state, resumePending: true });
+  const state = loadRunnerState(root, "cleanup");
+  saveRunnerState(root, { ...state, resumePending: true });
   assert.deepEqual(
     reclaimCandidates(root).map((c) => c.name),
     ["bugfix", "feature", "cleanup"],

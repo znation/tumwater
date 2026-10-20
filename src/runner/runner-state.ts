@@ -357,18 +357,6 @@ export function freshRunnerState(role: string): RunnerState {
   };
 }
 
-/** @deprecated Use RunnerState. */
-export type LoopState = RunnerState;
-
-/** @deprecated Use freshRunnerState. */
-export const freshLoopState = freshRunnerState;
-
-/** @deprecated Use loadRunnerState. */
-export const loadLoopState = loadRunnerState;
-
-/** @deprecated Use saveRunnerState. */
-export const saveLoopState = saveRunnerState;
-
 /** A persisted numeric field, healed to a finite non-negative number (the fallback when it is
  * absent, foreign, NaN/±Infinity, or negative). Every numeric field on RunnerState — top-level or
  * inside one of the nested records below — is a count, a duration, an epoch-ms stamp, or an
@@ -625,7 +613,7 @@ export function hasOutstandingWork(s: Pick<RunnerState, "revision" | "resumePend
  * the orchestrator's fresh-demand and plans-full stand-down tests
  * (orchestrator-scheduling.ts's hasDemand and its stand-down guard), so those surfaces cannot
  * drift on what counts as a fresh wake. */
-export function freshlyWoken(s: LoopState): boolean {
+export function freshlyWoken(s: RunnerState): boolean {
   return s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0);
 }
 

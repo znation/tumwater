@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { foldCommitsSince, headOf } from "../src/git/git.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { commitIn, initializedRepo, sh } from "./fixtures/repo-fixtures.js";
@@ -19,7 +19,7 @@ async function tickAndMerge(script: string[]): Promise<{ repo: string; before: s
   const repo = await initializedRepo();
   const before = sh(repo, "git", "rev-parse", "main");
   await withPi([APPROVE_PI, ...script].join("\n"), async () => {
-    const runner = makeLoopRunner(repo, "organize");
+    const runner = makeRoleRunner(repo, "organize");
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "organize"), "changed");
   });

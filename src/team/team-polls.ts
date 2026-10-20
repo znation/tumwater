@@ -5,7 +5,7 @@ import { claudeWindowUsedUp, windowReserved, type ClaudeAccount, type ClaudeWind
 import type { HarnessEventInput } from "../events/events.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import type { ModelTier } from "../config/config-schema.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
@@ -245,7 +245,7 @@ export function pollClaudeWindowWarning(
 }
 
 /** One poll of the team-wide error-storm warning (src/team/error-storm.ts): gather each runner's
- * current error streak (LoopState.consecutiveErrors/lastError — the same fields the per-role
+ * current error streak (RunnerState.consecutiveErrors/lastError — the same fields the per-role
  * "consecutive tick failures" warning reads, the director's included, since its failures are
  * the team's evidence too), step the pure reducer, and log exactly one warning per episode,
  * like the per-role warning's once-per-streak-crossing shape: on the quiet→storm crossing,
@@ -257,7 +257,7 @@ export function pollClaudeWindowWarning(
 export function pollErrorStorm(
   root: string,
   prev: ErrorStorm,
-  runners: readonly { role: string; state: Pick<LoopState, "consecutiveErrors" | "lastError"> }[],
+  runners: readonly { role: string; state: Pick<RunnerState, "consecutiveErrors" | "lastError"> }[],
 ): ErrorStorm {
   const observations = runners.map((r) => ({
     role: r.role,

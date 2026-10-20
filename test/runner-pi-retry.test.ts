@@ -8,7 +8,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { makeHost, recordingFakePi, runArgs } from "./fixtures/runner-pi-fixtures.js";
-import { LoopRunner } from "../src/runner/runner.js";
+import { RoleRunner } from "../src/runner/runner.js";
 import { mergeUsage } from "../src/merge/merge-slot.js";
 
 // The shared transient-failure retry (src/runner/runner-pi.ts's runWithTransientRetry): the one
@@ -40,7 +40,7 @@ test("a rate-limited run earns exactly one retry that waits out the Retry-After 
 
     assert.deepEqual(sleeps, [3000], "the 3s hint is waited out before the retry");
     // The failed attempt folds BEFORE the wait and the retry, so the 429 it ended on reaches
-    // the orchestrator's team-wide hold (LoopRunner.lastRateLimit) while the retry waits — not
+    // the orchestrator's team-wide hold (RoleRunner.lastRateLimit) while the retry waits — not
     // after a retry that may run for an hour (BUGS.md 2026-09-21 "A 429 storm still has no
     // team-wide hold").
     assert.ok(foldTimes[0]! <= sleepAts[0]!, "the rate-limited attempt is folded before the wait starts");
@@ -122,7 +122,7 @@ test("a 429 on a claude reviewer's final run folds the review seam through foldM
   cfg.provider = "omlx";
   cfg.model = "qwen";
   cfg.review = { ...cfg.review, provider: "claude", model: "claude-sonnet-5-5" };
-  const author = new LoopRunner(root, "feature", cfg, "main");
+  const author = new RoleRunner(root, "feature", cfg, "main");
   const { foldUsage } = mergeUsage(author, root);
   foldUsage(piRunResult({ ok: false, transientRateLimit: true }));
   assert.equal(

@@ -343,17 +343,17 @@ export const GUI_STYLES = String.raw`
   table.roles .c-today { width: 110px; }
   table.roles .c-actions { width: 136px; }
   table.roles.free .c-today { display: none; }
-  .roles tr.loop.selected td { background: var(--accent-bg); }
-  .roles tr.loop.selected td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
-  .roles tr.loop.live td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
-  .roles tr.loop.live.selected td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
-  .loop-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-  .loop-name .role { font-family: var(--font-mono); font-weight: 600; font-size: 13.5px; }
+  .roles tr.role-row.selected td { background: var(--accent-bg); }
+  .roles tr.role-row.selected td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+  .roles tr.role-row.live td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
+  .roles tr.role-row.live.selected td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+  .role-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .role-name .role { font-family: var(--font-mono); font-weight: 600; font-size: 13.5px; }
   .now { color: var(--text); }
   .actions { display: flex; justify-content: flex-end; gap: 2px; }
-  tr.loop .actions { opacity: 0.55; transition: opacity 0.12s; }
-  tr.loop:hover .actions, tr.loop:focus-within .actions, tr.loop.selected .actions { opacity: 1; }
-  @media (hover: none) { tr.loop .actions { opacity: 1; } }
+  tr.role-row .actions { opacity: 0.55; transition: opacity 0.12s; }
+  tr.role-row:hover .actions, tr.role-row:focus-within .actions, tr.role-row.selected .actions { opacity: 1; }
+  @media (hover: none) { tr.role-row .actions { opacity: 1; } }
 
   /* ---- backlog list ---- */
   .list { max-height: 460px; overflow-y: auto; }
@@ -382,7 +382,7 @@ export const GUI_STYLES = String.raw`
   .feed-icon svg.i { width: 15px; height: 15px; }
   .feed-msg { color: var(--text-2); overflow-wrap: anywhere; }
   .feed-item.k-routine .feed-msg { color: var(--text-3); }
-  .feed-loop { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--text); margin-right: 4px; }
+  .feed-source { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--text); margin-right: 4px; }
   .feed-time { font-size: 12px; color: var(--text-4); white-space: nowrap; font-variant-numeric: tabular-nums; padding-top: 1px; }
   .feed-tally { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 6px; border-bottom: 1px solid var(--line-soft); }
   .feed-tally .chip { height: 22px; padding: 0 9px; font-size: 12px; font-weight: 500; }
@@ -512,12 +512,12 @@ export const GUI_STYLES = String.raw`
     .composer-foot #prompthint { display: none; }
     table.roles thead { display: none; }
     table.roles, table.roles tbody { display: block; }
-    table.roles tr.loop { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px;
+    table.roles tr.role-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px;
                           padding: 10px 16px; border-bottom: 1px solid var(--line-soft); }
-    table.roles tr.loop td { display: block; width: auto; padding: 0; border: 0; background: none !important; box-shadow: none !important; }
-    table.roles tr.loop td.c-status, table.roles tr.loop td.c-activity { grid-column: 1 / -1; margin-top: 6px; }
-    table.roles tr.loop td.c-actions { grid-row: 1; grid-column: 2; }
-    table.roles tr.loop td.c-today { display: none; }
+    table.roles tr.role-row td { display: block; width: auto; padding: 0; border: 0; background: none !important; box-shadow: none !important; }
+    table.roles tr.role-row td.c-status, table.roles tr.role-row td.c-activity { grid-column: 1 / -1; margin-top: 6px; }
+    table.roles tr.role-row td.c-actions { grid-row: 1; grid-column: 2; }
+    table.roles tr.role-row td.c-today { display: none; }
     .composer-row { flex-wrap: wrap; }
     .composer textarea { order: -1; flex-basis: 100%; }
     .composer-target { flex: 1; }

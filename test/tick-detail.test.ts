@@ -18,20 +18,20 @@ import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 // gets one smoke run through the real binary, as cli-history.test.ts does).
 
 function start(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "bugfix", type: "run_start", run: 3, ...over } as HarnessEvent;
+  return { ts: 0, loop: "bugfix", type: "run_start", run: 3, ...over } as HarnessEvent; // retired-name-ok: legacy event field in a fixture
 }
 
 function end(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "bugfix", type: "run_end", run: 3, result: "changed", ...over } as HarnessEvent;
+  return { ts: 0, loop: "bugfix", type: "run_end", run: 3, result: "changed", ...over } as HarnessEvent; // retired-name-ok: legacy event field in a fixture
 }
 
 test("readTickDetail returns exactly one role's tick block, bracketed by its start and end", () => {
   const root = makeRepo();
   writeEvents(root, [
     // A neighbor role's tick with the SAME number contributes nothing.
-    start({ ts: 1000, loop: "feature" }),
+    start({ ts: 1000, loop: "feature" }), // retired-name-ok: legacy event field in a fixture
     { ts: 2000, source: "feature", type: "review_verdict", head: "abc" } as HarnessEvent,
-    end({ ts: 3000, loop: "feature", result: "no_change" }),
+    end({ ts: 3000, loop: "feature", result: "no_change" }), // retired-name-ok: legacy event field in a fixture
     // The asked run: start, a tick-less in-tick event, the queued pin, the end.
     start({ ts: 4000 }),
     { ts: 5000, source: "bugfix", type: "review_verdict", head: "def", durationMs: 9000 } as HarnessEvent,
@@ -397,7 +397,7 @@ test("tick --patch names a missing or foreign commit instead of failing", async 
 test("renderTickDetail and cmdTick --json show a queued tick's resolved merge", async () => {
   const repo = makeRepo();
   await initProject(repo, "tick detail merge test");
-  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent;
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent; // retired-name-ok: legacy event field in a fixture
   writeEvents(repo, [
     start({ ts: 1000, run: 1 }),
     ev({ ts: 1100, type: "merge_queued", commit: "sha1abcdef" }),
@@ -418,7 +418,7 @@ test("a leftover-recovery run's detail shows the failed attempt it re-queued, le
   // (the history row's rule), and the failure was logged before run 2 began, so the trail
   // opens with it and stays in time order rather than ending on an earlier event.
   const root = makeRepo();
-  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent;
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent; // retired-name-ok: legacy event field in a fixture
   const recovered = "recovered leftover work from bugfix: the fix";
   writeEvents(root, [
     start({ ts: 1000, run: 1 }),
@@ -449,7 +449,7 @@ test("renderTickDetail names the landed sha only when it differs from the pinned
       const root = tmpdir();
       writeEvents(root, [
         start({ ts: 1000 }),
-        { ts: 1500, loop: "bugfix", source: "bugfix", type: "merge_queued", commit: "aaaaaaa1111" } as HarnessEvent,
+        { ts: 1500, loop: "bugfix", source: "bugfix", type: "merge_queued", commit: "aaaaaaa1111" } as HarnessEvent, // retired-name-ok: legacy event field in a fixture
         end({ ts: 2000 }),
       ]);
       return root;

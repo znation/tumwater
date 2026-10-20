@@ -23,7 +23,7 @@ type RowWidths = { [K in keyof TickRowCells]: number };
  * outside the pad), and duration is ASCII, so both take plain length. */
 function widthsOf(cells: TickRowCells): RowWidths {
   return {
-    loop: displayWidth(cells.loop),
+    role: displayWidth(cells.role),
     tick: cells.tick.length,
     result: displayWidth(cells.result),
     model: displayWidth(cells.model),
@@ -35,10 +35,10 @@ function widthsOf(cells: TickRowCells): RowWidths {
 /** The per-column maxima over every row the table shows — the widths derive from the rows
  * actually shown, so a single-row table has no padding gap. */
 export function widestWidths(rows: TickRow[]): RowWidths {
-  const widths = { loop: 0, tick: 0, result: 0, model: 0, duration: 0, usage: 0 };
+  const widths = { role: 0, tick: 0, result: 0, model: 0, duration: 0, usage: 0 };
   for (const row of rows) {
     const w = widthsOf(tickRowCells(row));
-    widths.loop = Math.max(widths.loop, w.loop);
+    widths.role = Math.max(widths.role, w.role);
     widths.tick = Math.max(widths.tick, w.tick);
     widths.result = Math.max(widths.result, w.result);
     widths.model = Math.max(widths.model, w.model);
@@ -51,7 +51,7 @@ export function widestWidths(rows: TickRow[]): RowWidths {
 /** The column-wise maximum of two width sets: the running widths of a follow, which only grow. */
 export function widenWidths(a: RowWidths, b: RowWidths): RowWidths {
   return {
-    loop: Math.max(a.loop, b.loop),
+    role: Math.max(a.role, b.role),
     tick: Math.max(a.tick, b.tick),
     result: Math.max(a.result, b.result),
     model: Math.max(a.model, b.model),

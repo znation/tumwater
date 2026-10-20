@@ -17,10 +17,10 @@ test("telemetryDigest renders the trailing 24 h, including the previous evening"
   const root = makeRepo();
   const now = Date.now();
   writeEvents(root, [
-    { ts: now - 3_600_000, loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
+    { ts: now - 3_600_000, loop: "feature", type: "run_end", result: "error", error: "pi exited null" }, // retired-name-ok: legacy event field in a fixture
     // Inside 24 h but on the previous calendar day whenever the digest runs before 23:00 local.
-    { ts: now - 23 * 3_600_000, loop: "feature", type: "run_end", result: "error", error: "last evening failure" },
-    { ts: now - 40 * 3_600_000, loop: "feature", type: "run_end", result: "error", error: "older, out of window" },
+    { ts: now - 23 * 3_600_000, loop: "feature", type: "run_end", result: "error", error: "last evening failure" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 40 * 3_600_000, loop: "feature", type: "run_end", result: "error", error: "older, out of window" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const digest = telemetryDigest(root);
   assert.ok(digest, "a readable log always yields a digest string");

@@ -67,7 +67,7 @@ export interface StatusSnapshot {
    * source, from the same last-known-good config that produced the role list, so a transiently
    * broken tumwater.json keeps marking its customs rather than flipping them unmarked
    * mid-poll. RunnerState itself stays the persisted type; this intersection is view-layer only. */
-  loops: Array<RunnerState & {
+  roles: Array<RunnerState & {
     custom: boolean;
     /** The selector this role's pi runs resolve at (`provider/id[:thinking]`, the
      * configForRole view) — present whenever a model resolves, both for a single string
@@ -181,7 +181,7 @@ export interface StatusSnapshot {
   /** The role ids the scheduler treats as paused by the per-role marker (`runnerPaused`): a role
    * whose own id, base role, or — for instance 1 — `<role>-1` key is in `pausedRoles`. The display
    * surfaces read this, while `pausedRoles` stays the raw marker `resume --role` takes. */
-  pausedLoops: string[];
+  pausedRunners: string[];
   /** The role ids the per-role daily cost cap holds (`maxDailyCostUsdPerRole`): an idle role
    * in this set reads `cap paused`, its own spend state — more specific than the team's
    * `budget paused`. Computed with the gate's own grouped verdict (roleCapVerdicts): instance
@@ -370,7 +370,7 @@ function earliestStop(a: number | undefined, b: number | undefined): number | un
 /** The snapshot keeping only the listed roles' rows: a base id also keeps its instances
  * (`feature` keeps `feature-2`). Every other field stays team-wide. */
 export function scopeSnapshotToRoles(snap: StatusSnapshot, roles: readonly string[]): StatusSnapshot {
-  return { ...snap, loops: snap.loops.filter((s) => roles.includes(s.role) || roles.includes(baseRoleOf(s.role))) };
+  return { ...snap, roles: snap.roles.filter((s) => roles.includes(s.role) || roles.includes(baseRoleOf(s.role))) };
 }
 
 /** One fresh team snapshot for observers. `modelsPath` overrides pi's model definitions
@@ -468,7 +468,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     roleInboxPrompts,
     questions: openQuestions(root).length,
     imageProbeFailures,
-    loops: roleRows,
+    roles: roleRows,
     // Unconditional (never null): a disabled team still shows its spend and the badge is
     // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
     // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
@@ -480,7 +480,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     ...(running && info?.providerHolds && info.providerHolds.length > 0 ? { providerHolds: info.providerHolds } : {}),
     paused: teamPause !== null,
     pausedRoles: markerRoles,
-    pausedLoops: roles.filter((id) => runnerPaused(markerSet, id)),
+    pausedRunners: roles.filter((id) => runnerPaused(markerSet, id)),
     capPaused,
     // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
     // gate folds, over the same event log, so the dashboards show the hold the scheduler

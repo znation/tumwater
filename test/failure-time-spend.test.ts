@@ -14,10 +14,10 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 test("time and spend: one 30-minute timeout outranks ten 1-second errors", () => {
   const root = tmpdir();
   const events: Array<Record<string, unknown>> = [
-    { ts: at(0), loop: "bugfix", type: "run_end", run: 1, result: "error", error: "Request timed out", durationMs: 1_800_000, costUsd: 0.5 },
+    { ts: at(0), loop: "bugfix", type: "run_end", run: 1, result: "error", error: "Request timed out", durationMs: 1_800_000, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
   ];
   for (let i = 0; i < 10; i++) {
-    events.push({ ts: at(0), loop: "feature", type: "run_end", run: i + 2, result: "error", error: "pi exited 1", durationMs: 1_000, costUsd: 0.01 });
+    events.push({ ts: at(0), loop: "feature", type: "run_end", run: i + 2, result: "error", error: "pi exited 1", durationMs: 1_000, costUsd: 0.01 }); // retired-name-ok: legacy event field in a fixture
   }
   writeEvents(root, events);
   const data = collectFailureReport(root, 1);
@@ -41,13 +41,13 @@ test("time and spend folds role × outcome class, pairing old events with run_st
   const root = tmpdir();
   writeEvents(root, [
     // Old-style event: no durationMs on run_end; the span comes from the run_start pairing.
-    { ts: at(0, 11), loop: "feature", type: "run_start", run: 1 },
-    { ts: at(0, 12), loop: "feature", type: "run_end", run: 1, result: "changed", costUsd: 0.2 },
+    { ts: at(0, 11), loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "feature", type: "run_end", run: 1, result: "changed", costUsd: 0.2 }, // retired-name-ok: legacy event field in a fixture
     // New-style event: the event's own durationMs wins over the pairing.
-    { ts: at(0, 11), loop: "bugfix", type: "run_start", run: 2 },
-    { ts: at(0, 12), loop: "bugfix", type: "run_end", run: 2, result: "no_change", durationMs: 3_600_000, costUsd: 0.3 },
+    { ts: at(0, 11), loop: "bugfix", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "bugfix", type: "run_end", run: 2, result: "no_change", durationMs: 3_600_000, costUsd: 0.3 }, // retired-name-ok: legacy event field in a fixture
     // An end whose start rotated out: the tick still counts, priced at 0 ms.
-    { ts: at(0), loop: "bugfix", type: "run_end", run: 3, result: "error", error: "boom" },
+    { ts: at(0), loop: "bugfix", type: "run_end", run: 3, result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.timeSpend.find((r) => r.role === "feature");
@@ -80,21 +80,21 @@ test("a review-rejected change's authoring hours price into error-class, not mer
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
     // Rejected at the review gate: authoring hours move to error-class + the loss ranking.
-    { ts: at(0, 9), loop: "coverage", type: "merge_queued", commit: head("a"), summary: "fix a thing" },
-    { ts: at(0, 10), loop: "coverage", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 1.0 },
-    { ts: at(0, 11), loop: "coverage", type: "review_rejected", head: head("a"), reasons: ["too big"] },
-    { ts: at(0, 12), loop: "coverage", type: "merge_failed", commit: head("a"), result: "rejected", durationMs: 60_000 },
+    { ts: at(0, 9), loop: "coverage", type: "merge_queued", commit: head("a"), summary: "fix a thing" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "coverage", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 1.0 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 11), loop: "coverage", type: "review_rejected", head: head("a"), reasons: ["too big"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "coverage", type: "merge_failed", commit: head("a"), result: "rejected", durationMs: 60_000 }, // retired-name-ok: legacy event field in a fixture
     // Merged normally: the queued→merged reading survives the join.
-    { ts: at(0, 9), loop: "feature", type: "merge_queued", commit: head("b"), summary: "land a thing" },
-    { ts: at(0, 10), loop: "feature", type: "run_end", run: 1, result: "queued", durationMs: 1_800_000, costUsd: 0.2 },
-    { ts: at(0, 12), loop: "feature", type: "merge_done", commit: head("b"), result: "changed", durationMs: 5_000 },
+    { ts: at(0, 9), loop: "feature", type: "merge_queued", commit: head("b"), summary: "land a thing" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "feature", type: "run_end", run: 1, result: "queued", durationMs: 1_800_000, costUsd: 0.2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "feature", type: "merge_done", commit: head("b"), result: "changed", durationMs: 5_000 }, // retired-name-ok: legacy event field in a fixture
     // Still in the pipeline (no pin, no outcome yet): the conservative fallback keeps it merged.
-    { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 600_000, costUsd: 0.1 },
+    { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 600_000, costUsd: 0.1 }, // retired-name-ok: legacy event field in a fixture
     // A merge conflict also burns the authoring span into error-class — but is no
     // review-rejection loss cause, having no rejection to name.
-    { ts: at(0, 9), loop: "organize", type: "merge_queued", commit: head("c"), summary: "tidy" },
-    { ts: at(0, 10), loop: "organize", type: "run_end", run: 1, result: "queued", durationMs: 1_200_000, costUsd: 0.3 },
-    { ts: at(0, 12), loop: "organize", type: "merge_failed", commit: head("c"), result: "merge_conflict", durationMs: 30_000 },
+    { ts: at(0, 9), loop: "organize", type: "merge_queued", commit: head("c"), summary: "tidy" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "organize", type: "run_end", run: 1, result: "queued", durationMs: 1_200_000, costUsd: 0.3 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "organize", type: "merge_failed", commit: head("c"), result: "merge_conflict", durationMs: 30_000 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const coverage = data.timeSpend.find((r) => r.role === "coverage");
@@ -139,11 +139,11 @@ test("a review-rejected change's authoring hours price into error-class, not mer
 test("a mixed team of plain and progressing tick timeouts pools into one digest cluster", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "timed out after 1800s", durationMs: 1_800_000, costUsd: 0.10 },
-    { ts: at(0), loop: "bugfix", type: "run_end", result: "error",
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "timed out after 1800s", durationMs: 1_800_000, costUsd: 0.10 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "error", // retired-name-ok: legacy event field in a fixture
       error: "timed out after 1800s while still making progress — session and worktree edits preserved for resume",
       durationMs: 3_600_000, costUsd: 0.20 },
-    { ts: at(0), loop: "clean", type: "run_end", result: "error", error: "pi exited 1" },
+    { ts: at(0), loop: "clean", type: "run_end", result: "error", error: "pi exited 1" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   // One cause, one knob (runTimeoutSeconds): both shapes are the same timeout, so the digest
@@ -167,8 +167,8 @@ test("a cluster that outlived a config change labels itself with its newest mess
   // message seen — the retired value from before the timeout was lowered.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "review", type: "run_end", result: "error", error: "timed out after 1800s", durationMs: 1_800_000, costUsd: 0.10 },
-    { ts: at(0, 13), loop: "review", type: "run_end", result: "error",
+    { ts: at(0), loop: "review", type: "run_end", result: "error", error: "timed out after 1800s", durationMs: 1_800_000, costUsd: 0.10 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 13), loop: "review", type: "run_end", result: "error", // retired-name-ok: legacy event field in a fixture
       error: "timed out after 900s while still making progress — session and worktree edits preserved for resume",
       durationMs: 900_000, costUsd: 0.20 },
   ]);
@@ -190,11 +190,11 @@ test("a review_error merge prices its authoring hours under the matching review_
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
-    { ts: at(0, 9), loop: "bugfix", type: "merge_queued", commit: head("d"), summary: "fix a thing" },
-    { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 0.5 },
-    { ts: at(0, 11), loop: "bugfix", type: "review_failed", head: head("d"),
+    { ts: at(0, 9), loop: "bugfix", type: "merge_queued", commit: head("d"), summary: "fix a thing" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 11), loop: "bugfix", type: "review_failed", head: head("d"), // retired-name-ok: legacy event field in a fixture
       message: "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch" },
-    { ts: at(0, 12), loop: "bugfix", type: "merge_failed", commit: head("d"), result: "review_error", durationMs: 60_000 },
+    { ts: at(0, 12), loop: "bugfix", type: "merge_failed", commit: head("d"), result: "review_error", durationMs: 60_000 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   assert.deepEqual(
@@ -225,12 +225,12 @@ test("a rebased review_error merge prices under its review_failed message, not t
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
-    { ts: at(0, 9), loop: "bugfix", type: "merge_queued", commit: head("a"), summary: "fix a thing" },
-    { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 0.5 },
+    { ts: at(0, 9), loop: "bugfix", type: "merge_queued", commit: head("a"), summary: "fix a thing" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
     // The rebased head B is what the reviewer failed; the pin and the outcome still name A.
-    { ts: at(0, 11), loop: "bugfix", type: "review_failed", head: head("b"),
+    { ts: at(0, 11), loop: "bugfix", type: "review_failed", head: head("b"), // retired-name-ok: legacy event field in a fixture
       message: "timed out after 900s while still making progress — the commit is kept; the next attempt continues this review" },
-    { ts: at(0, 12), loop: "bugfix", type: "merge_failed", commit: head("a"), result: "review_error", durationMs: 60_000 },
+    { ts: at(0, 12), loop: "bugfix", type: "merge_failed", commit: head("a"), result: "review_error", durationMs: 60_000 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const loss = data.lossCauses.find((c) => c.roles.includes("bugfix"));
@@ -250,11 +250,11 @@ test("a rebased review-rejected merge names its reason, not an empty example", (
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
-    { ts: at(0, 9), loop: "coverage", type: "merge_queued", commit: head("a"), summary: "fix a thing" },
-    { ts: at(0, 10), loop: "coverage", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 1.0 },
+    { ts: at(0, 9), loop: "coverage", type: "merge_queued", commit: head("a"), summary: "fix a thing" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "coverage", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 1.0 }, // retired-name-ok: legacy event field in a fixture
     // The rebased head B is what the reviewer rejected; the pin and the outcome still name A.
-    { ts: at(0, 11), loop: "coverage", type: "review_rejected", head: head("b"), reasons: ["too big"] },
-    { ts: at(0, 12), loop: "coverage", type: "merge_failed", commit: head("a"), result: "rejected", durationMs: 60_000 },
+    { ts: at(0, 11), loop: "coverage", type: "review_rejected", head: head("b"), reasons: ["too big"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "coverage", type: "merge_failed", commit: head("a"), result: "rejected", durationMs: 60_000 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const loss = data.lossCauses.find((c) => c.kind === "review-rejected");
@@ -271,11 +271,11 @@ test("a main_red tick prices its red-main cause into the loss ranking, not only 
   // the same verbatim redMainMessage the error-clusters section clusters, so it joins the fold.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "main_red",
+    { ts: at(0), loop: "feature", type: "run_end", result: "main_red", // retired-name-ok: legacy event field in a fixture
       error: "main abc1234 is red (test: boom) — authoring skipped until main is green",
       durationMs: 3_600_000, costUsd: 0.05 },
     // A cause-less main_red still owns its span under the shared placeholder rather than vanishing.
-    { ts: at(0), loop: "improve", type: "run_end", result: "main_red" },
+    { ts: at(0), loop: "improve", type: "run_end", result: "main_red" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const red = data.lossCauses.find((c) => c.example.includes("is red"));
@@ -303,10 +303,10 @@ test("a refused tick prices its own loss cause, not no_change", () => {
   // contract), but the loss ranking names the objection via the refusal's own summary.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", run: 1, result: "refused",
+    { ts: at(0), loop: "feature", type: "run_end", run: 1, result: "refused", // retired-name-ok: legacy event field in a fixture
       summary: "record: refusal-verdict reason at head", durationMs: 3_600_000, costUsd: 0.5 },
     // The same role idles in a sibling window: its quiet no_change must stay its own cause.
-    { ts: at(0, 1), loop: "feature", type: "run_end", run: 2, result: "no_change",
+    { ts: at(0, 1), loop: "feature", type: "run_end", run: 2, result: "no_change", // retired-name-ok: legacy event field in a fixture
       durationMs: 1_800_000, costUsd: 0.3 },
   ]);
   const data = collectFailureReport(root, 1);

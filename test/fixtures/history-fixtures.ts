@@ -14,10 +14,10 @@ export async function seededHistoryRepo(): Promise<string> {
   const repo = makeRepo();
   await initProject(repo, "cli history test");
   writeEvents(repo, [
-    { ts: 1787222691956, loop: "feature", type: "run_start", run: 7 },
-    { ts: 1787222695956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "added a widget", tokens: 2400, costUsd: 0.02 },
-    { ts: 1787222700000, loop: "clean", type: "run_end", run: 3, result: "no_change" },
-    { ts: 1787222760000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "pi unreachable" },
+    { ts: 1787222691956, loop: "feature", type: "run_start", run: 7 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222695956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "added a widget", tokens: 2400, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222700000, loop: "clean", type: "run_end", run: 3, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222760000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "pi unreachable" }, // retired-name-ok: legacy event field in a fixture
   ]);
   return repo;
 }

@@ -12,7 +12,7 @@ import { ensureParentDir } from "../src/files/files.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { captureStdout } from "./helpers/exit-capture.js";
 
-const OLD = JSON.stringify({ ts: Date.now(), loop: "harness", type: "fleet_paused" }); // vocabulary-ok: legacy event name read from old logs
+const OLD = JSON.stringify({ ts: Date.now(), loop: "harness", type: "fleet_paused" }); // vocabulary-ok: legacy event name read from old logs // retired-name-ok: legacy field, read permanently
 
 test("canonicalEventType maps an old name and leaves anything else alone", () => {
   assert.equal(canonicalEventType("fleet_paused"), "team_paused"); // vocabulary-ok: legacy event name read from old logs
@@ -52,7 +52,7 @@ test("logEvent given an old type writes and notifies the new type", () => {
   const seen: string[] = [];
   const off = subscribeEvents((e) => seen.push(e.type));
   try {
-    logEvent(repo, { loop: "harness", type: "fleet_resumed" } as unknown as HarnessEventInput); // vocabulary-ok: legacy event name read from old logs
+    logEvent(repo, { loop: "harness", type: "fleet_resumed" } as unknown as HarnessEventInput); // vocabulary-ok: legacy event name read from old logs // retired-name-ok: legacy field, read permanently
   } finally {
     off();
   }
@@ -100,19 +100,19 @@ test("normalizeLegacyEvent renames the restart drain fields and keeps new ones",
 });
 
 test("normalizeLegacyEvent moves loop to source and maps harness to tumwater", () => {
-  assert.deepEqual(normalizeLegacyEvent({ type: "wake", loop: "feature" }), { type: "wake", source: "feature" });
-  assert.deepEqual(normalizeLegacyEvent({ type: "warning", loop: "harness" }), { type: "warning", source: "tumwater" }); // vocabulary-ok: legacy event source read from old logs
+  assert.deepEqual(normalizeLegacyEvent({ type: "wake", loop: "feature" }), { type: "wake", source: "feature" }); // retired-name-ok: legacy field, read permanently
+  assert.deepEqual(normalizeLegacyEvent({ type: "warning", loop: "harness" }), { type: "warning", source: "tumwater" }); // vocabulary-ok: legacy event source read from old logs // retired-name-ok: legacy field, read permanently
   assert.deepEqual(normalizeLegacyEvent({ type: "warning", source: "harness" }), { type: "warning", source: "tumwater" }); // vocabulary-ok: legacy event source read from old logs
 });
 
 test("normalizeLegacyEvent moves a staged claim's payload source to origin before the writer id", () => {
-  const old = { type: "claim", loop: "feature", action: "assigned", source: "staged" };
+  const old = { type: "claim", loop: "feature", action: "assigned", source: "staged" }; // retired-name-ok: legacy field, read permanently
   assert.deepEqual(normalizeLegacyEvent(old), { type: "claim", source: "feature", action: "assigned", origin: "staged" });
 });
 
 test("logEvent writes source and no loop, even when the caller passes loop: harness", () => {
   const repo = makeRepo();
-  logEvent(repo, { loop: "harness", type: "warning", message: "x" } as unknown as HarnessEventInput); // vocabulary-ok: legacy caller input
+  logEvent(repo, { loop: "harness", type: "warning", message: "x" } as unknown as HarnessEventInput); // vocabulary-ok: legacy caller input // retired-name-ok: legacy field, read permanently
   logEvent(repo, { source: "clean", type: "run_start", run: 1 });
   const lines = fs.readFileSync(eventsLogPath(repo), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
   assert.deepEqual(lines.map((l) => l.source), ["tumwater", "clean"]);
@@ -123,7 +123,7 @@ test("an old loop-keyed line reads back as source from the live log and from the
   const repo = makeRepo();
   const live = eventsLogPath(repo);
   ensureParentDir(live);
-  const line = (loop: string) => JSON.stringify({ ts: Date.now(), loop, type: "warning", message: "m" }); // vocabulary-ok: legacy field name read from old logs
+  const line = (loop: string) => JSON.stringify({ ts: Date.now(), loop, type: "warning", message: "m" }); // vocabulary-ok: legacy field name read from old logs // retired-name-ok: legacy field, read permanently
   fs.writeFileSync(live, line("feature") + "\n");
   fs.writeFileSync(eventsArchivePath(repo), line("clean") + "\n");
   const live1 = readEvents(repo, 10);

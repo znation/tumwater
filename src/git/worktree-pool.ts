@@ -14,7 +14,7 @@
 import path from "node:path";
 import { loadConfig, slotCount } from "../config/config.js";
 import { worktreesDir, slotWorktreePath } from "../paths.js";
-import { loadLoopState } from "../runner/runner-state.js";
+import { loadRunnerState } from "../runner/runner-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState, slotForDir, updateSlotsState, type SlotPurpose } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
@@ -370,11 +370,11 @@ export async function removeDroppedSlots(
  * A resumable enabled role keeps its legacy dir as a pinned slot so its pending resume runs in
  * the same cwd; every other legacy dir is removed (its branch keeps any commit), and pins for
  * roles outside `configured` are cleared. `configured` is every loop id the config's roles
- * enable (`loopIds`), never a `--once --role` filter: a scoped run must leave the other roles'
+ * enable (`runnerIds`), never a `--once --role` filter: a scoped run must leave the other roles'
  * legacy dirs and pins alone, or it silently loses their pending resumes. It runs after
  * `runOrchestrator` constructs every
- * `LoopRunner` but before any tick can call `leaseSlot`: the constructor infers `resumePending`
- * from the on-disk `running` flag only in memory (it does not save it), so `loadLoopState` here
+ * `RoleRunner` but before any tick can call `leaseSlot`: the constructor infers `resumePending`
+ * from the on-disk `running` flag only in memory (it does not save it), so `loadRunnerState` here
  * still reports the on-disk flags. *Removing* a dir is best-effort and logged: the slot records
  * are already updated, so a leaked directory is only a leak the next prune collects. */
 export async function retireLegacyRoleWorktrees(
@@ -393,7 +393,7 @@ export async function retireLegacyRoleWorktrees(
   updateSlotsState(root, (state) => {
     for (const role of names) {
       const legacyDir = path.join(dir, role);
-      const legacy = loadLoopState(root, role);
+      const legacy = loadRunnerState(root, role);
       const resumable = legacy.resumePending === true || legacy.running === true;
       const ownRecord = state.slots.find((slot) => slot.dir === legacyDir);
       if (resumable && configuredSet.has(role)) {

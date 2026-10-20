@@ -70,12 +70,12 @@ async function attribute(
   return { head, state, result };
 }
 
-function reviewRejectedEvents(root: string): { loop: string; head: string; reasons: string[] }[] {
+function reviewRejectedEvents(root: string): { source: string; head: string; reasons: string[] }[] {
   return readEvents(root)
     .filter((e) => e.type === "review_rejected")
     .map((e) => {
       const r = e as { source: string; head?: string; reasons?: string[] };
-      return { loop: r.source, head: r.head ?? "", reasons: r.reasons ?? [] };
+      return { source: r.source, head: r.head ?? "", reasons: r.reasons ?? [] };
     });
 }
 
@@ -95,7 +95,7 @@ test("attributeRedCheck rejects deterministically when main's own tip is green",
     assert.equal(state.lastReview?.head, head);
     assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin was deleted");
     assert.deepEqual(reviewRejectedEvents(root), [
-      { loop: ROLE, head, reasons: [`check failed (\`npm run test\`): ${CHANGE_REASON}`] },
+      { source: ROLE, head, reasons: [`check failed (\`npm run test\`): ${CHANGE_REASON}`] },
     ]);
     const saved = loadRunnerState(root, ROLE);
     assert.equal(saved.unreviewFailures, 0, "the reset was persisted");

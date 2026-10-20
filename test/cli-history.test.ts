@@ -25,9 +25,9 @@ test("history CLI keeps the detail column aligned across usage and usage-less ro
   const repo = makeRepo();
   await initProject(repo, "cli history alignment");
   writeEvents(repo, [
-    { ts: 1787222691956, loop: "feature", type: "run_start", run: 7 },
-    { ts: 1787222695956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "added a widget", tokens: 2400, costUsd: 0.02 },
-    { ts: 1787222700000, loop: "clean", type: "run_end", run: 3, result: "no_change", summary: "tidied" },
+    { ts: 1787222691956, loop: "feature", type: "run_start", run: 7 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222695956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "added a widget", tokens: 2400, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222700000, loop: "clean", type: "run_end", run: 3, result: "no_change", summary: "tidied" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const r = await cli(repo, "history");
   assert.equal(r.code, 0);
@@ -143,8 +143,8 @@ test("history keeps the role column aligned when a role name holds a wide charac
   const repo = makeRepo();
   await initProject(repo, "cli history wide alignment");
   writeEvents(repo, [
-    { ts: 1787222691956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "added a widget" },
-    { ts: 1787222700000, loop: "翻译", type: "run_end", run: 3, result: "no_change", summary: "tidied" },
+    { ts: 1787222691956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "added a widget" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1787222700000, loop: "翻译", type: "run_end", run: 3, result: "no_change", summary: "tidied" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const r = await cli(repo, "history");
   assert.equal(r.code, 0);

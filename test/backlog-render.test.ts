@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { backlogPayload } from "../src/backlog/backlog.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
 
@@ -266,8 +266,8 @@ test("tumwater backlog shows the working-on-it mark and --json carries inProgres
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
   fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD);
-  saveLoopState(root, {
-    ...loadLoopState(root, "feature-2"),
+  saveRunnerState(root, {
+    ...loadRunnerState(root, "feature-2"),
     claim: { file: "PLANS.md", key: "show open bugs in the tui", title: "Show open bugs in the TUI", at: 1, source: "assigned" },
   });
   const md = await runCli(root, "backlog");

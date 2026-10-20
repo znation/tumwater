@@ -22,7 +22,7 @@ import { imageProbeEntryFresh, readImageProbeCache } from "../doctor/image-probe
 
 /** One status-table row: the persisted runner state plus the display-only fields the dashboard
  * computes at the source (`custom`, the resolved selector, the active fallback, the pooled
- * slot, the base-role instance). The structural mirror of `StatusSnapshot["loops"]`, kept
+ * slot, the base-role instance). The structural mirror of `StatusSnapshot["roles"]`, kept
  * here so the roles collector owns its row type; status-data.ts composes the array into the
  * snapshot and TypeScript checks the two shapes agree. */
 export type StatusRoleRow = RunnerState & {

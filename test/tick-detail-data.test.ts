@@ -16,17 +16,17 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 
 function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "run_start", run: 1, ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_start", run: 1, ...over } as HarnessEvent; // retired-name-ok: legacy event field in a fixture
 }
 
 function endEvent(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "run_end", run: 1, result: "changed", ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_end", run: 1, result: "changed", ...over } as HarnessEvent; // retired-name-ok: legacy event field in a fixture
 }
 
 /** A tick-less in-tick event — the review gate's and build check's output, filed under the
  * role but carrying no tick of its own. */
 function inTickEvent(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "review_verdict", verdict: "approve", ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "review_verdict", verdict: "approve", ...over } as HarnessEvent; // retired-name-ok: legacy event field in a fixture
 }
 
 test("a missing or empty log reads as no such tick", () => {
@@ -46,8 +46,8 @@ test("a paired tick's block is its start, its in-tick events, and its end — no
     inTickEvent({ ts: 2000, run: 1 }),
     endEvent({ ts: 2000, run: 1, result: "changed", tokens: 1234, costUsd: 0.5 }),
     // The next tick, and another role's tick entirely — both outside tick 1's block.
-    startEvent({ ts: 3000, run: 2, loop: "helper" }),
-    endEvent({ ts: 4000, run: 2, loop: "helper" }),
+    startEvent({ ts: 3000, run: 2, loop: "helper" }), // retired-name-ok: legacy event field in a fixture
+    endEvent({ ts: 4000, run: 2, loop: "helper" }), // retired-name-ok: legacy event field in a fixture
   ]);
   const detail = readTickDetail(root, "feature", 1);
   assert.ok(detail);
@@ -162,7 +162,7 @@ test("a tick the scan never saw reads as not found, start or end", () => {
 
 test("a queued tick resolves to its merge's verdict and outcome event; a pending merge stays queued", () => {
   const root = tmpdir();
-  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent;
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent; // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     startEvent({ ts: 1000, run: 1 }),
     ev({ ts: 1100, type: "merge_queued", commit: "sha1" }),
@@ -196,8 +196,8 @@ test("a queued tick resolves to its merge's verdict and outcome event; a pending
 
 test("mergedSha pairs a run with its role's merged event inside the merge window; every other case is null", () => {
   const root = tmpdir();
-  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent;
-  const merged = (ts: number, commit: string, loop = "feature"): HarnessEvent => ev({ ts, loop, type: "merged", commit });
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent; // retired-name-ok: legacy event field in a fixture
+  const merged = (ts: number, commit: string, source = "feature"): HarnessEvent => ev({ ts, source, loop: source, type: "merged", commit }); // retired-name-ok: legacy event field in a fixture
   writeEvents(root, [
     merged(100, "old"),
     startEvent({ ts: 1000, run: 1 }),

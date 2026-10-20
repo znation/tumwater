@@ -165,12 +165,12 @@ test("the pause-for control offers duration choices and a timed pause shows its 
   assert.ok(!closed.includes("data-action='wake-in'"), "the table row leaves the timed wake to the drawer");
   const open = row({ ...idle, role: "choosing" }).actions;
   for (const s of [1800, 3600, 7200, 28800, 0]) assert.ok(open.includes("data-for='" + s + "'"), String(s));
-  const paused = row({ ...idle, phase: "paused" }, { pausedLoops: ["docs"], pausedRolesUntil: Date.now() + 3_600_000 });
+  const paused = row({ ...idle, phase: "paused" }, { pausedLoops: ["docs"], pausedRolesUntil: Date.now() + 3_600_000 }); // retired-name-ok: serialized /api key
   assert.match(paused.status, /resumes in 1h/);
-  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["docs"] }).status, /resumes in/);
+  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["docs"] }).status, /resumes in/); // retired-name-ok: serialized /api key
   const until = Date.now() + 3_600_000;
-  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["docs"], pausedRolesUntil: until, paused: true }).status, /resumes in/, "a team pause overrides the role deadline");
-  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["other"], pausedRolesUntil: until }).status, /resumes in/, "a role outside the timed set shows no deadline");
+  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["docs"], pausedRolesUntil: until, paused: true }).status, /resumes in/, "a team pause overrides the role deadline"); // retired-name-ok: serialized /api key
+  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["other"], pausedRolesUntil: until }).status, /resumes in/, "a role outside the timed set shows no deadline"); // retired-name-ok: serialized /api key
 });
 
 test("each row's actions match its state: wake when idle, abort (two-click) when in flight, resume when paused", () => {
@@ -178,8 +178,8 @@ test("each row's actions match its state: wake when idle, abort (two-click) when
   assert.ok(row({ role: "docs", phase: "sleeping", inFlight: false }).actions.includes("data-action='wake'"));
   assert.ok(row({ role: "docs", phase: "sleeping", inFlight: false }).actions.includes("data-action='pause'"));
   // Paused: the target state is explicit — resume, not a toggle.
-  assert.ok(row({ role: "docs", phase: "sleeping", inFlight: false }, { pausedLoops: ["docs"] }).actions.includes("data-action='resume'"));
-  assert.ok(!row({ role: "docs", phase: "sleeping", inFlight: false }, { pausedLoops: ["docs"] }).actions.includes("data-action='pause'"));
+  assert.ok(row({ role: "docs", phase: "sleeping", inFlight: false }, { pausedLoops: ["docs"] }).actions.includes("data-action='resume'")); // retired-name-ok: serialized /api key
+  assert.ok(!row({ role: "docs", phase: "sleeping", inFlight: false }, { pausedLoops: ["docs"] }).actions.includes("data-action='pause'")); // retired-name-ok: serialized /api key
   // In flight: the abort button, armed only after the confirming first click.
   const armed = row({ role: "confirming", phase: "working 3m", inFlight: true }).actions;
   assert.ok(armed.includes("confirming") && armed.includes("Stop?"));

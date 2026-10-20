@@ -31,6 +31,20 @@ const RETIRED: readonly RetiredFamily[] = [
     // removeLegacyLandWorktrees removes the legacy `_land-<role>` worktrees "State and git" keeps.
     allow: ["removeLegacyLandWorktrees"],
   },
+  {
+    family: "loop → runner",
+    words: ["loop", "loops"],
+    fileWords: ["loop", "loops"],
+    allow: [
+      "pollLoop", // the poll loop is a JavaScript loop, not a role
+      "crashLoop", // a crash loop is a failure mode
+      "onCrashLoop", // the crash-loop callback
+      "customLoops", // the live legacy config key
+      "CustomLoop", // renamed by Plain terms code cleanup part 2/7
+      "customLoopNames", // renamed by Plain terms code cleanup part 2/7
+      "CUSTOM_LOOP_KEYS", // renamed by Plain terms code cleanup part 2/7
+    ],
+  },
 ];
 
 /** Repo-relative files whose identifiers are skipped (their file names are still checked). */

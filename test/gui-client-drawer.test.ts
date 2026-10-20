@@ -151,7 +151,7 @@ function workingStatus() {
   return {
     running: true,
     pausedRoles: [] as string[],
-    pausedLoops: [] as string[],
+    pausedLoops: [] as string[], // retired-name-ok: serialized /api key
     roles: [{
       role: "clean", phase: "working · writing tests", inFlight: true,
       currentWork: "Adding drawer tests", lastResult: "changed", lastSummary: "did the thing",
@@ -552,7 +552,7 @@ test("the role drawer renders its notebook and next prompt, refetching when the 
     todayUsd: 0, costUsd: 0, nextRunAt: Date.now() + 30_000, yieldMultiplier: 1, backoffSeconds: 0,
   });
   const t = openDrawer(["toggleRole", "renderRoleDrawer"], {
-    status: { running: true, pausedRoles: [], pausedLoops: [], roles: [statusRow("clean"), statusRow("bugfix")] },
+    status: { running: true, pausedRoles: [], pausedLoops: [], roles: [statusRow("clean"), statusRow("bugfix")] }, // retired-name-ok: serialized /api key
     responses: {
       "/api/role?role=clean": { notes: "clean keeps the tree tidy", nextPrompt: "the clean next prompt" },
       "/api/role?role=bugfix": { notes: "bugfix watches the open bugs", nextPrompt: "the bugfix next prompt" },
@@ -570,7 +570,7 @@ test("the role drawer renders its notebook and next prompt, refetching when the 
   const metaPaints = t.painted.filter(([id]) => id === "drawermeta").length;
   const older = statusRow("clean");
   older.lastRunEndedAt -= 5_000;
-  const polled = { running: true, pausedRoles: [], pausedLoops: [], roles: [older, statusRow("bugfix")] };
+  const polled = { running: true, pausedRoles: [], pausedLoops: [], roles: [older, statusRow("bugfix")] }; // retired-name-ok: serialized /api key
   t.scope.renderRoleDrawer(polled);
   assert.ok(t.painted.filter(([id]) => id === "drawermeta").length > metaPaints, "drawermeta repaints on the poll");
   assert.equal(t.painted.filter(([id]) => id === "drawerrole").length, rolePaints, "drawerrole is not repainted");
@@ -1006,7 +1006,7 @@ test("the Instances row renders only for split-capable roles, tags set vs defaul
   const splitStatus = (role: string) => {
     const now = Date.now();
     return {
-      running: true, pausedRoles: [], pausedLoops: [],
+      running: true, pausedRoles: [], pausedLoops: [], // retired-name-ok: serialized /api key
       roles: [{ role, phase: "working", inFlight: true, currentWork: "", lastResult: "", lastSummary: "",
         lastRunEndedAt: now - 60000, commits: 0, runs: 1, generated: 0, peakCtx: 0, todayUsd: 0, costUsd: 0,
         nextRunAt: now + 30000, yieldMultiplier: 1, backoffSeconds: 0 }],

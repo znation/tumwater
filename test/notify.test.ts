@@ -32,9 +32,9 @@ function recordedLines(out: string): string[] {
   }
 }
 
-function parseLine(line: string): { type: string; loop: string; message: string } {
+function parseLine(line: string): { type: string; source: string; message: string } {
   const parts = line.split("|");
-  return { type: parts[0] ?? "", loop: parts[1] ?? "", message: parts.slice(2).join("|") };
+  return { type: parts[0] ?? "", source: parts[1] ?? "", message: parts.slice(2).join("|") };
 }
 
 test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowlist and gap", () => {
@@ -92,7 +92,7 @@ test("an allowlisted event spawns the notify command once with the three env var
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "budget_paused");
-    assert.equal(line.loop, "feature");
+    assert.equal(line.source, "feature");
     assert.equal(line.message, formatEvent(event));
     // One event, one spawn: the burst-suppression contract the throttle exists for holds even
     // without a second event to suppress.
@@ -113,7 +113,7 @@ test("a posted question spawns the notify command once with the posting role and
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "question_posted");
-    assert.equal(line.loop, "feature");
+    assert.equal(line.source, "feature");
     assert.equal(line.message, formatEvent(event));
     assert.ok(line.message.includes("question posted: Which storage?"), `unexpected message: ${line.message}`);
   } finally {
@@ -131,7 +131,7 @@ test("a main_red_hold spawns the notify command once with the harness role and t
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "main_red_hold");
-    assert.equal(line.loop, "tumwater");
+    assert.equal(line.source, "tumwater");
     assert.ok(line.message.includes(" main ") && line.message.includes("is red"), `unexpected message: ${line.message}`);
   } finally {
     notifier.dispose();
@@ -149,7 +149,7 @@ test("claude window events each spawn the notify command with the rendered line"
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "claude_window_limited");
-    assert.equal(line.loop, "tumwater");
+    assert.equal(line.source, "tumwater");
     assert.equal(line.message, formatEvent(event));
     // A different type is not suppressed by the limited page's throttle slot.
     logEvent(root, { source: TUMWATER_SOURCE, type: "claude_window_warning", windowType: "five_hour", resetsAt });
@@ -488,7 +488,7 @@ test("notifyTeamDown runs the configured hook once with the supervisor_exit line
   await waitFor(() => recordedLines(out).length === 1, "one recorded line");
   const rec = parseLine(recordedLines(out)[0]!);
   assert.equal(rec.type, "supervisor_exit");
-  assert.equal(rec.loop, "tumwater");
+  assert.equal(rec.source, "tumwater");
   assert.equal(rec.message, formatEvent(event));
 });
 

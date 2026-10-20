@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { dirname, join } from "node:path";
 import { leaseSlot, slotPoolSnapshot, tryLeaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
 import { eventsLogPath, slotWorktreePath, slotsStatePath, worktreeUsePath } from "../src/paths.js";
@@ -490,7 +490,7 @@ test("a resumable enabled role's legacy dir becomes a pinned slot and serves one
   writeConfig(root, { worktreeSlots: 2 });
   const wt = worktreeAt(root, "feature");
   writeFileSync(join(wt, "resume.txt"), "kept");
-  saveLoopState(root, { ...freshLoopState("feature"), resumePending: true });
+  saveRunnerState(root, { ...freshRunnerState("feature"), resumePending: true });
 
   await retireLegacyRoleWorktrees(root, ["feature"]);
   assert.equal(existsSync(wt), true, "the resumable legacy checkout was removed");
@@ -516,7 +516,7 @@ test("a resumable role that already owns a tick slot keeps the slot and retires 
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 3 });
   const wt = worktreeAt(root, "feature");
-  saveLoopState(root, { ...freshLoopState("feature"), running: true });
+  saveRunnerState(root, { ...freshRunnerState("feature"), running: true });
   const held = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
 
   await retireLegacyRoleWorktrees(root, ["feature"]);
@@ -529,7 +529,7 @@ test("a resumable but disabled role is removed and its pins never leak", async (
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 2 });
   const wt = worktreeAt(root, "feature");
-  saveLoopState(root, { ...freshLoopState("feature"), resumePending: true });
+  saveRunnerState(root, { ...freshRunnerState("feature"), resumePending: true });
   const canonical = slotWorktreePath(root, 1);
   writeSlotsState(root, {
     slots: [{ dir: canonical, lease: null, pinnedFor: "clean", lastRole: null, lastReleasedAt: 1 }],

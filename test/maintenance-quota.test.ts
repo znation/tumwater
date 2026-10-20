@@ -52,19 +52,19 @@ test("countMaintenanceWindow counts merged events by tier inside the last 24 h",
   const inside = now - 2 * HOUR;
   const outside = now - 25 * HOUR;
   writeEvents(root, [
-    ...Array.from({ length: 3 }, (_, i) => ({ ts: inside, loop: "feature", type: "merged", commit: `f${i}` })),
-    { ts: inside, loop: "director", type: "merged", commit: "d" },
-    ...Array.from({ length: 5 }, (_, i) => ({ ts: inside, loop: "clean", type: "merged", commit: `c${i}` })),
-    ...Array.from({ length: 2 }, (_, i) => ({ ts: inside, loop: "readme", type: "merged", commit: `r${i}` })),
+    ...Array.from({ length: 3 }, (_, i) => ({ ts: inside, loop: "feature", type: "merged", commit: `f${i}` })), // retired-name-ok: legacy event field in a fixture
+    { ts: inside, loop: "director", type: "merged", commit: "d" }, // retired-name-ok: legacy event field in a fixture
+    ...Array.from({ length: 5 }, (_, i) => ({ ts: inside, loop: "clean", type: "merged", commit: `c${i}` })), // retired-name-ok: legacy event field in a fixture
+    ...Array.from({ length: 2 }, (_, i) => ({ ts: inside, loop: "readme", type: "merged", commit: `r${i}` })), // retired-name-ok: legacy event field in a fixture
     // steward and plan are neither tier, so they are ignored.
-    { ts: inside, loop: "steward", type: "merged", commit: "s" },
-    ...Array.from({ length: 2 }, (_, i) => ({ ts: inside, loop: "plan", type: "merged", commit: `p${i}` })),
+    { ts: inside, loop: "steward", type: "merged", commit: "s" }, // retired-name-ok: legacy event field in a fixture
+    ...Array.from({ length: 2 }, (_, i) => ({ ts: inside, loop: "plan", type: "merged", commit: `p${i}` })), // retired-name-ok: legacy event field in a fixture
     // older than 24 h: excluded.
-    ...Array.from({ length: 4 }, (_, i) => ({ ts: outside, loop: "clean", type: "merged", commit: `oc${i}` })),
+    ...Array.from({ length: 4 }, (_, i) => ({ ts: outside, loop: "clean", type: "merged", commit: `oc${i}` })), // retired-name-ok: legacy event field in a fixture
     // a non-merged event inside the window is not a merge.
-    { ts: inside, loop: "clean", type: "run_end", tokens: 1 },
+    { ts: inside, loop: "clean", type: "run_end", tokens: 1 }, // retired-name-ok: legacy event field in a fixture
     // a tier-counted merge with no timestamp contributes nothing.
-    { loop: "clean", type: "merged", commit: "nots" },
+    { loop: "clean", type: "merged", commit: "nots" }, // retired-name-ok: legacy event field in a fixture
   ]);
   assert.deepEqual(countMaintenanceWindow(root, newMaintenanceWindowCounter(), now), { work: 4, maint: 7 });
 });
@@ -72,11 +72,11 @@ test("countMaintenanceWindow counts merged events by tier inside the last 24 h",
 test("a second count folds only the appended bytes and sees the new merge", () => {
   const root = tmpdir();
   const now = Date.now();
-  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "clean", type: "merged", commit: "a" }]);
+  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "clean", type: "merged", commit: "a" }]); // retired-name-ok: legacy event field in a fixture
   const counter = newMaintenanceWindowCounter();
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 0, maint: 1 });
   const before = counter.offset;
-  const line = JSON.stringify({ ts: now - 1 * HOUR, loop: "feature", type: "merged", commit: "b" }) + "\n";
+  const line = JSON.stringify({ ts: now - 1 * HOUR, loop: "feature", type: "merged", commit: "b" }) + "\n"; // retired-name-ok: legacy event field in a fixture
   fs.appendFileSync(eventsLogPath(root), line);
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 1 });
   assert.equal(
@@ -89,7 +89,7 @@ test("a second count folds only the appended bytes and sees the new merge", () =
 test("a rotated log is reseeded from the live file and its archive, not folded from the old offset", () => {
   const root = tmpdir();
   const now = Date.now();
-  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "feature", type: "merged", commit: "a" }]);
+  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "feature", type: "merged", commit: "a" }]); // retired-name-ok: legacy event field in a fixture
   const counter = newMaintenanceWindowCounter();
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 0 });
   // Rotation renames the live log away and a fresh one grows in its place (a new inode). The
@@ -97,8 +97,8 @@ test("a rotated log is reseeded from the live file and its archive, not folded f
   // merge — the merge is still inside the window, so it still counts.
   fs.renameSync(eventsLogPath(root), eventsLogPath(root) + ".1");
   writeEvents(root, [
-    { ts: now - 1 * HOUR, loop: "clean", type: "merged", commit: "x" },
-    { ts: now, loop: "clean", type: "merged", commit: "y" },
+    { ts: now - 1 * HOUR, loop: "clean", type: "merged", commit: "x" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now, loop: "clean", type: "merged", commit: "y" }, // retired-name-ok: legacy event field in a fixture
   ]);
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 2 });
 });
@@ -113,7 +113,7 @@ test("a missing events log counts zero and seeds an empty memo", () => {
 test("an unchanged poll reuses the memo without reseeding", () => {
   const root = tmpdir();
   const now = Date.now();
-  writeEvents(root, [{ ts: now - HOUR, loop: "clean", type: "merged", commit: "a" }]);
+  writeEvents(root, [{ ts: now - HOUR, loop: "clean", type: "merged", commit: "a" }]); // retired-name-ok: legacy event field in a fixture
   const counter = newMaintenanceWindowCounter();
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 0, maint: 1 });
   const offset = counter.offset;
@@ -124,15 +124,15 @@ test("an unchanged poll reuses the memo without reseeding", () => {
 test("appended lines that are torn, non-merged, tierless, or timestamp-less are ignored", () => {
   const root = tmpdir();
   const now = Date.now();
-  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "clean", type: "merged", commit: "a" }]);
+  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "clean", type: "merged", commit: "a" }]); // retired-name-ok: legacy event field in a fixture
   const counter = newMaintenanceWindowCounter();
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 0, maint: 1 });
   const appended = [
     "{ torn",
-    JSON.stringify({ ts: now - HOUR, loop: "clean", type: "run_end", tokens: 1 }),
-    JSON.stringify({ ts: now - HOUR, loop: "steward", type: "merged", commit: "s" }),
-    JSON.stringify({ loop: "feature", type: "merged", commit: "x" }),
-    JSON.stringify({ ts: now - HOUR / 2, loop: "feature", type: "merged", commit: "b" }),
+    JSON.stringify({ ts: now - HOUR, loop: "clean", type: "run_end", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: now - HOUR, loop: "steward", type: "merged", commit: "s" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ loop: "feature", type: "merged", commit: "x" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: now - HOUR / 2, loop: "feature", type: "merged", commit: "b" }), // retired-name-ok: legacy event field in a fixture
   ];
   fs.appendFileSync(eventsLogPath(root), appended.join("\n") + "\n");
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 1 });
@@ -141,7 +141,7 @@ test("appended lines that are torn, non-merged, tierless, or timestamp-less are 
 test("records that age past the rolling window are dropped from the memo", () => {
   const root = tmpdir();
   const now = Date.now();
-  writeEvents(root, [{ ts: now - 23 * HOUR, loop: "clean", type: "merged", commit: "a" }]);
+  writeEvents(root, [{ ts: now - 23 * HOUR, loop: "clean", type: "merged", commit: "a" }]); // retired-name-ok: legacy event field in a fixture
   const counter = newMaintenanceWindowCounter();
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 0, maint: 1 });
   // Two hours later the same, unchanged record sits 25 h back — outside the window.
@@ -152,13 +152,13 @@ test("records that age past the rolling window are dropped from the memo", () =>
 test("a torn trailing merged line is counted once, not again when its newline arrives", () => {
   const root = tmpdir();
   const now = Date.now();
-  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "feature", type: "merged", commit: "a" }]);
+  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "feature", type: "merged", commit: "a" }]); // retired-name-ok: legacy event field in a fixture
   // A write in flight: the merged event's JSON is fully on disk, its newline is not. The windowed
   // seed read parses that trailing fragment as an event; a fold resumed from the last complete line
   // would re-read it once the newline arrives and count it twice.
   fs.appendFileSync(
     eventsLogPath(root),
-    JSON.stringify({ ts: now - 1 * HOUR, loop: "clean", type: "merged", commit: "torn" }),
+    JSON.stringify({ ts: now - 1 * HOUR, loop: "clean", type: "merged", commit: "torn" }), // retired-name-ok: legacy event field in a fixture
   );
   const counter = newMaintenanceWindowCounter();
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 1 });
@@ -169,8 +169,8 @@ test("a torn trailing merged line is counted once, not again when its newline ar
 test("a torn partial merged line is not counted until it completes, then counted once", () => {
   const root = tmpdir();
   const now = Date.now();
-  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "feature", type: "merged", commit: "a" }]);
-  const full = JSON.stringify({ ts: now - 1 * HOUR, loop: "clean", type: "merged", commit: "torn" });
+  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "feature", type: "merged", commit: "a" }]); // retired-name-ok: legacy event field in a fixture
+  const full = JSON.stringify({ ts: now - 1 * HOUR, loop: "clean", type: "merged", commit: "torn" }); // retired-name-ok: legacy event field in a fixture
   const split = Math.floor(full.length / 2);
   fs.appendFileSync(eventsLogPath(root), full.slice(0, split)); // mid-JSON, not an event yet
   const counter = newMaintenanceWindowCounter();
@@ -183,8 +183,8 @@ test("pollMaintenanceQuotaGate computes the allowance verdict and logs one hold 
   const root = tmpdir();
   const now = Date.now();
   writeEvents(root, [
-    ...Array.from({ length: 10 }, (_, i) => ({ ts: now - HOUR, loop: "feature", type: "merged", commit: `f${i}` })),
-    ...Array.from({ length: 32 }, (_, i) => ({ ts: now - HOUR, loop: "clean", type: "merged", commit: `c${i}` })),
+    ...Array.from({ length: 10 }, (_, i) => ({ ts: now - HOUR, loop: "feature", type: "merged", commit: `f${i}` })), // retired-name-ok: legacy event field in a fixture
+    ...Array.from({ length: 32 }, (_, i) => ({ ts: now - HOUR, loop: "clean", type: "merged", commit: `c${i}` })), // retired-name-ok: legacy event field in a fixture
   ]);
   const state = newMaintenanceQuotaGateState();
   const observers = [
@@ -228,7 +228,7 @@ test("a running tick and a queued merge both count as in flight toward the used 
   // allowance = 0 * work + 12; 10 merged + 2 in flight = 12 -> held at the boundary.
   writeEvents(
     root,
-    Array.from({ length: 10 }, (_, i) => ({ ts: now - HOUR, loop: "clean", type: "merged", commit: `c${i}` })),
+    Array.from({ length: 10 }, (_, i) => ({ ts: now - HOUR, loop: "clean", type: "merged", commit: `c${i}` })), // retired-name-ok: legacy event field in a fixture
   );
   const state = newMaintenanceQuotaGateState();
   const observers = [

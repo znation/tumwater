@@ -610,7 +610,7 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
     root,
     Array.from({ length: 11 }, (_, i) => ({
       ts: now - HOUR,
-      loop: "clean",
+      loop: "clean", // retired-name-ok: legacy event field in a fixture
       type: "merged",
       commit: `c${i}`,
     })),

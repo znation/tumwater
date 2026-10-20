@@ -26,8 +26,8 @@ test("snapshot role rows carry the resolved selector always and the seam tier on
   // A single string model: every row carries the resolved selector; the tier tag stays absent.
   writeConfig(repo, { model: "prov-a/model-a" });
   const plain = snapshot(repo);
-  assert.equal(plain.loops[0]?.modelTier, undefined);
-  assert.equal(plain.loops[0]?.model, "prov-a/model-a");
+  assert.equal(plain.roles[0]?.modelTier, undefined);
+  assert.equal(plain.roles[0]?.model, "prov-a/model-a");
 
   // The payload ships the same field per row — the GUI renders it beside the role name.
   const plainPayload = statusPayload(repo) as { roles: Array<{ role: string; modelTier?: string; model?: string }> };
@@ -37,10 +37,10 @@ test("snapshot role rows carry the resolved selector always and the seam tier on
   // A tier map: each row carries its role's seam tier and that tier's resolved selector.
   writeConfig(repo, { model: { default: "prov-a/model-a", strong: "prov-s/model-s:high" } });
   const mapped = snapshot(repo);
-  const plan = mapped.loops.find((l) => l.role === "plan");
+  const plan = mapped.roles.find((l) => l.role === "plan");
   assert.equal(plan?.modelTier, "strong"); // the catalog assigns plan the strong tier
   assert.equal(plan?.model, "prov-s/model-s:high");
-  const readme = mapped.loops.find((l) => l.role === "readme");
+  const readme = mapped.roles.find((l) => l.role === "readme");
   assert.equal(readme?.modelTier, "small");
   assert.equal(readme?.model, "prov-a/model-a"); // an undeclared tier inherits default
 
@@ -68,7 +68,7 @@ test("snapshot rows carry the active model-fallback episode", async () => {
     reason: "Request timed out.",
   };
   saveRunnerState(repo, state);
-  const active = snapshot(repo, undefined, now).loops.find((l) => l.role === "feature");
+  const active = snapshot(repo, undefined, now).roles.find((l) => l.role === "feature");
   assert.deepEqual(active?.fallback, {
     provider: "prov-fb",
     model: "model-fb",
@@ -82,13 +82,13 @@ test("snapshot rows carry the active model-fallback episode", async () => {
   // Probe due: this tick runs the primary, so the row stops naming the fallback.
   state.modelFallback.probeAt = now - 1;
   saveRunnerState(repo, state);
-  assert.equal(snapshot(repo, undefined, now).loops.find((l) => l.role === "feature")?.fallback, undefined);
+  assert.equal(snapshot(repo, undefined, now).roles.find((l) => l.role === "feature")?.fallback, undefined);
 
   // No fallback configured: an active episode cannot advertise a pair.
   writeConfig(repo, { model: "prov-a/model-a" });
   state.modelFallback.probeAt = now + 300_000;
   saveRunnerState(repo, state);
-  assert.equal(snapshot(repo, undefined, now).loops.find((l) => l.role === "feature")?.fallback, undefined);
+  assert.equal(snapshot(repo, undefined, now).roles.find((l) => l.role === "feature")?.fallback, undefined);
 });
 
 // The subscription usage-window block (plans/agent-backends.md §8, PLANS.md part 6d/7): the
@@ -162,15 +162,15 @@ test("snapshot rows name pi's own saved default when the config resolves no mode
 
   writeConfig(repo, {});
   const snap = snapshot(repo, modelsPath);
-  const row = snap.loops.find((l) => l.role === "feature")!;
+  const row = snap.roles.find((l) => l.role === "feature")!;
   assert.equal(row.model, "prov/org/m:route:low");
   assert.equal(row.modelFromPi, true);
   // No model anywhere in the config, so every row names the pi default.
-  assert.ok(snap.loops.every((l) => l.modelFromPi === true));
+  assert.ok(snap.roles.every((l) => l.modelFromPi === true));
 
   // The config's thinking wins over the default's (tumwater passes it as --thinking).
   writeConfig(repo, { thinking: "high" });
-  const high = snapshot(repo, modelsPath).loops.find((l) => l.role === "feature")!;
+  const high = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
   assert.equal(high.model, "prov/org/m:route:high");
   assert.equal(high.modelFromPi, true);
 });
@@ -185,19 +185,19 @@ test("modelFromPi stays absent when a model, agent or provider resolves", async 
 
   // A configured model: the row keeps the configured selector.
   writeConfig(repo, { model: "prov-a/model-a" });
-  const configured = snapshot(repo, modelsPath).loops.find((l) => l.role === "feature")!;
+  const configured = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
   assert.equal(configured.model, "prov-a/model-a");
   assert.equal(configured.modelFromPi, undefined);
 
   // agent claude: the row keeps the claude/… tier default.
   writeConfig(repo, { agent: "claude" });
-  const claude = snapshot(repo, modelsPath).loops.find((l) => l.role === "feature")!;
+  const claude = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
   assert.equal(claude.modelFromPi, undefined);
   assert.match(claude.model ?? "", /^claude\//);
 
   // Config names only a provider: no model resolves, so the row has none and no flag.
   writeConfig(repo, { provider: "huggingface" });
-  const provOnly = snapshot(repo, modelsPath).loops.find((l) => l.role === "feature")!;
+  const provOnly = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
   assert.equal(provOnly.modelFromPi, undefined);
   assert.equal(provOnly.model, undefined);
 });
@@ -247,10 +247,10 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
   // so the default-tier role is text-only with a reroute target naming strong.
   writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
   const snap = snapshot(repo, models);
-  const feature = snap.loops.find((l) => l.role === "feature")!;
+  const feature = snap.roles.find((l) => l.role === "feature")!;
   assert.equal(feature.imageInput, false);
   assert.equal(feature.imageRerouteLabel, "strong (local/vision)");
-  const plan = snap.loops.find((l) => l.role === "plan")!;
+  const plan = snap.roles.find((l) => l.role === "plan")!;
   assert.equal(plan.imageInput, true);
   assert.equal(plan.imageRerouteLabel, null);
   // The payload ships the same surface for the dashboard's images alert and composer notice.

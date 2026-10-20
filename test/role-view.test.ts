@@ -704,7 +704,7 @@ test("role payload surfaces the newest run_end outcomes ordered newest-first", (
     dir,
     Array.from({ length: 10 }, (_, i) => ({
       ts: now - (10 - i) * 60_000, // i=0 oldest (10m ago) … i=9 newest (1m ago)
-      loop: "feature",
+      loop: "feature", // retired-name-ok: legacy event field in a fixture
       type: "run_end",
       run: i + 1,
       result: i % 2 === 0 ? "changed" : "no_change",
@@ -732,10 +732,10 @@ test("a torn run_end line (no usable ts/result/duration) contributes no recent o
   // consumer guards with finiteNumber. A line missing a usable ts or result is as unusable
   // as an absent one and must not surface (no "Invalid Date", no literal "undefined").
   writeEvents(dir, [
-    { ts: now - 120_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
-    { ts: "not-a-number", loop: "feature", type: "run_end", run: 2, result: "changed" }, // torn ts
-    { ts: now - 60_000, loop: "feature", type: "run_end", run: 3, result: "", durationMs: "not-a-number" }, // empty result + torn duration
-    { ts: now - 30_000, loop: "feature", type: "run_end", run: 4, result: "no_change", durationMs: 10_000 },
+    { ts: now - 120_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: "not-a-number", loop: "feature", type: "run_end", run: 2, result: "changed" }, // torn ts // retired-name-ok: legacy event field in a fixture
+    { ts: now - 60_000, loop: "feature", type: "run_end", run: 3, result: "", durationMs: "not-a-number" }, // empty result + torn duration // retired-name-ok: legacy event field in a fixture
+    { ts: now - 30_000, loop: "feature", type: "run_end", run: 4, result: "no_change", durationMs: 10_000 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const o = rolePayload(dir, "feature", NO_MODELS).recentOutcomes!;
   assert.equal(o.length, 2); // only the two with a usable ts + result survive
@@ -760,10 +760,10 @@ test("role payload sums the role's usage and renders a Spend line", () => {
   const dir = root();
   const now = Date.now();
   writeEvents(dir, [
-    { ts: now - 180_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 6000, costUsd: 0.02 },
-    { ts: now - 120_000, loop: "feature", type: "run_end", run: 2, result: "no_change", tokens: 6500, costUsd: 0.03, notionalCostUsd: 0.05 },
+    { ts: now - 180_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 6000, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 120_000, loop: "feature", type: "run_end", run: 2, result: "no_change", tokens: 6500, costUsd: 0.03, notionalCostUsd: 0.05 }, // retired-name-ok: legacy event field in a fixture
     // Another role's spend is not folded into this role's sum.
-    { ts: now - 60_000, loop: "other", type: "run_end", run: 1, result: "changed", tokens: 99999, costUsd: 9.99 },
+    { ts: now - 60_000, loop: "other", type: "run_end", run: 1, result: "changed", tokens: 99999, costUsd: 9.99 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.deepEqual(p.usage, { tokens: 12500, costUsd: 0.05, notionalCostUsd: 0.05 });
@@ -775,7 +775,7 @@ test("role payload sums the role's usage and renders a Spend line", () => {
 
   // A zero notional omits the notional suffix.
   writeEvents(dir, [
-    { ts: now - 60_000, loop: "feature", type: "run_end", run: 3, result: "changed", tokens: 1200, costUsd: 0.01 },
+    { ts: now - 60_000, loop: "feature", type: "run_end", run: 3, result: "changed", tokens: 1200, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
   ]);
   assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Spend: \$0\.01 · 1200 tokens$/m);
 });
@@ -788,7 +788,7 @@ test("a never-costly or never-ticked role carries no usage field or Spend line",
   assert.doesNotMatch(renderRoleMarkdown(neverTicked), /- Spend:/);
   // Ticked but with all-zero usage: the zero-means-absent convention drops the field.
   writeEvents(dir, [
-    { ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
+    { ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const zero = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(zero.usage, undefined);
@@ -799,11 +799,11 @@ test("a torn run_end line contributes nothing to the usage sum", () => {
   const dir = root();
   const now = Date.now();
   writeEvents(dir, [
-    { ts: now - 120_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.01 },
+    { ts: now - 120_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
     // A non-numeric cost reads as 0 via eventUsage's finiteness guard; its tokens still count.
-    { ts: now - 60_000, loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 200, costUsd: "not-a-number" },
+    { ts: now - 60_000, loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 200, costUsd: "not-a-number" }, // retired-name-ok: legacy event field in a fixture
     // A torn ts (no usable timestamp) is as unusable as an absent tick and spends nothing.
-    { ts: "not-a-number", loop: "feature", type: "run_end", run: 3, result: "changed", tokens: 999, costUsd: 0.5 },
+    { ts: "not-a-number", loop: "feature", type: "run_end", run: 3, result: "changed", tokens: 999, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.deepEqual(p.usage, { tokens: 700, costUsd: 0.01, notionalCostUsd: 0 });
@@ -813,8 +813,8 @@ test("role markdown renders the Recent runs section before the instructions", ()
   const dir = root();
   const now = Date.now();
   writeEvents(dir, [
-    { ts: now - 120_000, loop: "feature", type: "run_end", run: 1, result: "changed", durationMs: 30_000, summary: "added a thing" },
-    { ts: now - 60_000, loop: "feature", type: "run_end", run: 2, result: "no_change", summary: "nothing to do" },
+    { ts: now - 120_000, loop: "feature", type: "run_end", run: 1, result: "changed", durationMs: 30_000, summary: "added a thing" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 60_000, loop: "feature", type: "run_end", run: 2, result: "no_change", summary: "nothing to do" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
   assert.match(md, /## Recent runs/);

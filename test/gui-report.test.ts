@@ -33,10 +33,10 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   // features/bugs come from dated headings in PLANS.md/BUGS.md, not from events.
   const evFile = eventsLogPath(repo);
   writeLogLines(evFile, [
-      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
-      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "run_end", run: 2, result: "no_change" }),
-      JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }),
-      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "run_end", run: 3, result: "no_change", tokens: 250, costUsd: 1.5 }),
+      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.25 }), // retired-name-ok: legacy event field in a fixture
+      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "run_end", run: 2, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
+      JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }), // retired-name-ok: legacy event field in a fixture
+      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "run_end", run: 3, result: "no_change", tokens: 250, costUsd: 1.5 }), // retired-name-ok: legacy event field in a fixture
     ]);
   const today = dayKey(Date.now());
   fs.writeFileSync(
@@ -101,10 +101,10 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
   // cluster to render — the endpoint's whole job is to hand back renderFailureMarkdown's text.
   const evFile = eventsLogPath(repo);
   writeLogLines(evFile, [
-      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
-      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "run_end", run: 2, result: "error", error: "pi exited 1" }),
-      JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }),
-      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "run_end", run: 3, result: "no_change" }),
+      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.25 }), // retired-name-ok: legacy event field in a fixture
+      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "run_end", run: 2, result: "error", error: "pi exited 1" }), // retired-name-ok: legacy event field in a fixture
+      JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }), // retired-name-ok: legacy event field in a fixture
+      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "run_end", run: 3, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
     ]);
 
   await withGui(repo, async ({ base }) => {

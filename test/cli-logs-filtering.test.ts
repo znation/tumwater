@@ -16,7 +16,7 @@ import { writeLogLines } from "./fixtures/log-fixtures.js";
 // by its tick number in the rendered line.
 function seedEvents(repo: string, agesMs: number[], now = Date.now()): void {
   const file = eventsLogPath(repo);
-  writeLogLines(file, agesMs.map((age, i) => ({ ts: now - age, loop: "clean", type: "run_start", run: i + 1 })));
+  writeLogLines(file, agesMs.map((age, i) => ({ ts: now - age, loop: "clean", type: "run_start", run: i + 1 }))); // retired-name-ok: legacy event field in a fixture
 }
 
 test("logs --since prints only the events of the window, oldest-first", async () => {
@@ -156,12 +156,12 @@ function seedMixedLog(repo: string): void {
   const now = Date.now();
   const file = eventsLogPath(repo);
   const events = [
-    { ts: now - 6000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
-    { ts: now - 5000, loop: "feature", type: "run_start", run: 1 },
-    { ts: now - 4000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 1200 },
-    { ts: now - 3000, loop: "bugfix", type: "run_start", run: 2 },
-    { ts: now - 2000, loop: "bugfix", type: "run_end", run: 2, result: "refused", summary: "nothing to do" },
-    { ts: now - 1000, loop: "bugfix", type: "merge_failed", commit: COMMIT_B, result: "build_check", durationMs: 900 },
+    { ts: now - 6000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 5000, loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 4000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 1200 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 3000, loop: "bugfix", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 2000, loop: "bugfix", type: "run_end", run: 2, result: "refused", summary: "nothing to do" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 1000, loop: "bugfix", type: "merge_failed", commit: COMMIT_B, result: "build_check", durationMs: 900 }, // retired-name-ok: legacy event field in a fixture
   ];
   writeLogLines(file, events);
 }
@@ -289,8 +289,8 @@ test("logs --grep -f applies the filter to the seeded window and every followed 
     // A new event appended while following: the matching one appears, the non-matching one
     // does not (the filter holds across rotation, on every event the callback sees).
     const file = eventsLogPath(repo);
-    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", run: 7 }) + "\n");
-    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", run: 7 }) + "\n"); // retired-name-ok: legacy event field in a fixture
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n"); // retired-name-ok: legacy event field in a fixture
     await s.waitFor((out) => out.includes("failed (conflict)"), "the live match");
 
     const out = s.out();
@@ -398,12 +398,12 @@ test("logs --type prints only events of exactly that type, where --grep substrin
   const now = Date.now();
   const file = eventsLogPath(repo);
   writeLogLines(file, [
-    { ts: now - 6000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
-    { ts: now - 5000, loop: "feature", type: "run_start", run: 1 },
+    { ts: now - 6000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 5000, loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
     // A wake event whose rendered line quotes the word "merge_failed" as its reason text:
     // the exact-vs-substring case — --grep matches the quoted text, --type (an event id,
     // not free text) must not.
-    { ts: now - 4000, loop: "clean", type: "wake", reason: "merge_failed" },
+    { ts: now - 4000, loop: "clean", type: "wake", reason: "merge_failed" }, // retired-name-ok: legacy event field in a fixture
   ]);
 
   const r = await cli(repo, "logs", "--type", "merge_failed", "-n", "200");
@@ -423,9 +423,9 @@ test("logs --type takes a comma list matching any of its types", async () => {
   await initProject(repo, "cli logs type list");
   const now = Date.now();
   writeLogLines(eventsLogPath(repo), [
-    { ts: now - 40 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 800 },
-    { ts: now - 30 * 60_000, loop: "feature", type: "run_start", run: 7 },
-    { ts: now - 20 * 60_000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy"], durationMs: 400 },
+    { ts: now - 40 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 800 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_start", run: 7 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 20 * 60_000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy"], durationMs: 400 }, // retired-name-ok: legacy event field in a fixture
   ]);
 
   for (const value of ["merge_failed,review_rejected", " merge_failed , review_rejected "]) {
@@ -465,9 +465,9 @@ test("logs --since --type filters the window, and an empty match is gentle prose
   const now = Date.now();
   const file = eventsLogPath(repo);
   writeLogLines(file, [
-    { ts: now - 40 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
-    { ts: now - 30 * 60_000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 400 },
-    { ts: now - 20 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_B, result: "conflict", durationMs: 100 },
+    { ts: now - 40 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 30 * 60_000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 400 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 20 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_B, result: "conflict", durationMs: 100 }, // retired-name-ok: legacy event field in a fixture
   ]);
 
   // --type composes with the window: only the window's review_rejected prints, oldest-first.
@@ -493,7 +493,7 @@ test("logs --type hints at a typo, but a valid-but-empty type stays hint-free", 
   const now = Date.now();
   const file = eventsLogPath(repo);
   writeLogLines(file, [
-    { ts: now - 10 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 },
+    { ts: now - 10 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }, // retired-name-ok: legacy event field in a fixture
   ]);
 
   // A near-miss of a real code gets the did-you-mean, so a typo isn't a silent empty result.
@@ -577,8 +577,8 @@ test("logs --type -f holds the filter across the seeded window and rotation", as
     await s.waitFor((out) => out.includes("failed (check ran)"), "the seeded match");
 
     const file = eventsLogPath(repo);
-    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", run: 7 }) + "\n");
-    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", run: 7 }) + "\n"); // retired-name-ok: legacy event field in a fixture
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n"); // retired-name-ok: legacy event field in a fixture
     await s.waitFor((out) => out.includes("failed (conflict)"), "the live match");
 
     const out = s.out();

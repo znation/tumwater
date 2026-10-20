@@ -706,7 +706,7 @@ test("the status payload carries no retired script key anywhere in its tree", as
   await initProject(repo, "retired keys test");
   saveRunnerState(repo, freshRunnerState("qa"));
   enqueueMerge(repo, { role: "qa", sha: "abc1234", run: 3, summary: "queued", enqueuedAt: Date.now() });
-  writeEvents(repo, [{ ts: 123, loop: "qa", type: "wake", reason: "main moved" }]);
+  writeEvents(repo, [{ ts: 123, loop: "qa", type: "wake", reason: "main moved" }]); // retired-name-ok: legacy event field in a fixture
   const payload = statusPayload(repo) as {
     roles: Array<Record<string, unknown>>;
     mergeQueue: { entries: Array<Record<string, unknown>> };

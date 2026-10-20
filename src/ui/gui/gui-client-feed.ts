@@ -128,8 +128,8 @@ export const GUI_CLIENT_FEED_JS = String.raw`
         const tone = it.type === "run_end" && kind === "problem" ? resultInfo(it.result).tone : KINDS[kind][1];
         const whoLabel = it.source === "harness" ? "tumwater" : roleLabel(it.source); // vocabulary-ok: the harness event source
         const who = roles.has(it.source) // vocabulary-ok: event field name
-          ? "<button type='button' class='linkish feed-loop' data-open='" + esc(it.source) + "'>" + esc(whoLabel) + "</button>" // vocabulary-ok: CSS class and event field
-          : "<span class='feed-loop'>" + esc(whoLabel) + "</span>"; // vocabulary-ok: CSS class
+          ? "<button type='button' class='linkish feed-source' data-open='" + esc(it.source) + "'>" + esc(whoLabel) + "</button>"
+          : "<span class='feed-source'>" + esc(whoLabel) + "</span>";
         return "<li class='feed-item k-" + kind + "'><span class='feed-icon t-" + tone + "'>" + icon(KINDS[kind][0]) + "</span>" +
           "<div class='feed-msg clamp2' title='" + esc(it.message) + "'>" + who + esc(it.message) + "</div>" +
           "<time class='feed-time' title='" + esc(fmtClock(it.ts)) + "'>" + esc(fmtAgo(it.ts)) + "</time></li>";

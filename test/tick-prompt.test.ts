@@ -410,7 +410,7 @@ test("the qa role's prompt carries the flow-coverage ledger rendered from disk",
 test("the selfcheck role's prompt carries the failure digest rendered from its event log", () => {
   const dir = root();
   writeEvents(dir, [
-    { ts: Date.now(), loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
+    { ts: Date.now(), loop: "feature", type: "run_end", result: "error", error: "pi exited null" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const result = promptFor(dir, "selfcheck");
   assert.ok(result);

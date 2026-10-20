@@ -67,8 +67,8 @@ export const HOLD_RELAPSE_MS = 5 * 60_000;
  * a second edit here, and the two spellings cannot drift apart. */
 export type HoldKind = "rate-limit" | BackendFailureKind | "subscription-window";
 
-/** One role's most recent pi run that ended on a provider failure (LoopRunner.lastRateLimit
- * for the "rate-limit" kind, LoopRunner.lastBackendFailure for the backend kinds). Only the
+/** One role's most recent pi run that ended on a provider failure (RoleRunner.lastRateLimit
+ * for the "rate-limit" kind, RoleRunner.lastBackendFailure for the backend kinds). Only the
  * latest per role matters: the storm test counts distinct roles, never a role's repeats. */
 export interface HoldObservation {
   role: string;

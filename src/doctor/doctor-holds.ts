@@ -10,8 +10,8 @@ import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
 import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
-import { loadLoopState, type LoopState } from "../runner/runner-state.js";
-import { baseRoleOf, loopIds, loopPaused } from "../roles/runner-ids.js";
+import { loadRunnerState, type RunnerState } from "../runner/runner-state.js";
+import { baseRoleOf, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
@@ -29,9 +29,9 @@ import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
  * (checkBudget), `claude window` (checkClaudeWindow), `maintenance quota`
  * (checkMaintenanceQuota), and `error streaks` (checkErrorStreaks), all read-only reports of
  * holds on ticking. */
-export function loadLoopStates(root: string, config: TumwaterConfig): LoopState[] {
-  return loopIds(config)
-    .map((id) => loadLoopState(root, id))
+export function loadRunnerStates(root: string, config: TumwaterConfig): RunnerState[] {
+  return runnerIds(config)
+    .map((id) => loadRunnerState(root, id))
     .sort((a, b) => a.role.localeCompare(b.role));
 }
 
@@ -105,7 +105,7 @@ export function checkBudget(
   now: number = Date.now(),
 ): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
-  const states = loadLoopStates(root, config);
+  const states = loadRunnerStates(root, config);
   const spent = published?.spentUsd ?? teamDailyCost(states, now);
   const caps = config.maxDailyCostUsdPerRole;
   const capped = [...roleCapVerdicts(states.map((s) => ({ role: s.role, state: s })), caps, now)]
@@ -139,16 +139,16 @@ export function checkMaintenanceQuota(
   now: number = Date.now(),
 ): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
-  const loops = loadLoopStates(root, config).map((s) => ({ role: s.role, running: aliveTeam && s.running === true }));
+  const runners = loadRunnerStates(root, config).map((s) => ({ role: s.role, running: aliveTeam && s.running === true }));
   const queued = aliveTeam ? new Set(readMergeQueue(root).entries.map((e) => e.role)) : new Set<string>();
-  const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkMerge, loops, queued, now);
+  const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkMerge, runners, queued, now);
   if (held.length > 0) {
     return warnOutcome(
       `allowance reached — ${used}/${allowance} maintenance merges in the last 24h; held until the window rolls under: ${[...held].sort().join(", ")}`,
     );
   }
   const base = `${used}/${allowance} maintenance merges in the last 24h (${config.maintenancePerWorkMerge} per work merge + ${MAINTENANCE_DAILY_FLOOR} floor)`;
-  const anyMaintenance = loops.some((l) => commitTier(l.role) === "maintenance");
+  const anyMaintenance = runners.some((l) => commitTier(l.role) === "maintenance");
   return okOutcome(anyMaintenance ? base : `${base}; no maintenance role enabled`);
 }
 
@@ -245,14 +245,14 @@ export function checkProviderHolds(root: string, now: number = Date.now()): Chec
  * fail: a failing loop does not stop the team from running. */
 export function checkErrorStreaks(root: string, config: TumwaterConfig | undefined): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
-  const failing = loadLoopStates(root, config)
+  const failing = loadRunnerStates(root, config)
     .filter((s) => (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN);
   if (failing.length === 0) return okOutcome("no role failing repeatedly");
   const paused = new Set(pausedRoles(root));
   const phrases = failing.map((s) => {
     const n = s.consecutiveErrors ?? 0;
     let phrase = `${roleLabel(s.role)}: ${n} failed runs`;
-    if (loopPaused(paused, s.role)) {
+    if (runnerPaused(paused, s.role)) {
       const key = paused.has(s.role) ? s.role : paused.has(baseRoleOf(s.role)) ? baseRoleOf(s.role) : `${s.role}-1`;
       phrase +=
         n >= ERROR_STREAK_BREAKER
@@ -272,8 +272,8 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
 export function checkMainRed(root: string, config: TumwaterConfig | undefined): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const mainCheck = mainCheckForPoll(root, config);
-  const ids = loopIds(config);
-  const held = loadLoopStates(root, config)
+  const ids = runnerIds(config);
+  const held = loadRunnerStates(root, config)
     .filter((s) => heldByMainRed(s, mainCheck));
   if (held.length === 0) return okOutcome("no role waiting on main's check");
   const err = held.find((s) => s.lastError)?.lastError;
