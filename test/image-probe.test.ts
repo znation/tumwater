@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
@@ -7,6 +8,7 @@ import { readyRepo } from "./fixtures/doctor-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { loadConfig } from "../src/config/config.js";
+import { imageProbesPath } from "../src/paths.js";
 import { childEnv } from "../src/process/process.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import {
@@ -173,4 +175,24 @@ test("the probe cache round-trips and a verdict expires after the 7-day TTL", ()
     false,
     "older than the TTL is stale",
   );
+});
+
+test("the probe cache drops a foreign entry and keeps the valid ones", () => {
+  const root = readyRepo();
+  const now = Date.now();
+  const valid: ImageProbeCacheEntry = { verdict: "pass", detail: "ok", at: now, claim: true };
+  fs.mkdirSync(path.dirname(imageProbesPath(root)), { recursive: true });
+  fs.writeFileSync(
+    imageProbesPath(root),
+    JSON.stringify({
+      "pi/a/valid": valid,
+      "pi/a/null": null,
+      "pi/a/number": 7,
+      "pi/a/string": "fail",
+      "pi/a/verdict": { verdict: "maybe", detail: "x", at: now, claim: true },
+      "pi/a/at": { verdict: "fail", detail: "x", at: "soon", claim: true },
+      "pi/a/claim": { verdict: "pass", detail: "x", at: now },
+    }),
+  );
+  assert.deepEqual(readImageProbeCache(root), { "pi/a/valid": valid });
 });

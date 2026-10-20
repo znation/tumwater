@@ -17,6 +17,7 @@ import { PiStreamParser } from "../pi/pi-stream.js";
 import { resolveBackendBin } from "../pi/pi-bin.js";
 import { imageProbesPath } from "../paths.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { isJsonObject } from "../files/json-object.js";
 import { boundedProbe } from "./probe.js";
 
 /** How long a cached image-probe verdict stays valid while the claim is unchanged (7 days) —
@@ -84,10 +85,28 @@ export function imageProbeEntryFresh(
   );
 }
 
+/** Whether a parsed cache entry has the shape of an `ImageProbeCacheEntry`. */
+function isImageProbeCacheEntry(value: unknown): value is ImageProbeCacheEntry {
+  return (
+    isJsonObject(value) &&
+    (value.verdict === "pass" || value.verdict === "fail") &&
+    typeof value.detail === "string" &&
+    typeof value.at === "number" &&
+    Number.isFinite(value.at) &&
+    typeof value.claim === "boolean"
+  );
+}
+
 /** Read the probe cache, or an empty cache when the file is missing or torn (the harness's
- * no-data policy: a crashed writer never takes down a reader). */
+ * no-data policy: a crashed writer never takes down a reader). An entry of a foreign shape is
+ * dropped, so it reads as unprobed, and the doctor's next cache write leaves it out. */
 export function readImageProbeCache(root: string): ImageProbeCache {
-  return readJsonFile<ImageProbeCache>(imageProbesPath(root)) ?? {};
+  const raw = readJsonFile<Record<string, unknown>>(imageProbesPath(root)) ?? {};
+  const cache: ImageProbeCache = {};
+  for (const [key, entry] of Object.entries(raw)) {
+    if (isImageProbeCacheEntry(entry)) cache[key] = entry;
+  }
+  return cache;
 }
 
 /** Write the probe cache atomically (tmp+rename) so a concurrent reader never sees a torn

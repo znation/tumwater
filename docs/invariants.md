@@ -3941,3 +3941,18 @@ revert's settle still frees the merge slot and a skip check still logs its reaso
 warns and still frees the merge slot", "a failed post-review.json write in the revert skip check
 still logs why it does not revert", and "a rejecting post-merge review reverts the commit and hands
 it back as a revision" (on the healthy path the entry is still dropped).
+
+## Image-probe cache: a foreign entry reads as unprobed
+
+### INV-BU1: the probe cache reader returns only well-formed entries
+
+**Guarantee.** `readImageProbeCache` returns only well-formed entries, so a missing, torn or foreign
+cache file or entry never throws out of `snapshot`, `collectImageProbeFailures` or the doctor's probe
+check, and a dropped entry reads as unprobed.
+
+**Binds.** `src/doctor/image-probe.ts` (`readImageProbeCache`, `isImageProbeCacheEntry`).
+
+**Pinned by.** `test/image-probe.test.ts` — "the probe cache drops a foreign entry and keeps the valid
+ones" and "the probe cache round-trips and a verdict expires after the 7-day TTL" (a valid entry still
+survives); `test/status-data-models.test.ts` — "a foreign entry in the probe cache leaves
+collectImageProbeFailures and snapshot standing".

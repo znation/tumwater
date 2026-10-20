@@ -18,6 +18,7 @@ import { setEnv } from "./helpers/env.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeImageProbeCache } from "../src/doctor/image-probe.js";
 import { collectImageProbeFailures } from "../src/status/status-roles.js";
+import { imageProbesPath } from "../src/paths.js";
 
 test("snapshot role rows carry the resolved selector always and the seam tier only under a tier map", async () => {
   const repo = makeRepo();
@@ -286,4 +287,25 @@ test("collectImageProbeFailures keeps a fully-qualified pi model id whole", () =
   assert.deepEqual(collectImageProbeFailures(repo, now), [
     "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra",
   ]);
+});
+
+test("a foreign entry in the probe cache leaves collectImageProbeFailures and snapshot standing", async () => {
+  const now = Date.now();
+  const write = (root: string): void => {
+    fs.mkdirSync(path.dirname(imageProbesPath(root)), { recursive: true });
+    fs.writeFileSync(
+      imageProbesPath(root),
+      JSON.stringify({
+        "pi/a/b": null,
+        "pi/huggingface/blind-x": { verdict: "fail", detail: "refused", at: now - 1000, claim: true },
+      }),
+    );
+  };
+  const bare = tmpdir();
+  write(bare);
+  assert.deepEqual(collectImageProbeFailures(bare, now), ["huggingface/blind-x"]);
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  write(repo);
+  assert.deepEqual(snapshot(repo).imageProbeFailures, ["huggingface/blind-x"]);
 });
