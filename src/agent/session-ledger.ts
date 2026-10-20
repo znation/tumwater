@@ -165,7 +165,9 @@ export function sessionResumable(
 /** Drop ledger lines older than `days` from every session dir under `sessionsRoot`. The ledger
  * file's mtime keeps it young while its role runs, so pruneOldFiles never ages it out; trimming
  * its lines is what actually bounds it, under the same window the session files prune by.
- * Returns the number of lines removed; a missing root or unreadable dir reads as nothing to do. */
+ * Returns the number of lines removed; a missing root or unreadable dir reads as nothing to do.
+ * A ledger that cannot be rewritten (a full disk, a read-only dir) is left as it was and not
+ * counted, because this pass runs in the orchestrator's poll loop, where a throw ends the team. */
 export function pruneSessionLedgers(sessionsRoot: string, days: number): number {
   const cutoff = Date.now() - days * 24 * 3600 * 1000;
   let pruned = 0;
@@ -175,19 +177,25 @@ export function pruneSessionLedgers(sessionsRoot: string, days: number): number 
     if (text === null) return;
     const lines = text.split("\n").filter((line) => line !== "");
     const kept: string[] = [];
+    let dropped = 0;
     for (const line of lines) {
       let at: unknown;
       try {
         at = (JSON.parse(line) as { at?: unknown }).at;
       } catch {
-        pruned += 1; // Malformed line: no timestamp to keep, so it ages out.
+        dropped += 1; // Malformed line: no timestamp to keep, so it ages out.
         continue;
       }
       if (typeof at === "number" && at >= cutoff) kept.push(line);
-      else pruned += 1;
+      else dropped += 1;
     }
     if (kept.length !== lines.length) {
-      writeTextAtomic(file, kept.length > 0 ? kept.join("\n") + "\n" : "");
+      try {
+        writeTextAtomic(file, kept.length > 0 ? kept.join("\n") + "\n" : "");
+      } catch {
+        return;
+      }
+      pruned += dropped;
     }
   });
   return pruned;

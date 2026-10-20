@@ -3771,3 +3771,46 @@ torn, and non-object files", "readOrchestratorInfo drops nested fields with a fo
 well-formed ones", "readOrchestratorInfo round-trips a well-formed providerHolds and drops foreign
 entries" and "orchestratorAlive is false with no info and reflects pid liveness otherwise";
 `test/gate-polls.test.ts` — "pollTeamGates publishes the measured disk state for observers".
+
+## Session ledger: a write or trim never throws, a reader skips what is not a record, and pi continues only into the newest line's own session
+
+### INV-BP1: recording never throws, and reading skips what is not a whole record
+
+**Guarantee.** `recordSession` never throws and repairs a torn previous line before it appends;
+`readSessions` skips torn, malformed and incomplete lines.
+
+**Binds.** `src/agent/session-ledger.ts` (`recordSession`, `readSessions`, `isSessionRecord`).
+
+**Pinned by.** `test/session-ledger-prune.test.ts` — "recordSession into a path it cannot create
+drops the record without throwing"; `test/session-ledger.test.ts` — "recordSession and readSessions
+round-trip records, skipping malformed lines", "recordSession repairs a torn previous line so the
+next record is not lost" and "readSessions skips a line that parses but is not a complete record".
+
+### INV-BP2: a resume continues only into a session of its own kind, agent and cwd
+
+**Guarantee.** An id-selecting resume takes the newest record of its own kind, agent and cwd; pi's
+`--continue` needs a session file and, with a ledger, the newest line overall to be its own; the
+ledger never counts as a session file.
+
+**Binds.** `src/agent/session-ledger.ts` (`latestSession`, `resumableSession`, `sessionResumable`,
+`hasResumableSession`).
+
+**Pinned by.** `test/session-ledger-prune.test.ts` — "hasResumableSession counts a backend session
+file but never the ledger itself"; the `latestSession`, `resumableSession` and `sessionResumable`
+tests in `test/session-ledger.test.ts`.
+
+### INV-BP3: the retention trim never throws and leaves what it cannot rewrite as it was
+
+**Guarantee.** The retention trim drops lines past the window or without a numeric stamp, rewrites
+only a ledger that changed, leaves an emptied ledger in place, and leaves a ledger it cannot rewrite
+as it was, uncounted and without throwing. The OpenCode purge counts only deletes that exited 0, and
+a missing or failing binary costs nothing but the count.
+
+**Binds.** `src/agent/session-ledger.ts` (`pruneSessionLedgers`, `pruneOpencodeSessions`).
+
+**Pinned by.** `test/session-ledger-prune.test.ts` — "pruneSessionLedgers leaves a ledger it cannot
+rewrite as it was and counts nothing for it", "pruneSessionLedgers does not rewrite a ledger with
+nothing past the window", "pruneSessionLedgers empties a fully stale ledger in place and ages out a
+non-numeric stamp" and "pruneOpencodeSessions counts only deletes that succeeded and never throws";
+`test/session-ledger.test.ts` — "pruneSessionLedgers drops lines past the window and keeps the recent
+ones" and "pruneOpencodeSessions deletes expired opencode sessions and prunes old spill files".
