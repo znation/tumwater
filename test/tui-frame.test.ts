@@ -7,7 +7,7 @@ import { eventTypeLabel } from "../src/events/event-labels.js";
 import type { TeamAlert } from "../src/ui/team-alerts.js";
 import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init/init.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import {
   alertLines,
   eventTone,
@@ -50,17 +50,17 @@ test("a status render's spans read exactly as the plain text, clipped to width",
   const repo = makeRepo();
   await initProject(repo, "tui frame test");
   writeOrchestratorMarker(repo, ["clean", "feature"]);
-  const s = freshLoopState("clean");
+  const s = freshRunnerState("clean");
   s.lastResult = "error";
   s.lastError = "boom";
   s.consecutiveErrors = 9;
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
   const snap = snapshot(repo);
   for (const width of [undefined, 160, 90, 40]) {
     const { lines } = renderStatusSpans(repo, snap, width);
     if (width !== undefined) for (const l of lines) assert.ok(displayWidth(plain(l)) <= width, "no line outgrows the terminal");
   }
-  // The failing loop's state reads red, and the render reports its phase for the alerts.
+  // The failing role's state reads red, and the render reports its phase for the alerts.
   const { lines, loops } = renderStatusSpans(repo, snap, 160);
   assert.ok(lines.some((l) => l.some((sp) => sp.text.startsWith("failing") && sp.tone === "red")));
   assert.deepEqual(loops.find((l) => l.role === "clean"), { role: "clean", phase: "failing", errorStreak: true, inFlight: false, lastError: "boom", imageInput: null, imageReroute: null });
@@ -115,7 +115,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+A model/);
   // The Activity hint names the Ctrl+R restart command on the prompt line.
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 440)), /Ctrl\+R restart/);
-  // The Activity pane names its exact-loop scope and its text search, the raw id or the team
+  // The Activity pane names its exact-role scope and its text search, the raw id or the team
   // and "search" or the active pattern, matching the History pane's conventions.
   assert.match(hint({ kind: "activity", role: "feature", grep: null, type: null }), /Ctrl\+G scope: feature · \/ search/);
   assert.match(hint({ kind: "activity", role: null, grep: "widget", type: null }), /Ctrl\+G scope: team · \/ search: widget/);
@@ -178,7 +178,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   // The History pane names its outcome class in the Ctrl+O hint, "all" or the active class.
   assert.match(hint({ kind: "history", since: null, result: "problems", role: null, grep: null, trail: false }), /Ctrl\+O result: problems/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+O result: all/);
-  // The History pane names its exact-loop scope in the Ctrl+G hint, the raw id or the team.
+  // The History pane names its exact-role scope in the Ctrl+G hint, the raw id or the team.
   assert.match(hint({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }), /Ctrl\+G scope: feature/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+G scope: team/);
   // The History pane names its free-text search in the `/` hint, "search" or the pattern.

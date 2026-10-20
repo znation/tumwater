@@ -17,10 +17,10 @@ export function createActivityPane(
   // toward the tail and re-enables follow at the bottom. Reset on every Ctrl+T view cycle, so
   // re-entering Activity always starts at the live tail.
   let activityScroll: number | null = null;
-  // The Activity pane's session exact-loop scope (Ctrl+G), a raw roster id or null for the
+  // The Activity pane's session exact-role scope (Ctrl+G), a raw roster id or null for the
   // team's full tail. Session-only like the view/scroll state; syncSnapshot clears it when the
   // roster drops the id. The raw ids, not scopeCycle's base roles: the feed filters by exact
-  // loop (eventRole), so `feature-2` is its own slot.
+  // role (eventRole), so `feature-2` is its own slot.
   let activityRole: string | null = null;
   // The Activity pane's session free-text search (the `/` prompt-line editor), a
   // case-insensitive substring over eventMatchesGrep's type-prefixed rendered line — the same
@@ -47,7 +47,7 @@ export function createActivityPane(
   ): boolean => {
     if (key.ctrl && key.name === "g" && promptLineFree(ctx.es)) {
       // The Activity feed scopes over the same raw roster ids, so `feature-2` is its own
-      // slot; the filter reads exact loop ids through eventRole. The scroll resets because
+      // slot; the filter reads exact role ids through eventRole. The scroll resets because
       // its offset indexed the old (unfiltered or differently filtered) list.
       const slots: Array<string | null> = [null, ...session.roleIds];
       const slot = slots.indexOf(activityRole);
@@ -74,7 +74,7 @@ export function createActivityPane(
       // through the loaded event tail, PgDn returns toward it and re-enables follow once the
       // window reaches the tail. Both directions clamp to [0, total - eventBudget], and a log
       // with eventBudget or fewer events stays on the tail. The read is the pane's own fixed
-      // tail term (and active loop/text filter), so it hits readEvents' stat cache rather than
+      // tail term (and active role/text filter), so it hits readEvents' stat cache rather than
       // rescanning the log.
       const total = activityEvents(session.root, activityRole, activityGrep, activityType).length;
       const maxStart = Math.max(0, total - session.eventBudget);
@@ -93,7 +93,7 @@ export function createActivityPane(
       activityScroll = null;
     },
     dropScopes(roles) {
-      // The same drop for the Activity feed's exact-loop scope: a retired or renamed loop must
+      // The same drop for the Activity feed's exact-role scope: a retired or renamed role must
       // not leave the pane filtering on an id the roster no longer names. The scroll resets
       // with it — the offset indexed the old filtered list.
       if (activityRole !== null && !roles.includes(activityRole)) {

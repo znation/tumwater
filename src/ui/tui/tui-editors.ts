@@ -84,9 +84,9 @@ interface TuiEditorState {
   rolePromptFor: string | null;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
-  /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */
+  /** The role the pause editor pauses, null for the team editor (Ctrl+F). */
   pauseEditRole: string | null;
-  /** The per-loop editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P). */
+  /** The per-role editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P). */
   pauseEditWake: boolean;
   /** The team editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F). */
   pauseEditStop: boolean;

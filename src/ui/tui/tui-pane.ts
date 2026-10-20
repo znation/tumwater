@@ -55,9 +55,9 @@ interface TuiPaneState {
  * A fixed tail term so readEvents' stat cache hits per (file, limit) in the steady state. */
 const ACTIVITY_EVENTS = 200;
 
-/** The Activity pane's loaded event tail, narrowed by its loop, text, and type filters: the one
+/** The Activity pane's loaded event tail, narrowed by its role, text, and type filters: the one
  * read the pane body and the PgUp/PgDn total share, so their filtered lists cannot drift. All
- * three match rules are the CLI's and dashboard's own: `eventRole` for the exact-loop scope
+ * three match rules are the CLI's and dashboard's own: `eventRole` for the exact-role scope
  * (`null` = the team's full tail), `eventMatchesGrep` over the type-prefixed rendered line for
  * the case-insensitive search (`null` = no search), and the exact `e.type === type` match for
  * the event-type filter (`null` = every type) — `tumwater logs --grep`, `logs --type`, and
@@ -73,8 +73,8 @@ export function activityEvents(root: string, role: string | null, grep: string |
   );
 }
 
-/** One loop's notebook and next tick prompt, rendered as the same Markdown the TUI's notebook
- * view windows: inspectMarkdownLines over the loop's rolePayload. Split out of the keypress
+/** One role's notebook and next tick prompt, rendered as the same Markdown the TUI's notebook
+ * view windows: inspectMarkdownLines over the role's rolePayload. Split out of the keypress
  * handler so the Ctrl+N branch can catch a collector throw and flash it. */
 export function roleInspectMarkdown(root: string, role: string): string {
   return inspectMarkdownLines(rolePayload(root, role)).join("\n");
@@ -276,7 +276,7 @@ export function paneBody(
       emptyNote: "(no events yet)",
     };
   }
-  // The Activity pane loads a fixed tail once per read, narrows it by the active loop scope
+  // The Activity pane loads a fixed tail once per read, narrows it by the active role scope
   // and text search, and windows it: null follows the live tail (the newest eventBudget
   // events), a stored offset pages back through the loaded events. Both clamp to
   // [0, events.length - eventBudget]. An active filter that matched nothing names the filter

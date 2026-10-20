@@ -8,7 +8,7 @@
  * handed. */
 import { tickRowCells, type TickRow } from "../../history/history-data.js";
 
-/** The pane body for a set of tick rows: `time  loop #tick  result  duration`, then `model`
+/** The pane body for a set of tick rows: `time  role #tick  result  duration`, then `model`
  * (between the result and the duration), and `usage` and `detail` when they carry anything,
  * joined newest-first by newlines. The cells come from history-data.ts's tickRowCells, the one
  * home the CLI's table builds on too, so a null `durationMs` (the tick's start sits outside

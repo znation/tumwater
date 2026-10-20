@@ -6,8 +6,8 @@ import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
 /** The per-role prompt Ctrl+R editor on the shared prompt line. It owns its mode flag (the
- * viewed loop's role id), its saved-draft pair, its exit helper, and the handleKey arms for its
- * key: the per-loop toggle (guarded out of the other editors' prompt line) and its Esc/Enter
+ * viewed role's role id), its saved-draft pair, its exit helper, and the handleKey arms for its
+ * key: the per-role toggle (guarded out of the other editors' prompt line) and its Esc/Enter
  * leaves. Mutually exclusive with the other editors via the session's held registry. */
 export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
   let rolePromptFor: string | null = null;
@@ -29,10 +29,10 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    // Ctrl+R toggles role-prompt mode for the viewed loop (mnemonic: p**R**ompt — Ctrl+P is
+    // Ctrl+R toggles role-prompt mode for the viewed role (mnemonic: p**R**ompt — Ctrl+P is
     // taken by pause): entering saves the director draft in this mode's own pair and blanks
     // the line; entering again (or Esc) restores it. Mutually exclusive with budget mode by
-    // the outer guard and the mirrored refusal in the Ctrl+B branch. Rides the same per-loop
+    // the outer guard and the mirrored refusal in the Ctrl+B branch. Rides the same per-role
     // guard as the Ctrl+P/A/W pause controls so an editor's prompt line is never disturbed.
     if (
       !session.held.budget &&
@@ -73,10 +73,10 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
       return true;
     }
     if (key.name === "return" && rolePromptFor) {
-      // Enter in role-prompt mode submits for the viewed loop through the same path
+      // Enter in role-prompt mode submits for the viewed role through the same path
       // `tumwater prompt --role` uses: the shared submitRolePromptAndWake enqueues into
-      // that loop's own queue (length-capped by the shared rule), logs under the loop,
-      // and wakes it so a live team's loop comes in within one poll. An invalid
+      // that role's own queue (length-capped by the shared rule), logs under the role,
+      // and wakes it so a live team's role comes in within one poll. An invalid
       // (whitespace-only) line flashes and STAYS in edit mode; a failed queue write
       // flashes the reason and keeps the text, the same contract the director path
       // honors; success restores the saved draft.

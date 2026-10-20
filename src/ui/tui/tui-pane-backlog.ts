@@ -194,7 +194,7 @@ export function createBacklogPane(
       // plan or bug through the non-exiting core the dashboard drawer uses; the title check
       // inside tryReleaseEntry refuses a stale selection. Releasing is the terminal twin of
       // `tumwater plan|bug --release <n>`: it lifts the note, commits the file and wakes the
-      // kind's loop, so an operator never has to leave the pane.
+      // kind's role, so an operator never has to leave the pane.
       const selected = selectedEditableEntry(session, selectedEntry, "released");
       if (selected !== null) {
         const kind = selected.kind;

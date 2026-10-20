@@ -122,7 +122,7 @@ test("Ctrl+N while another editor holds the line flashes the busy message and le
 // holds the line — leaving the run-cap editor (and its pre-filled text) untouched and the
 // write still landing on Enter, rather than letting the pause editor pile a duration onto the
 // run-cap line and commit it as maxConcurrent on Enter (the wrong-write the shared guard
-// prevents). The per-loop Ctrl+P/Ctrl+W and the per-role Ctrl+R arms live on a role's
+// prevents). The per-role Ctrl+P/Ctrl+W and the per-role Ctrl+R arms live on a role's
 // Transcript, where the run-cap editor (Activity-only) never holds the line, so they are not
 // exercised here — the pause/prompt held-flag lists still name concurrency for that reason.
 test("Ctrl+F, Ctrl+Q and Ctrl+R stay inert while the run-cap editor holds the line on Activity", async () => {

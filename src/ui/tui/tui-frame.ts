@@ -31,7 +31,7 @@ export function sanitizeFrameLines(lines: readonly StatusLine[]): StatusLine[] {
 }
 
 
-/** Which pane the TUI shows: the activity feed, one loop's transcript, the backlog, the usage
+/** Which pane the TUI shows: the activity feed, one role's transcript, the backlog, the usage
  * report, the failure digest, the completed-tick history, the pending-change roster, or the
  * queued prompts — the dashboard's views, in the order Ctrl+T cycles them. */
 export type TuiView =

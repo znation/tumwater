@@ -39,7 +39,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
       // Edit uses: the body is pre-filled marker- and attachment-stripped, and Enter writes
       // it back to the same queue file, so its position, enqueue stamp, deferral, and
       // attached images survive. A row that vanished between selection and this press (the
-      // loop dequeued it, or another operator cancelled it) flashes the gone notice and
+      // role dequeued it, or another operator cancelled it) flashes the gone notice and
       // refreshes the list. A no-selection press (list mode) falls through to the report
       // window below, exactly as before.
       try {

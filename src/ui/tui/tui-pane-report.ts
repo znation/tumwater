@@ -110,7 +110,7 @@ export function createReportPane(session: TuiPaneSession) {
       // The report window and team scope are session state and survive a view cycle.
     },
     dropScopes(roles) {
-      // A retired or renamed loop must not leave the report panes silently scoped to an
+      // A retired or renamed role must not leave the report panes silently scoped to an
       // absent role — drop the scope with the stale view index. The tab strip and hint then
       // read "team", so a report pane still on screen must recompute its cached Markdown
       // from the team-wide collector (and re-enter at the body's head) to match; the other

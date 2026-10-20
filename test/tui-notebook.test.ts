@@ -6,18 +6,18 @@ import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { roleNotesPath } from "../src/paths.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
-// Ctrl+N notes mode: on a loop's transcript, the pane swaps the live transcript for the
-// loop's notebook and next tick's prompt (PLANS.md "Inspect a loop's notebook and next tick
+// Ctrl+N notes mode: on a role's transcript, the pane swaps the live transcript for the
+// role's notebook and next tick's prompt (PLANS.md "Inspect a loop's notebook and next tick
 // prompt in the TUI"), and swaps back — the terminal view of what the dashboard drawer shows.
 
-/** Seed a loop's notebook file. */
+/** Seed a role's notebook file. */
 function seedNote(repo: string, role: string, text: string): void {
   const note = roleNotesPath(repo, role);
   fs.mkdirSync(path.dirname(note), { recursive: true });
   fs.writeFileSync(note, text);
 }
 
-test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles back", async () => {
+test("Ctrl+N shows the viewed role's notebook and next tick prompt, and toggles back", async () => {
   const repo = await makeTuiRepo();
   seedNote(repo, "clean", "the scheduler lives in team.ts\n");
   enqueueRolePrompt(repo, "clean", "check the scheduler first");
@@ -62,7 +62,7 @@ test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles 
   });
 });
 
-test("a loop with no notebook shows the none-yet placeholder, not the transcript's empty note", async () => {
+test("a role with no notebook shows the none-yet placeholder, not the transcript's empty note", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
@@ -99,7 +99,7 @@ test("PgUp/PgDn page the notebook body and clamp at both ends", async () => {
   });
 });
 
-test("Ctrl+X twice in the notebook view clears the loop's notebook; the first press only arms", async () => {
+test("Ctrl+X twice in the notebook view clears the role's notebook; the first press only arms", async () => {
   const repo = await makeTuiRepo();
   seedNote(repo, "clean", "stale note\n");
   await withTui(repo, async (tui) => {

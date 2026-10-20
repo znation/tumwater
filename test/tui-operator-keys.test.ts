@@ -1,5 +1,5 @@
-/** The TUI per-loop operator controls (extracted from tui.test.ts): Ctrl+P (a duration editor
- * on an unpaused loop, an immediate resume on a paused one) and its team-pause interplay
+/** The TUI per-role operator controls (extracted from tui.test.ts): Ctrl+P (a duration editor
+ * on an unpaused role, an immediate resume on a paused one) and its team-pause interplay
  * note, Ctrl+A's abort confirmation and liveness gate, Ctrl+W's wake editor, Ctrl+Q's
  * scheduled team stop, and the keys' inertness outside transcript views and in budget mode.
  * Like the other topic-named slices (runner-refusal,
@@ -12,17 +12,17 @@ import assert from "node:assert/strict";
 import { isTeamPaused, scheduledStopAt, pauseTeam, pausedRoles, standingTeamPause } from "../src/team/team-state.js";
 import { listWakes, requestWake } from "../src/operator/operator-intent.js";
 import { abortRequestPath, pausedRolesPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../src/paths.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
-// Ctrl+P/Ctrl+A/Ctrl+W act on the loop whose transcript is
+// Ctrl+P/Ctrl+A/Ctrl+W act on the role whose transcript is
 // on screen, through the same marker-writing cores the CLI's --role flags call, so the two
 // surfaces cannot drift on marker format, idempotence, or wording (rolePauseMessage and
 // roleResumeMessage in src/operator/operator-intent.ts are the shared single writer of the
 // wording).
-test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wording", async () => {
+test("Ctrl+P toggles the viewed role's pause marker and flashes the CLI's wording", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
@@ -34,7 +34,7 @@ test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wordin
     assert.deepEqual(pausedRoles(repo), ["clean"]);
     assert.match(tui.lastFrame(), /role clean paused — it starts no new runs/);
     // The status table's cell for the paused idle role reads `paused` while the marker stands
-    // (per-role pause 1/2 wires loopPhase through snap.pausedRoles).
+    // (per-role pause 1/2 wires rolePhase through snap.pausedRoles).
     assert.match(tui.lines().join("\n"), /clean[^\n]*paused/);
 
     tui.key(undefined, "p", { ctrl: true });
@@ -65,7 +65,7 @@ test("Ctrl+P's resume flash carries the team-pause interplay note while the team
   });
 });
 
-test("Ctrl+P, a duration, Enter pauses the viewed loop for that long", async () => {
+test("Ctrl+P, a duration, Enter pauses the viewed role for that long", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
@@ -81,7 +81,7 @@ test("Ctrl+P, a duration, Enter pauses the viewed loop for that long", async () 
   });
 });
 
-test("Esc cancels the loop pause editor and restores the draft; an invalid entry stays in it", async () => {
+test("Esc cancels the role pause editor and restores the draft; an invalid entry stays in it", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
@@ -145,7 +145,7 @@ test("Ctrl+C interrupts a director tick in flight through the rendered snapshot,
   // phase (outside the permit-holder inFlight set, which the gate no longer keys off alone);
   // the orchestrator marker keeps the team live for the gate. The state column clips the
   // label at this width, so match its prefix.
-  saveLoopState(repo, { ...freshLoopState("director"), running: true, lastRunStartedAt: Date.now() - 60_000 });
+  saveRunnerState(repo, { ...freshRunnerState("director"), running: true, lastRunStartedAt: Date.now() - 60_000 });
   writeOrchestratorMarker(repo, ["clean", "director"]);
   await withTui(repo, async (tui) => {
     assert.match(tui.lines().join("\n"), /director[^\n]*director wo/); // the row the gate reads
@@ -322,14 +322,14 @@ test("Ctrl+F is inert while the budget editor or the role-prompt editor holds th
     assert.equal(tui.lines().at(-1), "daily cap $", "still editing the cap, Ctrl+F inert");
 
     tui.key(undefined, "escape"); // leave budget mode
-    tui.key(undefined, "r", { ctrl: true }); // enter role-prompt mode for the viewed loop
+    tui.key(undefined, "r", { ctrl: true }); // enter role-prompt mode for the viewed role
     assert.match(tui.lastFrame(), /prompt for clean/);
     tui.key(undefined, "f", { ctrl: true });
     assert.equal(isTeamPaused(repo), false);
   });
 });
 
-test("the per-loop keys are inert outside transcript views, in budget mode, and on failure flash an error", async () => {
+test("the per-role keys are inert outside transcript views, in budget mode, and on failure flash an error", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     // Events view (no transcript on screen): all three keys write nothing and flash nothing.
@@ -431,14 +431,14 @@ test("Ctrl+Q is inert during a / search and while the budget editor is open", as
   });
 });
 
-// Ctrl+V zeroes the viewed loop's counters on the transcript pane (the terminal twin of
+// Ctrl+V zeroes the viewed role's counters on the transcript pane (the terminal twin of
 // `tumwater reset-counters --role <id>`): one press writes the reset marker through the same
 // requestResetCounters core the CLI and dashboard call and, with no live team, zeroes the
 // state file directly. One press, not an armed second, matches the dashboard button's single
 // click; the action zeroes counters only and leaves scheduling untouched.
 test("Ctrl+V resets the viewed role's counters through requestResetCounters", async () => {
   const repo = await makeTuiRepo();
-  saveLoopState(repo, { ...freshLoopState("clean"), runs: 4, commits: 3 });
+  saveRunnerState(repo, { ...freshRunnerState("clean"), runs: 4, commits: 3 });
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
     tui.key(undefined, "v", { ctrl: true });
@@ -447,7 +447,7 @@ test("Ctrl+V resets the viewed role's counters through requestResetCounters", as
     assert.deepEqual(marker.roles, ["clean"]);
     // No orchestrator marker, so requestResetCounters zeroes the state file directly: the
     // next run starts fresh.
-    const state = loadLoopState(repo, "clean");
+    const state = loadRunnerState(repo, "clean");
     assert.equal(state.runs, 0);
     assert.equal(state.commits, 0);
   });

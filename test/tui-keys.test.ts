@@ -185,7 +185,7 @@ test("Ctrl+B on a role's Transcript edits that role's daily cap, not the team bu
   assert.equal(keys.state().input, "another draft", "Ctrl+T restores the saved draft");
 });
 
-test("role-prompt mode opens for the viewed loop, submits, and Esc restores the draft", () => {
+test("role-prompt mode opens for the viewed role, submits, and Esc restores the draft", () => {
   const root = makeRoot();
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
@@ -616,7 +616,7 @@ test("the Activity feed pages nowhere when the log fits the pane", () => {
 
 test("Ctrl+G on the Activity view cycles the raw roster ids and filters the paging total", () => {
   const root = makeRoot();
-  // Twelve events per loop: the unfiltered tail pages, and so does each loop's own set.
+  // Twelve events per role: the unfiltered tail pages, and so does each role's own set.
   writeEvents(root, [
     ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "run_start", run: i + 1 })),
     ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "clean", type: "run_start", run: i + 1 })),
@@ -626,7 +626,7 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
   keys.setLineBudgets(5, 4);
   assert.equal(keys.state().activityRole, null, "Activity opens team-wide");
 
-  // The unfiltered total is 24 and each loop's own is 12, so PgUp's clamped offset proves
+  // The unfiltered total is 24 and each role's own is 12, so PgUp's clamped offset proves
   // which filtered list the handler paged over (24 − 5 = 19 vs 12 − 5 = 7).
   keys.handleKey(undefined, { name: "pageup" });
   assert.equal(keys.state().activityScroll, 14, "the team-wide read pages over all 24 events");
@@ -651,7 +651,7 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
 
 test("Ctrl+O on the Activity view cycles the present event types and filters the paging total", () => {
   const root = makeRoot();
-  // Two loops, three present types: `feature` carries run_start and run_end, `clean` only
+  // Two roles, three present types: `feature` carries run_start and run_end, `clean` only
   // wake, so a team-wide cycle turns over all three while the feature scope holds two.
   writeEvents(root, [
     ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "run_start", run: i + 1 })),
@@ -984,7 +984,7 @@ test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () =>
   assert.match(keys.state().trailCache ?? "", /qa work/, "the trail follows the new scope");
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // qa → team
   assert.equal(keys.state().historyRole, null);
-  assert.match(keys.state().trailCache ?? "", /clean work/, "the team trail is the newest tick of any loop");
+  assert.match(keys.state().trailCache ?? "", /clean work/, "the team trail is the newest tick of any role");
 });
 
 test("a roster change that retires the trail's scope re-reads it from the team", () => {
@@ -1087,7 +1087,7 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
 
 test("Ctrl+G on the History view cycles the raw roster ids and recomputes the scoped cache", () => {
   const root = makeRoot();
-  // One completed run per loop, so each exact-loop scope has its own row set: feature-2 is
+  // One completed run per role, so each exact-role scope has its own row set: feature-2 is
   // a distinct scope, unlike the report panes' base-role aggregation.
   writeEvents(root, [
     { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
@@ -1112,9 +1112,9 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
     caches.push(keys.state().paneCache);
   }
   assert.deepEqual(seen, ["feature", "feature-2", "clean", null], "the raw roster ids each get their own slot");
-  assert.match(caches[0] ?? "", /^role: feature$/m, "the scoped cache names its loop");
+  assert.match(caches[0] ?? "", /^role: feature$/m, "the scoped cache names its role");
   assert.match(caches[0] ?? "", /feature #1/);
-  assert.doesNotMatch(caches[0] ?? "", /feature-2/, "an instance's rows stay out of its base loop's scope");
+  assert.doesNotMatch(caches[0] ?? "", /feature-2/, "an instance's rows stay out of its base role's scope");
   assert.match(caches[1] ?? "", /feature-2 #1/);
   assert.notEqual(caches[0], team, "the feature-scoped cache differs from the team-wide one");
   assert.notEqual(caches[1], caches[0], "feature-2 is its own scope, unlike the report cycle");
@@ -1142,7 +1142,7 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
   assert.equal(keys.state().historyRole, "feature", "Ctrl+G is inert in role-prompt mode");
   keys.handleKey(undefined, { name: "escape" });
 
-  // A roster that drops the scoped loop clears the History scope.
+  // A roster that drops the scoped role clears the History scope.
   keys.syncSnapshot(0, false, ["clean"]);
   assert.equal(keys.state().historyRole, null, "a roster drop clears the stale history scope");
 });
@@ -1602,7 +1602,7 @@ test("Ctrl+Y opens the claude-reserve editor on Activity, flashes the busy messa
   assert.equal(keys.state().claudeReserveMode, false, "the claude-reserve editor does not open on History");
 });
 
-test("Ctrl+Y's summary folds the History pane's exact-loop scope, not the team read", () => {
+test("Ctrl+Y's summary folds the History pane's exact-role scope, not the team read", () => {
   const root = makeRoot();
   writeEvents(root, [
     { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" },
@@ -1671,7 +1671,7 @@ test("`/` opens a search on Activity and History with an empty line, types elsew
   keys.syncSnapshot(50, false, ["clean"]);
 
   // On a channel without a search, `/` types into the prompt line. Activity now owns a search
-  // itself, so step onto the loop's transcript first.
+  // itself, so step onto the role's transcript first.
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → clean transcript
   keys.handleKey("/", { name: "/" });
   assert.equal(keys.state().input, "/", "`/` on a transcript types into the prompt");
@@ -2040,7 +2040,7 @@ test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps
   for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
   assert.equal(keys.state().selectedQueued, null, "re-entering the pane drops the selection");
 
-  // Select the director row (index 0) and cancel its per-loop position 1.
+  // Select the director row (index 0) and cancel its per-role position 1.
   keys.handleKey(undefined, { name: "down" });
   keys.handleKey(undefined, { ctrl: true, name: "x" });
   assert.match(keys.state().flash!, /cancelled inbox message #1 for director/);
@@ -2409,7 +2409,7 @@ test("the backlog pane answers the selected open question through tryAnswerQuest
   for (const ch of "draft") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { ctrl: true, name: "a" });
   assert.equal(keys.state().answerFor, null, "list mode does not open the editor");
-  // With no loops the backlog pane is the second view: one Ctrl+T from Activity.
+  // With no roles the backlog pane is the second view: one Ctrl+T from Activity.
   const backlogView = (): void => {
     for (let i = 0; i < 12 && keys.state().view !== 1; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
     assert.equal(keys.state().view, 1);
@@ -2650,7 +2650,7 @@ test("backlog Ctrl+E with no selection still advances the report window", () => 
   assert.equal(keys.state().entryEditFor, null);
 });
 
-test("backlog Ctrl+N files a plan by title and wakes the feature loop; Ctrl+N again files a bug", () => {
+test("backlog Ctrl+N files a plan by title and wakes the feature role; Ctrl+N again files a bug", () => {
   const { root, keys, read } = entryEditRig();
   const ctrlN = (): void => keys.handleKey(undefined, { ctrl: true, name: "n" });
   const type = (text: string): void => {
@@ -3488,7 +3488,7 @@ test("Ctrl+P opens the provider-caps editor on Activity and the pause editor on 
   keys.syncSnapshot(0, false, ["clean"]);
 
   // Activity (view 0): Ctrl+P is the provider-caps editor, pre-filled empty when the key is
-  // unset; a second Ctrl+P cancels it (the pause editor's per-loop arm is guarded off Activity).
+  // unset; a second Ctrl+P cancels it (the pause editor's per-role arm is guarded off Activity).
   keys.handleKey(undefined, { ctrl: true, name: "p" });
   assert.equal(keys.state().providerCapsMode, true, "Ctrl+P on Activity opens the provider-caps editor");
   assert.equal(keys.state().pauseEditRole, null, "the pause editor does not open on Activity");
@@ -3651,7 +3651,7 @@ test("Ctrl+G on Activity, History and the report views keeps its scope cycle, no
 // Ctrl+A on the Activity view opens the team-model editor (PLANS.md) — the TUI's twin of the
 // dashboard Settings `Model` field and `tumwater config set model` — pre-filled from the
 // file's top-level `model` (empty when unset). On a role's Transcript the same key keeps its
-// per-loop meaning: the new arm returns false off view 0, so the pause editor's abort arm
+// per-role meaning: the new arm returns false off view 0, so the pause editor's abort arm
 // still aborts that role's run. This pins the scope the two arms share the key over.
 test("Ctrl+A opens the team-model editor on Activity, still aborts a role's run on its Transcript", () => {
   const root = makeRoot();
@@ -3665,7 +3665,7 @@ test("Ctrl+A opens the team-model editor on Activity, still aborts a role's run 
   keys.handleKey(undefined, { name: "escape" });
   assert.equal(keys.state().modelMode, false, "Esc closes the model editor");
 
-  // A role's Transcript keeps Ctrl+A as the per-loop abort, not the model editor.
+  // A role's Transcript keeps Ctrl+A as the per-role abort, not the model editor.
   const abortRoot = makeRoot();
   writeOrchestratorMarker(abortRoot, ["feature"]); // a live team so requestAbort writes the marker
   const { keys: keys2 } = makeKeys(abortRoot, () => 0);
@@ -3676,6 +3676,6 @@ test("Ctrl+A opens the team-model editor on Activity, still aborts a role's run 
   keys2.handleKey(undefined, { ctrl: true, name: "a" });
   assert.equal(keys2.state().modelMode, false, "Ctrl+A on a Transcript does not open the model editor");
   assert.equal(keys2.state().budgetMode, false);
-  assert.ok(fs.existsSync(abortRequestPath(abortRoot, "feature")), "the per-loop abort marker is written");
+  assert.ok(fs.existsSync(abortRequestPath(abortRoot, "feature")), "the per-role abort marker is written");
   assert.match(keys2.state().flash!, /abort requested for feature/);
 });

@@ -6,23 +6,23 @@ import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { wakeRequestPath } from "../src/paths.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
-// Ctrl+R role-prompt mode: the per-loop prompt editor on the transcript view — Enter queues
-// into that loop's own inbox queue and wakes it, a failed submit flashes and keeps the editor
+// Ctrl+R role-prompt mode: the per-role prompt editor on the transcript view — Enter queues
+// into that role's own inbox queue and wakes it, a failed submit flashes and keeps the editor
 // open, and the mode keeps its own draft apart from the director line (Esc/Ctrl+R restore it).
-test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and wakes it", async () => {
+test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed role and wakes it", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (the one enabled role: clean)
-    assert.match(tui.lastFrame(), /Ctrl\+R prompt clean/); // the hint names the viewed loop
+    assert.match(tui.lastFrame(), /Ctrl\+R prompt clean/); // the hint names the viewed role
 
     tui.key(undefined, "r", { ctrl: true });
     assert.match(tui.lastFrame(), /prompt for clean: Enter to send, Esc to cancel/);
-    // The bottom hint names the addressed loop while the mode holds the line.
+    // The bottom hint names the addressed role while the mode holds the line.
     assert.match(tui.lastFrame(), /Enter send to clean · ↑↓ history · Esc cancel · Ctrl\+D quit/);
     for (const ch of "check the clean queue") tui.key(ch, ch);
     tui.key(undefined, "return");
 
-    // The prompt merged in the viewed loop's own queue — verifiable with
+    // The prompt merged in the viewed role's own queue — verifiable with
     // `tumwater prompt --list --role clean`'s core — and the wake marker names it.
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
     assert.deepEqual(readJson<{ roles: string[] }>(wakeRequestPath(repo)).roles, ["clean"]);
@@ -75,7 +75,7 @@ test("role-prompt mode keeps its own draft, refuses Ctrl+B, and Esc/Ctrl+R resto
     for (const ch of "director draft") tui.key(ch, ch);
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "r", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "clean ›", "entering the mode blanks the line and names the loop");
+    assert.equal(tui.lines().at(-1), "clean ›", "entering the mode blanks the line and names the role");
 
     // Mutually exclusive: Ctrl+B while role-prompt mode holds the line flashes the way out
     // instead of entering budget mode (which would clobber a saved draft pair).

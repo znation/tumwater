@@ -117,7 +117,7 @@ export const REPORT_WINDOWS: ReadonlyArray<[number | null, string]> = [
 export interface TuiPaneSession {
   /** The current pane index (the transcript/view window). */
   view: number;
-  /** The current roster of loop ids. */
+  /** The current roster of role ids. */
   roleIds: string[];
   /** The within-body scroll offset (line index of the window head) shared by the Markdown
    * panes, the notebook/change/trail views, and the queued/entry bodies — PgDn/PgUp there. */

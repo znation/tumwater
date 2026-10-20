@@ -200,7 +200,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
       }
 
       if (target.position === null) {
-        // New entry (Ctrl+N): file by title with an empty body and wake its loop, the same
+        // New entry (Ctrl+N): file by title with an empty body and wake its role, the same
         // steps handleBacklogFile takes; a length problem or a throw stays in the editor.
         try {
           const { role, wakeText } = OPERATOR_FILE_KINDS[target.kind];

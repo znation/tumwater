@@ -27,7 +27,7 @@ test("runTui renders the team table and an empty activity pane on start", async 
     assert.match(frame, /\[Activity\]/); // default view: recent events
     assert.match(frame, /\(no events yet\)/);
     assert.equal(tui.lines().at(-1), "director ›"); // empty prompt line at the bottom, addressed to the director
-    // The one enabled loop is listed as stopped (the orchestrator is not running).
+    // The one enabled role is listed as stopped (the orchestrator is not running).
     assert.match(frame, /clean/);
     assert.match(frame, /stopped/);
   });
@@ -274,7 +274,7 @@ function seedEntry(root: string, file: string, heading: string): void {
 
 test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures → History → Pending → Queued", async () => {
   const repo = await makeTuiRepo();
-  // Seed the clean loop's pi log with one assistant turn so the transcript pane has
+  // Seed the clean role's pi log with one assistant turn so the transcript pane has
   // something real to show (the user message must never render).
   const logDir = path.join(repo, ".tumwater", "log");
   fs.mkdirSync(logDir, { recursive: true });
@@ -301,7 +301,7 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
     tui.key(undefined, "t", { ctrl: true });
     let frame = tui.lastFrame();
     assert.match(frame, /\[Transcript: clean \(1\/1\)\]/);
-    // The loop's own keys ride the hint line while its transcript is up (the hint is
+    // The role's own keys ride the hint line while its transcript is up (the hint is
     // clipped at the terminal width, so match the start that fits).
     assert.match(frame, /Ctrl\+R prompt clean · Ctrl\+N notes · Ctrl\+X role model/);
     assert.match(frame, /tidied the imports/); // assistant text renders…
@@ -379,7 +379,7 @@ test("the Queued pane shows a selected row's full prompt under a cancel header a
     assert.match(frame, /clean:/); // list mode shows the numbered section
     assert.doesNotMatch(frame, /Ctrl\+X to cancel/);
 
-    tui.key(undefined, "down"); // select the clean prompt (its per-loop position 1)
+    tui.key(undefined, "down"); // select the clean prompt (its per-role position 1)
     frame = tui.lastFrame();
     assert.match(frame, /clean's inbox #1 \(Ctrl\+X to cancel\)/);
     assert.match(frame, /first line of the queued prompt/);
@@ -577,8 +577,8 @@ test("PgUp/PgDn page the Activity feed back through the event tail and resume th
 
 test("Ctrl+G scopes the Activity feed and `/` searches it, narrowing what the pane shows", async () => {
   const repo = await makeTuiRepo();
-  // The repo's one enabled loop is clean; seed a feature event too so a clean scope can be
-  // seen to drop another loop's event from the feed.
+  // The repo's one enabled role is clean; seed a feature event too so a clean scope can be
+  // seen to drop another role's event from the feed.
   writeEvents(repo, [
     { ts: 1_700_000_000_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "widget landed" },
     { ts: 1_700_000_060_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "gizmo swept" },
@@ -593,15 +593,15 @@ test("Ctrl+G scopes the Activity feed and `/` searches it, narrowing what the pa
     assert.match(team, /tidy imports/);
     assert.match(team, /Ctrl\+G scope: team · \/ search/, "the hint names the team scope and the search key");
 
-    // Ctrl+G scopes the feed to the roster's clean loop: the tab strip and hint name it, and
-    // the feature loop's event leaves the pane.
+    // Ctrl+G scopes the feed to the roster's clean role: the tab strip and hint name it, and
+    // the feature role's event leaves the pane.
     tui.key(undefined, "g", { ctrl: true });
     let frame = tui.lastFrame();
-    assert.match(frame, /\[Activity: clean\]/, "the tab strip names the active loop scope");
+    assert.match(frame, /\[Activity: clean\]/, "the tab strip names the active role scope");
     assert.match(frame, /Ctrl\+G scope: clean/);
     assert.match(frame, /widget landed/);
     assert.match(frame, /tidy imports/);
-    assert.doesNotMatch(frame, /gizmo swept/, "another loop's event leaves the scoped feed");
+    assert.doesNotMatch(frame, /gizmo swept/, "another role's event leaves the scoped feed");
 
     // `/` searches within the scope: "gizmo" lives only in feature's summary, so the scoped
     // feed matches nothing and names the filter instead of claiming the log is empty.
@@ -620,7 +620,7 @@ test("Ctrl+G scopes the Activity feed and `/` searches it, narrowing what the pa
     frame = tui.lastFrame();
     assert.match(frame, /\/ search: widget/, "the hint names the active pattern");
     assert.match(frame, /widget landed/);
-    assert.doesNotMatch(frame, /tidy imports/, "the same loop's non-matching event is filtered out");
+    assert.doesNotMatch(frame, /tidy imports/, "the same role's non-matching event is filtered out");
 
     // Ctrl+G back to the team keeps the search; only the matching event is team-visible too.
     tui.key(undefined, "g", { ctrl: true });
@@ -644,7 +644,7 @@ test("a stale entry selection falls back to the empty list when entries disappea
     tui.key(undefined, "down"); // open the plan's body (selection now active)
     assert.match(tui.lastFrame(), /Machine-readable status output/);
 
-    // The entry is removed from PLANS.md while selected (a loop merged an edit).
+    // The entry is removed from PLANS.md while selected (a role merged an edit).
     writeBacklogFile(repo, "PLANS.md", [{ heading: "## Planned" }, { heading: "## Done" }]);
 
     // A keypress in the stale state: PgDn takes the no-entries path of the page handler…

@@ -25,7 +25,7 @@ function row(over: Partial<TickRow> = {}): TickRow {
   };
 }
 
-test("a seeded row renders its time, loop, tick, result, duration, usage, and detail", () => {
+test("a seeded row renders its time, role, tick, result, duration, usage, and detail", () => {
   assert.equal(historyPaneText([row()]), "14:03  feature #7  changed  90s  $0.42  Add the history pane");
 });
 

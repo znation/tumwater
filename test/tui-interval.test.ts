@@ -116,7 +116,7 @@ test("Ctrl+S is mutually exclusive with the other prompt-line editors, and Ctrl+
   });
 });
 
-// The role-prompt (Ctrl+R), pause (Ctrl+F, and the per-loop Ctrl+P/Ctrl+W) editors guard their
+// The role-prompt (Ctrl+R), pause (Ctrl+F, and the per-role Ctrl+P/Ctrl+W) editors guard their
 // keys with their own direct held-flag checks, so interval mode must also keep them out: each
 // stays inert while the interval editor holds the line, and the write still lands on Enter.
 test("Ctrl+R, Ctrl+F, Ctrl+P and Ctrl+W stay inert while the interval editor holds the line", async () => {
@@ -133,7 +133,7 @@ test("Ctrl+R, Ctrl+F, Ctrl+P and Ctrl+W stay inert while the interval editor hol
     tui.key(undefined, "f", { ctrl: true });
     assert.equal(tui.lines().at(-1), "min run interval ›", "Ctrl+F does not open the team-pause editor");
     tui.key(undefined, "p", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "min run interval ›", "Ctrl+P does not open the loop-pause editor");
+    assert.equal(tui.lines().at(-1), "min run interval ›", "Ctrl+P does not open the role-pause editor");
     tui.key(undefined, "w", { ctrl: true });
     assert.equal(tui.lines().at(-1), "min run interval ›", "Ctrl+W does not open the wake editor");
 

@@ -66,33 +66,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - An unlisted role is reviewed before merging, as today.
 - `npm test` passes.
 
-### Plain terms code runner, part 6a/14: Convert the TUI (planned 2026-10-16 by user, split 2026-10-19 by the plan role from part 6/14; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/ui/tui/ + test/tui*.test.ts + test/fixtures/tui-fixtures.ts)
-
-**Goal.** The TUI uses role and runner names in identifiers, comments and test titles. Parts 6a/14, 6b/14 and 6c/14 touch disjoint files and merge in any order; part 7/14 requires all three.
-
-**Approach.**
-- Series rules (every code-runner part):
-  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
-  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
-  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
-  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
-  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
-  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
-  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
-- This part declares nothing new. It migrates uses of `RoleRunner`, `RunnerState`, `freshRunnerState`, `loadRunnerState`, `saveRunnerState`, `RunnerPi`, `makeRoleRunner` and `rolePhase` where it still finds the old `LoopState`/`saveLoopState`/`LoopRunner`/`LoopPi`/`loopPhase` names, and converts comments and test titles.
-- Most hits are comments; the heaviest files are src/ui/tui/tui-pane-history.ts, tui-keys.ts, tui.tsx, tui-pane-transcript.ts and tui-editor-prompt.ts. In tests, test/tui-keys.test.ts carries most hits, then test/tui.test.ts and test/tui-operator-keys.test.ts; most of tui-keys.test.ts's hits are `loop:` event keys, which stay.
-- Classify every hit by hand; never run a blanket `loop`→`role` substitution over a file. Event fixtures' `loop: "…"` keys are serialized names and stay. When a hit's sense is unclear, read the code it describes: a loop statement, a retry or a re-run keeps "loop".
-- Kept phrases, word for word: src/ui/tui/tui.tsx "read loop" and "ink's input loop".
-- Leave test/tui-notebook.test.ts's file name to Plain terms code cleanup; convert only its loop words.
-
-**Files touched.** src/ui/tui/*.ts(x), test/tui*.test.ts and test/fixtures/tui-fixtures.ts.
-
-**Acceptance criteria.**
-- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_'` over this part's files lists only `customLoop*` identifiers.
-- `grep -rnwiE 'loops?'` over the same files lists only kept senses and serialized names (event fixtures' `loop:` keys), and `grep -nE 'read loop|input loop' src/ui/tui/tui.tsx` still matches both kept phrases.
-- No behavior change: no test is added or removed, and the changed tests assert what they asserted before.
-- `npm run test` passes.
-
 ### Plain terms code runner, part 6c/14: Convert the review and verdict modules and the progress and transcript models (planned 2026-10-16 by user, split 2026-10-19 by the plan role from part 6/14; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/review/ + src/verdict/ + src/ui/tick-progress-model.ts + src/ui/progress-data.ts + src/ui/transcript.ts + src/ui/transcript-tail.ts + their tests)
 
 **Goal.** src/review/, src/verdict/ and the TUI-and-dashboard progress and transcript models use role and runner names in identifiers, comments and test titles. Parts 6a/14, 6b/14 and 6c/14 touch disjoint files and merge in any order; part 7/14 requires all three.

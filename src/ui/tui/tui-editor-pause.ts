@@ -31,7 +31,7 @@ import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
 /** The pause/stop/wake editor on the shared prompt line: the whole-team Ctrl+F pause and Ctrl+Q
- * stop editors, the per-loop Ctrl+P pause / Ctrl+A abort / Ctrl+W wake controls, and the
+ * stop editors, the per-role Ctrl+P pause / Ctrl+A abort / Ctrl+W wake controls, and the
  * parse/dispatch leaves those write. It owns its mode flags (pauseEditMode/`pauseEditRole`/
  * `pauseEditWake`/`pauseEditStop`), its saved-draft pair, its exit helper, and the handleKey
  * arms for its keys. Mutually exclusive with the other editors via the session's held registry. */
@@ -87,7 +87,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       // event feed and failure digest already read; a no-op flashes the same
       // already-paused/was-not-paused contract the CLI prints. Guarded out of the budget and
       // role-prompt editors, whose prompt line the team toggle must not disturb — the same
-      // inertness the per-loop keys honor below. The write can fail (a lock timeout, a torn
+      // inertness the per-role keys honor below. The write can fail (a lock timeout, a torn
       // fs), so flash the reason instead of letting the throw kill the TUI.
       if (pauseEditMode) {
         exitPauseEditMode();
@@ -152,7 +152,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       }
       return true;
     }
-    // Per-loop controls on the transcript pane: Ctrl+P toggles the viewed loop's pause,
+    // Per-role controls on the transcript pane: Ctrl+P toggles the viewed role's pause,
     // Ctrl+A aborts its in-flight tick, Ctrl+V zeroes its counters, Ctrl+W opens the wake
     // editor (Ctrl+R opens the role-prompt editor for it — the prompt editor's arms handle
     // that key). They call the
@@ -162,7 +162,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     // branch is a disk write that can fail (a lock timeout, a torn fs), and an unguarded
     // throw would escape this keypress handler and kill the TUI — flash the reason instead.
     if (key.ctrl && (key.name === "p" || key.name === "w") && pauseEditRole !== null) {
-      // A second Ctrl+P or Ctrl+W closes the per-loop pause/wake editor, mirroring Ctrl+F's
+      // A second Ctrl+P or Ctrl+W closes the per-role pause/wake editor, mirroring Ctrl+F's
       // second press.
       exitPauseEditMode();
       return true;
@@ -191,7 +191,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
               session.held.rolePromptFor ? session.busyFlash("role prompt") : session.busyFlash("search"),
             );
           } else {
-            // An unpaused loop opens the one-line duration editor; nothing is written until
+            // An unpaused role opens the one-line duration editor; nothing is written until
             // Enter. Empty pauses until resumed.
             openPauseEditor(role, false, false, `pause ${role}: [duration], e.g. "2h" (empty pauses until resumed) — Enter to pause, Esc to cancel`);
           }

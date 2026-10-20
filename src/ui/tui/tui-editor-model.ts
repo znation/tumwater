@@ -10,7 +10,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * JSON-parses the text, so a bare model id stays a literal string while a `{"strong":"..."}`
  * map becomes the map, and validateConfig owns the value's truth (a number like `42` flashes
  * the model validator's message and stays open). The editor opens only on view 0: on a role's
- * Transcript Ctrl+A keeps its per-loop abort meaning, and on Backlog it keeps the answer
+ * Transcript Ctrl+A keeps its per-role abort meaning, and on Backlog it keeps the answer
  * editor's key. */
 export function createModelEditor(session: TuiEditorSession): TuiEditorModule {
   return createTeamConfigKeyEditor(session, {

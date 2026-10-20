@@ -60,7 +60,7 @@ function killWordBefore(text: string, c: number): { text: string; cursor: number
  * the two directions of half-line discard (a long prompt often wants one, the other, or
  * both: type the tail, Ctrl+U it away, retype). Every other control/meta combination is
  * ignored — Ctrl+W cannot join the kill set because the TUI's transcript views already
- * bind it to per-loop wake (tui.tsx). Returns the new state; an out-of-range cursor is
+ * bind it to per-role wake (tui.tsx). Returns the new state; an out-of-range cursor is
  * clamped instead of corrupting the edit. Backspace/delete remove a whole character: when
  * the unit they would cut is one half of a surrogate pair (an astral character such as
  * emoji), both units go together so no lone surrogate — which terminals render as garbage —
@@ -209,7 +209,7 @@ export function parsePauseInput(
   return reason ? { ok: true, forMs: ms, reason } : { ok: true, forMs: ms };
 }
 
-/** Parse the TUI's Ctrl+P per-loop pause line: empty pauses until resumed, a duration pauses
+/** Parse the TUI's Ctrl+P per-role pause line: empty pauses until resumed, a duration pauses
  * for it. Per-role pauses carry no reason (`pause --role` refuses `--reason`), so anything
  * else is refused rather than dropped. Same 90d cap as parsePauseInput. */
 export function parseRolePauseInput(
@@ -222,7 +222,7 @@ export function parseRolePauseInput(
   return { ok: true, forMs: r.ms };
 }
 
-/** Parse the TUI's Ctrl+W per-loop wake line: empty wakes the loop now, a duration schedules
+/** Parse the TUI's Ctrl+W per-role wake line: empty wakes the role now, a duration schedules
  * the wake, `cancel` drops its pending scheduled wakes. Anything else is refused rather than
  * guessed. Same 90d cap `tumwater wake --in` enforces. */
 export function parseRoleWakeInput(

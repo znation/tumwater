@@ -103,7 +103,7 @@ test("Ctrl+O is mutually exclusive with the other prompt-line editors, and Ctrl+
 });
 
 // The budget↔quiet direction above proves heldEditorFlash's shared guard. But the role-prompt
-// (Ctrl+R) and pause (Ctrl+F, and the per-loop Ctrl+P/Ctrl+W) editors guard their keys with
+// (Ctrl+R) and pause (Ctrl+F, and the per-role Ctrl+P/Ctrl+W) editors guard their keys with
 // their own direct held-flag checks rather than heldEditorFlash, so quiet-hours mode must also
 // keep them out: each stays inert while the quiet editor holds the line, leaving the quiet
 // editor (and its pre-filled text) untouched and the write still lands on Enter.
@@ -121,7 +121,7 @@ test("Ctrl+R, Ctrl+F, Ctrl+P and Ctrl+W stay inert while the quiet editor holds 
     tui.key(undefined, "f", { ctrl: true });
     assert.equal(tui.lines().at(-1), "quiet hours ›", "Ctrl+F does not open the team-pause editor");
     tui.key(undefined, "p", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "quiet hours ›", "Ctrl+P does not open the loop-pause editor");
+    assert.equal(tui.lines().at(-1), "quiet hours ›", "Ctrl+P does not open the role-pause editor");
     tui.key(undefined, "w", { ctrl: true });
     assert.equal(tui.lines().at(-1), "quiet hours ›", "Ctrl+W does not open the wake editor");
 

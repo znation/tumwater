@@ -74,7 +74,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     backlog.reset?.();
     history.reset?.();
     queued.reset?.();
-    // Advance the view: events → each loop's transcript → project status → usage report →
+    // Advance the view: events → each role's transcript → project status → usage report →
     // failures → history → pending → queued → health → brief → events.
     session.view = (session.view + 1) % (session.roleIds.length + 9);
     session.paneScroll = 0; // the Markdown panes always re-enter at their head
@@ -123,7 +123,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       return transcript.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "g") {
-      // Ctrl+G's scope arm is routed by view: Activity on 0, the History exact-loop scope on
+      // Ctrl+G's scope arm is routed by view: Activity on 0, the History exact-role scope on
       // N+4, and the report team/base-role scope everywhere else — the priority the original
       // else-branch chain kept, so the report arm never steals the History view's slot.
       if (session.view === 0) return activity.handleKey?.(key, ctx) ?? false;
@@ -208,7 +208,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       session.view += session.roleIds.length - previousCount;
     }
     session.view = Math.min(session.view, session.roleIds.length + 8); // clamp a stale index if roles changed
-    // A retired or renamed loop must not leave a scope pane silently scoped to an absent role:
+    // A retired or renamed role must not leave a scope pane silently scoped to an absent role:
     // each pane drops (and recomputes) its own scope with the stale view index.
     report.dropScopes?.(roles);
     history.dropScopes?.(roles);

@@ -96,9 +96,9 @@ interface TuiKeysState {
   instructionsEditFor: string | null;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
-  /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */
+  /** The role the pause editor pauses, null for the team editor (Ctrl+F). */
   pauseEditRole: string | null;
-  /** the per-loop editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P) */
+  /** the per-role editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P) */
   pauseEditWake: boolean;
   /** the team editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F) */
   pauseEditStop: boolean;
@@ -110,9 +110,9 @@ interface TuiKeysState {
   /** The session-scoped role the Usage and Failures panes collect for (Ctrl+G), null for the
    * team; cleared when the incoming roster no longer names it. */
   scopeRole: string | null;
-  /** The History pane's exact-loop scope (Ctrl+G), a raw roster id or null for the team's
+  /** The History pane's exact-role scope (Ctrl+G), a raw roster id or null for the team's
    * full read; cleared when the incoming roster no longer names it. Separate from scopeRole:
-   * History filters by exact loop (`history --role`), where `feature-2` is its own slot. */
+   * History filters by exact role (`history --role`), where `feature-2` is its own slot. */
   historyRole: string | null;
   selectedEntry: number | null;
   /** The armed backlog cancel (first Ctrl+X on a selected plan or bug): the entry a second
@@ -146,7 +146,7 @@ interface TuiKeysState {
    * addresses a row's role/position without re-reading the queue each frame. */
   queuedRows: QueuedListRow[];
   paneCache: string | null;
-  /** Whether the viewed loop's pane shows its notebook (Ctrl+N) instead of the transcript —
+  /** Whether the viewed role's pane shows its notebook (Ctrl+N) instead of the transcript —
    * true only on a transcript view. */
   noteMode: boolean;
   /** The notebook view's rendered Markdown, computed once on Ctrl+N entry and windowed by
@@ -159,7 +159,7 @@ interface TuiKeysState {
    * entry and windowed by paneBody; null while the rows are shown or when the newest
    * completed tick could not be read. */
   trailCache: string | null;
-  /** Whether the viewed loop's pane shows the collected unmerged change (the second Ctrl+N
+  /** Whether the viewed role's pane shows the collected unmerged change (the second Ctrl+N
    * step) instead of the transcript — true only on a transcript view. */
   changeMode: boolean;
   /** The change view's rendered text (renderRoleChange), null until its async collector
@@ -169,9 +169,9 @@ interface TuiKeysState {
   /** The Activity pane's body-window start into the loaded event tail, or null to follow the
    * live tail. Paged by PgUp/PgDn and reset to null on every Ctrl+T view cycle. */
   activityScroll: number | null;
-  /** The Activity pane's session exact-loop scope (Ctrl+G), a raw roster id or null for the
+  /** The Activity pane's session exact-role scope (Ctrl+G), a raw roster id or null for the
    * team's full tail; cleared when the incoming roster no longer names it. Separate from
-   * scopeRole for the same reason historyRole is: the feed filters by exact loop (`eventRole`),
+   * scopeRole for the same reason historyRole is: the feed filters by exact role (`eventRole`),
    * where `feature-2` is its own slot. */
   activityRole: string | null;
   /** The Activity pane's active free-text search (the `/` editor), or null when none; matched
@@ -196,12 +196,12 @@ interface TuiKeysState {
    * filtered active entries under the pane's `search:` header. */
   backlogGrep: string | null;
   /** The History pane's session Summary toggle (Ctrl+Y): false shows the per-run row list, true
-   * the per-loop tally (`history --summary`); named in the hint line. */
+   * the per-role tally (`history --summary`); named in the hint line. */
   historySummary: boolean;
   eventBudget: number;
   entryBudget: number;
   roleIds: string[];
-  /** Whether the director loop currently has a tick in flight (render's feed, Ctrl+C's gate). */
+  /** Whether the director role currently has a tick in flight (render's feed, Ctrl+C's gate). */
   directorInFlight: boolean;
   /** The live flash notice, or null when none is armed or the clock passed its expiry. */
   flash: string | null;
@@ -215,7 +215,7 @@ export interface TuiKeys {
    * calls into this with the same (str, key) shape the readline "keypress" event delivered. */
   handleKey(str: string | undefined, key: { ctrl?: boolean; name?: string }): void;
   /** Render feeds the snapshot's cap/free flag/roles in each frame (the locals the handler
-   * reads without re-reading config itself), plus the director loop's in-flight flag —
+   * reads without re-reading config itself), plus the director role's in-flight flag —
    * Ctrl+C's interrupt gate; the view clamps against a changed role count. */
   syncSnapshot(capUsd: number, budgetFree: boolean, roles: string[], directorInFlight?: boolean): void;
   /** Render feeds the activity pane's line budgets in each frame. */
@@ -322,7 +322,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // CLI's `abort --role director` does, through the shared requestAbort core so the
       // marker format and wording cannot drift; when none is, flash a notice and leave
       // the team untouched. A failed marker write flashes the reason instead of
-      // escaping the handler — the same contract the per-loop controls above honor.
+      // escaping the handler — the same contract the per-role controls above honor.
       if (!directorInFlight) {
         flashMessage("no director task in flight");
         deps.requestRender();
@@ -338,7 +338,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       return;
     }
     // The prompt-line editors own every arm that reads or writes the one prompt line — the
-    // toggles and per-loop controls that open them, the escape/Enter arms that close and
+    // toggles and per-role controls that open them, the escape/Enter arms that close and
     // commit them, and the `/` search. Route the key to them first; when they consumed it,
     // the dispatch is done (they always render on a handled key).
     if (editors.handleKey(str, key, panes.editorCtx())) {

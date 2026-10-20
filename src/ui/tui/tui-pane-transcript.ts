@@ -8,18 +8,18 @@ import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
-/** The per-loop transcript panes (views 1..roleIds.length) of the TUI: the Ctrl+N
+/** The per-role transcript panes (views 1..roleIds.length) of the TUI: the Ctrl+N
  * transcript→notebook→change cycle and its two-step Ctrl+X notebook-clear arm, plus the
  * notebook/change PgUp/PgDn body window. Split out of the pane-navigation monolith; it owns
  * the notebook/change mode state and the arms that touch them. */
 export function createTranscriptPane(session: TuiPaneSession) {
-  // Ctrl+N toggles the viewed loop's pane between its live transcript and a read-only
+  // Ctrl+N toggles the viewed role's pane between its live transcript and a read-only
   // notebook view (its note and next tick's prompt). Like paneCache, noteCache is computed
   // once on entry and only re-windowed each frame; both reset when the mode changes or the
   // view cycles.
   let noteMode = false;
   let noteCache: string | null = null;
-  // Ctrl+N's third step: the viewed loop's collected unmerged change (the CLI's
+  // Ctrl+N's third step: the viewed role's collected unmerged change (the CLI's
   // `renderRoleChange` text). changeCache is null until the async collector resolves, and the
   // pane paints a loading note meanwhile; both reset on leaving the mode or cycling the view.
   let changeMode = false;
@@ -30,12 +30,12 @@ export function createTranscriptPane(session: TuiPaneSession) {
     ctx: TuiPaneCtx,
   ): boolean => {
     if (key.ctrl && key.name === "n") {
-      // Ctrl+N cycles the viewed loop's pane live transcript → notebook → change → transcript
+      // Ctrl+N cycles the viewed role's pane live transcript → notebook → change → transcript
       // (PLANS.md "Inspect a loop's notebook and next tick prompt in the TUI" and "Show a
       // loop's pending change in the TUI transcript pane"). The change step renders the same
       // collectRoleChange/renderRoleChange view the CLI's `tumwater diff --role <id>` and the
       // dashboard drawer use. Guarded to a transcript view and out of budget-edit and
-      // role-prompt modes, the same way the per-loop controls below are; the History view's
+      // role-prompt modes, the same way the per-role controls below are; the History view's
       // trail arm is handled by the history module ahead of this one in the routing order.
       // The editor flags below (budget/role/pause/queued/answer/entry/search) are all
       // false here — the editors consume every key that reads or writes the line — but the
@@ -100,7 +100,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
       promptLineFree(ctx.es) &&
       session.view >= 1 && session.view <= session.roleIds.length
     ) {
-      // Ctrl+X twice clears the viewed loop's notebook through the writer the CLI's
+      // Ctrl+X twice clears the viewed role's notebook through the writer the CLI's
       // `--clear-notes` and the dashboard drawer share, then re-renders the notebook view.
       const role = session.roleIds[session.view - 1]!;
       if (session.armedNotes === role) {

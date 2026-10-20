@@ -117,7 +117,7 @@ test("Ctrl+E and other editors are mutually exclusive with the notify editor via
 // write still landing on Enter, rather than letting the pause editor pile a duration onto
 // the notify line and commit it as the notify hook on Enter (the wrong-write the shared
 // guard prevents). The `/` search editor, a sibling of the same direct-guard family on
-// Activity, must likewise stay out. The per-loop Ctrl+P/Ctrl+W and the per-role Ctrl+R arms
+// Activity, must likewise stay out. The per-role Ctrl+P/Ctrl+W and the per-role Ctrl+R arms
 // live on a role's Transcript, where the notify editor (Activity-only) never holds the line,
 // so they are not exercised here — the pause/prompt held-flag lists still name notify for
 // that reason.

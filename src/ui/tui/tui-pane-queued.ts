@@ -39,8 +39,8 @@ export function createQueuedPane(
     session.paneScroll = 0;
   };
 
-  // Ctrl+X cancels the selected queued prompt through the CLI's own per-loop path
-  // (`tumwater prompt --cancel <n> --role <id>`): cancelRolePrompt removes that loop's Nth
+  // Ctrl+X cancels the selected queued prompt through the CLI's own per-role path
+  // (`tumwater prompt --cancel <n> --role <id>`): cancelRolePrompt removes that role's Nth
   // queue file and logs the prompt_cancelled event, so the pane, the CLI, and the dashboard
   // cancel cannot drift. It then re-reads the queue so the pane's list and rows reflect the
   // removal and the selection clamps. Its write and flash stay under one try/catch; the
@@ -63,8 +63,8 @@ export function createQueuedPane(
   };
 
   // Ctrl+V moves the selected queued prompt to the head of its role's queue through the
-  // CLI's own per-loop path (`tumwater prompt --top <n>`): movePromptToTop renames that
-  // loop's Nth queue file to the head and logs the prompt_topped event, so the pane, the
+  // CLI's own per-role path (`tumwater prompt --top <n>`): movePromptToTop renames that
+  // role's Nth queue file to the head and logs the prompt_topped event, so the pane, the
   // CLI, and the dashboard cannot drift. A position-1 row is already the head (a no-op); a
   // gone outcome is the concurrent-dequeue race (movePromptToTop's own contract), not a
   // failure, so flash it honestly. Its write and flash stay under one try/catch; the caller

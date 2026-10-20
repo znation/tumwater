@@ -126,10 +126,10 @@ test("Ctrl+L is mutually exclusive with the other prompt-line editors, and Ctrl+
   });
 });
 
-// The pause editor's team and per-loop arms (tui-editor-pause.ts) and the transcript pane's
+// The pause editor's team and per-role arms (tui-editor-pause.ts) and the transcript pane's
 // notebook arm (tui-pane-transcript.ts) each restate the held-editor mutual-exclusion guard, and
 // each must also honor the instructions editor's held flag: while Ctrl+L is open on a role
-// transcript, team pause/stop, per-loop pause/abort/wake/reset, the role-prompt editor, and the
+// transcript, team pause/stop, per-role pause/abort/wake/reset, the role-prompt editor, and the
 // notebook toggle all stay inert and leave the prompt line with the instructions editor (the
 // reviewer's missed-flag paths).
 test("the pause and notebook arms stay inert while Ctrl+L holds the line", async () => {
@@ -145,15 +145,15 @@ test("the pause and notebook arms stay inert while Ctrl+L holds the line", async
     tui.key(undefined, "q", { ctrl: true });
     assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+Q does not open the stop editor");
 
-    // Per-loop controls on the transcript: pause/abort/reset/wake all stay inert.
+    // Per-role controls on the transcript: pause/abort/reset/wake all stay inert.
     tui.key(undefined, "p", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+P does not open the per-loop pause editor");
+    assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+P does not open the per-role pause editor");
     tui.key(undefined, "a", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+A does not abort the loop");
+    assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+A does not abort the role");
     tui.key(undefined, "w", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+W does not open the per-loop wake editor");
+    assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+W does not open the per-role wake editor");
     tui.key(undefined, "v", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+V does not reset the loop's counters");
+    assert.equal(tui.lines().at(-1), "instructions for clean ›", "Ctrl+V does not reset the role's counters");
 
     // The transcript pane's notebook toggle (Ctrl+N) stays inert and the notes view does not open.
     tui.key(undefined, "n", { ctrl: true });

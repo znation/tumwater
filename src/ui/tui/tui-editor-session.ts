@@ -17,15 +17,15 @@ import type { labeledBacklogEntries } from "./tui-backlog.js";
 interface TuiHeld {
   /** Ctrl+B budget-edit mode. */
   budget: boolean;
-  /** Ctrl+R per-role prompt mode: the viewed loop's role id, or null when closed. */
+  /** Ctrl+R per-role prompt mode: the viewed role's role id, or null when closed. */
   rolePromptFor: string | null;
   /** The shared `/` search editor is open. */
   search: boolean;
   /** Ctrl+F/Ctrl+Q/Ctrl+P/Ctrl+W pause/stop/wake editor is open. */
   pause: boolean;
-  /** The loop the pause editor pauses, null for the team editors (Ctrl+F/Ctrl+Q). */
+  /** The role the pause editor pauses, null for the team editors (Ctrl+F/Ctrl+Q). */
   pauseEditRole: string | null;
-  /** The per-loop editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P). */
+  /** The per-role editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P). */
   pauseEditWake: boolean;
   /** The team editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F). */
   pauseEditStop: boolean;

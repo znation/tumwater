@@ -10,7 +10,7 @@ import {
   stepEntryScroll,
   visibleBacklogIndexes,
 } from "../src/ui/tui/tui-backlog.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { backlogMarks, holdMark } from "../src/backlog/backlog-eligibility.js";
 import { paneBody } from "../src/ui/tui/tui-pane.js";
 import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
@@ -75,7 +75,7 @@ test("moveEntrySelection wraps at both ends across the flat entry list", () => {
 });
 
 test("moveEntrySelection clamps a stale selection before wrapping", () => {
-  // The backlog the flat index came from can shrink between renders (a loop fixes a bug
+  // The backlog the flat index came from can shrink between renders (a role fixes a bug
   // while the pane holds a selection): a stale index past the new count must clamp to the
   // last entry first, so the next step moves from where the pane actually shows the
   // selection — not from an arbitrary offset that mod-count happens to name.
@@ -217,9 +217,9 @@ test("backlogMarks and labeledBacklogEntries append the working-on-it mark after
   ]);
   const claim = (file: "PLANS.md" | "BUGS.md", key: string, title: string) =>
     ({ file, key, title, at: 1, source: "assigned" }) as const;
-  saveLoopState(dir, { ...loadLoopState(dir, "feature-2"), claim: claim("PLANS.md", "volume slider", "Volume slider") });
-  saveLoopState(dir, { ...loadLoopState(dir, "feature"), claim: claim("PLANS.md", "refused one", "Refused one") });
-  saveLoopState(dir, { ...loadLoopState(dir, "bugfix"), claim: claim("BUGS.md", "live bug", "Live bug") });
+  saveRunnerState(dir, { ...loadRunnerState(dir, "feature-2"), claim: claim("PLANS.md", "volume slider", "Volume slider") });
+  saveRunnerState(dir, { ...loadRunnerState(dir, "feature"), claim: claim("PLANS.md", "refused one", "Refused one") });
+  saveRunnerState(dir, { ...loadRunnerState(dir, "bugfix"), claim: claim("BUGS.md", "live bug", "Live bug") });
   const expected = {
     plans: [" [working on it: feature #2]", " [blocked: refused] [working on it: feature]"],
     bugs: [" [working on it: bugfix]"],

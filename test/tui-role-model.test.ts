@@ -108,11 +108,11 @@ test("Ctrl+X is mutually exclusive with the other prompt-line editors", async ()
   });
 });
 
-// The per-loop controls and pane arms must stay inert while the role-model editor holds the
+// The per-role controls and pane arms must stay inert while the role-model editor holds the
 // prompt line, exactly like the sibling interval editor: Ctrl+P/W would otherwise open a second
 // pause/wake prompt-line editor and Ctrl+A/V write run state, and Ctrl+G/E scope/window and
 // Ctrl+N sub-view cycle would act while the editor owns the line.
-test("Ctrl+X holds the line against the per-loop controls and the transcript pane arms", async () => {
+test("Ctrl+X holds the line against the per-role controls and the transcript pane arms", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // → clean's transcript
@@ -121,7 +121,7 @@ test("Ctrl+X holds the line against the per-loop controls and the transcript pan
     for (const ch of "sonnet") tui.key(ch, ch);
     assert.equal(tui.lines().at(-1), "role model › sonnet");
 
-    // Per-loop controls (Ctrl+P pause, Ctrl+W wake, Ctrl+A abort, Ctrl+V counters) are
+    // Per-role controls (Ctrl+P pause, Ctrl+W wake, Ctrl+A abort, Ctrl+V counters) are
     // excluded while the editor holds the line: none opens a pause/wake editor or writes run
     // state, and the pending model text survives untouched.
     for (const name of ["p", "w", "a", "v"]) {

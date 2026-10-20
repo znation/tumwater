@@ -19,7 +19,7 @@ import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-
 import { nextInCycle, cycleLabel, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The History pane (view roleIds.length + 4) of the TUI (src/ui/tui/tui.tsx): the session
- * window (Ctrl+S), outcome filter (Ctrl+O), exact-loop scope (Ctrl+G), free-text search (`/`),
+ * window (Ctrl+S), outcome filter (Ctrl+O), exact-role scope (Ctrl+G), free-text search (`/`),
  * and the Ctrl+N completed-tick trail, each with its cache and body window. Split out of the
  * pane-navigation monolith; it owns the pane's window/result/scope/search/trail state and
  * the arms that touch them. */
@@ -33,10 +33,10 @@ export function createHistoryPane(
   // The History pane's session outcome filter (Ctrl+O), a HISTORY_RESULTS class or null for no
   // filter. Session-only like the window; the next Ctrl+T into History computes with it.
   let historyResult: HistoryResultClass | null = null;
-  // The History pane's session exact-loop scope (Ctrl+G), a raw roster id or null for the
+  // The History pane's session exact-role scope (Ctrl+G), a raw roster id or null for the
   // team's full read. Session-only like the window/result; syncSnapshot clears it when the
   // roster drops the id. The raw ids, not scopeCycle's base roles: History filters by exact
-  // loop (`history --role`), where `feature-2` is its own slot.
+  // role (`history --role`), where `feature-2` is its own slot.
   let historyRole: string | null = null;
   // The History pane's session free-text search (the `/` prompt-line editor), a
   // case-insensitive substring over history-data.ts's tickRowGrepHaystack — the same rule
@@ -44,7 +44,7 @@ export function createHistoryPane(
   // like the window/result/role, so the next Ctrl+T into History computes the cache with it.
   let historyGrep: string | null = null;
   // The History pane's session Summary toggle (Ctrl+Y): false shows the per-run row list, true
-  // the per-loop tally (`history --summary`). Session-only like the window/result/role/search,
+  // the per-role tally (`history --summary`). Session-only like the window/result/role/search,
   // so the next Ctrl+T into History computes the cache with it.
   let historySummary = false;
   // Ctrl+N on the History pane swaps the row list for the newest completed tick's full event
@@ -55,15 +55,15 @@ export function createHistoryPane(
   let trailCache: string | null = null;
   let trailGen = 0; // bumped at every trail read or reset; a stat resolution applies only to its own gen
 
-  /** The History pane's body for one trailing window, one outcome class, one exact-loop scope,
+  /** The History pane's body for one trailing window, one outcome class, one exact-role scope,
    * and one free-text search: the paneCache the Ctrl+T/Ctrl+S/Ctrl+O/Ctrl+G/`/` handlers store.
    * The default (null/null/null/null) read is byte-for-byte the newest-N pane that predates the
-   * window, outcome, loop, and search cycles — readTickRows with HISTORY_DEFAULT_TICKS,
+   * window, outcome, role, and search cycles — readTickRows with HISTORY_DEFAULT_TICKS,
    * unfiltered. A trailing window reads through the same readTickRowsSince collector `tumwater
    * history --since` uses, a class filters through history-data.ts's canonical historyClass rule,
    * and the search filters through tickRowGrepHaystack — the same haystack and case-insensitive
    * substring rule `tumwater history --grep` and the dashboard's History search use — so the TUI,
-   * the CLI, and the dashboard cannot disagree about the rows. The role is the exact loop id the
+   * the CLI, and the dashboard cannot disagree about the rows. The role is the exact role id the
    * raw roster (and `history --role`, and the dashboard picker) names — readTickRows filters
    * `e.loop === role`, so an instance id is its own scope, never folded into a base role. An empty
    * read with no class and no search returns "" so the pane keeps its own no-ticks note instead of
@@ -90,7 +90,7 @@ export function createHistoryPane(
     const grepped = grep === null ? rows : tickRowsMatchingGrep(rows, grep);
     const afterGrep = grepped.length;
     const filtered = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
-    // The session Summary toggle (Ctrl+Y) swaps the row list for the same per-loop tally the CLI's
+    // The session Summary toggle (Ctrl+Y) swaps the row list for the same per-role tally the CLI's
     // `history --summary` and the dashboard History view print (summarizeTickRows → renderSummary),
     // folded over exactly the rows the window/scope/result/search selected, so the three surfaces
     // cannot disagree. The non-empty guard matters: renderSummary always prints a header, so
@@ -99,7 +99,7 @@ export function createHistoryPane(
     // null when no class is active, so the header/empty-body paths below only name a result
     // filter the session actually holds (cycleLabel(HISTORY_RESULTS, null) is the "all" label).
     const resultLabel = resultClass === null ? null : cycleLabel(HISTORY_RESULTS, resultClass);
-    // The role first, then the window/result/search labels: the loop is the coarsest cut, and a
+    // The role first, then the window/result/search labels: the role is the coarsest cut, and a
     // role-only read (no window, no class) still prints its scope line above the rows.
     const header = [
       ...(role === null ? [] : ["role: " + role]),
@@ -125,7 +125,7 @@ export function createHistoryPane(
   };
 
   // Re-read the pane-scoped newest completed tick into trailCache for an on-screen trail
-  // (Ctrl+N), so the trail cannot keep showing a retired loop's tick after Ctrl+G or a roster
+  // (Ctrl+N), so the trail cannot keep showing a retired role's tick after Ctrl+G or a roster
   // change drops the History scope. The reader throw is caught and flashed rather than escaping
   // a key or sync path, the same guard the initial Ctrl+N entry uses.
   // Append the tick commit's per-file stat to the trail text once it resolves — the join
@@ -148,10 +148,10 @@ export function createHistoryPane(
     );
   };
 
-  /** Re-read the pane-scoped newest completed tick (the loop Ctrl+G scoped to, else the team's)
+  /** Re-read the pane-scoped newest completed tick (the role Ctrl+G scoped to, else the team's)
    * into trailCache, appending the tick commit's per-file stat once it resolves — the reader
    * both the initial Ctrl+N toggle and the scope-change refreshes share, so the trail cannot
-   * keep showing a retired loop's tick after Ctrl+G or a roster change drops the History scope.
+   * keep showing a retired role's tick after Ctrl+G or a roster change drops the History scope.
    * Returns true when a tick actually rendered (the caller turns the trail on); a scope holding
    * none leaves trailCache null and, when `onEmpty` is given, runs it (the Ctrl+N toggle's
    * "no completed runs to inspect" flash) so the user learns why nothing changed. The reader
@@ -239,7 +239,7 @@ export function createHistoryPane(
       // its own slot, matching `history --role` and the dashboard picker. A trail already on
       // screen follows the scope: re-read the new scope's newest completed tick (or drop to the
       // pane's no-trail note when it has none) so the trail and the tab strip cannot name
-      // different loops.
+      // different roles.
       const slots: Array<string | null> = [null, ...session.roleIds];
       const slot = slots.indexOf(historyRole);
       historyRole = slots[(slot + 1) % slots.length] ?? null;
@@ -274,7 +274,7 @@ export function createHistoryPane(
     }
     if (key.ctrl && key.name === "y" && promptLineFree(ctx.es)) {
       // Ctrl+Y toggles the History pane's Summary view (mnemonic: summar**Y**) — the same
-      // per-loop tally `tumwater history --summary` and the dashboard History view print,
+      // per-role tally `tumwater history --summary` and the dashboard History view print,
       // folded over the pane's already-selected rows. Guarded out of budget-edit and
       // role-prompt modes like Ctrl+S/O beside it. The class is session state: toggling it off
       // the History view only changes the label, and the next Ctrl+T into History computes the
@@ -306,14 +306,14 @@ export function createHistoryPane(
       trailCache = null;
     },
     dropScopes(roles) {
-      // The same drop for History's exact-loop scope: a retired or renamed loop must not keep
+      // The same drop for History's exact-role scope: a retired or renamed role must not keep
       // labeling an empty pane. An on-screen History pane recomputes from the team-wide read
       // so its rows and its `role:` header clear together.
       if (historyRole !== null && !roles.includes(historyRole)) {
         historyRole = null;
         recompute();
         // The retired scope may have been feeding an on-screen trail: re-read it from the
-        // team so the pane and the tab strip cannot name a loop the roster no longer has.
+        // team so the pane and the tab strip cannot name a role the roster no longer has.
         if (trailMode) refreshTrail();
       }
     },

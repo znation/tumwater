@@ -6,7 +6,7 @@ import type { QueuedListRow } from "../../inbox/inbox.js";
 export interface TuiEditorCtx {
   /** The current pane index (the transcript/view window). */
   view: number;
-  /** The current roster of loop ids. */
+  /** The current roster of role ids. */
   roleIds: string[];
   /** The project-status pane's entry selection (null = list mode). */
   selectedEntry: number | null;
@@ -20,7 +20,7 @@ export interface TuiEditorCtx {
   activityGrep: string | null;
   /** The Backlog pane's active free-text search (the `/` editor's applied pattern). */
   backlogGrep: string | null;
-  /** Whether the viewed loop's pane shows its notebook (Ctrl+N) instead of the live
+  /** Whether the viewed role's pane shows its notebook (Ctrl+N) instead of the live
    * transcript — the notes Ctrl+E editor's open guard: it may only take the prompt line
    * while the notes view is up, so the Report window arm keeps Ctrl+E on its own views. */
   noteMode: boolean;
