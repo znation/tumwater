@@ -11,6 +11,7 @@ import {
   pendingScheduledWakes,
   type AbortableMerge,
 } from "../src/operator/operator-requests.js";
+import { baseRoleOf } from "../src/roles/runner-ids.js";
 import { readEvents } from "../src/events/event-read.js";
 import {
   abortRequestPath,
@@ -32,6 +33,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
  * touches: role, in-memory running flag, and the three mutators it calls. */
 interface FakeRunner {
   role: string;
+  baseRole: string;
   state: { running: boolean };
   resets: number;
   wakes: number;
@@ -44,6 +46,7 @@ interface FakeRunner {
 function fakeRunner(role: string, running = false): FakeRunner {
   const r: FakeRunner = {
     role,
+    baseRole: baseRoleOf(role),
     state: { running },
     resets: 0,
     wakes: 0,
@@ -179,6 +182,20 @@ test("consumeWakeRequest wakes only the named roles and logs the operator reason
   assert.equal(events.length, 1);
   assert.equal(events[0]?.source, "clean");
   assert.equal(events[0]?.reason, "operator");
+});
+
+test("consumeWakeRequest wakes every instance of a named base role and the current id of a legacy one", () => {
+  const root = tmpdir();
+  const feature = fakeRunner("feature");
+  const feature2 = fakeRunner("feature-2");
+  const dedupe = fakeRunner("dedupe");
+  const clean = fakeRunner("clean");
+  writeMarker(wakeRequestPath(root), { roles: ["feature", "dry"] });
+  consumeWakeRequest(root, asRunners(feature, feature2, dedupe, clean));
+  assert.deepEqual([feature.wakes, feature2.wakes, dedupe.wakes, clean.wakes], [1, 1, 1, 0]);
+  assert.equal(fs.existsSync(wakeRequestPath(root)), false);
+  const sources = eventsOfType(root, "wake").map((e) => e.source);
+  assert.deepEqual(sources.sort(), ["dedupe", "feature", "feature-2"]);
 });
 
 test("consumeWakeRequest with no marker changes nothing", () => {
@@ -437,6 +454,14 @@ test("consumeReclaimRequest with no marker changes nothing", () => {
     },
   });
   assert.equal(manual, 0);
+});
+
+test("consumeReclaimRequest with no controller still removes the marker", () => {
+  const root = tmpdir();
+  const marker = reclaimRequestPath(root);
+  writeMarker(marker, { at: 1 });
+  assert.doesNotThrow(() => consumeReclaimRequest(root, null));
+  assert.equal(fs.existsSync(marker), false, "the marker is consumed");
 });
 
 function scheduledWake(root: string, name: string, roles: string[], notBeforeMs: number): string {

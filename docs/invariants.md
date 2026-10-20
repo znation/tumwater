@@ -2487,3 +2487,73 @@ override adds a variable and the child keeps PATH and the rest.
 
 **Pinned by.** `test/git.test.ts` — "runGit reassembles a UTF-8 character split across two output
 chunks" and "runGit's extraEnv adds to the inherited environment rather than replacing it".
+
+## Operator requests: a marker reaches exactly the roles it names, and the poll always acknowledges it
+
+The orchestrator's poll consumes the request markers that the CLI, GUI and TUI drop
+(`src/operator/operator-requests.ts`). The poll body has no catch, so a consumer must not throw out
+of it.
+
+### INV-AQ1: a role-list marker targets the runners it names by id or base role, and a requested role with no runner is reached through its state file
+
+**Guarantee.** A marker listing roles reaches each runner whose `role` or `baseRole` is listed, so
+`wake --role feature` also wakes `feature-2`. A retired id reads as its current id (`dry` reaches
+`dedupe`). A requested role with no live runner is reached through its existing state file. A
+corrupt marker targets every runner.
+
+**Binds.** `src/operator/operator-requests.ts` (`roleRequestTargets`, `requestedRoles`,
+`runnerlessTargets`).
+
+**Pinned by.** `test/operator-requests.test.ts` — "consumeResetRequest resets only the named roles
+and logs one role event", "consumeResetRequest treats a corrupt marker as all roles (superset is
+safe)", "consumeResetRequest zeroes a named role that has no live runner through its state file",
+"consumeWakeRequest clears the schedule of a named role that has no live runner" and
+"consumeWakeRequest wakes every instance of a named base role and the current id of a legacy one".
+
+### INV-AQ2: an unloggable event or a failed state save does not end the poll or skip later roles
+
+**Guarantee.** A consumer never throws out of the poll. When its event cannot be logged, the reset,
+wake or abort still takes effect and the marker is consumed. A state save that fails for one role
+does not skip the roles after it.
+
+**Binds.** `src/operator/operator-requests.ts` (`logRequestEvent`, `warnStatePersistFailed`,
+`consumeAbortRequests`).
+
+**Pinned by.** `test/operator-requests.test.ts` — "consumeWakeRequest wakes every named role when a
+wake event cannot be logged", "consumeResetRequest resets and acknowledges when its event cannot be
+logged", "consumeAbortRequests consumes every marker when one tick abort cannot be logged",
+"consumeAbortRequests keeps a marker whose abort side effect throws, without skipping later ones",
+"consumeResetRequest survives an unwritable runnerless state file instead of ending the poll",
+"consumeWakeRequest survives an unwritable runnerless state file" and "consumeWakeRequest keeps a
+live runner whose wake save fails from skipping later ones".
+
+### INV-AQ3: a scheduled wake applies only once its deadline passes
+
+**Guarantee.** A scheduled wake with a future `notBeforeMs` stays in place. A missing, non-numeric
+or non-finite `notBeforeMs`, or a corrupt file, reads as due. Listing pending wakes deletes nothing,
+and cancelling removes only files that are still pending, optionally limited to the listed roles.
+
+**Binds.** `src/operator/operator-requests.ts` (`wakeDeadlineMs`, `wakeNotDue`,
+`pendingScheduledWakes`, `cancelScheduledWakes`).
+
+**Pinned by.** `test/operator-requests.test.ts` — "consumeWakeRequest leaves a scheduled wake in
+place before its deadline", "consumeWakeRequest consumes a scheduled wake at its deadline",
+"consumeWakeRequest reads a non-numeric notBeforeMs as immediate", "consumeWakeRequest reads a
+non-finite notBeforeMs as immediate", "consumeWakeRequest applies an immediate wake.json but leaves
+a future scheduled file", "consumeWakeRequest wakes everyone for a corrupt scheduled file and
+ignores tmp leftovers", "pendingScheduledWakes lists future entries by deadline and deletes
+nothing", "cancelScheduledWakes removes pending files and leaves a due one", "cancelScheduledWakes
+with a role drops only that role" and "cancelScheduledWakes with a role list drops each listed
+role".
+
+### INV-AQ4: a marker whose presence is the request is removed even when nothing can act on it
+
+**Guarantee.** A reclaim marker with no controller, and an abort marker for an idle role or one
+with no runner, are removed.
+
+**Binds.** `src/operator/operator-requests.ts` (`consumeMarkerRequest`, `consumeReclaimRequest`,
+`consumeAbortRequests`).
+
+**Pinned by.** `test/operator-requests.test.ts` — "consumeReclaimRequest with no controller
+still removes the marker", "consumeAbortRequests silently clears a marker for an idle role" and
+"consumeAbortRequests clears a marker for a role with no runner at all".
