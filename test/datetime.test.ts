@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatDate, formatTime, formatTimestamp, humanSeconds, humanUntil, pad2, reportWindow } from "../src/text/datetime.js";
+import { daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatDate, formatTime, formatTimestamp, humanAgo, humanSeconds, humanUntil, pad2, reportWindow, secondsSince, secondsUntil } from "../src/text/datetime.js";
 import { clockOf, dateOf } from "./helpers/oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
@@ -138,4 +138,17 @@ test("daysBetween counts whole calendar days, across DST and in either direction
   assert.equal(daysBetween("2026-10-16", "2026-10-16"), 0);
   assert.equal(daysBetween("2026-03-01", "2026-04-01"), 31);
   assert.equal(daysBetween("2026-10-20", "2026-10-16"), -4);
+});
+
+test('secondsSince and secondsUntil round to whole seconds and never go negative, and humanAgo reads the same span with the ago suffix', () => {
+  const now = new Date(2026, 9, 4, 12, 0, 0).getTime();
+  assert.equal(secondsSince(now - 1499, now), 1);
+  assert.equal(secondsSince(now - 1500, now), 2);
+  // A future instant clamps to zero.
+  assert.equal(secondsSince(now + 5000, now), 0);
+  assert.equal(secondsUntil(now + 120_000, now), 120);
+  assert.equal(secondsUntil(now - 1000, now), 0);
+  assert.equal(humanAgo(now - 120_000, now), "2m ago");
+  assert.equal(humanAgo(now - 3 * 3600_000, now), "3h ago");
+  assert.equal(humanAgo(now + 60_000, now), "0s ago");
 });

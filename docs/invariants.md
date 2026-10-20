@@ -1505,3 +1505,69 @@ alone", "the extension tolerates a context without usage or a throwing getter", 
 warn at nothing and never ask for a projection", "the extension stops asking for usage once the last
 threshold has fired" and "composed after bounded-output the way pi composes handlers, the note
 follows the bounded result".
+
+## Local time: a day is the local calendar day, and an age or countdown never reads negative
+
+`src/text/datetime.ts` is the one home of the local calendar-day rule and of the s/m/h/d phrasing
+behind every relative time. The GUI's browser script keeps its own twins of a few of these, which
+this section does not bind.
+
+### INV-Z1: a day key is the local calendar day, never the UTC date
+
+**Guarantee.** `formatDate` renders `YYYY-MM-DD` from the local date parts, and `dayKey` is
+`formatDate` of the instant. `dayAt(n, now)` is local midnight n days before `now`, with the Date
+constructor rolling month and year edges.
+
+**Binds.** `src/text/datetime.ts` (`formatDate`, `dayKey`, `dayAt`).
+
+**Pinned by.** `test/datetime.test.ts` — "dayKey is the LOCAL calendar day of the instant, never the
+UTC date", "formatDate renders the local calendar date, zero-padded, from date parts alone" and
+"dayAt returns local midnight offset from the given instant, rolling month/year edges".
+
+### INV-Z2: a trailing window holds exactly its days, and a day count survives DST
+
+**Guarantee.** `dayWindow(days, now)` gives inclusive `from` and `to` keys for `days` local calendar
+days ending on `now`'s day, both derived from the one `now`. `daysBetween` counts whole days between
+two keys through `Date.UTC`, so a DST shift cannot move it by one, and it is negative when `toKey`
+is earlier.
+
+**Binds.** `src/text/datetime.ts` (`dayWindow`, `daysBetween`).
+
+**Pinned by.** `test/datetime.test.ts` — "dayWindow bounds a trailing window of `days` local
+calendar days ending today" and "daysBetween counts whole calendar days, across DST and in either
+direction".
+
+### INV-Z3: a timestamp's date and clock come from one Date, and a corrupt instant reads as the em dash
+
+**Guarantee.** `formatTimestamp` builds both halves from one `Date`, so they cannot disagree across
+midnight. It renders a non-finite `ms` as `—`, never `NaN`. `formatTime` and `pad2` zero-pad to two
+digits and leave longer numbers alone.
+
+**Binds.** `src/text/datetime.ts` (`formatTimestamp`, `formatTime`, `pad2`).
+
+**Pinned by.** `test/datetime.test.ts` — "formatTimestamp renders date and clock from ONE Date, so
+its halves cannot disagree", "formatTimestamp renders a non-finite instant as the em dash, never
+NaN", "formatTime renders the zero-padded local wall clock from date parts alone" and "pad2
+zero-pads to two digits and leaves longer numbers alone".
+
+### INV-Z4: an age or a countdown is whole seconds and never negative
+
+**Guarantee.** `secondsSince` and `secondsUntil` round to whole seconds and clamp at zero. A future
+instant reads 0 ago, and a passed deadline reads 0 until. `humanUntil` and `humanAgo` are
+`humanSeconds` over them, with `humanAgo` adding ` ago`.
+
+**Binds.** `src/text/datetime.ts` (`secondsSince`, `secondsUntil`, `humanUntil`, `humanAgo`).
+
+**Pinned by.** `test/datetime.test.ts` — "humanUntil renders how-long-until an instant in one call"
+and "secondsSince and secondsUntil round to whole seconds and never go negative, and humanAgo reads
+the same span with the ago suffix".
+
+### INV-Z5: a duration reads in one of four buckets, and a rounding carry moves up a bucket
+
+**Guarantee.** `humanSeconds` reads seconds under a minute, then minutes, hours and days, rounding
+within each bucket. A count that rounds up to 60 minutes or 24 hours is shown in the next bucket
+(`1h`, `1d`), never as `60m` or `24h`. A day or more reads days, never an hour count.
+
+**Binds.** `src/text/datetime.ts` (`humanSeconds`).
+
+**Pinned by.** `test/datetime.test.ts` — "humanSeconds buckets sub-second-to-day spans compactly".
