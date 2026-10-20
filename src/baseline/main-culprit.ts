@@ -3,6 +3,7 @@ import { cachedBaselineVerdict, checkMainBaseline } from "./main-baseline.js";
 import { baselineCheckLogger } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { gitTry } from "../git/git-run.js";
+import { treeDiffFiles } from "../git/git-diff.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { gateMainWorktreePath } from "../paths.js";
 import { isExemptDiff } from "../review/exemptions.js";
@@ -64,8 +65,8 @@ export async function findRedCulprit(
       .filter((s) => s !== "");
     const candidates: string[] = [];
     for (const sha of since) {
-      const files = await gitTry(wt, "diff", "--name-only", `${sha}^`, sha);
-      if (files === null || !isExemptDiff(files.split("\n").filter((f) => f !== ""), exempt)) candidates.push(sha);
+      const files = await treeDiffFiles(wt, `${sha}^`, sha);
+      if (files === null || !isExemptDiff(files, exempt)) candidates.push(sha);
     }
     if (candidates.length === 0) return { kind: "unattributed", reason: "no non-doc commit since the last green" };
 

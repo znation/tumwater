@@ -8,7 +8,8 @@
  * merge-batch.ts) drives this file's mergeStack one prefix at a time. */
 
 import { committerIdentArgs, gitTry } from "../git/git-run.js";
-import { branchHead, deleteRef, gitLines, headOf } from "../git/git.js";
+import { branchHead, deleteRef, headOf } from "../git/git.js";
+import { treeDiffFiles } from "../git/git-diff.js";
 import { mergeRefName, mergeLockDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
@@ -105,8 +106,8 @@ async function exemptTreeDelta(
   to: string,
   exemptPaths: string[],
 ): Promise<boolean> {
-  const out = await gitTry(root, "diff", "--no-renames", "--name-only", from, to);
-  return out !== null && isExemptDiff(gitLines(out), exemptPaths);
+  const files = await treeDiffFiles(root, from, to);
+  return files !== null && isExemptDiff(files, exemptPaths);
 }
 
 /** What one mergeStack call came to: `landed` — main fast-forwarded through every entry;
@@ -174,8 +175,7 @@ async function mergeStackIn(ctx: MergeScopeContext, wtPath: string, entries: rea
       // stacked on — decides like verifyMerge does: doc-only cannot break the build, so no
       // check runs (a doc-only stack, or a bisect's size-1 doc-only remainder, merges on the
       // exemption instead of paying a suite run no code change asked for).
-      const stackDiff = await gitTry(ctx.root, "diff", "--no-renames", "--name-only", base, tip);
-      const stackFiles = stackDiff === null ? null : gitLines(stackDiff);
+      const stackFiles = await treeDiffFiles(ctx.root, base, tip);
       if (stackFiles !== null && isExemptDiff(stackFiles, exemptPaths)) {
         // The same cross-checks verifyMerge's exempt arm runs (merge-to-main.ts's
         // exemptSkipBlockReason): the skip must not wave through an md-only edit the gate would

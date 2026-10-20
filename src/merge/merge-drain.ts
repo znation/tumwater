@@ -15,7 +15,7 @@ import { enqueueRolePrompt } from "../inbox/inbox.js";
 import { addPostReview, isAfterMergeRole, settlePostReview } from "../review/post-merge-review.js";
 import { drainPostReviews } from "./merge-post-review.js";
 import { subscribeEvents } from "../events/events.js";
-import { gitTry } from "../git/git-run.js";
+import { treeDiffFiles } from "../git/git-diff.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { shortSha } from "../text/format.js";
@@ -45,10 +45,8 @@ const MERGE_TIER = VERIFY_TIER - 1;
  * diff that cannot be read queues the review. */
 async function postReviewDue(config: TumwaterConfig, root: string, commit: string, role: string): Promise<boolean> {
   if (!config.review.enabled || !isAfterMergeRole(config, role)) return false;
-  const out = await gitTry(root, "diff-tree", "--no-commit-id", "--name-only", "-r", commit);
-  if (out === null) return true;
-  const files = out.split("\n").filter((f) => f !== "");
-  return !isExemptDiff(files, config.review.exemptPaths);
+  const files = await treeDiffFiles(root, `${commit}^`, commit);
+  return files === null || !isExemptDiff(files, config.review.exemptPaths);
 }
 
 /** One poll of the merge queue (the scheduler's WHEN: after the gates, never while a restart or

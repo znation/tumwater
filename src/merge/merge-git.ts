@@ -3,7 +3,7 @@ import path from "node:path";
 import { committerIdentArgs, git, gitTry, runGit } from "../git/git-run.js";
 import { readTextOrNull, writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
-import { unquotePorcelainPath } from "../git/git-diff.js";
+import { treeDiffFiles, unquotePorcelainPath } from "../git/git-diff.js";
 import { CONFIG_BASENAME, configPath, primaryWorktreeLockPath } from "../paths.js";
 import { withStateLockAsync } from "../concurrency/lock.js";
 import { errorMessage } from "../text/text.js";
@@ -347,12 +347,11 @@ export async function primaryCheckoutBlockers(
   tip: string,
 ): Promise<OverwriteBlockers | null> {
   if ((await currentBranch(root)) !== mainBranch) return null;
-  const diff = await gitTry(root, "diff", "--no-renames", "--name-only", mainBranch, tip);
+  const changed = await treeDiffFiles(root, mainBranch, tip);
   const status = await gitTry(
     root, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all",
   );
-  if (diff === null || status === null) return null;
-  const changed = gitLines(diff);
+  if (changed === null || status === null) return null;
   const untrackedSet = new Set<string>();
   const dirtySet = new Set<string>();
   const records = status.split("\0");

@@ -288,3 +288,14 @@ test("primaryCheckoutBlockers names only the dirty paths the merge changes", asy
   sh(root, "git", "checkout", "-q", "-b", "side");
   assert.equal(await primaryCheckoutBlockers(root, "main", tip), null);
 });
+
+test("primaryCheckoutBlockers names a dirty non-ASCII path the merge changes", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "café.txt"), "branch\n");
+  commitIn(wt, "branch adds an accented file");
+  fs.writeFileSync(path.join(root, "café.txt"), "dirty\n");
+  assert.deepEqual(await primaryCheckoutBlockers(root, "main", headSha(wt)), {
+    uncommitted: [],
+    untracked: ["café.txt"],
+  });
+});
