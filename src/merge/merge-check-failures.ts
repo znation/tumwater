@@ -211,7 +211,8 @@ export async function mergeBlocked(
  * — reasons in lastReview for the author's next tick, the strike count reset, ref deleted,
  * review_rejected logged, no pi run. Main red → not this change's failure: "main_red" with the
  * ref kept and unreviewFailures untouched, so the orchestrator poll (requeueMainRedPin) re-queues
- * it once main's head moves, and leftover recovery holds it until then. No verdict → reject, the
+ * it once main's head moves to one the watch has not found red, and leftover recovery holds it
+ * until then. No verdict → reject, the
  * safe default, and the reasons say so. The verdict
  * is persisted before it returns. A red whose headline matches a flake the gate or a merge
  * retry recorded (isKnownFlake) is excused once per headline per pin

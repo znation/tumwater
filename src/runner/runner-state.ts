@@ -254,8 +254,11 @@ export interface RunnerState {
   /** A `main_red` merge's kept pin, waiting for main to move: `head` is main's head when the
    * attempt settled and `entry` the dropped queue entry (minus its sha, which is the pin's
    * current one). The orchestrator poll re-queues it on the first poll whose main head differs
-   * (merge-slot.ts requeueKeptChange); cleared then, or when the pin is gone. */
-  mainRedRetry?: { head: string; entry: Omit<MergeEntry, "sha"> };
+   * (merge-slot.ts requeueKeptChange) whose head is not cached red, or once
+   * MAIN_RED_VERDICT_WAIT_MS has passed with no verdict; cleared then, or when the pin is gone.
+   * `waitingSince` is the ms epoch of the first poll that saw main moved with no cached verdict
+   * for its head. */
+  mainRedRetry?: { head: string; entry: Omit<MergeEntry, "sha">; waitingSince?: number };
   /** Consecutive merges of one patch (git/git.ts patchId, stable across a clean rebase) whose
    * in-lock check went red on the rebased tree. At merge-check-failures.ts's
    * MERGE_CHECK_FAILURE_LIMIT the red is attributed through main's own verdict instead of
@@ -515,7 +518,8 @@ export function loadRunnerState(root: string, role: string): RunnerState {
       typeof s.mainRedRetry.head === "string" &&
       isJsonObject(s.mainRedRetry.entry) &&
       typeof s.mainRedRetry.entry.role === "string" &&
-      typeof s.mainRedRetry.entry.summary === "string"
+      typeof s.mainRedRetry.entry.summary === "string" &&
+      (s.mainRedRetry.waitingSince === undefined || typeof s.mainRedRetry.waitingSince === "number")
     )
   )
     s.mainRedRetry = undefined;

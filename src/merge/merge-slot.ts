@@ -3,6 +3,7 @@ import { dropMerge, enqueueMerge, queuedMerges, type MergeEntry } from "./merge-
 import { RETRIABLE_MERGE_RESULTS } from "./merge-core.js";
 import { pinnedRetrySha } from "../runner/leftover.js";
 import { branchHead } from "../git/git.js";
+import { cachedBaselineVerdict } from "../baseline/main-baseline.js";
 import type { TickResult } from "../run/run-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
@@ -535,8 +536,9 @@ function enqueueRetry(root: string, entry: MergeEntry): void {
  * retry needs no author run (plans/fast-merge.md "Lever 1"). A `merge_blocked`, `review_error`
  * or `merge_conflict` result re-queues at once when its pin survives and pinnedRetrySha allows
  * it (not stale, not held, under MERGE_CONFLICT_LIMIT); a `main_red` pin is recorded on the
- * state with main's head, for requeueMainRedPin to re-queue once main moves. Anything else, or
- * a pin that is gone, changes nothing — leftover recovery stays the backstop. */
+ * state with main's head, for requeueMainRedPin to re-queue once main moves to a head whose
+ * verdict is not red. Anything else, or a pin that is gone, changes nothing — leftover recovery
+ * stays the backstop. */
 export async function requeueKeptChange(
   root: string,
   mainBranch: string,
@@ -558,18 +560,36 @@ export async function requeueKeptChange(
   enqueueRetry(root, retryEntry(entry, sha, result));
 }
 
+/** The longest a kept `main_red` pin waits for the main watch's verdict on a moved head before it
+ * is re-queued anyway. This bounds the wait when no verdict ever arrives, for example after a
+ * watch check that timed out or a restart's cold cache. */
+export const MAIN_RED_VERDICT_WAIT_MS = 15 * 60_000;
+
 /** Re-queue a `main_red` pin once main's head differs from the one recorded when its attempt
- * settled (the orchestrator poll calls this for every runner). The record is cleared either way
- * once main has moved; no entry is queued when the pin is gone or held back by pinnedRetrySha,
- * or the role already has one queued. */
+ * settled (the orchestrator poll calls this for every runner), by the head's cached verdict: red
+ * leaves the record untouched, so a later poll asks again; no verdict starts (and saves) a wait
+ * at `now`, and the pin re-queues once MAIN_RED_VERDICT_WAIT_MS has passed; green re-queues at
+ * once. Re-queuing clears the record; no entry is queued when the pin is gone or held back by
+ * pinnedRetrySha, or the role already has one queued. */
 export async function requeueMainRedPin(
   root: string,
   mainBranch: string,
   state: RunnerState,
   mainHead: string,
+  now = Date.now(),
 ): Promise<void> {
   const kept = state.mainRedRetry;
   if (!kept || mainHead === "" || mainHead === kept.head) return;
+  const verdict = cachedBaselineVerdict(mainHead);
+  if (verdict === "red") return;
+  if (verdict === undefined) {
+    if (kept.waitingSince === undefined) {
+      state.mainRedRetry = { ...kept, waitingSince: now };
+      saveRunnerState(root, state);
+      return;
+    }
+    if (now - kept.waitingSince < MAIN_RED_VERDICT_WAIT_MS) return;
+  }
   state.mainRedRetry = undefined;
   saveRunnerState(root, state);
   const sha = await pinnedRetrySha(root, kept.entry.role, mainBranch, state);

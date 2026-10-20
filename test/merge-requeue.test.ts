@@ -9,11 +9,12 @@ import { newMergePipeline, settleMergeOutcome } from "../src/merge/merge-pipelin
 import { drainVerify } from "../src/merge/merge-verify.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { defaultConfig } from "../src/config/config.js";
-import { requeueMainRedPin } from "../src/merge/merge-slot.js";
+import { MAIN_RED_VERDICT_WAIT_MS, requeueMainRedPin } from "../src/merge/merge-slot.js";
 import { enqueueMerge, headMerge, queuedMerges, type MergeEntry } from "../src/merge/merge-queue.js";
 import { MERGE_CONFLICT_LIMIT } from "../src/runner/leftover.js";
-import { freshRunnerState } from "../src/runner/runner-state.js";
-import { mergeRefName } from "../src/paths.js";
+import { freshRunnerState, loadRunnerState } from "../src/runner/runner-state.js";
+import { noteGreenBaseline, persistBaselineVerdicts } from "../src/baseline/main-baseline.js";
+import { baselineVerdictsPath, mergeRefName } from "../src/paths.js";
 import { deleteRef, refSha, setRef } from "../src/git/git.js";
 import { makeRepo, pinOffMain } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -110,11 +111,53 @@ test("a main_red pin is re-queued once main's head moves, and not before", async
   assert.equal(queuedMerges(root).length, 0, "main has not moved");
   assert.ok(state.mainRedRetry, "the record stands");
 
+  noteGreenBaseline("f".repeat(40));
   await requeueMainRedPin(root, "main", state, "f".repeat(40));
   const [queued] = queuedMerges(root);
   assert.ok(queued);
   assert.equal(queued.summary, "add a");
   assert.equal(queued.retry, "main_red");
+  assert.equal(state.mainRedRetry, undefined);
+});
+
+test("a main_red pin stays parked while main's new head is cached red", async () => {
+  const { root, entry, file } = await pinnedEntry();
+  const state = freshRunnerState("improve");
+  await settleMergeOutcome(root, entry, state, "main_red", 5, NO_USAGE, file, "main");
+  const recorded = state.mainRedRetry;
+  assert.ok(recorded);
+  const red = "e".repeat(40);
+  fs.mkdirSync(path.dirname(baselineVerdictsPath(root)), { recursive: true });
+  fs.writeFileSync(
+    baselineVerdictsPath(root),
+    JSON.stringify({ reds: [{ sha: red, script: "test", failingTests: ["t"] }] }),
+  );
+  persistBaselineVerdicts(root);
+
+  await requeueMainRedPin(root, "main", state, red, Date.now() + 2 * MAIN_RED_VERDICT_WAIT_MS);
+  assert.equal(queuedMerges(root).length, 0);
+  assert.equal(state.mainRedRetry?.head, recorded.head);
+  assert.equal(state.mainRedRetry?.waitingSince, undefined);
+});
+
+test("a main_red pin waits for a moved head's verdict, then re-queues past MAIN_RED_VERDICT_WAIT_MS", async () => {
+  const { root, entry, file } = await pinnedEntry();
+  const state = freshRunnerState("improve");
+  await settleMergeOutcome(root, entry, state, "main_red", 5, NO_USAGE, file, "main");
+  const head = "d".repeat(40);
+
+  await requeueMainRedPin(root, "main", state, head, 1_000);
+  assert.equal(queuedMerges(root).length, 0);
+  assert.equal(state.mainRedRetry?.waitingSince, 1_000);
+  assert.equal(loadRunnerState(root, "improve").mainRedRetry?.waitingSince, 1_000);
+
+  await requeueMainRedPin(root, "main", state, head, 1_000 + MAIN_RED_VERDICT_WAIT_MS - 1);
+  assert.equal(queuedMerges(root).length, 0);
+
+  await requeueMainRedPin(root, "main", state, head, 1_000 + MAIN_RED_VERDICT_WAIT_MS);
+  const queued = queuedMerges(root);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0]?.retry, "main_red");
   assert.equal(state.mainRedRetry, undefined);
 });
 

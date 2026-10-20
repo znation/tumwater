@@ -273,7 +273,8 @@ export async function reviewPinnedChange(
 
   if (gate.decision === "failed" && gate.mainRed) {
     // Main is red at its tip: nothing judged this diff and nothing is wrong with the reviewer,
-    // so it is main_red, not review_error — the pin stays for a re-merge once main is green.
+    // so it is main_red, not review_error — the pin stays; the poll's
+    // requeueMainRedPin re-queues it once main's head moves and the watch has not found it red.
     state.lastError = `gate check failed: ${gate.detail}`;
     return { kind: "result", result: "main_red" };
   }
