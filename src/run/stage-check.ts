@@ -22,6 +22,12 @@
  * heuristics for what a reviewer tends to reject, so neither path check looks inside record
  * prose (isRecordProse), where an old or not-yet-created path is correct as written.
  *
+ * A fourth check, `staleNameFindings`, reports a compound identifier the change removed from a
+ * JS/TS file that a comment or doc still names (the compiler catches code, not prose). It
+ * exempts a name the change re-declares (a move), a name another file still declares, an
+ * occurrence inside a string literal (legacy-name tables and serialized keys keep old names on
+ * purpose), a line marked `retired-name-ok`, and record prose, where history names old things.
+ *
  * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
  * merge re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
  * anything that gets past the fix-up turn. `waitingNoteFinding` is staging-only and bugfix-only
@@ -275,6 +281,7 @@ async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[
     const diff = (await gitTry(wt, "diff", "--cached", "-U0", base)) ?? "";
     findings.push(...(await missingPathFindings(wt, diff, entries)));
     findings.push(...newlineFindings(diff));
+    findings.push(...(await staleNameFindings(wt, diff)));
     return findings;
   } finally {
     // Restore the index to HEAD. Without this, the run's change detection (changedFiles and
@@ -283,6 +290,103 @@ async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[
     // commitAll instead of the run ending no_change.
     await gitTry(wt, "reset");
   }
+}
+
+/** How many removed identifiers one stale-name check looks up. */
+const MAX_STALE_NAMES = 40;
+
+const JS_FILE = /\.(?:ts|tsx|js|mjs)$/;
+
+/** The identifiers a source line declares: keyword declarations (`function`, `const`, `let`,
+ * `var`, `class`, `interface`, `type`, `enum`) and a property or field signature at the start of
+ * the line. A call line declares nothing. */
+export function declaredNames(line: string): string[] {
+  const names: string[] = [];
+  const keyword = /\b(?:function\*?|const|let|var|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/g;
+  for (const m of line.matchAll(keyword)) names.push(m[1]!);
+  const field = /^\s*(?:(?:readonly|public|private|protected|static)\s+)*([A-Za-z_$][\w$]*)\??\s*:/.exec(line);
+  if (field) names.push(field[1]!);
+  return names;
+}
+
+/** True for a name worth looking up: camelCase/PascalCase (a lowercase letter then an uppercase
+ * one) or UPPER_SNAKE with an underscore, so common words never count. */
+function isCompoundName(name: string): boolean {
+  return /[a-z][A-Z]/.test(name) || /^[A-Z0-9_]+$/.test(name) && name.includes("_");
+}
+
+/** True when the occurrence starting at `index` sits inside a closed `"…"` or `'…'` literal on
+ * `line`. An unclosed quote (an apostrophe in prose) does not count. */
+function insideStringLiteral(line: string, index: number): boolean {
+  let open: string | null = null;
+  let openAt = -1;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]!;
+    if (open === null) {
+      if (c === '"' || c === "'") {
+        open = c;
+        openAt = i;
+      }
+    } else if (c === "\\") {
+      i++;
+    } else if (c === open) {
+      if (openAt < index && index < i) return true;
+      open = null;
+    }
+  }
+  return false;
+}
+
+/** (d) Compound identifiers the change removed from JS/TS source that a comment or doc still
+ * names. Candidates come from removed `-U0` lines; one `git grep -w --cached` covers them all. */
+async function staleNameFindings(wt: string, diff: string): Promise<string[]> {
+  const removed: string[] = [];
+  const added = new Set<string>();
+  let jsFile = false;
+  for (const line of diff.split("\n")) {
+    const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
+    if (header) {
+      jsFile = JS_FILE.test(header[1]!);
+      continue;
+    }
+    if (!jsFile) continue;
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      removed.push(...declaredNames(line.slice(1)));
+    } else if (line.startsWith("+") && !line.startsWith("+++")) {
+      for (const n of declaredNames(line.slice(1))) added.add(n);
+    }
+  }
+  const candidates = [...new Set(removed)]
+    .filter((n) => isCompoundName(n) && !added.has(n))
+    .slice(0, MAX_STALE_NAMES);
+  if (candidates.length === 0) return [];
+  const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...candidates.flatMap((n) => ["-e", n]));
+  if (!out) return [];
+  const lines: { file: string; no: string; text: string }[] = [];
+  for (const line of out.split("\n")) {
+    const m = /^([^:]+):(\d+):(.*)$/.exec(line);
+    if (m) lines.push({ file: m[1]!, no: m[2]!, text: m[3] ?? "" });
+  }
+  const findings: string[] = [];
+  for (const name of candidates) {
+    if (findings.length >= MAX_STALE_PATHS) break;
+    const word = new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`, "g");
+    const mine = lines.filter((l) => [...l.text.matchAll(word)].length > 0);
+    // Another module may still own the name.
+    if (mine.some((l) => JS_FILE.test(l.file) && declaredNames(l.text).includes(name))) continue;
+    const hits: string[] = [];
+    for (const l of mine) {
+      if (isRecordProse(l.file) || l.text.includes("retired-name-ok")) continue;
+      if ([...l.text.matchAll(word)].some((m) => !insideStringLiteral(l.text, m.index))) {
+        hits.push(`${l.file}:${l.no}`);
+      }
+    }
+    if (hits.length === 0) continue;
+    findings.push(
+      `\`${name}\` was removed by this change but is still named at: ${cappedList(hits, MAX_STALE_HITS)}`,
+    );
+  }
+  return findings;
 }
 
 /** (a) References left behind by a rename or delete: for each `D` path and each `R` origin,

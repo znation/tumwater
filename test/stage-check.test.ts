@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { heldMovedFinding, pathTokens, planDependencyFinding, stageCheckFindings, waitingNoteFinding } from "../src/run/stage-check.js";
+import { declaredNames, heldMovedFinding, pathTokens, planDependencyFinding, stageCheckFindings, waitingNoteFinding } from "../src/run/stage-check.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -557,4 +557,67 @@ test("stageCheckFindings asks only a bugfix role for the Waiting note", async ()
   }
   const other = await stageCheckFindings(wt, "main", EXEMPT, "feature");
   assert.ok(!other.some((f) => f.includes("Waiting for the next failure")));
+});
+
+// Stale-name check: a removed compound identifier that a comment or doc still names.
+
+test("a comment still naming a renamed function yields the stale-name finding", async () => {
+  const { wt } = await repoWith({
+    "src/a.ts": "export function tickStartHeld() {}\n",
+    "src/b.ts": "// see tickStartHeld\n",
+  });
+  fs.writeFileSync(path.join(wt, "src", "a.ts"), "export function runStartHeld() {}\n");
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /`tickStartHeld` was removed by this change but is still named at: src\/b\.ts:1/);
+
+  fs.writeFileSync(path.join(wt, "src", "b.ts"), "// see runStartHeld\n");
+  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+});
+
+test("a removed interface field still named in a doc yields the finding", async () => {
+  const { wt } = await repoWith({
+    "src/a.ts": "export interface S {\n  abortedTicks: number;\n}\n",
+    "README.md": "The abortedTicks field counts them.\n",
+  });
+  fs.writeFileSync(path.join(wt, "src", "a.ts"), "export interface S {\n  abortedRuns: number;\n}\n");
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /`abortedTicks` was removed .* README\.md:1/);
+});
+
+test("a removed name still declared elsewhere, quoted, marked retired-name-ok or in record prose yields no stale-name finding", async () => {
+  const cases: Record<string, Record<string, string>> = {
+    declared: { "src/b.ts": "export const tickStartHeld = 1;\n" },
+    quoted: { "src/b.ts": 'const legacy = "tickStartHeld";\n' },
+    marked: { "src/b.ts": "// tickStartHeld retired-name-ok: old name\n" },
+    prose: { "PLANS.md": "# Plans\n\nThe tickStartHeld name.\n" },
+  };
+  for (const [label, extra] of Object.entries(cases)) {
+    const { wt } = await repoWith({ "src/a.ts": "export function tickStartHeld() {}\n", ...extra });
+    fs.writeFileSync(path.join(wt, "src", "a.ts"), "export function runStartHeld() {}\n");
+    assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), [], label);
+  }
+});
+
+test("a removed single-word name is never a candidate", async () => {
+  const { wt } = await repoWith({
+    "src/a.ts": "const status = 1;\n",
+    "src/b.ts": "// the status of it\n",
+  });
+  fs.writeFileSync(path.join(wt, "src", "a.ts"), "const state = 1;\n");
+
+  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+});
+
+test("declaredNames reads keyword and field declarations, not calls", () => {
+  assert.deepEqual(declaredNames("export const FOO_BAR = 1;"), ["FOO_BAR"]);
+  assert.deepEqual(declaredNames("async function fooBar(x) {"), ["fooBar"]);
+  assert.deepEqual(declaredNames("interface FooBar {"), ["FooBar"]);
+  assert.deepEqual(declaredNames("  readonly fooBar?: string;"), ["fooBar"]);
+  assert.deepEqual(declaredNames("fooBar(x);"), []);
 });
