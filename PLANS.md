@@ -630,4 +630,51 @@ There is a second gap in the same place. `dropDanglingPin` deletes with `deleteR
 - The CLI's `--release`/`--top` behavior does not change.
 - `npm run test:gate` passes.
 
+### Kill orphans, part 1/2: the dashboard Health card's Kill orphans button runs `doctor --kill-orphans`, so an operator does not need a terminal to reap leaked processes (planned 2026-10-20 by the plan role; independent of every Planned entry. Touches src/doctor/doctor-orphans.ts, src/cli.ts, src/gui/gui-operator-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-settings.ts, src/ui/gui/gui-client-boot.ts. Part 2/2 adds the TUI twin. Plain terms code run 7/20 later renames code in src/ui/gui/; this entry renames nothing)
+
+**Goal.** `tumwater doctor --kill-orphans` kills the processes the orphans check fails on, and the check's detail names that command. The dashboard's Health card (Settings view) shows the same failing row but offers no way to act on it, so the operator has to switch to a terminal. Add a two-click Kill orphans button to the Health card. It runs the same `killOrphans`, toasts what was killed in the CLI's wording, and re-runs the checks.
+
+**Approach.**
+- src/doctor/doctor-orphans.ts: export the report type as `OrphanKillReport` and add `export function orphanKillLines(report: OrphanKillReport): string[]`. Move the CLI's wording into it unchanged: `could not scan the process table — <error>; nothing killed`; `killed pid <pid>` plus ` (+N descendant(s))` when there are descendants, then ` <command>`; `could not kill pid <pid>: <reason>`; and `no orphaned processes to kill` when both lists are empty. Import `plural` from src/text/phrases.ts, as src/cli.ts does.
+- src/cli.ts: the `doctor --kill-orphans` branch prints `orphanKillLines(await killOrphans(root))` one line per `say`, then the blank line it prints now. CLI output does not change.
+- src/gui/gui-operator-commands.ts: add `handleKillOrphans(req, res, root, kill = killOrphans)`. It follows `handleReclaim`'s body discipline (`readPostBody(req, res, "{}")`, body ignored) and answers `sendJson(res, 200, { ok: !("error" in report) && report.failed.length === 0, message: orphanKillLines(report).join("; ") })`. Re-export it from src/gui/gui-endpoint-commands.ts beside `handleReclaim`. Route it in src/gui/gui-server.ts as `"POST /api/kill-orphans"` beside `"POST /api/reclaim"`.
+- src/ui/gui/gui-client-settings.ts: `buildSettingsView`'s doctorcard header gets `<button type='button' class='btn btn-sm' data-action='doctor-kill-orphans'>Kill orphans</button>` after Re-run. Add `const killSlot = confirmSlot(paintKillButton)` and a `killOrphansClick()`. The first click arms the slot and the button reads `Confirm kill`. A second click within the window disarms the slot, shows `showFlash("Killing orphaned processes…")`, posts `/api/kill-orphans`, and then shows `showFlash((d.ok ? "" : "error: ") + d.message)` and calls `fetchDoctor()`. A post failure flashes `"error: " + clientErrorMessage(err)`, the same as `testNotify`. `paintKillButton` sets the button's text from `killSlot.armed("orphans")`.
+- src/ui/gui/gui-client-boot.ts: the Health card click listener that handles `doctor-rerun` also routes `button[data-action='doctor-kill-orphans']` to `killOrphansClick()`.
+- src/doctor/doctor-orphans.ts: the fail detail's tail becomes ` — nothing reaps these; \`tumwater doctor --kill-orphans\` (or the dashboard Health card's Kill orphans) kills each with its descendants`. Update the expected detail strings in test/doctor-orphans.test.ts to match.
+- docs/cli.md: in the Audit row's `doctor` text, add that the dashboard Health card's Kill orphans button does the same as `--kill-orphans` after a confirming second click.
+
+**Tests.**
+- test/doctor-orphans.test.ts: "orphanKillLines words a kill, a refusal, an empty report and an unreadable table". Cover a killed entry with 2 descendants, a killed entry with none, an EPERM refusal, `{ killed: [], failed: [] }`, and `{ error: "ps: not found" }`, each asserted as the exact lines.
+- test/gui-endpoints.test.ts, beside the `handleReclaim` tests: "handleKillOrphans answers the kill's lines and ok". An injected `kill` resolving `{ killed: [{ pid: 4242, command: "node x", descendants: 1 }], failed: [] }` answers `{ ok: true, message: "killed pid 4242 (+1 descendant) node x" }`. One resolving `{ error: "boom" }` answers `ok: false` with the scan wording.
+- test/gui-client-settings.test.ts, which already drives the settings card's `testNotify` (add `killOrphansClick` and `paintKillButton` to its extracted-names list beside `confirmRetire`): a single click on the Kill orphans button posts nothing, and two clicks post `/api/kill-orphans` once.
+
+**Acceptance criteria.**
+- The Health card shows a Kill orphans button. The first click only arms it. A second click within 5 s posts `/api/kill-orphans`, toasts the lines `doctor --kill-orphans` would print (joined with `; `), and repaints the card from a fresh `/api/doctor`.
+- `tumwater doctor --kill-orphans` prints exactly what it printed before.
+- The orphans check's fail detail names both the CLI flag and the dashboard button.
+- `npm run test:gate` passes.
+
+### Kill orphans, part 2/2: the TUI Health pane's Ctrl+K twice kills the orphaned processes, the terminal twin of the dashboard's Kill orphans (planned 2026-10-20 by the plan role; requires part 1/2 landed for `orphanKillLines` and the `OrphanKillReport` export. Touches src/ui/tui/tui-keys.ts, src/ui/tui/tui-pane-session.ts, src/ui/tui/tui-panes.ts, src/ui/tui/tui-pane-health.ts, src/ui/tui/tui-frame.ts, docs/cli.md, test/tui-keys.test.ts, test/tui-frame.test.ts. Plain terms code run 15/20 later renames code in src/ui/tui/; this entry renames nothing)
+
+**Goal.** The TUI's Health pane already has Ctrl+R (re-run), Ctrl+E (reclaim) and Ctrl+N (test notify) as twins of dashboard actions. It has no twin for the Kill orphans button from part 1/2. A terminal operator who sees the orphans row fail should be able to reap the processes without leaving the TUI.
+
+**Approach.**
+- src/ui/tui/tui-keys.ts: add a `killOrphans?(root: string): Promise<OrphanKillReport>` seam to the deps beside `runDoctor`, defaulting to `(r) => killOrphans(r)` from src/doctor/doctor-orphans.ts, and pass it into the session deps the same way `runDoctor: runDoctorSeam` is passed.
+- src/ui/tui/tui-pane-session.ts: add `killOrphans(root)` to `TuiPanesDeps` and to the session, beside `runDoctor`. Add the armed pair `armedKillOrphans: boolean` and `killOrphansArmed: boolean`, both initially false and documented like `armedNotes`/`notesClearArmed`.
+- src/ui/tui/tui-panes.ts: `beginKey` moves `killOrphansArmed` into `armedKillOrphans` and clears `killOrphansArmed`, the same as the other armed pairs. Extend its doc comment to say that only the Health Ctrl+K branch reads `armedKillOrphans`.
+- src/ui/tui/tui-pane-health.ts: in `handleKey`, add a `key.ctrl && key.name === "k" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 7` branch. If `session.armedKillOrphans` is false, set `session.killOrphansArmed = true` and flash `press Ctrl+K again to kill the orphaned processes the orphans check lists — any other key keeps them`. If it is true, flash `killing orphaned processes …` and call `session.killOrphans(session.root)`. When that resolves, flash `orphanKillLines(report).join("; ")`, then `run()`, `session.paneScroll = 0` and `requestRender()`, the same order Ctrl+E uses. A rejection goes to `session.flashError`. Write the comment block in the style of the Ctrl+E/Ctrl+N blocks. Ctrl+K is not bound on any view outside the prompt-line editor (src/ui/tui/tui-input.ts), and `promptLineFree` keeps that editor's kill-line binding.
+- src/ui/tui/tui-frame.ts: the `health` hint list gets `["Ctrl+K", "kill orphans"]` after `["Ctrl+N", "test notify"]`.
+- docs/cli.md: add a `Ctrl+K` row to the TUI key table (Health: twice kills the orphaned processes, like `tumwater doctor --kill-orphans` and the dashboard Health card's Kill orphans). The Audit row's `doctor` text names the TUI's Health Ctrl+K beside the dashboard button.
+
+**Tests.**
+- test/tui-keys.test.ts, beside "Ctrl+N on the Health view runs the notify hook once and flashes the outcome": "Ctrl+K twice on the Health view kills the orphans and flashes the lines". With an injected `killOrphans` that counts calls and resolves `{ killed: [{ pid: 4242, command: "node x", descendants: 0 }], failed: [] }`, the first Ctrl+K makes no call and flashes the press-again note. The second makes one call, flashes `killed pid 4242 node x`, and calls the injected `runDoctor` again.
+- Same file: "a key between two Ctrl+K presses on the Health view disarms the kill". The sequence Ctrl+K, Ctrl+O, Ctrl+K makes no call.
+- Same file: "Ctrl+K off the Health view never kills". Ctrl+K twice on Activity makes no call.
+- test/tui-frame.test.ts: the health hint matches `/Ctrl\+K kill orphans/`.
+
+**Acceptance criteria.**
+- On the Health pane, Ctrl+K arms and a second consecutive Ctrl+K runs `killOrphans` once. The flash shows the same lines `doctor --kill-orphans` prints (joined with `; `), and the checks re-run.
+- Any other key between the two presses cancels the kill. Ctrl+K on other views, and in the prompt-line editor, behaves as it does today.
+- `npm run test:gate` passes.
+
 ## Done
