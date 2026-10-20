@@ -38,9 +38,9 @@ import {
 } from "./report-fold.js";
 
 /** One day of a usage report: the local calendar day key plus what the team did on it.
- * `runsByRole` counts run_end events per loop id (role ids — works for custom loops too);
+ * `runsByRole` counts run_end events per role id (role ids — works for custom roles too);
  * tokensOut sums their `tokens`; commits counts `merged` events; costUsd sums `costUsd`.
- * `costByRole` splits that same costUsd per loop id — sourced from the same run_end events
+ * `costByRole` splits that same costUsd per role id — sourced from the same run_end events
  * (never a second pass), so its per-day sum equals the day's costUsd by construction.
  * `notionalCostUsd`/`notionalByRole` carry subscription spend the same way, kept apart
  * because it never charges the cap (plans/agent-backends.md part 6a).
@@ -53,16 +53,16 @@ export interface ReportDay {
   date: string; // "YYYY-MM-DD" local day key
   tokensOut: number;
   runsByRole: Record<string, number>;
-  /** Output tokens per loop id, so the day report can break the day's token spend down by
+  /** Output tokens per role id, so the day report can break the day's token spend down by
    * role the way Ticks/Cost do; absent only on hand-built fixtures (the collector always
    * sets it — zero uses leave it an empty map). */
   tokensByRole?: Record<string, number>;
   costByRole: Record<string, number>;
-  /** review_rejected events per loop id; absent when the day has none (zero means absent). */
+  /** review_rejected events per role id; absent when the day has none (zero means absent). */
   rejectionsByRole?: Record<string, number>;
-  /** revision events per loop id; absent when the day has none (zero means absent). */
+  /** revision events per role id; absent when the day has none (zero means absent). */
   revisionsByRole?: Record<string, number>;
-  /** run_end events per loop id (its result is `refused` — a tick that deliberately declined
+  /** run_end events per role id (its result is `refused` — a tick that deliberately declined
    * its entry); absent when the day has none (zero means absent). */
   refusalsByRole?: Record<string, number>;
   /** Lower median of the day's passing full-suite check durations (ms); absent when the day
@@ -83,13 +83,13 @@ export interface ReportDay {
   /** Lower median of the day's check-slot waits (a scoped check's wait for a maxConcurrentChecks
    * permit, ms); absent when the day has no check_wait that carried a positive waitedMs. */
   checkWaitMedianMs?: number;
-  /** error-class run_end events per loop id; absent when the day has none (zero means
+  /** error-class run_end events per role id; absent when the day has none (zero means
    * absent, so a failure-free day keeps its exact pre-feature shape). */
   failedRunsByRole?: Record<string, number>;
-  /** model_fallback_started events per loop id; absent when the day has none (zero means
+  /** model_fallback_started events per role id; absent when the day has none (zero means
    * absent). */
   fallbacksByRole?: Record<string, number>;
-  /** image_reroute events per loop id; absent when the day has none (zero means absent). */
+  /** image_reroute events per role id; absent when the day has none (zero means absent). */
   imageReroutesByRole?: Record<string, number>;
   commits: number;
   commitsByRole?: Record<string, number>; // merged commits by base role (Work ratio 4/4)
@@ -112,7 +112,7 @@ export interface ReportDay {
    * (zero means absent). A result code is not a role, so only the team series carries it. */
   mergeFailedByReason?: Record<string, number>;
   notionalCostUsd?: number; // subscription spend, on its own notional line, never in costUsd
-  /** Subscription spend by loop id, never in costByRole; absent when the day has none. */
+  /** Subscription spend by role id, never in costByRole; absent when the day has none. */
   notionalByRole?: Record<string, number>;
   /** Per-provider real spend, parallel to costByRole but keyed by provider; absent when the
    * day had no provider spend (zero means absent, so a provider-free day keeps its exact
@@ -196,20 +196,20 @@ export interface SinceReport {
   totals: ReportTotals;
   runsByRole: Record<string, number>;
   costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
-  /** review_rejected events per loop id; empty when the window has none. */
+  /** review_rejected events per role id; empty when the window has none. */
   rejectionsByRole: Record<string, number>;
-  /** revision events per loop id; empty when the window has none. */
+  /** revision events per role id; empty when the window has none. */
   revisionsByRole: Record<string, number>;
-  /** run_end events per loop id whose result is `refused` (a tick that deliberately declined
+  /** run_end events per role id whose result is `refused` (a tick that deliberately declined
    * its entry); empty when the window has none. */
   refusalsByRole: Record<string, number>;
-  /** error-class run_end events per loop id; empty when the window has none. */
+  /** error-class run_end events per role id; empty when the window has none. */
   failedRunsByRole: Record<string, number>;
-  /** model_fallback_started events per loop id; empty when the window has none. */
+  /** model_fallback_started events per role id; empty when the window has none. */
   fallbacksByRole: Record<string, number>;
-  /** image_reroute events per loop id; empty when the window has none. */
+  /** image_reroute events per role id; empty when the window has none. */
   imageReroutesByRole: Record<string, number>;
-  /** Output tokens per loop id, so the --since render can break the window's token spend
+  /** Output tokens per role id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;
   /** Merged commits per base role, so the --since render can print the day report's
@@ -226,7 +226,7 @@ export interface SinceReport {
    * none), so the render can gate its reason line on the window's own merge_failed events.
    * A result code is not a role, so a role-scoped window carries an empty map. */
   mergeFailedByReason: Record<string, number>;
-  /** Subscription spend per loop id, never in costByRole; absent when the window has none —
+  /** Subscription spend per role id, never in costByRole; absent when the window has none —
    * the same conditional the day collector applies to ReportDay.notionalByRole, so a
    * --since JSON carries it only when nonzero. */
   notionalByRole?: Record<string, number>;

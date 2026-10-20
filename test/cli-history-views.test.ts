@@ -75,7 +75,7 @@ test("history -n bounds the printed rows", async () => {
   assert.ok(!out.includes("clean"), `older rows are cut: ${JSON.stringify(out)}`);
 });
 
-test("history --role filters the rows to one loop", async () => {
+test("history --role filters the rows to one role", async () => {
   const repo = repoWithTicks();
   const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, ["--role", "dedupe"]));
   assert.match(out, /dedupe\s+#1\s+error/);
@@ -159,7 +159,7 @@ test("history rejects rival flag shapes and over-cap values with the shared word
   assert.match(await expectFailAsync(() => cmdHistory(repo, ["-n", "0"])), /-n needs a positive integer/);
 });
 
-test("history pads text columns by display width, so a wide-character loop name aligns", async () => {
+test("history pads text columns by display width, so a wide-character role name aligns", async () => {
   const repo = makeRepo();
   logEvent(repo, { ts: NOW - 60_000, source: "a", type: "run_start", run: 1 });
   logEvent(repo, { ts: NOW - 50_000, source: "a", type: "run_end", run: 1, result: "changed", summary: "first" });

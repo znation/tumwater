@@ -60,7 +60,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   assert.match(resumed, /tumwater\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
 
   // The per-role cap transitions (src/gates/role-cap-gates.ts) name the role, its spend vs its
-  // cap, and the two lift paths; the resume states the loop ticks again. Team-rendering
+  // cap, and the two lift paths; the resume states the role ticks again. Team-rendering
   // siblings of the budget pause/resume above, so they live here too.
   const rolePaused = formatEvent({
     ts: 0,

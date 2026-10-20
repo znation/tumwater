@@ -25,7 +25,7 @@ test("readJsonFile treats a valid JSON non-object as no data", () => {
   const dir = tmpdir();
   const file = path.join(dir, "state.json");
   // A state file that parses cleanly but is not an object is still not data: unchecked, the
-  // cast would leak a lie (loadLoopState spreads a string's characters; readOrchestratorInfo
+  // cast would leak a lie (loadRunnerState spreads a string's characters; readOrchestratorInfo
   // reads .pid off an array). Same no-data policy as a torn write.
   for (const body of ["[1, 2]", "[]", "5", '"name"', "true", "null"]) {
     fs.writeFileSync(file, body);

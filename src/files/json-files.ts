@@ -10,14 +10,14 @@ import { parseJsonObject } from "./json-object.js";
 
 /** Read and parse a JSON *object* file, returning null when it does not exist, cannot be read
  * or parsed, or parses to a valid JSON value that is not a plain object (a scalar, `null`, or
- * an array). The harness's state/marker/info files (loop state, orchestrator info, landing
+ * an array). The harness's state/marker/info files (runner state, orchestrator info, landing
  * marker, reset/wake/abort markers, restart stamp, build stamp, claude account state) are all
  * objects written by other processes and may be missing or torn mid-write — readers treat that
  * as "no data" rather than an error, so a crash in one process can never take down the
  * observers polling them. A wrong-shaped file reads the same way: casting a scalar/array to `T`
  * would hand
- * callers a value that looks like data but is not (loadLoopState would spread a string's
- * characters into the loop's state, readOrchestratorInfo's `pid` would read undefined off an
+ * callers a value that looks like data but is not (loadRunnerState would spread a string's
+ * characters into the role's state, readOrchestratorInfo's `pid` would read undefined off an
  * array), so the object check is part of the no-data policy, not an extra one. */
 export function readJsonFile<T extends object>(file: string): T | null {
   try {

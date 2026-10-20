@@ -498,7 +498,7 @@ test("the digest renders under 8 KB however bad the window was", () => {
     }
   }
   // Transition events must not grow the digest with the window either. These include the shapes
-  // that broke the section when it capped only line count: a 40-char loop id and a
+  // that broke the section when it capped only line count: a 40-char role id and a
   // config_changed whose keys array and key strings are effectively unbounded.
   for (let i = 0; i < 20; i++) {
     lines.push({ ts: at(0), loop: `role${i}`, type: "run_deferred" });
@@ -536,7 +536,7 @@ test("the digest replays harness decisions so a wrong response is visible", () =
 
 test("the digest replays a failure-caused role pause and a model fallback", () => {
   // The gate transitions added after the digest's section was written (the error-streak
-  // breaker, the role's own cap, and the model-fallback episode) are the reason a loop
+  // breaker, the role's own cap, and the model-fallback episode) are the reason a role
   // stopped ticking or moved off-model: without them the digest shows the failed ticks but
   // never the harness's response to them.
   const root = tmpdir();
@@ -920,7 +920,7 @@ test("collectFailureReport scopes every section to one base role", () => {
     { ts: at(0, 11), loop: "qa", type: "review_rejected", reasons: ["qa rejection"] },
     { ts: at(0, 12), loop: "feature", type: "merged", commit: "aaaaaaa", summary: "land feature" },
     { ts: at(0, 12), loop: "qa", type: "merged", commit: "bbbbbbb", summary: "land qa" },
-    // The role-scoped harness transitions log with loop "harness" and name the affected role:
+    // The role-scoped harness transitions log with source "harness" and name the affected role:
     // a scoped digest keeps the named role's and drops the other's.
     { ts: at(0, 13), loop: "harness", type: "role_streak_paused", role: "qa", streak: 3 },
     { ts: at(0, 13), loop: "harness", type: "role_cap_paused", role: "feature", spentUsd: 1.5, capUsd: 1.5 },

@@ -15,9 +15,9 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
-import { spentLoopState } from "./fixtures/runner-fixtures.js";
+import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 import { defaultConfig } from "../src/config/config.js";
-import type { LoopRunner } from "../src/runner/runner.js";
+import type { RoleRunner } from "../src/runner/runner.js";
 import { pollBudgetGate, newBudgetGateState } from "../src/gates/budget-gates.js";
 import { pollPauseGates, newPauseGateState } from "../src/gates/pause-gates.js";
 import { pollStreakGate, newStreakGateState } from "../src/gates/streak-gate.js";
@@ -81,7 +81,7 @@ test("pollRoleCapGate: a cap pause survives an unwritable events feed", () => {
   const root = tmpdir("gate-best-effort-cap-");
   unwritableEvents(root);
   const state = newRoleCapGateState();
-  const spent = spentLoopState("docs", 0.5);
+  const spent = spentRunnerState("docs", 0.5);
   const paused = pollRoleCapGate(
     root,
     state,
@@ -98,7 +98,7 @@ test("pollBudgetGate: a budget transition survives an unwritable events feed", (
   const config = defaultConfig();
   config.maxDailyCostUsd = 1;
   const state = newBudgetGateState(config);
-  const spent = spentLoopState("feature", 0.9); // past the 80% warning, under the cap: gate open, warning fires
+  const spent = spentRunnerState("feature", 0.9); // past the 80% warning, under the cap: gate open, warning fires
   assert.doesNotThrow(() =>
     pollBudgetGate(state, {
       root,
@@ -150,7 +150,7 @@ test("pollTeamGates: a budget reopen hands fallback ticks back even when the fee
   const modelsPath = writeModelsFile(root, MODELS_JSON);
 
   const handbacks: string[] = [];
-  const featureState = spentLoopState("feature", 10);
+  const featureState = spentRunnerState("feature", 10);
   featureState.running = true;
   const runner = {
     role: "feature",
@@ -160,7 +160,7 @@ test("pollTeamGates: a budget reopen hands fallback ticks back even when the fee
     handBackTick: () => {
       handbacks.push("feature");
     },
-  } as unknown as LoopRunner;
+  } as unknown as RoleRunner;
 
   const config = paidFallbackConfig(10);
   const states = newTeamGateStates(config);

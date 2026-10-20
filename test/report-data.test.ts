@@ -896,7 +896,7 @@ test("subscription runs total as notional spend, never in the cost totals", () =
   assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$30\.00 estimated/);
 });
 
-test("collectReport carries notionalByRole per loop id and narrows it for a role scope", () => {
+test("collectReport carries notionalByRole per role id and narrows it for a role scope", () => {
   const root = tmpdir();
   const tick = (loop: string, n: number) =>
     JSON.stringify({ ts: at(0), loop, type: "run_end", run: n, result: "changed", notionalCostUsd: 2, billing: "subscription" });
@@ -927,7 +927,7 @@ test("a subscription merge's spend is notional, never in the cost totals", () =>
 });
 
 // Role scoping carries a role's OWN notional spend (its run_end events), so `report --role`
-// does not misreport a subscription loop as $0; the merge slot's notional stays team-wide
+// does not misreport a subscription role as $0; the merge slot's notional stays team-wide
 // and omitted, exactly like its real cost (plans/agent-backends.md part 6a).
 test("collectReport scopes notional spend to the role, like cost", () => {
   const root = tmpdir();

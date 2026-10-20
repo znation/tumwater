@@ -229,7 +229,7 @@ test("an exhausted feature rejection tells feature to replan, not re-author", ()
 });
 
 // A plan-less role has no entry to replan, so its exhaustion note must not invite it to
-// re-author: the same purpose re-derived from the same objections is the loop this note ends.
+// re-author: the same purpose re-derived from the same objections is the role this note ends.
 test("an exhausted plan-less rejection records the purpose in the notes instead of re-authoring", () => {
   const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "bugfix");
   assert.match(note, /[Dd]o not re-author it/);

@@ -231,12 +231,12 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   return lines.join("\n");
 }
 
-/** Cost per merged commit by base role. Spend comes from costByRole (keyed by loop id, folded to
+/** Cost per merged commit by base role. Spend comes from costByRole (keyed by role id, folded to
  * its base role so `feature-2` joins `feature`), commits from commitsByRole (already base-role
  * keyed). `merged` is [role, cost per commit, commits] for roles with both, ranked by cost per
  * commit desc then name asc; `idle` is roles that spent and merged nothing, ranked by spend.
  * Merge spend (the reviewer's) and notional subscription spend stay out by default, matching
- * `**Cost by role:**` (`pick` selects another per-loop-id spend map, e.g. notionalByRole); a
+ * `**Cost by role:**` (`pick` selects another per-role-id spend map, e.g. notionalByRole); a
  * role with commits but no spend in the picked map appears in neither list. */
 function costPerCommitPairs(
   series: ReportDay[],
@@ -313,7 +313,7 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push(rankedRoleLine("Tokens by role", rankedRoleTotals(data.series, (d) => d.tokensByRole ?? {}).filter(([, n]) => n > 0), compactTokens));
   // The same breakdown for spend: window totals per role from costByRole, ranked by spend
   // desc then name asc — spend is what the operator acts on (an operator tuning per-role
-  // intervals wants the burning loop first, not the busiest one). Zero-spend roles are
+  // intervals wants the burning role first, not the busiest one). Zero-spend roles are
   // omitted; an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0), usd));
   // The same breakdown per PROVIDER (plans: per-provider spend): which seam of a mixed team

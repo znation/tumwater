@@ -12,7 +12,7 @@ import type { HarnessEvent } from "../src/events/events.js";
 // the real emit sites write (orchestrator.ts, redeploy.ts, team/team-hold.ts, the pause
 // commands), so the pins track what observers actually see in events.jsonl.
 
-/** An event as logEvent would write it — ts and loop are always present, payload after. */
+/** An event as logEvent would write it — ts and role are always present, payload after. */
 function ev(fields: Record<string, unknown>): HarnessEvent {
   return { ts: 0, source: "harness", ...fields } as HarnessEvent;
 }

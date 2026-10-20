@@ -117,10 +117,10 @@ test("formatEvent renders a corrupt event ts as the em dash, never NaN", () => {
   }
 });
 
-test("formatEvent renders a corrupt event's loop as ? like the reports", () => {
-  // The event log is read without a filter, so a torn or hand-edited event with no loop (or
+test("formatEvent renders a corrupt event's role as ? like the reports", () => {
+  // The event log is read without a filter, so a torn or hand-edited event with no role (or
   // an empty one) reaches this renderer. String(undefined) printed the literal "undefined" in
-  // the loop column; eventRole's "?" is the rule the usage report and failure digest apply.
+  // the role column; eventRole's "?" is the rule the usage report and failure digest apply.
   for (const loop of [undefined, ""]) {
     const line = formatEvent({ ts: 0, loop, type: "wake", reason: "main moved" } as never);
     assert.ok(line.includes("?"), `corrupt loop must render ?: ${line}`);
@@ -141,16 +141,16 @@ test("formatEvent renders a corrupt event's tick as #0, never undefined or NaN",
   }
 });
 
-test("formatEvent keeps the loop column aligned when a loop name holds a wide character", () => {
-  // The loop column is padded so every line's message starts at the same display column.
-  // A custom loop name carrying a wide character (CJK, emoji) is one UTF-16 code unit but
+test("formatEvent keeps the role column aligned when a role name holds a wide character", () => {
+  // The role column is padded so every line's message starts at the same display column.
+  // A custom role name carrying a wide character (CJK, emoji) is one UTF-16 code unit but
   // two terminal columns per char, so a String#padEnd cell rendered wider than its column
   // and that row's message sat right of every ASCII row's (BUGS.md, event feed sibling of
   // the aligned-tables fix).
   const ts = 0;
   const ascii = formatEvent({ ts, source: "bugfix", type: "wake", reason: "main moved" } as never);
   const wide = formatEvent({ ts, source: "翻译", type: "wake", reason: "main moved" } as never);
-  // Both lines share the identical time prefix, so the loop column starts right after it.
+  // Both lines share the identical time prefix, so the role column starts right after it.
   const time = formatTimestamp(ts);
   const messageColumn = (line: string) =>
     displayWidth(line.slice(time.length + 1).split("woke")[0]!);
@@ -159,7 +159,7 @@ test("formatEvent keeps the loop column aligned when a loop name holds a wide ch
 });
 
 test("formatEvent renders wake reasons and warning messages operators rely on", () => {
-  // These are the diagnostic lines read in logs/TUI/GUI when figuring out why a loop woke or
+  // These are the diagnostic lines read in logs/TUI/GUI when figuring out why a role woke or
   // what went wrong: the reason and message payloads must survive formatting.
   const wake = formatEvent({ ts: 0, source: "clean", type: "wake", reason: "main moved" } as never);
   assert.match(wake, /woke \(main moved\)/, `wake line must carry its reason: ${wake}`);
@@ -479,10 +479,10 @@ test("formatEvent renders per-tick usage on run_end after result, summary, and e
 });
 
 // The user-abort feature's events (PLANS.md, abort plan item (f)): when the orchestrator
-// consumes a role's abort marker it logs run_aborted under that loop, and the killed tick
+// consumes a role's abort marker it logs run_aborted under that role, and the killed tick
 // ends with result "user_aborted". These are the lines an operator reads in logs/TUI/GUI to
 // see that their `tumwater abort` landed — routine state changes, not warnings.
-test("formatEvent renders run_aborted plainly under the role's loop", () => {
+test("formatEvent renders run_aborted plainly under its role", () => {
   const line = formatEvent({ ts: 0, source: "feature", type: "run_aborted" } as never);
   assert.match(
     line,
@@ -495,7 +495,7 @@ test("formatEvent renders run_aborted plainly under the role's loop", () => {
 // Need-based scheduling (src/scheduling/scheduling.ts): a maintenance tick held back because its
 // last
 // tick did nothing and no work has merged since. Routine state, not a warning — but the line
-// must name the loop and its cause, since it is the only signal that a role is being deferred.
+// must name the role and its cause, since it is the only signal that a role is being deferred.
 test("formatEvent renders run_deferred with the clause that deferred it", () => {
   const backlog = formatEvent({ ts: 0, source: "clean", type: "run_deferred", reason: "backlog" } as never);
   assert.match(
@@ -641,7 +641,7 @@ test("formatEvent prices the gates: build_check lines and review durations", () 
 // The merge queue's events (merge queue 3/5): the feed shows the queue's state changes — the
 // tick's enqueue, the slot's completion (with the merge's own spend), and the slot's failure.
 test("formatEvent renders merge_queued, landed, and merge_failed", () => {
-  // Every line starts with the wall-clock time and the padded loop name — assert the payload.
+  // Every line starts with the wall-clock time and the padded role name — assert the payload.
   const queued = formatEvent({ ts: 0, source: "clean", type: "merge_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
   assert.match(queued, /clean\s+waiting to merge abcdef12 — tidy up$/, `merge_queued must name the sha and summary: ${queued}`);
 
@@ -755,7 +755,7 @@ test("eventResult takes a tick's result, else a merge's or build check's status,
 });
 
 // outcomeText — eventResult as a display cell: the same extraction with "?" for an absent
-// outcome, so a torn run_end renders like eventRole's loop and eventTick's tick rather than
+// outcome, so a torn run_end renders like eventRole's role and eventTick's tick rather than
 // String(undefined)'s literal "undefined". eventResult must stay undefined for the tone and
 // filter keys, so the corrupt-field guard lives here, not there.
 test("outcomeText renders eventResult or ? for a missing or non-string outcome", () => {

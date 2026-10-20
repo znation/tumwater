@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import {
   budgetGate,
   budgetPaused,
@@ -38,7 +38,7 @@ function midnightPair(): { dayA: number; dayB: number } {
 }
 
 test("recordDailyCost accumulates same-day spend and rolls over at local midnight on write", () => {
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   const { dayA, dayB } = midnightPair();
 
   recordDailyCost(s, 1.5, dayA); // first run of the day (fresh state: no stamp yet)
@@ -58,7 +58,7 @@ test("recordDailyCost accumulates same-day spend and rolls over at local midnigh
 });
 
 test("dailyCost reads $0 for a stale or missing stamp and the window's value when fresh", () => {
-  const s = freshLoopState("feature"); // dayStamp "" — never ticked
+  const s = freshRunnerState("feature"); // dayStamp "" — never ticked
   assert.equal(dailyCost(s), 0);
 
   const { dayA, dayB } = midnightPair();
@@ -73,11 +73,11 @@ test("dailyCost reads $0 for a stale or missing stamp and the window's value whe
 
 test("dailyCost reads $0 for a corrupt dayCostUsd instead of poisoning the cap", () => {
   const { dayA } = midnightPair();
-  // A hand-edited or torn state file can hold a non-number where LoopState declares a
+  // A hand-edited or torn state file can hold a non-number where RunnerState declares a
   // number: readJsonFile casts without validating. The budget is a safety valve, so a
   // foreign value must read as no spend, not concatenate into the team sum ("0abc")
   // or make every `>= cap` comparison false forever.
-  const corrupt = freshLoopState("feature");
+  const corrupt = freshRunnerState("feature");
   corrupt.dayStamp = todayStamp(dayA);
   corrupt.dayCostUsd = "5" as unknown as number;
   assert.equal(dailyCost(corrupt, dayA), 0);
@@ -88,7 +88,7 @@ test("dailyCost reads $0 for a corrupt dayCostUsd instead of poisoning the cap",
   assert.equal(teamDailyCost([{ ...corrupt, dayCostUsd: -5 }], dayA), 0);
 
   // Recording spend over a corrupt window heals it into a finite, non-negative number.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.dayStamp = todayStamp(dayA);
   s.dayCostUsd = Number.NaN;
   recordDailyCost(s, 1.25, dayA);
@@ -100,12 +100,12 @@ test("dailyCost reads $0 for a corrupt dayCostUsd instead of poisoning the cap",
   assert.equal(s.dayCostUsd, 1.25);
 });
 
-test("teamDailyCost sums every loop's daily window with stale ones reading $0", () => {
+test("teamDailyCost sums every role's daily window with stale ones reading $0", () => {
   const { dayA, dayB } = midnightPair();
-  const a = freshLoopState("feature");
+  const a = freshRunnerState("feature");
   recordDailyCost(a, 1.25, dayA); // spent on day A
-  const b = freshLoopState("clean"); // never ticked: missing stamp → $0
-  const c = freshLoopState("dedupe");
+  const b = freshRunnerState("clean"); // never ticked: missing stamp → $0
+  const c = freshRunnerState("dedupe");
   recordDailyCost(c, 0.75, dayB); // spent on day B only
 
   assert.equal(teamDailyCost([a, b, c], dayA), 1.25);
@@ -114,7 +114,7 @@ test("teamDailyCost sums every loop's daily window with stale ones reading $0", 
 });
 
 test("budgetPaused is false at cap 0 (disabled) and below the cap, true at/above it", () => {
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   const { dayA, dayB } = midnightPair();
   recordDailyCost(s, 10, dayA);
 
@@ -131,13 +131,13 @@ test("budgetPaused is false at cap 0 (disabled) and below the cap, true at/above
   assert.equal(budgetPaused([s], cfg, dayA), false); // 0 disables the budget entirely
 
   // A stale window reads $0: a team that hasn't ticked since yesterday is never paused.
-  const other = freshLoopState("clean");
+  const other = freshRunnerState("clean");
   recordDailyCost(other, 100, dayB);
   cfg.maxDailyCostUsd = 1;
   assert.equal(budgetPaused([other], cfg, dayA), false);
 });
 
-test("budgetGate: reached with a free, serving fallback keeps loops running; otherwise they pause", () => {
+test("budgetGate: reached with a free, serving fallback keeps roles running; otherwise they pause", () => {
   // The three facts the gate is made of (plans/fallback-model.md, BUGS.md 2026-09-20). Under
   // the cap nothing else matters — a configured fallback does not take over while there is
   // budget left, serving or not.
@@ -364,8 +364,8 @@ test("projectCapHit extrapolates today's linear burn to the cap's instant, or st
 
 test("recordDailyCost with a pair accumulates per pair, resets at local midnight, and pairDailyCost sums roles", () => {
   const { dayA, dayB } = midnightPair();
-  const a = freshLoopState("feature");
-  const b = freshLoopState("plan");
+  const a = freshRunnerState("feature");
+  const b = freshRunnerState("plan");
   recordDailyCost(a, 1, dayA, "hf/m");
   recordDailyCost(a, 0.5, dayA, "hf/m");
   recordDailyCost(a, 2, dayA, "__proto__");

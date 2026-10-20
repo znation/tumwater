@@ -7,8 +7,8 @@ import { initProject } from "../../src/init/init.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
-/** A repo holding a seeded event log: the feature loop's paired tick #7 (usage and detail), the
- * clean loop's usage-less tick #3, and the bugfix loop's tick #9 whose run_start was never
+/** A repo holding a seeded event log: the feature role's paired tick #7 (usage and detail), the
+ * clean role's usage-less tick #3, and the bugfix role's tick #9 whose run_start was never
  * logged (its duration renders as an em dash) ending in an error. */
 export async function seededHistoryRepo(): Promise<string> {
   const repo = makeRepo();

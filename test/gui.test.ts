@@ -346,7 +346,7 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
 // User-defined roles (tumwater.json's customRoles) are first-class transcript targets: the
 // GUI marks them with an asterisk, so clicking one must open its panel — /api/transcript
 // validates against catalog + customRoles when the config parses.
-test("gui /api/transcript accepts user-defined role roles listed in tumwater.json", async () => {
+test("gui /api/transcript accepts user-defined roles listed in tumwater.json", async () => {
   const repo = makeRepo();
   await initProject(repo, "custom transcript test");
   const cfg = loadConfig(repo);

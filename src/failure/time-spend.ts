@@ -109,11 +109,11 @@ type ResolvedMerge = NonNullable<ReturnType<typeof resolveQueuedResult>>;
  * agree on which event belongs to the attempt (BUGS.md 2026-10-10: the window, not the pin's
  * sha, is the match, since every verification rebases its pin before the gate). */
 function newestAttemptEvent(
-  eventsByLoop: Map<string, HarnessEvent[]>,
+  eventsByRunner: Map<string, HarnessEvent[]>,
   role: string,
   attempt: ResolvedMerge,
 ): HarnessEvent | undefined {
-  return (eventsByLoop.get(role) ?? [])
+  return (eventsByRunner.get(role) ?? [])
     .filter((e) => e.ts >= attempt.pin.ts && e.ts <= attempt.outcome.ts)
     .at(-1);
 }
@@ -156,7 +156,7 @@ function tally(target: { runs: number; ms: number; costUsd: number }, durationMs
  * in the preceding day and ended in the current one still gets its span. The merge-outcome
  * join runs over that same whole read too (BUGS.md 2026-09-30): a queued run_end resolves
  * through its own merge_queued pin to the later merge_done/merge_failed outcome for the same
- * loop+sha — history-data.ts's exact join — so an authoring tick whose merge was rejected
+ * role+sha — history-data.ts's exact join — so an authoring tick whose merge was rejected
  * prices into the error-class cell its contract names instead of the merged cell its
  * transient queued result suggested. A leftover-recovery run resolves to the failed attempt it
  * re-queued (the history row's rule), so its near-zero span counts under that failure — a
@@ -176,19 +176,19 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   const losses = new Map<string, LossDraft>();
   // The merge evidence rides history-data.ts's bucketMergeEvents — the same buckets
   // history's rows read — so the digest's join cannot drift from the rows' join.
-  const { mergeQueuedByLoop, outcomeByLoop } = bucketMergeEvents(allEvents);
-  const rejectedByLoop = groupBy(
+  const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(allEvents);
+  const rejectedByRunner = groupBy(
     allEvents.filter((e) => e.type === "review_rejected"),
     (e) => e.source,
   );
   // A review_error merge kept its pin but left no message on its own merge_failed; the
-  // matching review_failed event for the same loop+sha carries it, so the span prices under
+  // matching review_failed event for the same role+sha carries it, so the span prices under
   // the same cluster key the digest's review-failure section already counts.
-  const reviewFailedByLoop = groupBy(
+  const reviewFailedByRunner = groupBy(
     allEvents.filter((e) => e.type === "review_failed"),
     (e) => e.source,
   );
-  const deadlineKilledByLoop = groupBy(
+  const deadlineKilledByRunner = groupBy(
     allEvents.filter(
       (e) =>
         e.type === "build_check" &&
@@ -206,7 +206,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   for (let i = tickEvents.length - 1; i >= 0; i--) {
     const ev = tickEvents[i]!;
     if (ev.result !== "queued") continue;
-    const joined = resolveQueuedResult(ev, mergeQueuedByLoop, outcomeByLoop, claimTop, new Map(), null);
+    const joined = resolveQueuedResult(ev, mergeQueuedByRunner, outcomeByRunner, claimTop, new Map(), null);
     if (joined !== null) resolved.set(ev, joined);
   }
   for (const ev of tickEvents) {
@@ -264,7 +264,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // `merge_queued` keeps the authored one — exact-sha equality names no reason for a rebased
       // rejection (BUGS.md 2026-10-10). The rejection for this attempt is the one inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
-      const rej = newestAttemptEvent(rejectedByLoop, role, resolvedOutcome);
+      const rej = newestAttemptEvent(rejectedByRunner, role, resolvedOutcome);
       const reasons = stringList(rej?.reasons);
       example = reasons[0] !== undefined ? truncateExample(reasons[0]) : "";
     } else if (ev.result === "queued" && resolvedOutcome?.result === "review_error") {
@@ -279,7 +279,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // keeps the authored one — exact-sha equality missed every rebased verification (BUGS.md
       // 2026-10-10). The review failure for this attempt is the one that falls inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
-      const failed = newestAttemptEvent(reviewFailedByLoop, role, resolvedOutcome);
+      const failed = newestAttemptEvent(reviewFailedByRunner, role, resolvedOutcome);
       ({ key, example } = pooledClusterCause(failed?.message));
     } else if (
       ev.result === "queued" &&
@@ -296,7 +296,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       example = errorTextOrPlaceholder(undefined);
       // A merge-scope check the harness killed at its own deadline is the team's load, not a
       // verdict on the change: split it into its own cause so the ranking names it.
-      const killed = newestAttemptEvent(deadlineKilledByLoop, role, resolvedOutcome);
+      const killed = newestAttemptEvent(deadlineKilledByRunner, role, resolvedOutcome);
       if (kind === "merge-blocked" && killed) {
         key = `merge_blocked_deadline\u0000${role}`;
         example = `${String(killed.scope)} build check killed at its ${Number(killed.timeoutMs) / 1000}s deadline (tumwater's own timeout, not a test failure)`;

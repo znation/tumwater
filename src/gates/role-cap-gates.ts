@@ -1,10 +1,10 @@
-/** The per-role daily cost cap (PLANS.md 2026-09-30, part 1/2): a loop whose local-day spend
+/** The per-role daily cost cap (PLANS.md 2026-09-30, part 1/2): a role whose local-day spend
  * has reached its own `maxDailyCostUsdPerRole` entry starts no new ticks until the next local
  * day or a live config edit — so one runaway role cannot eat the team-wide cap and starve
- * every other loop for the rest of the day. The team budget gate (src/gates/budget-gates.ts)
+ * every other role for the rest of the day. The team budget gate (src/gates/budget-gates.ts)
  * bounds the SUM; this bounds each member. The stateless verdict follows that gate's own rule
  * (budgetPaused's doc: "resume is stateless, so … crossing midnight flips it on the next cycle
- * and nothing can get stuck"): the verdict is recomputed from the loop state every poll, no
+ * and nothing can get stuck"): the verdict is recomputed from the runner state every poll, no
  * marker is written, and local midnight lifts it by itself.
  *
  * Deliberate differences from the streak gate's shape (src/gates/streak-gate.ts), stated in
@@ -27,17 +27,17 @@
  * 80% re-logs one `role_cap_warning` (the durable-cause honest report the streak-gate doc
  * accepts). */
 
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { groupBy } from "../collections.js";
 import { budgetWarning, dailyCost, todayStamp } from "../budget/budget.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 
-/** A runner as the gate reads it — the role and the loop state whose daily window is judged. */
+/** A runner as the gate reads it — the role and the runner state whose daily window is judged. */
 interface CapObservation {
   role: string;
-  state: Pick<LoopState, "dayStamp" | "dayCostUsd">;
+  state: Pick<RunnerState, "dayStamp" | "dayCostUsd">;
 }
 
 /** The stateless verdict: is this role over its own per-role cap as of `now`? True iff a cap
@@ -46,7 +46,7 @@ interface CapObservation {
  * (`caps?.[role]`), so part 2/2's observers (src/status/status-data.ts) share this single
  * definition with the scheduler. */
 export function roleCapPaused(
-  state: Pick<LoopState, "dayStamp" | "dayCostUsd">,
+  state: Pick<RunnerState, "dayStamp" | "dayCostUsd">,
   cap: number | undefined,
   now = Date.now(),
 ): boolean {
@@ -55,7 +55,7 @@ export function roleCapPaused(
 }
 
 /** One base role's grouped verdict: whether its summed spend has reached its cap, the summed
- * figure itself, and the loop ids the group holds. */
+ * figure itself, and the role ids the group holds. */
 interface RoleCapVerdict {
   over: boolean;
   spentUsd: number;
@@ -65,9 +65,9 @@ interface RoleCapVerdict {
 /** The grouped, stateless per-role cap verdict — the single definition the scheduler's gate
  * (`pollRoleCapGate`) and the snapshot's `capPaused` observer (src/status/status-data.ts) both
  * fold, so the hold an operator sees cannot diverge from the one the scheduler enforces.
- * Instance loop ids share their base role's cap and its SUMMED spend (`feature` and `feature-2`
+ * Instance role ids share their base role's cap and its SUMMED spend (`feature` and `feature-2`
  * at $0.60 each cross a `maxDailyCostUsdPerRole.feature` cap of $1 together), and the director
- * is exempt. Keyed by base role in first-appearance order; each entry carries the group's loop
+ * is exempt. Keyed by base role in first-appearance order; each entry carries the group's role
  * ids so a caller can log the base (the gate) or flatten the ids (the observer). */
 export function roleCapVerdicts(
   runners: readonly CapObservation[],
@@ -120,7 +120,7 @@ export function pollRoleCapGate(
 ): ReadonlySet<string> {
   // Grouping and the verdict itself live in roleCapVerdicts, shared with the snapshot's
   // `capPaused` observer (src/status/status-data.ts) so the two cannot diverge. The returned
-  // set holds the paused loop ids so the scheduler can keep checking `capPaused.has(runner.role)`
+  // set holds the paused role ids so the scheduler can keep checking `capPaused.has(runner.role)`
   // unchanged.
   const verdicts = roleCapVerdicts(runners, caps, now);
   const paused = new Set<string>();

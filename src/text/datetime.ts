@@ -161,7 +161,7 @@ export function humanAgo(sinceMs: number, now: number): string {
   return `${humanSeconds(secondsSince(sinceMs, now))} ago`;
 }
 
-/** The shared "when may this loop next act" phrase — the `next run` cell (status-render.ts's
+/** The shared "when may this role next act" phrase — the `next run` cell (status-render.ts's
  * nextRunCell) and the `Next tick` line (role-render.ts's scheduleLine) render their schedule
  * through it, so the two surfaces cannot drift on the backoff prefix or the humanSeconds
  * bucketing. `remainSeconds` is the seconds until the next run (non-positive = due); `backoff`

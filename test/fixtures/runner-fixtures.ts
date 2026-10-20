@@ -188,9 +188,6 @@ export function spentRunnerState(role: string, usd: number, at?: number): Runner
   return state;
 }
 
-/** @deprecated Use spentRunnerState. */
-export const spentLoopState = spentRunnerState;
-
 /** Seed each role's state file with non-zero counters plus scheduling fields. Variadic so a
  * multi-role test seeds all its runners through this one home (the reset tests do). */
 export function seedCounters(repo: string, ...roles: string[]): void {

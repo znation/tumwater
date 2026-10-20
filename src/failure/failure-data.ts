@@ -143,11 +143,11 @@ export interface FailureReportData {
 }
 
 /** Keep only events that belong to the scoped base roles, so a scoped digest aggregates instances
- * (`feature-2`) into their group exactly as `report --role` and the per-role cap do. Loop
- * events match on their own loop id; the role-scoped harness transitions (a role pause, its
- * streak breaker, its cap, its fallback) log with loop "harness" and name the affected role
+ * (`feature-2`) into their group exactly as `report --role` and the per-role cap do. Role
+ * events match on their own role id; the role-scoped harness transitions (a role pause, its
+ * streak breaker, its cap, its fallback) log with source "harness" and name the affected role
  * in `role`, so those match on that field too — otherwise a scoped digest would drop exactly
- * the events that explain why the loop stopped. Applied to both partitions and the whole read,
+ * the events that explain why the role stopped. Applied to both partitions and the whole read,
  * so every section derived from them narrows. */
 function scopeToRole(events: HarnessEvent[], bases: readonly string[]): HarnessEvent[] {
   return events.filter(

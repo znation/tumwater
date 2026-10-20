@@ -109,7 +109,7 @@ export function eventResult(e: HarnessEvent): string | undefined {
 
 /** eventResult as a display cell: the outcome text when the event carries one, else "?". A
  * torn or hand-edited event whose result/status is missing or non-string — the loose payload
- * HarnessEvent's index signature hands over unvalidated — reads "?" like eventRole's loop and
+ * HarnessEvent's index signature hands over unvalidated — reads "?" like eventRole's role and
  * eventTick's tick, never String(undefined)'s literal "undefined". The display surfaces — the
  * event line, the history row, the tick drill-down — use this; eventResult stays undefined
  * for the tone and filter keys, which must tell "no outcome" apart from a real one. */
@@ -131,21 +131,21 @@ export function deferredReasonText(e: HarnessEvent): string {
 /** Human one-liner for an event, shared by `logs`, `run` output, and the TUI activity pane:
  * the local `YYYY-MM-DD HH:MM:SS` stamp (formatTimestamp — the same zero-padded, locale-
  * independent phrasing the history table and transcript run separators print, not
- * toLocaleTimeString's locale-dependent "3:05:12 PM"), the loop padded to a column, then the
+ * toLocaleTimeString's locale-dependent "3:05:12 PM"), the role padded to a column, then the
  * event's message (eventMessage).
  * Presentation only: depends on the event shape (events.ts's HarnessEvent), not on its log
  * I/O — so display surfaces never import formatting from the logging module. */
 export function formatEvent(e: HarnessEvent): string {
   const time = formatTimestamp(e.ts);
   // Padded in terminal display columns (padToWidth), not String#padEnd's UTF-16 code units:
-  // a custom loop name holding a wide character (CJK, emoji) counts one code unit but two
+  // a custom role name holding a wide character (CJK, emoji) counts one code unit but two
   // display columns, so a padEnd cell rendered wider than its column and the message column
-  // sat right of every ASCII row's (the same unit mistake the aligned tables shed). The loop
-  // itself goes through eventRole, so a torn or hand-edited event with no loop shows "?" like
+  // sat right of every ASCII row's (the same unit mistake the aligned tables shed). The role
+  // itself goes through eventRole, so a torn or hand-edited event with no role shows "?" like
   // the usage report and failure digest, never String(undefined)'s literal "undefined".
   const source = eventRole(e);
-  const loop = padToWidth(source === TUMWATER_SOURCE ? "tumwater" : roleLabel(source), 10);
-  return `${time} ${loop} ${eventMessage(e)}`;
+  const roleCell = padToWidth(source === TUMWATER_SOURCE ? "tumwater" : roleLabel(source), 10);
+  return `${time} ${roleCell} ${eventMessage(e)}`;
 }
 
 /** One event as the dashboard's activity feed consumes it: `result` is a tick's outcome, a
@@ -155,8 +155,8 @@ export function formatEvent(e: HarnessEvent): string {
  * shape cannot drift between them. */
 export function eventFeedItem(e: HarnessEvent): { ts: number; source: string; type: string; result?: string; message: string } {
   const result = eventResult(e);
-  // eventRole renders a missing/empty loop as "?" like the reports, so a torn or hand-edited
-  // event never shows a literal "undefined" loop chip in the dashboard's activity feed.
+  // eventRole renders a missing/empty role as "?" like the reports, so a torn or hand-edited
+  // event never shows a literal "undefined" role chip in the dashboard's activity feed.
   return { ts: e.ts, source: eventRole(e), type: e.type, ...(result === undefined ? {} : { result }), message: eventMessage(e) };
 }
 
@@ -168,9 +168,9 @@ export function eventMatchesGrep(e: HarnessEvent, patternLower: string): boolean
   return `${e.type} ${formatEvent(e)}`.toLowerCase().includes(patternLower);
 }
 
-/** An event's message alone — formatEvent's line without the time and loop columns. The GUI's
- * activity feed renders the time and loop itself (relative ages, loop chips), so the payload
- * ships this beside the event's type and loop instead of making the page re-parse a line. */
+/** An event's message alone — formatEvent's line without the time and role columns. The GUI's
+ * activity feed renders the time and role itself (relative ages, role chips), so the payload
+ * ships this beside the event's type and role instead of making the page re-parse a line. */
 export function eventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "run_start":
@@ -200,7 +200,7 @@ export function eventMessage(e: HarnessEvent): string {
       // or the merged/build_check lines carry the reason in the feed.
       return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))})${elapsed(e.durationMs)}${typeof e.summary === "string" && e.summary.trim() ? ` — ${truncate(e.summary, 80)}` : ""}`;
     case "question_posted":
-      // Routine operation (a loop asked the user something), not a warning.
+      // Routine operation (a role asked the user something), not a warning.
       // The position is the `<n>` `questions answer` takes, so the notify page is actionable.
       return `question posted: ${textOr(e.question)}${typeof e.position === "number" && Number.isInteger(e.position) && e.position >= 1 ? ` — question ${e.position} in \`tumwater questions\`; answer it with \`tumwater questions answer ${e.position} "<decision>"\`` : ""}`;
     case "entry_refused":
@@ -235,14 +235,14 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine: a tick dequeued the operator's request to run it.
       return `inbox message taken by run #${eventTick(e)}: ${textOr(e.preview)}`;
     case "counters_reset": {
-      // One role → the event is filed under that loop; several → one harness-level event
+      // One role → the event is filed under that role; several → one harness-level event
       // listing them.
       const roles = rolesPhrase(e.roles, "");
       const scope = roles ? ` for ${roles}` : "";
       return `counters reset${scope} (runs, merges, tokens, cost)`;
     }
     case "run_aborted":
-      // Routine state change (the user stopped one loop's tick), like counters_reset — no
+      // Routine state change (the user stopped one role's tick), like counters_reset — no
       // warning prefix. The resulting run_end line carries the user_aborted outcome.
       return `run stopped by you`;
     case "review_start": {
@@ -358,17 +358,17 @@ export function eventMessage(e: HarnessEvent): string {
     case "role_streak_paused":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the pause IS the
       // harness handling the failure. Names the streak depth and the lift command, so the
-      // operator knows why the loop stopped and what to do about it; names the last error
+      // operator knows why the role stopped and what to do about it; names the last error
       // when one is recorded.
       return `role ${textOr(e.role)} paused — ${textOr(e.streak)} runs failed in a row${typeof e.lastError === "string" && e.lastError.trim() ? ` — last error: ${squash(e.lastError, 120)}` : ""}; fix the cause and resume it (tumwater resume --role <id>)`;
     case "role_cap_warning":
       // The per-role early page beside role_cap_paused: the cap is not reached yet, so say so —
-      // the operator still has room to raise it before the loop stops.
+      // the operator still has room to raise it before the role stops.
       return `role ${textOr(e.role)} at ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap — it keeps running; raise or remove the cap in tumwater.json before it pauses`;
     case "role_cap_paused":
       // Routine state change, like budget_paused — no warning prefix: the pause IS the harness
       // holding the role's own spend line. Names the role, its spend vs its cap, and the two
-      // lift paths, so the operator knows why the loop stopped and what to do about it.
+      // lift paths, so the operator knows why the role stopped and what to do about it.
       return `role ${textOr(e.role)} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new runs until the cap is raised or removed in tumwater.json or the local day rolls over`;
     case "role_cap_resumed":
       return `role ${textOr(e.role)} resumed — it is under its daily cap again and runs again`;
@@ -392,13 +392,13 @@ export function eventMessage(e: HarnessEvent): string {
     case "maintenance_quota_hold":
       // Routine state change, like role_cap_paused — no warning prefix: the hold IS the harness
       // keeping maintenance merges in proportion to work. Names the window's counts so the
-      // operator can see why the hygiene loops stopped and what would re-open them.
+      // operator can see why the hygiene roles stopped and what would re-open them.
       return `waiting: maintenance allowance used — ${textOr(e.maint)} maintenance merges against an allowance of ${textOr(e.allowance)} in the last 24h (${textOr(e.work)} work); the maintenance roles wait until the window rolls over`;
     case "maintenance_quota_resumed":
       return `maintenance allowance reopened — ${textOr(e.maint)} maintenance merges against an allowance of ${textOr(e.allowance)} in the last 24h; the maintenance roles run again`;
     case "bootstrap_complete":
       // Routine state change, like counters_reset — no warning prefix: the team just finished
-      // its bootstrap and the maintenance loops are admitted.
+      // its bootstrap and the maintenance roles are admitted.
       return `bootstrap complete — ${textOr(e.plansDone)}/${textOr(e.untilPlansDone)} plans done; the maintenance roles now run`;
     case "disk_low":
       // Routine state change, like team_paused — no warning prefix: the hold IS the harness
@@ -557,7 +557,7 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "resume":
       // Two causes share the resume machinery; the line names the real one so an operator
-      // reading the feed can tell a restart from a loop fighting the context ceiling, and a
+      // reading the feed can tell a restart from a role fighting the context ceiling, and a
       // cross-agent handoff from either — the handoff keeps the worktree but starts fresh.
       return e.cause === "cut-off"
         ? "resuming the run cut off at the context ceiling (compacted pi session, same workspace)"

@@ -37,7 +37,7 @@ import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrid
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { claudeWindowUsedUp, readClaudeAccount, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { dayAt } from "../text/datetime.js";
 
@@ -61,7 +61,7 @@ export interface BudgetGateState {
   /** The live config the fallback view was last derived from; null until a fallback first
    * engages, so an unchanged config object is not re-derived every poll. */
   from: TumwaterConfig | null;
-  /** The view role loops run under while a fallback is engaged (the fallback gate, or its
+  /** The view roles run under while a fallback is engaged (the fallback gate, or its
    * breaker-demoted pause): the free pair installed top-level and every per-role/reviewer
    * model override dropped, so no seam can reach a priced model. */
   fallbackConfig: TumwaterConfig;
@@ -107,7 +107,7 @@ export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
 }
 
 /** One poll's gate decision, handed back for the orchestrator's wiring: which gate holds this
- * poll, whether the fallback is engaged, the config role loops run under (the fallback
+ * poll, whether the fallback is engaged, the config roles run under (the fallback
  * view, or the live config unchanged), and the spend/cap pair the gate just evaluated — the
  * same figures the transition event below stamps, handed back so the orchestrator can publish
  * them for observers (the dashboards' persisted-file sum lags the scheduler's by every
@@ -177,10 +177,10 @@ function seamIsClaude(seam: { agent?: string; provider?: string }): boolean {
   return seamAgent(seam) === "claude";
 }
 
-/** Does an in-flight tick's captured model pair (LoopRunner.tickModel()) match the fallback
+/** Does an in-flight tick's captured model pair (RoleRunner.tickModel()) match the fallback
  * pair a reopening budget gate just left? The orchestrator hands back exactly those ticks
  * (PLANS.md 2026-09-30): both sides must be present — no fallback pair means no tick ran on
- * one, and an idle loop's null means there is nothing to hand back — and the provider/model
+ * one, and an idle role's null means there is nothing to hand back — and the provider/model
  * fields must be equal, undefined matching undefined only when both sides truly lack them
  * (which cannot happen here: a null pair is rejected before the field comparison). */
 export function tickOnPair(
@@ -213,7 +213,7 @@ export function gateRoleConfig(
 }
 
 /** Poll the daily cost budget gate: once the team's spend for the local day has reached
- * maxDailyCostUsd, role loops either switch to the configured cost-free fallback model and
+ * maxDailyCostUsd, roles either switch to the configured cost-free fallback model and
  * keep working, or — with no usable one — start no new ticks at all (scheduled, main-moved
  * wake, or startup). The director is outside both: an explicit human prompt outranks the
  * autonomous-spend cap, so it keeps its budgeted model and keeps ticking. In-flight ticks
@@ -225,7 +225,7 @@ export function gateRoleConfig(
  * inputs, so nothing can get stuck. */
 export function pollBudgetGate(
   state: BudgetGateState,
-  ctx: { root: string; states: LoopState[]; liveConfig: TumwaterConfig; modelsPath: string },
+  ctx: { root: string; states: RunnerState[]; liveConfig: TumwaterConfig; modelsPath: string },
 ): BudgetGatePoll {
   const { root, states, liveConfig, modelsPath } = ctx;
   const now = Date.now();
@@ -397,7 +397,7 @@ export function pollBudgetGate(
     });
     state.prevGate = gate;
   }
-  // While the fallback holds, role loops run under the derived view — the free pair installed
+  // While the fallback holds, roles run under the derived view — the free pair installed
   // top-level and every per-role/reviewer model override dropped, so no seam can reach a priced
   // model. A breaker-demoted fallback keeps the view too: its gate is `paused`, but a tick parked
   // in the semaphore when it tripped, the half-open probe, and the merges must still run on the
@@ -526,7 +526,7 @@ export function chainInfo(a: {
   resolved: TierFallbackMap;
   moved: ReadonlySet<ModelTier>;
   breakers: FallbackBreakerMap;
-  states: Pick<LoopState, "dayStamp" | "dayCostByPair">[];
+  states: Pick<RunnerState, "dayStamp" | "dayCostByPair">[];
   now: number;
   windowOut: { resetsAt: number; reserve?: true } | null;
   account: ClaudeAccount | null;

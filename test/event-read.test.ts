@@ -21,7 +21,7 @@ function ev(extra: Partial<HarnessEvent> & { ts?: number }): HarnessEvent {
   return { ts: 1000, source: "feature", type: "run_end", ...extra } as HarnessEvent;
 }
 
-test("eventRole answers '?' for absent, empty, and non-string loop fields", () => {
+test("eventRole answers '?' for absent, empty, and non-string role fields", () => {
   assert.equal(eventRole({ ts: 1, type: "wake" } as HarnessEvent), "?"); // no loop at all
   assert.equal(eventRole(ev({ source: "" })), "?"); // empty: not a real role grouping
   assert.equal(eventRole(ev({ source: 42 as unknown as string })), "?"); // corrupt field

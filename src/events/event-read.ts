@@ -44,7 +44,7 @@ export function eventDayKey(ev: HarnessEvent): string | null {
   return ts === null ? null : dayKey(ts);
 }
 
-/** The loop id an event is filed under, or "?" when absent or empty — the guard the usage
+/** The role id an event is filed under, or "?" when absent or empty — the guard the usage
  * report and the failure digest both apply when grouping by role. */
 export function eventRole(ev: HarnessEvent): string {
   return typeof ev.source === "string" && ev.source !== "" ? ev.source : "?";
@@ -54,7 +54,7 @@ export function eventRole(ev: HarnessEvent): string {
  * display surface applies to the loosened `tick` field: an event log is read without a shape
  * filter, so a torn or hand-edited line can carry no tick (String(undefined) printed "#undefined"
  * in the feed) or a non-numeric one (String(Number(…)) printed "#NaN" in history). Ticks are
- * 1-based — the loop increments state.runs before logging its first tick — so 0 is visibly not
+ * 1-based — the role increments state.runs before logging its first tick — so 0 is visibly not
  * a real tick, the same corrupt-value-reads-as-0 rule gigabytes and the failure digest's
  * aheadCommits apply, kept finite so a JSON consumer never sees NaN's null stand-in. */
 export function eventTick(ev: HarnessEvent): number {
@@ -76,7 +76,7 @@ export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number;
   return { tokens, costUsd, notionalCostUsd };
 }
 
-/** Pair the run_start events of `events` by tick, keyed `${loop}#${tick}` → the start event
+/** Pair the run_start events of `events` by tick, keyed `${role}#${tick}` → the start event
  * itself — the one home of that pairing and its key format, shared by the timestamps
  * (tickStartMap), the models (tickStartModelMap), and the tick drill-down's duration
  * (tick-detail-data.ts uses tickSpanMs' key). A run_start whose `ts` is not a finite number is
@@ -93,7 +93,7 @@ function runStartMap(events: HarnessEvent[]): Map<string, HarnessEvent> {
   return starts;
 }
 
-/** The run_start pairing's start epoch ms: `${loop}#${tick}` → start epoch ms, the projection
+/** The run_start pairing's start epoch ms: `${role}#${tick}` → start epoch ms, the projection
  * of runStartMap onto each event's `ts` — shared by `tumwater history`'s row spans
  * (history-data.ts), the failure digest's time-and-spend fold (time-spend.ts), and the tick
  * drill-down's duration (tick-detail-data.ts), so those consumers cannot drift into different
@@ -107,7 +107,7 @@ export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
   return starts;
 }
 
-/** The run_start pairing's model selectors: `${loop}#${tick}` → the run's model when its
+/** The run_start pairing's model selectors: `${role}#${tick}` → the run's model when its
  * run_start carries a non-empty string `model` (the agent-qualified selector string — a
  * per-role override, a fallback, or the primary — that the status rows carry; see
  * config-views.ts's agentQualifiedSelector). A run_start with no `model`, or an empty or
@@ -123,7 +123,7 @@ export function tickStartModelMap(events: HarnessEvent[]): Map<string, string> {
 }
 
 /** The model of the run_end event `ev` against `models` (tickStartModelMap's pairing): the
- * `${loop}#${tick}` lookup, in one place beside the map it indexes, so the key format and the
+ * `${role}#${tick}` lookup, in one place beside the map it indexes, so the key format and the
  * "no model is null" rule are spelled once — the model twin of tickSpanMs. null when the
  * start is missing (rotation cut it) or carried no model; callers decide what an empty model
  * costs — history renders it as an empty cell. */
@@ -132,7 +132,7 @@ export function tickStartModel(ev: HarnessEvent, models: Map<string, string>): s
 }
 
 /** The start→end span of the `run_end` event `ev` against `starts` (tickStartMap's pairing):
- * the `${loop}#${tick}` lookup and the clamp to non-negative, in one place beside the map
+ * the `${role}#${tick}` lookup and the clamp to non-negative, in one place beside the map
  * they index, so the key format and the span rule are spelled once. null when the start is
  * missing (rotation cut it) or when `ev.ts` is not a finite number (a torn or hand-edited end
  * line can carry no usable timestamp); callers decide what an unpaired end costs — the failure

@@ -52,7 +52,7 @@ export interface HarnessEvent {
     | "prompt_topped" // a queued prompt was moved to the front of its role's inbox (tumwater prompt --top)
     | "prompt_taken" // a tick dequeued a queued user prompt to run it (carries `run` and `preview`)
     | "counters_reset"
-    | "run_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
+    | "run_aborted" // a user-initiated abort killed one role's in-flight tick (tumwater abort)
     | "resume" // the interrupted tick's session is picked back up; carries cause (restart|cut-off|hung-tool|timeout|budget-resumed|handoff)
     | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the merge is a revision (plans/revise-rejected.md part 2/2); afterMerge true on a review of an already merged commit (review.afterMerge); resumed true when the run continues a timed-out reviewer's session (PLANS.md, review-retry part 3/3)
     | "review_verdict" // approved; carries durationMs of the reviewer run; afterMerge true when the commit was already merged
@@ -63,37 +63,37 @@ export interface HarnessEvent {
     | "build_check" // the project's declared check ran: scope gate|baseline|merge|batch, `full: false` on a merge/batch run of check.mergeCommand (merge is the merge lock's post-rebase re-check; batch is the batch merger's one check over the stacked tree), status, script, durationMs; spawnedAt/settledAt when a process ran, plus timeoutMs/deadlineLateMs when its deadline fired, and sleptMs when the host slept mid-run (build/build-check-events.ts buildCheckRunFields); installed/installMs (plus installError) when the check first installed the tree's drifted lockfile (build/dep-install.ts)
     | "dep_install" // the root checkout's install was re-synced after a merge moved main's lockfile (build/dep-install.ts syncRootInstall): packages (the drifted direct dependencies), status passed|failed, durationMs, error on a failure
     | "budget_warning" // team daily spend crossed 80% of maxDailyCostUsd; the gate is still open
-    | "budget_paused" // team daily spend reached maxDailyCostUsd with no usable free fallback; role loops stop starting ticks
-    | "budget_fallback" // team daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
-    | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
+    | "budget_paused" // team daily spend reached maxDailyCostUsd with no usable free fallback; roles stop starting ticks
+    | "budget_fallback" // team daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; roles keep ticking on it
+    | "budget_resumed" // the cap was raised/disabled or a new local day started; roles tick again
     | "budget_handback" // at budget_resumed: the in-flight ticks still on the fallback were handed back to the primary (roles, provider, model); reason "window" when a used-up claude window reset rather than the budget
     | "fallback_switched" // a tier moved to a different step of its fallback chain, or back to its primary; carries `tiers` (tier → from, to, reason: window|reserve|cap|step-cap|overage|demoted|available; a null from/to is the primary)
-    | "team_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
-    | "team_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
+    | "team_paused" // operator pause via `tumwater pause`; roles stop starting new ticks, director exempt
+    | "team_resumed" // the pause was lifted (`tumwater resume`); roles tick again
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)
     | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role ticks again (carries role)
     | "role_streak_paused" // the error-streak circuit breaker auto-paused a role after ERROR_STREAK_BREAKER consecutive failed ticks (src/gates/streak-gate.ts); carries role, streak, lastError when one is recorded
     | "role_cap_warning" // the role's local-day spend crossed 80% of its maxDailyCostUsdPerRole cap while it is still ticking (src/gates/role-cap-gates.ts); carries role, spentUsd, capUsd
     | "role_cap_paused" // the role's local-day spend reached its maxDailyCostUsdPerRole cap (src/gates/role-cap-gates.ts); it starts no new ticks until local midnight or a live edit; carries role, spentUsd, capUsd
     | "role_cap_resumed" // the cap was raised/removed or a new local day started; that role ticks again (carries role)
-    | "main_red_hold" // main's declared check is verified red; warnMainRedOnce (src/baseline/main-red.ts) logs it once per process per newly verified red main SHA, and, when the red names no failing test, every code loop skips authoring until main is green; carries sha, script, message
+    | "main_red_hold" // main's declared check is verified red; warnMainRedOnce (src/baseline/main-red.ts) logs it once per process per newly verified red main SHA, and, when the red names no failing test, every code role skips authoring until main is green; carries sha, script, message
     | "main_check" // the main watch (src/baseline/main-watch.ts) settled a full-check verdict on main's tip: sha, status passed|failed, durationMs (0 when cached or inherited), covered (first-parent commits since the previously watched head), failingTests when failed; a doc-only tip that inherited its green carries inherited: true; a red naming only quarantined flaky tests is recorded passed with quarantined: [tests]
     | "main_culprit" // the main watch (src/baseline/main-culprit.ts) named the first-parent commit that turned main red: commit, runner when a merged event names one, failingTests (the tip's), green (the last commit verified green before it)
     | "main_revert" // the merge slot reverted the commit the main watch named (src/baseline/main-revert.ts) and fast-forwarded main to the inverse: commit (the culprit), revert (the new commit), runner (who merged the culprit), failingTests
-    | "maintenance_quota_hold" // code-maintenance merges in the rolling 24 h window reached the allowance (plans/work-ratio.md, part 1b/4, src/gates/maintenance-quota.ts); the enabled maintenance loops start no new ticks until it re-opens; carries work, maint, allowance
-    | "maintenance_quota_resumed" // the rolling window re-opened below the allowance; the held maintenance loops tick again; carries work, maint, allowance
-    | "bootstrap_complete" // the bootstrap gate's plan target was reached (plans/work-ratio.md, part 2/2); the latch .tumwater/bootstrap-complete.json is written and the held maintenance loops are admitted; carries plansDone, untilPlansDone
-    | "quiet_hours_started" // the configured quietHours window began; role loops stop starting new ticks until it ends, director exempt (carries window)
-    | "quiet_hours_ended" // the configured quietHours window ended; role loops tick again (carries window)
+    | "maintenance_quota_hold" // code-maintenance merges in the rolling 24 h window reached the allowance (plans/work-ratio.md, part 1b/4, src/gates/maintenance-quota.ts); the enabled maintenance roles start no new ticks until it re-opens; carries work, maint, allowance
+    | "maintenance_quota_resumed" // the rolling window re-opened below the allowance; the held maintenance roles tick again; carries work, maint, allowance
+    | "bootstrap_complete" // the bootstrap gate's plan target was reached (plans/work-ratio.md, part 2/2); the latch .tumwater/bootstrap-complete.json is written and the held maintenance roles are admitted; carries plansDone, untilPlansDone
+    | "quiet_hours_started" // the configured quietHours window began; roles stop starting new ticks until it ends, director exempt (carries window)
+    | "quiet_hours_ended" // the configured quietHours window ended; roles tick again (carries window)
     | "disk_low" // free space on the worktrees volume dropped below diskHoldGB; no new work starts — role ticks, the director, verification and merges — until it climbs DISK_HOLD_HYSTERESIS_GB above (carries freeGB, holdGB)
     | "disk_ok" // the disk hold lifted: free space climbed back above diskHoldGB + the hysteresis band, or diskHoldGB was edited to 0; new work starts again (carries freeGB)
     | "disk_reclaim" // a reclaim pass deleted gitignored files from idle worktrees (plans/disk-floor.md, part 2/4); carries mode (pressure|idle|manual), the cleaned worktrees' basenames, the statfs delta freedGB, freeGB after the pass, and durationMs
     | "claim" // a work instance took (action assigned) or dropped (action released) its backlog entry; carries action, key, title and reason (src/scheduling/claims.ts)
-    | "permit_reserve" // the permits withheld from maintenance for work loops that have work to take changed (plans/parallel-work-instances.md part 7/7); carries reserve
+    | "permit_reserve" // the permits withheld from maintenance for work roles that have work to take changed (plans/parallel-work-instances.md part 7/7); carries reserve
     | "slot_wait" // a pooled worktree lease waited SLOT_WAIT_EVENT_MS or more for a free slot; carries role, purpose, waitedMs, slots and pinned — the signal to raise worktreeSlots (plans/worktree-pool.md, part 5/5)
     | "check_wait" // a scoped check (gate, merge, or batch) waited CHECK_WAIT_EVENT_MS or more for a process-wide check permit (build-check-events.ts's logCheckWaitEvent); carries source/role, scope and waitedMs — the signal to raise maxConcurrentChecks
     | "provider_wait" // a role tick's semaphore admission waited PROVIDER_WAIT_EVENT_MS or more for its provider/team slot; carries role, waitedMs, and key when the tick's authoring seam has one (orchestrator-launch.ts) — the signal to raise maxConcurrentPerProvider or maxConcurrent
-    | "rate_limit_hold" // several roles' runs ended on the same provider failure kind within a short window — 429s, or a connection/timeout/5xx/model-load backend failure (src/team/team-hold.ts); role loops on that provider — every role when the reviewer's is hit — start nothing new until it re-opens; carries kind, roles, holdMs, escalation, and provider when one is configured
+    | "rate_limit_hold" // several roles' runs ended on the same provider failure kind within a short window — 429s, or a connection/timeout/5xx/model-load backend failure (src/team/team-hold.ts); roles on that provider — every role when the reviewer's is hit — start nothing new until it re-opens; carries kind, roles, holdMs, escalation, and provider when one is configured
     | "rate_limit_resumed" // one provider's hold (429 or backend-failure kind) reached its deadline; roles on that provider tick again; carries the ended hold's kind, and provider when one is configured
     | "claude_window_reserved" // a subscription usage window reached its claudeWindowReserve fraction; carries windowType, utilization, reserve and resetsAt; once per window, the team stops using the subscription until it resets
     | "claude_window_warning" // the claude.ai subscription usage window first reported allowed_warning; carries the window type and its resetsAt when reported; once per window, observational (it gates nothing)
@@ -187,7 +187,7 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
   try {
     logEvent(root, event);
   } catch (err) {
-    // A terminal display boundary like cli-output's say()/fail(): the loop id, event type, and
+    // A terminal display boundary like cli-output's say()/fail(): the role id, event type, and
     // error text can carry model- or subprocess-supplied bytes, and stderr is a terminal. Strip
     // the control characters the same way so a fallback line cannot drive the operator's shell.
     const detail = `${event.source}: could not log ${event.type} event: ${errorMessage(err)}`;
@@ -196,7 +196,7 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
 }
 
 /** warnEvent's twin of logEventBestEffort: the "something is off but the loop continues"
- * warning must not be the thing that ends the loop it warns about. The fallback keeps the
+ * warning must not be the thing that ends the role it warns about. The fallback keeps the
  * warning's own text on stderr — when the feed is the failure, this line is the only place the
  * caller's message (a spawn failure, a rejected tick) survives to be read. The single home of
  * the try-warn → message-bearing-stderr-fallback shape, so the notify hook and the launch pass
@@ -206,7 +206,7 @@ export function warnEventBestEffort(root: string, source: string, message: strin
     warnEvent(root, source, message);
   } catch (err) {
     // The warning's own text is very often model-supplied (a stalled tool call's label, a tick's
-    // lastError) and the loop id can be a custom one, so this fallback is a terminal boundary:
+    // lastError) and the role id can be a custom one, so this fallback is a terminal boundary:
     // sanitize exactly as say()/fail() do before the line reaches the operator's terminal.
     const detail = `${source}: ${message} (warning log unwritable: ${errorMessage(err)})`;
     process.stderr.write(`tumwater: ${stripTerminalControls(detail)}\n`);
@@ -216,7 +216,7 @@ export function warnEventBestEffort(root: string, source: string, message: strin
 /** The `{ emit, warn }` pair for a caller on a catch-less path (the orchestrator's poll loop
  * and the live config reload it drives): both route through logEventBestEffort and
  * warnEventBestEffort, so the "an unwritable feed must not end the team" policy has one home
- * and the harness-loop warning shorthand cannot drift from warnEvent's event shape. */
+ * and the harness-level warning shorthand cannot drift from warnEvent's event shape. */
 export function bestEffortEventLogger(root: string): {
   emit: (event: HarnessEventInput) => void;
   warn: (message: string) => void;

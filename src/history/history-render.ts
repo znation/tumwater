@@ -17,7 +17,7 @@ import { tickRowCells, tickRowLine, type HistoryModelSummaryRow, type HistorySum
 type RowWidths = { [K in keyof TickRowCells]: number };
 
 /** Each column's width from its unpadded cell. Text cells measure terminal display columns
- * (displayWidth), not UTF-16 code units: a loop name holding CJK or emoji renders two columns
+ * (displayWidth), not UTF-16 code units: a role name holding CJK or emoji renders two columns
  * per code point, and a code-unit padEnd lets that row's later columns drift right of its
  * ASCII neighbors. The tick cell measures before its "#" prefix is added (the prefix rides
  * outside the pad), and duration is ASCII, so both take plain length. */
@@ -58,7 +58,7 @@ export function renderRow(row: TickRow, widths: RowWidths): string {
   return tickRowLine(row, (column, value) => padToWidth(value, widths[column]));
 }
 
-/** The `--summary` text: a header, one line per loop, then the total line. The loop column pads to
+/** The `--summary` text: a header, one line per role, then the total line. The role column pads to
  * display width; each number column right-aligns under its header; the `time` column is the sum of
  * each role's run spans, `—` when none of the role's rows carried a span; the last column,
  * `last change`, is the newest change's timestamp (`—` when none) and is left-aligned, unpadded. */
@@ -76,7 +76,7 @@ export function renderModelSummary(summary: { models: HistoryModelSummaryRow[]; 
 }
 
 function renderSummaryTable(header: string, all: { label: string; row: HistorySummaryRow | HistoryModelSummaryRow }[]): string {
-  const loopWidth = Math.max(...[header, ...all.map((r) => r.label)].map(displayWidth));
+  const roleWidth = Math.max(...[header, ...all.map((r) => r.label)].map(displayWidth));
   const cols = ["runs", "changes", "none", "refused", "problems", "tokens", "cost", "time"] as const;
   const cell = (r: HistorySummaryRow | HistoryModelSummaryRow, c: (typeof cols)[number]): string =>
     c === "tokens"
@@ -89,8 +89,8 @@ function renderSummaryTable(header: string, all: { label: string; row: HistorySu
             : humanSeconds(r.durationMs / 1000)
           : String(c === "runs" ? r.runs : r[c]);
   const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => cell(r.row, c).length)));
-  const line = (loop: string, cells: string[], lastChange: string): string =>
-    [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();
+  const line = (role: string, cells: string[], lastChange: string): string =>
+    [padToWidth(role, roleWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();
   return [
     line(header, [...cols], "last change"),
     ...all.map(({ label, row }) => line(label, cols.map((c) => cell(row, c)), row.lastChangeTs === null ? "—" : formatTimestamp(row.lastChangeTs))),

@@ -123,7 +123,7 @@ function hoursPhrase(ms: number): string {
  * and every free string is capped — cluster examples at 120 chars (plus a `… (+N
  * chars)` cut marker when truncated, so a marked cut can never read as a complete message —
  * BUGS.md 2026-09-30), merged summaries at 100 under the same rule, a cluster's role list at 4
- * names plus a remainder count, and any loop id sliced to 32 chars (config validation already
+ * names plus a remainder count, and any role id sliced to 32 chars (config validation already
  * refuses longer custom-loop ids, so the slice is a guard rather than the real bound). Cluster
  * counts are capped at top-N, and the Team state changes section is capped at STATE_CHANGE_TOP
  * lines with each payload at STATE_CHANGE_MAX and each free field at STATE_CHANGE_FIELD_MAX; the

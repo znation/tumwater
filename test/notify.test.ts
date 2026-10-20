@@ -121,7 +121,7 @@ test("a posted question spawns the notify command once with the posting role and
   }
 });
 
-test("a main_red_hold spawns the notify command once with the harness loop and the red-main line", async () => {
+test("a main_red_hold spawns the notify command once with the harness role and the red-main line", async () => {
   const root = tmpdir();
   const out = path.join(root, "notify-out.txt");
   const notifier = newNotifier(root);

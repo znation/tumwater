@@ -413,7 +413,7 @@ test("history --result fails with its own wording for a missing or unknown class
   assert.match(typo.stderr, /did you mean `merged`\?/);
 });
 
-test("history --summary tallies each loop's outcomes over the rows the table would print", async () => {
+test("history --summary tallies each role's outcomes over the rows the table would print", async () => {
   const repo = await seededHistoryRepo();
   const when = formatTimestamp(1787222695956);
   const text = await cli(repo, "history", "--summary");

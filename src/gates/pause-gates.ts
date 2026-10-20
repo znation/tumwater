@@ -37,7 +37,7 @@ export function newPauseGateState(): PauseGateState {
  * only NEW ticks are blocked, because the gate sits before isEligible.
  *
  * Per-role pause (`tumwater pause --role <id>`): the operator pause's narrower sibling — the
- * same persistent marker read fresh per cycle, but one named loop instead of the team. Unlike
+ * same persistent marker read fresh per cycle, but one named role instead of the team. Unlike
  * the team pause the director is NOT exempt: the operator named the role deliberately, and its
  * queued prompts simply wait in the inbox (the same effect the team pause has on the director).
  * In-flight ticks finish; only NEW ticks are blocked (the gate sits before isEligible). */

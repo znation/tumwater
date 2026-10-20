@@ -82,7 +82,7 @@ test("history prints one row per completed run, newest first", async () => {
   assert.match(lines[2]!, new RegExp(`${expectedTimestamp(1787222695956)}.*feature\\s+#7\\s+merged\\s+4s\\s+2400 tok · \\$0\\.02\\s+added a widget`));
 });
 
-test("history --role restricts rows to that loop, including user-defined ids", async () => {
+test("history --role restricts rows to that role, including user-defined ids", async () => {
   const repo = await seededHistoryRepo();
   const r = await cli(repo, "history", "--role", "feature");
   assert.equal(r.code, 0);
@@ -96,7 +96,7 @@ test("history --role restricts rows to that loop, including user-defined ids", a
 });
 
 test("history --role grows its scan window until it reaches the role's ticks", async () => {
-  // The dilution case: the first window (limit*2+50 events) fills with a busy sibling loop's
+  // The dilution case: the first window (limit*2+50 events) fills with a busy sibling role's
   // run_ends, so the filtered rows fall short while older qa ticks sit just past it. The
   // command must re-read with a larger window instead of printing fewer rows (or, at the
   // extreme, "no runs yet" for a role that had ticks).
@@ -136,7 +136,7 @@ test("history -n accepts 1..200 and fails zero, negative, non-numeric, and over-
   assert.match(one.stdout, /bugfix/);
 });
 
-test("history keeps the loop column aligned when a loop name holds a wide character", async () => {
+test("history keeps the role column aligned when a role name holds a wide character", async () => {
   // CJK/emoji render two terminal columns per code point but count as one UTF-16 code unit:
   // a width table built from `.length` and padded with padEnd leaves that row's later columns
   // shifted left against its ASCII neighbors.

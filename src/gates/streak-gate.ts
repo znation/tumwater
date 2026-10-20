@@ -2,7 +2,7 @@
  * consecutively is warned at ERROR_STREAK_WARN (src/tick/tick-apply.ts) and named by the team-wide
  * storm alarms (src/team/error-storm.ts, src/team/failure-spread.ts), but both only talk — the
  * role keeps ticking on the error ladder's 600 s max backoff forever, burning a model slot and
- * spend on a loop that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed ticks this gate
+ * spend on a role that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed ticks this gate
  * pauses the role through the same per-role pause marker the operator's `tumwater pause --role
  * <id>` writes (src/team/team-state.ts's pauseRole — the marker, lock, and idempotence come
  * free), so the scheduler's existing pausedRolesSet skip blocks new ticks with zero scheduler
@@ -27,20 +27,20 @@
  *
  * Accepted behavior, stated here and not fixed in this change: the dashboards' "failing tick after
  * tick" alert (src/ui/team-alerts.ts) reads consecutiveErrors regardless of pause, so it keeps
- * listing a breaker-paused role until the streak clears; the loop cell's paused badge explains why
+ * listing a breaker-paused role until the streak clears; the role cell's paused badge explains why
  * it is not ticking, and the role_streak_paused event tells the operator why. */
 
 import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
-import type { LoopState } from "../runner/runner-state.js";
-import { loopPaused } from "../roles/runner-ids.js";
+import type { RunnerState } from "../runner/runner-state.js";
+import { runnerPaused } from "../roles/runner-ids.js";
 import { pauseRole } from "../team/team-state.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 
 /** One runner's streak as the gate reads it — the same Pick pollErrorStorm uses
- * (src/team/team-polls.ts): LoopState.consecutiveErrors and lastError. */
+ * (src/team/team-polls.ts): RunnerState.consecutiveErrors and lastError. */
 interface StreakObservation {
   role: string;
-  state: Pick<LoopState, "consecutiveErrors" | "lastError">;
+  state: Pick<RunnerState, "consecutiveErrors" | "lastError">;
 }
 
 /** The gate's cross-poll memory: per role, the streak level already accounted for at its
@@ -60,7 +60,7 @@ export function newStreakGateState(): StreakGateState {
  * has reached ERROR_STREAK_BREAKER plus what its ack already excused, and whose role is not
  * in `pausedRoles`: write the per-role pause marker and log one `role_streak_paused` event
  * carrying the role, the streak, and the last error. Returns the pause keys this poll wrote
- * (`pauseKey` maps a loop id to its marker key; instance 1 of a multi-instance role pauses as
+ * (`pauseKey` maps a role id to its marker key; instance 1 of a multi-instance role pauses as
  * `<role>-1`), so the wiring can fold them into the poll's paused-roles view and the scheduler
  * blocks them on this very poll, not the next one.
  *
@@ -80,7 +80,7 @@ export function pollStreakGate(
     const streak = s.consecutiveErrors ?? 0;
     // Ack while paused: the marker is the ack carrier. The streak is frozen while a role is
     // paused (no ticks run), so recording it here is exactly the level the resume excuses.
-    if (loopPaused(pausedRoles, role)) {
+    if (runnerPaused(pausedRoles, role)) {
       state.acked.set(role, streak);
       continue;
     }

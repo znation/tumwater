@@ -254,9 +254,9 @@ export function subdirectoryNames(dir: string, keep?: (name: string) => boolean)
 /** Write `data` — UTF-8 text or raw bytes — to `file` via a tmp file + rename, so a concurrent
  * reader of the same path sees either the old (absent) or the new content, never a partial
  * write: the prompt-inbox queue files (inbox.ts's enqueueRolePrompt) are written by one process
- * while dashboards poll, `--list` reads, and the loops dequeue in others, and a read that races
+ * while dashboards poll, `--list` reads, and the roles dequeue in others, and a read that races
  * the write could run a tick on a truncated user request or flash one on the dashboard. The tmp
- * name carries the pid because several processes can write at once (CLI, TUI, GUI, a loop's
+ * name carries the pid because several processes can write at once (CLI, TUI, GUI, a role's
  * re-queue); on failure the tmp is removed and the error rethrown, leaving the target untouched.
  * The harness's JSON writer (writeJsonAtomic in src/files/json-files.ts) and the config write-back
  * (writeBytesAtomic's caller, merge-git.ts's restoreConfigBytes) write through this, so the

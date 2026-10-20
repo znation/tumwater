@@ -28,7 +28,7 @@ export const PREFILL_REASON = "it rides into every run's prefill";
  * when the list is empty or its first entry is not a string. One home so the fallback cannot
  * drift across the four surfaces that show just that first reason: the review gate's returned
  * detail (review.ts), the event feed's one-line reject (event-format.ts), the failure digest's
- * rejection clusters (failure-data.ts), and the error a loop's next tick records (tick-apply.ts).
+ * rejection clusters (failure-data.ts), and the error a role's next tick records (tick-apply.ts).
  * Sites that render the whole reason list, or intentionally omit the fallback (time-spend.ts's
  * first-reason example, review.ts's rejection event `reason`), keep their own handling. */
 export function firstReason(reasons: readonly unknown[] | undefined): string {
@@ -44,7 +44,7 @@ export function firstReason(reasons: readonly unknown[] | undefined): string {
  * the singular/plural wording their tests pin, once "N commit(s)" with the old literal, now "N
  * commits"/"1 commit"), and the stage self-check and dropped-attachment notes
  * (src/tick/tick-stage.ts, inbox/inbox-attachments.ts) all rendered inline before. `many` accepts a
- * whole replacement form (`plural(n, "loop is", "loops are")`) so verb-agreement titles share the
+ * whole replacement form (`plural(n, "role is", "roles are")`) so verb-agreement titles share the
  * helper; the plural-by-`s` default covers regular nouns. (The GUI keeps its own JS copy in
  * gui-client.ts: a separate runtime that cannot import TypeScript.) */
 export function plural(n: number, one: string, many = `${one}s`): string {
@@ -96,7 +96,7 @@ export function pauseReasonSuffix(reason: string | undefined): string {
   return reason ? ` — "${reason}"` : "";
 }
 
-/** The harness warning a loop crossing the error-streak threshold raises — `3 consecutive
+/** The harness warning a role crossing the error-streak threshold raises — `3 consecutive
  * tick failures: <reason>` — shared by the tick-side crossing (tick-finalize.ts, an error or
  * recovery failure) and the merge-side crossing a review rejection resolves
  * (merge-slot.ts), the two sites that build the message, so the operator-facing wording
@@ -105,7 +105,7 @@ export function consecutiveFailuresWarning(count: number, reason: string): strin
   return `${count} runs failed in a row: ${reason}`;
 }
 
-/** The base line for an operator team pause — `team paused — role loops stop starting new
+/** The base line for an operator team pause — `team paused — roles stop starting new
  * ticks` — built here so the event feed (event-format.ts, which appends its own `(director
  * keeps running)` consequence) and the failure digest's Team state changes lines
  * (src/failure/failure-state-change.ts, which keeps the short form) cannot drift on the base

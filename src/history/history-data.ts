@@ -55,9 +55,9 @@ export function historyClass(result: string): HistoryResultClass {
   return "problems";
 }
 
-/** One loop's tick tally by outcome class (the HISTORY_RESULT_CLASSES buckets); `ticks` is their
- * sum. `lastChangeTs` is the newest changes-class row's `ts`, or null when the loop had none among
- * the rows. The `total` line of a summary uses the loop name "total". */
+/** One role's tick tally by outcome class (the HISTORY_RESULT_CLASSES buckets); `ticks` is their
+ * sum. `lastChangeTs` is the newest changes-class row's `ts`, or null when the role had none among
+ * the rows. The `total` line of a summary uses the role name "total". */
 export interface HistorySummaryRow {
   role: string;
   runs: number;
@@ -70,7 +70,7 @@ export interface HistorySummaryRow {
   /** The sum of the summarized rows' `durationMs` (ms of agent wall-clock those runs consumed).
    * Optional and zero-absent, like the report's summable fields: the key appears only when at
    * least one contributing row carried a timed span, so an untimed window keeps today's exact
-   * JSON shape. Absent for a loop whose rows all carried a null span (their starts sat outside
+   * JSON shape. Absent for a role whose rows all carried a null span (their starts sat outside
    * the scanned window). */
   durationMs?: number;
   lastChangeTs: number | null;
@@ -101,8 +101,8 @@ function tallyRows(rows: TickRow[], keyOf: (row: TickRow) => string): { groups: 
   return { groups, total };
 }
 
-/** Tally rows per loop by historyClass, each row counted once. Loops come back in plain string
- * order (not localeCompare) so the order is deterministic; `total` sums every loop. Pure. */
+/** Tally rows per role by historyClass, each row counted once. Roles come back in plain string
+ * order (not localeCompare) so the order is deterministic; `total` sums every role. Pure. */
 export function summarizeTickRows(rows: TickRow[]): { roles: HistorySummaryRow[]; total: HistorySummaryRow } {
   const { groups, total } = tallyRows(rows, (r) => r.role);
   return { roles: groups, total };
@@ -275,7 +275,7 @@ export function tickRowsOnModels(rows: TickRow[], models: string[]): TickRow[] {
   return rows.filter((r) => r.model !== null && models.includes(r.model));
 }
 
-/** The merge bookkeeping resolveQueuedResult joins over: per loop, the `merge_queued` pins
+/** The merge bookkeeping resolveQueuedResult joins over: per role, the `merge_queued` pins
  * and the `merge_done`/`merge_failed` outcomes, each list oldest-first (the scan order). Exported
  * as one helper with exactly three call sites — readTickRows' history-row join, the failure
  * digest's time-and-spend fold (time-spend.ts), and tick-detail-data.ts — so the collectors
@@ -286,24 +286,24 @@ export function tickRowsOnModels(rows: TickRow[], models: string[]): TickRow[] {
  * Roles or cutoffs are the caller's concern: pass a role-scoped or wider-read event list and
  * the maps carry exactly that list's evidence. */
 export function bucketMergeEvents(events: HarnessEvent[]): {
-  mergeQueuedByLoop: Map<string, HarnessEvent[]>;
-  outcomeByLoop: Map<string, HarnessEvent[]>;
+  mergeQueuedByRunner: Map<string, HarnessEvent[]>;
+  outcomeByRunner: Map<string, HarnessEvent[]>;
 } {
-  const mergeQueuedByLoop = groupBy(
+  const mergeQueuedByRunner = groupBy(
     events.filter((e) => e.type === "merge_queued"),
     (e) => e.source,
   );
-  const outcomeByLoop = groupBy(
+  const outcomeByRunner = groupBy(
     events.filter((e) => e.type === "merge_done" || e.type === "merge_failed"), 
     (e) => e.source,
   );
-  return { mergeQueuedByLoop, outcomeByLoop };
+  return { mergeQueuedByRunner, outcomeByRunner };
 }
 
 /** Resolve one queued tick row's eventual merge verdict: a "queued" run_end carries no
  * result until its merge batch merges or fails, so the row joins its `end` run_end to the
  * tick's merge_queued pin and that pin's merge_done/merge_failed outcome (both from the
- * bucketMergeEvents maps, oldest-first per loop). The claim cursor `claimTop` (mutated in
+ * bucketMergeEvents maps, oldest-first per role). The claim cursor `claimTop` (mutated in
  * place) walks the pin list newest-first and hands each queued tick the newest unclaimed pin
  * at or before its end, so several queued ticks cannot claim one pin.
  *
@@ -333,7 +333,7 @@ export function bucketMergeEvents(events: HarnessEvent[]): {
  * left the commit unpinned or the merge unfinished, or that attempt sits outside the read) is
  * the change's first visible attempt, so its row takes the authoring rule.
  *
- * `joinStarts` maps loop#tick to its run_start's ts; when `floorTs` (a since-window's cutoff,
+ * `joinStarts` maps role#tick to its run_start's ts; when `floorTs` (a since-window's cutoff,
  * null in the count view) sits after that start, the row's join evidence is not whole in the
  * windowed read and the row keeps its raw "queued" label (null). A MISSING start needs no
  * guard — it joins, because rotation drops a prefix, so every pin older than the lost start is
@@ -344,8 +344,8 @@ export function bucketMergeEvents(events: HarnessEvent[]): {
  * to keep the raw label. Pure apart from the cursor it owns. */
 export function resolveQueuedResult(
   end: HarnessEvent,
-  mergeQueuedByLoop: Map<string, HarnessEvent[]>,
-  outcomeByLoop: Map<string, HarnessEvent[]>,
+  mergeQueuedByRunner: Map<string, HarnessEvent[]>,
+  outcomeByRunner: Map<string, HarnessEvent[]>,
   claimTop: Map<string, number>,
   joinStarts: Map<string, number>,
   floorTs: number | null,
@@ -354,13 +354,13 @@ export function resolveQueuedResult(
     const startTs = joinStarts.get(`${end.source}#${end.run}`);
     if (startTs !== undefined && startTs < floorTs) return null;
   }
-  const queuedList = mergeQueuedByLoop.get(end.source);
+  const queuedList = mergeQueuedByRunner.get(end.source);
   if (!queuedList || queuedList.length === 0) return null;
   let top = claimTop.get(end.source) ?? queuedList.length - 1;
   while (top >= 0 && queuedList[top]!.ts > end.ts) top--;
   if (top < 0) return null;
   claimTop.set(end.source, top - 1);
-  const outcomes = outcomeByLoop.get(end.source) ?? [];
+  const outcomes = outcomeByRunner.get(end.source) ?? [];
   // A recovery run's row: the attempt it re-enqueued, not the change's final verdict, so the
   // final verdict shows once (on the authoring row) and each retriable failure once (here).
   const recovered = recoveredAttemptVerdict(queuedList, top, outcomes);
@@ -464,7 +464,7 @@ export function tickRows(
   // and the digest's fold cannot drift into different notions of a tick's span.
   const starts = tickStartMap(scoped);
   const models = tickStartModelMap(scoped);
-  // The merge bookkeeping resolveQueuedResult joins over: per loop, the merge_queued pins
+  // The merge bookkeeping resolveQueuedResult joins over: per role, the merge_queued pins
   // (oldest first) and the merge_done/merge_failed outcomes (oldest first). Both ride the role
   // filter with their tick, so the scoped events hold them exactly when they hold the row.
   // A since-shaped scan hands a WIDER join read instead (readTickRowsSince): its cutoff cut
@@ -478,7 +478,7 @@ export function tickRows(
   const joinStarts = join ? tickStartMap(joinScoped) : starts;
   const joinModels = join ? tickStartModelMap(joinScoped) : models;
   const floorTs = join ? join.floorTs : null;
-  const { mergeQueuedByLoop, outcomeByLoop } = bucketMergeEvents(joinScoped);
+  const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(joinScoped);
   const claimTop = new Map<string, number>();
   const rows: TickRow[] = [];
   for (let i = scoped.length - 1; i >= 0 && rows.length < limit; i--) {
@@ -487,7 +487,7 @@ export function tickRows(
     const rawResult = outcomeText(e);
     const result =
       rawResult === "queued"
-        ? (resolveQueuedResult(e, mergeQueuedByLoop, outcomeByLoop, claimTop, joinStarts, floorTs)
+        ? (resolveQueuedResult(e, mergeQueuedByRunner, outcomeByRunner, claimTop, joinStarts, floorTs)
             ?.result ?? rawResult)
         : rawResult;
     const usage = eventUsage(e);
@@ -515,7 +515,7 @@ export function tickRows(
  * that may sit outside any smaller window. Two shortfalls grow the window (and re-read) while
  * the scan filled it — `events.length >= window` means the log may hold older events — under
  * the same HISTORY_SCAN_MAX_EVENTS bound so one ask cannot scan without end:
- * - Rows fall short. A role filter dilutes the window (every other loop's events occupy it
+ * - Rows fall short. A role filter dilutes the window (every other role's events occupy it
  *   too), so a quiet role in a busy team must still get its last `limit` ticks whenever the
  *   retained log holds them — never a bare "no ticks yet" for a role whose ticks sit just
  *   past the first window.

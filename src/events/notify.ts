@@ -27,13 +27,13 @@ import { childEnv } from "../process/process.js";
 export const NOTIFY_EVENT_TYPES = [
   "budget_warning", // daily spend crossed 80% of the cap, gate still open — time to raise it or fix the fallback before the page below
   "role_cap_warning", // one role's own daily spend crossed 80% of its cap, still ticking — time to raise it before the page below
-  "budget_paused", // spend cap hit with no usable free fallback — role loops are stopped
+  "budget_paused", // spend cap hit with no usable free fallback — roles are stopped
   "claude_window_warning", // the claude.ai subscription window first reported allowed_warning — subscription claude seams still tick; the heads-up before the hold below
   "claude_window_limited", // a rejected subscription window holds every subscription claude seam until it resets — the subscription team's binding stop
   "role_streak_paused", // the error-streak circuit breaker auto-paused a role
   "role_cap_paused", // the role's own daily cost cap is reached — it stops starting ticks
   "disk_low", // free space on the worktrees volume dropped below diskHoldGB — new work is held
-  "main_red_hold", // main's own check is red — every code loop is held until a fix lands
+  "main_red_hold", // main's own check is red — every code role is held until a fix lands
   "merge_failed", // the merge slot finished without merging a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the team is stuck behind it
   "question_posted", // a merge posted a new QUESTIONS.md ## Open entry — only a human can answer it

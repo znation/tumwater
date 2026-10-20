@@ -34,14 +34,14 @@ import { commitTier } from "../roles/roles.js";
 export interface UsageFold {
   runs?: number;
   runsByRole: Record<string, number>;
-  /** review_rejected events per loop id — the review gate's turn-backs, split by role so a
-   * loop whose every change draws a new objection is visible alongside its ticks/cost. */
+  /** review_rejected events per role id — the review gate's turn-backs, split by role so a
+   * role whose every change draws a new objection is visible alongside its ticks/cost. */
   rejectionsByRole: Record<string, number>;
-  /** revision events per loop id — the rework rounds a rejected change is re-applied through,
-   * split by role so a loop whose every iteration is a fresh rework is visible (the author-side
+  /** revision events per role id — the rework rounds a rejected change is re-applied through,
+   * split by role so a role whose every iteration is a fresh rework is visible (the author-side
    * share of the rejection, where the reviewer's objection cost is the merge slot's). */
   revisionsByRole: Record<string, number>;
-  /** run_end events per loop id whose result is `refused` — ticks that deliberately declined
+  /** run_end events per role id whose result is `refused` — ticks that deliberately declined
    * their entry and merged nothing. The one deliberate per-role outcome the report used to
    * leave out, counted on the same already-computed role as the other usage lines, a parallel
    * tally never subtracted from runsByRole. `refused` is not error-class, so this is an
@@ -68,10 +68,10 @@ export interface UsageFold {
    * ticks that burned agent time and merged nothing without going through review. Split by role,
    * a parallel tally to runsByRole (never subtracted from it). */
   failedRunsByRole: Record<string, number>;
-  /** model_fallback_started events per loop id, so a role whose primary keeps failing is
+  /** model_fallback_started events per role id, so a role whose primary keeps failing is
    * visible beside its runs and cost. */
   fallbacksByRole: Record<string, number>;
-  /** image_reroute events per loop id, so a role whose model keeps being handed images it
+  /** image_reroute events per role id, so a role whose model keeps being handed images it
    * can't read is visible beside its runs and cost. */
   imageReroutesByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
@@ -188,11 +188,11 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // line names the expensive seam.
     foldProviderCost(target, ev.providerCost);
   } else if (ev.type === "review_rejected") {
-    // One rejection per event, on the day it happened, per loop. Zero-means-absent: a role
+    // One rejection per event, on the day it happened, per role. Zero-means-absent: a role
     // that never rejected stays absent, like costByRole.
     addTo(target.rejectionsByRole, eventRole(ev), 1);
   } else if (ev.type === "revision") {
-    // One rework round per event, on the day it happened, per loop. Zero-means-absent: a role
+    // One rework round per event, on the day it happened, per role. Zero-means-absent: a role
     // that never reworked a rejected change stays absent, like rejectionsByRole.
     addTo(target.revisionsByRole, eventRole(ev), 1);
   } else if (isPassingFullCheck(ev)) {
@@ -248,7 +248,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   } else if (ev.type === "merge_done" || ev.type === "merge_failed") { 
     target.mergeRuns = (target.mergeRuns ?? 0) + 1;
     if (ev.type === "merge_failed") target.mergeFailed = (target.mergeFailed ?? 0) + 1;
-    // Attribute the outcome to the authoring role (writeMergeOutcome logs loop: entry.role)
+    // Attribute the outcome to the authoring role (writeMergeOutcome logs role: entry.role)
     // folded to base role, the same normalization the merged branch uses, so `feature-2`
     // aggregates into `feature`. A parallel tally beside the team run counts, never
     // subtracted from mergeRuns/mergeFailed.
@@ -397,9 +397,9 @@ export function scopeBases(role: string | readonly string[] | undefined): string
   return out;
 }
 
-/** Sum a per-loop-id count/cost map over the scoped base roles: instance keys (`feature-2`)
+/** Sum a per-role-id count/cost map over the scoped base roles: instance keys (`feature-2`)
  * fold into their base (`feature`), so a scoped report aggregates a whole role group exactly
- * as the per-role cap's group does. Ticks/tokens/cost are keyed by exact loop id while commits are
+ * as the per-role cap's group does. Ticks/tokens/cost are keyed by exact role id while commits are
  * already base-role keyed; running every key through `baseRoleOf` reads both shapes the same
  * and returns 0 when nothing matches. */
 export function roleSum(record: Record<string, number>, bases: string | readonly string[]): number {
@@ -411,7 +411,7 @@ export function roleSum(record: Record<string, number>, bases: string | readonly
   return sum;
 }
 
-/** Narrow a per-loop-id count/cost map to the scoped base roles, one entry per base keyed by
+/** Narrow a per-role-id count/cost map to the scoped base roles, one entry per base keyed by
  * that base; a role absent from the map (no ticks, or no nonzero cost) yields no entry, never
  * a zero one — the same zero-means-absent rule the team render applies. Used by the
  * role-scoped collectors so a scoped series derives from the fold's per-role maps without
@@ -428,7 +428,7 @@ export function narrowToRole(
   return out;
 }
 
-/** A per-loop map scoped to the base roles of a report: the full map as-is when no scope is
+/** A per-role map scoped to the base roles of a report: the full map as-is when no scope is
  * set (a team report), else the same map narrowed to `bases` — narrowToRole's zero-means-absent
  * rule, so a scoped report never invents a zero entry. The one home of the "keep everything,
  * or keep only the named base role" rule: the 13 per-role/pair fields of the `--since` report's

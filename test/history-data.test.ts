@@ -58,7 +58,7 @@ test("tickRowGrepHaystack is the canonical unpadded row line, run_end-prefixed",
   assert.equal(tickRowGrepHaystack(unpaired), "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  — feature changed");
 });
 
-test("a corrupt event's loop renders as ? like the reports", () => {
+test("a corrupt event's role renders as ? like the reports", () => {
   // eventRole's "?" rule (the usage report and failure digest already apply it); the row
   // used to carry String(undefined)'s literal "undefined", which the history table and the
   // GUI's /api/history rows printed.
@@ -78,7 +78,7 @@ test("a corrupt event's tick reads as 0, never NaN", () => {
 test("a corrupt run_end outcome renders as ?, never undefined", () => {
   // The result cell used String(e.result) raw: a torn or hand-edited run_end rendered the
   // literal "undefined" in the history table and /api/history rows. It now rides the shared
-  // outcomeText, matching the loop's and tick's corrupt-field rule.
+  // outcomeText, matching the role's and tick's corrupt-field rule.
   for (const result of [undefined, 7, null] as const) {
     const rows = tickRows([endEvent({ result } as never)], 10, null);
     assert.equal(rows[0]!.result, "?");
@@ -190,7 +190,7 @@ test("tickRows returns the newest limit rows, newest first, and filters by role"
   const all = tickRows(events, 20, null);
   assert.equal(all[1]!.detail, "boom");
   assert.equal(all[0]!.detail, "");
-  // --role narrows to one loop, ends and starts alike: the clean tick vanishes, and feature's
+  // --role narrows to one role, ends and starts alike: the clean tick vanishes, and feature's
   // durations still pair.
   const scoped = tickRows(events, 20, "clean");
   assert.deepEqual(scoped.map((r) => [r.role, r.run]), [["clean", 1]]);
@@ -296,7 +296,7 @@ test("a run_end with a corrupt ts renders the em dash time, never NaN", () => {
   );
 });
 
-test("--role narrows the window to one loop", () => {
+test("--role narrows the window to one role", () => {
   const root = tmpdir();
   // One clock read (see the span test above): the durationMs assertion at the bottom is
   // exact arithmetic on this base, not a difference of two independent Date.now() calls.
@@ -487,7 +487,7 @@ test("a recovery pin after a change that ended is a fresh change's first attempt
 test("a retriable verdict is not swept up by the next FRESH change's merge (BUGS.md 2026-10-10)", () => {
   const root = tmpdir();
   const t = (mins: number) => Date.now() - mins * MIN;
-  // A retriable failure keeps the pin, but the same loop can queue a fresh change before the
+  // A retriable failure keeps the pin, but the same role can queue a fresh change before the
   // recovery re-enqueue lands (e.g. a conflict-cap discard starts new work). The walk must stop
   // at that fresh, non-recovery pin and keep the retriable verdict — never crediting the fresh
   // change's later merge to the authoring tick.
@@ -582,7 +582,7 @@ test("a queued tick whose merge is still in the pipeline keeps the raw label", (
 test("a queued tick stays raw when no merge outcome matches its pinned sha", () => {
   const root = tmpdir();
   // The only merge outcome in the log resolved a DIFFERENT change (an older retry's sha):
-  // joining by loop alone would steal it, so the sha must match and the unmatched row keeps
+  // joining by role alone would steal it, so the sha must match and the unmatched row keeps
   // the raw label (its verdict is genuinely not in the log — still in the pipeline).
   writeEvents(root, [
     { ts: Date.now() - 40 * MIN, source: "feature", type: "merge_done", commit: "sha0", result: "changed" },
@@ -596,7 +596,7 @@ test("a queued tick stays raw when no merge outcome matches its pinned sha", () 
   );
 });
 
-test("the resolution survives the --role filter and never crosses loops", () => {
+test("the resolution survives the --role filter and never crosses roles", () => {
   const root = tmpdir();
   writeEvents(root, [
     { ts: Date.now() - 30 * MIN, source: "feature", type: "merge_queued", commit: "shaF", summary: "feature work" },
@@ -614,7 +614,7 @@ test("the resolution survives the --role filter and never crosses loops", () => 
       ["feature", 1, "changed"],
     ],
   );
-  // The role-filtered scope carries each loop's own merge events, so the join holds there too.
+  // The role-filtered scope carries each role's own merge events, so the join holds there too.
   const clean = readTickRowsSince(root, TWO_HOURS, "clean");
   assert.deepEqual(clean.rows.map((r) => [r.role, r.result]), [["clean", "rejected"]]);
 });
@@ -638,7 +638,7 @@ test("covered is false while the log starts inside the window, true once an even
   assert.equal(readTickRowsSince(spanning, TWO_HOURS, null).covered, true);
 });
 
-test("summarizeTickRows tallies each loop's outcome classes in name order with a total", () => {
+test("summarizeTickRows tallies each role's outcome classes in name order with a total", () => {
   const row = (role: string, result: string, ts = 0): TickRow => ({
     ts, time: "", role, run: 1, result, model: null, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
@@ -661,7 +661,7 @@ test("summarizeTickRows tallies each loop's outcome classes in name order with a
   assert.equal(newest.roles[0]?.lastChangeTs, 9);
 });
 
-test("summarizeTickRows sums tokens and cost per loop and into the total", () => {
+test("summarizeTickRows sums tokens and cost per role and into the total", () => {
   const row = (role: string, tokens: number, costUsd: number): TickRow => ({
     ts: 0, time: "", role, run: 1, result: "changed", model: null, durationMs: null, tokens, costUsd, usage: "", detail: "",
   });
@@ -678,7 +678,7 @@ test("summarizeTickRows sums tokens and cost per loop and into the total", () =>
   assert.deepEqual(summary.total, { role: "total", runs: 4, changes: 4, none: 0, refused: 0, problems: 0, tokens: 15200, costUsd: 1.52, lastChangeTs: 0 });
 });
 
-test("summarizeTickRows sums each loop's run time into the total, skipping null spans", () => {
+test("summarizeTickRows sums each role's run time into the total, skipping null spans", () => {
   const row = (role: string, durationMs: number | null): TickRow => ({
     ts: 0, time: "", role, run: 1, result: "changed", model: null, durationMs, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
@@ -705,7 +705,7 @@ test("summarizeTickRows leaves durationMs absent when every row's span is null",
   assert.equal("durationMs" in summarizeTickRows([]).total, false);
 });
 
-test("renderSummary shows tokens, cost and time columns in order, with a dash for an untimed loop", () => {
+test("renderSummary shows tokens, cost and time columns in order, with a dash for an untimed role", () => {
   const row = (role: string, durationMs?: number): HistorySummaryRow => ({
     role, runs: 1, changes: 1, none: 0, refused: 0, problems: 0, tokens: 14000, costUsd: 0.5, durationMs, lastChangeTs: null,
   });
@@ -715,8 +715,8 @@ test("renderSummary shows tokens, cost and time columns in order, with a dash fo
   });
   const lines = out.split("\n");
   assert.match(lines[0]!, /tokens\s+cost\s+time/);
-  assert.match(lines[1]!, /\b1h\b/); // the timed loop's run time via humanSeconds
-  assert.match(lines[2]!, /—/); // the untimed loop shows a dash
+  assert.match(lines[1]!, /\b1h\b/); // the timed role's run time via humanSeconds
+  assert.match(lines[2]!, /—/); // the untimed role shows a dash
   assert.match(lines[3]!, /\b1h\b/); // the total, the one timed span summed
 });
 

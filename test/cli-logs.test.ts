@@ -183,13 +183,13 @@ test("logs --role validates the role id and reports a missing transcript", async
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
 
-  // A valid id whose loop never ran: friendly message, exit 0.
+  // A valid id whose role never ran: friendly message, exit 0.
   r = await cli(repo, "logs", "--role", "clean");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /no transcript yet for clean/);
 });
 
-// User-defined loops are valid --role targets for logs/reset-counters/abort once tumwater.json
+// User-defined roles are valid --role targets for logs/reset-counters/abort once tumwater.json
 
 test("logs --role prints the rendered pi transcript and -n limits entries", async () => {
   const repo = makeRepo();
@@ -277,7 +277,7 @@ test("logs --role --prompt shows each run's exact prompt and -n limits to the ne
 });
 
 test("logs --role still reads a transcript when tumwater.json is broken", async () => {
-  // The read-only transcript view needs the config only to accept user-defined loop ids, so a
+  // The read-only transcript view needs the config only to accept user-defined role ids, so a
   // torn/mid-edit tumwater.json must not take it down: it falls back to the built-in catalog,
   // the same policy the GUI's transcript handler applies. Before that fallback, loadConfig threw
   // and the whole command exited 1 with the config error.

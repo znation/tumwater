@@ -12,7 +12,7 @@ import {
   applyTickOutcome,
   ERROR_STREAK_BREAKER,
 } from "../src/tick/tick-apply.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { pauseRole, resumeRole, pausedRoles } from "../src/team/team-state.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -150,7 +150,7 @@ test("pollStreakGate: a rejection-fed streak trips the breaker through the real 
   // a hand-set streak, so the gate cannot pass while the accumulation point leaks.
   const root = tmpdir("streak-gate-reject-");
   const cfg = defaultConfig();
-  const s = freshLoopState("coverage");
+  const s = freshRunnerState("coverage");
   const change = { sha: "a".repeat(40), summary: "address the objections" };
   for (let i = 1; i < ERROR_STREAK_BREAKER; i++) {
     applyTickOutcome(s, cfg, "coverage", { result: "queued", commit: change.sha });
@@ -195,7 +195,7 @@ test("pollStreakGate: instance 1 of a multi-instance role pauses under its own k
 test("applyMergeOutcome clears mergeFlakeExcused when the change merges or is rejected, keeps it when blocked", () => {
   const change = { sha: "b".repeat(40), summary: "keep the flake excuse per pin" };
   for (const [result, kept] of [["changed", false], ["rejected", false], ["merge_blocked", true]] as const) {
-    const s = freshLoopState("coverage");
+    const s = freshRunnerState("coverage");
     s.mergeFlakeExcused = "the flaky test";
     applyMergeOutcome(s, result, change);
     assert.equal(s.mergeFlakeExcused !== undefined, kept, `${result}: excuse ${kept ? "kept" : "cleared"}`);

@@ -1,7 +1,7 @@
 // vocabulary: plain
 /** New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"; part 2/2): a fresh
  * project seeds `bootstrap.untilPlansDone` in tumwater.json (part 1/2), and this gate holds
- * every maintenance loop until that many plans have moved to PLANS.md's `## Done`. Only plan,
+ * every maintenance role until that many plans have moved to PLANS.md's `## Done`. Only plan,
  * feature and director tick — plus bugfix while BUGS.md `## Open` is non-empty, since its
  * latent-bug search is maintenance. The hold gives a young project a steady stream of plans and
  * code before hygiene roles start churning.
@@ -74,7 +74,7 @@ export function newBootstrapGateState(): BootstrapGateState {
   return { active: false };
 }
 
-/** Step the gate by one orchestrator poll. Returns the loop ids held by bootstrap as of THIS
+/** Step the gate by one orchestrator poll. Returns the role ids held by bootstrap as of THIS
  * poll, for the scheduler's `bootstrapHeld` view. When the target has been reached, writes the
  * latch and logs `bootstrap_complete` once (the now-present latch suppresses later logs, and
  * survives an orchestrator restart that resets `state`). An unwritable repo does not abort the

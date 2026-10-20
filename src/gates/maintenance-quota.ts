@@ -2,7 +2,7 @@
  * setting, and the gate behind the maintenance allowance — code-maintenance merges in a rolling
  * 24 h window are capped at `maintenancePerWorkMerge × work merges + MAINTENANCE_DAILY_FLOOR`, and
  * `pollMaintenanceQuotaGate` puts that verdict in front of the scheduler so the enabled maintenance
- * loops stop starting new ticks past it.
+ * roles stop starting new ticks past it.
  *
  * The window counts `merged` events by `commitTier` (src/roles/roles.ts): feature/bugfix/director
  * are the work count, the code-maintenance roles plus readme the maintenance count, and every other
@@ -37,9 +37,9 @@ export const MAINTENANCE_DAILY_FLOOR = 12;
 const MAINTENANCE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** The allowance verdict for one poll. `allowance` is what the window permits, `used` is the merged
- * maintenance count plus the maintenance loops in flight, and `held` is true while used has reached
+ * maintenance count plus the maintenance roles in flight, and `held` is true while used has reached
  * the allowance. Additive over the counts, so six concurrent permits cannot push `used` past the
- * line without the caller counting the in-flight loops (pollMaintenanceQuotaGate). */
+ * line without the caller counting the in-flight roles (pollMaintenanceQuotaGate). */
 export interface MaintenanceQuotaVerdict {
   allowance: number;
   used: number;
@@ -133,7 +133,7 @@ function seed(
   counter.ino = stat?.ino ?? 0;
 }
 
-/** One enabled loop as the quota gate reads it: whether a maintenance-tier tick is in flight
+/** One enabled role as the quota gate reads it: whether a maintenance-tier tick is in flight
  * (running a tick or holding a queued merge). Only the two in-flight facts matter; the tier is
  * derived from the role here, so the caller passes every runner unchanged. */
 interface MaintenanceQuotaObservation {
@@ -157,13 +157,13 @@ export function newMaintenanceQuotaGateState(): MaintenanceQuotaGateState {
   return { counter: newMaintenanceWindowCounter(), prevHeld: false };
 }
 
-/** Step the gate by one orchestrator poll: count the rolling window, add the maintenance loops in
+/** Step the gate by one orchestrator poll: count the rolling window, add the maintenance roles in
  * flight, and put 1a's verdict in front of the scheduler. Returns the verdict — `allowance`, `used`
- * (merged maintenance plus the loops already in flight), and `held` (`used >= allowance`) — for the
+ * (merged maintenance plus the roles already in flight), and `held` (`used >= allowance`) — for the
  * scheduling pass's per-poll admission: it spends the remaining `allowance - used` headroom one due
- * maintenance loop at a time, so two due loops cannot start in the same poll. Logs exactly one
+ * maintenance role at a time, so two due roles cannot start in the same poll. Logs exactly one
  * team-level `maintenance_quota_hold` when the gate goes from open to held and one
- * `maintenance_quota_resumed` when it re-opens — never one per loop. The director is never
+ * `maintenance_quota_resumed` when it re-opens — never one per role. The director is never
  * maintenance-tier, so no exemption is needed. */
 export function pollMaintenanceQuotaGate(
   root: string,

@@ -83,7 +83,7 @@ export function unwritableEvents(root: string): void {
  * (every run, every other run, one stale marker) is a predicate, not a hand-rolled loop.
  * Callers that need a shape past the standard turns (a pending separator, a truncated orphan
  * tail, per-run noise) append extra lines with fs.appendFileSync instead of hand-rolling the
- * whole loop, and turn-count variants pass a different `turns`. */
+ * whole role, and turn-count variants pass a different `turns`. */
 export function writeTurnLog(
   turns: number,
   opts: { reviewMarkerAt?: (turn: number) => boolean } = {},

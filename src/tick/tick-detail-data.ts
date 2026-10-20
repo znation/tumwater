@@ -129,8 +129,8 @@ function detailFrom(
   if (end !== null && result === "queued") {
     // A fresh claim cursor suits one tick: the walk starts at the newest pin at or before this
     // tick's end, which is its own pin, since later ticks' pins sit after it.
-    const { mergeQueuedByLoop, outcomeByLoop } = bucketMergeEvents(scoped);
-    const resolved = resolveQueuedResult(end, mergeQueuedByLoop, outcomeByLoop, new Map(), tickStartMap(scoped), null);
+    const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(scoped);
+    const resolved = resolveQueuedResult(end, mergeQueuedByRunner, outcomeByRunner, new Map(), tickStartMap(scoped), null);
     if (resolved !== null) {
       result = resolved.result;
       merge = resolved.outcome;

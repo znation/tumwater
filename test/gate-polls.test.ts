@@ -11,8 +11,8 @@ import path from "node:path";
 
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import { LoopRunner } from "../src/runner/runner.js";
-import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
+import { RoleRunner } from "../src/runner/runner.js";
+import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { newTeamGateStates, pollTeamGates } from "../src/gates/gate-polls.js";
 import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 import { heldProviders } from "../src/team/team-hold.js";
@@ -20,7 +20,7 @@ import type { ModelFallbackState } from "../src/runner/model-fallback.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { spentLoopState } from "./fixtures/runner-fixtures.js";
+import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fakes/fake-pi.js";
@@ -33,7 +33,7 @@ import type { OrchestratorInfo } from "../src/team/orchestrator-info.js";
 test("pollTeamGates: a breaker trip logs role_streak_paused once — no duplicate role_paused on the next poll", () => {
   const root = tmpdir("gate-polls-");
   const config = defaultConfig();
-  const runner = new LoopRunner(root, "docs", config, "main");
+  const runner = new RoleRunner(root, "docs", config, "main");
   runner.state.consecutiveErrors = 10;
   runner.state.lastError = "boom";
 
@@ -77,11 +77,11 @@ test("pollTeamGates: a breaker trip logs role_streak_paused once — no duplicat
  * resumable abort the orchestrator's runners perform. */
 function fakeRunner(
   role: string,
-  state: LoopState,
+  state: RunnerState,
   tickPair: { provider?: string; model?: string } | null,
   handbacks: string[],
   provider = "paid",
-): LoopRunner {
+): RoleRunner {
   const runner = {
     role,
     state,
@@ -91,7 +91,7 @@ function fakeRunner(
       handbacks.push(role);
     },
   };
-  return runner as unknown as LoopRunner;
+  return runner as unknown as RoleRunner;
 }
 
 test("pollTeamGates: a budget reopen hands in-flight fallback ticks back to the primary", () => {
@@ -99,11 +99,11 @@ test("pollTeamGates: a budget reopen hands in-flight fallback ticks back to the 
   const modelsPath = writeModelsFile(root, MODELS_JSON);
 
   const handbacks: string[] = [];
-  const featureState = spentLoopState("feature", 10);
+  const featureState = spentRunnerState("feature", 10);
   featureState.running = true;
-  const docsState = spentLoopState("docs", 5);
+  const docsState = spentRunnerState("docs", 5);
   docsState.running = true;
-  const directorState = freshLoopState(DIRECTOR_ROLE);
+  const directorState = freshRunnerState(DIRECTOR_ROLE);
   directorState.running = true;
   const runners = [
     // In flight on the fallback pair: exactly the tick a reopen hands back.
@@ -126,7 +126,7 @@ test("pollTeamGates: a budget reopen hands in-flight fallback ticks back to the 
     info: { pid: process.pid, startedAt: 0, roles: ["feature", "docs", DIRECTOR_ROLE] },
   };
 
-  // Poll 1: the cap is reached — the fallback engages, role loops are assigned the
+  // Poll 1: the cap is reached — the fallback engages, roles are assigned the
   // derived free-pair view, the director keeps the live (paid) config, and no tick is
   // disturbed while the gate holds.
   const engaged = pollTeamGates(states, ctx);
@@ -166,9 +166,9 @@ test("pollTeamGates: a used-up claude window moves claude roles to the fallback 
     windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
   });
   const handbacks: string[] = [];
-  const featureState = spentLoopState("feature", 1);
+  const featureState = spentRunnerState("feature", 1);
   featureState.running = true;
-  const directorState = freshLoopState(DIRECTOR_ROLE);
+  const directorState = freshRunnerState(DIRECTOR_ROLE);
   const runners = [
     fakeRunner("feature", featureState, { provider: "free", model: "qwen-free" }, handbacks, "claude"),
     fakeRunner(DIRECTOR_ROLE, directorState, null, handbacks, "claude"),
@@ -217,7 +217,7 @@ test("pollTeamGates: fallback_switched is logged once per chain change and orche
     observedAt: now,
     windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
   });
-  const runners = [fakeRunner("feature", spentLoopState("feature", 1), null, [], "claude")];
+  const runners = [fakeRunner("feature", spentRunnerState("feature", 1), null, [], "claude")];
   const config = paidFallbackConfig(10);
   config.provider = undefined;
   config.backend = "claude"; config.model = "claude-sonnet-5-5";
@@ -251,7 +251,7 @@ test("pollTeamGates: a cap reopen while the claude window is still used up hands
     windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
   });
   const handbacks: string[] = [];
-  const featureState = spentLoopState("feature", 10);
+  const featureState = spentRunnerState("feature", 10);
   featureState.running = true;
   const runners = [fakeRunner("feature", featureState, { provider: "free", model: "qwen-free" }, handbacks, "claude")];
   const config = paidFallbackConfig(10);
@@ -289,9 +289,9 @@ test("pollTeamGates: a fallback episode's failures key the hold on the fallback 
     cooldownMs: 5 * 60_000,
     reason: "rate-limit",
   });
-  const feature = new LoopRunner(root, "feature", config, "main");
-  const docs = new LoopRunner(root, "docs", config, "main");
-  const perf = new LoopRunner(root, "perf", config, "main");
+  const feature = new RoleRunner(root, "feature", config, "main");
+  const docs = new RoleRunner(root, "docs", config, "main");
+  const perf = new RoleRunner(root, "perf", config, "main");
   for (const r of [feature, docs]) {
     r.state.modelFallback = episode();
     // Stamp each role's latest observation as a 429; the poll reads the provider through
@@ -325,11 +325,11 @@ test("pollTeamGates: capPaused reflects maxDailyCostUsdPerRole; an absent key yi
   const root = tmpdir("gate-polls-cap-");
   const config = defaultConfig();
   config.maxDailyCostUsdPerRole = { docs: 0.5, coverage: 0 };
-  const docsState = spentLoopState("docs", 0.5);
+  const docsState = spentRunnerState("docs", 0.5);
   const runners = [
     fakeRunner("docs", docsState, null, []),
-    fakeRunner("coverage", freshLoopState("coverage"), null, []),
-    fakeRunner(DIRECTOR_ROLE, freshLoopState(DIRECTOR_ROLE), null, []),
+    fakeRunner("coverage", freshRunnerState("coverage"), null, []),
+    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, []),
   ];
 
   const states = newTeamGateStates(config);
@@ -378,12 +378,12 @@ test("pollTeamGates: budgetPausedRoles holds the tiers that resolved to pause, a
   config.fallback = { small: "free/qwen-free" }; // strong never borrows small: it pauses
   config.fallbackModel = undefined;
   config.review = { ...config.review, enabled: false }; // isolate the per-tier set
-  const atCap = spentLoopState("docs", 10);
-  const planState = spentLoopState("plan", 1);
+  const atCap = spentRunnerState("docs", 10);
+  const planState = spentRunnerState("plan", 1);
   const runners = [
     fakeRunner("docs", atCap, null, []), // small tier: borrows small's pair
     fakeRunner("plan", planState, null, []), // strong tier: resolves to pause
-    fakeRunner(DIRECTOR_ROLE, freshLoopState(DIRECTOR_ROLE), null, []),
+    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, []),
   ];
 
   const states = newTeamGateStates(config);
@@ -404,7 +404,7 @@ test("pollTeamGates: budgetPausedRoles holds the tiers that resolved to pause, a
   assert.ok(!first.budgetPausedRoles.has(DIRECTOR_ROLE), "the director is exempt");
 
   // Under the cap: nobody is held.
-  const under = spentLoopState("docs", 1);
+  const under = spentRunnerState("docs", 1);
   const underCtx = { ...ctx, runners: [fakeRunner("docs", under, null, []), runners[1]!, runners[2]!] };
   const second = pollTeamGates(newTeamGateStates(config), underCtx);
   assert.equal(second.budgetPausedRoles.size, 0);
@@ -434,10 +434,10 @@ test("pollTeamGates: roleQuietHeld names the roles their own quiet window holds;
   const config = defaultConfig();
   config.quietHoursPerRole = { docs: "00:00-23:59", coverage: "", qa: "23:00-07:00" };
   const runners = [
-    fakeRunner("docs", freshLoopState("docs"), null, []),
-    fakeRunner("coverage", freshLoopState("coverage"), null, []),
-    fakeRunner("qa", freshLoopState("qa"), null, []),
-    fakeRunner(DIRECTOR_ROLE, freshLoopState(DIRECTOR_ROLE), null, []),
+    fakeRunner("docs", freshRunnerState("docs"), null, []),
+    fakeRunner("coverage", freshRunnerState("coverage"), null, []),
+    fakeRunner("qa", freshRunnerState("qa"), null, []),
+    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, []),
   ];
   const ctx = {
     root,
