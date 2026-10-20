@@ -698,4 +698,34 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A changed value, a first clear of a held key, and an invalid value flash exactly as before. An invalid value still leaves the editor open.
 - `npm run test:gate` passes.
 
+### The TUI's Ctrl+B budget editor says when nothing changed, and saving the team cap it already holds no longer rewrites tumwater.json (planned 2026-10-20 by the plan role; the follow-up the in-flight TUI config-editor entry leaves out. Touches `setDailyBudgetUsd` in src/config/config-write.ts, src/ui/tui/tui-editor-budget.ts, test/config-budget.test.ts, test/tui-budget.test.ts and test/tui-keys.test.ts. The dashboard entry edits `setRoleModelFields` in config-write.ts and leaves `handleBudget` alone; the TUI entry does not touch the budget editor. The role-config, revert and cancel entries and part 2/20 edit none of these files)
+
+**Goal.** Ctrl+B opens the budget editor already filled with the current cap, so pressing Enter straight away is the common path. Today that path does two wrong things:
+- The team arm calls `setDailyBudgetUsd` (src/config/config-write.ts), which always builds a new config object. `writeConfigMutation` only skips the write when the mutation returns the loaded `cfg` itself, so saving the same cap re-serializes the merged config into tumwater.json. Defaults get expanded and the file is reformatted, even though nothing changed. The flash still says `budget set to $50`.
+- The role arm (`setConfigKey` on `maxDailyCostUsdPerRole.<role>`) already skips the write and returns `unchanged: true`, but the editor drops that and flashes `feature: cap set to $60` anyway.
+
+`tumwater config set` already says `already`, and the in-flight TUI entry adds the same wording to every other prompt-line config editor. The budget editor should match.
+
+**Approach.**
+- src/config/config-write.ts `setDailyBudgetUsd`: widen the success type to `{ ok: true; unchanged?: true }`. Inside the mutation, when `cfg.maxDailyCostUsd === value`, set a local `unchanged` flag and return `cfg` unchanged, so `writeConfigMutation` writes nothing. Otherwise keep the current behaviour. Return `{ ok: true, unchanged: true }` when the flag is set. A file that omits the key resolves to the default `maxDailyCostUsd` (50, src/config/config.ts), so saving 50 there counts as unchanged too. That matches `config set`'s "already resolves to that value" rule. Update the doc comment.
+- src/ui/tui/tui-editor-budget.ts, in the Enter arm: when `result.unchanged` is set, call `exitBudgetMode()` as a success does, then flash a no-op line instead of the saved line. Keep `currentCapUsd` as it is.
+  - Team arm: `budget is already ${usdCap(value)}, so tumwater.json was not written`, or `budget is already disabled, so tumwater.json was not written` when the value is 0.
+  - Role arm: `${role}: cap is already ${usdCap(value)}, so tumwater.json was not written`, or `${role}: cap is already removed, so tumwater.json was not written` when the value is 0.
+  - Invalid input and write failures still flash and leave the editor open.
+- Leave `handleBudget` (src/gui/gui-config-commands.ts) alone. It needs no change to benefit from the skipped write, and its JSON answer stays the same. Giving the dashboard an `already` message is a separate follow-up.
+- docs/invariants.md INV-B3 needs no change: no write still means the roles section is preserved.
+
+**Tests.**
+- test/config-budget.test.ts: add "setDailyBudgetUsd leaves tumwater.json byte-identical when the cap is already that value". Save a config, set 25 (`{ ok: true }`), read the bytes, set 25 again and expect `{ ok: true, unchanged: true }` with identical bytes. On a file written without `maxDailyCostUsd` (a minimal hand-written tumwater.json), setting 50 also returns `unchanged` and leaves the bytes identical. The existing loop over `[25, 12.34, 0]` uses distinct values and still deep-equals `{ ok: true }`.
+- test/tui-budget.test.ts: in the Ctrl+B flow (or a new test), open the editor, press Enter on the pre-filled `50`, and assert the flash `budget is already $50, so tumwater.json was not written`. Assert tumwater.json is byte-identical and the draft prompt is restored.
+- test/tui-keys.test.ts "Ctrl+B on a role's Transcript edits that role's daily cap, not the team budget": after `feature: cap set to $60`, re-open and press Enter on the pre-filled `60`. Assert the flash `feature: cap is already $60, so tumwater.json was not written`, identical bytes, and `budgetMode` false. Then do the same after the `cap removed` step with an empty line: `feature: cap is already removed, so tumwater.json was not written`.
+- "budget mode opens pre-filled, saves the cap on Enter, and Esc cancels unchanged" in test/tui-keys.test.ts presses Enter on the pre-filled 50 and checks only `budgetMode` and the value, so it should pass as is. Assert the new flash there too.
+
+**Acceptance criteria.**
+- Ctrl+B then Enter on the pre-filled team cap flashes `budget is already $<n>, so tumwater.json was not written`, and tumwater.json is byte-identical.
+- The same on a role's Transcript flashes `<role>: cap is already $<n>, so tumwater.json was not written` (or `… cap is already removed …` for an empty line on a cap of 0), with identical bytes.
+- A changed value flashes `budget set to …`/`budget disabled`/`<role>: cap set to …`/`<role>: cap removed` exactly as before. An invalid value still keeps the editor open.
+- `setDailyBudgetUsd` with a new value still writes it and preserves the file's roles section (INV-B3's tests pass).
+- `npm run test:gate` passes.
+
 ## Done
