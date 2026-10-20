@@ -4,6 +4,7 @@ import { gitTry } from "../git/git-run.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { resolveBacklogInsertConflicts } from "../merge/backlog-conflicts.js";
 import { conflictedFiles } from "../merge/merge-git.js";
+import { shortSha } from "../text/format.js";
 
 /** What applying a hand-back diff with markers left in place did: whether the diff is now in
  * the worktree, and which paths still carry conflict markers. `applied` is true for a clean
@@ -76,6 +77,21 @@ async function pickSettlingBacklog(wt: string, base: string, sha: string): Promi
   }
 }
 
+/** The exclusive start of the range to re-apply for `sha`: the merge-base with main, except that a
+ * commit already on main (a reverted change, plans/fast-merge.md part 4c) has merge-base `sha`
+ * itself and an empty range, so its own parent is the base and the range is that one commit. */
+async function pickBase(wt: string, mainBranch: string, sha: string): Promise<string | null> {
+  const base = await gitTry(wt, "merge-base", mainBranch, sha);
+  if (base === null) return null;
+  const full = await gitTry(wt, "rev-parse", sha);
+  if (full?.trim() !== base.trim()) return base;
+  // A commit main merely fast-forwarded onto keeps the empty range; only one main reverted is
+  // handed back to be re-applied.
+  const reverts = (await gitTry(wt, "log", mainBranch, "--format=%s", "--fixed-strings", `--grep=Revert ${shortSha(sha)}`)) ?? "";
+  if (!reverts.split("\n").some((subject) => subject.endsWith(`Revert ${shortSha(sha)}`))) return base;
+  return gitTry(wt, "rev-parse", `${sha}^`);
+}
+
 /** Re-apply a rejected change `sha` onto current main as uncommitted edits in `wt`
  * (plans/revise-rejected.md): the author's next tick starts from the rejected diff instead of
  * re-deriving it. `git cherry-pick --no-commit <merge-base>..<sha>` leaves the edits in the
@@ -85,7 +101,7 @@ async function pickSettlingBacklog(wt: string, base: string, sha: string): Promi
  * the worktree reset to main, and false is returned so the caller falls back to a plain
  * rejection note. */
 export async function applyRevision(wt: string, mainBranch: string, sha: string): Promise<boolean> {
-  const base = await gitTry(wt, "merge-base", mainBranch, sha);
+  const base = await pickBase(wt, mainBranch, sha);
   if (base === null) {
     await resetWorktreeToMain(wt, mainBranch);
     return false;
@@ -114,7 +130,7 @@ export async function applyWithConflicts(
   mainBranch: string,
   sha: string,
 ): Promise<ApplyWithConflictsResult> {
-  const base = await gitTry(wt, "merge-base", mainBranch, sha);
+  const base = await pickBase(wt, mainBranch, sha);
   if (base === null) {
     await resetWorktreeToMain(wt, mainBranch);
     return { applied: false, conflicted: [] };

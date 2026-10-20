@@ -6,27 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Fast merge, part 4c/14: A reverted change goes back to its role as a revision (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 4b/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/merge/merge-core.ts src/merge/merge-drain.ts src/paths.ts src/git/commit-message.ts docs/how-it-works.md and their tests)
-
-**Goal.** After part 4b/14 reverts a culprit, its author should revise the same change with the failing tests in hand rather than start over. This closes the loop the old part 4/14 described.
-
-**Approach.**
-- Hand back like `recordRejectedChange` (src/merge/merge-core.ts): export a sibling `recordRevertedChange(root, role, state, commit, reasons)` that:
-  - points `refs/tumwater/rejected/<role>` at C;
-  - sets `state.revision` with the round from C's `Revision` trailer plus one (`revisionRoundOf` in src/git/commit-message.ts, exported for this);
-  - sets `lastReview` reasons to `reverted after merge: turned main red — <failing tests>` plus the clipped output;
-  - ends the chain with `exhausted` at `REVISION_BACKSTOP`, as a rejection does.
-- Recipient: C's own runner when it has no queued change and no pending revision. Otherwise, the first free runner of the same base role. If none is free, append `{ commit, role, reasons }` to `.tumwater/state/reverted.json` (path helper beside the other state paths in src/paths.ts). The merge pipeline's poll (`drainMerge`'s caller) assigns pending entries on a later poll and drops each one once assigned.
-- Call it from the 4b/14 revert task right after `main_revert` is logged.
-- docs/how-it-works.md: extend the revert flow with the hand-back.
-
-**Files touched.** src/merge/merge-core.ts, src/merge/merge-drain.ts, src/paths.ts, src/git/commit-message.ts, docs/how-it-works.md, and the revert test from part 4b/14.
-
-**Acceptance criteria.**
-- After B is reverted in the 4b/14 scenario, B's runner holds a revision whose reasons name the failing test, and its rejected ref points at B.
-- With B's runner holding a queued change, the revision goes to another free runner of the same base role. With none free, it waits in `reverted.json` and is assigned once one frees.
-- `npm test` passes.
-
 ### Fast merge, part 6/14: `check.mergeCommand` runs a cheaper check inside the merge lock and moves the full check after the merge (planned 2026-10-19 by user; requires parts 3/14, 4c/14 and 5/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/config/config-schema.ts src/config/config-validation.ts src/build/build-check-detect.ts src/build/build-check-scoped.ts src/build/build-check-events.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/baseline/main-red.ts src/review/review-precheck.ts tumwater.json docs/config.md docs/how-it-works.md DEVELOPMENT.md test/affected-tests.ts and their tests)
 
 **Goal.** Every code merge runs the full `npm test` inside the merge lock: `verifyMerge`'s no-op-rebase and inherited-green skips are both off while `check.gateCommand` is set (src/merge/merge-to-main.ts ~266-349). That is 96 s at p50 per merge on the serial slot. A first red there sends the change back through the whole pipeline. With parts 3–5 catching and reverting a break after the merge, the lock only needs what must never reach main: lint, compile and the change's affected tests. Those stay before every merge (decided 2026-10-19 by you).

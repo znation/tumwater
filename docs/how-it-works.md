@@ -203,6 +203,12 @@ discards a role's in-flight merge.
   merging runner, one the director merged, a revert itself, or one already reverted is not
   reverted, and a revert that conflicts, fails its gate or loses the fast-forward is abandoned with
   main unchanged; each of those queues bugfix's heal prompt naming the commit and the failing tests.
+  After a successful revert the commit goes back to its role as a revision: the merging runner when
+  it is idle with no queued change or pending revision, else the first such free runner of the same
+  base role. It points that runner's `refs/tumwater/rejected/<role>` at the commit and records
+  `reverted after merge: turned main red — <failing tests>` as the review to revise against. With no
+  free runner it waits in `.tumwater/state/reverted.json`, assigned on a later merge poll and dropped
+  once assigned.
 - A test that fails and then passes on the same tree is quarantined at once: the gate's re-run, a
   red in-lock merge check's one immediate re-run (the change then merges), and the watch's
   confirming re-run each add the failing tests the failed run named to

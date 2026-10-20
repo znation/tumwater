@@ -40,7 +40,7 @@ export function recordReview(s: LoopState, verdict: string, reasons: string[], h
  * note). A model-reviewed merge already overwrote `lastReview` with its approve; this only
  * clears a standing `reject`. */
 export function clearSupersededRejection(s: LoopState): void {
-  if (s.revision === undefined && s.lastReview?.verdict === "reject") s.lastReview = undefined;
+  if (s.revision === undefined && (s.lastReview?.verdict === "reject" || s.lastReview?.verdict === "reverted")) s.lastReview = undefined;
 }
 
 /** Consecutive failed ticks after which the loop raises a harness warning and its state
@@ -333,7 +333,7 @@ export function applyMergeOutcome(
     if (s.revision === undefined) {
       s.approvedPatchIds = undefined; // the chain ended: nothing queued is still approved
       s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
-      const lastReasons = s.lastReview?.verdict === "reject" ? s.lastReview.reasons : undefined;
+      const lastReasons = s.lastReview?.verdict === "reject" || s.lastReview?.verdict === "reverted" ? s.lastReview.reasons : undefined;
       s.lastError = `review rejected: ${firstReason(lastReasons).slice(0, 200)}`;
     // Past the warn bar the re-author backs off on the error ladder instead of the minimum
     // interval the queued tick scheduled: the fast first retries stay — the rejected branch's

@@ -5,12 +5,18 @@ import path from "node:path";
 import { createMainWatch } from "../src/baseline/main-watch.js";
 import { revertSkipReason, runMainRevert, type MainCulprit } from "../src/baseline/main-revert.js";
 import { defaultConfig } from "../src/config/config.js";
-import { drainMerge } from "../src/merge/merge-drain.js";
+import { assignPendingReverts, drainMerge } from "../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
 import { queuedFiles } from "../src/inbox/inbox.js";
 import { baselineFixture } from "./fixtures/runner-fixtures.js";
 import { headSha, sh } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
+import type { LoopRunner } from "../src/runner/runner.js";
+import { baseRoleOf } from "../src/roles/runner-ids.js";
+import { revertedPendingPath, rejectedRefName } from "../src/paths.js";
+import { applyRevision, applyWithConflicts } from "../src/runner/revision.js";
+import { clearSupersededRejection } from "../src/tick/tick-apply.js";
 import { logEvent } from "../src/events/events.js";
 
 const FAILING = "printf '✖ first (1.2ms)\\n✖ failing tests:\\n✖ first (1.2ms)\\n'";
@@ -93,4 +99,70 @@ test("drainMerge starts a pending revert before any merge pick and frees the slo
   await p.merge.promise;
   assert.equal(p.merge, null);
   assert.equal(eventsOfType(root, "main_revert").length, 1);
+});
+
+function fakeRunner(role: string, state: Partial<LoopState> = {}): LoopRunner {
+  return { role, baseRole: baseRoleOf(role), state: { ...freshLoopState(role), ...state } } as unknown as LoopRunner;
+}
+
+async function revertWith(runners: LoopRunner[], role = "improve") {
+  const { root, b, found } = await redMain(role);
+  const p = newMergePipeline();
+  p.revert = found[0]!;
+  const ctx = { root, mainBranch: "main", liveConfig: defaultConfig(), runners } as unknown as MergePipelineContext;
+  drainMerge(ctx, p);
+  await p.merge!.promise;
+  return { root, b, ctx };
+}
+
+test("a reverted change goes back to its own runner as a revision naming the failing test", async () => {
+  const runner = fakeRunner("improve");
+  const { root, b } = await revertWith([runner]);
+  assert.equal(runner.state.revision?.sha, b);
+  assert.equal(runner.state.revision?.round, 1);
+  assert.match(runner.state.lastReview?.reasons[0] ?? "", /reverted after merge: turned main red — .*first/);
+  assert.equal(sh(root, "git", "rev-parse", rejectedRefName("improve")).trim(), b);
+});
+
+test("a busy own runner hands the revision to a free runner of the same base role, else it waits", async () => {
+  const busy = fakeRunner("feature", { running: true });
+  const other = fakeRunner("feature-2");
+  const { root, b } = await revertWith([busy, other], "feature");
+  assert.equal(busy.state.revision, undefined);
+  assert.equal(other.state.revision?.sha, b);
+  assert.equal(sh(root, "git", "rev-parse", rejectedRefName("feature-2")).trim(), b);
+});
+
+test("with no free runner the revision waits in reverted.json and is assigned once one frees", async () => {
+  const busy = fakeRunner("improve", { running: true });
+  const { root, b, ctx } = await revertWith([busy]);
+  const pending = JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")).reverted;
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].commit, b);
+  assert.equal(pending[0].role, "improve");
+  await assignPendingReverts(ctx);
+  assert.equal(busy.state.revision, undefined);
+  busy.state.running = false;
+  await assignPendingReverts(ctx);
+  assert.equal((busy.state as LoopState).revision?.sha, b);
+  assert.deepEqual(JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")), { reverted: [] });
+});
+
+test("the reverted commit re-applies onto the post-revert main as uncommitted edits", async () => {
+  const runner = fakeRunner("improve");
+  const { root, b } = await revertWith([runner]);
+  assert.equal(await applyRevision(root, "main", runner.state.revision!.sha), true);
+  assert.equal(fs.readFileSync(path.join(root, "bad.txt"), "utf8"), "b");
+  assert.match(sh(root, "git", "status", "--porcelain"), /bad\.txt/);
+  sh(root, "git", "reset", "--hard", "main");
+  const applied = await applyWithConflicts(root, "main", b);
+  assert.deepEqual(applied, { applied: true, conflicted: [] });
+  assert.equal(fs.readFileSync(path.join(root, "bad.txt"), "utf8"), "b");
+});
+
+test("a standing reverted verdict is cleared like a rejection once the revision is resolved", () => {
+  const s = freshLoopState("improve");
+  s.lastReview = { verdict: "reverted", reasons: ["x"], head: "abc", at: 1 };
+  clearSupersededRejection(s);
+  assert.equal(s.lastReview, undefined);
 });

@@ -4,10 +4,15 @@ import { mergeApproved, type BatchRoleWiring } from "./merge-batch.js";
 import { removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
-import { dropMerge, entryRevisionFields, queuedMergeFiles } from "./merge-queue.js";
+import { dropMerge, entryRevisionFields, queuedMergeFiles, queuedMergeRoles } from "./merge-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { saveLoopState } from "../runner/runner-state.js";
+import { hasOutstandingWork, saveLoopState } from "../runner/runner-state.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { recordRevertedChange } from "./merge-core.js";
+import { revertedPendingPath } from "../paths.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
+import type { LoopRunner } from "../runner/runner.js";
 import {
   abortOnShutdown,
   discardPinnedRefs,
@@ -36,7 +41,69 @@ const MERGE_TIER = VERIFY_TIER - 1;
  * returns; never awaits them — authors keep ticking behind them, which is the entire point. */
 export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   await drainVerify(ctx, p);
+  await assignPendingReverts(ctx);
   drainMerge(ctx, p);
+}
+
+/** A reverted change waiting for a runner (.tumwater/state/reverted.json). */
+interface PendingRevert {
+  commit: string;
+  role: string;
+  reasons: string[];
+}
+
+/** The reasons a reverted change goes back with. */
+function revertReasons(c: MainCulprit): string[] {
+  const tests = c.failingTests.length > 0 ? c.failingTests.join("; ") : "no failing test was named";
+  return [`reverted after merge: turned main red — ${tests}`];
+}
+
+/** A runner that can take a revision now: idle, with no pending revision and no change queued for
+ * merging (a verifying or approved change is still a queue entry). */
+function runnerIsFree(queued: Set<string>, r: LoopRunner): boolean {
+  return !r.state.running && !hasOutstandingWork(r.state) && !queued.has(r.role);
+}
+
+/** Give a reverted change to a runner as a revision (recordRevertedChange): its own runner when
+ * free, else the first free runner of the same base role, in runner order. Returns whether one took
+ * it, with its state saved. */
+async function handBackRevert(ctx: MergePipelineContext, pending: PendingRevert): Promise<boolean> {
+  const queued = queuedMergeRoles(ctx.root);
+  const base = baseRoleOf(pending.role);
+  const candidates = ctx.runners.filter((r) => r.baseRole === base);
+  const own = candidates.find((r) => r.role === pending.role);
+  const taker = own && runnerIsFree(queued, own) ? own : candidates.find((r) => runnerIsFree(queued, r));
+  if (taker === undefined) return false;
+  await recordRevertedChange(ctx.root, taker.role, taker.state, pending.commit, pending.reasons);
+  saveLoopState(ctx.root, taker.state);
+  return true;
+}
+
+/** After the revert merges: hand the culprit back to its author's role, or park it in
+ * reverted.json when no runner of that role is free. */
+async function handBackReverted(ctx: MergePipelineContext, c: MainCulprit): Promise<void> {
+  if (c.runner === undefined) return;
+  const pending: PendingRevert = { commit: c.commit, role: c.runner, reasons: revertReasons(c) };
+  if (await handBackRevert(ctx, pending)) return;
+  const file = revertedPendingPath(ctx.root);
+  writeJsonAtomic(file, { reverted: [...pendingReverts(ctx.root), pending] });
+}
+
+function pendingReverts(root: string): PendingRevert[] {
+  const saved = readJsonFile<{ reverted?: PendingRevert[] }>(revertedPendingPath(root));
+  return Array.isArray(saved?.reverted) ? saved.reverted : [];
+}
+
+/** Each poll: assign the parked reverted changes to runners that have freed up, dropping each
+ * one once assigned. */
+export async function assignPendingReverts(ctx: MergePipelineContext): Promise<void> {
+  const all = pendingReverts(ctx.root);
+  if (all.length === 0) return;
+  const left: PendingRevert[] = [];
+  for (const pending of all) {
+    if (!(await handBackRevert(ctx, pending))) left.push(pending);
+  }
+  if (left.length !== all.length) writeJsonAtomic(revertedPendingPath(ctx.root), { reverted: left });
 }
 
 /** Settle every approved change `tumwater abort --role` flagged (consumeAbortRequests over
@@ -106,7 +173,7 @@ function startRevert(ctx: MergePipelineContext, p: MergePipeline, culprit: MainC
     roles: [],
     userAborted: false,
   };
-  const task = runMainRevert(ctx.root, ctx.mainBranch, ctx.liveConfig, culprit).finally(() => {
+  const task = runMainRevert(ctx.root, ctx.mainBranch, ctx.liveConfig, culprit, (c) => handBackReverted(ctx, c)).finally(() => {
     p.merge = null;
   });
   merge.promise = guardMergeTask(ctx.root, "main revert", task);

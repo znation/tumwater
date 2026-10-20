@@ -141,7 +141,7 @@ const REVISION_TRAILER = /^Revision: (\d+)$/m;
  * undefined for a fresh change. Leftover recovery reads this off the pinned commit so a
  * retriable revision keeps its round (and its rejected ref's cleanup) across a lost queue
  * marker (plans/revise-rejected.md). */
-function revisionRoundOf(message: string): number | undefined {
+export function revisionRoundOf(message: string): number | undefined {
   const m = REVISION_TRAILER.exec(message);
   return m ? Number(m[1]) : undefined;
 }

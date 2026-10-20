@@ -14,6 +14,8 @@ import { saveLoopState, type LoopState } from "../runner/runner-state.js";
 import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP } from "../runner/revision.js";
 import { priorObjectionNumber } from "../review/review-verdict.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { gitTry } from "../git/git-run.js";
+import { revisionRoundOf } from "../git/commit-message.js";
 import { shortSha } from "../text/format.js";
 import { setMergeStage } from "./merge-slot.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
@@ -365,6 +367,34 @@ async function recordRejectedChange(
   }
   await setRef(root, rejectedRefName(role), rejectedHead);
   state.revision = { sha: rejectedHead, round: nextRound, at: Date.now(), reasonCounts: counts };
+}
+
+/** Hand a change that turned main red back to a runner as a revision (plans/fast-merge.md, part
+ * 4c): like recordRejectedChange, point `refs/tumwater/rejected/<role>` at the reverted commit and
+ * set LoopState.revision one round past the commit's `Revision` trailer, with `reasons` as the
+ * review the author's next tick sees. `role` is the runner that receives it — not necessarily the
+ * commit's author. At REVISION_BACKSTOP the chain ends as a rejection's does: the ref and the
+ * revision are cleared and `exhausted` is logged. The director never revises. */
+export async function recordRevertedChange(
+  root: string,
+  role: string,
+  state: LoopState,
+  commit: string,
+  reasons: string[],
+): Promise<void> {
+  if (role === DIRECTOR_ROLE) return;
+  const message = (await gitTry(root, "log", "-1", "--format=%B", commit)) ?? "";
+  const nextRound = (revisionRoundOf(message) ?? 0) + 1;
+  const exhausted = nextRound >= REVISION_BACKSTOP;
+  state.lastReview = { verdict: "reverted", reasons, head: commit, at: Date.now(), ...(exhausted ? { exhausted } : {}) };
+  if (exhausted) {
+    state.revision = undefined;
+    await deleteRef(root, rejectedRefName(role));
+    logEventBestEffort(root, { source: role, type: "revision", action: "exhausted", round: nextRound, sha: commit });
+    return;
+  }
+  await setRef(root, rejectedRefName(role), commit);
+  state.revision = { sha: commit, round: nextRound, at: Date.now(), reasonCounts: reasons.map(() => 0) };
 }
 
 /** Merge a head that already passed its OWN gate in its verify — the merge slot's one-change merge

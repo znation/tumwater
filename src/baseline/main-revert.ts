@@ -49,13 +49,14 @@ export async function revertSkipReason(root: string, mainBranch: string, c: Main
 
 /** Run one revert task on main's current tip in the shared `_merge` checkout: revert the culprit,
  * run `check.gateCommand` on the result when one is set (red aborts), and fast-forward main under
- * the merge lock. Logs `main_revert` on success; every failure queues the heal prompt instead.
- * Never throws. */
+ * the merge lock. Logs `main_revert` on success and calls `onReverted` (the hand-back to a role);
+ * every failure queues the heal prompt instead. Never throws. */
 export async function runMainRevert(
   root: string,
   mainBranch: string,
   config: TumwaterConfig,
   c: MainCulprit,
+  onReverted?: (c: MainCulprit) => Promise<void>,
 ): Promise<void> {
   const heal = (outputTail?: string[]): void => queueCulpritHeal(root, c.tip, { culprit: c.commit, failingTests: c.failingTests, outputTail });
   try {
@@ -83,6 +84,13 @@ export async function runMainRevert(
         runner: c.runner,
         failingTests: c.failingTests,
       });
+      await onReverted?.(c).catch((err: unknown) =>
+        logEventBestEffort(root, {
+          source: TUMWATER_SOURCE,
+          type: "warning",
+          message: `could not hand ${shortSha(c.commit)} back to its role: ${errorMessage(err)}`,
+        }),
+      );
       return null;
     });
     if (failure !== null) {

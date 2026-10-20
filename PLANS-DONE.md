@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 4c/14: A reverted change goes back to its role as a revision (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 4b/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/merge/merge-core.ts src/merge/merge-drain.ts src/paths.ts src/git/commit-message.ts docs/how-it-works.md and their tests) — done 2026-10-19 by the feature role
+
+**Goal.** After part 4b/14 reverts a culprit, its author should revise the same change with the failing tests in hand rather than start over. This closes the loop the old part 4/14 described.
+
+**Approach.**
+- Hand back like `recordRejectedChange` (src/merge/merge-core.ts): export a sibling `recordRevertedChange(root, role, state, commit, reasons)` that:
+  - points `refs/tumwater/rejected/<role>` at C;
+  - sets `state.revision` with the round from C's `Revision` trailer plus one (`revisionRoundOf` in src/git/commit-message.ts, exported for this);
+  - sets `lastReview` reasons to `reverted after merge: turned main red — <failing tests>` plus the clipped output;
+  - ends the chain with `exhausted` at `REVISION_BACKSTOP`, as a rejection does.
+- Recipient: C's own runner when it has no queued change and no pending revision. Otherwise, the first free runner of the same base role. If none is free, append `{ commit, role, reasons }` to `.tumwater/state/reverted.json` (path helper beside the other state paths in src/paths.ts). The merge pipeline's poll (`drainMerge`'s caller) assigns pending entries on a later poll and drops each one once assigned.
+- Call it from the 4b/14 revert task right after `main_revert` is logged.
+- docs/how-it-works.md: extend the revert flow with the hand-back.
+
+**Files touched.** src/merge/merge-core.ts, src/merge/merge-drain.ts, src/paths.ts, src/git/commit-message.ts, docs/how-it-works.md, and the revert test from part 4b/14.
+
+**Acceptance criteria.**
+- After B is reverted in the 4b/14 scenario, B's runner holds a revision whose reasons name the failing test, and its rejected ref points at B.
+- With B's runner holding a queued change, the revision goes to another free runner of the same base role. With none free, it waits in `reverted.json` and is assigned once one frees.
+- `npm test` passes.
+
+**What changed.** The hand-back lives in src/merge/merge-drain.ts (`handBackReverted`, `assignPendingReverts`, called from `drainMergeQueue`); `runMainRevert` takes an `onReverted` callback; `recordRevertedChange` is in src/merge/merge-core.ts. The reasons carry the failing tests but not the clipped output, which the culprit hand-off does not hold. A runner counts as free only when idle (not running) with no queued change or pending revision; the tests are in test/main-revert.test.ts.
+
 ### Split runOrchestrator's 540-line poll closure into per-step modules (planned 2026-10-19 by the organize role; lands after the blocked plain-terms series' orchestrator parts, runner 8/14 and run 10/20-11/20, so it does not fight them; touches src/orchestrator/orchestrator.ts + new src/orchestrator/orchestrator-poll.ts + src/orchestrator/orchestrator-scheduling.ts) — done 2026-10-19
 
 **Goal.** `runOrchestrator` in src/orchestrator/orchestrator.ts is 662 lines, about 3.5 times the 184-line median source file, and almost all of it is one function: about 200 lines of setup, then a `while (!signal.aborted)` poll loop of about 315 lines that runs live-reload, request markers, branch watch, gates, redeploy, merge drain, deferral inputs, scheduling and the once-mode exit in sequence, sharing the closure's `let` flags (`restart`, `holdForRestart`, `diskHeld`, `warnedBranchDivergence`, `lastReserve`) and the permit-time closures (`tickStartHeld`, `teamHeldNow`, `reviewHeldNow`). A reader cannot see one step's inputs and outputs apart from the rest.

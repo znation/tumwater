@@ -146,6 +146,13 @@ export function mergeStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "merging.json");
 }
 
+/** The reverted changes still waiting for a free runner (.tumwater/state/reverted.json;
+ * src/merge/merge-drain.ts): `{ reverted: [{ commit, role, reasons }] }`, each entry dropped once
+ * assigned. */
+export function revertedPendingPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "reverted.json");
+}
+
 /** The merge marker's old file, deleted by the startup migration (the marker is display-only,
  * so a previous generation's is stale and is not read). */
 export function legacyLandingStatePath(root: string): string {
