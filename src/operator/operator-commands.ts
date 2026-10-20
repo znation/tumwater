@@ -70,6 +70,25 @@ function namedRole(root: string, args: string[]): string | null {
   }
 }
 
+/** The trimmed, non-empty pieces of a comma-separated `--role` value; null when `--role` is
+ * absent, and a failure with ROLE_VALUE_ERROR when no piece remains (bare `--role`, `,`). */
+function rolePieces(args: string[]): string[] | null {
+  const value = flagValue(args, "--role");
+  if (value === null) return null;
+  const pieces = (value ?? "").split(",").map((p) => p.trim()).filter((p) => p !== "");
+  if (pieces.length === 0) fail(ROLE_VALUE_ERROR);
+  return pieces;
+}
+
+/** namedRole over a comma list (`--role clean,dedupe`): every piece resolves through namedRole
+ * before the caller writes anything, so a bad id writes no marker. Deduplicated in first-seen
+ * order; null when `--role` is absent. */
+function namedRoleList(root: string, args: string[]): string[] | null {
+  const pieces = rolePieces(args);
+  if (pieces === null) return null;
+  return [...new Set(pieces.map((piece) => namedRole(root, ["--role", piece])!))];
+}
+
 /** namedRole for the commands that write or lift the per-role pause marker, over a comma list
  * (`--role clean,dedupe`, like `history --role`): `feature-1` (`bugfix-1`) is the pause key of
  * instance 1 of a multi-instance role (src/roles/runner-ids.ts's instancePauseKey), kept
@@ -77,10 +96,8 @@ function namedRole(root: string, args: string[]): string | null {
  * caller writes anything, so a bad id writes no marker. Deduplicated in first-seen order;
  * null when `--role` is absent. */
 function pauseTargetRoles(root: string, args: string[]): string[] | null {
-  const value = flagValue(args, "--role");
-  if (value === null) return null;
-  const pieces = (value ?? "").split(",").map((p) => p.trim()).filter((p) => p !== "");
-  if (pieces.length === 0) fail(ROLE_VALUE_ERROR);
+  const pieces = rolePieces(args);
+  if (pieces === null) return null;
   const roles = pieces.map((piece) =>
     [...INSTANCE_ROLES].some((base) => piece === `${base}-1`) ? piece : namedRole(root, ["--role", piece])!,
   );
@@ -97,22 +114,26 @@ function requiredNamedRole(root: string, args: string[], command: string): strin
   return role;
 }
 
-/** The role(s) a marker command targets: the `--role <id>` value when given, otherwise every
- * role in the config. reset-counters and wake share the same all-roles default, so it lives
- * here once instead of drifting between their bodies. */
+/** The role(s) a marker command targets: the `--role <id>[,<id>...]` value when given,
+ * otherwise every role in the config. reset-counters and wake share the same all-roles
+ * default, so it lives here once instead of drifting between their bodies. */
 function targetRoles(root: string, args: string[]): string[] {
-  const role = namedRole(root, args);
-  return role ? [role] : Object.keys(loadConfig(root).roles);
+  return namedRoleList(root, args) ?? Object.keys(loadConfig(root).roles);
 }
 
-/** `tumwater reset-counters [--role <id>]`: zero the per-loop counters shown in the
+/** wake --cancel and --list scope to one role: a comma list fails with that, not "unknown role". */
+function failOnRoleList(args: string[]): void {
+  if ((flagValue(args, "--role") ?? "").includes(",")) fail("wake --cancel and --list take one --role id");
+}
+
+/** `tumwater reset-counters [--role <id>[,<id>...]]`: zero the per-loop counters shown in the
  * dashboards so a fresh observation window can begin. Scheduling fields and pi session
  * continuity are untouched: loops keep sleeping/waking exactly as before. */
 export async function cmdResetCounters(root: string, args: string[]): Promise<void> {
   say(requestResetCounters(root, targetRoles(root, args)));
 }
 
-/** `tumwater wake [--role <id>] [--in <duration> | --cancel | --list [--json]]`: tell the
+/** `tumwater wake [--role <id>[,<id>...]] [--in <duration> | --cancel | --list [--json]]`: tell the
  * team "whatever the loops were failing on is fixed — try again", so the named roles tick
  * within one poll instead of
  * sleeping until their backoff expires. With `--in`, the wake is scheduled: the marker is
@@ -132,6 +153,7 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   if (args.includes("--list")) {
     if (inRaw !== null || args.includes("--cancel")) fail("wake --list cannot be combined with --in or --cancel");
     const now = Date.now();
+    failOnRoleList(args);
     const role = namedRole(root, args) ?? undefined;
     const wakes = listWakes(root, role, now);
     say(args.includes("--json") ? JSON.stringify(wakes) : renderWakeList(wakes, now, role));
@@ -140,6 +162,7 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   if (args.includes("--json")) fail("wake --json requires --list");
   if (args.includes("--cancel")) {
     if (inRaw !== null) fail("wake --cancel and --in cannot be combined");
+    failOnRoleList(args);
     const role = namedRole(root, args);
     say(cancelWakes(root, role ?? undefined));
     return;

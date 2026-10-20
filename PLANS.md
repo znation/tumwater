@@ -877,37 +877,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### `tumwater wake --role` and `reset-counters --role` take a comma-separated list of role ids, the twin of `pause --role clean,dedupe` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — it touches only `targetRoles` and its callers in src/operator/operator-commands.ts, help and docs)
-
-**Goal.** `pause --role` and `resume --role` take a comma list (`pauseTargetRoles`, src/operator/operator-commands.ts), and so do `history`/`logs` (`parseRoleListScope`, src/cli/cli-args.ts). `wake --role` and `reset-counters --role` still take one id: an operator who held `clean,dedupe,organize` and resumed them must wake each one with its own command. `wake --role clean,dedupe` fails today with `unknown role: clean,dedupe`. The writers `requestWake(root, roles, inMs)` and `requestResetCounters(root, roles)` (src/operator/operator-intent.ts) already take a role array. Only the flag parsing is missing.
-
-**Approach.**
-- `src/operator/operator-commands.ts`:
-  - Add `namedRoleList(root, args): string[] | null`. It returns null when `flagValue(args, "--role")` is null. Otherwise it splits the value on `,`, trims each piece and drops empty pieces. When none remain (bare `--role`, `--role ""`, `--role ,`), it calls `fail(ROLE_VALUE_ERROR)`. Each piece resolves through `namedRole(root, ["--role", piece])`, so built-ins skip the config read and an unknown id fails with the existing `unknown role: <id> (valid ids: …)` message. The result is deduplicated in first-seen order. Every piece resolves before the caller writes anything.
-  - `pauseTargetRoles` keeps its instance-1 exception (`feature-1` kept verbatim). It is rewritten to share the split/empty/dedupe steps with `namedRoleList`: extract one small private splitter that both call, `rolePieces(args): string[] | null`. Behaviour of pause/resume is unchanged.
-  - `targetRoles(root, args)` becomes `namedRoleList(root, args) ?? Object.keys(loadConfig(root).roles)`. This makes `cmdResetCounters` and `cmdWake` (both the immediate and the `--in` scheduled path) accept the list with no other change.
-  - `wake --cancel` and `wake --list` keep one role: `cancelWakes`/`listWakes`/`renderWakeList` take `role?: string`, and widening them is not needed for this change. Before the `namedRole` call in each branch, a `--role` value containing `,` fails with `wake --cancel and --list take one --role id`. This replaces the misleading `unknown role: clean,dedupe`.
-  - Update the doc comments of `targetRoles`, `cmdResetCounters` and `cmdWake` to name the comma list.
-- `src/cli/help.ts`: the usage lines become `tumwater reset-counters [--role <id>[,<id>...]]` and `tumwater wake [--role <id>[,<id>...]] [--in <dur> | --cancel | --list [--json]]`. Keep the description column aligned, with the `pause` stanza as the model.
-- `docs/cli.md`, "Control the roles" row: `tumwater reset-counters [--role <id>]` becomes `[--role <id>[,<id>...]]`. The `tumwater wake` clause gains `wake --role clean,dedupe` wakes each listed role, the same as one command per role.
-- The TUI, the GUI endpoints (`/api/wake`, `/api/reset-counters`) and the intent writers do not change.
-
-**Acceptance criteria.**
-- New case in `test/operator-commands.test.ts`, "cmdWake and cmdResetCounters --role take a comma list":
-  - Seed `clean` and `dedupe` with backoff and counters, and leave `organize` as is.
-  - `cmdWake(root, ["--role", "clean, dedupe,clean"])` prints `wake requested for clean, dedupe`, clears both backoffs and leaves `organize`'s state unchanged. `wakeRequestPath`'s `roles` reads `["clean", "dedupe"]`.
-  - `cmdResetCounters(root, ["--role", "clean,dedupe"])` prints `counters reset for clean, dedupe`, zeroes both, and `resetRequestPath`'s `roles` reads `["clean", "dedupe"]`.
-- New case: `cmdWake(root, ["--role", "clean,dedupe", "--in", "45m"])` writes one scheduled-wake file whose `roles` is `["clean", "dedupe"]`.
-- New case "wake and reset-counters: a comma list with an unknown id writes no marker":
-  - `cmdWake(root, ["--role", "clean,ghost"])` fails with `unknown role: ghost`. Neither `wakeRequestPath` nor `clean`'s state changes.
-  - `cmdResetCounters` behaves the same way.
-  - `["--role", ","]` fails with `ROLE_VALUE_ERROR`'s text.
-- New case: `cmdWake(root, ["--cancel", "--role", "clean,dedupe"])` and `["--list", "--role", "clean,dedupe"]` fail with `wake --cancel and --list take one --role id`.
-- These cases keep passing unchanged:
-  - in `test/cli-operators-team.test.ts`: "reset-counters --role targets one loop; unknown or missing role fails without side effects" and "wake --role targets one loop; …";
-  - in `test/operator-commands.test.ts`: "cmdPause and cmdResume --role take a comma list" and "a comma list with an unknown id writes no marker".
-- `tumwater help wake` shows `[--role <id>[,<id>...]]`. `npm run test:gate` passes.
-
 ### `tumwater report --role` takes a comma-separated list of role ids, so one usage report or failure digest covers every role an operator is comparing (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — fast merge 14/14 edits the merge path, runner 9/14 status data and scheduling, the TUI Ctrl+Y entry src/ui/tui, and the wake entry src/operator plus the wake/reset-counters help lines and docs/cli.md's "Control the roles" row; none of them is src/report, src/failure/failure-data.ts or the report stanza of src/cli/help.ts, and this edits docs/cli.md's Audit row only; the blocked plain-terms parts reach src/report only in far-behind parts, a rebase; touches src/report/report.ts src/report/report-fold.ts src/report/report-data.ts src/failure/failure-data.ts src/cli/help.ts docs/cli.md test/report.test.ts test/help.test.ts)
 
 **Goal.** `history --role` takes a comma list (`parseRoleListScope`, src/cli/cli-args.ts), and the pause/resume/wake work does the same for the operator commands. `report --role` still takes one id: `tumwater report --role clean,dedupe` fails with `unknown role: clean,dedupe`, so an operator comparing the maintenance roles' spend against their output runs one report per role and adds the numbers by hand. Accept the comma list on every report shape: the day report, `--since`, and `--failures` (day and `--since`).

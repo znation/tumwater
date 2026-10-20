@@ -5,6 +5,37 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater wake --role` and `reset-counters --role` take a comma-separated list of role ids, the twin of `pause --role clean,dedupe` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — it touches only `targetRoles` and its callers in src/operator/operator-commands.ts, help and docs) — done 2026-10-19 by the feature role
+
+**Goal.** `pause --role` and `resume --role` take a comma list (`pauseTargetRoles`, src/operator/operator-commands.ts), and so do `history`/`logs` (`parseRoleListScope`, src/cli/cli-args.ts). `wake --role` and `reset-counters --role` still take one id: an operator who held `clean,dedupe,organize` and resumed them must wake each one with its own command. `wake --role clean,dedupe` fails today with `unknown role: clean,dedupe`. The writers `requestWake(root, roles, inMs)` and `requestResetCounters(root, roles)` (src/operator/operator-intent.ts) already take a role array. Only the flag parsing is missing.
+
+**Approach.**
+- `src/operator/operator-commands.ts`:
+  - Add `namedRoleList(root, args): string[] | null`. It returns null when `flagValue(args, "--role")` is null. Otherwise it splits the value on `,`, trims each piece and drops empty pieces. When none remain (bare `--role`, `--role ""`, `--role ,`), it calls `fail(ROLE_VALUE_ERROR)`. Each piece resolves through `namedRole(root, ["--role", piece])`, so built-ins skip the config read and an unknown id fails with the existing `unknown role: <id> (valid ids: …)` message. The result is deduplicated in first-seen order. Every piece resolves before the caller writes anything.
+  - `pauseTargetRoles` keeps its instance-1 exception (`feature-1` kept verbatim). It is rewritten to share the split/empty/dedupe steps with `namedRoleList`: extract one small private splitter that both call, `rolePieces(args): string[] | null`. Behaviour of pause/resume is unchanged.
+  - `targetRoles(root, args)` becomes `namedRoleList(root, args) ?? Object.keys(loadConfig(root).roles)`. This makes `cmdResetCounters` and `cmdWake` (both the immediate and the `--in` scheduled path) accept the list with no other change.
+  - `wake --cancel` and `wake --list` keep one role: `cancelWakes`/`listWakes`/`renderWakeList` take `role?: string`, and widening them is not needed for this change. Before the `namedRole` call in each branch, a `--role` value containing `,` fails with `wake --cancel and --list take one --role id`. This replaces the misleading `unknown role: clean,dedupe`.
+  - Update the doc comments of `targetRoles`, `cmdResetCounters` and `cmdWake` to name the comma list.
+- `src/cli/help.ts`: the usage lines become `tumwater reset-counters [--role <id>[,<id>...]]` and `tumwater wake [--role <id>[,<id>...]] [--in <dur> | --cancel | --list [--json]]`. Keep the description column aligned, with the `pause` stanza as the model.
+- `docs/cli.md`, "Control the roles" row: `tumwater reset-counters [--role <id>]` becomes `[--role <id>[,<id>...]]`. The `tumwater wake` clause gains `wake --role clean,dedupe` wakes each listed role, the same as one command per role.
+- The TUI, the GUI endpoints (`/api/wake`, `/api/reset-counters`) and the intent writers do not change.
+
+**Acceptance criteria.**
+- New case in `test/operator-commands.test.ts`, "cmdWake and cmdResetCounters --role take a comma list":
+  - Seed `clean` and `dedupe` with backoff and counters, and leave `organize` as is.
+  - `cmdWake(root, ["--role", "clean, dedupe,clean"])` prints `wake requested for clean, dedupe`, clears both backoffs and leaves `organize`'s state unchanged. `wakeRequestPath`'s `roles` reads `["clean", "dedupe"]`.
+  - `cmdResetCounters(root, ["--role", "clean,dedupe"])` prints `counters reset for clean, dedupe`, zeroes both, and `resetRequestPath`'s `roles` reads `["clean", "dedupe"]`.
+- New case: `cmdWake(root, ["--role", "clean,dedupe", "--in", "45m"])` writes one scheduled-wake file whose `roles` is `["clean", "dedupe"]`.
+- New case "wake and reset-counters: a comma list with an unknown id writes no marker":
+  - `cmdWake(root, ["--role", "clean,ghost"])` fails with `unknown role: ghost`. Neither `wakeRequestPath` nor `clean`'s state changes.
+  - `cmdResetCounters` behaves the same way.
+  - `["--role", ","]` fails with `ROLE_VALUE_ERROR`'s text.
+- New case: `cmdWake(root, ["--cancel", "--role", "clean,dedupe"])` and `["--list", "--role", "clean,dedupe"]` fail with `wake --cancel and --list take one --role id`.
+- These cases keep passing unchanged:
+  - in `test/cli-operators-team.test.ts`: "reset-counters --role targets one loop; unknown or missing role fails without side effects" and "wake --role targets one loop; …";
+  - in `test/operator-commands.test.ts`: "cmdPause and cmdResume --role take a comma list" and "a comma list with an unknown id writes no marker".
+- `tumwater help wake` shows `[--role <id>[,<id>...]]`. `npm run test:gate` passes.
+
 ### The TUI History pane's `Ctrl+Y` cycles role summary → model summary → rows, the terminal twin of `tumwater history --summary --by model` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — the dashboard By-model entry edits src/gui and src/ui/gui, the pause/resume entry src/operator, the help lines and docs/cli.md's "Control the roles" row, fast-merge part 14/14 src/config, src/review and src/merge, and runner part 8/14 src/orchestrator, none of which is src/ui/tui; it shares docs/cli.md's "Watch run history" row with the dashboard By-model entry (a rebase: edit whichever wording is on main); the blocked plain-terms series renames identifiers in src/ui/tui only in far-behind parts, a rebase; touches src/ui/tui/tui-pane-history.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-frame.ts docs/cli.md test/tui-keys.test.ts test/tui-frame.test.ts; done 2026-10-19 by the feature role)
 
 **Goal.** `tumwater history --summary --by model` tallies runs per model (`summarizeTickRowsByModel` in src/history/history-data.ts, rendered by `renderModelSummary` in src/history/history-render.ts). The TUI History pane's `Ctrl+Y`, though, only flips between the run rows and the per-role table (`renderSummary`). So an operator watching a mixed-provider team in the terminal cannot see what each model merged or cost. This plan makes `Ctrl+Y` a three-step cycle: rows → per-role summary → per-model summary → rows. The model table is folded over the same rows the pane's window, role, result and search already selected. Out of scope: the dashboard (its own Planned entry), and any new key.

@@ -433,6 +433,57 @@ test("cmdPause --role list --for writes one deadline for every listed role", asy
   assert.equal(marker.until, NOON + 60 * 60_000);
 });
 
+test("cmdWake and cmdResetCounters --role take a comma list", async () => {
+  const root = tmpdir();
+  const seed = (id: string) =>
+    saveLoopState(root, { ...freshLoopState(id), runs: 7, backoffSeconds: 3600, nextRunAt: Date.now() + 999_999 });
+  seed("clean");
+  seed("dedupe");
+  seed("organize");
+  const organize = loadLoopState(root, "organize");
+  const woke = await expectOk(() => cmdWake(root, ["--role", "clean, dedupe,clean"]));
+  assert.match(woke.stdout, /wake requested for clean, dedupe/);
+  assert.equal(loadLoopState(root, "clean").backoffSeconds, 0);
+  assert.equal(loadLoopState(root, "dedupe").backoffSeconds, 0);
+  assert.deepEqual(loadLoopState(root, "organize"), organize);
+  assert.deepEqual(readJson<Record<string, unknown>>(wakeRequestPath(root))["roles"], ["clean", "dedupe"]);
+  const reset = await expectOk(() => cmdResetCounters(root, ["--role", "clean,dedupe"]));
+  assert.match(reset.stdout, /counters reset for clean, dedupe/);
+  assert.equal(loadLoopState(root, "clean").runs, 0);
+  assert.equal(loadLoopState(root, "dedupe").runs, 0);
+  assert.equal(loadLoopState(root, "organize").runs, 7);
+  assert.deepEqual(readJson<Record<string, unknown>>(resetRequestPath(root))["roles"], ["clean", "dedupe"]);
+});
+
+test("cmdWake --in takes a comma list and writes one scheduled wake", async () => {
+  const root = tmpdir();
+  await expectOk(() => cmdWake(root, ["--role", "clean,dedupe", "--in", "45m"]));
+  const wakes = readScheduledWakes(root);
+  assert.equal(wakes.length, 1);
+  assert.deepEqual(wakes[0]!.roles, ["clean", "dedupe"]);
+});
+
+test("wake and reset-counters: a comma list with an unknown id writes no marker", async () => {
+  const root = tmpdir();
+  saveLoopState(root, { ...freshLoopState("clean"), runs: 7, backoffSeconds: 3600 });
+  const before = loadLoopState(root, "clean");
+  assert.match(await expectFailAsync(() => cmdWake(root, ["--role", "clean,ghost"])), /unknown role: ghost/);
+  assert.match(await expectFailAsync(() => cmdResetCounters(root, ["--role", "clean,ghost"])), /unknown role: ghost/);
+  assert.ok(!fs.existsSync(wakeRequestPath(root)));
+  assert.ok(!fs.existsSync(resetRequestPath(root)));
+  assert.deepEqual(loadLoopState(root, "clean"), before);
+  assert.match(await expectFailAsync(() => cmdWake(root, ["--role", ","])), /--role needs a role id/);
+  assert.match(await expectFailAsync(() => cmdResetCounters(root, ["--role", ","])), /--role needs a role id/);
+});
+
+test("wake --cancel and --list reject a comma list of roles", async () => {
+  const root = tmpdir();
+  for (const flag of ["--cancel", "--list"]) {
+    const stderr = await expectFailAsync(() => cmdWake(root, [flag, "--role", "clean,dedupe"]));
+    assert.match(stderr, /wake --cancel and --list take one --role id/);
+  }
+});
+
 // --- the operator pause's reason (`pause --reason <text>`) ---
 
 // The reason rides the fresh pause write (or a --for overwrite) as last-write-wins: the

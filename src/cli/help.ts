@@ -422,11 +422,11 @@ Usage:
                                    Open the Nth inbox message in $VISUAL/$EDITOR and save it
                                    as the text form would; an unchanged buffer writes
                                    nothing; --role <id> disambiguates like --edit
-  tumwater reset-counters [--role <id>]
+  tumwater reset-counters [--role <id>[,<id>...]]
                                    Zero lifetime runs/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the
                                    daily cap cannot be reset past)
-  tumwater wake [--role <id>] [--in <dur> | --cancel | --list [--json]]
+  tumwater wake [--role <id>[,<id>...]] [--in <dur> | --cancel | --list [--json]]
                                    Wake sleeping roles — the named roles (or all) run
                                    within one poll; --in schedules the wake for later;
                                    --cancel drops pending scheduled wakes;
