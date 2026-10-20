@@ -41,7 +41,7 @@ test("isExemptPath treats regex metacharacters in patterns as literal text", () 
   // depend on the pattern's literal shape, never its regex interpretation. The stakes are
   // the review gate: an unescaped [ ] pair becomes a character class (docs/[drafts].md would
   // exempt docs/d.md, docs/r.md, …), an unbalanced one or a bare ( ) throws from new RegExp
-  // and crashes every tick's gate, and | + ? $ reinterpret the pattern into something that
+  // and crashes every run's gate, and | + ? $ reinterpret the pattern into something that
   // matches files its author never meant to exempt. Only "." has been exercised so far,
   // via the default *.md — pin the rest of the escape set here.
 

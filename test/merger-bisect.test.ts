@@ -278,7 +278,7 @@ test("an un-assemblable stack's fallback merges pins from an older main with one
     // 2N).
     assert.equal(reviews.length, 3, "one model review per change plus the resolution's re-review");
     assert.equal(folded.get("alpha")!.length, 1);
-    assert.equal(folded.get("beta")!.length, 2, "the re-review's reviewer run folds into beta's tick (its stack pick conflicted)");
+    assert.equal(folded.get("beta")!.length, 2, "the re-review's reviewer run folds into beta's run (its stack pick conflicted)");
     assert.deepEqual(
       readEvents(root)
         .filter((e) => e.type === "build_check")
@@ -410,7 +410,7 @@ test("a lost pin degrades its verify to a terminal error instead of starving the
     );
 
     assert.deepEqual(results.map((r) => r.result), ["error", "changed", "changed"], "the uncheckable pin is terminal; the rest merge");
-    assert.ok(states.alpha.lastError, "the git failure is recorded where the next tick's prompt reads it");
+    assert.ok(states.alpha.lastError, "the git failure is recorded where the next run's prompt reads it");
     assert.equal(folded.get("alpha"), undefined, "no reviewer run for the uncheckable pin");
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "beta and gamma merged");
     assert.deepEqual(eventsOfType(root, "merged").map((e) => e.source), ["beta", "gamma"]);

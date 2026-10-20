@@ -9,7 +9,7 @@ import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type Base
 import { checkMainBaseline, watchedBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../prompt/gate-notes.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import type { TickOutcome } from "../run/run-outcome.js";
+import type { RunOutcome } from "../run/run-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
 import { mainRedPhrase, plural } from "../text/phrases.js";
@@ -20,21 +20,21 @@ import { gateMainWorktreePath } from "../paths.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 
-/** Red-main baseline gate for fresh authoring ticks: before an
+/** Red-main baseline gate for fresh authoring runs: before an
  * authoring run is spent on top of pristine main, verify that MAIN ITSELF is green — a red main
  * rejects every code diff deterministically at the review gate (BUGS.md's "Build broken on main"
  * and "Tests red on main" entries), so while a SHA is known red the blocked roles skip authoring
  * instead of burning runs that are guaranteed to fail. Split out of runner.ts — which keeps the
- * tick lifecycle around it — because this is a self-contained policy with its own per-process
+ * run lifecycle around it — because this is a self-contained policy with its own per-process
  * state (one harness-level `main_red_hold` event AND one queued healer prompt per
  * newly-discovered red SHA) and its own
  * event contract; what it borrows from the role is identity and the role's worktree, and it
  * consumes
  * build/build-check.ts's checkMainBaseline machinery (detection + execution + per-SHA cache),
- * which stays unaware of ticks. */
+ * which stays unaware of runs. */
 
 /** The last main SHA for which this process logged a red-main hold event (the baseline check): one
- * harness-level warning per newly-discovered red SHA, not one per blocked role's tick —
+ * harness-level warning per newly-discovered red SHA, not one per blocked role's run —
  * module-level so every runner in the team shares it. A restart re-logs once: the cache is cold
  * then too, and an operator restarting into a still-red main should see why nothing merges. */
 let lastMainRedSha: string | null = null;
@@ -66,8 +66,8 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
  * lastMainRedSha) so the gate and the bugfix handoff share one guard: whichever observes the
  * red first logs it, the other stays silent. `foundBy` is the role whose path verified the
  * red — when that role is not bugfix itself, one prompt is enqueued to bugfix's own inbox so
- * the healer ticks on the orchestrator's next poll instead of waiting out its own interval or
- * deferral; bugfix finding its own red skips the enqueue because its running tick already
+ * the healer runs on the orchestrator's next poll instead of waiting out its own interval or
+ * deferral; bugfix finding its own red skips the enqueue because its running run already
  * carries the note and IS the heal (and enqueuing from inside it would queue a second run). A
  * queued per-role prompt makes the role due by itself (`isEligible`, scheduling.ts, returns
  * `{ run: true, reason: "inbox" }` on a non-empty inbox before any interval, backoff, or
@@ -111,7 +111,7 @@ function warnMainRedOnce(
  * healer to verify main is green now, and to reproduce and land the fix only if it is still
  * red. The self-limiting wording is the green race's whole handling: if main turned green
  * before the healer consumes the prompt, bugfixMainRedNote returns undefined (no `<main-red>`
- * note is appended) and the "verify green" clause makes the tick a no-op. */
+ * note is appended) and the "verify green" clause makes the run a no-op. */
 export function mainRedHealPrompt(
   sha: string,
   detail?: { culprit: string; failingTests: readonly string[]; outputTail?: readonly string[] },
@@ -152,10 +152,10 @@ export function baselineCheckLogger(
  * (cache and provisional-red re-verification reused unchanged, so it costs at most the one run
  * the gate would have paid for) and, when main is red, returns the note that points the healer
  * at the failure. Returns undefined on green, no declared check, or an environmental skip — the
- * healer's tick then proceeds exactly as it did before this existed. Never throws. */
+ * healer's run then proceeds exactly as it did before this existed. Never throws. */
 export async function bugfixMainRedNote(root: string, role: string, wt: string): Promise<string | undefined> {
   // The declared check is detected through the live config (plans/portability.md §6/7); a
-  // broken file degrades to defaults, which declare none — the tick then proceeds as before.
+  // broken file degrades to defaults, which declare none — the run then proceeds as before.
   const config = liveConfig(root);
   const baseline = mergeCommandOf(config)
     ? { baseline: await watchedBaseline(wt) }
@@ -167,7 +167,7 @@ export async function bugfixMainRedNote(root: string, role: string, wt: string):
   return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail), red.outputTail);
 }
 
-/** Gate one fresh tick on main's baseline. Returns null when authoring may proceed — role not
+/** Gate one fresh run on main's baseline. Returns null when authoring may proceed — role not
  * blocked, no declared check, green, or an environmental skip (warned under the role and
  * proceeded with, exactly like the review gate's pre-check) — otherwise the terminal
  * `main_red` outcome for the caller to return as-is. Never throws: git, detection, and
@@ -182,7 +182,7 @@ export async function mainRedGate(
   /** Called with main's failing tests when the red names them: the role then runs on the red
    * main instead of ending `main_red`, and the caller puts them in its prompt. */
   onKnownRed?: (failingTests: string[]) => void,
-): Promise<TickOutcome | null> {
+): Promise<RunOutcome | null> {
   // User-defined roles are blocked alongside the built-in code roles (plans/user-defined-loops.md):
   // an unknown charter may produce code, and on red main such diffs are rejected deterministically
   // at the gate's pre-check — an authoring run would be pure waste. Customs come from
@@ -232,7 +232,7 @@ export async function mainRedGate(
     return {
       result: "main_red",
       summary: "code merges blocked until main is green",
-      // The cause rides the outcome so the tick's `run_end` carries it
+      // The cause rides the outcome so the run's `run_end` carries it
       // (run-finalize.ts folds it into state.lastError before logging): the digest itemizes
       // the outcome that blocks every merge, instead of leaving it a bare count behind a
       // once-per-SHA warning (BUGS.md 2026-09-28).

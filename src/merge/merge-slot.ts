@@ -4,7 +4,7 @@ import { RETRIABLE_MERGE_RESULTS } from "./merge-core.js";
 import { pinnedRetrySha } from "../runner/leftover.js";
 import { branchHead } from "../git/git.js";
 import { cachedBaselineVerdict } from "../baseline/main-baseline.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
 import { saveRunnerState, type RunnerState } from "../runner/runner-state.js";
@@ -348,7 +348,7 @@ export function isMergeChange(value: unknown): value is MergeChange {
  * recorded during this merge (`at >= startedAt`; an older one is stale). Every other failure
  * reads `lastError`, minus its `merge failed: ` and `<result> — ` prefixes; a bare result
  * (the catch-all `merge failed: merge_conflict`) names no reason. */
-export function mergeFailureReason(state: RunnerState, result: TickResult, startedAt: number): string | undefined {
+export function mergeFailureReason(state: RunnerState, result: RunResult, startedAt: number): string | undefined {
   if (result === "changed" || result === "aborted") return undefined;
   if (result === "rejected") {
     const review = state.lastReview;
@@ -377,7 +377,7 @@ export function writeMergeOutcome(
   root: string,
   entry: MergeEntry,
   state: RunnerState,
-  result: TickResult,
+  result: RunResult,
   durationMs: number,
   usage: MergeUsage,
   file: string,
@@ -386,8 +386,8 @@ export function writeMergeOutcome(
   saveRunnerState(root, state);
   const reason = result === "changed" ? undefined : mergeFailureReason(state, result, Date.now() - durationMs);
   // One warning per error episode, merge side (BUGS.md 2026-09-30): a review rejection
-  // feeds the same streak the tick-side warn reads (src/run/run-finalize.ts), but it resolves
-  // AFTER the tick's end-save, so the crossing warn belongs here — same shape, same bar.
+  // feeds the same streak the run-side warn reads (src/run/run-finalize.ts), but it resolves
+  // AFTER the run's end-save, so the crossing warn belongs here — same shape, same bar.
   if (result === "rejected" && (state.consecutiveErrors ?? 0) === ERROR_STREAK_WARN) {
     warnEventBestEffort(
       root,
@@ -475,8 +475,8 @@ export function mergeUsage(author: RoleRunner, root: string): {
     foldUsage: (run) => {
       author.foldMergeUsage(run, reviewProvider, reviewPair);
       // A claude reviewer's or resolver's billing/window readings reach the account file the
-      // moment this run folds, not at the author's next tick end — so a pi-author team's
-      // claude reviewer still updates the five-hour window before the author's next tick
+      // moment this run folds, not at the author's next run end — so a pi-author team's
+      // claude reviewer still updates the five-hour window before the author's next run
       // starts (PLANS.md "Mixed claude + pi fleets, part 3/4"). Best-effort like run-finalize.ts's
       // call; the file is a cache and an unwritable state dir must not fail the merge.
       if (run.billing !== undefined || run.rateWindows !== undefined) {
@@ -544,7 +544,7 @@ export async function requeueKeptChange(
   mainBranch: string,
   entry: MergeEntry,
   state: RunnerState,
-  result: TickResult,
+  result: RunResult,
 ): Promise<void> {
   const isMainRed = result === "main_red";
   if (!isMainRed && !RETRIABLE_MERGE_RESULTS.has(result)) return;

@@ -47,11 +47,11 @@ export function isNothingToDo(text: string): boolean {
 
 /** Sentinel a role's pi run outputs when it declines its task (see plans/refusal-and-thrash.md):
  * `TUMWATER_REFUSED: <one-line reason>`. The reason is the durable objection — it becomes the
- * commit subject of the refusal note and the tick's lastSummary. */
+ * commit subject of the refusal note and the run's lastSummary. */
 export const REFUSED_SENTINEL = "TUMWATER_REFUSED";
 
 /** The four-line SUMMARY/WHY/RISK/VERIFIED block itself — the machine-parsed half of the
- * closing contract, shared verbatim by REPLY_ENDINGS (tick, director, and resume prompts) and
+ * closing contract, shared verbatim by REPLY_ENDINGS (run, director, and resume prompts) and
  * prompt-followup.ts's buildSummaryRequestPrompt (the follow-up that recovers a missing block),
  * so they cannot drift (sibling of the NOTHING_TO_DO sentinel below, and parsed field-by-field
  * by git/commit-message.ts's labeledLine). */
@@ -62,10 +62,10 @@ export const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the
 
 /** The reply contract's closing rule: the three mutually exclusive ways a run ends, with the
  * exact SUMMARY/WHY/RISK/VERIFIED block git/commit-message.ts parses into the commit message as the
- * last one. Shared by the tick and director rules (prompt.ts's commonRules) and
+ * last one. Shared by the run and director rules (prompt.ts's commonRules) and
  * prompt-followup.ts's resume bridge, so a resumed run ends under the same contract as a fresh
  * one. Written as an either/or list because, stated as separate rules, models filled in every
- * one: 56 team ticks ended a SUMMARY block with the nothing sentinel too, and
+ * one: 56 team runs ended a SUMMARY block with the nothing sentinel too, and
  * `TUMWATER_REFUSED: none` on completed work once made the harness discard it. The nothing
  * ending says "end your reply with", not "reply with the single line", so a run that must
  * report something first (the director's answer to a question, qa's FLOW line) can. */
@@ -105,7 +105,7 @@ export function labeledLine(text: string, label: string): string | null {
  * exists. Anchored at line start like the VERDICT line, so prose that merely mentions the
  * sentinel mid-sentence cannot set the reason. THE ONLY source of a refusal (BUGS.md
  * 2026-09-23): a bare sentinel and a mid-sentence mention are not refusals, and a reason
- * that negates the refusal is not one either (isNegatedRefusal) — four ticks ended ordinary
+ * that negates the refusal is not one either (isNegatedRefusal) — four runs ended ordinary
  * work-completed replies with `TUMWATER_REFUSED: none` and the harness destroyed their
  * tested work. */
 export function extractRefusal(text: string): string | null {
@@ -185,7 +185,7 @@ export interface FlowResult {
   result: "passed" | "bug";
 }
 
-/** Extract the `qa` tick's result-carrying `FLOW: <name> — <passed|bug>` line (plans/observer-
+/** Extract the `qa` run's result-carrying `FLOW: <name> — <passed|bug>` line (plans/observer-
  * roles.md 2/2); null when absent. Built on `labeledLine`, so the label is anchored at line
  * start and a mid-sentence mention is ignored. The verdict is required: a bare `FLOW: <name>`
  * — or a reply truncated mid-verdict (`FLOW: gui-budget-cap — pa`) — is not a result, and

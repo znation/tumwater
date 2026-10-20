@@ -23,12 +23,12 @@ import { setMergeStage } from "./merge-slot.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { PriorReview } from "./merge-queue.js";
 
 /** Reviewing and merging a pinned commit outside the author's worktree (plans/merge-queue.md,
- * entry 2/5). A tick commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,
+ * entry 2/5). A run commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,
  * resets that worktree to main, and queues the sha for the ORCHESTRATOR's merge pipeline
  * (merge-verify.ts, merge queue 3/5 and land-queue speed 2c), which checks it out detached —
  * a pooled `_slot-<n>` for the verify and the shared `_merge` checkout for the merge
@@ -46,8 +46,8 @@ export interface MergeRequest {
   role: string;
   /** The pinned commit to merge — checked out detached in the shared `_merge` checkout. */
   sha: string;
-  /** Current tick number, for the unique per-run session names (review + conflict resolution). */
-  tick: number;
+  /** Current run number, for the unique per-run session names (review + conflict resolution). */
+  runNumber: number;
   summary: string;
   /** The author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff. On a
    * recovery merge these are read back from the pinned commit's message (the authoring run
@@ -107,7 +107,7 @@ export interface MergerContext extends PiRunWiring, MergeScopeContext {
  * under-cap one (ref kept for recovery). */
 type GateOutcome =
   | { kind: "gate"; gate: GateResult; sha: string }
-  | { kind: "result"; result: TickResult; discarded?: true };
+  | { kind: "result"; result: RunResult; discarded?: true };
 
 /** The identity every gate invocation needs from its caller — merge-batch.ts's BatchContext
  * (and MergerContext) satisfies it, so the gate never hand-assembles its ReviewContext
@@ -162,10 +162,10 @@ function reviewContextFor(
     wt,
     mainBranch: ctx.mainBranch,
     config: ctx.config,
-    tick: req.tick,
-    // One directory per review of one change: tick plus the pinned sha, so a re-verify of the
+    runNumber: req.runNumber,
+    // One directory per review of one change: run plus the pinned sha, so a re-verify of the
     // same sha reuses it and the verify and the conflict-resolved re-review agree.
-    sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.tick}-${shortSha(req.sha)}`),
+    sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.runNumber}-${shortSha(req.sha)}`),
     signal: ctx.signal(),
     runGatePi: ctx.runGatePi,
     foldUsage,
@@ -187,7 +187,7 @@ function reviewContextFor(
 /** Run one pinned change through the review gate in its leased pool slot `wt` and handle the
  * immediate bookkeeping — the heart of every verify (merge-batch.ts's verifyRequest). Persists the
  * verdict at once, folds the reviewer's usage, and routes
- * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-merges it),
+ * the three terminal outcomes: aborted (ref kept — fail closed, the next run re-merges it),
  * rejected (ref deleted — final for this sha), and failed (a strike-cap discard — the gate
  * reports it as `discarded` — deletes the ref; an under-cap failure, a red main's included,
  * keeps it for the next re-merge). Returns
@@ -234,18 +234,18 @@ export async function reviewPinnedChange(
   setMergeStage(root, role, "merging");
   // A rejection keeps the rejected commit alive while a revision is due (plans/revise-rejected.md):
   // point the rejected ref at the head the gate judged and record the round, so the author's next
-  // tick re-applies it. A rejection is final — clear the state, delete the ref, and log
+  // run re-applies it. A rejection is final — clear the state, delete the ref, and log
   // `exhausted` — when the same objection has survived two revisions or the chain hit the
   // backstop (BUGS.md 2026-10-14). Done before the save below so the round rides the
   // persisted state.
   if (gate.decision === "rejected") {
     await recordRejectedChange(root, role, state, state.lastReview?.head ?? req.sha, req.revisionRound, req.priorReview?.counts);
   }
-  // Persist the verdict immediately, not at the tick's end save: the gate's bookkeeping is
-  // cross-tick memory (a persisted "reject" injects a "your previous change was rejected"
-  // note into the next prompt), and this tick's tail — the merge plus the still-to-come
+  // Persist the verdict immediately, not at the run's end save: the gate's bookkeeping is
+  // cross-run memory (a persisted "reject" injects a "your previous change was rejected"
+  // note into the next prompt), and this run's tail — the merge plus the still-to-come
   // authoring run — can outlive a sudden death by hours. A mid-run crash (power loss,
-  // kill -9) would otherwise roll the state file back to the last tick-boundary snapshot
+  // kill -9) would otherwise roll the state file back to the last run-boundary snapshot
   // and re-inject a superseded rejection even though its replacement is already on main.
   saveRunnerState(root, state);
   // The reviewer's usage is folded exactly once per attempt: runGatePi folds a RETRIED first
@@ -260,7 +260,7 @@ export async function reviewPinnedChange(
   // produced it — one more line here, because a GateResult carries a third run now.
   if (gate.nudgeRun) foldUsage(gate.nudgeRun);
 
-  // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-merges it.
+  // Shutdown/user abort mid-review: fail closed — the ref stays and the next run re-merges it.
   // The caller routes "aborted" through its own abort handling (which discards the pin too when
   // the abort was a deliberate user stop).
   if (gate.aborted) return { kind: "result", result: "aborted" };
@@ -327,9 +327,9 @@ export async function reviewPinnedChange(
  * failure, or a merge that could not be rebased/merged. They are exactly a merge's
  * non-terminal failures (`rejected` is final and deletes the pin; `aborted` is a shutdown;
  * `changed` merged), so a run of them on the leftover-recovery path is what feeds the error
- * streak — a dead reviewer backend raises the alarm instead of resetting it every tick
+ * streak — a dead reviewer backend raises the alarm instead of resetting it every run
  * (BUGS.md 2026-09-21). */
-export const RETRIABLE_MERGE_RESULTS: ReadonlySet<TickResult> = new Set([
+export const RETRIABLE_MERGE_RESULTS: ReadonlySet<RunResult> = new Set([
   "review_error",
   "merge_conflict",
   "merge_blocked",
@@ -341,7 +341,7 @@ export const RETRIABLE_MERGE_RESULTS: ReadonlySet<TickResult> = new Set([
  * count reaches REVISION_FINAL_ON_REPEAT, counted from `priorCounts` — or the chain has reached
  * the REVISION_BACKSTOP cap, when it ends even if the objections never repeat. While it keeps
  * revising, point `refs/tumwater/rejected/<role>` at the head the gate judged and set
- * RunnerState.revision (with each reason's persistence count) so the author's next tick re-applies
+ * RunnerState.revision (with each reason's persistence count) so the author's next run re-applies
  * it; when final, clear the revision, delete the ref and log `exhausted`. `priorCounts` is the
  * previous round's per-reason persistence counts, carried from the queued merge's PriorReview;
  * absent for a fresh change's first rejection and on a recovery merge, a `(prior N)` tag then
@@ -373,7 +373,7 @@ async function recordRejectedChange(
   if (nextRound >= REVISION_BACKSTOP || repeatedFinal) {
     state.revision = undefined;
     await deleteRef(root, rejectedRefName(role));
-    // The next tick gets the plain rejected note, not a revision note; mark it final so that
+    // The next run gets the plain rejected note, not a revision note; mark it final so that
     // note says the rejected diff is gone rather than inviting another revision.
     if (state.lastReview) state.lastReview.exhausted = true;
     logEventBestEffort(root, { source: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
@@ -386,7 +386,7 @@ async function recordRejectedChange(
 /** Hand a change that turned main red back to a runner as a revision (plans/fast-merge.md, part
  * 4c): like recordRejectedChange, point `refs/tumwater/rejected/<role>` at the reverted commit and
  * set RunnerState.revision one round past the commit's `Revision` trailer, with `reasons` as the
- * review the author's next tick sees. `role` is the runner that receives it — not necessarily the
+ * review the author's next run sees. `role` is the runner that receives it — not necessarily the
  * commit's author. At REVISION_BACKSTOP the chain ends as a rejection's does: the ref and the
  * revision are cleared and `exhausted` is logged. The director never revises. */
 export async function recordRevertedChange(
@@ -425,19 +425,19 @@ export async function recordRevertedChange(
  * a pin whose pre-gate rebase conflicted. `lastApprovedHead` is neither read nor widened: the
  * caller vouches for `req.sha` (only changes the gate approved or exempted are merged). Owns
  * the merge ref's lifecycle from here: deleted on merge, KEPT on every non-terminal outcome
- * (aborted, merge_conflict, merge_blocked) for the next tick's leftover recovery. An abort that has
+ * (aborted, merge_conflict, merge_blocked) for the next run's leftover recovery. An abort that has
  * already fired returns "aborted" before anything starts, ref kept — the merge's step-boundary
  * stop (BUGS.md 2026-09-23): with no gate here, nothing else on this path would notice it
  * before the in-lock check and the merge. Never throws for a failed merge: git-level failures
  * propagate like any other failure. */
-export async function mergeApprovedChange(ctx: MergerContext, req: MergeRequest): Promise<TickResult> {
+export async function mergeApprovedChange(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   if (ctx.signal().aborted) return "aborted";
   // Hold the merge worktree from before ensureDetachedWorktree (its reset is part of the
   // use) through the merge (plans/disk-floor.md, part 2/4).
   return useWorktree(ctx.root, mergeWorktreePath(ctx.root), () => mergeApprovedChangeIn(ctx, req));
 }
 
-async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Promise<TickResult> {
+async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   const wt = await ensureDetachedWorktree(ctx.root, mergeWorktreePath(ctx.root), req.sha);
   const pinPatch = await patchId(wt, ctx.mainBranch, req.sha).catch(() => null);
   let red: { check: BuildCheck; outcome: BuildCheckOutcome } | undefined;
@@ -449,7 +449,7 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
       mainBranch: ctx.mainBranch,
       exemptPaths: ctx.config.review.exemptPaths,
       config: ctx.config,
-      tick: req.tick,
+      runNumber: req.runNumber,
       runPi: ctx.runPi,
       onMergeCheckRed: (check, outcome) => {
         red = { check, outcome };
@@ -522,7 +522,7 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
   if (result === "merge_blocked" && blocked !== undefined) {
     return mergeBlocked(ctx, req.role, wt, blocked);
   }
-  // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-merges it.
+  // merge_conflict / merge_blocked: keep the ref — the next run's recovery re-merges it.
   // (Cross-check blocks no longer come through here: merge-check-failures.ts's mergeBlocked
   // counts them.)
   // A rejected recheck already wrote its own lastError and deleted its ref — leave it.

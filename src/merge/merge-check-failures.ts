@@ -14,7 +14,7 @@ import { MERGE_FLAKY_WARNING_PREFIX, isKnownFlake } from "../review/known-flakes
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import type { MergerContext } from "./merge-core.js";
 
 /** Consecutive red in-lock merge checks of one patch (RunnerState.mergeCheckFailures) before
@@ -67,8 +67,8 @@ async function keepPinOrAttribute(
   ctx: MergerContext,
   wt: string,
   reason: string,
-  attribute: (head: string) => Promise<TickResult>,
-): Promise<TickResult> {
+  attribute: (head: string) => Promise<RunResult>,
+): Promise<RunResult> {
   const { head, patch, count } = await tallyCheckFailure(ctx, wt);
   if (pinKept(patch, count)) {
     ctx.state.lastError = `merge failed: merge_blocked — ${reason}`;
@@ -90,7 +90,7 @@ async function rejectChange(
   head: string,
   reasons: string[],
   state: RunnerState,
-): Promise<TickResult> {
+): Promise<RunResult> {
   recordReview(state, "reject", reasons, head);
   state.unreviewFailures = 0;
   saveRunnerState(ctx.root, state);
@@ -117,7 +117,7 @@ function keepForKnownFailures(
   label: string,
   red: { outcome: BuildCheckOutcome },
   state: RunnerState,
-): TickResult | null {
+): RunResult | null {
   const known = onlyKnownMainFailures(ctx.root, red.outcome.failingTests);
   if (!known) return null;
   state.lastError = `${label} failed only main's known failures, merge kept: ${known.join(", ")}`;
@@ -139,7 +139,7 @@ export async function mergeCheckRed(
   role: string,
   wt: string,
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
-): Promise<TickResult> {
+): Promise<RunResult> {
   if (unverifiedTreeOutcome(red.outcome)) {
     ctx.state.lastError = `merge failed: ${firstCheckReason(red)}`;
     return "merge_blocked";
@@ -154,7 +154,7 @@ export async function mergeCheckRed(
   });
   // The first red of a patch's in-lock check is exactly the retry that exists for load flakes,
   // so it is the ONE signal that could name a flaky test after the fact — and lastError, the
-  // only place this reason is written, is overwritten by the leftover-recovery tick a second
+  // only place this reason is written, is overwritten by the leftover-recovery run a second
   // later (BUGS.md 2026-10-14). Log it as a warning so the failure digest and a later audit can
   // name the flaky test; the second red at MERGE_CHECK_FAILURE_LIMIT is attributed through
   // review_rejected, whose reasons are already durable.
@@ -169,7 +169,7 @@ export async function mergeCheckRed(
 
 /** Record a merge check that failed and then passed on its kept-pin retry as a flake, in the
  * form the gate's pre-check uses (MERGE_FLAKY_WARNING_PREFIX), so the gate's known-flake memory,
- * doctor's `flaky checks` and the tick prompt's flake note count it (PLANS.md 2026-10-16). Reads
+ * doctor's `flaky checks` and the run prompt's flake note count it (PLANS.md 2026-10-16). Reads
  * the headline mergeCheckRed stored on the strike record only when its patch-id is the merged
  * pin's (a stale strike of a discarded pin must not be logged); a pin that was never red (or
  * only cross-check blocked) has none and logs nothing. Call before the strike is cleared. */
@@ -190,14 +190,14 @@ export function noteMergeRetryPassed(
  * under the rebase, and a differently-rebased tree can pass the cross-check — but at the
  * limit the block is attributed to the change: rejected deterministically with the block
  * reason, the pin deleted, no model run. Without this a resolution that trips the same
- * cross-check on every re-resolve pays a fresh conflict-resolver run each tick, forever
+ * cross-check on every re-resolve pays a fresh conflict-resolver run each run, forever
  * (BUGS.md 2026-10-02: five resolver sessions for one fix-claim-blocked pin). */
 export async function mergeBlocked(
   ctx: MergerContext,
   role: string,
   wt: string,
   blocked: string,
-): Promise<TickResult> {
+): Promise<RunResult> {
   return keepPinOrAttribute(ctx, wt, blocked, (head) =>
     rejectChange(ctx, role, head, [`merge blocked: ${blocked}`], ctx.state),
   );
@@ -208,7 +208,7 @@ export async function mergeBlocked(
  * MERGE_CHECK_FAILURE_LIMIT — by the gate's rule: ask main's own
  * verdict at its current tip (mainTipVerdict — usually a cache hit, since every merge seeds
  * the SHA it moved main to). Main green → the change broke the check: rejected deterministically
- * — reasons in lastReview for the author's next tick, the strike count reset, ref deleted,
+ * — reasons in lastReview for the author's next run, the strike count reset, ref deleted,
  * review_rejected logged, no pi run. Main red → not this change's failure: "main_red" with the
  * ref kept and unreviewFailures untouched, so the orchestrator poll (requeueMainRedPin) re-queues
  * it once main's head moves to one the watch has not found red, and leftover recovery holds it
@@ -227,7 +227,7 @@ export async function attributeRedCheck(
   label: "merge check",
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
   state: RunnerState,
-): Promise<TickResult> {
+): Promise<RunResult> {
   // An unverified red — a run that spanned a host sleep, the tree never judged — is not the
   // change's failure and not a strike: keep the ref for recovery's re-merge and name the sleep
   // (BUGS.md 2026-09-30). Main's own verdict is beside the point: the attribution question is

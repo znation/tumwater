@@ -9,12 +9,12 @@ import type { MigrationNotes } from "../orchestrator/startup-migrations.js";
 import { mergeQueueDir, legacyLandQueueDir } from "../paths.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
-/** The durable merge queue (plans/merge-queue.md 3/5): a changed tick commits, pins its sha by
- * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the tick ENDS, holding no
+/** The durable merge queue (plans/merge-queue.md 3/5): a changed run commits, pins its sha by
+ * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the run ENDS, holding no
  * author slot through review or the build check. The orchestrator drains the queue through its
  * merge pipeline (merge-drain.ts): it verifies every queued entry, merges the approved ones in
  * queue order on one merge slot, and drops each entry after EVERY outcome (a non-terminal one
- * keeps the merge ref, so the retry rides next-tick leftover recovery at normal cadence — the
+ * keeps the merge ref, so the retry rides next-run leftover recovery at normal cadence — the
  * queue never retries). Timestamped filenames order the queue across processes; a crash between
  * enqueue and drop loses nothing — the next start drains the survivors, deduping shas main
  * already holds. Same reasons the director's inbox is a directory of files (inbox.ts). The
@@ -36,7 +36,7 @@ export interface PriorReview {
 }
 
 /** One entry in the durable merge queue (.tumwater/land-queue/; this module): a commit
- * the tick pinned by `refs/tumwater/landing/<role>` and enqueued at tick end. One file per
+ * the run pinned by `refs/tumwater/landing/<role>` and enqueued at run end. One file per
  * entry, filename-ordered (`<ts>-<seq>-<pid>.json`); the entry is dropped after EVERY merge
  * outcome, so the queue holds only unattempted merges. No attempt counter lives in the file —
  * retry bookkeeping is the persisted `RunnerState.unreviewFailures`, which governs the strike cap.
@@ -64,7 +64,7 @@ export interface MergeEntry {
   revisionRound?: number;
   /** The prior rejection this merge is revising, absent for a fresh change
    * (plans/revise-rejected.md part 2/2). Filled by run-stage.ts from RunnerState.lastReview only
-   * on a tick that held the rejected diff; a recovery merge never carries one. */
+   * on a run that held the rejected diff; a recovery merge never carries one. */
   priorReview?: PriorReview;
   /** Earliest time (epoch ms) the verification may start, absent for an entry that is ready at
    * once. Set on the pipeline's own re-queue of a `review_error` change, so a flaky reviewer is
@@ -81,7 +81,7 @@ let seq = 0;
 /** Append one merge to the queue as a single timestamped file (creating the queue dir if
  * needed). The filename orders entries across processes by wall-clock time; the per-process
  * counter and pid break ties within one process. Written atomically (tmp + rename): the
- * enqueue runs while the process can be hard-killed mid-write (the tick deadline's
+ * enqueue runs while the process can be hard-killed mid-write (the run deadline's
  * process-group kill, a shutdown), and a torn entry the crash left behind is not always
  * recoverable — the drain repairs only an unreadable HEAD (staleHeadFile), so a torn file
  * that sorts after a healthy entry would sit in the queue dir unread forever. */
@@ -159,12 +159,12 @@ const entryCache = new Map<string, StatKeyedValue<MergeEntry>>();
  * queue is one JSON object per file, so a file that parses to anything else — a scalar, an
  * array, an object missing a required field — is foreign or torn and reads as no entry.
  * Checking only `role` and `sha` left the `as MergeEntry` cast unsound: a foreign file that
- * happened to carry those two fields was handed downstream with `tick` and `summary`
+ * happened to carry those two fields was handed downstream with `run` and `summary`
  * undefined, which surface as bogus session names (`tumwater-<role>-undefined-review`) and
  * `undefined` in the reviewer's prompt. Optional fields are checked only when present.
  *
  * The three numeric fields go through nonNegativeNumber, not a bare `typeof === "number"`:
- * JSON's `1e999` parses to Infinity, so a hand-edited file could carry a non-finite tick or
+ * JSON's `1e999` parses to Infinity, so a hand-edited file could carry a non-finite run or
  * enqueuedAt past a typeof check, and both feed plumbing downstream (session names, queue
  * ordering, the status payload). */
 function isPriorReview(v: unknown): v is PriorReview {
@@ -282,8 +282,8 @@ export function headMerge(root: string): { entry: MergeEntry; file: string } | n
  * reads null while the queue holds files; null when the queue is empty or its head is healthy.
  * The drain drops this file with a warning so the queue can drain: headMerge reads null for
  * it forever and nothing else will remove it, stranding every live entry behind it (each
- * author's interlock, the per-poll queued-roles set, pins its ticks along with them). The
- * crashed entry's commit, if any, still lives in its merge ref — next-tick leftover recovery
+ * author's interlock, the per-poll queued-roles set, pins its runs along with them). The
+ * crashed entry's commit, if any, still lives in its merge ref — next-run leftover recovery
  * re-merges it — so the drop loses nothing recoverable from the file (BUGS.md 2026-09-16). */
 export function staleHeadFile(root: string): string | null {
   const file = queueFiles(root)[0];
@@ -292,7 +292,7 @@ export function staleHeadFile(root: string): string | null {
 }
 
 /** Remove one queued merge's file after its merge outcome — terminal or not (a
- * non-terminal outcome keeps the merge ref; the retry is the role's next fresh tick, not a
+ * non-terminal outcome keeps the merge ref; the retry is the role's next fresh run, not a
  * queue re-drain). ENOENT is a no-op: a concurrent drop between listing and removal is a
  * normal race (the inbox.ts policy), not an error. */
 export function dropMerge(file: string): void {

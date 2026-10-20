@@ -1,7 +1,7 @@
 /** Durable merge queue (plans/merge-queue.md 3/5): the file discipline — enqueue ordering,
  * head selection, per-role filter, drop, and the stat-keyed content cache. The pipeline's full
  * path (merge-drain.ts) is pinned through mergeHead in the runner tests and the orchestrator's
- * e2e; the interlock (a role with a queued or in-flight merge never ticks) is pinned in the
+ * e2e; the interlock (a role with a queued or in-flight merge never runs) is pinned in the
  * orchestrator tests too. */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -107,7 +107,7 @@ test("an entry missing a required field is skipped like a torn one", () => {
   const repo = makeRepo();
   enqueueMerge(repo, entry("improve", "a".repeat(40)));
   const dir = mergeQueueDir(repo);
-  // role and sha are present — the whole check the reader used to apply — but tick, summary,
+  // role and sha are present — the whole check the reader used to apply — but run, summary,
   // and enqueuedAt are not: casting it as a MergeEntry handed the drain `undefined` for
   // each, which surfaced as a `tumwater-feature-undefined-review` session and an undefined
   // summary in the reviewer's prompt. It must read as no entry instead: the head is held (not
@@ -129,7 +129,7 @@ test("a required numeric field that is not finite is skipped like a torn one", (
   const repo = makeRepo();
   enqueueMerge(repo, entry("improve", "a".repeat(40)));
   const dir = mergeQueueDir(repo);
-  // JSON's 1e999 parses to Infinity, which a bare `typeof === "number"` accepts: the tick
+  // JSON's 1e999 parses to Infinity, which a bare `typeof === "number"` accepts: the run
   // would name a `tumwater-feature-Infinity-review` session and enqueuedAt would feed queue
   // arithmetic. All required fields but the non-finite ones are present, so only the numeric
   // guard can reject it. JSON.stringify would turn Infinity into null, so the raw text is written.

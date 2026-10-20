@@ -136,7 +136,7 @@ const SAVED_REDS_MAX = 64;
 let greensFile: string | undefined;
 
 /** Mirror the verdicts to disk, so the team's next generation starts with them. A restart
- * used to empty the cache, and the first tick after every restart re-ran the suite on a main the
+ * used to empty the cache, and the first run after every restart re-ran the suite on a main the
  * previous generation had already verified (41 of 319 baseline runs over 2026-10-02..12 started
  * within 10 minutes of an orchestrator start). A green is a fact about an
  * immutable tree. A red is provisional (shouldRerunRed), so it is saved only as the main watch's
@@ -186,7 +186,7 @@ export function persistBaselineVerdicts(root: string): void {
   greensFile = file;
 }
 
-/** In-flight dedup: concurrent ticks on the same not-yet-cached SHA (a fresh main move wakes
+/** In-flight dedup: concurrent runs on the same not-yet-cached SHA (a fresh main move wakes
  * every blocked role at once) share one check run instead of racing N npm invocations. Keyed by
  * SHA for ordinary checks; a re-verification adds its worktree, because joining another
  * worktree's run would observe the wrong environment — the one thing it exists to re-test. */
@@ -222,9 +222,9 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
  * scope-`batch` check ran green on exactly it (a skipped check seeds nothing, and neither does a
  * merge_blocked stack or a doc-only re-stack that merged without a check of its own). Seeding
  * here means that once the merge completes — main now points at this very SHA — the next fresh
- * tick's checkMainBaseline is a cache hit instead of re-running the full suite on an
+ * run's checkMainBaseline is a cache hit instead of re-running the full suite on an
  * already-verified tree: for tumwater itself that saves one redundant `npm test` (~1 min) per
- * merged code tick, plus every other role waking on "main moved" stalling behind that in-flight
+ * merged code run, plus every other role waking on "main moved" stalling behind that in-flight
  * run. Never seed a pre-rebase head: whenever main moved under the review, that SHA never
  * becomes main and the entry would silently miss (BUGS.md 2026-09-08). Safe because git trees
  * are immutable — a SHA's content cannot change under a cached verdict, the same staleness
@@ -340,7 +340,7 @@ export async function redeployTarget(wt: string, tip: string, buildSha: string):
 }
 
 /** Verify main's own build/test suite at `wt`'s HEAD — which must be pristine main (the caller
- * is the fresh-tick path right after resetWorktreeToMain; a dirty or ahead worktree would
+ * is the fresh-run path right after resetWorktreeToMain; a dirty or ahead worktree would
  * measure the wrong thing). Cache hit returns immediately; on miss runs detectBuildCheck +
  * runBuildCheck once per SHA (in-flight deduped) and caches green/red. Never throws: git,
  * detection, and execution failures all resolve to "nothing blocks authoring". */

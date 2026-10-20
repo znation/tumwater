@@ -97,7 +97,7 @@ test("a fix-claim block in the merge's exempt arm warns, names the reason to the
 });
 
 test("a rebase conflict is resolved by one pi run and merges with linear history", async () => {
-  // Advance main with a conflicting edit while the tick's work is unmerged.
+  // Advance main with a conflicting edit while the run's work is unmerged.
   const { root, wt } = await conflictedWorktree();
   const { ctx, calls } = makeCtx(root, async (w) => {
     fs.writeFileSync(path.join(w, "seed.txt"), "combined\n"); // resolve the markers
@@ -108,8 +108,8 @@ test("a rebase conflict is resolved by one pi run and merges with linear history
 
   assert.equal(result, "changed");
   assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "combined\n");
-  assert.equal(calls.length, 1, "exactly one resolution attempt per tick");
-  assert.equal(calls[0]!.session, "tumwater-improve-7-conflict", "named after the role and tick");
+  assert.equal(calls.length, 1, "exactly one resolution attempt per run");
+  assert.equal(calls[0]!.session, "tumwater-improve-7-conflict", "named after the role and run");
   assert.match(calls[0]!.prompt, /seed\.txt/, "the prompt names the conflicted file");
   assert.match(
     calls[0]!.prompt,
@@ -180,7 +180,7 @@ test("a conflict resolution that adds lines the reviewed change never added is r
   assert.equal(result, "changed");
   assert.equal(rechecked.length, 1, "the out-of-scope resolution went back through the gate");
   assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "combined\nsneaky extra\n");
-  assert.equal(calls.length, 1, "exactly one resolution attempt per tick");
+  assert.equal(calls.length, 1, "exactly one resolution attempt per run");
 });
 
 test("a conflict resolution that stays inside the reviewed change's lines merges with no re-review", async () => {
@@ -232,7 +232,7 @@ test("a conflict pi leaves unresolved aborts and reports merge_conflict", async 
   assertWorktreeSettled(wt);
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "branch\n", "branch state restored");
   assert.equal(mainSha(root), mainBefore, "main is untouched");
-  assert.equal(await aheadOfMain(wt, "main"), 1, "the tick's commit survives for the next attempt");
+  assert.equal(await aheadOfMain(wt, "main"), 1, "the run's commit survives for the next attempt");
   assert.equal(eventsOfType(root, "merged").length, 0);
 });
 
@@ -272,7 +272,7 @@ test("a second conflict on replay aborts after one resolution attempt", async ()
 
   const result = await mergeToMain(ctx, wt, "branch work");
 
-  assert.equal(result, "merge_conflict", "one resolution attempt per tick — no retry loop");
+  assert.equal(result, "merge_conflict", "one resolution attempt per run — no retry loop");
   assertWorktreeSettled(wt);
   assert.equal(headSha(wt), branchHead, "abort restored the branch");
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "two\n");
@@ -301,7 +301,7 @@ test("a fast-forward that git refuses reports merge_blocked without merge", asyn
 
 test("the merge-flow git helpers are exported from merge-git.js (regression)", async () => {
   // These helpers have moved twice — git.ts → merge-to-main.ts (the bugfix that completed the
-  // half-finished organize tick 78 move) → merge-git.ts (when the merger and batch merger
+  // half-finished organize run 78 move) → merge-git.ts (when the merger and batch merger
   // started calling them directly). Pin the placement at runtime so a half-finished move
   // fails loudly instead of silently stranding the merge flow.
   const mergeGit = await import("../src/merge/merge-git.js");

@@ -68,7 +68,7 @@ async function runFollowupTurn(
       logEventBestEffort(ctx.root, {
         source: ctx.role,
         type: "image_blind",
-        run: ctx.tick,
+        run: ctx.runNumber,
         path,
         model: cfg.model,
         action,
@@ -85,7 +85,7 @@ async function runFollowupTurn(
 export async function requestVerdict(ctx: ReviewContext): Promise<PiRunResult | null> {
   return runFollowupTurn(ctx, {
     prompt: buildVerdictRequestPrompt(),
-    sessionName: `tumwater-review-${ctx.role}-${ctx.tick}-verdict`,
+    sessionName: `tumwater-review-${ctx.role}-${ctx.runNumber}-verdict`,
     label: "review-verdict",
   });
 }
@@ -104,7 +104,7 @@ export async function requestNoRerun(
 ): Promise<PiRunResult | null> {
   return runFollowupTurn(ctx, {
     prompt: buildNoRerunPrompt(rerun),
-    sessionName: `tumwater-review-${ctx.role}-${ctx.tick}-rerun`,
+    sessionName: `tumwater-review-${ctx.role}-${ctx.runNumber}-rerun`,
     label: "review-rerun",
     // Collected unconditionally: a nudge only runs after a detected rerun, so the no-re-run
     // rule stood and the repeat check below needs every call the nudge started.

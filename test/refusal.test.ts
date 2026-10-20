@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { handleRefusal, newlyRefusedTitles, refusalContradiction, withoutBlockedPlanRefusals, type RefusalContext } from "../src/verdict/refusal.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import type { TickResult } from "../src/run/run-outcome.js";
+import type { RunResult } from "../src/run/run-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { assertClean, commitIn, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
@@ -27,7 +27,7 @@ interface MergeCall {
 }
 
 /** A RefusalContext for role "improve" whose merge records every call and returns `result`. */
-function makeCtx(root: string, result: TickResult = "changed"): { ctx: RefusalContext; merges: MergeCall[] } {
+function makeCtx(root: string, result: RunResult = "changed"): { ctx: RefusalContext; merges: MergeCall[] } {
   const merges: MergeCall[] = [];
   return {
     ctx: {

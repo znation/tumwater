@@ -95,7 +95,7 @@ test("checkMainBaseline re-checks when main moves to a new SHA", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "red");
-  // A new commit merges on main (still red) and the worktree resets to it — the next tick's fresh
+  // A new commit merges on main (still red) and the worktree resets to it — the next run's fresh
   // SHA must re-run the check instead of trusting the old verdict.
   fs.writeFileSync(
     path.join(root, "package.json"),

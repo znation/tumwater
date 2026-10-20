@@ -37,7 +37,7 @@ import { checkWaitStage, setMergeStage } from "./merge-slot.js";
 import { syncRootInstall } from "../build/dep-install.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { resolverConfig } from "../config/config-views.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import type { RunsPi } from "../runner/runner-pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 
@@ -48,20 +48,20 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
  * branch (whose ref tracks its own tip through the rebase) or a detached merger worktree pinned at
  * a bare sha (which does not move when git rebase rewrites it, so fast-forwarding to the original
  * pin would fail whenever main moved between commit and merge). Split out of runner.ts — which
- * keeps the tick lifecycle around it — because this is a self-contained concern with its own flow
+ * keeps the run lifecycle around it — because this is a self-contained concern with its own flow
  * (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it
  * borrows from the runner are identity (root/mainBranch), `role` for events and session naming
- * only, the current tick number for session naming, the live config and its review-exemption
+ * only, the current run number for session naming, the live config and its review-exemption
  * patterns (the in-lock re-check), and the runner's shared pi wiring so a conflict-resolution run
- * folds into the same tick counters as an authoring run. */
+ * folds into the same run counters as an authoring run. */
 
 /** MergeContext: what mergeToMain needs from its owning runner (merge-core.ts's MergerContext is
  * the merger's, a different shape): identity (root, main branch), the role for events
- * and session naming only — the merge code never re-derives it into a branch — plus the tick
+ * and session naming only — the merge code never re-derives it into a branch — plus the run
  * number that names the conflict-resolution session, the live config and its review-exemption
  * patterns (the in-lock re-check), and the runner's shared pi runner (role config, session dir,
- * raw log, transient-timeout retry) with usage folded into the tick counters — every pi run of a
- * tick merges there exactly once. */
+ * raw log, transient-timeout retry) with usage folded into the run counters — every pi run of a
+ * run merges there exactly once. */
 export interface MergeContext extends RunsPi {
   root: string;
   role: string;
@@ -72,8 +72,8 @@ export interface MergeContext extends RunsPi {
   /** The review gate's exemption patterns (config.review.exemptPaths) — the in-lock re-check
    * skips doc-only deltas with exactly the same test the gate applies. */
   exemptPaths: string[];
-  /** The current tick number (names the conflict-resolution pi session). */
-  tick: number;
+  /** The current run number (names the conflict-resolution pi session). */
+  runNumber: number;
   /** Told when the in-lock check went red on the rebased tree — the one merge_blocked cause
    * that is the change's own (merge-check-failures.ts counts it toward
    * MERGE_CHECK_FAILURE_LIMIT); a failed fast-forward or a false fix never calls it. */
@@ -106,7 +106,7 @@ export interface MergeContext extends RunsPi {
  * history linear), verify the rebased tree when it differs from what was reviewed, and
  * fast-forward. On conflict, makes one pi-driven resolution attempt
  * (outside the lock) before giving up. A routine conflict is normal operation, not a warning:
- * success merges as an ordinary `merged` event and failure surfaces via the tick's merge_conflict
+ * success merges as an ordinary `merged` event and failure surfaces via the run's merge_conflict
  * result — no separate log line for the hand-off itself. A merged diff that adds entries under
  * QUESTIONS.md's ## Open also emits one `question_posted` per new heading alongside the `merged`
  * event, so `tumwater logs` shows what the team is asking for (plans/questions-outbox.md).
@@ -120,7 +120,7 @@ export async function mergeToMain(
   wt: string,
   summary: string,
   verifiedHead?: string,
-): Promise<TickResult> {
+): Promise<RunResult> {
   // The branch tip before ANY rebase of this merge. Captured once here — not per tryMerge —
   // because the conflict-retry path rebases twice: after pi resolves, the second attempt's
   // rebase is a no-op even though its tree (the resolution) was never checked.
@@ -150,7 +150,7 @@ async function tryMerge(
   wt: string,
   summary: string,
   verifiedHead?: string,
-): Promise<TickResult> {
+): Promise<RunResult> {
   return withLock(mergeLockDir(ctx.root), async () => {
     // Capture the Open questions before the rebase so a merged diff that posts new ones can
     // emit one question_posted per entry. The lock keeps no other merge between capture
@@ -247,7 +247,7 @@ export async function exemptSkipBlockReason(
  * - a no-op rebase whose exact tree the gate verified (`rebasedHead === verifiedHead`): main
  *   did not move under us, so the merge tree is byte-identical to what the gate's pre-check
  *   already ran green. Seed the red-main baseline with the SHA that becomes main: every role's
- *   next fresh tick then hits the cache instead of re-running the full suite on an
+ *   next fresh run then hits the cache instead of re-running the full suite on an
  *   already-verified tree. A no-op rebase the gate did NOT verify — its pre-check was skipped
  *   (a timeout, a killed run) — falls through and runs the merge-scope check, which fails
  *   closed on the same timeout; an exempt diff or a project with no declared check falls
@@ -352,7 +352,7 @@ async function verifyMerge(
     return false;
   }
   if (check.outcome.status === "skipped") return true; // No npm / broken toolchain — the helper already warned.
-  // Green on exactly the tree that becomes main: seed it so the next tick's red-main baseline
+  // Green on exactly the tree that becomes main: seed it so the next run's red-main baseline
   // check is a cache hit instead of one redundant full-suite run.
   // A mergeCommand green is not the full check's: main's verdict comes from the main watch.
   if (mergeCommandOf(ctx.config) === undefined) noteGreenBaseline(rebasedHead);
@@ -419,7 +419,7 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
   const remaining = await resolveBacklogInsertConflicts(wt, files);
   if (remaining.length === 0) {
     // A second stop is only possible when the branch holds more than the one insert-only
-    // commit. One attempt per tick.
+    // commit. One attempt per run.
     return continueOrAbortRebase(wt);
   }
   // The prompt names the project's own check, detected the way the in-lock re-check detects it,
@@ -446,7 +446,7 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
         main: commits,
         mainOmitted: omitted,
       }),
-      `tumwater-${ctx.role}-${ctx.tick}-conflict`,
+      `tumwater-${ctx.role}-${ctx.runNumber}-conflict`,
       // The resolver rides the strong tier (plans/model-tiers.md part 4/8): resolution is rare,
       // tolerant of latency, and edits code inside merge. Its spend still folds into the
       // authoring role's usage — the fold belongs to the runner's wiring, not to the config.
@@ -459,7 +459,7 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
     await abortSync(wt);
     return false;
   }
-  // A second stop is only possible when pi itself authored extra commits during the tick.
-  // One resolution attempt per tick.
+  // A second stop is only possible when pi itself authored extra commits during the run.
+  // One resolution attempt per run.
   return continueOrAbortRebase(wt);
 }

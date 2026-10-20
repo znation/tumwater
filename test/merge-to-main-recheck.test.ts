@@ -85,7 +85,7 @@ test("a red post-rebase check blocks the merge and keeps the commit for recovery
     "the failed re-check is priced in the feed",
   );
   assert.equal(eventsOfType(root, "merged").length, 0);
-  // The commit stays on the branch: next tick's recovery routes it through the gate, whose
+  // The commit stays on the branch: next run's recovery routes it through the gate, whose
   // pre-check rejects it deterministically and injects the build tail into the author's prompt.
   assert.equal(await aheadOfMain(wt, "main"), 1);
   assertWorktreeSettled(wt); // no rebase left in progress
@@ -129,7 +129,7 @@ test("an environmental skip of the re-check warns and still merges — never fai
 test("a no-op rebase skips the re-check and seeds the baseline for the merged SHA", async () => {
   const { root, wt } = await initializedWorktree();
   declareBuildCheck(root, wt); // would pass if run — but must NOT run (no merge event)
-  sh(wt, "git", "reset", "--hard", "main"); // tick-start reset: author on top of CURRENT main
+  sh(wt, "git", "reset", "--hard", "main"); // run-start reset: author on top of CURRENT main
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
   commitIn(wt, "branch work");
   const head = headSha(wt);
@@ -205,7 +205,7 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
 async function verifiedCodeChange(): Promise<{ root: string; wt: string; head: string }> {
   const { root, wt } = await initializedWorktree();
   declareBuildCheck(root, wt, "exit 1");
-  sh(wt, "git", "reset", "--hard", "main"); // tick-start reset: author on top of CURRENT main
+  sh(wt, "git", "reset", "--hard", "main"); // run-start reset: author on top of CURRENT main
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
   commitIn(wt, "branch work");
   return { root, wt, head: headSha(wt) };

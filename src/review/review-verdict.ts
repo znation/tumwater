@@ -161,7 +161,7 @@ function textWithoutVerdictLines(text: string, matches: VerdictMatch[]): string 
  * numbered reasons with a statement that they are all resolved — e.g. "Prior objections 1–10
  * are all resolved — …". That resolution is not an objection, yet every reasons[0] consumer
  * (the gate's detail, a role's lastError, the digest's rejection clusters, the author's
- * next-tick note) would name it as the outstanding rejection and tell the author to fix it.
+ * next-run note) would name it as the outstanding rejection and tell the author to fix it.
  * Dropping only from the FRONT keeps a line that reports an objection still open — those are
  * real objections and stay. */
 function withoutResolvedPriorObjections(reasons: readonly string[]): string[] {

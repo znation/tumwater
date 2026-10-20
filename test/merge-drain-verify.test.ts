@@ -76,9 +76,9 @@ test("mergeBatchMax caps each merge's stack, read from the live config at each d
 });
 
 test("every verification holds a shared permit: with one free, one reviews while the other parks, showing nothing, and no permit leaks", async () => {
-  // A merge's pi runs take the same permit role ticks do (BUGS.md 2026-09-18), and merges
-  // count as active work. At cap 3 (verifyLimit 2) with no role tick running, both reviews run at
-  // once; with two role ticks holding permits, one is free, so the second verify parks — no
+  // A merge's pi runs take the same permit role runs do (BUGS.md 2026-09-18), and merges
+  // count as active work. At cap 3 (verifyLimit 2) with no role run running, both reviews run at
+  // once; with two role runs holding permits, one is free, so the second verify parks — no
   // marker record, its row plainly queued, out of reach of abort --role and of the shutdown
   // wait — until the first verification frees it. Each review records how many reviews were in
   // flight as it started. With both free, beta's review also holds (bounded) until alpha's has
@@ -86,15 +86,15 @@ test("every verification holds a shared permit: with one free, one reviews while
   // before alpha's starts — so the overlap a working pipeline allows is made certain rather than
   // left to timing; a pipeline that serializes them leaves beta waiting out its bound alone.
   const cap = 3;
-  for (const ticks of [0, 2]) {
-    const free = cap - ticks;
+  for (const runs of [0, 2]) {
+    const free = cap - runs;
     const root = makeRepo();
     const roles = ["alpha", "beta"];
     await queueChanges(root, roles);
     const rowOf = rowReader(root, roles);
     const flags = tmpdir("vet-permits-");
     const awaitAlpha =
-      ticks === 0
+      runs === 0
         ? `beta) i=0; while [ ! -f '${flags}/alpha-reviewing' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done;;`
         : "";
     const restore = fakePi(
@@ -108,11 +108,11 @@ test("every verification holds a shared permit: with one free, one reviews while
       ].join("\n"),
     );
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap });
-    for (let k = 0; k < ticks; k++) await ctx.semaphore.acquire(0); // role ticks already running
+    for (let k = 0; k < runs; k++) await ctx.semaphore.acquire(0); // role runs already running
     const bg = pump(ctx, pipeline);
     try {
       await waitForFile(path.join(flags, "alpha-reviewing"));
-      if (ticks > 0) {
+      if (runs > 0) {
         await waitFor(() => pipeline.verifying.get("beta")?.parked === true, "beta's vet to park for the permit", 30_000);
         assert.match(rowOf("alpha"), REVIEWING, "one free: the verification holding the permit shows its stage");
         assert.equal(rowOf("beta"), "due", "one free: the parked verification's role reads plainly due");
@@ -129,7 +129,7 @@ test("every verification holds a shared permit: with one free, one reviews while
       assert.equal(samples.length, 2, `${free} free: one review per change`);
       assert.equal(Math.max(...samples), Math.min(free, 2), `${free} free: reviews in flight at each start never exceed the free permits (${samples})`);
       await bg.stop();
-      // Every verification's permit came back: all the ticks left free are acquirable again.
+      // Every verification's permit came back: all the runs left free are acquirable again.
       for (let k = 0; k < free; k++) {
         assert.ok(await within(ctx.semaphore.acquire(0), 5_000), `${free} free: permit ${k + 1} was never released`);
       }
@@ -143,7 +143,7 @@ test("every verification holds a shared permit: with one free, one reviews while
 });
 
 test("a parked verification starts nothing when a shutdown or a closed start gate meets it: entry and pin stay queued", async () => {
-  // A verify parked for its permit has started nothing, so it must end like a parked role tick —
+  // A verify parked for its permit has started nothing, so it must end like a parked role run —
   // no outcome, no review, no marker record — whether the harness stops (its controller) or a
   // restart / 429 hold closes the start gate before its permit comes (the gate at its grant).
   for (const stop of ["gate", "shutdown"] as const) {
@@ -159,7 +159,7 @@ test("a parked verification starts nothing when a shutdown or a closed start gat
       signal: shutdown.signal,
       held: () => held,
     });
-    // Two role ticks hold two of the three permits: one is free, so beta's verify parks behind
+    // Two role runs hold two of the three permits: one is free, so beta's verify parks behind
     // alpha's.
     await ctx.semaphore.acquire(0);
     await ctx.semaphore.acquire(0);

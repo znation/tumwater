@@ -18,19 +18,19 @@ import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit
 import { labeledLine } from "./reply-contract.js";
 import { logEventBestEffort } from "../events/events.js";
 import { clearSupersededRejection } from "../run/run-apply.js";
-import type { TickOutcome, TickResult } from "../run/run-outcome.js";
+import type { RunOutcome, RunResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "../runner/runner-state.js";
 
-/** Handling a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended
+/** Handling a refused run (plans/refusal-and-thrash.md): the run declined its work and ended
  * with TUMWATER_REFUSED. Only the markdown objection note may merge — it is the durable record
- * that blocks the entry for later ticks; any non-markdown half-work is discarded, tracked edits
+ * that blocks the entry for later runs; any non-markdown half-work is discarded, tracked edits
  * via reset --hard and untracked files via clean -fd (the committed note is safe at HEAD by
  * then). A refusal with no note left resets the worktree cleanly and lets the reason live in
  * the event + lastSummary only. The note commit merges directly: md-only diffs are review-exempt
  * by construction under the gate's exemption patterns, so routing it through the gate would burn
  * nothing but add a failure mode for a record that is not code. Split out of runner.ts — which
- * keeps the tick lifecycle around it — because this is a self-contained concern with its own
+ * keeps the run lifecycle around it — because this is a self-contained concern with its own
  * policy and its own git surface (commit-only-the-notes / reset); the only things it borrows
  * from the runner are identity, the pre-commit counters for the trailer, and the runner's shared
  * merge wiring. */
@@ -94,9 +94,9 @@ export function newlyRefusedTitles(baseMd: string, headMd: string, section: stri
     .map((e) => stripEntryStamp(e.title));
 }
 
-/** What handleRefusal needs from its owning runner: identity, this tick's assistant-turn count
+/** What handleRefusal needs from its owning runner: identity, this run's assistant-turn count
  * (deliberately not on RunnerState — see RunUsage.turns, src/run/run-usage.ts), and the
- * runner's shared merge step so a conflict-resolution run folds into the same tick counters as
+ * runner's shared merge step so a conflict-resolution run folds into the same run counters as
  * an authoring run. */
 export interface RefusalContext {
   /** The trailer's Model line for the seam the refused run started on. */
@@ -104,21 +104,21 @@ export interface RefusalContext {
   role: string;
   root: string;
   mainBranch: string;
-  /** Assistant turns folded into this tick so far (main + transient retry) — the same field
+  /** Assistant turns folded into this run so far (main + transient retry) — the same field
    * the friction flag reads. */
   turns: number;
   /** Merge the worktree branch on main with the runner's shared wiring. */
-  merge(wt: string, summary: string): Promise<TickResult>;
+  merge(wt: string, summary: string): Promise<RunResult>;
 }
 
-/** Handle a refused tick and return its outcome. Never throws: a failed note merge is recorded
+/** Handle a refused run and return its outcome. Never throws: a failed note merge is recorded
  * in `state.lastError` and reported through the "refused" result like any other non-merge. */
 export async function handleRefusal(
   ctx: RefusalContext,
   state: RunnerState,
   wt: string,
   pi: PiRunResult,
-): Promise<TickOutcome> {
+): Promise<RunOutcome> {
   const reason = (pi.refusedReason ?? "").trim() || "no reason given";
   const plansFile = path.join(wt, "PLANS.md");
   if (fs.existsSync(plansFile)) {

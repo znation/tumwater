@@ -214,7 +214,7 @@ test("an approved change whose queue entry is gone is forgotten while its neighb
 test("the merge's conflict resolver takes a shared permit, ahead of a verification parked for one", async () => {
   // Merges count as active work: the one model run a merge makes, mergeToMain's conflict
   // resolver, holds a shared maxConcurrent permit for its length — outside the merge lock, so a
-  // tick waiting on that lock can never be what the resolver waits for — at MERGE_TIER, ahead
+  // run waiting on that lock can never be what the resolver waits for — at MERGE_TIER, ahead
   // of any verification parked for a permit, since every queued change waits on the merge.
   const root = makeRepo();
   const alpha = pinnedCommit(root, "alpha");
@@ -243,7 +243,7 @@ test("the merge's conflict resolver takes a shared permit, ahead of a verificati
   let held = false;
   try {
     await pumpUntil(ctx, pipeline, () => pipeline.approved.has("alpha"), "alpha to be approved");
-    // A role tick takes the only permit, and beta's change queues behind it: its verification
+    // A role run takes the only permit, and beta's change queues behind it: its verification
     // parks.
     await ctx.semaphore.acquire(0);
     held = true;
@@ -265,7 +265,7 @@ test("the merge's conflict resolver takes a shared permit, ahead of a verificati
       "the parked resolver's stage",
     );
 
-    ctx.semaphore.release(); // the tick ends: the merge's resolver is first in line
+    ctx.semaphore.release(); // the run ends: the merge's resolver is first in line
     held = false;
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "both to merge");
     assert.deepEqual(fs.readFileSync(order, "utf8").trim().split("\n"), ["resolver", "beta-review"], "the resolver ran before the parked verification");
@@ -280,7 +280,7 @@ test("the merge's conflict resolver takes a shared permit, ahead of a verificati
 
 test("a change settled early in a batch writes back before a slower batch-mate's resolver returns", async () => {
   // BUGS.md 2026-10-09: a change whose merge is already final must not keep its stale error
-  // streak (and with it the dashboard's red "failing tick after tick" banner) until every
+  // streak (and with it the dashboard's red "failing run after run" banner) until every
   // later change in the batch settles — including a conflict-resolution model run that can
   // take its whole timeout. alpha merges cleanly while beta's resolver blocks; alpha's streak
   // reset and `merged` event must already be on disk before the resolver returns.
@@ -405,7 +405,7 @@ test("a red stack merges its passing prefix, rejects the change red alone, and m
   }
 });
 
-test("verifications leave one permit for authoring: at cap 3 two review, the third waits unstarted, and a role tick gets the last permit", async () => {
+test("verifications leave one permit for authoring: at cap 3 two review, the third waits unstarted, and a role run gets the last permit", async () => {
   assert.deepEqual([1, 2, 3, 6].map(verifyLimit), [1, 1, 2, 5], "maxConcurrent − 1, never below one");
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
@@ -415,22 +415,22 @@ test("verifications leave one permit for authoring: at cap 3 two review, the thi
   const restore = fakePi(reviewers(flags, roles, {}, roles));
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 3 });
   const bg = pump(ctx, pipeline);
-  let ticked = false;
+  let ran = false;
   try {
     await waitForFile(path.join(flags, "alpha-reviewing"));
     await waitForFile(path.join(flags, "beta-reviewing"));
     await sleep(500); // a few more polls: nothing more may start
     assert.deepEqual([...pipeline.verifying.keys()], ["alpha", "beta"], "only verifyLimit(3) verifications exist");
     assert.equal(rowOf("gamma"), "due", "the third change waits in the queue, not parked on a permit");
-    assert.ok(await within(ctx.semaphore.acquire(0), 5_000), "a role tick takes the permit the verifications left free");
-    ticked = true;
+    assert.ok(await within(ctx.semaphore.acquire(0), 5_000), "a role run takes the permit the verifications left free");
+    ran = true;
 
     ctx.semaphore.release();
-    ticked = false;
+    ran = false;
     for (const role of roles) fs.writeFileSync(path.join(flags, `${role}-release`), "");
     await waitFor(drained(root, pipeline), "all three to merge", 60_000);
   } finally {
-    if (ticked) ctx.semaphore.release();
+    if (ran) ctx.semaphore.release();
     for (const role of roles) fs.writeFileSync(path.join(flags, `${role}-release`), "");
     await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
@@ -438,7 +438,7 @@ test("verifications leave one permit for authoring: at cap 3 two review, the thi
   }
 });
 
-test("a verification rejection drops its entry at once — its role may tick next poll — while the other verify runs on", async () => {
+test("a verification rejection drops its entry at once — its role may run next poll — while the other verify runs on", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta"];
   const shas = await queueChanges(root, roles);

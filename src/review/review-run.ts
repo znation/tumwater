@@ -125,7 +125,7 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
   });
   // Persist the phase BEFORE the run so a dashboard mid-review shows "reviewing" and a crash
   // mid-review is distinguishable from a crash mid-author-run on resume (stray edits are the
-  // reviewer's then, not the author's). Cleared at tick end alongside `running`.
+  // reviewer's then, not the author's). Cleared at run end alongside `running`.
   state.phase = "review";
   saveRunnerState(root, state);
 
@@ -179,22 +179,22 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
           knownMainFailures,
         ),
     // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a
-    // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend
-    // path below — commit kept, no strike — and re-merges through the author's next tick
-    // instead of holding the merge queue for a whole authoring tick.
+    // run's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend
+    // path below — commit kept, no strike — and re-merges through the author's next run
+    // instead of holding the merge queue for a whole authoring run.
     config: reviewCfg,
-    // This run's own session directory (per-run, keyed by tick and pinned sha): a follow-up
+    // This run's own session directory (per-run, keyed by run and pinned sha): a follow-up
     // turn, or a later attempt that resumes this review, continues exactly this run instead
     // of whichever review wrote last. A fresh review carries no --continue — the reviewer
     // must not inherit the author's context — and old files are collected by the age-based
     // prune at orchestrator start.
     sessionDir: reviewSessionDir,
     ...(resuming ? { continueSession: true } : {}),
-    sessionName: `tumwater-review-${role}-${ctx.tick}`,
+    sessionName: `tumwater-review-${role}-${ctx.runNumber}`,
     rawLogFile: piLogPath(root, role),
     nativeLogFile: nativeLogPath(root, role, reviewCfg.agent ?? "pi"),
     // Label this run in the shared transcript (src/ui/transcript.ts renders it as
-    // `── review @ <ts> ──`) so an operator can tell reviewer runs from author ticks.
+    // `── review @ <ts> ──`) so an operator can tell reviewer runs from author runs.
     label: "review",
     signal: overlap ? combineSignals(ctx.signal, overlap.abort.signal) : ctx.signal,
     // A stalled tool call during review hangs the gate just like one during authoring —
@@ -205,13 +205,13 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
     },
     // A gate run that read an image its model cannot see is logged, not killed (plans/
     // image-input.md "Detecting a blind read"): the reviewer keeps working from what it CAN
-    // see, and the image_blind line names the file, the model, and this tick so the operator
+    // see, and the image_blind line names the file, the model, and this run so the operator
     // knows the diff was judged under a blind read.
     onBlindRead: (path, action) =>
       logEventBestEffort(root, {
         source: role,
         type: "image_blind",
-        run: ctx.tick,
+        run: ctx.runNumber,
         path,
         model: reviewCfg.model,
         action,
@@ -238,7 +238,7 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
 
   if (pi.aborted) {
     // Shutdown mid-review: fail closed — the commit stays on the branch and the
-    // resumed/following tick re-reviews it via the combined ahead-of-main diff. Any resume
+    // resumed/following run re-reviews it via the combined ahead-of-main diff. Any resume
     // marker from an earlier attempt is dropped: an abort says nothing about the diff, and the
     // next attempt starts clean rather than inheriting a half-counted session.
     state.reviewResume = undefined;
@@ -413,7 +413,7 @@ async function settleUnparsedReview(
   );
   logEventBestEffort(root, { source: role, type: "review_failed", head, message, attempt: retry.attempt, durationMs: Date.now() - reviewStartedAt });
   // A dead reviewer must never destroy committed work (BUGS.md 2026-09-20): leave the commit
-  // for the next tick's re-review and do not advance the per-HEAD discard counter. That
+  // for the next run's re-review and do not advance the per-HEAD discard counter. That
   // holds for the review run itself (BUGS.md 2026-09-20), for the verdict-recovery
   // follow-up (BUGS.md 2026-09-29), and for the no-re-run nudge turn (BUGS.md 2026-10-02):
   // each one's death is the backend failing after the reviewer had already judged nothing —

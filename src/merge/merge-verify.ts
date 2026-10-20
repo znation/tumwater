@@ -56,9 +56,9 @@ export function resolveAuthor(ctx: MergePipelineContext, role: string): RoleRunn
 
 /** Drop a torn queue head. A torn head (torn or foreign — a partial write an older build left,
  * a hand-placed file) makes headMerge read null forever — nothing else drops it, stranding
- * every live entry behind it and pinning their authors' ticks via the interlock. Drop it with
+ * every live entry behind it and pinning their authors' runs via the interlock. Drop it with
  * one warning; the healthy entries behind it are verified in the same poll. The crashed
- * entry's commit, if any, still rides its merge ref into next-tick leftover recovery
+ * entry's commit, if any, still rides its merge ref into next-run leftover recovery
  * (BUGS.md 2026-09-17). */
 function dropTornHead(root: string): void {
   const stale = staleHeadFile(root);
@@ -190,7 +190,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
               {
                 role,
                 sha: entry.sha,
-                tick: entry.run,
+                runNumber: entry.run,
                 summary: entry.summary,
                 body: entry.body,
                 highFriction: entry.highFriction,

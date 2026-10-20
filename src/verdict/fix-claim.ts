@@ -52,7 +52,7 @@ import { collapseWhitespace, truncate } from "../text/text.js";
  * can run to several hundred characters, and the reason rides in a one-line event. */
 const RECORD_QUOTE_MAX = 160;
 
-/** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix tick appends
+/** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix run appends
  * when it moves an entry, so a heading compares equal across the Open→Fixed move. The
  * whitespace-normalize tail is text.ts's collapseWhitespace — the one home for that step,
  * shared with planHeadingKey's PLANS.md counterpart in backlog-structure.ts. */

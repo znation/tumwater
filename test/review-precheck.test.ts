@@ -550,7 +550,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
     assert.ok(result.aborted);
     assert.ok(!fs.existsSync(marker), "no pi run");
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed"], "main's check never ran");
-    assert.equal(await aheadOfMain(wt, "main"), 1); // the work commit stays; re-merged next tick
+    assert.equal(await aheadOfMain(wt, "main"), 1); // the work commit stays; re-merged next run
     assert.equal(state.lastReview, undefined); // no bookkeeping on abort
   });
 });

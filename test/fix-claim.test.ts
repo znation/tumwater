@@ -50,7 +50,7 @@ test("fixedHeadings lists the Fixed section's entries only", () => {
 });
 
 test("normalizeFixedHeading makes an Open heading and its Fixed twin compare equal", () => {
-  // The bugfix tick appends provenance and ", fixed <date>" when it moves an entry.
+  // The bugfix run appends provenance and ", fixed <date>" when it moves an entry.
   const open = "An old bug: details (found by qa 2026-09-20)";
   const fixed = "An old bug: details (found by qa 2026-09-20, fixed 2026-09-21)";
   assert.equal(normalizeFixedHeading(fixed), normalizeFixedHeading(open));
@@ -652,7 +652,7 @@ test("gate exempts an md-only BUGS.md fix claim whose symbols exist on the tree"
 
 // ── The gate's backlog-structure check (plans part 2/4) — same deterministic shape as the
 // false-fix rejections above: no pi run, no check run, the reason injected into the author's
-// next tick, and the branch reset to main.
+// next run, and the branch reset to main.
 
 /** A repo whose worktree carries a PLANS.md commit that adds a second `## Done` — md-only, so
  * the gate exempts it from the reviewer and the structure check is the only guard. */

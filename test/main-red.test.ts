@@ -68,7 +68,7 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
   const restore = fakeNpm(`echo baseline-failure; echo run >> ${counter}; exit 1`);
   try {
     const blocked = await mainRedGate(root, ROLE, wt);
-    // The cause rides the outcome (BUGS.md 2026-09-28): the tick's run_end must be able to
+    // The cause rides the outcome (BUGS.md 2026-09-28): the run's run_end must be able to
     // name what broke, not leave the digest's main_red cells a bare count.
     const sha = mainSha(root);
     assert.deepEqual(blocked, {
@@ -105,19 +105,19 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
   }
 });
 
-test("mainRedGate warns once per red SHA: a repeat tick on the same HEAD re-blocks silently", async () => {
+test("mainRedGate warns once per red SHA: a repeat run on the same HEAD re-blocks silently", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   const restore = fakeNpm(`echo run >> ${counter}; exit 1`);
   try {
     assert.equal((await mainRedGate(root, ROLE, wt))?.result, "main_red");
-    // A second blocked role waking on the same SHA (or the same role's next tick) must not
+    // A second blocked role waking on the same SHA (or the same role's next run) must not
     // re-run the suite or re-log the team-wide warning.
     const again = await mainRedGate(root, "feature", wt);
     assert.equal(again?.result, "main_red");
     assert.equal(runsOf(counter), 1, "the verdict is cached per SHA — no second run");
     const holds = mainRedHolds(root);
-    assert.equal(holds.length, 1, "one main_red_hold for the red SHA, not one per blocked tick");
+    assert.equal(holds.length, 1, "one main_red_hold for the red SHA, not one per blocked run");
     // The red discovery by a non-bugfix path queues exactly one healer prompt naming the
     // short SHA; the second blocked role on the same SHA adds no second prompt.
     const prompts = queuedRolePrompts(root, "bugfix");
@@ -143,7 +143,7 @@ test("mainRedGate blocks a user-defined role on red main like the code roles", a
     assert.equal(
       (await mainRedGate(root, "docs-auditor", wt))?.result,
       "main_red",
-      "a custom role's fresh tick on red main is blocked like feature's",
+      "a custom role's fresh run on red main is blocked like feature's",
     );
     // The check ran once under the role that paid for it — same pricing as a built-in.
     assert.equal(runsOf(counter), 1);
@@ -461,7 +461,7 @@ test("mainTipVerdict runs the suite over a green inherited across doc commits, a
 });
 
 // The healer handoff (PLANS.md 2026-10-19): a verified-red main discovered by any path other
-// than bugfix's own tick queues one bugfix prompt, so the healer becomes due on the next poll
+// than bugfix's own run queues one bugfix prompt, so the healer becomes due on the next poll
 // instead of waiting out its own interval or deferral. bugfix finding its own red (via
 // bugfixMainRedNote) is the heal and queues nothing; green, non-blocked, and bugfix-own paths
 // all leave bugfix's inbox empty.
@@ -513,7 +513,7 @@ test("a queued healer prompt makes a bugfix runner due on the next poll despite 
   r.state.nextRunAt = now + 60 * 60 * 1000; // an hour out — not due on the clock
   r.state.lastRunEndedAt = now - 1000;
   r.state.lastResult = "no_change";
-  r.state.recentOutcomes = "nnnn"; // a streak of empty ticks, so yield scaling stretches the gap
+  r.state.recentOutcomes = "nnnn"; // a streak of empty runs, so yield scaling stretches the gap
   assert.deepEqual(isEligible(r, now, "abc", 1, {}), {
     run: true,
     reason: "inbox",

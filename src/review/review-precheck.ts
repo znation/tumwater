@@ -202,7 +202,7 @@ export async function gateBuildPrecheck(
         }
       }
       // Main green: the change broke the check — rejected deterministically through the shared
-      // reject path, no pi run consumed, reasons injected into the author's next tick. With no
+      // reject path, no pi run consumed, reasons injected into the author's next run. With no
       // verdict for main the author's failure is still the safe default, and the reasons say
       // the attribution could not be made.
       return {
@@ -217,7 +217,7 @@ export async function gateBuildPrecheck(
       // Passed: this exact tree just went green under the project's own declared check. Hand
       // the verdict to the merge path via verifiedHead — it seeds the red-main baseline with
       // the SHA that actually becomes main (the rebased head, which may differ from `head`),
-      // so every role's next fresh tick is a cache hit instead of one redundant full-suite
+      // so every role's next fresh run is a cache hit instead of one redundant full-suite
       // re-run on an already-verified tree.
       return { verifiedHead: head };
     }

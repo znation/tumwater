@@ -36,7 +36,7 @@ import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
 
 /** One pinned commit NOT contained in main, standing alone on main's tip — the queue shape
- * a changed tick leaves behind. Detach first: the commit must not merge on main itself. */
+ * a changed run leaves behind. Detach first: the commit must not merge on main itself. */
 export function pinnedCommit(root: string, role: string): string {
   return pinOffMain(
     root,
@@ -57,7 +57,7 @@ export function runnersFor(root: string, roles: string[], signal?: AbortSignal, 
 }
 
 /** A pipeline context over a fresh repo — `cap` shared permits (the maxConcurrent semaphore
- * role ticks would share) and a start gate the test can close — plus a fresh pipeline: the
+ * role runs would share) and a start gate the test can close — plus a fresh pipeline: the
  * scheduler's pair, driven here by pump/pumpUntil like its poll loop. */
 export function makePipeline(
   root: string,

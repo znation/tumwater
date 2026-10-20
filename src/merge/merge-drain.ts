@@ -32,7 +32,7 @@ import {
   type ApprovedMerge,
 } from "./merge-pipeline.js";
 import { drainVerify, VERIFY_TIER } from "./merge-verify.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 
 /** The tier the merge slot's conflict-resolution runs wait at: ahead of any verification parked for
  * a permit, because the merge is the one serial step every queued change waits on. (Nothing that
@@ -53,9 +53,9 @@ async function postReviewDue(config: TumwaterConfig, root: string, commit: strin
  * a team hold is pending): start a verification for every queued change the pipeline does not
  * already hold (drainVerify, in merge-verify.ts), and start the merge when the slot is free and
  * something is approved (drainMerge). A queued merge is COMMITTED work awaiting completion, not
- * a new tick, so the budget and user-pause gates deliberately do not hold it (pausing it would
- * leave main behind while the interlock blocks that role's next tick forever). Starts tasks and
- * returns; never awaits them — authors keep ticking behind them, which is the entire point. */
+ * a new run, so the budget and user-pause gates deliberately do not hold it (pausing it would
+ * leave main behind while the interlock blocks that role's next run forever). Starts tasks and
+ * returns; never awaits them — authors keep running behind them, which is the entire point. */
 export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   await drainVerify(ctx, p);
   await assignPendingReverts(ctx);
@@ -271,7 +271,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
     ]),
   );
   const task = (async () => {
-    let results: Array<TickResult | undefined>;
+    let results: Array<RunResult | undefined>;
     let threw = false;
     // The commit each merged role produced, from its `merged` event: the post-merge review of a
     // role listed in review.afterMerge is queued once the change settles as merged.
@@ -282,7 +282,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
     // A result reaches settleMergeOutcome the moment mergeApproved finalizes it, not after the
     // whole batch; this set lets the end-of-batch loop skip what is already written back.
     const settled = new Set<number>();
-    const settleOne = async (s: number, result: TickResult): Promise<void> => {
+    const settleOne = async (s: number, result: RunResult): Promise<void> => {
       const v = picks[s]!;
       settled.add(s);
       const mergedCommit = mergedCommits.get(v.entry.role);
@@ -306,7 +306,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
         picks.map((v) => ({
           role: v.entry.role,
           sha: v.sha,
-          tick: v.entry.run,
+          runNumber: v.entry.run,
           summary: v.entry.summary,
           body: v.entry.body,
           highFriction: v.entry.highFriction,

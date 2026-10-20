@@ -28,7 +28,7 @@ import { eventsLogPath, mergeRefName, mergeStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
-import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/run/run-apply.js";
+import { applyRunOutcome, ERROR_STREAK_WARN } from "../src/run/run-apply.js";
 import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
@@ -105,7 +105,7 @@ test("a subscription merge run folds as notional, and rides the event's notional
 });
 
 // A claude reviewer's (or resolver's) five-hour window must reach claude-account.json when the
-// merge fold sees it, not wait for the pi author's next tick end — otherwise a mixed team's
+// merge fold sees it, not wait for the pi author's next run end — otherwise a mixed team's
 // reviewer readings are lost every time (PLANS.md "Mixed claude + pi fleets, part 3/4"). The
 // fold is best-effort like run-finalize.ts's: a run with no billing/window reading leaves the
 // file untouched.
@@ -135,7 +135,7 @@ test("a merge's nonzero usage rides its merge_done event and the entry is droppe
   const root = makeRepo();
   const { entry, file } = queued(root);
   const state = freshRunnerState("improve");
-  state.phase = "review"; // an in-flight merge marker from the tick lifecycle
+  state.phase = "review"; // an in-flight merge marker from the run lifecycle
   state.runs = entry.run;
 
   writeMergeOutcome(root, entry, state, "changed", 1234, { tokens: 320, cost: 0.42, providerCost: {} }, file);
@@ -195,7 +195,7 @@ test("an unexpected throw inside the merge degrades to an error outcome — the 
   // never rejects; every outcome drops the entry; the change's marker record always goes).
   const author = makeRoleRunner(root, "improve");
   const { state } = author;
-  state.phase = "review"; // the tick lifecycle's in-flight merge marker on the author's state
+  state.phase = "review"; // the run lifecycle's in-flight merge marker on the author's state
   assert.ok(await refSha(root, mergeRefName("improve")) === null, "fixture sanity: no pin exists");
 
   const result = await mergeHead(root, author, defaultConfig(), "improve");
@@ -212,20 +212,20 @@ test("an unexpected throw inside the merge degrades to an error outcome — the 
   assert.equal(loadRunnerState(root, "improve").lastResult, "error", "the outcome is persisted, not just folded in memory");
 });
 
-test("the write-back pairs the merge's result with the queued tick's summary, across a reload", () => {
-  // BUGS.md 2026-09-23: the queued tick left the prior last-result pair in place and stashed
+test("the write-back pairs the merge's result with the queued run's summary, across a reload", () => {
+  // BUGS.md 2026-09-23: the queued run left the prior last-result pair in place and stashed
   // its own summary; the merge — here resolving in a later process on a disk-loaded state,
   // as a durable queue entry can — records its result beside THAT summary and consumes it.
   const root = makeRepo();
   const { entry, file } = queued(root);
-  const tick = freshRunnerState("improve");
-  applyTickOutcome(tick, defaultConfig(), "improve", { result: "no_change", summary: "found nothing" });
-  applyTickOutcome(tick, defaultConfig(), "improve", {
+  const runState = freshRunnerState("improve");
+  applyRunOutcome(runState, defaultConfig(), "improve", { result: "no_change", summary: "found nothing" });
+  applyRunOutcome(runState, defaultConfig(), "improve", {
     result: "queued",
     summary: `${entry.summary} (high friction: 90 turns / 45m)`,
     commit: entry.sha,
   });
-  saveRunnerState(root, tick);
+  saveRunnerState(root, runState);
   const pending = loadRunnerState(root, "improve");
   assert.equal(pending.lastResult, "no_change", "fixture sanity: the prior pair is what persisted");
 
@@ -238,11 +238,11 @@ test("the write-back pairs the merge's result with the queued tick's summary, ac
 });
 
 test("a rejection crossing the error-streak bar warns from the merge side, once per episode", () => {
-  // BUGS.md 2026-09-30: a review rejection resolves AFTER the tick's end-save, so the
+  // BUGS.md 2026-09-30: a review rejection resolves AFTER the run's end-save, so the
   // streak-crossing warn belongs to writeMergeOutcome — same bar, same once-per-episode
-  // shape the tick side (finalizeRun) upholds. The two sites share one episode: a queued
-  // tick preserves the streak it was given, so a streak the tick side already warned at
-  // must not warn again here, and a crossing the tick side never saw (2 → 3 at the
+  // shape the run side (finalizeRun) upholds. The two sites share one episode: a queued
+  // run preserves the streak it was given, so a streak the run side already warned at
+  // must not warn again here, and a crossing the run side never saw (2 → 3 at the
   // merge) warns from here instead.
   const cfg = defaultConfig();
   const root = makeRepo();
@@ -255,12 +255,12 @@ test("a rejection crossing the error-streak bar warns from the merge side, once 
   assert.equal(low.consecutiveErrors, 1, "the rejection counts even below the bar");
   assert.equal(warnings().length, 0, "a below-bar rejection warns nothing");
 
-  // The crossing the tick side never saw: two failed ticks, a queued tick preserving the
+  // The crossing the run side never saw: two failed runs, a queued run preserving the
   // streak, then the merge's rejection does 2 → 3.
   const crossing = freshRunnerState("improve");
-  applyTickOutcome(crossing, cfg, "improve", { result: "error" });
-  applyTickOutcome(crossing, cfg, "improve", { result: "error" });
-  applyTickOutcome(crossing, cfg, "improve", { result: "queued", commit: "c" });
+  applyRunOutcome(crossing, cfg, "improve", { result: "error" });
+  applyRunOutcome(crossing, cfg, "improve", { result: "error" });
+  applyRunOutcome(crossing, cfg, "improve", { result: "queued", commit: "c" });
   const second = queued(root);
   writeMergeOutcome(root, second.entry, crossing, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, second.file);
   assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN, "the merge did the crossing");
@@ -270,9 +270,9 @@ test("a rejection crossing the error-streak bar warns from the merge side, once 
   assert.match(crossed[0]!.message as string, /^3 runs failed in a row: /);
 
   // The other half of the invariant: a rejection merge onto a streak the episode already
-  // warned at (preserved across the queued tick at the bar) must not warn again.
+  // warned at (preserved across the queued run at the bar) must not warn again.
   const third = queued(root);
-  applyTickOutcome(crossing, cfg, "improve", { result: "queued", commit: third.entry.sha });
+  applyRunOutcome(crossing, cfg, "improve", { result: "queued", commit: third.entry.sha });
   writeMergeOutcome(root, third.entry, crossing, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, third.file);
   assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN + 1);
   assert.equal(warnings().length, 1, "one warning per episode across both warn sites");
@@ -330,7 +330,7 @@ test("merge_failed carries the reason mergeFailureReason derives, and omits it o
 // advances the marker's stage and the dashboards render it.
 test("setMergeStage advances only its own role's record, and only its stage", () => {
   const root = makeRepo();
-  // No marker — the shared gate running inside a tick (leftover recovery): a no-op that
+  // No marker — the shared gate running inside a run (leftover recovery): a no-op that
   // creates nothing; the gate must never invent merge state.
   setMergeStage(root, "clean", "reviewing");
   assert.equal(readMergeMarker(root), null);
@@ -517,7 +517,7 @@ test("a foreign changes shape or a null record degrades instead of crashing a me
 
 test("a queued merge's record names each phase while it runs: the gate's check, the review, the merge's in-lock check", async () => {
   const root = makeRepo();
-  // A pinned change ahead of main, exactly what a tick leaves behind for the pipeline.
+  // A pinned change ahead of main, exactly what a run leaves behind for the pipeline.
   const sha = pinOffMain(
     root,
     (d) => fs.appendFileSync(path.join(d, "seed.txt"), "the work\n"),

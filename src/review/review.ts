@@ -27,7 +27,7 @@ export { REVIEW_FAILURE_LIMIT } from "./review-run.js";
 import { restoreReviewedHead, runReviewer, withRuns } from "./review-run.js";
 
 
-/** Everything reviewAheadOfMain needs from its caller (a RoleRunner tick or recovery). */
+/** Everything reviewAheadOfMain needs from its caller (a RoleRunner run or recovery). */
 export interface ReviewContext {
   root: string;
   role: string;
@@ -35,8 +35,8 @@ export interface ReviewContext {
   wt: string;
   mainBranch: string;
   config: TumwaterConfig;
-  /** Current tick number, for the unique per-run session name. */
-  tick: number;
+  /** Current run number, for the unique per-run session name. */
+  runNumber: number;
   /** This review's own per-run directory (reviewRunSessionDir in paths.ts). Unique per
    * review of one change, so continuing the run — a verdict/nudge follow-up now, a resumed
    * timed-out review later — reaches exactly this run's session. A resumed attempt uses the
@@ -69,7 +69,7 @@ export interface ReviewContext {
   reviewHeld?: () => boolean;
   /** Leases a second pool slot at `ref` without waiting, or resolves null when none is free: the
    * gate check then runs there alongside the reviewer instead of before it (Fast merge part 12).
-   * Absent (the tick path, most tests) the check runs first, as it always did. */
+   * Absent (the run path, most tests) the check runs first, as it always did. */
   leaseCheckSlot?: (ref: string) => Promise<SlotLeaseHandle | null>;
   /** In-place retries of a failed reviewer run; defaults to 2. A test seam. */
   retries?: number;
@@ -89,7 +89,7 @@ export interface GateResult {
    * return, or a pre-check that failed or skipped. */
   verifiedHead?: string;
   /** The reviewer run was killed by harness shutdown mid-review: fail closed, leave the
-   * commit, and let the tick report aborted (resume re-reviews via the combined diff). */
+   * commit, and let the run report aborted (resume re-reviews via the combined diff). */
   aborted?: boolean;
   /** The strike-cap discard fired: the gate itself reset the worktree off the reviewed head,
    * so the commit is gone and any pin naming the old head must go too. An under-cap failure
@@ -196,7 +196,7 @@ function startOverlappedCheck(ctx: ReviewContext, state: RunnerState, head: stri
 }
 
 /** Run the adversarial review gate over everything ahead of main in `wt` and update `state`
- * accordingly. Shared by the tick path (after commitAll) and leftover recovery
+ * accordingly. Shared by the run path (after commitAll) and leftover recovery
  * (leftover.ts's recoverLeftover) — every path
  * that can move a commit into main routes through here, so no crash or abort path smuggles
  * unreviewed work in:
@@ -206,11 +206,11 @@ function startOverlappedCheck(ctx: ReviewContext, state: RunnerState, head: stri
  * - approve → record lastApprovedHead and its patch-id, and discard the reviewer's stray
  *   working-tree edits (its only output channel is the verdict);
  * - reject → reset the branch to main, record reasons in state.lastReview (injected into the
- *   role's next tick prompt), log review_rejected;
+ *   role's next run prompt), log review_rejected;
  * - fail with an unparseable reply (the reviewer ran to completion but emitted no VERDICT) →
  *   one capped follow-up turn on the reviewer's own session asks for the missing line
  *   (mirroring requestSummary — BUGS.md 2026-09-29); only a follow-up that also yields
- *   nothing counts the strike. Leave the commit on the branch for the next tick's re-review,
+ *   nothing counts the strike. Leave the commit on the branch for the next run's re-review,
  *   counting consecutive failures per HEAD; past REVIEW_FAILURE_LIMIT discard the leftover
  *   with a warning.
  * - fail because the run itself failed (transport/spawn/timeout, pi.ok false) → leave the
@@ -240,7 +240,7 @@ async function reviewAttempt(
 
   // The one reject path: every rejection of this HEAD — deterministic build-check failure or
   // model verdict — shares this bookkeeping. Record lastReview (injected into the role's next
-  // tick prompt), reset the failure count (a verdict about this HEAD is a successful review
+  // run prompt), reset the failure count (a verdict about this HEAD is a successful review
   // either way), discard the branch by resetting it to main, and log review_rejected.
   // Callers attach `run` when a pi run was consumed.
   const reject = async (reasons: string[], durationMs?: number): Promise<GateResult> => {
@@ -305,7 +305,7 @@ async function reviewAttempt(
     // Fixed must have its fix's symbols on this tree, or it records code that does not
     // exist (BUGS.md 2026-09-22 — 9cea8c3 merged a Fix paragraph naming runScriptGroup
     // and signalTree with no source behind it). A deterministic rejection, like the
-    // pre-check below: no pi run consumed, reasons injected into the author's next tick.
+    // pre-check below: no pi run consumed, reasons injected into the author's next run.
     const falseFix = await falseFixReason(wt, mainBranch, files);
     if (falseFix) return reject([falseFix]);
     // Same cross-check as the merge path (backlog-structure.ts): an md-only diff that
@@ -328,7 +328,7 @@ async function reviewAttempt(
   // Deterministic build pre-check — after BOTH early returns above (an md-only diff cannot
   // break the build) and before any reviewer run or the phase/event that would show
   // "reviewing": a deterministic rejection never shows as reviewing on the dashboards. Both
-  // gate callers (the tick path and leftover.ts's recoverLeftover) get it for free. Its run,
+  // gate callers (the run path and leftover.ts's recoverLeftover) get it for free. Its run,
   // flake re-run, and attribution live in review-precheck.ts (the check run itself lives in
   // runScopedBuildCheck, shared with the merge path's in-lock re-check); a resolved result
   // here is returned verbatim and a pass hands the verified head to the merge path below.

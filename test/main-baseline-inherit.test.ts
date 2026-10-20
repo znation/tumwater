@@ -24,7 +24,7 @@ const ROLE = "improve";
 const CFG = defaultConfig();
 
 /** Commit `files` (path → content) on the fixture's main and move the role worktree onto it, the
- * way a fresh tick resets to main. Returns the new main SHA. */
+ * way a fresh run resets to main. Returns the new main SHA. */
 function advanceMain(root: string, wt: string, files: Record<string, string>, message: string): string {
   for (const [rel, content] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });

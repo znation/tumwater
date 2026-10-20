@@ -705,7 +705,7 @@ async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): P
       mainBranch: ctx.mainBranch,
       exemptPaths: ctx.config.review.exemptPaths,
       config: ctx.config,
-      tick: ctx.state.runs,
+      runNumber: ctx.state.runs,
       runPi: (w, prompt, sessionName, config) => ctx.pi.runRolePi(w, prompt, sessionName, false, config),
     },
     wt,

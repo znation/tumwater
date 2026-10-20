@@ -42,7 +42,7 @@ export function revisionNote(entry: Pick<MergeEntry, "revisionRound" | "priorRev
 }
 
 /** Render the queue as the text `tumwater queue` prints: a `merge queue (<depth>):` header then
- * one 1-based line per readable entry, oldest first, carrying the role, tick number, short
+ * one 1-based line per readable entry, oldest first, carrying the role, run number, short
  * pinned sha, age, and summary. An empty queue (no entries and nothing skipped) prints
  * `merge queue empty`; a non-zero skip count appends one `(+N unreadable queue file(s) skipped)`
  * line so a torn or foreign file the reader dropped is visible rather than silent. An entry the

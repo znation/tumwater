@@ -35,7 +35,7 @@ import {
 // assembled on the old tip, so its single ff fails; the batch must re-stack on the new tip
 // and go round again rather than send every approved change back through recovery.
 
-test("a batch whose base main moves mid-check through a tick-path merge re-stacks and merges", async () => {
+test("a batch whose base main moves mid-check through a run-path merge re-stacks and merges", async () => {
   // The Repro exactly: a slow batch check, and while it runs another writer merges on main (here
   // a third role's own verify and merge). The ff loses, the batch re-stacks on the new tip,
   // re-checks it (the racer is code, not docs), and merges both changes on top of the racer.

@@ -17,7 +17,7 @@ test("isNothingToDo detects the sentinel", () => {
   assert.ok(!isNothingToDo("all done\nSUMMARY: x"));
 });
 
-// The TUMWATER_REFUSED line blocks a PLANS.md/BUGS.md entry and routes a tick to handleRefusal
+// The TUMWATER_REFUSED line blocks a PLANS.md/BUGS.md entry and routes a run to handleRefusal
 // (plans/refusal-and-thrash.md), so its detection semantics are load-bearing: pi-stream.ts's
 // boolean scan is deliberately loose (whole-reply includes), while the REASON extraction is
 // anchored at line start so prose that merely mentions the sentinel cannot set it.
@@ -41,7 +41,7 @@ test("extractRefusal ignores mid-sentence mentions (line-start anchor)", () => {
   assert.equal(extractRefusal(text), null);
 });
 
-// isNegatedRefusal (BUGS.md 2026-09-23): four ticks ended ordinary work-completed replies
+// isNegatedRefusal (BUGS.md 2026-09-23): four runs ended ordinary work-completed replies
 // with `TUMWATER_REFUSED: none` — the prompt lists the line beside the reply-contract fields,
 // so a compliant model fills it in — and the harness destroyed their tested work. A reason
 // that negates the refusal is not a refusal.
@@ -293,7 +293,7 @@ test("verdictLines is empty when no line matches", () => {
   assert.deepEqual(verdictLines("mentions VERDICT: approve inline"), []);
 });
 
-// The `qa` observer ends each tick with a result-carrying FLOW line (plans/observer-roles.md
+// The `qa` observer ends each run with a result-carrying FLOW line (plans/observer-roles.md
 // 2/2); the harness parses it to rotate the flow menu. Anchored at line start through
 // labeledLine, so a mid-sentence mention cannot advance the ledger, and the verdict is
 // required: a bare name is not a pass the run never declared.

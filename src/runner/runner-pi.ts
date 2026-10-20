@@ -196,7 +196,7 @@ export class RunnerPi {
    * run, so `tumwater abort --role` (which targets a run's per-run abort controller) must
    * never reach it, and the stale per-run controller of a finished run must not abort it
    * either. Session naming is the caller's (the reviewer composes its own from
-   * ReviewContext.tick; merge-to-main.ts keeps its conflict-resolver naming through
+   * ReviewContext.runNumber; merge-to-main.ts keeps its conflict-resolver naming through
    * MergerContext.runPi).
    */
   async runMergePi(

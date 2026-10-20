@@ -68,7 +68,7 @@ test("an approved merge merges on main and deletes the ref", async () => {
       assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0, "never red, no flake");
       assert.equal(await refSha(root, REF), null, "the pin was deleted on merge");
       assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree stayed clean at main");
-      assert.equal(folded.length, 1, "the reviewer run's usage folds into the tick counters");
+      assert.equal(folded.length, 1, "the reviewer run's usage folds into the run counters");
       assert.equal(state.lastReview?.verdict, "approve");
     },
   );
@@ -94,19 +94,19 @@ test("a reviewer killed once (exit 143) is retried in the verify: the change mer
   );
 });
 
-test("the gate's verdict is durable on disk before the tick's end save", async () => {
-  // Regression (2026-09-14): state was written to disk only at tick boundaries, so a
+test("the gate's verdict is durable on disk before the run's end save", async () => {
+  // Regression (2026-09-14): state was written to disk only at run boundaries, so a
   // sudden death after the gate's verdict (power loss, kill -9) left the last
-  // tick-boundary snapshot on disk — a stale "reject" for work already superseded —
-  // and every later tick got a "your previous change was rejected" note about work
-  // that was already on main. The verdict must be durable before the tick's tail
+  // run-boundary snapshot on disk — a stale "reject" for work already superseded —
+  // and every later run got a "your previous change was rejected" note about work
+  // that was already on main. The verdict must be durable before the run's tail
   // (the merge plus the still-to-come authoring run) can die unsaved.
   await withPi(
     reviewerPi("VERDICT: approve"),
     async () => {
       const { root, sha } = await pinnedFixture();
       const state = freshRunnerState(ROLE);
-      // What disk holds at tick start: the superseded rejection's verdict.
+      // What disk holds at run start: the superseded rejection's verdict.
       state.lastReview = {
         verdict: "reject",
         reasons: ["check failed (test): stale"],
@@ -160,7 +160,7 @@ test("a verdict-less failure under the strike cap returns review_error and keeps
 
       assert.equal(mainSha(root), mainBefore, "nothing merged on main");
       assert.ok(state.lastError?.startsWith("review failed:"), `lastError names the failure: ${state.lastError}`);
-      assert.equal(await refSha(root, REF), sha, "under the cap the pin stays for next-tick recovery");
+      assert.equal(await refSha(root, REF), sha, "under the cap the pin stays for next-run recovery");
     },
   );
 });
@@ -219,7 +219,7 @@ test("a conflicting merge gets one resolution run and then merges", async () => 
 
       assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "combined\n");
       assert.equal(calls.length, 1, "exactly one resolution attempt per merge");
-      assert.match(calls[0]!.session, /tumwater-improve-7-conflict/, "named after the role and tick");
+      assert.match(calls[0]!.session, /tumwater-improve-7-conflict/, "named after the role and run");
       assert.equal(await refSha(root, REF), null, "the pin was deleted on merge");
       // The rebase rewrote the pinned commit onto main's advance: linear history, no merge commits.
       assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "");
@@ -491,7 +491,7 @@ for (const main of ["green", "red"] as const) {
 // The first red of a patch's in-lock merge check is the retry that exists for load flakes — the
 // whole point is to re-merge a flaky test green. It is also the one signal that could name the
 // flaky test, and until now the reason was written only into lastError, which the leftover-recovery
-// tick overwrites a second later, so the flaky test could never be identified (BUGS.md 2026-10-14).
+// run overwrites a second later, so the flaky test could never be identified (BUGS.md 2026-10-14).
 // The kept-for-re-merge path now logs a warning naming the failing test, so the digest and a later
 // audit can still name it.
 test("a kept-for-re-merge red merge check logs a warning naming the failing test", async () => {

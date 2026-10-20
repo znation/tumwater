@@ -12,7 +12,7 @@ import { removeMergeChange, requeueKeptChange, writeMergeOutcome, type MergeUsag
 import { mergeRefName, rejectedRefName } from "../paths.js";
 import type { AbortableMerge } from "../operator/operator-requests.js";
 import type { MergeEntry } from "./merge-queue.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import type { FoldsUsage } from "../runner/runner-pi.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import type { MainCulprit } from "../baseline/main-revert.js";
@@ -65,14 +65,14 @@ export interface MergePipelineContext {
   mainBranch: string;
   /** The combined caller+internal stop signal: harness shutdown aborts every merge task. */
   signal: AbortSignal;
-  /** The shared maxConcurrent semaphore role ticks draw from. A merge's pi runs cost the
+  /** The shared maxConcurrent semaphore role runs draw from. A merge's pi runs cost the
    * backend what an author run costs, so merges count as active work: every verification holds one
    * permit for its whole length, and the merge's conflict resolver takes one for its run
    * (BUGS.md 2026-09-18 — exempting the merge let total load float to maxConcurrent +
    * merge + director on a single-GPU backend, where the extra stream is what starves
    * sessions into the quiet watchdog's kills). The permits are all that bounds how many
-   * verifications run at once. Both merge tiers sit ahead of every role tick's, and a verification
-   * takes the slot its author would have used: the interlock keeps that author from ticking until
+   * verifications run at once. Both merge tiers sit ahead of every role run's, and a verification
+   * takes the slot its author would have used: the interlock keeps that author from running until
    * its change merges. */
   semaphore: Semaphore;
   /** Live runners, searched first when resolving a merge's author. */
@@ -85,11 +85,11 @@ export interface MergePipelineContext {
   directorConfig: TumwaterConfig;
   /** pi's saved default model (the caller's stat-cached readPiDefaultModel result): the
    * fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2),
-   * read by a merge's review and resolver runs just as a role tick reads it. */
+   * read by a merge's review and resolver runs just as a role run reads it. */
   piDefault?: ModelSelector | null;
   /** The scheduler's start gate for new work (a pending restart, a team hold), re-checked the
    * moment a parked verification is granted its permit — the one moment it actually starts, exactly
-   * as a parked role tick re-checks it (run-timing.ts's runTimedRoleRun): a verification queued
+   * as a parked role run re-checks it (run-timing.ts's runTimedRoleRun): a verification queued
    * before the hold must not start a reviewer mid-drain or into the storm. A held verification
    * hands its permit back and starts nothing; its entry stays queued for the next drain. */
   startHeld(): boolean;
@@ -215,7 +215,7 @@ export async function settleMergeOutcome(
   root: string,
   entry: MergeEntry,
   state: RunnerState,
-  result: TickResult,
+  result: RunResult,
   durationMs: number,
   usage: MergeUsage,
   file: string,

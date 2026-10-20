@@ -9,7 +9,7 @@ import { defaultConfig } from "../../src/config/config.js";
 import { freshRunnerState } from "../../src/runner/runner-state.js";
 import { readEvents } from "../../src/events/event-read.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
-import type { TickResult } from "../../src/run/run-outcome.js";
+import type { RunResult } from "../../src/run/run-outcome.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
 import type { RunnerState } from "../../src/runner/runner-state.js";
 import { projManifest, writeScript } from "../fakes/fake-commands.js";
@@ -91,7 +91,7 @@ export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: 
 export { reviewerPi, APPROVE_PI } from "./pi-events.js";
 
 export function request(sha: string, overrides: Partial<MergeRequest> = {}): MergeRequest {
-  return { role: ROLE, sha, tick: 7, summary: "the work", ...overrides };
+  return { role: ROLE, sha, runNumber: 7, summary: "the work", ...overrides };
 }
 
 /** The BatchRoleWiring a test context implies: its own state and pi/fold halves, so the
@@ -107,7 +107,7 @@ export function batchWiring(ctx: MergerContext): BatchRoleWiring {
 
 /** Merge one pinned change the way the pipeline does — its verify, then (approved) a one-change
  * merge — over one MergerContext's wiring, returning the outcome the pipeline writes back. */
-export async function verifyAndMerge(ctx: MergerContext, req: MergeRequest): Promise<TickResult> {
+export async function verifyAndMerge(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   const w = batchWiring(ctx);
   const v = await verifyRequest(ctx, req, w);
   if (v.kind === "result") return v.result;
@@ -237,8 +237,8 @@ export async function verifyThenMerge(
   ctx: BatchContext,
   requests: MergeRequest[],
   wiringFor: (role: string) => BatchRoleWiring,
-): Promise<Array<{ req: MergeRequest; result?: TickResult }>> {
-  const results: Array<{ req: MergeRequest; result?: TickResult }> = requests.map((req) => ({ req }));
+): Promise<Array<{ req: MergeRequest; result?: RunResult }>> {
+  const results: Array<{ req: MergeRequest; result?: RunResult }> = requests.map((req) => ({ req }));
   const approved: Array<{ at: number; req: MergeRequest }> = [];
   for (const [at, req] of requests.entries()) {
     const v = await verifyRequest(ctx, req, wiringFor(req.role));
@@ -354,7 +354,7 @@ export async function runBatchRecorded(
   shas: Record<string, string>,
   roles: string[],
   wiringFor: (role: string) => BatchRoleWiring,
-): Promise<{ results: Array<TickResult | undefined>; seen: string[] }> {
+): Promise<{ results: Array<RunResult | undefined>; seen: string[] }> {
   const seen: string[] = [];
   const results = await verifyThenMerge(
     { ...makeBatchCtx(root), onChangeStatus: (role, status) => seen.push(`${role}:${status}`) },

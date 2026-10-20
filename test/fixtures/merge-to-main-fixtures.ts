@@ -26,7 +26,7 @@ interface PiCall {
   config?: ResolvedModelConfig;
 }
 
-/** A MergeContext for role "improve" on tick 7 whose runPi records every call and then
+/** A MergeContext for role "improve" on run 7 whose runPi records every call and then
  * defers to `resolve` (or returns a plain ok result when none is given). The merge target is
  * derived from the worktree's post-rebase HEAD inside mergeToMain (merge queue 2/5), so there is
  * no ref field. exemptPaths carries the config defaults, as runner-run.ts does. */
@@ -42,7 +42,7 @@ export function makeCtx(
       mainBranch: "main",
       exemptPaths: ["*.md", "docs/**"],
       config: defaultConfig(),
-      tick: 7,
+      runNumber: 7,
       runPi: async (wt, prompt, session, config) => {
         calls.push({ wt, prompt, session, config });
         return resolve ? resolve(wt, prompt, session) : piResult();

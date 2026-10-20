@@ -22,7 +22,7 @@ function settle(): Promise<void> {
 
 test("abortOnShutdown aborts an already-aborted signal's task controller at once", () => {
   // The documented regression: a listener added after the event never runs, so a task wired
-  // during a drain that has already begun would tick or review on past the stop.
+  // during a drain that has already begun would run or review on past the stop.
   const controller = new AbortController();
   abortOnShutdown(AbortSignal.abort(), controller);
   assert.equal(controller.signal.aborted, true, "the pre-fired stop reaches the task synchronously");
@@ -69,7 +69,7 @@ test("an abort while parked resolves null, and a grant that arrives later is han
   // holder finishes. Without the hand-back, that grant is lost — every aborted verify would
   // shrink the team's real concurrency by one.
   const semaphore = new Semaphore(1);
-  await semaphore.acquire(0); // the permit a mid-tick author holds
+  await semaphore.acquire(0); // the permit a mid-run author holds
   const harness = new AbortController();
   const parked = acquireUnlessAborted(semaphore, 0, harness.signal);
   let settled = false;

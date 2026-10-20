@@ -54,7 +54,7 @@ function makeCtx(config: TumwaterConfig = defaultConfig()) {
     wt: root,
     mainBranch: "main",
     config,
-    tick: 7,
+    runNumber: 7,
     sessionDir: reviewRunSessionDir(root, "feature", "7-test"),
     runGatePi,
   };

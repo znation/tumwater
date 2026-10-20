@@ -22,7 +22,7 @@ import { attributeRedCheck } from "./merge-check-failures.js";
 import { errorMessage } from "../text/text.js";
 import type { MergeChangeStatus } from "./merge-slot.js";
 import { mergeStack, type StackEntry, type StackOutcome } from "./merge-stack.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
 import type { RunnerState } from "../runner/runner-state.js";
 
@@ -43,7 +43,7 @@ export interface BatchContext extends GateRunsPi, MergeScopeContext {
    * change already on main stops reading its stale pre-merge streak while a later change's
    * conflict resolver blocks (BUGS.md 2026-10-09). Absent for callers that settle the
    * returned array themselves. */
-  onResult?(index: number, result: TickResult): void | Promise<void>;
+  onResult?(index: number, result: RunResult): void | Promise<void>;
 }
 
 /** One change's wiring, resolved by the drain from its authoring runner: the live state object
@@ -61,7 +61,7 @@ export interface BatchRoleWiring extends PiRunWiring {
  * or aborted. */
 export type VerifyVerdict =
   | { kind: "stack"; sha: string; verifiedHead?: string }
-  | { kind: "result"; result: TickResult; discarded?: true };
+  | { kind: "result"; result: RunResult; discarded?: true };
 
 /** Verify one request — the whole of a verify-stage task: lease a pooled slot for the role, check
  * its pin out detached there, rebase it onto main's current tip (syncPinToMain — so the head
@@ -81,7 +81,7 @@ export async function verifyRequest(ctx: BatchContext, req: MergeRequest, w: Bat
       purpose: "verify",
       ref: req.sha,
       signal: ctx.signal(),
-      // The live view's pool budget, same rule as the tick path: a broken tumwater.json
+      // The live view's pool budget, same rule as the run path: a broken tumwater.json
       // must not error the verify before its reviewer runs.
       slotBudget: slotCount(ctx.config),
     });
@@ -178,8 +178,8 @@ export async function mergeApproved(
   ctx: BatchContext,
   approved: MergeRequest[],
   wiringFor: (role: string) => BatchRoleWiring,
-): Promise<Array<TickResult | undefined>> {
-  const results: Array<TickResult | undefined> = approved.map(() => undefined);
+): Promise<Array<RunResult | undefined>> {
+  const results: Array<RunResult | undefined> = approved.map(() => undefined);
   const report = (s: number, status: MergeChangeStatus): void => ctx.onChangeStatus?.(approved[s]!.role, status);
   const mergerCtx = (w: BatchRoleWiring): MergerContext => ({
     root: ctx.root,
@@ -198,11 +198,11 @@ export async function mergeApproved(
   // Every finalized result goes through here: record it, then hand it to the caller's
   // onResult (the drain's per-change write-back) so settling does not wait behind a slower
   // batch-mate's conflict resolver (BUGS.md 2026-10-09).
-  const emit = async (s: number, result: TickResult): Promise<void> => {
+  const emit = async (s: number, result: RunResult): Promise<void> => {
     results[s] = result;
     await ctx.onResult?.(s, result);
   };
-  const finish = (): Array<TickResult | undefined> =>
+  const finish = (): Array<RunResult | undefined> =>
     aborted ? results.map((r) => r ?? "aborted") : results;
   // The merge step the degenerate case and the abandon fallback share: merge one request
   // through mergeApprovedChange on its role's wiring, and degrade a throw to "error" on that

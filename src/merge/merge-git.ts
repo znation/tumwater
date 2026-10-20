@@ -12,7 +12,7 @@ import { errorMessage } from "../text/text.js";
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no merge policy
  * of their own. Merge policy (lock → rebase → verify → ff, conflict resolution, batch ff)
  * lives in merge-to-main.ts on top of these. Moved here from merge-to-main.ts: the cluster started
- * as merge-to-main.ts-only helpers (organize tick 78, moving them out of git/git.ts), but the
+ * as merge-to-main.ts-only helpers (organize run 78, moving them out of git/git.ts), but the
  * merger and the batch merger grew to call them directly, leaving merge-to-main.ts exporting
  * generic rebase/ff plumbing that had nothing to do with merging. */
 
@@ -84,7 +84,7 @@ export async function mainCommitsTouching(
  * cleaning up: "rebased" (including already up to date), "conflict" (the rebase stopped on
  * unmerged paths, which remain in the worktree for a resolver), or "other" (any other
  * failure). Shared by the two rebase wrappers below, which differ only in cleanup policy.
- * Rebase — not merge — keeps main's history linear: each tick merges as its own commit on top
+ * Rebase — not merge — keeps main's history linear: each run merges as its own commit on top
  * of whatever main holds. */
 async function attemptRebase(
   wt: string,
@@ -102,7 +102,7 @@ async function attemptRebase(
   }
 }
 
-/** Rebase the worktree branch onto main (main may have advanced during the tick).
+/** Rebase the worktree branch onto main (main may have advanced during the run).
  * Returns false and aborts the rebase on conflict. */
 export async function rebaseOntoMain(wt: string, mainBranch: string): Promise<boolean> {
   const state = await attemptRebase(wt, mainBranch);

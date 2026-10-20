@@ -27,7 +27,7 @@ export function gateCtx(root: string, wt: string, runNumber = 1) {
     wt,
     mainBranch: "main",
     config: defaultConfig(),
-    tick: runNumber,
+    runNumber: runNumber,
     sessionDir: reviewRunSessionDir(root, ROLE, `${runNumber}-test`),
     runGatePi: (opts: Parameters<typeof runPi>[0]) => runPi(opts),
     // A failed reviewer run is not retried in place unless a test opts in (retries) — most
