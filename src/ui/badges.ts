@@ -372,3 +372,10 @@ export function permitsBadge(permits: StatusSnapshot["permits"]): string {
   if (providers.length === 0) return "";
   return ` · running ${permits.inUse} of ${permits.limit} · ${providers}`;
 }
+
+/** The check-permit pool's reading, ` · checks 1/2` plus `, 3 waiting` while checks queue. Empty
+ * when no check runs or waits, so an idle check pool leaves the header byte-identical. */
+export function checksBadge(checks: StatusSnapshot["checkPermits"]): string {
+  if (!checks || (checks.inUse === 0 && checks.waiting === 0)) return "";
+  return ` · checks ${checks.inUse}/${checks.limit}${checks.waiting > 0 ? `, ${checks.waiting} waiting` : ""}`;
+}

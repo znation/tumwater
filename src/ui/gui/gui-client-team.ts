@@ -93,6 +93,12 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         rows += row("blue", icon("gauge"), esc(tok),
           "Roles running at once out of the team limit, then each capped provider's own running/cap; a role waits to start when its provider is at its cap.");
       }
+      // The check-permit pool: the payload's checksBadge, present only while a check runs or waits.
+      if (d.checksBadge) {
+        const tok = String(d.checksBadge).replace(/^ · /, "");
+        rows += row("blue", icon("gauge"), esc(tok),
+          "Checks of the project's suite running at once out of maxConcurrentChecks, then how many wait for a check slot; merge checks go first.");
+      }
       // The run --for deadline: the payload's preformatted runWindowBadge, like the disk row.
       if (d.runWindowBadge) {
         rows += row("blue", icon("info"), esc(badgeLabel(d.runWindowBadge)),

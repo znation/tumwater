@@ -39,6 +39,13 @@ function checkCap(config: CheckConfigSlice | undefined): number {
   return typeof n === "number" && Number.isInteger(n) && n >= 1 ? n : defaultConfig().maxConcurrentChecks;
 }
 
+/** The check pool's live state for observers (the orchestrator's poll publishes it): permits held,
+ * the cap, and checks queued for one. `limit` is the cap set by the most recent withCheckPermit
+ * call, or the default before any check has run. */
+export function checkPermitSnapshot(): { inUse: number; limit: number; waiting: number } {
+  return { inUse: checkPermits.snapshot().inUse, limit: checkPermits.limit, waiting: checkPermits.waiting };
+}
+
 /** Called around a wait for a check permit — only when the permit is not free on arrival: `waiting`
  * before parking, `granted` once the permit arrives. The merge path uses it to show "waiting for a
  * check slot" instead of a check that has not started (merge-slot.ts's checkWaitStage). */

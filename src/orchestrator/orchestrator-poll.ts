@@ -30,6 +30,7 @@ import {
   consumeWakeRequest,
 } from "../operator/operator-requests.js";
 import type { readPiDefaultModel } from "../pi/pi-settings.js";
+import { checkPermitSnapshot } from "../concurrency/check-permit.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import type { createMainWatch } from "../baseline/main-watch.js";
 import { redeployTarget } from "../baseline/main-baseline.js";
@@ -215,8 +216,12 @@ export function pollGatesAndHolds(
   // (status, TUI, GUI) read one file instead of coupling to this Semaphore, and the team
   // line shows per-provider counts only while a cap map is configured. Written only when
   // it changes, like budget and disk; a map-less team publishes `byKey` empty, which
-  // renders exactly as before.
-  publishInfoFields(root, ctx.info, [["permits", ctx.semaphore.snapshot()]]);
+  // renders exactly as before. The check-permit pool rides along, so status can show checks
+  // running and waiting while merges stall.
+  publishInfoFields(root, ctx.info, [
+    ["permits", ctx.semaphore.snapshot()],
+    ["checkPermits", checkPermitSnapshot()],
+  ]);
 
   // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
   // tick model's provider stands under a hold, and every role is held when the

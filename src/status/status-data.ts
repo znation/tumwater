@@ -1,7 +1,7 @@
 import type { LoopState } from "../runner/runner-state.js";
 import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
-import type { OrchestratorInfo, PermitSnapshot } from "../team/orchestrator-info.js";
+import type { CheckPermitSnapshot, OrchestratorInfo, PermitSnapshot } from "../team/orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, loopIds, loopPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
@@ -349,6 +349,8 @@ export interface StatusSnapshot {
    * orchestrator runs; absent otherwise, so the surfaces render exactly as before, and the
    * provider part of the team line appears only while any key carries a cap. */
   permits?: PermitSnapshot;
+  /** The check-permit pool's live state as the orchestrator published it; only while it runs. */
+  checkPermits?: CheckPermitSnapshot;
   /** The earlier of the `run --for` deadline (the running orchestrator's info file) and a
    * `tumwater stop --in` marker (epoch ms); absent when neither is set or the team is stopped. */
   runStopsAt?: number;
@@ -522,6 +524,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     rootInstallDrift: rootDrift.length ? rootDrift : undefined,
     // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
     permits: running && info?.permits ? info.permits : undefined,
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
+    checkPermits: running && info?.checkPermits ? info.checkPermits : undefined,
     // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
     runStopsAt: running ? earliestStop(info?.stopsAt, scheduledStopAt(root)) : undefined,
     scheduledStopAt: running ? scheduledStopAt(root) : undefined,

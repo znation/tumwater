@@ -161,6 +161,8 @@ discards a role's in-flight merge.
   waitedMs), and `tumwater doctor`'s "check contention" row sums the last 24 h and warns at
   10 minutes, naming `maxConcurrentChecks` to raise. `tumwater report` and the dashboard's Report
   tab show the per-day median of those waits as "Check wait median" (team scope only).
+  While a check runs or waits, `tumwater status`, the TUI header and the dashboard's team panel
+  show `checks <running>/<cap>`, plus `, <n> waiting` when checks are queued.
 - A bug that bugfix cannot reproduce is held by a `**Waiting for the next failure <date> by
   bugfix: …**` note, which bugfix writes once it has made the failure's message name the cause.
   The backlog index marks the entry `[blocked: waiting for the next failure]`, so bugfix skips it

@@ -5,7 +5,7 @@
  * travels with the per-role display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, chainBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, runWindowBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, chainBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
 import type { StatusSnapshot } from "../src/status/status-data.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -359,4 +359,11 @@ test("budgetBadge names each tier's fallback step while the window is rejected",
   assert.match(budgetBadge(budget, cw, at(10, 0)), /claude model jobs wait until 15:00/);
   assert.equal(chainBadge(undefined), "");
   assert.equal(chainBadge({}), "");
+});
+
+test("checksBadge shows the check pool only while a check runs or waits", () => {
+  assert.equal(checksBadge(undefined), "");
+  assert.equal(checksBadge({ inUse: 0, limit: 2, waiting: 0 }), "");
+  assert.equal(checksBadge({ inUse: 1, limit: 2, waiting: 0 }), " · checks 1/2");
+  assert.equal(checksBadge({ inUse: 2, limit: 2, waiting: 3 }), " · checks 2/2, 3 waiting");
 });

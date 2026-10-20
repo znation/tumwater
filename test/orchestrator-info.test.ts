@@ -200,3 +200,16 @@ test("readOrchestratorInfo keeps a numeric stopsAt and drops a string one", () =
   assert.equal(info?.stopsAt, undefined);
   assert.deepEqual(info?.roles, ["a"]);
 });
+
+test("readOrchestratorInfo keeps a well-formed checkPermits and drops a malformed one", () => {
+  const root = tmpdir();
+  const file = orchestratorStatePath(root);
+  ensureParentDir(file);
+  const checkPermits = { inUse: 2, limit: 2, waiting: 1 };
+  fs.writeFileSync(file, JSON.stringify({ pid: process.pid, startedAt: 1, roles: ["a"], checkPermits }));
+  assert.deepEqual(readOrchestratorInfo(root)?.checkPermits, checkPermits);
+  fs.writeFileSync(file, JSON.stringify({ pid: process.pid, startedAt: 1, roles: ["a"], checkPermits: { inUse: "2", limit: 2, waiting: 0 } }));
+  const info = readOrchestratorInfo(root);
+  assert.equal(info?.checkPermits, undefined);
+  assert.deepEqual(info?.roles, ["a"]);
+});

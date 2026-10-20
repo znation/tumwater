@@ -59,6 +59,14 @@ export interface PermitSnapshot {
   byKey: Record<string, PermitKeyState>;
 }
 
+/** The check-permit pool's published state (src/concurrency/check-permit.ts checkPermitSnapshot):
+ * checks running, the maxConcurrentChecks cap, and checks waiting for a permit. */
+export interface CheckPermitSnapshot {
+  inUse: number;
+  limit: number;
+  waiting: number;
+}
+
 export interface DiskStatus {
   freeGB: number;
   holdGB: number;
@@ -117,6 +125,10 @@ export interface OrchestratorInfo {
    * by the orchestrator's poll whenever it changes, like `budget` and `disk`; absent when the
    * running orchestrator predates it or there is no pool. */
   permits?: PermitSnapshot;
+  /** The check-permit pool's live state: checks running, the cap, and checks waiting. Written
+   * by the orchestrator's poll whenever it changes; absent when the running orchestrator predates
+   * it. */
+  checkPermits?: CheckPermitSnapshot;
   /** The standing per-provider failure holds (src/team/team-hold.ts `standingHolds`): a
    * provider storm's hold, as the orchestrator's poll publishes them, so the status snapshot
    * and the alert banner name why held providers hold. An entry's `provider` is omitted for
@@ -221,6 +233,11 @@ function parseProviderHold(v: unknown): { provider?: string; until: number; kind
   return { ...(v.provider !== undefined ? { provider: v.provider } : {}), until: v.until, kind: v.kind };
 }
 
+function parseCheckPermits(v: unknown): CheckPermitSnapshot | undefined {
+  if (!isJsonObject(v) || !isFiniteNumber(v.inUse) || !isFiniteNumber(v.limit) || !isFiniteNumber(v.waiting)) return undefined;
+  return { inUse: v.inUse, limit: v.limit, waiting: v.waiting };
+}
+
 function parsePermits(v: unknown): PermitSnapshot | undefined {
   if (!isJsonObject(v) || !isFiniteNumber(v.inUse) || !isFiniteNumber(v.limit) || !isFiniteNumber(v.reserve)) return undefined;
   if (!isJsonObject(v.byKey)) return undefined;
@@ -260,6 +277,7 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
   parseOrDelete(rec, "build", parseBuild);
   parseOrDelete(rec, "fallbackDemoted", parseDemotion);
   parseOrDelete(rec, "permits", parsePermits);
+  parseOrDelete(rec, "checkPermits", parseCheckPermits);
 
   const demotions = rec.fallbackDemotions;
   if (!isJsonObject(demotions)) delete rec.fallbackDemotions;

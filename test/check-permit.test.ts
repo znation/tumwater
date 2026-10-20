@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js";
+import { CHECK_TIER, checkPermitSnapshot, withCheckPermit } from "../src/concurrency/check-permit.js";
 import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { readEvents } from "../src/events/event-read.js";
 import { buildCheckFixture } from "./fixtures/runner-fixtures.js";
@@ -249,4 +249,19 @@ test("a check-permit request from inside a held permit runs under it instead of 
   assert.equal(inner, "nested");
   // And the outer permit came back: a fresh request is granted at once.
   assert.equal(await withCheckPermit(one, CHECK_TIER.other, async () => "after"), "after");
+});
+
+test("checkPermitSnapshot reports the checks holding a permit and the checks waiting for one", async () => {
+  const cfg = { maxConcurrentChecks: 1 };
+  let releaseFirst!: () => void;
+  const first = withCheckPermit(cfg, CHECK_TIER.other, () => new Promise<void>((r) => (releaseFirst = r)));
+  await flushImmediate();
+  const second = withCheckPermit(cfg, CHECK_TIER.other, async () => {});
+  await flushImmediate();
+  assert.deepEqual(checkPermitSnapshot(), { inUse: 1, limit: 1, waiting: 1 });
+  releaseFirst();
+  await Promise.all([first, second]);
+  const after = checkPermitSnapshot();
+  assert.equal(after.inUse, 0);
+  assert.equal(after.waiting, 0);
 });
