@@ -2892,3 +2892,66 @@ engage, arms idle passes at most hourly, and runs a manual request over every ca
 **Pinned by.** `test/reclaim.test.ts` — "ReclaimController runs one pass per drop, then lets the
 disk hold engage", "ReclaimController.pollIdle cleans once, throttles the next arm, and honors
 reclaimedAt" and "ReclaimController.requestManual runs a manual pass over every candidate".
+
+## False-fix gate: an md-only fix claim names only code the tree holds, wherever the Fixed entry lives
+
+`src/verdict/fix-claim.ts` is the check on a diff that touches only Markdown and moves a bug to
+Fixed. A real claim usually arrives as a BUGS-FIXED.md edit, because the archive move happens right
+before the commit.
+
+### INV-AX1: a Fixed entry the diff writes or rewrites names only code the tree holds
+
+**Guarantee.** A new Fixed entry, or an already-Fixed entry whose body the diff rewrites (including
+text after a quoted fence), is rejected when a name in any of its Fix paragraphs is on neither the
+code haystack nor the tree. An untouched entry is not checked. This holds for an edit to BUGS.md
+and for an edit to BUGS-FIXED.md, measured against the diff's merge-base.
+
+**Binds.** `src/verdict/fix-claim.ts` (`falseFixReason`, `fixSymbols`, `unbackedSymbols`).
+
+**Pinned by.** `test/fix-claim.test.ts` — "falseFixReason flags a new Fixed entry whose Fix names
+nothing on the tree", "falseFixReason flags a later Fix paragraph in a Fixed body, not only the
+first", "falseFixReason checks an already-Fixed entry whose narrative the diff rewrites",
+"falseFixReason leaves an already-Fixed entry with an untouched body alone", "falseFixReason
+measures an Open→Fixed restoration against the merge-base, not main's tip" and "falseFixReason
+checks a Fixed entry whose narrative after its quoted fence the diff rewrites";
+`test/fix-claim-archive.test.ts` — "falseFixReason checks a fix claim that reaches the gate as a
+BUGS-FIXED.md edit, and leaves an untouched archive entry alone".
+
+### INV-AX2: a one-line record carries forward only names the base already holds
+
+**Guarantee.** A one-line record may carry forward any name the base's Fixed section holds. A name
+it introduces must exist on the tree, and a compression that makes a different entry last passes.
+
+**Binds.** `src/verdict/fix-claim.ts` (`fixedSection`, `isOneLineRecord`).
+
+**Pinned by.** `test/fix-claim.test.ts` — "fixedSection ends an entry's own body at its first
+one-line record", "isOneLineRecord matches the compressed record forms and never a body bullet",
+"falseFixReason passes a compression that makes a different full entry last", "falseFixReason lets
+an edited record carry a name the base's Fixed section already holds" and "falseFixReason flags a
+new one-line record that introduces a name the tree lacks".
+
+### INV-AX3: the code haystack covers source in any language and fails open
+
+**Guarantee.** The code haystack covers src/, test/ and scripts/ in any language, skips
+node_modules and dist trees, excludes Markdown, and tolerates unreadable files. A deleted BUGS.md
+passes this check and leaves the report to the structure check.
+
+**Binds.** `src/verdict/fix-claim.ts` (`sourceHaystack`).
+
+**Pinned by.** `test/fix-claim.test.ts` — "sourceHaystack covers code but excludes markdown (the bug
+entry names its own symbols)", "sourceHaystack walks nested subdirectories — a symbol defined under
+src/ui backs a claim", "sourceHaystack skips node_modules and dist trees at any depth but keeps
+other subdirs", "sourceHaystack tolerates unreadable files and stays usable", "sourceHaystack reads
+non-JS source, so a Rust symbol backs a claim", "sourceHaystack still excludes markdown living under
+the walked source dirs", "falseFixReason passes an md-only Fixed edit in a non-JS (Rust) project"
+and "falseFixReason tolerates a deleted BUGS.md instead of throwing out of the gate".
+
+### INV-AX4: the doctor reads Fixed entries BUGS.md first, then BUGS-FIXED.md
+
+**Guarantee.** `fixedEntriesAt` lists BUGS.md's Fixed entries (from the `bugsMd` text when given),
+then BUGS-FIXED.md's, and reads a missing file as empty.
+
+**Binds.** `src/verdict/fix-claim.ts` (`fixedEntriesAt`).
+
+**Pinned by.** `test/fix-claim-archive.test.ts` — "fixedEntriesAt lists BUGS.md's Fixed entries
+before BUGS-FIXED.md's, reads the bugsMd text when given, and reads a missing file as empty".
