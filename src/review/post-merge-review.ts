@@ -1,7 +1,7 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir } from "../paths.js";
 import { reviewRunConfig } from "../config/config-views.js";
-import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE, tryOrWarn } from "../events/events.js";
 import { isJsonObject } from "../files/json-object.js";
 import { gitTry } from "../git/git-run.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
@@ -57,11 +57,7 @@ export function readPostReviews(root: string): PostReview[] {
 }
 
 function writePostReviews(root: string, pending: PostReview[]): void {
-  try {
-    writeJsonAtomic(postReviewPath(root), { pending });
-  } catch (err) {
-    warnEventBestEffort(root, TUMWATER_SOURCE, `could not write post-review.json: ${errorMessage(err)}`);
-  }
+  tryOrWarn(root, TUMWATER_SOURCE, "write post-review.json", () => writeJsonAtomic(postReviewPath(root), { pending }));
 }
 
 /** Queue the merged commit for its review. Never throws: a failed write warns and leaves the file

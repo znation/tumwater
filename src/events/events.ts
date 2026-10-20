@@ -213,6 +213,18 @@ export function warnEventBestEffort(root: string, source: string, message: strin
   }
 }
 
+/** Run a best-effort bookkeeping step: when `step` throws, warn "could not <what>: <error>" under
+ * `source` and return false, so the caller keeps going (or returns early on false). */
+export function tryOrWarn(root: string, source: string, what: string, step: () => void): boolean {
+  try {
+    step();
+    return true;
+  } catch (err) {
+    warnEventBestEffort(root, source, `could not ${what}: ${errorMessage(err)}`);
+    return false;
+  }
+}
+
 /** The `{ emit, warn }` pair for a caller on a catch-less path (the orchestrator's poll loop
  * and the live config reload it drives): both route through logEventBestEffort and
  * warnEventBestEffort, so the "an unwritable feed must not end the team" policy has one home

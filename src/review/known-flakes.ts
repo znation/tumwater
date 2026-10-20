@@ -10,8 +10,7 @@
  * evidence of flakiness — it is exactly the attribution this memory exists to avoid making
  * twice. */
 
-import { TUMWATER_SOURCE, warnEventBestEffort, type HarnessEvent } from "../events/events.js";
-import { errorMessage } from "../text/text.js";
+import { TUMWATER_SOURCE, tryOrWarn, type HarnessEvent } from "../events/events.js";
 import { readEventsSince } from "../events/event-window.js";
 import { increment } from "../collections.js";
 import { normalizeClusterKey } from "../failure/failure-cluster.js";
@@ -154,12 +153,7 @@ export function quarantineTests(root: string, tests: readonly string[] | undefin
       added.push(test);
     }
   }
-  try {
-    saveQuarantine(root, entries);
-  } catch (err) {
-    warnEventBestEffort(root, TUMWATER_SOURCE, `could not write quarantine.json: ${errorMessage(err)}`);
-    return [];
-  }
+  if (!tryOrWarn(root, TUMWATER_SOURCE, "write quarantine.json", () => saveQuarantine(root, entries))) return [];
   return added;
 }
 

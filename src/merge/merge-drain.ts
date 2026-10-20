@@ -5,7 +5,7 @@ import { seamConcurrencyKey } from "../config/config-views.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
 import { dropMerge, entryRevisionFields, queuedMergeFiles, queuedMergeRoles } from "./merge-queue.js";
 import { errorMessage } from "../text/text.js";
-import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { warnEventBestEffort, tryOrWarn, TUMWATER_SOURCE } from "../events/events.js";
 import { hasOutstandingWork, saveRunnerState } from "../runner/runner-state.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, stringList } from "../files/json-object.js";
@@ -94,12 +94,8 @@ async function handBackRevert(ctx: MergePipelineContext, pending: PendingRevert)
   const taker = own && runnerIsFree(queued, own) ? own : candidates.find((r) => runnerIsFree(queued, r));
   if (taker === undefined) return false;
   await recordRevertedChange(ctx.root, taker.role, taker.state, pending.commit, pending.reasons);
-  try {
-    saveRunnerState(ctx.root, taker.state);
-  } catch (err) {
-    // The in-memory state holds the revision; the runner's next successful save writes it.
-    warnEventBestEffort(ctx.root, taker.role, `could not save the reverted change's revision: ${errorMessage(err)}`);
-  }
+  // The in-memory state holds the revision; the runner's next successful save writes it.
+  tryOrWarn(ctx.root, taker.role, "save the reverted change's revision", () => saveRunnerState(ctx.root, taker.state));
   return true;
 }
 
@@ -150,11 +146,9 @@ export async function assignPendingReverts(ctx: MergePipelineContext): Promise<v
     if (!assigned && !(await handBackRevert(ctx, pending))) left.push(pending);
   }
   if (left.length === all.length) return;
-  try {
-    writeJsonAtomic(revertedPendingPath(ctx.root), { reverted: left });
-  } catch (err) {
-    warnEventBestEffort(ctx.root, TUMWATER_SOURCE, `could not rewrite the pending reverted changes: ${errorMessage(err)}`);
-  }
+  tryOrWarn(ctx.root, TUMWATER_SOURCE, "rewrite the pending reverted changes", () =>
+    writeJsonAtomic(revertedPendingPath(ctx.root), { reverted: left }),
+  );
 }
 
 /** Settle every approved change `tumwater abort --role` flagged (consumeAbortRequests over

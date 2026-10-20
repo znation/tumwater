@@ -3,8 +3,7 @@ import type { MergeEntry } from "../merge/merge-queue.js";
 import type { ModelFallbackState } from "./model-fallback.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { statePath } from "../paths.js";
-import { warnEventBestEffort } from "../events/events.js";
-import { errorMessage } from "../text/text.js";
+import { tryOrWarn } from "../events/events.js";
 
 /** The runner's persisted state file — one JSON object per role under .tumwater/ — and the
  * observation-window counter reset: fresh-state defaults, the atomic save, and zeroCounters
@@ -370,11 +369,7 @@ export function saveRunnerState(root: string, state: RunnerState): void {
  * a failed write warns under the role's id and returns. The in-memory state stays ahead of the
  * file until the runner's next successful save. */
 export function saveRunnerStateBestEffort(root: string, state: RunnerState): void {
-  try {
-    saveRunnerState(root, state);
-  } catch (err) {
-    warnEventBestEffort(root, state.role, `could not save the role's state: ${errorMessage(err)}`);
-  }
+  tryOrWarn(root, state.role, "save the role's state", () => saveRunnerState(root, state));
 }
 
 /** Zero the accumulated counters (runs, commits, tokens, cost) so a fresh observation

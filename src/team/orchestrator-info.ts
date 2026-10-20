@@ -5,8 +5,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { pidAlive } from "../process/process.js";
 import { orchestratorStatePath } from "../paths.js";
-import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { errorMessage } from "../text/text.js";
+import { tryOrWarn, TUMWATER_SOURCE } from "../events/events.js";
 
 /** Why the position before a tier's active chain step cannot run. */
 type ChainReason = "window" | "reserve" | "cap" | "step-cap" | "overage" | "demoted";
@@ -357,11 +356,7 @@ export function writeOrchestratorInfo(root: string, info: OrchestratorInfo): voi
  * (writeOrchestratorInfo): it is what refuses a second team, so a repo that cannot publish it
  * must fail fast rather than boot. */
 function writeOrchestratorInfoBestEffort(root: string, info: OrchestratorInfo): void {
-  try {
-    writeOrchestratorInfo(root, info);
-  } catch (err) {
-    warnEventBestEffort(root, TUMWATER_SOURCE, `could not publish orchestrator info: ${errorMessage(err)}`);
-  }
+  tryOrWarn(root, TUMWATER_SOURCE, "publish orchestrator info", () => writeOrchestratorInfo(root, info));
 }
 
 /** True when the recorded orchestrator's pid is still alive (see pidAlive). Callers that have

@@ -18,7 +18,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState, slotForDir, updateSlotsState, type SlotPurpose } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
-import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort, tryOrWarn, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { subdirectoryNames } from "../files/files.js";
 import { dropProviderLeaseKey } from "../concurrency/provider-lease.js";
@@ -524,15 +524,7 @@ async function prepareLeased(
   // only clears another process's lease, so the slot would stay leased by this live pid and the
   // pool would shrink by one every time. Warn so the failure stays visible, then free anyway.
   const releaseUse = (): void => {
-    try {
-      useRelease();
-    } catch (err) {
-      warnEventBestEffort(
-        root,
-        TUMWATER_SOURCE,
-        `could not record use release for ${path.basename(dir)}: ${errorMessage(err)}`,
-      );
-    }
+    tryOrWarn(root, TUMWATER_SOURCE, `record use release for ${path.basename(dir)}`, useRelease);
   };
   if (!preserved) {
     try {
