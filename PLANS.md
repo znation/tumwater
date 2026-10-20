@@ -148,4 +148,27 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every test name cited in the new section exists verbatim (`grep -F` each one in test/).
 - `git diff -- src/` is empty.
 
+### docs/invariants.md gains a staging self-check section, and one new test file pins that each git-level finding stops at its cap and says how many it left out (planned 2026-10-20 by the plan role; independent of every eligible plan; touches docs/invariants.md + a new test/stage-path-caps.test.ts)
+
+**Goal.** `gitLevelFindings` (src/run/stage-path-checks.ts) is the git-level half of the pre-commit self-check: `stageCheckFindings` (src/run/stage-check.ts) calls it, and the findings go back to the author's still-open session. Each finding is meant to stay bounded however large the change is. The caps are `MAX_STALE_PATHS` (stale-reference findings per change), `MAX_STALE_HITS` (`file:line` hits per stale reference), `MAX_MISSING_PATHS` and `MAX_NEWLINE_FILES` (all 10). `cappedList` appends `moreSuffix` (src/text/phrases.ts, ` (+N more)`) for what a missing-path or lost-newline finding leaves out. Before this entry, no test in test/stage-check.test.ts makes a change that exceeds any of these caps, and docs/invariants.md named neither stage-path-checks.ts nor `gitLevelFindings`. A regression that dropped a cap would send a 40-file rename's whole reference list into the session's prompt, and none of the tests would notice.
+
+**Approach.**
+1. New test/stage-path-caps.test.ts (node:test + `node:assert/strict`). Do not edit test/stage-check.test.ts: the waiting "Plain terms code cleanup" parts may touch test files. Copy that file's small `repoWith(files)` helper (`makeRepo`, `sh` from ./fixtures/repo-fixtures.js, `ensureWorktree(root, "improve", "main")` from ../src/git/worktree.js). Call `gitLevelFindings(wt, "main")` directly. Use two-digit, zero-padded names (`00`…`11`) so git's path order matches the numeric order and no name is a prefix of another.
+2. Test "a missing-path finding names the first ten paths and counts the rest". Base: `src/keep.ts` and `README.md` (`Start.\n`). In the worktree, append twelve lines `See src/x/f00.ts.` … `See src/x/f11.ts.` to README.md. Assert exactly one finding. It contains `src/x/f09.ts`, does not contain `src/x/f10.ts`, and ends with ` (+2 more)`. Mutation: `MAX_MISSING_PATHS = 11`.
+3. Test "a lost-final-newline finding names the first ten files and counts the rest". Base: `src/n00.ts` … `src/n10.ts`, each `export const n = 1;\n`. In the worktree, rewrite each without its trailing newline. Assert one finding matching `/removes the final newline from: /`. It contains `src/n09.ts`, does not contain `src/n10.ts`, and ends with ` (+1 more)`. Mutation: `MAX_NEWLINE_FILES = 11`.
+4. Test "a change deleting more referenced paths than the cap reports only the cap's worth". Base: `src/d00.ts` … `src/d10.ts` (`export const d = 1;\n`), plus README.md with one line `See src/dNN.ts.` per file. Delete all eleven in the worktree. Assert that the findings matching `/ was deleted but is still named at: /` number exactly 10. Mutation: `MAX_STALE_PATHS = 11`.
+5. Test "one stale reference lists at most ten of its hits". Base: `src/d.ts` plus a `docs/guide.md` naming `src/d.ts` on twelve separate lines. Delete `src/d.ts`. Assert one finding, and `/docs\/guide\.md:\d+/g` matches it exactly 10 times. Mutation: `MAX_STALE_HITS = 11`.
+   Run the new file once. Before you write VERIFIED, apply each named mutation by hand (each is a one-constant edit that type-checks). Check that it fails its own new test, and that the test passes again once you revert it. Also run test/stage-check.test.ts under each mutation. If a test fails there too, drop any claim that only the new tests catch it.
+6. docs/invariants.md: append "## Staging self-check: each git-level finding stops at its cap, and a check that cannot run adds nothing" at the end, after the last section. For the INV prefix, run `grep -n '^### INV-' docs/invariants.md | tail` and read the "was free" notes in PLANS.md's Planned entries. On 2026-10-20, BH, BI and BJ were planned and BK was free. Entries:
+   - 1: the step-2 to step-5 rule. A finding names at most 10 paths, files or hits, and a missing-path or lost-newline finding counts the rest as ` (+N more)`. A change emits at most 10 stale-reference findings. Binds `gitLevelFindings`, `cappedList`, the `MAX_*` constants. Pinned by the four new tests.
+   - 2: the git-level checks are best-effort, and the index is restored. A failed git command adds no finding and does not throw. `gitLevelFindings` resets the index to HEAD in `finally`, so the run's change detection still sees the worktree. Binds `gitLevelFindings`, `stageCheckFindings` (its `.catch(() => [])`). Pinned by "a git failure yields no findings instead of throwing", "the git-level check leaves the index clean, so change detection still sees the worktree" and "a clean change yields no findings" (test/stage-check.test.ts).
+
+**Files touched.** test/stage-path-caps.test.ts (new); docs/invariants.md. No src/ change.
+
+**Acceptance criteria.**
+- `npm run test:gate` passes, and the new tests pass.
+- Each mutation named in steps 2–5 fails its new test when applied by hand, and the test passes again once the mutation is reverted. Report this in VERIFIED.
+- Every test name cited in the new section exists verbatim (`grep -F` each one in test/).
+- `git diff -- src/` is empty.
+
 ## Done
