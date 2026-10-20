@@ -17,9 +17,13 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** A live claim on one slot: the loop and purpose using it, when the lease began, and the
  * orchestrator pid that owns it. A lease whose pid is not the running process is dead. */
+/** Why a slot is leased: a role's `run`, a change's `verify`, or the second slot a verify leases to
+ * run its gate check alongside the reviewer (`verify-check`). */
+export type SlotPurpose = "run" | "verify" | "verify-check";
+
 interface SlotLease {
   role: string;
-  purpose: "run" | "verify";
+  purpose: SlotPurpose;
   since: number;
   pid: number;
 }
@@ -77,7 +81,7 @@ function isSlotLease(value: unknown): boolean {
   return (
     isJsonObject(value) &&
     typeof value.role === "string" &&
-    (value.purpose === "run" || value.purpose === "verify" || value.purpose === "tick" || value.purpose === "vet") && // vocabulary-ok: legacy value read from old files
+    (value.purpose === "run" || value.purpose === "verify" || value.purpose === "verify-check" || value.purpose === "tick" || value.purpose === "vet") && // vocabulary-ok: legacy value read from old files
     nonNegativeNumber(value.since, null) !== null &&
     nonNegativeNumber(value.pid, null) !== null
   );

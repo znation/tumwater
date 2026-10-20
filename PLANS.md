@@ -40,31 +40,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - With `mergeCommand` unset, the existing merge tests pass unchanged.
 - `npm test` passes.
 
-### Fast merge, part 12/14: The review runs alongside the gate check instead of after it (planned 2026-10-19 by user; requires part 11/14 landed; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/review/review.ts src/review/review-precheck.ts src/merge/merge-batch.ts src/git/worktree-pool.ts src/prompt/gate-prompts.ts src/merge/merge-slot.ts and their tests)
-
-**Goal.** The reviewer starts only after `gateBuildPrecheck` passes (src/review/review.ts ~262-321), so every attempt pays the gate's duration (p50 67 s) before the review begins. The two can run at once.
-
-**Approach.**
-- After the rebase and the deterministic rejects, lease a second pool slot (src/git/worktree-pool.ts), detached at the same head with purpose `verify-check`. Run the gate check there while the reviewer starts in the change's own slot.
-- The reviewer prompt always says "Tumwater is running the project's check on this tree; do not run the suite" (src/prompt/gate-prompts.ts), replacing the `verifiedByHarness` branch. The suite re-run tripwire always applies.
-- Joining the two:
-  - A red gate, after its re-run and the part 7 and 9 excuses, aborts the reviewer run and settles as today.
-  - A green gate plus an approval is approved with `verifiedHead`.
-  - An approval that arrives first waits for the gate.
-  - A pre-check rejection resets only the check slot.
-- The merge stage shows both (src/merge/merge-slot.ts `setMergeStage`).
-- With no free pool slot, run the two in sequence, as today.
-
-**Files touched.**
-- Source: src/review/review.ts, src/review/review-precheck.ts, src/merge/merge-batch.ts, src/git/worktree-pool.ts, src/prompt/gate-prompts.ts, src/merge/merge-slot.ts.
-- Tests: the review and pool tests.
-
-**Acceptance criteria.**
-- With a fake gate of 20 s and a fake reviewer of 20 s, a verify takes about 20 s, not 40 s (from its events).
-- A red gate aborts the reviewer, records no verdict, and the change is handled as today.
-- With no free slot, the two run in sequence.
-- `npm test` passes.
-
 ### Fast merge, part 14/14: Roles listed in `review.afterMerge` merge once the gate passes and are reviewed after merging (planned 2026-10-19 by user; requires parts 4c/14 and 6/14 landed; design in plans/fast-merge.md "Lever 7: maintenance roles reviewed after merging"; touches src/config/config-schema.ts src/config/config-validation.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-drain.ts src/merge/merge-core.ts tumwater.json docs/config.md docs/how-it-works.md and their tests)
 
 **Goal.** clean, dedupe and coverage merge many small code changes, and each one waits for a review before it can merge. For those roles a review after the merge, with the power to revert, keeps the quality bar at a fraction of the wait.

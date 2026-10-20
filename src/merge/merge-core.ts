@@ -1,6 +1,8 @@
 // vocabulary: plain
 import { deleteRef, headOf, patchId, setRef } from "../git/git.js";
 import { mergeRefName, mergeWorktreePath, rejectedRefName, reviewRunSessionDir } from "../paths.js";
+import { tryLeaseSlot } from "../git/worktree-pool.js";
+import { slotCount } from "../config/config.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { mergeToMain } from "./merge-to-main.js";
@@ -138,6 +140,10 @@ export async function syncPinToMain(
   return { ...req, sha: syncedHead };
 }
 
+/** Set to "0" to run every gate check before its review, as before Fast merge part 12 (a test seam
+ * for the suites that pin the sequential merge stages). */
+const REVIEW_OVERLAP_ENV = "TUMWATER_REVIEW_CHECK_OVERLAP";
+
 /** The ReviewContext for judging merge request `req` in worktree `wt` — the single
  * home of that argument object, shared by reviewPinnedChange's pinned verify and
  * mergeApprovedChange's re-review of a resolved conflict (its recheckResolved callback), so the
@@ -163,6 +169,13 @@ function reviewContextFor(
     signal: ctx.signal(),
     runGatePi: ctx.runGatePi,
     foldUsage,
+    // The check overlaps the review unless a test that pins the sequential stages opts out.
+    ...(process.env[REVIEW_OVERLAP_ENV] === "0"
+      ? {}
+      : {
+          leaseCheckSlot: (ref: string) =>
+            tryLeaseSlot(ctx.root, { role: req.role, purpose: "verify-check", ref, slotBudget: slotCount(ctx.config) }),
+        }),
     ...(ctx.reviewRetries !== undefined ? { retries: ctx.reviewRetries } : {}),
     ...(ctx.reviewRetryDelayMs !== undefined ? { retryDelayMs: ctx.reviewRetryDelayMs } : {}),
     ...(ctx.reviewHeld ? { reviewHeld: () => ctx.reviewHeld!() } : {}),

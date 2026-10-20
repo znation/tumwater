@@ -337,7 +337,6 @@ test("buildReviewPrompt shows a revision's prior objections and interdiff, and i
     undefined,
     undefined,
     undefined,
-    undefined,
     { round: 2, reasons: ["first objection", "second objection"], interdiff: "interdiff-marker" },
   );
   const flat = oneLine(prior);
@@ -363,7 +362,7 @@ test("buildReviewPrompt freezes and names the comparison base so a moved main ca
   // never made. The prompt must name the frozen base and point every check at it.
   const base = "abcdef1234567890abcdef1234567890abcdef12";
   const short = base.slice(0, 8);
-  const prompt = oneLine(buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, base));
+  const prompt = oneLine(buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, base));
   assert.match(prompt, new RegExp(`measured against ${short}`));
   assert.match(prompt, new RegExp(`compare against ${short}, never against \`main\``));
   assert.match(prompt, /treat the provided diff as authoritative for which files this change touches/);
@@ -418,15 +417,10 @@ test("buildReviewPrompt carries the reviewer checklist and a reading budget", ()
   assert.match(prompt, /Do not edit any file in the worktree/);
 });
 
-test("buildReviewPrompt names tumwater's green pre-check when given, and omits the section otherwise", () => {
-  const withCheck = buildReviewPrompt("diff", undefined, undefined, undefined, undefined, "`npm run test` passed");
-  assert.match(
-    withCheck,
-    /Tumwater already ran the project's own check on this exact tree and it passed:\n`npm run test` passed\./,
-  );
+test("buildReviewPrompt always says tumwater is running the project's check", () => {
+  const withCheck = buildReviewPrompt("diff");
+  assert.match(oneLine(withCheck), /Tumwater is running the project's own check on this tree; do not run the suite\./);
   assert.match(oneLine(withCheck), /Spend your run on what a green check cannot show/);
-  const without = buildReviewPrompt("diff");
-  assert.ok(!without.includes("Tumwater already ran"), "no pre-check section without a verdict");
   // The verdict-form contract survives the extra section: still exactly the two advertised forms.
   const advertised = [...oneLine(withCheck).matchAll(/VERDICT:\s*(\w+)/g)].map((m) => m[1]);
   assert.deepEqual(advertised, ["approve", "reject"]);
@@ -452,37 +446,27 @@ test("buildReviewResumePrompt continues the session without re-sending the diff"
 
 // BUGS.md 2026-09-23: reviewers told "Do not spend your run re-running it" in the context
 // paragraph re-ran the suite in scratch copies under /tmp anyway. The rule is now its own line in
-// the rules list — naming the scratch-copy route as a re-run and allowing one specific test —
-// and
-// it exists only behind a verified pre-check: with no green run (timed out, killed, skipped, no
-// declared check) a reviewer running the suite itself is doing its job.
-test("the review prompt's no-re-run rule is one rules-list line, present only behind a verified pre-check", () => {
-  const withCheck = buildReviewPrompt("diff", undefined, undefined, undefined, undefined, "`npm run test` passed");
-  const rules = withCheck.slice(withCheck.indexOf("Rules for this run:"));
+// the rules list — naming the scratch-copy route as a run and allowing one specific test. It is
+// always present: tumwater runs the check alongside the review (Fast merge part 12).
+test("the review prompt's no-re-run rule is one rules-list line, always present", () => {
+  const prompt = buildReviewPrompt("diff");
+  const rules = prompt.slice(prompt.indexOf("Rules for this run:"));
   assert.match(
     rules,
-    /\n- Do not re-run the check named above or the project's full test suite: tumwater's green run\n  is the verified result\./,
+    /\n- Do not run the project's check or its full test suite: tumwater is running it on this tree and\n  owns the result\./,
     "a rules-list item of its own",
   );
   const flat = oneLine(rules);
   assert.match(
     flat,
-    /reinstalling dependencies there \(for an npm project, `npm ci`; otherwise its equivalent\) — counts as re-running it\./,
+    /reinstalling dependencies there \(for an npm project, `npm ci`; otherwise its equivalent\) — counts as running it\./,
   );
   assert.match(flat, /Running one specific test file for a concrete reason you can name is fine\./);
   // It qualifies the scratch-copy allowance, so it follows it directly.
-  assert.match(flat, /directory is fine when you need to run something\. - Do not re-run the check named above/);
-  // Stated once: the old in-paragraph sentence is gone, and no other "re-run" instruction repeats
-  // it.
-  const flatAll = oneLine(withCheck);
-  assert.doesNotMatch(flatAll, /Do not spend your run re-running it/);
-  assert.equal([...flatAll.matchAll(/Do not re-run/g)].length, 1);
-  assert.equal([...withCheck.matchAll(/VERDICT:/g)].length, 2);
-
-  const without = oneLine(buildReviewPrompt("diff"));
-  assert.doesNotMatch(without, /Do not re-run|re-running it/, "no verified result, no rule");
-  assert.match(without, /directory is fine when you need to run something\. - Run tests only through the project's declared check/);
-  assert.equal([...without.matchAll(/VERDICT:/g)].length, 2);
+  assert.match(flat, /directory is fine when you need to run something\. - Do not run the project's check/);
+  const flatAll = oneLine(prompt);
+  assert.equal([...flatAll.matchAll(/Do not run the project's check/g)].length, 1);
+  assert.equal([...prompt.matchAll(/VERDICT:/g)].length, 2);
 });
 
 test("buildConflictPrompt bounds reading to the conflicted files", () => {

@@ -41,6 +41,9 @@ import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { sleep, waitFor, waitForFile, within } from "./helpers/wait.js";
 import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
+// These tests pin the sequential merge stages (the check, then the review).
+process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
+
 /** Second slice of the merge-drain suite (merge-drain.test.ts carries the first) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
  * sequentially, while each test FILE gets its own process. The slices are balanced by measured

@@ -16,7 +16,7 @@ import { loadConfig, slotCount } from "../config/config.js";
 import { worktreesDir, slotWorktreePath } from "../paths.js";
 import { loadLoopState } from "../runner/runner-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { readSlotsState, slotForDir, updateSlotsState } from "./slots-state.js";
+import { readSlotsState, slotForDir, updateSlotsState, type SlotPurpose } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -38,7 +38,7 @@ export interface SlotLeaseHandle {
 interface LeaseSlotOptions {
   /** The loop the slot is held for; drives affinity and the persisted lease record. */
   role: string;
-  purpose: "run" | "verify";
+  purpose: SlotPurpose;
   /** The commit the slot is prepared at (a sha or branch name; ensureDetachedWorktree
    * resets it). */
   ref: string;
@@ -59,7 +59,7 @@ interface LeaseSlotOptions {
  * module and this one depends only on the fields it uses. */
 interface PoolSlot {
   dir: string;
-  lease: { role: string; purpose: "run" | "verify"; since: number; pid: number } | null;
+  lease: { role: string; purpose: SlotPurpose; since: number; pid: number } | null;
   pinnedFor: string | null;
   /** When the current pin began (epoch ms), or null when unpinned. Optional so slot records
    * written before this field existed read as "pin age unknown" (the doctor warns only on a
@@ -143,7 +143,7 @@ function clearDeadLeases(state: PoolState, pid: number): void {
   }
 }
 
-function claim(slot: PoolSlot, role: string, purpose: "run" | "verify", now: number, pid: number): string {
+function claim(slot: PoolSlot, role: string, purpose: SlotPurpose, now: number, pid: number): string {
   slot.lease = { role, purpose, since: now, pid };
   return slot.dir;
 }
@@ -166,14 +166,18 @@ function chooseSlot(
   root: string,
   state: PoolState,
   role: string,
-  purpose: "run" | "verify",
+  purpose: SlotPurpose,
   count: number,
   now: number,
   pid: number,
 ): string | null {
   clearDeadLeases(state, pid);
   const free = state.slots.filter((slot) => slot.lease === null);
-  const eligible = free.filter((slot) => slot.pinnedFor === null || slot.pinnedFor === role);
+  // A check slot is a scratch checkout: it never takes a slot pinned for any role, the leasing
+  // role's own included (that pin holds the author's resumable work).
+  const eligible = free.filter((slot) =>
+    purpose === "verify-check" ? slot.pinnedFor === null : slot.pinnedFor === null || slot.pinnedFor === role,
+  );
   const pinned = eligible.find((slot) => slot.pinnedFor === role);
   if (pinned !== undefined) return claim(pinned, role, purpose, now, pid);
 
@@ -211,7 +215,7 @@ export const SLOT_WAIT_EVENT_MS = 30_000;
  * ordinary queueing and stays silent. The event names the pool size and how many of its slots
  * are pinned, so an operator can size `worktreeSlots` from the line alone. Best-effort: an
  * unwritable feed must not fail the lease it describes. */
-function logSlotWait(root: string, role: string, purpose: "run" | "verify", waitedMs: number): void {
+function logSlotWait(root: string, role: string, purpose: SlotPurpose, waitedMs: number): void {
   if (waitedMs < SLOT_WAIT_EVENT_MS) return;
   const slots = readSlotsState(root).slots;
   logEventBestEffort(root, {
@@ -228,7 +232,7 @@ function logSlotWait(root: string, role: string, purpose: "run" | "verify", wait
 function tryClaim(
   root: string,
   role: string,
-  purpose: "run" | "verify",
+  purpose: SlotPurpose,
   count: number,
 ): string | null {
   let chosen: string | null = null;
@@ -241,7 +245,7 @@ function tryClaim(
 async function acquire(
   root: string,
   role: string,
-  purpose: "run" | "verify",
+  purpose: SlotPurpose,
   signal?: AbortSignal,
   slotBudget?: number,
 ): Promise<string> {
@@ -449,8 +453,28 @@ export async function leaseSlot(
   root: string,
   options: LeaseSlotOptions,
 ): Promise<SlotLeaseHandle> {
-  const { role, purpose, ref, signal, keep, slotBudget } = options;
-  const dir = await acquire(root, role, purpose, signal, slotBudget);
+  const dir = await acquire(root, options.role, options.purpose, options.signal, options.slotBudget);
+  return prepareLeased(root, dir, options);
+}
+
+/** Lease a pooled slot only when one is free right now: resolves null instead of waiting, so a
+ * caller that can do without a second checkout (a verify's check slot) never queues behind
+ * the pool. Otherwise as leaseSlot. */
+export async function tryLeaseSlot(
+  root: string,
+  options: LeaseSlotOptions,
+): Promise<SlotLeaseHandle | null> {
+  const dir = tryClaim(root, options.role, options.purpose, options.slotBudget ?? liveCount(root));
+  return dir === null ? null : prepareLeased(root, dir, options);
+}
+
+/** Prepare the slot `dir` this process just claimed at `options.ref` and hand back its handle. */
+async function prepareLeased(
+  root: string,
+  dir: string,
+  options: LeaseSlotOptions,
+): Promise<SlotLeaseHandle> {
+  const { role, ref, keep } = options;
   const preserved = keep === true && slotForDir(root, dir)?.pinnedFor === role;
   const useRelease = await beginWorktreeUse(root, dir);
   // The use registry is LRU bookkeeping; freeing the slot is the real work of a release, so a

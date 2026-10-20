@@ -460,7 +460,7 @@ test("every run, director, conflict, and review prompt states the given date exa
     buildTickPrompt({ role, today }),
     buildDirectorPrompt("the tui flickers", undefined, undefined, undefined, today),
   ];
-  const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, undefined, today);
+  const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, today);
   const gatePrompts = [buildConflictPrompt("bugfix", ["a.txt"], undefined, undefined, today), review];
   for (const p of [...loopPrompts, ...gatePrompts]) {
     assert.ok(p.includes(line), `missing the date line: ${p.slice(0, 60)}…`);
@@ -488,7 +488,6 @@ test("every run, director, conflict, and review prompt carries the test-runner r
     buildDirectorPrompt("add x"),
     buildConflictPrompt("feature", ["a.txt"]),
     buildReviewPrompt("diff body"),
-    buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, "`npm run test` passed"),
   ];
   for (const p of prompts) {
     assert.equal(p.split(TEST_RUNNER_RULE).length - 1, 1, `the rule once, verbatim: ${p.slice(0, 60)}…`);

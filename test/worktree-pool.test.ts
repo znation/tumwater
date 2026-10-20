@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { leaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
+import { leaseSlot, tryLeaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -623,4 +623,20 @@ test("a lease an old build wrote with the legacy purpose vet reads as verify and
   assert.equal(readSlotsState(root).slots[0]!.lease?.purpose, "verify");
   writeSlotsState(root, readSlotsState(root));
   assert.match(readFileSync(slotsStatePath(root), "utf8"), /"purpose": ?"verify"/);
+});
+
+test("tryLeaseSlot resolves null instead of waiting, and a check lease never takes a pinned slot", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const run = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
+  run.release({ pin: true });
+  const check = await tryLeaseSlot(root, { role: "feature", purpose: "verify-check", ref: "main" });
+  assert.ok(check, "a free slot exists beside the pinned one");
+  assert.notEqual(check.dir, run.dir, "the role's own pinned slot is not a check slot");
+  assert.equal(slotForDir(root, check.dir)?.lease?.purpose, "verify-check");
+  const second = await tryLeaseSlot(root, { role: "feature", purpose: "verify-check", ref: "main" });
+  assert.ok(second, "the pool's second unpinned slot");
+  assert.equal(await tryLeaseSlot(root, { role: "feature", purpose: "verify-check", ref: "main" }), null);
+  check.release();
+  second.release();
 });

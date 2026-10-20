@@ -46,6 +46,7 @@ type MergeStage =
   | "check-wait"
   | "build-check"
   | "reviewing"
+  | "reviewing-check"
   | "resolve-wait"
   | "resolving"
   | "provider-wait"
@@ -57,6 +58,7 @@ export const MERGE_STAGE_LABELS: Record<MergeStage, string> = {
   "check-wait": "waiting to check",
   "build-check": "checking",
   reviewing: "reviewing",
+  "reviewing-check": "reviewing, checking",
   "resolve-wait": "waiting to resolve conflicts",
   resolving: "resolving conflicts",
   "provider-wait": "waiting for the provider",

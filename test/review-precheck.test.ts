@@ -13,6 +13,8 @@ import path from "node:path";
 import { reviewAheadOfMain } from "../src/review/review.js";
 import { aheadOfMain, headOf } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
+import { tryLeaseSlot } from "../src/git/worktree-pool.js";
+import { readSlotsState } from "../src/git/slots-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -110,8 +112,8 @@ test("the gate's green pre-check attests the runner's counts in the event and th
     const prompt = fs.readFileSync(promptFile, "utf8");
     assert.match(
       prompt,
-      /\(the project's declared check\) passed — 3 pass, 0 fail, 0 skipped of 3/,
-      "the attested counts appear above the checklist",
+      /Tumwater is running the project's own check on this tree; do not run the suite\./,
+      "the reviewer is told the check is tumwater's",
     );
   });
 });
@@ -392,8 +394,8 @@ test("a pre-check failure that passes its one re-run is a flake: no pi run befor
     assert.deepEqual(flaky, [
       "gate check failed then passed on retry — flaky: AssertionError [ERR_ASSERTION]: startup latency is not a hung tool call",
     ]);
-    // The reviewer is told the check passed, the same claim a first-time pass makes.
-    assert.match(runs[0] ?? "", /`npm run build` \(the project's declared check\) passed/);
+    // The reviewer is told tumwater runs the check, as after a first-time pass.
+    assert.match(runs[0] ?? "", /Tumwater is running the project's own check on this tree/);
   });
 });
 
@@ -688,7 +690,7 @@ test("a reused approval still rejects a tree whose pre-check now fails", async (
 // The reviewer's prompt names the harness's own green pre-check so the model reviewer does not
 // spend its run re-running `npm test` — and stays silent about it when no check ran (no declared
 // script, or a skipped run), so the reviewer is never told a suite passed that never executed.
-test("a green pre-check is named in the reviewer's prompt; no check means no such claim", async () => {
+test("the reviewer's prompt always says tumwater is running the check", async () => {
   const { root, wt } = await greenBuildFixture("test");
   const prompts = path.join(tmpdir(), "prompts.log");
   // The fake pi records its argv (the stdin prompt appended last) before answering.
@@ -698,12 +700,10 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     const run = fs.readFileSync(prompts, "utf8");
-    assert.match(run, /Tumwater already ran the project's own check on this exact tree and it passed:/);
-    assert.match(run, /`npm run test` \(the project's declared check\) passed/);
+    assert.match(run, /Tumwater is running the project's own check on this tree; do not run the suite\./);
   });
 
-  // A worktree with no declared check script: the pre-check never runs, so the prompt must not
-  // claim a passing suite.
+  // A worktree with no declared check script: the sentence is fixed, whatever the check does.
   const bare = await gateFixture();
   const barePrompts = path.join(tmpdir(), "prompts.log");
   await withPi(
@@ -712,16 +712,15 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
     const { result } = await reviewGate(bare.root, bare.wt);
     assert.equal(result.decision, "approved");
     const run = fs.readFileSync(barePrompts, "utf8");
-    assert.ok(!run.includes("Tumwater already ran"), "no pre-check claim when nothing ran");
+    assert.match(run, /Tumwater is running the project's own check on this tree/);
   });
 });
 
 // The suite-rerun tripwire (BUGS.md 2026-09-23): a reviewer told tumwater's pre-check passed
 // that runs the full suite anyway — in a scratch copy under /tmp, like organize's and improve's
 // reviews that day — is named in the event feed, while a filtered run (one test file) is not.
-// After a timed-out pre-check no verified result exists: the prompt carries no no-re-run rule,
-// and the same tool calls draw no warning.
-test("a reviewer that re-runs the suite behind a green pre-check is warned about; after a timed-out pre-check it is not", async () => {
+// The rule and the tripwire always apply, a timed-out pre-check included.
+test("a reviewer that re-runs the suite is warned about, behind a green or a timed-out pre-check alike", async () => {
   const toolCalls = [
     { toolCallId: "c1", command: "cd /tmp/revrun && npm test 2>&1 | tail -15" },
     { toolCallId: "c2", command: "npm test gui 2>&1 | tail -5" },
@@ -742,7 +741,7 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
   await withPi(reviewerScript(greenPrompts), async () => {
     const { result } = await reviewGate(green.root, green.wt);
     assert.equal(result.decision, "approved", "the tripwire warns; it never changes the verdict");
-    assert.match(fs.readFileSync(greenPrompts, "utf8"), /^- Do not re-run the check named above/m);
+    assert.match(fs.readFileSync(greenPrompts, "utf8"), /^- Do not run the project's check or its full test suite/m);
     assert.deepEqual(rerunWarnings(green.root), [
       "reviewer re-ran the suite tumwater's pre-check already verified: cd /tmp/revrun && npm test 2>&1 | tail -15",
     ]);
@@ -754,8 +753,10 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
     const { result } = await reviewGate(timed.root, timed.wt, { buildCheckTimeoutMs: 400 });
     assert.equal(result.decision, "approved");
     assert.equal(result.verifiedHead, undefined, "the pre-check timed out — no verified result");
-    assert.ok(!fs.readFileSync(timedPrompts, "utf8").includes("Do not re-run"), "no verified result, no rule");
-    assert.deepEqual(rerunWarnings(timed.root), [], "running the suite is the reviewer's job here");
+    assert.match(fs.readFileSync(timedPrompts, "utf8"), /^- Do not run the project's check or its full test suite/m);
+    assert.deepEqual(rerunWarnings(timed.root), [
+      "reviewer re-ran the suite tumwater's pre-check already verified: cd /tmp/revrun && npm test 2>&1 | tail -15",
+    ]);
   });
 });
 
@@ -975,5 +976,69 @@ test("a test that fails then passes on the gate's re-run is quarantined; a later
     assert.equal(again.result.decision, "approved");
     assert.equal(again.result.verifiedHead, undefined, "the tree did not pass");
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:passed", "gate:failed"], "one run, no re-run");
+  });
+});
+
+// Fast merge part 12: with a second pool slot free, the gate check runs in its own checkout while
+// the reviewer runs in the change's slot; a red check stops the reviewer; with no free slot the
+// check runs first, as before.
+const checkSlot = (root: string, slotBudget: number) => ({
+  leaseCheckSlot: (ref: string) => tryLeaseSlot(root, { role: ROLE, purpose: "verify-check", ref, slotBudget }),
+});
+
+test("a green gate and the reviewer run at the same time in a second slot", async () => {
+  const dir = tmpdir();
+  const gateSpan = path.join(dir, "gate-span");
+  const reviewSpan = path.join(dir, "review-span");
+  const now = "node -e 'console.log(Date.now())'";
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --ok",
+    `#!/bin/sh\n${now} >> '${gateSpan}'\nsleep 1\n${now} >> '${gateSpan}'\nexit 0\n`,
+  );
+  await withPi(`${now} >> '${reviewSpan}'\nsleep 1\n${now} >> '${reviewSpan}'\n${reviewerStub()}`, async () => {
+    const { result } = await reviewGate(root, wt, checkSlot(root, 3));
+    assert.equal(result.decision, "approved");
+    assert.equal(result.verifiedHead, await headOf(wt, "HEAD"), "the green gate verifies the head");
+    const span = (f: string) => fs.readFileSync(f, "utf8").trim().split("\n").map(Number);
+    const [gs, ge] = span(gateSpan);
+    const [rs, re] = span(reviewSpan);
+    assert.ok(rs! < ge! && gs! < re!, `the gate (${gs}-${ge}) and the reviewer (${rs}-${re}) overlap`);
+    assert.equal(readSlotsState(root).slots.filter((s) => s.lease !== null).length, 0, "the check slot is released");
+  });
+});
+
+test("a red gate aborts the running reviewer and settles as the sequential pre-check does", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho 'src/bad.ts(3,5): error TS2345: bad'\nexit 1\n",
+    "build",
+    "echo ok",
+  );
+  seedGreenMain(root);
+  const finished = path.join(tmpdir(), "reviewer-finished");
+  await withPi(`sleep 20\ntouch '${finished}'\n${reviewerStub()}`, async () => {
+    const started = Date.now();
+    const { state, result } = await reviewGate(root, wt, checkSlot(root, 3));
+    assert.equal(result.decision, "rejected");
+    assert.ok(Date.now() - started < 15_000, "the reviewer was stopped, not waited out");
+    assert.ok(!fs.existsSync(finished), "the reviewer never finished");
+    assert.equal(await aheadOfMain(wt, "main"), 0, "branch reset to main");
+    assert.match(state.lastReview?.reasons[0] ?? "", /^check failed/);
+    assert.equal(state.lastReview?.verdict, "reject");
+    assert.equal(readEvents(root).filter((e) => e.type === "review_verdict").length, 0, "no verdict recorded");
+  });
+});
+
+test("with no free pool slot the check runs before the reviewer", async () => {
+  const dir = tmpdir();
+  const order = path.join(dir, "order");
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --ok",
+    `#!/bin/sh\necho gate-start >> '${order}'\nsleep 0.5\necho gate-end >> '${order}'\nexit 0\n`,
+  );
+  await withPi(`echo review >> '${order}'\n${reviewerStub()}`, async () => {
+    const { result } = await reviewGate(root, wt, { leaseCheckSlot: async () => null });
+    assert.equal(result.decision, "approved");
+    assert.deepEqual(fs.readFileSync(order, "utf8").trim().split("\n"), ["gate-start", "gate-end", "review"]);
   });
 });

@@ -32,6 +32,9 @@ import { leasedRoleShell } from "./fixtures/pi-events.js";
 import { waitFor, waitForFile, within } from "./helpers/wait.js";
 import { readJson } from "./helpers/json-read.js";
 
+// These tests pin the sequential merge stages (the check, then the review).
+process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
+
 /** Second slice of the merge-drain suite — the verification-permit and merge-slot tests beside
  * merge-drain.test.ts (which carries the dedupe tests, including the one ~10.5s stress
  * test) and merge-pipeline.test.ts — split so node --test runs the slices in parallel

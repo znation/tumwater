@@ -2,7 +2,7 @@
 /** The review gate's deterministic build pre-check — split out of review.ts so the gate keeps
  * one responsibility (running the model reviewer and acting on its verdict) while this module
  * owns the pre-review verification: the one scoped build-check run, its flake re-run, the
- * sleep-unverified and main-red attributions, and the harness's own counts sentence. No model
+ * sleep-unverified and main-red attributions. No model
  * runs here — everything is decided by the project's declared check, so a deterministic
  * rejection never shows as "reviewing" on the dashboards and consumes no reviewer budget. */
 
@@ -24,19 +24,13 @@ import { FLAKY_WARNING_PREFIX, isKnownFlake, quarantineTests } from "./known-fla
 
 /** What the pre-check decided: either the gate is resolved without a reviewer run
  * (`resolved` — a deterministic rejection, failure, or unverified tree) or the tree passed
- * and the reviewer run may proceed, carrying the verified head and the harness's counts
- * sentence for the reviewer's prompt. */
+ * and the reviewer run may proceed, carrying the verified head. */
 interface GatePrecheckResult {
   /** Set when the pre-check alone resolved the gate; the caller returns it verbatim. */
   resolved?: GateResult;
   /** The head the pre-check just verified (see GateResult.verifiedHead) — handed to the
    * merge path, which owns the baseline seeding for the SHA that actually becomes main. */
   verifiedHead?: string;
-  /** The harness's own counts sentence, named in the reviewer's prompt when the pre-check ran
-   * green: the model reviewer then spends its run on what a passing suite cannot show instead
-   * of re-running `npm test` itself (the prompt's no-re-run rule, and the suite-rerun tripwire
-   * after the reviewer run, both key on it). */
-  verifiedByHarness?: string;
   /** Set when the gate check failed only main's known failures (the watch's, via
    * onlyKnownMainFailures): the change goes on to review unverified by a green run, and the
    * reviewer's prompt names these as main's. */
@@ -124,7 +118,7 @@ export async function gateBuildPrecheck(
       // clock-sensitive test rejected whichever unrelated change hit it (BUGS.md 2026-10-06).
       // The excuse is not a failure of the gate, so the change goes on to the model review
       // instead of ending the merge attempt as review_error and paying a requeue. It carries no
-      // verifiedHead and no harness counts sentence — the tree was not verified — so the merge
+      // verifiedHead — the tree was not verified — so the merge
       // path's own check still judges the tree before it reaches main.
       const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
       // A failure that names only tests main already fails is main's, not this change's: it goes
@@ -183,15 +177,7 @@ export async function gateBuildPrecheck(
       // the SHA that actually becomes main (the rebased head, which may differ from `head`),
       // so every role's next fresh tick is a cache hit instead of one redundant full-suite
       // re-run on an already-verified tree.
-      // The counts are the harness's own reading of the runner's summary (parseTestCounts):
-      // attesting them here means neither the author nor the reviewer states a total, which is
-      // where most record-claim rejections came from (PLANS.md 2026-09-29).
-      return {
-        verifiedHead: head,
-        verifiedByHarness: outcome.counts
-          ? `${describeCheck(check)} (the project's declared check) passed — ${outcome.counts.pass} pass, ${outcome.counts.fail} fail, ${outcome.counts.skipped} skipped of ${outcome.counts.tests}`
-          : `${describeCheck(check)} (the project's declared check) passed`,
-      };
+      return { verifiedHead: head };
     }
   }
   return {};

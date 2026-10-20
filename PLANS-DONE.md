@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 12/14: The review runs alongside the gate check instead of after it (planned 2026-10-19 by user; requires part 11/14 landed; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/review/review.ts src/review/review-precheck.ts src/merge/merge-batch.ts src/git/worktree-pool.ts src/prompt/gate-prompts.ts src/merge/merge-slot.ts and their tests) — done 2026-10-19
+
+**Goal.** The reviewer starts only after `gateBuildPrecheck` passes (src/review/review.ts ~262-321), so every attempt pays the gate's duration (p50 67 s) before the review begins. The two can run at once.
+
+**Approach.**
+- After the rebase and the deterministic rejects, lease a second pool slot (src/git/worktree-pool.ts), detached at the same head with purpose `verify-check`. Run the gate check there while the reviewer starts in the change's own slot.
+- The reviewer prompt always says "Tumwater is running the project's check on this tree; do not run the suite" (src/prompt/gate-prompts.ts), replacing the `verifiedByHarness` branch. The suite re-run tripwire always applies.
+- Joining the two:
+  - A red gate, after its re-run and the part 7 and 9 excuses, aborts the reviewer run and settles as today.
+  - A green gate plus an approval is approved with `verifiedHead`.
+  - An approval that arrives first waits for the gate.
+  - A pre-check rejection resets only the check slot.
+- The merge stage shows both (src/merge/merge-slot.ts `setMergeStage`).
+- With no free pool slot, run the two in sequence, as today.
+
+**Files touched.**
+- Source: src/review/review.ts, src/review/review-precheck.ts, src/merge/merge-batch.ts, src/git/worktree-pool.ts, src/prompt/gate-prompts.ts, src/merge/merge-slot.ts.
+- Tests: the review and pool tests.
+
+**Acceptance criteria.**
+- With a fake gate of 20 s and a fake reviewer of 20 s, a verify takes about 20 s, not 40 s (from its events).
+- A red gate aborts the reviewer, records no verdict, and the change is handled as today.
+- With no free slot, the two run in sequence.
+- `npm test` passes.
+
+**What changed.** `ReviewContext.leaseCheckSlot` (wired in src/merge/merge-core.ts's `reviewContextFor` from `tryLeaseSlot`, a non-waiting lease added to src/git/worktree-pool.ts with purpose `verify-check`, which never takes a pinned slot) lets `reviewAttempt` (src/review/review.ts) start `gateBuildPrecheck` in a second checkout of the head while the reviewer starts in the change's slot. A check that did not pass aborts the reviewer; a rejection is applied afterwards through the shared `reject`. A green check lets the reviewer's outcome stand, and an approval that arrives first waits for the check. With no free slot, no lease seam (the tick path), or an already-approved patch, the check runs first as before. The reviewer prompt now always says tumwater is running the check, and the suite-rerun tripwire always applies, so the pre-check no longer builds a counts sentence (src/review/review-precheck.ts). The merge cell shows `reviewing, checking` (src/merge/merge-slot.ts). src/merge/merge-batch.ts needed no change. `TUMWATER_REVIEW_CHECK_OVERLAP=0` (a test seam in merge-core.ts) restores the sequential order for the suites that pin the merge stages. A retried reviewer attempt reuses the check's result.
+
 ### Plain terms code runner, part 6b/14: Convert the merge modules (planned 2026-10-16 by user, split 2026-10-19 by the plan role from part 6/14; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/merge/ + the merge tests and fixtures); done 2026-10-19 by the feature role
 
 **Goal.** src/merge/ uses role and runner names in identifiers, comments and test titles. Parts 6a/14, 6b/14 and 6c/14 touch disjoint files and merge in any order; part 7/14 requires all three.

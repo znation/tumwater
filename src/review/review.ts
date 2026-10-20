@@ -18,6 +18,7 @@ import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { shortSha } from "../text/format.js";
+import { errorMessage } from "../text/text.js";
 import { firstReason } from "../text/phrases.js";
 import type { SleepSampler } from "../build/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
@@ -28,6 +29,7 @@ import { secretLeakReason } from "./secret-leaks.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 import { setMergeStage } from "../merge/merge-slot.js";
+import type { SlotLeaseHandle } from "../git/worktree-pool.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
 
 /** Attach the review gate's pi runs onto a partial GateResult — `run` plus the optional
@@ -100,6 +102,10 @@ export interface ReviewContext {
   /** Whether the reviewer's provider is held; a retry waits for the hold to lift instead of
    * spending one of its retries. */
   reviewHeld?: () => boolean;
+  /** Leases a second pool slot at `ref` without waiting, or resolves null when none is free: the
+   * gate check then runs there alongside the reviewer instead of before it (Fast merge part 12).
+   * Absent (the tick path, most tests) the check runs first, as it always did. */
+  leaseCheckSlot?: (ref: string) => Promise<SlotLeaseHandle | null>;
   /** In-place retries of a failed reviewer run; defaults to 2. A test seam. */
   retries?: number;
   /** The pause before an in-place retry; defaults to 30 s. A test seam. */
@@ -169,7 +175,63 @@ const REVIEW_RETRY_DELAY_ENV = "TUMWATER_REVIEW_RETRY_DELAY_MS";
 interface ReviewRetry {
   attempt: number;
   retriesLeft: number;
-  pre?: { verifiedHead?: string; verifiedByHarness?: string; knownMainFailures?: string[] };
+  pre?: { verifiedHead?: string; knownMainFailures?: string[] };
+}
+
+/** A gate check running in a second leased checkout while the reviewer runs (Fast merge part 12).
+ * `gate` settles with the pre-check's result and frees the lease; a check that did not pass
+ * aborts `abort`, which stops the reviewer run. */
+interface CheckOverlap {
+  gate: Promise<Awaited<ReturnType<typeof gateBuildPrecheck>>>;
+  abort: AbortController;
+  /** Set once the check settled. */
+  done: boolean;
+  /** The reasons of a rejection the check reached: reviewAttempt applies it through its reject
+   * path once the reviewer has stopped touching the tree. */
+  rejectedReasons?: string[];
+}
+
+/** A second pool slot for the gate check, or null when the context cannot lease one, none is free
+ * right now, or the lease failed (the check then runs first, in the change's own slot). */
+async function leaseCheckSlot(ctx: ReviewContext, head: string): Promise<SlotLeaseHandle | null> {
+  if (!ctx.leaseCheckSlot) return null;
+  try {
+    return await ctx.leaseCheckSlot(head);
+  } catch (err) {
+    warnEventBestEffort(ctx.root, ctx.role, `no second workspace for the gate check (${errorMessage(err)}); running it before the review`);
+    return null;
+  }
+}
+
+/** Start the gate check in `lease`'s checkout of `head`. A rejection is recorded, not applied:
+ * resetting the change's branch is left to reviewAttempt, after the reviewer has stopped. */
+function startOverlappedCheck(ctx: ReviewContext, state: LoopState, head: string, lease: SlotLeaseHandle): CheckOverlap {
+  const overlap = { abort: new AbortController(), done: false } as CheckOverlap;
+  const reject = async (reasons: string[]): Promise<GateResult> => {
+    overlap.rejectedReasons = reasons;
+    return { decision: "rejected", detail: firstReason(reasons) };
+  };
+  overlap.gate = gateBuildPrecheck({ ...ctx, wt: lease.dir }, state, head, reject)
+    .then(
+      (pre) => {
+        overlap.done = true;
+        if (pre.resolved) overlap.abort.abort();
+        else setMergeStage(ctx.root, ctx.role, "reviewing");
+        return pre;
+      },
+      (err: unknown) => {
+        overlap.done = true;
+        overlap.abort.abort();
+        throw err;
+      },
+    )
+    .finally(() => lease.release());
+  overlap.gate.catch(() => {}); // surfaced where reviewAttempt awaits it
+  return overlap;
+}
+
+function combineSignals(a: AbortSignal | undefined, b: AbortSignal): AbortSignal {
+  return a ? AbortSignal.any([a, b]) : b;
 }
 
 /** Run the adversarial review gate over everything ahead of main in `wt` and update `state`
@@ -235,6 +297,28 @@ async function reviewAttempt(
     return { decision: "rejected", detail: firstReason(reasons) };
   };
 
+  // Every exit below that keeps the change leaves the worktree at the head this gate reviewed.
+  const keep = async (r: GateResult): Promise<GateResult> => {
+    await restoreReviewedHead(wt, head, root, role);
+    return r;
+  };
+
+  // Settle the attempt on an overlapped check that did not pass: the sequential pre-check's own
+  // outcome, with the reviewer's run (when one started) dropped and no verdict recorded. A
+  // rejection is applied now, after the reviewer stopped touching the tree; every other outcome
+  // keeps the change at the head the gate reviewed.
+  const settleFailedCheck = async (
+    o: CheckOverlap,
+    pre: { resolved?: GateResult },
+    pi?: PiRunResult,
+  ): Promise<GateResult> => {
+    state.reviewResume = undefined;
+    const settled = o.rejectedReasons
+      ? await reject(o.rejectedReasons)
+      : await keep(pre.resolved ?? { decision: "failed", detail: "the gate check did not complete" });
+    return pi ? withRuns(settled, pi, null, null) : settled;
+  };
+
   // Already reviewed this exact HEAD (e.g. a merge_blocked retry): do not burn another run.
   if (state.lastApprovedHead === head) {
     state.reviewResume = undefined;
@@ -291,30 +375,36 @@ async function reviewAttempt(
   // "build-check" while it runs, "reviewing" when the reviewer run starts below.
   // A retried attempt keeps the first attempt's passing pre-check (a green, or a red naming
   // only main's known failures): the tree is the same head.
-  if (!retry.pre) {
-    const pre = await gateBuildPrecheck(ctx, state, head, reject);
-    if (pre.resolved) {
-      state.reviewResume = undefined;
-      return pre.resolved;
-    }
-    retry.pre = {
-      verifiedHead: pre.verifiedHead,
-      verifiedByHarness: pre.verifiedByHarness,
-      knownMainFailures: pre.knownMainFailures,
-    };
-  }
-  const { verifiedHead, verifiedByHarness, knownMainFailures } = retry.pre;
-
   // A review judges a diff, not a sha: a head carrying exactly the patch this role's last
   // approval judged (the approved head cleanly rebased onto a moved main) reuses that verdict
   // instead of paying a second reviewer run. Only the model review is reused — the pre-check
-  // above has just run on this tree (a failure rejected it there), and its verifiedHead rides
-  // on the result as for any approval.
+  // has just run on this tree (a failure rejected it there), and its verifiedHead rides on the
+  // result as for any approval.
   const reviewedPatchId = (await patchId(wt, mainBranch, head)) ?? undefined;
-  if (reviewedPatchId !== undefined && state.approvedPatchIds?.includes(reviewedPatchId)) {
+  const patchApproved = reviewedPatchId !== undefined && state.approvedPatchIds?.includes(reviewedPatchId) === true;
+
+  // The check runs alongside the reviewer when a second pool slot is free right now (Fast merge
+  // part 12): it starts here, in its own checkout of this head, while the reviewer run below
+  // starts in the change's own slot. An already-approved patch has no reviewer to overlap, and
+  // with no free slot (or no way to lease one) the check runs first, as it always did.
+  let overlap: CheckOverlap | undefined;
+  if (!retry.pre) {
+    const lease = patchApproved ? null : await leaseCheckSlot(ctx, head);
+    if (lease) overlap = startOverlappedCheck(ctx, state, head, lease);
+    else {
+      const pre = await gateBuildPrecheck(ctx, state, head, reject);
+      if (pre.resolved) {
+        state.reviewResume = undefined;
+        return pre.resolved;
+      }
+      retry.pre = { verifiedHead: pre.verifiedHead, knownMainFailures: pre.knownMainFailures };
+    }
+  }
+  const knownMainFailures = retry.pre?.knownMainFailures;
+  if (patchApproved && retry.pre) {
     state.reviewResume = undefined;
     state.lastApprovedHead = head;
-    return { decision: "approved", verifiedHead };
+    return { decision: "approved", verifiedHead: retry.pre.verifiedHead };
   }
 
   // The reviewer's model selector (plans/model-tiers.md "Observability"): resolved from the
@@ -389,13 +479,16 @@ async function reviewAttempt(
   // The reviewer run's wall time rides on its verdict event: a reviewer that takes an hour per
   // merge on local hardware is a team-level cost an operator must be able to see.
   const reviewStartedAt = Date.now();
-  // The reviewer's started tool calls, collected only when the no-re-run rule stands (a verified
-  // pre-check) — the one case the suite-rerun tripwire below can fire.
+  // The reviewer's started tool calls: the no-re-run rule always stands (tumwater runs the
+  // check), so the suite-rerun tripwire below always applies.
   const reviewerCalls: ToolCallStart[] = [];
   // The merge cell switches to the reviewer run's live detail (no-op outside a queued
   // merge). runPi writes the run's `tumwater_run` label line before spawning pi, and that
   // line resets the gate progress accumulator, so the cell never shows a previous run's counts.
-  setMergeStage(root, role, "reviewing");
+  setMergeStage(root, role, overlap ? "reviewing-check" : "reviewing");
+  // A check that already went red has aborted the overlap: no reviewer run starts, the verdict
+  // below is the gate's alone.
+  if (overlap?.abort.signal.aborted) return settleFailedCheck(overlap, await overlap.gate);
   // The author's claimed WHY/RISK/VERIFIED ride along when present — checking those claims
   // against the actual diff is exactly the adversarial angle (recovery merges reconstruct
   // them from the pinned commit's message).
@@ -410,7 +503,6 @@ async function reviewAttempt(
           commitBody,
           readPrinciples(root),
           highFriction,
-          verifiedByHarness,
           base,
           undefined,
           priorReview,
@@ -434,15 +526,13 @@ async function reviewAttempt(
     // Label this run in the shared transcript (src/ui/transcript.ts renders it as
     // `── review @ <ts> ──`) so an operator can tell reviewer runs from author ticks.
     label: "review",
-    signal: ctx.signal,
+    signal: overlap ? combineSignals(ctx.signal, overlap.abort.signal) : ctx.signal,
     // A stalled tool call during review hangs the gate just like one during authoring —
     // name it in the event feed while the quiet watchdog still counts down.
     onToolCallStalled: (message) => warnEventBestEffort(root, role, message),
-    onToolCallStart: verifiedByHarness
-      ? (toolName, args) => {
-          reviewerCalls.push({ toolName, args });
-        }
-      : undefined,
+    onToolCallStart: (toolName, args) => {
+      reviewerCalls.push({ toolName, args });
+    },
     // A gate run that read an image its model cannot see is logged, not killed (plans/
     // image-input.md "Detecting a blind read"): the reviewer keeps working from what it CAN
     // see, and the image_blind line names the file, the model, and this tick so the operator
@@ -465,11 +555,17 @@ async function reviewAttempt(
   const rerun = suiteRerunWarning(reviewerCalls);
   if (rerun) warnEventBestEffort(root, role, rerun);
 
-  // Every exit below that keeps the change leaves the worktree at the head this gate reviewed.
-  const keep = async (r: GateResult): Promise<GateResult> => {
-    await restoreReviewedHead(wt, head, root, role);
-    return r;
-  };
+  // Join the overlapped check (Fast merge part 12): a gate that did not pass settles the attempt;
+  // a green gate lets the reviewer's outcome stand, and a reviewer that finished first waited
+  // here for the gate.
+  if (overlap) {
+    if (!overlap.done) setMergeStage(root, role, "build-check");
+    const pre = await overlap.gate;
+    if (pre.resolved) return settleFailedCheck(overlap, pre, pi);
+    retry.pre = { verifiedHead: pre.verifiedHead, knownMainFailures: pre.knownMainFailures };
+  }
+  const verifiedHead = retry.pre?.verifiedHead;
+
   if (pi.aborted) {
     // Shutdown mid-review: fail closed — the commit stays on the branch and the
     // resumed/following tick re-reviews it via the combined ahead-of-main diff. Any resume

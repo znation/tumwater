@@ -152,14 +152,12 @@ interface PriorReviewPrompt {
 /** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees only the
  * diff and project context — never the author's session — and replies with exactly one VERDICT
  * line plus numbered reasons (see parseVerdict in src/review/review-verdict.ts).
- * `verifiedByHarness` names the project's own check the gate's deterministic pre-check already ran
- * green on this exact tree (e.g. "`npm run test` passed"), so the reviewer spends its run on what a
- * green suite cannot show instead of re-running it. The no-re-run instruction is its own line in
- * the rules list, not a clause in the context paragraph: stated there, reviewers read past it and
- * re-ran the suite in scratch copies under /tmp while holding the merge slot (BUGS.md
- * 2026-09-23). It appears only when a verified result exists: after a timed-out, killed, or skipped
- * pre-check no green run stands behind the tree, and a reviewer running the suite itself is doing
- * its job. `baseRev` is the frozen revision the diff is measured against (changeBaseRev's
+ * The prompt always says tumwater is running the project's own check on this tree (alongside
+ * the review, or already done), so the reviewer spends its run on what a green suite cannot show
+ * instead of running it. The no-re-run instruction is its own line in the rules list, not a clause
+ * in the context paragraph: stated there, reviewers read past it and re-ran the suite in scratch
+ * copies under /tmp while holding the merge slot (BUGS.md 2026-09-23). `baseRev` is the frozen
+ * revision the diff is measured against (changeBaseRev's
  * merge-base, resolved when the gate builds the diff): the prompt names it and tells the reviewer
  * to compare against it, never `main`, because other loops merge to main while the review runs
  * (BUGS.md 2026-10-06). Omitted, the prompt keeps the generic "ahead of main" wording. `today` pins
@@ -175,7 +173,6 @@ export function buildReviewPrompt(
   commitBody?: string,
   principles?: string,
   highFriction?: boolean,
-  verifiedByHarness?: string,
   baseRev?: string,
   today?: string,
   priorReview?: PriorReviewPrompt,
@@ -215,12 +212,11 @@ between the rejected version and this revision (what the revision changed, main'
 excluded):\n<interdiff>\n${priorReview.interdiff}\n</interdiff>`,
     );
   }
-  if (verifiedByHarness)
-    parts.push(
-      `Tumwater already ran the project's own check on this exact tree and it passed:
-${verifiedByHarness}. Spend your run on what a green check cannot show: wrong behavior the tests
-never exercise, claims the diff does not back, work left half-done.`,
-    );
+  parts.push(
+    `Tumwater is running the project's own check on this tree; do not run the suite. Spend your run
+on what a green check cannot show: wrong behavior the tests never exercise, claims the diff does
+not back, work left half-done.`,
+  );
   if (knownMainFailures && knownMainFailures.length > 0)
     parts.push(
       `Tumwater ran the project's own check on this tree and it failed, but only on tests main already
@@ -244,14 +240,12 @@ Do not count them against the change unless the diff touches what they test.`,
   parts.push(`The full diff this merge will land (${diffBase}):\n<diff>\n${diff}\n</diff>`);
   // Right after the scratch-copy allowance it qualifies: a scratch copy stays fine for measuring
   // something, but a copy made to run the suite is the re-run this line forbids.
-  const noRerunRule = verifiedByHarness
-    ? `
-- Do not re-run the check named above or the project's full test suite: tumwater's green run
-  is the verified result. Copying the tree elsewhere to run it — rsync or cp into a temp
+  const noRerunRule = `
+- Do not run the project's check or its full test suite: tumwater is running it on this tree and
+  owns the result. Copying the tree elsewhere to run it — rsync or cp into a temp
   directory, reinstalling dependencies there (for an npm project, \`npm ci\`; otherwise its
-  equivalent) — counts as re-running it. Running one
-  specific test file for a concrete reason you can name is fine.`
-    : "";
+  equivalent) — counts as running it. Running one
+  specific test file for a concrete reason you can name is fine.`;
   parts.push(
     `Review adversarially: hunt for correctness bugs, violations of the project's principles,
 unjustified complexity growth, and incomplete or half-done work. Work in this order:
@@ -273,8 +267,8 @@ Check, in this order:
 1. Does the diff do exactly what the summary and WHY claim — no more, no less? An unclaimed
    change is a finding.
 2. Are the VERIFIED claims consistent with the diff (commands, files, observations)? A claim you
-   can disprove is a rejection. Suite counts are tumwater's own attestation — they appear in
-   the passed-check line above when the check ran green — so a count missing from VERIFIED is
+   can disprove is a rejection. Suite counts are tumwater's own attestation — it runs the
+   check and records them — so a count missing from VERIFIED is
    not a finding, and neither is an author-stated count that differs from it: judge whether the
    tests exist and exercise the change (check 3), not the author's arithmetic.
 3. Do new or changed tests exercise the new behavior — would they fail without the change?

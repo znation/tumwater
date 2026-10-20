@@ -37,6 +37,9 @@ import {
 } from "./fixtures/merger-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
+// These tests pin the sequential merge stages (the check, then the review).
+process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
+
 // Unit coverage for the two halves of a merge — merge-batch.ts's verifyRequest (checkout in
 // _land-<role>, rebase onto main, merge-core.ts's review gate) and mergeApproved (the merge: one
 // change through mergeApprovedChange, or a stack with one check, one fast-forward, the re-stack,

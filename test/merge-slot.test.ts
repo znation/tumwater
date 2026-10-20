@@ -42,6 +42,9 @@ import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
+// These tests pin the sequential merge stages (the check, then the review).
+process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
+
 /** A minimal successful pi run carrying the given usage — only the fields the fold reads matter,
  * but PiRunResult is fully required, so the rest are neutral defaults. */
 function piRun(outputTokens: number, costUsd: number): PiRunResult {
