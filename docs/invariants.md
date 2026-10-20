@@ -3353,3 +3353,68 @@ the failing test", "a red merge check that passes on its kept-pin retry logs a m
 warning" and "a stale red strike of another pin is not recorded as a flake when a different pin
 merges"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref once for a
 known-flake red, then attributes a repeat".
+
+## Team hold: two roles failing alike on one provider hold that provider, and the hold re-opens by itself
+
+`teamHold` in `src/team/team-hold.ts` steps one provider's `TeamHold` per poll from the recent
+backend-failure observations; `heldProviders`, `standingHolds` and `windowHeldProviders` read the map.
+
+### INV-BG1: a hold trips only when two distinct roles failed alike on one provider within the window
+
+**Guarantee.** A hold trips only when `HOLD_STORM_ROLES` distinct roles failed on the same provider
+and kind within `HOLD_STORM_WINDOW_MS` (the edge counts). One role never trips it, and different
+kinds or providers never add up. When two groups qualify in one poll, the first one seen wins.
+
+**Binds.** `src/team/team-hold.ts` (`teamHold`, `HOLD_STORM_WINDOW_MS`).
+
+**Pinned by.** `test/team-hold.test.ts` — "one role's 429s never trip the hold — the per-run retry
+already answers them", "two distinct roles' 429s within the window trip a base hold naming them",
+"429s further apart than the storm window do not add up" and "failures of different kinds are
+different incidents: neither storms alone"; `test/team-polls.test.ts` — "pollTeamHold separates the
+same kind at different providers: no cross-provider storm"; `test/team-hold-edges.test.ts` — "when
+two provider+kind groups both storm in one poll, the first one seen wins".
+
+### INV-BG2: the hold lasts the longer of the escalated base and the furthest Retry-After, up to the cap
+
+**Guarantee.** The hold lasts the longer of `HOLD_BASE_MS` doubled once per relapse and the
+furthest Retry-After, measured from its own 429, and never more than `HOLD_CAP_MS`. A relapse is the
+same provider and kind re-tripping within `HOLD_RELAPSE_MS` of the re-open; anything else starts at
+the base.
+
+**Binds.** `src/team/team-hold.ts` (`HOLD_BASE_MS`, `HOLD_RELAPSE_MS`, `HOLD_CAP_MS`).
+
+**Pinned by.** `test/team-hold.test.ts` — "the hold honors the largest Retry-After seen, measured
+from its own 429, and caps it", "backend failures of one kind trip the same hold, but carry no
+Retry-After", "a storm that resumes right after re-open doubles the hold; one after a calm spell
+starts fresh", "a relapse is per kind: the same kind escalates, a different kind starts at the base"
+and "a storm that outlasts every re-open escalates to the cap and stays there".
+
+### INV-BG3: a held provider re-opens by itself at its deadline, and a failure at the re-open never counts
+
+**Guarantee.** A held provider stays held until its deadline and then re-opens by itself. No failure
+stamped at or before the re-open counts toward the next storm. A lifted hold stays in the map as
+relapse memory, but `heldProviders` does not read it as held.
+
+**Binds.** `src/team/team-hold.ts` (`teamHold`, `heldProviders`).
+
+**Pinned by.** `test/team-hold.test.ts` — "a held team stays held until its deadline, then
+re-opens by itself"; `test/team-polls.test.ts` — "a lifted provider's hold stays in the map with its
+relapse memory but stops reading as held"; `test/team-hold-edges.test.ts` — "a failure stamped at
+the re-open poll never re-trips the hold; one a millisecond later does".
+
+### INV-BG4: a rejected subscription window holds its provider until `resetsAt`, and only it holds the director
+
+**Guarantee.** A rejected subscription window holds its provider until `resetsAt`, however many
+roles failed, and a window with no future `resetsAt` holds nothing. A reserve hold is re-checked
+every poll, and the director is held only by a rejected window (`windowHeldProviders`).
+`standingHolds` lists neither lifted nor subscription-window holds.
+
+**Binds.** `src/team/team-hold.ts` (`windowHeldProviders`, `standingHolds`).
+
+**Pinned by.** `test/team-hold.test.ts` — "a rejected subscription window holds its provider until
+resetsAt, whatever the role count", "a standing reserve hold is re-evaluated: a rejected window
+replaces it, a vanished one drops it" and "standingHolds names each standing provider hold and skips
+lifted and subscription-window ones"; `test/orchestrator-scheduling.test.ts` — "a subscription-window
+hold stops the director too, while a 429-storm hold still exempts it"; `test/team-polls.test.ts` —
+"a reserve crossing holds claude but not the director, and logs claude_window_reserved once per
+window".
