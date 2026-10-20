@@ -807,4 +807,25 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `history -f --since 1h` and `history -f --summary` still fail as rival shapes. `history --json` without `-f` still prints the indented `{ rows }` document unchanged.
 - `npm run test:gate` passes.
 
+### A slot reset drops a dangling pin under any `refs/tumwater/` namespace and logs a `warning` event naming the ref, its sha and its file age, so the next occurrence leaves evidence for the open object-pruned-before-ref question (planned 2026-10-19 by the plan role; no dependency on any Planned entry)
+
+**Goal.** BUGS-FIXED.md's 2026-10-19 "dangling `refs/tumwater/merge/feature-5`" fix made `checkoutDetached` (src/git/worktree.ts) delete a `refs/tumwater/merge/<role>` ref whose object is gone and retry the checkout. Two gaps remain:
+
+1. The heal only matches `refs/tumwater/merge/`. A `refs/tumwater/rejected/<role>` pin (`rejectedRefName`, src/paths.ts), written by `recordRejectedChange` in src/merge/merge-core.ts, wedges `git checkout --detach` the same way, because git walks every ref to report orphaned commits. So does a leftover legacy `refs/tumwater/landing/<role>` (`legacyLandingRefName`). Both are harness-owned pins and useless once their object is gone.
+2. The heal deletes the ref without a trace. That fix's entry ends "The object-pruned-before-ref ordering was not investigated", and the live ref was already gone when it was looked at. If it happens again, the operator needs the ref name, the sha it named, and when that ref file was last written, to compare with the merge events in `events.jsonl`. Today that evidence is deleted silently.
+
+**Approach.**
+- In `checkoutDetached`, widen the match to `/fatal: bad object (refs\/tumwater\/\S+)/`. Refs outside `refs/tumwater/` (branches, tags, the operator's own refs) still throw unchanged, because tumwater does not own them.
+- Give `checkoutDetached` the repository `root` as a new first parameter. Thread it through `hardResetWorktree` as an optional argument that is used only when `detach` is true. `ensureDetachedWorktree(root, dir, ref)`, the only `detach` caller, already has it. `resetWorktreeToMain` keeps calling `hardResetWorktree(wt, mainBranch)` without it.
+- Before the `update-ref -d`, read what the bad ref named: `refShaFromFiles(root, ref)` from src/git/git.ts, which reads the loose file or packed-refs without needing the object. When the loose file exists under the common dir (`resolveGitDir`/the commondir `refShaFromFiles` uses), also read its mtime with `fs.statSync(...).mtimeMs`. Then call `logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "warning", message, ref, sha, refWrittenAt })` from src/events/events.ts. Here `message` is `dropped dangling ref <ref> (<shortSha>, object missing) so a worktree checkout could proceed`, and `refWrittenAt` is an ISO string, or the field is omitted when the ref was packed. The existing `case "warning"` in src/events/event-format.ts already renders `warning: <message>`, so this needs no new event type or label. Check that src/events/events.ts does not import src/git/ (today it imports only paths, files, event-legacy and text), so the new import adds no cycle.
+- Update the `checkoutDetached` doc comment to say it covers every `refs/tumwater/` pin and logs the drop.
+
+**Files touched.** src/git/worktree.ts (`checkoutDetached`, `hardResetWorktree`, `ensureDetachedWorktree`); test/worktree.test.ts.
+
+**Acceptance criteria.**
+- The existing "ensureDetachedWorktree drops a dangling merge ref that makes `checkout --detach` exit 128" test still passes. It now also asserts that `readEvents(repo)` (src/events/event-read.ts) holds one `warning` event whose `ref` is `refs/tumwater/merge/feature-5`, whose `sha` is the 40-character `1…1` value it wrote, and which has a `refWrittenAt` string.
+- New test "ensureDetachedWorktree drops a dangling rejected pin too": the same setup with `refs/tumwater/rejected/feature-5` ends with the slot at main's head, the ref file gone, and one `warning` event naming that ref.
+- New test "ensureDetachedWorktree still throws on a dangling ref outside refs/tumwater/": a loose `refs/heads/broken` pointing at a missing object makes `ensureDetachedWorktree` reject with `bad object`. The ref file stays and no `warning` event is logged.
+- `resetWorktreeToMain` callers compile unchanged. `npm run test:gate` passes.
+
 ## Done
