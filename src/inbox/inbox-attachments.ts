@@ -270,18 +270,20 @@ export function imageReferencePaths(text: string): string[] {
  * referenced attachment that is already gone is left for stripVanishedImageReferences to drop
  * and record. Each attachment moves on its own: one file that is gone or cannot be renamed is
  * left in place and named in `problem`, while the attachments around it still move, so a
- * single missing or unmovable file cannot strand the rest under a stem no queue file names. */
+ * single missing or unmovable file cannot strand the rest under a stem no queue file names.
+ * `moves` lists each rename done, so a caller whose later write fails can move them back. */
 export function movePromptImages(
   fromFile: string,
   toFile: string,
   text: string,
-): { text: string; problem: string | null } {
+): { text: string; problem: string | null; moves: { from: string; to: string }[] } {
   const dir = path.resolve(path.dirname(fromFile));
   const fromStem = path.basename(fromFile, ".md");
   const toStem = path.basename(toFile, ".md");
   const toDir = path.resolve(path.dirname(toFile));
   const taken = takenImageSiblings(toDir, toStem);
   const problems: string[] = [];
+  const moves: { from: string; to: string }[] = [];
   const out: string[] = [];
   for (const line of text.split("\n")) {
     const referenced = referencedImagePath(line);
@@ -311,9 +313,14 @@ export function movePromptImages(
       out.push(line);
       continue;
     }
+    moves.push({ from: resolved, to: target });
     out.push(line.replace(referenced, target));
   }
-  return { text: out.join("\n"), problem: problems.length > 0 ? problems.join("; ") : null };
+  return {
+    text: out.join("\n"),
+    problem: problems.length > 0 ? problems.join("; ") : null,
+    moves,
+  };
 }
 
 /** The prompt text without its `[image attached: …]` reference lines, trailing blank lines

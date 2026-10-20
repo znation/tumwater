@@ -1,5 +1,5 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, renameSync } from "node:fs";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { queueFileName, queueFileStamp, removeQueueFile } from "../files/file-queue.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
@@ -32,7 +32,9 @@ export type FileTopOutcome = TopOutcome | { status: "already_first" };
  * stripVanishedImageReferences dropping any already-gone reference) — and one `prompt_topped`
  * event is logged under the role. Returns { status: "gone" } when the file disappears between
  * the caller's listing and the read here (a concurrent pop is a normal race, never an
- * error), sharing the store's takeQueuedFile convention. */
+ * error), sharing the store's takeQueuedFile convention. A failed write of the new queue file
+ * moves the attachments back and rethrows, so the prompt stays queued at its old position with
+ * its images. */
 function moveFileToTop(root: string, role: string, file: string): TopOutcome {
   const text = readTextIfExists(file);
   if (text === null) return { status: "gone" }; // Dequeued or cancelled mid-listing.
@@ -55,7 +57,20 @@ function moveFileToTop(root: string, role: string, file: string): TopOutcome {
   const moved = movePromptImages(file, newFile, text);
   if (moved.problem !== null) warnEventBestEffort(root, role, moved.problem);
   const carried = stripVanishedImageReferences(moved.text).text;
-  writeTextAtomic(newFile, carried);
+  try {
+    writeTextAtomic(newFile, carried);
+  } catch (err) {
+    // Put the attachments back under the old stem, so the prompt still queued there keeps its
+    // images; one failed rename must not stop the others or mask the write error.
+    for (const m of moved.moves) {
+      try {
+        renameSync(m.to, m.from);
+      } catch {
+        // Best effort: the write error is the one the caller sees.
+      }
+    }
+    throw err;
+  }
   removeQueueFile(file);
   logEventBestEffort(root, { source: role, type: "prompt_topped", preview: promptPreview(carried) });
   return { status: "topped", preview: promptPreview(carried) };

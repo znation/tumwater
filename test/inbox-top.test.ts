@@ -18,7 +18,7 @@ import { queueFileStamp } from "../src/files/file-queue.js";
 import { roleInboxDir } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { errnoError, withThrowingFs } from "./helpers/fs-faults.js";
+import { errnoError, patchFsMethod, withThrowingFs } from "./helpers/fs-faults.js";
 
 /** src/inbox/inbox-top.ts's own tests: moving one queued prompt to the head of its role's
  * queue (`tumwater prompt --top <n>`) — position addressing, the race policy, the deferral
@@ -112,6 +112,32 @@ test("movePromptToTop carries an attached image to the new stem and leaves no ol
   // The fulfilling sweep under the new file finds and removes the moved image.
   removeSameStemSiblings(root, "feature", newFile);
   assert.equal(fs.existsSync(ref), false, "the new-stem image is swept with its prompt");
+});
+
+test("movePromptToTop whose queue-file write fails moves the image back and leaves the queue as it was", () => {
+  const root = tmpdir();
+  enqueueRolePrompt(root, "feature", "first");
+  const second = enqueueRolePrompt(root, "feature", "second");
+  const oldStem = path.basename(second, ".md");
+  const oldImage = path.join(roleInboxDir(root, "feature"), `${oldStem}.png`);
+  fs.writeFileSync(oldImage, "png-bytes");
+  fs.writeFileSync(second, `second\n\n[image attached: ${oldImage}]`);
+  const before = fs.readdirSync(roleInboxDir(root, "feature")).sort();
+  const textBefore = fs.readFileSync(second, "utf8");
+
+  const undo = patchFsMethod("writeFileSync", (orig) => (...args) => {
+    if (typeof args[0] === "string" && args[0].includes(".md.tmp-")) throw new Error("disk full");
+    return orig(...args);
+  });
+  try {
+    assert.throws(() => movePromptToTop(root, "feature", 2), /disk full/);
+  } finally {
+    undo();
+  }
+
+  assert.deepEqual(fs.readdirSync(roleInboxDir(root, "feature")).sort(), before);
+  assert.equal(fs.readFileSync(second, "utf8"), textBefore);
+  assert.equal(eventsOfType(root, "prompt_topped").length, 0);
 });
 
 /** A prompt's --at deferral rides in its text; the rename must keep it, or a deferred prompt

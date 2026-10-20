@@ -4144,3 +4144,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/merge/merge-git.ts` (`ffMainToOrWhy`, `restoreConfigBytes`).
 
 **Pinned by.** `test/merge-config.test.ts` — "a failed config write-back after the fast-forward warns and still reports the merge".
+
+## Prompt move-to-top: a failed write leaves the prompt and its images where they were
+
+### INV-CJ1: a move-to-top whose new queue file cannot be written renames every moved attachment back, rethrows, and logs no prompt_topped
+
+**Guarantee.** `moveFileToTop` moves the prompt's images to the new stem before writing the new queue file. When that write throws, it renames each image back (one failed rename does not stop the others), rethrows the write error, and neither removes the old queue file nor logs `prompt_topped`, so the prompt stays queued at its old position with its images.
+
+**Binds.** `src/inbox/inbox-top.ts` (`moveFileToTop`), `src/inbox/inbox-attachments.ts` (`movePromptImages`'s `moves`).
+
+**Pinned by.** `test/inbox-top.test.ts` — "movePromptToTop whose queue-file write fails moves the image back and leaves the queue as it was".
