@@ -994,10 +994,11 @@ test("handleRoleQuietHours clearing a key the file never set writes nothing", as
   const root = tmpdir();
   writeJsonFile(configPath(root), {});
   const before = fs.readFileSync(configPath(root), "utf8");
-  const { captured } = await serveRoleQuietHours(root, { role: "feature", window: "" });
+  const { captured, data } = await serveRoleQuietHours(root, { role: "feature", window: "" });
   assert.equal(captured.status, 200);
   // Clearing an absent map entry is a no-op success — the file bytes stay identical.
   assert.equal(fs.readFileSync(configPath(root), "utf8"), before);
+  assert.match((data as { message: string }).message, /is not set in tumwater\.json, so nothing was cleared/);
 });
 function serveRoleInterval(root: string, body: unknown) {
   return captureJson((res) => handleRoleInterval(fakeReq(JSON.stringify(body)), res, root));
@@ -1165,6 +1166,7 @@ test("handleRoleInterval clears a key the file never set without writing and ref
   // Unsetting a key the file never set is a no-op: the file's bytes stay identical.
   const cleared = await serveRoleInterval(root, { role: "feature", minRunIntervalSeconds: null });
   assert.equal(cleared.captured.status, 200);
+  assert.match((cleared.data as { message: string }).message, /is not set in tumwater\.json, so nothing was cleared/);
   const after = fs.readFileSync(configPath(root));
   assert.equal(after.equals(before), true, "clearing a never-set key leaves the file byte-identical");
   // A missing role or a missing value (absent, not null) is refused.
@@ -1281,6 +1283,7 @@ test("handleRoleInstances clears a key the file never set without writing and re
   // Unsetting a key the file never set is a no-op: the file's bytes stay identical.
   const cleared = await serveRoleInstances(root, { role: "feature", instances: null });
   assert.equal(cleared.captured.status, 200);
+  assert.match((cleared.data as { message: string }).message, /is not set in tumwater\.json, so nothing was cleared/);
   const after = fs.readFileSync(configPath(root));
   assert.equal(after.equals(before), true, "clearing a never-set key leaves the file byte-identical");
   // A missing role or a missing value (absent, not null) is refused.
@@ -1336,7 +1339,7 @@ test("handleRoleEnable maps an instance id to its base role's key and accepts th
   // setConfigKey writes nothing.
   const dir = await serveRoleEnable(root, { role: "director" });
   assert.equal(dir.captured.status, 200);
-  assert.deepEqual(dir.data, { ok: true, role: "director", message: "director: enabled" });
+  assert.deepEqual(dir.data, { ok: true, role: "director", message: "director: already enabled" });
   onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal((onDisk.roles as Record<string, unknown>).director, undefined);
 });
@@ -1400,7 +1403,7 @@ test("handleRoleDisable maps an instance id to its base role's key and refuses t
   // is unchanged).
   const reEnable = await serveRoleEnable(dir, { role: "director" });
   assert.equal(reEnable.captured.status, 200);
-  assert.deepEqual(reEnable.data, { ok: true, role: "director", message: "director: enabled" });
+  assert.deepEqual(reEnable.data, { ok: true, role: "director", message: "director: already enabled" });
 });
 
 test("handleRoleDisable rejects a missing, blank, non-string, or unknown role without writing", async () => {
@@ -2125,4 +2128,35 @@ test("handleNotifyTest runs the saved hook and answers its verdict; no hook is a
   const bad = await captureJson((res) => handleNotifyTest(fakeReq("{}"), res, root));
   assert.equal(bad.captured.status, 200);
   assert.equal((bad.data as { passed: boolean }).passed, false);
+});
+
+test("dashboard role and Settings writes say when the value was already in place", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), {});
+  const bytes = () => fs.readFileSync(configPath(root));
+  const msg = (r: { data: unknown }) => (r.data as { message: string }).message;
+  // Each pair: the first write answers its usual message, the second is a byte-identical no-op.
+  const cases: Array<[string, (b: unknown) => Promise<{ data: unknown }>, unknown, RegExp, RegExp]> = [
+    ["interval", (b) => serveRoleInterval(root, b), { role: "feature", minRunIntervalSeconds: 300 }, /min run interval set to 300s/, /min run interval is already 300s/],
+    ["instances", (b) => serveRoleInstances(root, b), { role: "feature", instances: 2 }, /instances set to 2/, /instances is already 2/],
+    ["quiet hours", (b) => serveRoleQuietHours(root, b), { role: "feature", window: "23:00-07:00" }, /quiet hours set to/, /quiet hours unchanged/],
+    ["model", (b) => serveRoleModel(root, b), { role: "feature", provider: "claude", model: "claude-opus-5", thinking: "high" }, /model updated/, /model overrides unchanged/],
+    ["enable", (b) => serveRoleEnable(root, b), { role: "feature" }, /already enabled/, /already enabled/],
+  ];
+  for (const [name, serve, body, first, second] of cases) {
+    const one = await serve(body);
+    if (name !== "enable") assert.match(msg(one), first, name);
+    const afterFirst = bytes();
+    const two = await serve(body);
+    assert.match(msg(two), second, name);
+    assert.equal(bytes().equals(afterFirst), true, name + " second write leaves the file byte-identical");
+  }
+  const cap1 = await serveRoleCap(root, { role: "feature", maxDailyCostUsd: 2 });
+  assert.equal((cap1.data as { unchanged?: boolean }).unchanged, undefined);
+  const cap2 = await serveRoleCap(root, { role: "feature", maxDailyCostUsd: 2 });
+  assert.equal((cap2.data as { unchanged?: boolean }).unchanged, true);
+  const set1 = await serveConfigSet(root, { key: "maxDailyCostUsd", value: 30 });
+  assert.equal((set1.data as { unchanged?: boolean }).unchanged, undefined);
+  const set2 = await serveConfigSet(root, { key: "maxDailyCostUsd", value: 30 });
+  assert.equal((set2.data as { unchanged?: boolean }).unchanged, true);
 });

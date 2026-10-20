@@ -243,6 +243,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/role-cap", { role: arg, maxDailyCostUsd: value }, (d) => {
         capEditing = null;
         loadDrawerRole(arg);
+        if (d && d.unchanged) return "Daily cap unchanged";
         return value > 0 ? "Daily cap set to " + fmtCap(value) : "Daily cap removed";
       });
     } else if (act === "interval-edit") {

@@ -358,14 +358,15 @@ export function setRoleModelFields(
   root: string,
   base: string,
   fields: { provider?: string; model?: string; thinking?: string },
-): { ok: true } | { ok: false; error: string } {
+): { ok: true; unchanged?: true } | { ok: false; error: string } {
   // An unknown base id writes nothing. validateConfig owns the refusal when the write changes
   // the candidate, but it is skipped on the no-op path (clearing fields a role the file never
   // held changes nothing), so refuse the phantom role up front — the same knownRoleIds guard
   // the CLI's unsetConfigKey clear paths and the GUI's rejectBadRole use — rather than answer
   // a bogus id "updated".
   if (!knownRoleIdsCached(root).includes(base)) return fail(unknownRoleMessage(base, knownRoleIdsCached(root)));
-  return writeConfigMutation(root, (cfg) => {
+  let unchanged = false; // set when no field differs from the file
+  const result = writeConfigMutation(root, (cfg) => {
     const rawRolesCandidate = rawConfigObject(root).roles;
     const rawRoles = objectOrEmpty(rawRolesCandidate) as Record<string, Record<string, unknown>>;
     const rawEntryCandidate = rawRoles[base];
@@ -384,7 +385,10 @@ export function setRoleModelFields(
         changed = true;
       }
     }
-    if (!changed) return cfg; // writeConfigMutation skips the write — file bytes identical
+    if (!changed) {
+      unchanged = true;
+      return cfg; // writeConfigMutation skips the write — file bytes identical
+    }
     const nextRoles = { ...rawRoles };
     // Clearing the entry's last override empties it — never leave an empty `roles.<base>: {}`
     // (the file-wide no-empty-object invariant unsetConfigKey's `without` keeps); an emptied
@@ -396,6 +400,8 @@ export function setRoleModelFields(
       return without(cfg as unknown as Record<string, unknown>, "roles") as unknown as TumwaterConfig;
     return { ...cfg, roles: nextRoles } as unknown as TumwaterConfig;
   });
+  if (result.ok && unchanged) return { ok: true, unchanged: true };
+  return result;
 }
 
 /** A shallow copy of `obj` without `key` — the copy each `unsetConfigKey` branch edits

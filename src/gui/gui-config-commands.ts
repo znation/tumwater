@@ -55,7 +55,7 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
  * cap (role-view.ts's guard exempts it), so it is refused up front with wording that mirrors
  * handleRoleNotes. A bare `feature-2` role id maps to its base role's cap (baseRoleOf), since
  * the cap is about the role. A write failure is configKeyError's 400 exactly as handleConfigSet
- * reports it. */
+ * reports it. A no-op write answers `unchanged: true`. */
 export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "maxDailyCostUsd": 2}');
   if (!body) return;
@@ -82,7 +82,7 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
   // exact, so the shared per-key validator + whole-config validateConfig apply unchanged.
   const result = setConfigKey(root, "maxDailyCostUsdPerRole." + baseRole, JSON.stringify(value));
   if (!result.ok) return configKeyError(res, "maxDailyCostUsdPerRole." + baseRole, result);
-  sendJson(res, 200, { ok: true, role: baseRole, maxDailyCostUsd: value as number });
+  sendJson(res, 200, { ok: true, role: baseRole, maxDailyCostUsd: value as number, ...(result.unchanged ? { unchanged: true } : {}) });
 }
 
 /** Handle POST /api/role-interval: the role drawer's min run interval editor sets or clears
@@ -95,7 +95,7 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
  * own the final truth. The director is accepted here — it ticks on the same clock, unlike
  * the cap's director exemption. A bare `feature-2` role id maps to its base role's override
  * (baseRoleOf), since the interval is about the role. A write failure is configKeyError's 400
- * exactly as handleRoleCap reports it. */
+ * exactly as handleRoleCap reports it. A no-op set or clear says so in its message. */
 export async function handleRoleInterval(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "minRunIntervalSeconds": 300}');
   if (!body) return;
@@ -117,7 +117,11 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
     if (rejectBadRole(root, res, role)) return;
     const clearResult = unsetConfigKey(root, `roles.${base}.minRunIntervalSeconds`);
     if (!clearResult.ok) return configKeyError(res, `roles.${base}.minRunIntervalSeconds`, clearResult);
-    sendJson(res, 200, { ok: true, role: base, message: `${base}: min run interval cleared` });
+    const message =
+      clearResult.oldValue === undefined
+        ? `${base}: min run interval is not set in tumwater.json, so nothing was cleared`
+        : `${base}: min run interval cleared`;
+    sendJson(res, 200, { ok: true, role: base, message });
     return;
   }
   // The shared rule (finite 0..MAX_DURATION_SECONDS), naming the per-role dotted key so a
@@ -131,7 +135,10 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
   // exact, so the shared per-key validator + whole-config validateConfig apply unchanged.
   const result = setConfigKey(root, `roles.${base}.minRunIntervalSeconds`, JSON.stringify(value));
   if (!result.ok) return configKeyError(res, `roles.${base}.minRunIntervalSeconds`, result);
-  sendJson(res, 200, { ok: true, role: base, minRunIntervalSeconds: value as number, message: `${base}: min run interval set to ${value as number}s` });
+  const message = result.unchanged
+    ? `${base}: min run interval is already ${value as number}s, so tumwater.json was not written`
+    : `${base}: min run interval set to ${value as number}s`;
+  sendJson(res, 200, { ok: true, role: base, minRunIntervalSeconds: value as number, message });
 }
 
 /** Handle POST /api/role-instances: the role drawer's instance-count editor sets or clears one
@@ -145,7 +152,7 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
  * branch rejects an instances key under any role but feature and bugfix (the director and
  * custom roles included). A bare `feature-2` role id maps to its base role's count (baseRoleOf),
  * since the count is about the role. A write failure is configKeyError's 400 exactly as
- * handleRoleInterval reports it. */
+ * handleRoleInterval reports it. A no-op set or clear says so in its message. */
 export async function handleRoleInstances(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "instances": 3}');
   if (!body) return;
@@ -167,7 +174,11 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
     if (rejectBadRole(root, res, role)) return;
     const clearResult = unsetConfigKey(root, `roles.${base}.instances`);
     if (!clearResult.ok) return configKeyError(res, `roles.${base}.instances`, clearResult);
-    sendJson(res, 200, { ok: true, role: base, message: `${base}: instances cleared` });
+    const message =
+      clearResult.oldValue === undefined
+        ? `${base}: instances is not set in tumwater.json, so nothing was cleared`
+        : `${base}: instances cleared`;
+    sendJson(res, 200, { ok: true, role: base, message });
     return;
   }
   // setConfigKey takes the raw CLI text; a JSON round-trip of an already-parsed value is
@@ -175,7 +186,10 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
   // roles may split and the 1–8 integer bound) apply unchanged.
   const result = setConfigKey(root, `roles.${base}.instances`, JSON.stringify(value));
   if (!result.ok) return configKeyError(res, `roles.${base}.instances`, result);
-  sendJson(res, 200, { ok: true, role: base, instances: value, message: `${base}: instances set to ${value as number}` });
+  const message = result.unchanged
+    ? `${base}: instances is already ${value as number}, so tumwater.json was not written`
+    : `${base}: instances set to ${value as number}`;
+  sendJson(res, 200, { ok: true, role: base, instances: value, message });
 }
 
 /** Handle POST /api/role-model: the role drawer's Model overrides editor sets or clears one
@@ -191,7 +205,7 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
  * Values are trimmed; `""` clears that field (never stored — checkStringField rejects an
  * empty string). The write rides setRoleModelFields, whose validateConfig names
  * roles.<base>.<field> on a bad value and refuses an unknown role, reported as a 400 exactly
- * as handleRoleInterval reports a write failure. */
+ * as handleRoleInterval reports a write failure. A no-op write says so in its message. */
 export async function handleRoleModel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "provider": "claude", "model": "claude-opus-5", "thinking": "high"}');
   if (!body) return;
@@ -211,7 +225,10 @@ export async function handleRoleModel(req: http.IncomingMessage, res: http.Serve
   const base = baseRoleOf(role);
   const result = setRoleModelFields(root, base, fields);
   if (!result.ok) return badRequest(res, result.error);
-  sendJson(res, 200, { ok: true, role: base, message: `${base}: model updated` });
+  const message = result.unchanged
+    ? `${base}: model overrides unchanged, so tumwater.json was not written`
+    : `${base}: model updated`;
+  sendJson(res, 200, { ok: true, role: base, message });
 }
 
 /** Handle POST /api/role-instructions: the role drawer's standing-instructions editor — the
@@ -225,7 +242,7 @@ export async function handleRoleModel(req: http.IncomingMessage, res: http.Serve
  * CLI's --clear-instructions); otherwise the write goes through the CLI's own setConfigKey
  * with the same JSON.stringify wrapper --instructions-file uses, so validateConfig owns the
  * 4096-char cap and the unknown-role check, and a write failure is configKeyError's 400
- * naming the dotted key. */
+ * naming the dotted key. A no-op set or clear says so in its message. */
 export async function handleRoleInstructions(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "text": "…"}');
   if (!body) return;
@@ -257,7 +274,8 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
  * its base role's key (baseRoleOf), so an instance disables/enables the role it belongs to.
  * The director cannot be disabled (with it disabled runnerIds omits it and no role dequeues the
  * operator's inbox), so a disable is refused explicitly; enabling the director stays harmless
- * and mirrors the CLI's --enable. */
+ * and mirrors the CLI's --enable. A role already in the requested state answers `already
+ * enabled`/`already disabled` and writes nothing. */
 async function setRoleEnabled(req: http.IncomingMessage, res: http.ServerResponse, root: string, enabled: boolean): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "selfcheck"}');
   if (!body) return;
@@ -270,7 +288,8 @@ async function setRoleEnabled(req: http.IncomingMessage, res: http.ServerRespons
   // checkBoolean expects, and validateConfig owns the unknown-role check in writeConfigMutation.
   const result = setConfigKey(root, key, enabled ? "true" : "false");
   if (!result.ok) return configKeyError(res, key, result);
-  sendJson(res, 200, { ok: true, role: base, message: `${base}: ${enabled ? "enabled" : "disabled"}` });
+  const state = enabled ? "enabled" : "disabled";
+  sendJson(res, 200, { ok: true, role: base, message: result.unchanged ? `${base}: already ${state}` : `${base}: ${state}` });
 }
 
 /** Handle POST /api/role-enable: the Settings view's "Disabled roles" card Enable button —
@@ -300,7 +319,8 @@ export async function handleRoleDisable(req: http.IncomingMessage, res: http.Ser
  * map path skips validateConfig — the guard the set branch gets free from validateConfig's
  * unknown-role refusal; otherwise the write goes through setConfigKey with the same
  * JSON.stringify wrapper, so checkQuietHours (naming quietHoursPerRole.<base>) and validateConfig
- * own the truth, and a write failure is configKeyError's 400 naming the dotted key. */
+ * own the truth, and a write failure is configKeyError's 400 naming the dotted key. A no-op set
+ * or clear says so in its message. */
 export async function handleRoleQuietHours(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "window": "23:00-07:00"}');
   if (!body) return;
@@ -354,12 +374,21 @@ function writeRoleJsonKey(
     if (guardClear?.()) return;
     const result = unsetConfigKey(root, key);
     if (!result.ok) configKeyError(res, key, result);
-    else sendJson(res, 200, { ok: true, role: base, message: `${base}: ${noun} cleared` });
+    else {
+      const message =
+        result.oldValue === undefined
+          ? `${base}: ${noun} is not set in tumwater.json, so nothing was cleared`
+          : `${base}: ${noun} cleared`;
+      sendJson(res, 200, { ok: true, role: base, message });
+    }
     return;
   }
   const result = setConfigKey(root, key, serialize(raw));
   if (!result.ok) configKeyError(res, key, result);
-  else sendJson(res, 200, { ok: true, role: base, message: setMessage(raw) });
+  else {
+    const message = result.unchanged ? `${base}: ${noun} unchanged, so tumwater.json was not written` : setMessage(raw);
+    sendJson(res, 200, { ok: true, role: base, message });
+  }
 }
 /** Handle POST /api/config-set: the Settings view's per-key Save — one curated key set to
  * one JSON value, through setConfigKey so the browser cannot drift from the CLI's rules
@@ -370,7 +399,7 @@ function writeRoleJsonKey(
  * JSON.stringify before setConfigKey parses it back, so `set model gpt-5`'s
  * JSON-or-literal rule is bypassed harmlessly: the browser already sent parsed JSON.
  * Same body discipline as /api/budget (readPostBody → 400 malformed/non-object, 413
- * oversized). */
+ * oversized). A value already in place answers `unchanged: true`. */
 export async function handleConfigSet(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"key": "model", "value": "gpt-5"}');
   if (!body) return;
@@ -384,7 +413,7 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
   // exact (JSON.parse(JSON.stringify(v)) === v), so the shared write path applies unchanged.
   const result = setConfigKey(root, key, JSON.stringify(body.value));
   if (!result.ok) return configKeyError(res, key, result);
-  sendJson(res, 200, { ok: true, key, value: result.value, oldValue: result.oldValue });
+  sendJson(res, 200, { ok: true, key, value: result.value, oldValue: result.oldValue, ...(result.unchanged ? { unchanged: true } : {}) });
 }
 
 /** Handle POST /api/config-unset: the Settings view's per-key Clear — one curated key removed,

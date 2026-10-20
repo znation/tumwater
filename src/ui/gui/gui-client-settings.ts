@@ -202,7 +202,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     try { value = JSON.parse(input.value); } catch { value = input.value; }
     try {
       const d = await postJson("/api/config-set", { key: key, value: value });
-      showFlash(d && d.oldValue === null ? "Saved " + key + " (was unset)" : "Saved " + key);
+      if (d && d.unchanged) showFlash(key + " is already that value — nothing saved");
+      else showFlash(d && d.oldValue === null ? "Saved " + key + " (was unset)" : "Saved " + key);
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));
     }

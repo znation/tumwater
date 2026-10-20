@@ -333,6 +333,7 @@ test("note-save posts the textarea, note-clear needs a second click, note-discar
 
 test("cap-edit opens the cap editor, cap-save posts the parsed cap, cap-discard closes it, and an invalid field posts nothing", () => {
   const posts: unknown[] = [];
+  let reply: unknown = {};
   const flashes: string[] = [];
   const events: string[] = [];
   const field = { value: "2", validity: { badInput: false } };
@@ -357,7 +358,7 @@ test("cap-edit opens the cap editor, cap-save posts the parsed cap, cap-discard 
       postAction: (path: string, body: unknown, done: (d: unknown) => string) => {
         posts.push([path, body]);
         // postAction toasts the callback's message — record it as the flash.
-        const msg = done({});
+        const msg = done(reply);
         flashes.push(msg);
         events.push(msg);
       },
@@ -376,6 +377,12 @@ test("cap-edit opens the cap editor, cap-save posts the parsed cap, cap-discard 
   scope.runAct("cap-save", "clean");
   assert.deepEqual(posts[1], ["/api/role-cap", { role: "clean", maxDailyCostUsd: 0 }]);
   assert.deepEqual(flashes[1], "Daily cap removed");
+  // A reply flagged unchanged flashes the no-op wording.
+  reply = { unchanged: true };
+  scope.runAct("cap-save", "clean");
+  assert.equal(flashes[2], "Daily cap unchanged");
+  reply = {};
+  flashes.length = 2;
   // A non-numeric field flashes the parse error and posts nothing.
   flashes.length = 0;
   posts.length = 0;

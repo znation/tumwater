@@ -367,7 +367,7 @@ test("setRoleModelFields sets, clears, and no-ops the model triple against the f
   // Re-clearing (the keys are already gone) is a no-op: the file bytes stay identical.
   const afterClear = fs.readFileSync(file, "utf8");
   r = setRoleModelFields(dir, "feature", { provider: "", model: "", thinking: "" });
-  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(r, { ok: true, unchanged: true });
   assert.equal(fs.readFileSync(file, "utf8"), afterClear, "clearing a never-set field leaves the file byte-identical");
 
   // undefined leaves that field as the file has it.

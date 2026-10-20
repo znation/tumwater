@@ -140,6 +140,13 @@ test("saveSetting posts the row's key and value and flashes the outcome", async 
   await saveSetting(form);
   assert.deepEqual(posts, [{ path: "/api/config-set", body: { key: "model", value: "gpt-5" } }]);
   assert.deepEqual(flashes, ["Saved model (was unset)"]);
+  // A reply flagged unchanged flashes the no-op wording.
+  const { saveSetting: saveSame } = settingsScope({
+    postJson: async () => ({ ok: true, key: "model", value: "gpt-5", oldValue: "gpt-5", unchanged: true }),
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await saveSame(form);
+  assert.equal(flashes[flashes.length - 1], "model is already that value — nothing saved");
   // A JSON object field (agents) posts the parsed object, not its text.
   let agentBody: unknown;
   const { saveSetting: saveAgents } = settingsScope({
