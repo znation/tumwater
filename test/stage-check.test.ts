@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { declaredNames, heldMovedFinding, pathTokens, planDependencyFinding, stageCheckFindings, waitingNoteFinding } from "../src/run/stage-check.js";
+import { FINISHED_ARCHIVES } from "../src/backlog/backlog-md.js";
+import { declaredNames, finishedDuplicateFindings, heldMovedFinding, pathTokens, planDependencyFinding, stageCheckFindings, waitingNoteFinding } from "../src/run/stage-check.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -110,6 +111,62 @@ _None yet._
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /PLANS\.md adds another "## Done" heading/);
+});
+
+const X_PLAN = "X (planned 2026-10-18 by the plan role; done";
+const doneMd = (...entries: string[]) => `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n${entries.join("\n\n")}\n`;
+const planEntry = (date: string, body: string) => `### ${X_PLAN} ${date} by the feature role)\n\n${body}`;
+
+test("finishedDuplicateFindings flags a re-finished plan that the archive already holds under another done date", () => {
+  const spec = FINISHED_ARCHIVES[0];
+  const archived = doneMd(planEntry("2026-10-19", "Old body."));
+  const empty = doneMd();
+  const archive = { head: archived, base: archived };
+  const found = finishedDuplicateFindings(spec, { head: doneMd(planEntry("2026-10-20", "New body.")), base: empty }, archive);
+  assert.equal(found.length, 1);
+  assert.match(found[0]!, /PLANS\.md's "## Done" entry "X .*" is already archived in PLANS-DONE\.md/);
+  // The archived copy's exact heading and body is dropped by the sweep.
+  assert.deepEqual(finishedDuplicateFindings(spec, { head: doneMd(planEntry("2026-10-19", "Old body.")), base: empty }, archive), []);
+  // An entry the base already held under ## Done is not this change's.
+  const had = doneMd(planEntry("2026-10-20", "New body."));
+  assert.deepEqual(finishedDuplicateFindings(spec, { head: had, base: had }, archive), []);
+});
+
+test("finishedDuplicateFindings flags a second archive copy under a new stamp, and leaves an exact re-paste to the structure check", () => {
+  const spec = FINISHED_ARCHIVES[0];
+  const live = { head: doneMd(), base: doneMd() };
+  const one = doneMd(planEntry("2026-10-19", "Body."));
+  const two = doneMd(planEntry("2026-10-20", "Body."), planEntry("2026-10-19", "Body."));
+  const found = finishedDuplicateFindings(spec, live, { head: two, base: one });
+  assert.equal(found.length, 1);
+  assert.match(found[0]!, /PLANS-DONE\.md holds "X .*" 2 times/);
+  const repaste = doneMd(planEntry("2026-10-19", "Body."), planEntry("2026-10-19", "Body."));
+  assert.deepEqual(finishedDuplicateFindings(spec, live, { head: repaste, base: one }), []);
+  assert.deepEqual(finishedDuplicateFindings(spec, live, { head: two, base: two }), []);
+});
+
+test("finishedDuplicateFindings covers BUGS.md's ## Fixed against BUGS-FIXED.md", () => {
+  const bug = (date: string) => `# Bugs\n\n## Open\n\n## Fixed\n\n### Y (found by the qa role 2026-10-18) — fixed ${date} by the bugfix role\n\nBody.\n`;
+  const found = finishedDuplicateFindings(
+    FINISHED_ARCHIVES[1],
+    { head: bug("2026-10-20"), base: "" },
+    { head: bug("2026-10-19"), base: bug("2026-10-19") },
+  );
+  assert.equal(found.length, 1);
+  assert.match(found[0]!, /already archived in BUGS-FIXED\.md/);
+});
+
+test("a re-finished plan the archive already holds yields the finished-duplicate finding", async () => {
+  const { wt } = await repoWith({
+    "PLANS.md": doneMd(),
+    "PLANS-DONE.md": doneMd(planEntry("2026-10-19", "Old body.")),
+  });
+  fs.writeFileSync(path.join(wt, "PLANS.md"), doneMd(planEntry("2026-10-20", "New body.")));
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /is already archived in PLANS-DONE\.md/);
 });
 
 test("a clean change yields no findings", async () => {

@@ -31,24 +31,28 @@
  * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
  * merge re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
  * anything that gets past the fix-up turn. `waitingNoteFinding` is staging-only and bugfix-only
- * for the same reason: it nudges a bugfix run that left a Progress note without the hold. */
+ * for the same reason: it nudges a bugfix run that left a Progress note without the hold.
+ * Like `planDependencyFinding`, `finishedDuplicateFindings` runs only at staging. The gate does
+ * not run it, because the sweep that creates the second copy runs after it. */
 
 import path from "node:path";
 import { changedFiles } from "../git/git-diff.js";
 import { conflictMarkerReason } from "../merge/merge-git.js";
 import { isExemptDiff } from "../review/exemptions.js";
-import { backlogStructureReason } from "../backlog/backlog-structure.js";
+import { backlogStructureReason, finishedTitle, readdedHeadings } from "../backlog/backlog-structure.js";
 import { protectedEditReason } from "../review/protected-edits.js";
 import { secretLeakReason } from "../review/secret-leaks.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { readTextOrNull } from "../files/files.js";
-import { BACKLOG_FILES, finishedArchiveOf, parseEntryDetails } from "../backlog/backlog-md.js";
+import { BACKLOG_FILES, FINISHED_ARCHIVES, finishedArchiveOf, parseEntryDetails, type FinishedArchive } from "../backlog/backlog-md.js";
+import { DONE_DATE_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
 import { entryKey, planDependencyProblems, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { WAITING_FOR_FAILURE_NOTE } from "../roles/role-guidance.js";
 import { gitTry } from "../git/git-run.js";
 import { moreSuffix } from "../text/phrases.js";
+import { collapseWhitespace, truncate } from "../text/text.js";
 
 /** Where finished plans are archived (plans/backlog-archive.md). */
 const PLANS_ARCHIVE = finishedArchiveOf("PLANS.md").archive;
@@ -129,6 +133,56 @@ export function planDependencyFinding(head: string, base: string, archivedTitles
   return `${first}${moreSuffix(total - 1)}`;
 }
 
+/** A finished heading's identity across done dates: the title without its completion stamp and
+ * its `(planned …)`/`(found …)` parenthetical, whitespace-collapsed. */
+function finishedKey(title: string, dateRe: RegExp): string {
+  return collapseWhitespace(finishedTitle(title, dateRe));
+}
+
+/** The findings for a finished entry that the change leaves in the archive too: a live
+ * `## Done`/`## Fixed` entry the head archive already holds under another stamp (the sweep would
+ * move it as a new entry, or leave it beside an edited copy), and an archive entry the change
+ * added a second time under a new stamp. At most one finding per rule. An exact copy of an
+ * archived entry (same heading and body) is skipped: the sweep drops it. A second copy under an
+ * identical heading is skipped too: `backlogStructureReason` reports it. */
+export function finishedDuplicateFindings(
+  spec: FinishedArchive,
+  live: { head: string; base: string },
+  archive: { head: string; base: string },
+): string[] {
+  const dateRe = spec.file === "PLANS.md" ? DONE_DATE_RE : FIXED_DATE_RE;
+  const keyed = (md: string) =>
+    parseEntryDetails(md, spec.section).map((e) => ({ ...e, key: finishedKey(e.title, dateRe) }));
+  const findings: string[] = [];
+  const liveBase = new Set(keyed(live.base).map((e) => e.key));
+  const archived = keyed(archive.head);
+  const copy = keyed(live.head).find((e) => {
+    if (liveBase.has(e.key)) return false;
+    const held = archived.filter((a) => a.key === e.key);
+    if (held.length === 0) return false;
+    const heading = collapseWhitespace(e.title);
+    return !held.some((a) => collapseWhitespace(a.title) === heading && a.body === e.body);
+  });
+  if (copy !== undefined) {
+    findings.push(
+      `${spec.file}'s "## ${spec.section}" entry "${truncate(copy.title, 160)}" is already archived in ${spec.archive} — ` +
+        "the commit-time sweep would leave two copies; edit the archived entry in place (its text and its stamp) and delete this copy",
+    );
+  }
+  if (readdedHeadings(archive.base, archive.head).length === 0) {
+    const count = (entries: { key: string }[], key: string) => entries.filter((e) => e.key === key).length;
+    const was = keyed(archive.base);
+    const twice = archived.find((e) => count(archived, e.key) > 1 && count(archived, e.key) > count(was, e.key));
+    if (twice !== undefined) {
+      findings.push(
+        `${spec.archive} holds "${truncate(twice.title, 160)}" ${count(archived, twice.key)} times — this change added a copy under a different heading or stamp; ` +
+          "keep the archived entry once, edited in place, and delete the other copies",
+      );
+    }
+  }
+  return findings;
+}
+
 /** The number of `- **Progress …` lines in an entry body. */
 function progressCount(body: string): number {
   return body.split("\n").filter((l) => /^-\s+\*\*Progress\b/.test(l.trim())).length;
@@ -186,6 +240,22 @@ export async function stageCheckFindings(
     const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
     const dependency = base === undefined ? undefined : planDependencyFinding(head, base, archived);
     if (dependency !== undefined) findings.push(dependency);
+  }
+  const baseRev = FINISHED_ARCHIVES.some((s) => files.includes(s.file) || files.includes(s.archive))
+    ? await changeBaseRev(wt, mainBranch).catch(() => undefined)
+    : undefined;
+  for (const spec of FINISHED_ARCHIVES) {
+    if (baseRev === undefined || !(files.includes(spec.file) || files.includes(spec.archive))) continue;
+    const duplicates = await (async () => {
+      const read = (f: string) => readTextOrNull(path.join(wt, f)) ?? "";
+      const at = async (f: string) => (await fileContentAt(wt, baseRev, f)) ?? "";
+      return finishedDuplicateFindings(
+        spec,
+        { head: read(spec.file), base: await at(spec.file) },
+        { head: read(spec.archive), base: await at(spec.archive) },
+      );
+    })().catch(() => []);
+    findings.push(...duplicates);
   }
   if (baseRoleOf(role) === "bugfix" && files.includes("BUGS.md")) {
     const head = readTextOrNull(path.join(wt, "BUGS.md")) ?? "";
