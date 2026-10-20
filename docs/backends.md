@@ -102,8 +102,9 @@ at) only when its model job can. Capability has one source of truth — `seamIma
 - **Claude model jobs** can always read images (every Claude model does), so a job on the claude backend
   answers `true` for any model, never probed.
 - **pi model jobs** read the model's `input` list in pi's `models.json` — `"image"` present means
-  capable, and *absent* means text-only. A pair missing from `models.json` is *unknown* (the
-  `models for each tier` doctor check already flags it), not assumed capable.
+  capable, and *absent* means text-only. A pair missing from `models.json` is *unknown*, not
+  assumed capable (the `models for each tier` doctor check flags a pair that is in neither
+  `models.json` nor `pi --list-models`; the image-capability lookup reads `models.json` only).
 
 A claimed pi model job is only as good as the **live probe** confirms: `tumwater doctor` shows each
 claimed model a real generated PNG and checks the answer, caching the verdict in

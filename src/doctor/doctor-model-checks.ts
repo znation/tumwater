@@ -264,6 +264,37 @@ export async function piProviderAuth(
   return "unknown";
 }
 
+/** Read the table `pi --list-models` prints into a set of `provider/model` keys. Null unless the
+ * first non-blank line is the `provider model …` header, so a "No models matching" reply or any
+ * other text is never taken for an empty catalog. */
+export function parsePiModelList(stdout: string): Set<string> | null {
+  const rows = stdout.split("\n").map((line) => line.trim().split(/\s+/)).filter((t) => t[0] !== "");
+  const header = rows.shift();
+  if (header?.[0] !== "provider" || header[1] !== "model") return null;
+  const listed = new Set<string>();
+  for (const [provider, model] of rows) if (model !== undefined) listed.add(`${provider}/${model}`);
+  return listed;
+}
+
+/** The models pi itself lists (`pi --list-models`), which include its built-in catalog that
+ * models.json does not repeat. pi lists only the providers it has credentials for. Null when the
+ * probe could not run or failed; never throws. */
+export async function piListedModels(
+  config: TumwaterConfig,
+  pathEnv: string = envPath(),
+  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
+): Promise<Set<string> | null> {
+  const result = await boundedProbe(
+    resolveAgentBin(config).bin,
+    ["--list-models"],
+    childEnv({ PATH: pathEnv }),
+    timeoutMs,
+    AUTH_CHECK_MAX_OUTPUT_BYTES,
+  );
+  if (result?.code !== 0) return null;
+  return parsePiModelList(result.stdout);
+}
+
 /** One bounded probe of the resolved `claude` binary under the scrubbed run environment a real
  * tick gets: resolve the binary through the claude adapter that would spawn it and run `args`
  * with a short deadline. Null when the probe could not run, the child errored, or the deadline
@@ -433,9 +464,14 @@ export async function checkTierModels(
   auth: (provider: string) => Promise<ProviderAuth> = (provider) =>
     piProviderAuth(loadConfigSafe(root).config ?? defaultConfig(), provider),
   env: NodeJS.ProcessEnv = process.env,
+  listModels: () => Promise<Set<string> | null> = () =>
+    piListedModels(loadConfigSafe(root).config ?? defaultConfig()),
 ): Promise<CheckOutcome> {
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
+  // Asked lazily and at most once: only a pair models.json does not declare needs the listing.
+  let listing: Promise<Set<string> | null> | undefined;
+  const listed = () => (listing ??= listModels());
   const pairs = new Map<string, { provider?: string; model?: string }>();
   // Routed (non-pi) models keyed by the backend they resolved to, so the routing note names
   // each backend correctly; opencode is not claude.
@@ -466,7 +502,9 @@ export async function checkTierModels(
       : ` — ${ompVars.join(" and ")} ${agree(ompVars.length, "is", "are")} set: tumwater does not read ${agree(ompVars.length, "it", "them")} (oh-my-pi's variables; pi ignores them; with omp as agentBin they still reach omp through the inherited environment) — set model.small / model.strong instead`;
   if (pairs.size === 0 && routedModels.size === 0)
     return (ompVars.length === 0 ? okOutcome : warnOutcome)(`no models declared — every model job uses pi's own default${ompNote}`);
-  const providers = readPiProviders(modelsPath);
+  let providers = readPiProviders(modelsPath);
+  if (!providers && [...pairs.values()].some((p) => p.provider !== undefined) && (await listed()))
+    providers = new Map();
   const fails: string[] = [];
   const warns: string[] = [];
   // Reserved agent ids: a pi provider whose name is an agent backend's id can never reach pi
@@ -496,21 +534,31 @@ export async function checkTierModels(
       warns.push(`${provider}/${model} runs on pi and is billed per token, not the Claude plan's included usage — use a bare claude-… id to route it to the claude CLI`);
     }
     const defs = providers?.get(provider);
-    if (!defs) {
-      fails.push(`provider ${provider} is not in pi's definitions (${modelsPath})`);
-      continue;
-    }
-    const def = defs.find((d) => d.id === model);
+    const def = defs?.find((d) => d.id === model);
     if (!def) {
-      // No exact entry: pi clones the provider's default model for the id, inheriting that
-      // default's price and context window (BUGS.md 2026-10-06) — name that consequence
-      // instead of only the failed lookup.
-      fails.push(
-        `${provider}/${model} does not resolve in pi's definitions (${modelsPath}) — pi would price it at the provider default's rates and context window`,
-      );
-      continue;
+      const listedModels = await listed();
+      if (!listedModels?.has(`${provider}/${model}`)) {
+        const providerListed = listedModels != null && [...listedModels].some((k) => k.startsWith(`${provider}/`));
+        if (!defs && !providerListed) {
+          fails.push(
+            listedModels === null
+              ? `provider ${provider} is not in pi's definitions (${modelsPath})`
+              : `provider ${provider} is not in pi's definitions (${modelsPath}) and \`pi --list-models\` lists none of its models — pi lists only providers it has credentials for`,
+          );
+        } else if (listedModels === null) {
+          // No exact entry: pi clones the provider's default model for the id, inheriting that
+          // default's price and context window (BUGS.md 2026-10-06) — name that consequence
+          // instead of only the failed lookup.
+          fails.push(
+            `${provider}/${model} does not resolve in pi's definitions (${modelsPath}) — pi would price it at the provider default's rates and context window`,
+          );
+        } else {
+          fails.push(`${provider}/${model} is neither in pi's definitions (${modelsPath}) nor listed by \`pi --list-models\``);
+        }
+        continue;
+      }
     }
-    if (cacheReadUnpriced(providers, provider, model)) {
+    if (def && providers && cacheReadUnpriced(providers, provider, model)) {
       // A priced model whose cache reads declare $0: pi bills cache-read tokens at zero and
       // the daily budget undercounts the real spend (BUGS.md 2026-10-06).
       warns.push(`${provider}/${model} prices cache reads at $0 — the daily budget will undercount its spend`);

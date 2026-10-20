@@ -11,6 +11,7 @@ import {
   checkImageInput,
   checkOpencode,
   checkTierModels,
+  parsePiModelList,
   piProviderAuth,
 } from "../src/doctor/doctor-model-checks.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -156,14 +157,14 @@ test("checkTierModels fails a pair pi cannot resolve and warns on an unready pro
   // A typo'd model id fails: a strong tier pi cannot resolve would fail every review.
   const typoRoot = readyRepo();
   writeConfig(typoRoot, { model: "paid/no-such-model" });
-  const typo = await checkTierModels(typoRoot, models, async () => "ready");
+  const typo = await checkTierModels(typoRoot, models, async () => "ready", process.env, async () => null);
   assert.equal(typo.level, "fail");
   assert.match(typo.detail, /paid\/no-such-model does not resolve/);
 
   // A provider pi has never heard of fails too.
   const unknownRoot = readyRepo();
   writeConfig(unknownRoot, { model: "nowhere/mystery" });
-  const unknownProvider = await checkTierModels(unknownRoot, models, async () => "ready");
+  const unknownProvider = await checkTierModels(unknownRoot, models, async () => "ready", process.env, async () => null);
   assert.equal(unknownProvider.level, "fail");
   assert.match(unknownProvider.detail, /provider nowhere is not in pi's definitions/);
 
@@ -183,7 +184,7 @@ test("checkTierModels fails a pair pi cannot resolve and warns on an unready pro
   // A role override naming a selector is one of the declared pairs.
   const roleRoot = readyRepo();
   writeConfig(roleRoot, { roles: { qa: { model: "paid/no-such-qa-model" } } });
-  const roleModel = await checkTierModels(roleRoot, models, async () => "ready");
+  const roleModel = await checkTierModels(roleRoot, models, async () => "ready", process.env, async () => null);
   assert.equal(roleModel.level, "fail");
   assert.match(roleModel.detail, /paid\/no-such-qa-model does not resolve/);
 });
@@ -284,7 +285,7 @@ test("checkTierModels warns when a priced model's cache reads are declared free"
 test("checkTierModels degrades to a warning when the definitions file is unreadable", async () => {
   const root = readyRepo();
   writeConfig(root, { model: "paid/gpt-x" });
-  const outcome = await checkTierModels(root, path.join(tmpdir(), "absent-models.json"), async () => "ready");
+  const outcome = await checkTierModels(root, path.join(tmpdir(), "absent-models.json"), async () => "ready", process.env, async () => null);
   assert.equal(outcome.level, "warn");
   assert.match(outcome.detail, /cannot check — could not read pi's model definitions/);
 });
@@ -314,7 +315,7 @@ test("checkTierModels reports set PI_*_MODEL variables and points at the tier ke
 
   // A fail outranks the note's warn; the note still travels with the detail.
   writeConfig(root, { model: "paid/missing" });
-  const failWithNote = await checkTierModels(root, models, async () => "ready", { PI_SMOL_MODEL: "x" });
+  const failWithNote = await checkTierModels(root, models, async () => "ready", { PI_SMOL_MODEL: "x" }, async () => null);
   assert.equal(failWithNote.level, "fail");
   assert.match(failWithNote.detail, /does not resolve .*PI_SMOL_MODEL is set/);
 
@@ -1068,4 +1069,78 @@ test("checkOpencode scans the XDG config home, not ~/.config, when XDG_CONFIG_HO
   const noXdg = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), home, "");
   assert.equal(noXdg.level, "warn");
   assert.match(noXdg.detail, /carries an MCP server — disabled for team runs/);
+});
+
+test("parsePiModelList reads pi's list-models table and refuses anything else", () => {
+  const header = "provider     model                      context  max-out  thinking  images";
+  const table = `${header}\nhuggingface  deepseek-ai/DeepSeek-V3.1  131.1K  8.2K  yes  no\nanthropic    claude-x  200K  8K  yes  yes\n`;
+  assert.deepEqual(parsePiModelList(table), new Set(["huggingface/deepseek-ai/DeepSeek-V3.1", "anthropic/claude-x"]));
+  assert.deepEqual(parsePiModelList(`${header}\n`), new Set());
+  assert.equal(parsePiModelList('No models matching "x"'), null);
+  assert.equal(parsePiModelList(""), null);
+  assert.equal(parsePiModelList("some arbitrary text\nmore"), null);
+});
+
+test("checkTierModels accepts a model pi lists but models.json does not declare", async () => {
+  const models = writeModels();
+  for (const pair of ["paid/built-in-x", "builtin/some-model"]) {
+    const root = readyRepo();
+    writeConfig(root, { model: pair });
+    const probed: string[] = [];
+    let listCalls = 0;
+    const outcome = await checkTierModels(
+      root,
+      models,
+      async (p) => {
+        probed.push(p);
+        return "ready";
+      },
+      process.env,
+      async () => {
+        listCalls++;
+        return new Set([pair]);
+      },
+    );
+    assert.equal(outcome.level, "ok", outcome.detail);
+    assert.match(outcome.detail, /1 declared model resolve/);
+    assert.deepEqual(probed, [pair.split("/")[0]]);
+    assert.equal(listCalls, 1);
+  }
+
+  const allDeclared = readyRepo();
+  writeConfig(allDeclared, { model: { small: "local/free-model", default: "paid/gpt-x" } });
+  let calls = 0;
+  const resolved = await checkTierModels(allDeclared, models, async () => "ready", process.env, async () => {
+    calls++;
+    return new Set();
+  });
+  assert.equal(resolved.level, "ok");
+  assert.equal(calls, 0, "a pair models.json declares never asks pi");
+
+  const empty = async () => new Set<string>();
+  const typoRoot = readyRepo();
+  writeConfig(typoRoot, { model: "paid/no-such-model" });
+  const typo = await checkTierModels(typoRoot, models, async () => "ready", process.env, empty);
+  assert.equal(typo.level, "fail");
+  assert.match(typo.detail, /is neither in pi's definitions .* nor listed by `pi --list-models`/);
+  const unknownRoot = readyRepo();
+  writeConfig(unknownRoot, { model: "nowhere/mystery" });
+  const unknown = await checkTierModels(unknownRoot, models, async () => "ready", process.env, empty);
+  assert.equal(unknown.level, "fail");
+  assert.match(unknown.detail, /lists none of its models/);
+  const listedRoot = readyRepo();
+  writeConfig(listedRoot, { model: "nowhere/typo-model" });
+  const listedTypo = await checkTierModels(listedRoot, models, async () => "ready", process.env, async () => new Set(["nowhere/real-model"]));
+  assert.equal(listedTypo.level, "fail");
+  assert.match(listedTypo.detail, /nowhere\/typo-model is neither in pi's definitions .* nor listed by `pi --list-models`/);
+  assert.doesNotMatch(listedTypo.detail, /lists none of its models/);
+
+  const absent = path.join(tmpdir(), "absent-models.json");
+  const unreadableRoot = readyRepo();
+  writeConfig(unreadableRoot, { model: "paid/gpt-x" });
+  const viaListing = await checkTierModels(unreadableRoot, absent, async () => "ready", process.env, async () => new Set(["paid/gpt-x"]));
+  assert.equal(viaListing.level, "ok", viaListing.detail);
+  const noListing = await checkTierModels(unreadableRoot, absent, async () => "ready", process.env, async () => null);
+  assert.equal(noListing.level, "warn");
+  assert.match(noListing.detail, /cannot check — could not read pi's model definitions/);
 });
