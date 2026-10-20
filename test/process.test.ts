@@ -501,3 +501,28 @@ test("terminateChild takes a live process group down promptly with the SIGTERM l
   if (outcome === "timeout") assert.fail("the child was left running after terminateChild");
   assert.equal(outcome.signal, "SIGTERM", "the SIGTERM leg did the killing");
 });
+
+test("parseLsofCwds keeps a name line only under a numeric process line", () => {
+  // An `n` line before any `p` line, or under a `p` line whose id is not a number, belongs to no
+  // pid: it must not become a NaN-keyed entry.
+  const cwds = parseLsofCwds(
+    ["n/before/any-process", "pabc", "fcwd", "n/under/non-numeric", "p7", "fcwd", "n/kept", "p8", "n/eight", ""].join("\n"),
+  );
+  assert.deepEqual([...cwds], [[7, "/kept"], [8, "/eight"]]);
+});
+
+test("systemProcessProbe.cwds answers an empty pid list without running lsof", async () => {
+  // Pin the platform so the lsof branch is the one an empty list could wrongly reach, and empty
+  // PATH so any lookup would fail. The control shows the same setup rejects for a real pid, so
+  // the empty answer did not come from a lookup.
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "darwin" });
+  const restorePath = pathReplace(tmpdir("no-lsof-"));
+  try {
+    assert.deepEqual(await systemProcessProbe.cwds([]), new Map());
+    await assert.rejects(systemProcessProbe.cwds([process.pid]));
+  } finally {
+    restorePath();
+    if (original) Object.defineProperty(process, "platform", original);
+  }
+});

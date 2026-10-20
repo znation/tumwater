@@ -2211,3 +2211,61 @@ counted as a leak. `runAgent` passes it the sweep's count and its killed flag.
 
 **Pinned by.** `test/run-marker.test.ts` — "leftoversSweptMessage words the sweep's count and stays
 silent for a killed or clean run".
+
+## Process table: the parsers skip what does not fit, cwds fails loudly, and the marker and port reads never fail
+
+`src/process/process-table.ts` only reads the host's process table: it never spawns or signals a
+process beyond its ps, lsof and top calls. Every consumer reaches it through the `ProcessProbe`
+interface, so tests run against a fake host.
+
+### INV-AM1: the ps, lsof and top parsers keep only lines that fit and never fail a scan
+
+**Guarantee.** `parsePsOutput`, `parseLsofCwds` and `parseTopPorts` skip a line that does not
+match their shape instead of throwing. A zombie row with no argv parses with an empty `command`.
+`parseLsofCwds` counts an `n` line only under a `p` line whose id is an integer, so a name line
+before any process line or under a non-numeric one belongs to no pid. `parseTopPorts` matches the
+process name exactly and keeps the largest count when several rows match.
+
+**Binds.** `src/process/process-table.ts` (`parsePsOutput`, `parseLsofCwds`, `parseTopPorts`).
+
+**Pinned by.** `test/process.test.ts` — "parsePsOutput reads BSD and procps rows, keeps argv
+spaces, and skips junk", "parseLsofCwds maps each pid to its cwd and leaves out a process lsof
+could not read", "parseTopPorts reads the named process's #PORTS from a top sample, the largest
+of several" and "parseLsofCwds keeps a name line only under a numeric process line".
+
+### INV-AM2: cwds answers lsof's partial output on a numeric exit, leaves out unreadable pids, and rejects only when no lookup could run
+
+**Guarantee.** `systemProcessProbe.cwds` returns an empty map for an empty pid list without
+running a lookup. On Linux it reads the `/proc/<pid>/cwd` link, strips a trailing ` (deleted)`,
+and leaves out a pid whose read fails. Elsewhere `readLsofCwds` keeps lsof's output on a numeric
+nonzero exit, because lsof exits 1 when any named pid is gone, and rejects when lsof could not
+run at all (missing, timed out, or killed by a signal), since a silent empty map would read as
+"no orphans". `list` likewise rejects when ps cannot run, but no test calls it directly; doctor's
+side of that is pinned by the `checkOrphans` test below.
+
+**Binds.** `src/process/process-table.ts` (`readLsofCwds`, `systemProcessProbe.cwds`).
+
+**Pinned by.** `test/process.test.ts` — "readLsofCwds answers lsof's parsed map on exit 0 and
+keeps its partial output on a nonzero exit", "readLsofCwds rejects when the runner could not run
+at all — no lsof, a timeout, or a signal", "systemProcessProbe.cwds rejects when no lookup could
+run at all — no lsof on PATH", "systemProcessProbe.cwds on Linux reads /proc, strips ' (deleted)',
+and skips vanished pids" and "systemProcessProbe.cwds answers an empty pid list without running
+lsof"; `test/doctor-orphans.test.ts` — "checkOrphans degrades instead of crashing doctor: no table
+warns, unreadable cwds fall back to argv".
+
+### INV-AM3: runMarkers and launchServicesPorts never reject: an unreadable source answers an empty map or null
+
+**Guarantee.** `systemProcessProbe.runMarkers` answers an empty map when its source cannot be
+read (for example ps failing), and on Linux it skips the scanner's own pid and vanished pids.
+`readLaunchServicesPorts` and `systemProcessProbe.launchServicesPorts` answer null when the
+sample fails, and off macOS they answer null without sampling. How a mark is matched lives in
+`src/process/run-marker.ts` (INV-AL2).
+
+**Binds.** `src/process/process-table.ts` (`systemProcessProbe.runMarkers`,
+`readLaunchServicesPorts`, `systemProcessProbe.launchServicesPorts`).
+
+**Pinned by.** `test/process.test.ts` — "systemProcessProbe.runMarkers on Linux reads /proc
+environ, skipping the scanner and vanished pids", "systemProcessProbe.runMarkers degrades to an
+empty map when the ps table cannot be read", "readLaunchServicesPorts answers null off macOS
+without asking for a sample" and "readLaunchServicesPorts parses an injected top sample on macOS
+and answers null when the sample fails".
