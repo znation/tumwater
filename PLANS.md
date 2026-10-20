@@ -767,4 +767,30 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - An unknown key, role or role field still fails with the same message (the "unset of an unknown key, role, or role field …" test passes unchanged).
 - `npm run test:gate` passes.
 
+### `tumwater wake` says which of the roles it names are disabled, so a bare `wake` no longer reads as waking `selfcheck` (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — the config get/set/unset entries edit src/cli/config-commands.ts and src/config, part 16/16 edits test/ comments only; this one touches src/operator/operator-intent.ts, docs/cli.md and test/operator-intent.test.ts)
+
+**Goal.** On a fresh project, `tumwater wake` prints `wake requested for feature, bugfix, plan, …, selfcheck, …, director — takes effect on the next tumwater start …` (checked against main's built CLI on 2026-10-20), and `wake --role selfcheck` prints `wake requested for selfcheck — …`. `selfcheck` is disabled by default (`roles.selfcheck.enabled` is false), so it has no runner and will not run, whatever the message says. Clearing a disabled role's backoff is deliberate: `requestWake` and `applyWakeMarker`'s `runnerlessTargets` loop do it so that the role starts fresh once it is enabled. Keep the targets as they are and fix only the wording. The confirmation should say which named roles are disabled and won't run until they are enabled.
+
+**Approach.** Do all of it in `requestWake` (src/operator/operator-intent.ts), the one place that builds the confirmation for the CLI (`cmdWake`), the dashboard (`handleWake`), the TUI (`tui-editor-pause.ts`, `tui-pane-backlog.ts`) and backlog filing (`backlog-cli.ts`), so none of them drift.
+- Read the config with `loadConfigCached(root).config` (src/config/config.ts). Use the cached read, not `loadConfig`: a broken config must not make a wake throw. When it returns no config, nothing changes.
+- A target is disabled when `config.roles[baseRoleOf(id)]?.enabled === false` (`baseRoleOf`, src/roles/runner-ids.ts). An id with no config entry is not called disabled, so the existing tests' `fix` role keeps its current message.
+- When one or more targets are disabled, append one clause after the existing message, for the immediate and the scheduled form alike: `; <ids> <is|are> disabled, so the wake only clears <its|their> backoff — enable <it|them> with tumwater config set roles.<id>.enabled true`. For several ids, write `roles.<id>.enabled` literally, as the template. Join the ids with `, `.
+- When no target is disabled, the message stays byte-identical to today's.
+- `cancelWakes`, `listWakes`, `requestResetCounters` and the wake targets are left alone.
+
+**Docs.** In docs/cli.md's "Control the roles" row, after the `wake` description, add one sentence: a disabled role named by `wake` (including a bare `wake`) has its backoff cleared and is called out as disabled in the confirmation.
+
+**Tests (test/operator-intent.test.ts).** Write `roles` into the test root's tumwater.json the way neighbouring tests set up config (check how this file seeds config; `teamWorkspace()` in test/fixtures/repo-fixtures.ts is the fixture for a full config). Cover:
+- one disabled target, immediate wake;
+- two enabled targets plus one disabled, scheduled wake (`inMs` 45m);
+- only enabled targets, where the message carries no `disabled` clause.
+
+**Acceptance criteria.**
+- With `roles.selfcheck.enabled` false and no team running, `requestWake(root, ["selfcheck"])` returns `wake requested for selfcheck — takes effect on the next \`tumwater start\` (tumwater is not running); selfcheck is disabled, so the wake only clears its backoff — enable it with tumwater config set roles.selfcheck.enabled true`. If the existing `applyClause` text differs from that, keep its wording and append only the `; selfcheck is disabled …` clause.
+- `requestWake(root, ["clean", "selfcheck"], 45 * 60_000)` starts `wake scheduled for clean, selfcheck — wakes in 45m — ` and ends with `; selfcheck is disabled, so the wake only clears its backoff — enable it with tumwater config set roles.selfcheck.enabled true`.
+- With two disabled targets the clause reads `; perf, selfcheck are disabled, so the wake only clears their backoff — enable them with tumwater config set roles.<id>.enabled true`.
+- With no disabled target the message is unchanged: the existing `^wake requested for fix — ` and `^wake scheduled for fix — wakes in 45m — ` assertions in test/operator-intent.test.ts, test/operator-commands.test.ts and test/cli-operators-team.test.ts pass unchanged.
+- The wake marker's `roles` and the cleared state files are unchanged: a bare wake still names every config role, disabled ones included.
+- `npm run test:gate` passes.
+
 ## Done
