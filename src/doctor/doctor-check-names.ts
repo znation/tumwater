@@ -43,6 +43,7 @@ export const DOCTOR_CHECK_NAMES = [
   "workspaces",
   "parallel instances",
   "leftover role branches",
+  "tumwater pins",
   "disk space",
   "check",
   "root install",

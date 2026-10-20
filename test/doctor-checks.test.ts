@@ -27,6 +27,7 @@ import {
   checkRepo,
   checkStateDir,
   checkLeftoverRoleBranches,
+  checkTumwaterPins,
   checkWorkInstances,
   checkWorktreePool,
 } from "../src/doctor/doctor-checks.js";
@@ -1178,6 +1179,21 @@ test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones,
   writeConfig(root, {});
   assert.match((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /feature-2/);
   assert.deepEqual(await checkLeftoverRoleBranches(root, null), { level: "ok", detail: "no readable tumwater.json — nothing to verify" });
+});
+
+test("checkTumwaterPins fails naming a pin whose commit is gone and reads ok for live pins", async () => {
+  const root = readyRepo();
+  assert.deepEqual(await checkTumwaterPins(root), { level: "ok", detail: "no tumwater pins" });
+  sh(root, "git", "update-ref", "refs/tumwater/rejected/bugfix", "HEAD");
+  assert.deepEqual(await checkTumwaterPins(root), { level: "ok", detail: "1 tumwater pin, each naming a commit that exists" });
+  const refFile = path.join(root, ".git", "refs", "tumwater", "merge", "feature-5");
+  fs.mkdirSync(path.dirname(refFile), { recursive: true });
+  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
+  const out = await checkTumwaterPins(root);
+  assert.equal(out.level, "fail");
+  assert.match(out.detail, /refs\/tumwater\/merge\/feature-5 names \w+, which is gone — git gc and a detached checkout abort on it; `git update-ref -d <ref>` drops each/);
+  assert.doesNotMatch(out.detail, /refs\/tumwater\/rejected\/bugfix/);
+  assert.equal(fs.existsSync(refFile), true);
 });
 
 const buildEvent = (fields: Record<string, unknown>): HarnessEvent =>

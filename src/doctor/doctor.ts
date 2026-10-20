@@ -37,6 +37,7 @@ import {
   checkStateDir,
   checkWorktreePool,
   checkLeftoverRoleBranches,
+  checkTumwaterPins,
   checkWorkInstances,
   type DoctorReport,
 } from "./doctor-checks.js";
@@ -139,6 +140,7 @@ export async function runDoctor(
     { name: "workspaces", run: () => checkWorktreePool(root) },
     { name: "parallel instances", run: () => checkWorkInstances(root, config) },
     { name: "leftover role branches", run: () => checkLeftoverRoleBranches(root, config) },
+    { name: "tumwater pins", run: () => checkTumwaterPins(root) },
     // The disk floor (plans/disk-floor.md, part 1/4): a broken config stays undefined (checkInit
     // reports it), so the check falls back to the 10 GB default rather than skipping itself.
     { name: "disk space", run: () => checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40) },

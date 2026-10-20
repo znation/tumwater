@@ -26,9 +26,11 @@ import {
   currentBranch,
   hasCommits,
   branchesPhrase,
+  commitExists,
   isGitRepo,
   listBranches,
   refSha,
+  refsUnder,
   repoToplevel,
 } from "../git/git.js";
 import {
@@ -849,6 +851,23 @@ export async function checkLeftoverRoleBranches(root: string, config?: TumwaterC
     );
   }
   return parts.length === 0 ? okOutcome("no branches left by disabled roles") : warnOutcome(parts.join("; "));
+}
+
+/** The "tumwater pins" row: fails when a `refs/tumwater/` pin (merge, rejected or legacy landing)
+ * names a commit that is gone. It fails rather than warns because such a pin stops `git gc`
+ * (and the `gc --auto` commits trigger), and a slot reset or leftover recovery only drops one
+ * when it reaches it. Read-only: it lists refs and names the `git update-ref -d` fix. */
+export async function checkTumwaterPins(root: string): Promise<CheckOutcome> {
+  const pins = await refsUnder(root, "refs/tumwater/");
+  const broken: { ref: string; sha: string }[] = [];
+  for (const pin of pins) if (!(await commitExists(root, pin.sha))) broken.push(pin);
+  if (broken.length === 0) {
+    return okOutcome(pins.length === 0 ? "no tumwater pins" : `${plural(pins.length, "tumwater pin")}, each naming a commit that exists`);
+  }
+  const n = broken.length;
+  return failOutcome(
+    `${broken.map((p) => `${p.ref} names ${shortSha(p.sha)}, which is gone`).join("; ")} — git gc and a detached checkout abort on ${agree(n, "it", "them")}; \`git update-ref -d <ref>\` drops each (the work ${agree(n, "it", "they")} pinned is already lost)`,
+  );
 }
 
 /** The ok detail of the instance check: non-zero counts, plans first, each pluralized. */
