@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { runDoctor } from "../src/doctor/doctor.js";
+import { DOCTOR_CHECK_NAMES } from "../src/doctor/doctor-check-names.js";
+import type { ProcessProbe } from "../src/process/process-table.js";
 import { renderDoctor, renderDoctorProblems, problemsOnly } from "../src/doctor/doctor-render.js";
 import { helpTopic } from "../src/cli/help.js";
 import { initProject } from "../src/init/init.js";
@@ -41,6 +43,11 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.deepEqual(
     report.checks.map((c) => c.name),
     ["node", "git binary", "repo", "init", "config key names", "brief", "bootstrap", "pause", "quiet hours", "budget", "claude window", "provider waits", "maintenance allowance", "provider concurrency", "provider contention", "check contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "disk space", "check", "root install", "flaky checks", "claimed bugs", "validation gaps", "plans stuck in Planned", "backlog headings", "backlog archive", "refusals", "stalled plans", "plan dependencies", "stale questions", "stale bugs", "waiting bugs", "regressed fixes", "stale merge-queue entries", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
+  );
+  // funes is absent: the fake PATH has no funes.
+  assert.deepEqual(
+    DOCTOR_CHECK_NAMES.filter((n) => n !== "funes"),
+    report.checks.map((c) => c.name),
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.
@@ -488,4 +495,50 @@ test("doctor --problems is accepted and wired — hides ok rows, JSON holds none
 test("doctor --problems keeps the exit-code contract on a failing environment", async () => {
   const r = await cliWithEnv(tmpdir(), { PATH: gitOnlyBinDir() }, ["doctor", "--problems"]);
   assert.equal(r.code, 1, `${r.stdout}\n${r.stderr}`);
+});
+
+test("runDoctor with only runs just the named checks, in report order", async () => {
+  const ready = await runDoctor(readyRepo(), fakeBins("git", "pi"), noProcesses, "never", ["orphans", "repo"]);
+  assert.deepEqual(ready.checks.map((c) => c.name), ["repo", "orphans"]);
+  assert.equal(ready.verdict, "ready to run");
+
+  const failing = await runDoctor(makeRepo(), "", noProcesses, "never", ["git binary"]);
+  assert.deepEqual(failing.checks.map((c) => [c.name, c.level]), [["git binary", "fail"]]);
+  assert.equal(failing.verdict, "1 problem");
+
+  // A skipped check is never evaluated: the orphan and port checks are the only readers.
+  let listed = 0;
+  let cwdsRead = 0;
+  const counting: ProcessProbe = {
+    async list() {
+      listed++;
+      return [];
+    },
+    async cwds() {
+      cwdsRead++;
+      return new Map();
+    },
+    runMarkers: async () => new Map(),
+    launchServicesPorts: async () => 1_000,
+  };
+  await runDoctor(readyRepo(), fakeBins("git", "pi"), counting, "never", ["node"]);
+  assert.equal(listed, 0);
+  assert.equal(cwdsRead, 0);
+});
+
+test("doctor <check>... runs the named checks and rejects an unknown name", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli doctor check names");
+
+  const one = await cli(repo, "doctor", "Orphans", "--json");
+  assert.equal(one.code, 0, `${one.stdout}\n${one.stderr}`);
+  assert.deepEqual(JSON.parse(one.stdout).checks.map((c: { name: string }) => c.name), ["orphans"]);
+
+  const two = await cli(repo, "doctor", "image input", "repo");
+  assert.ok(two.stdout.indexOf("repo") < two.stdout.indexOf("image input"), two.stdout);
+  assert.doesNotMatch(two.stdout, /orphans/);
+
+  const typo = await cli(repo, "doctor", "orphan");
+  assert.equal(typo.code, 1);
+  assert.match(typo.stderr, /unknown check "orphan" — did you mean `orphans`\?/);
 });

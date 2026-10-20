@@ -20,6 +20,8 @@ import {
   rejectUnknownDoubleDash,
 } from "./cli-flag-specs.js";
 import { fail } from "./cli-output.js";
+import { DOCTOR_CHECK_NAMES, type DoctorCheckName } from "../doctor/doctor-check-names.js";
+import { typoSuffix } from "../text/suggest.js";
 import { templateIds, unknownTemplateError } from "../init/init-templates.js";
 import { errorMessage } from "../text/text.js";
 
@@ -38,6 +40,23 @@ export function peelPositionals(args: string[]): {
   const rest: string[] = [];
   for (const arg of args) (arg.startsWith("-") ? rest : positionals).push(arg);
   return { positionals, rest };
+}
+
+/** Map `tumwater doctor`'s bare tokens to check names (case-insensitive, deduplicated, in the
+ * order named); undefined for none, which runs every check. An unknown name fails with the
+ * closest check as a hint. */
+export function parseDoctorChecks(positionals: string[]): DoctorCheckName[] | undefined {
+  if (positionals.length === 0) return undefined;
+  const names = new Set<DoctorCheckName>();
+  for (const token of positionals) {
+    const name = DOCTOR_CHECK_NAMES.find((n) => n.toLowerCase() === token.toLowerCase());
+    if (name === undefined)
+      fail(
+        `tumwater doctor: unknown check "${token}"${typoSuffix(token, DOCTOR_CHECK_NAMES)} (\`tumwater doctor\` lists every check by name)`,
+      );
+    else names.add(name);
+  }
+  return [...names];
 }
 
 /** The `history` listing flags that take a separate value token. */
