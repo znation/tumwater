@@ -9,12 +9,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   opencodeModelFree,
   opencodeModelKey,
   observeOpencodeRun,
   parseOpencodeCatalog,
+  readOpencodeCache,
   refreshOpencodeCatalog,
   writeOpencodeCache,
   type OpencodeCatalogCache,
@@ -253,4 +255,35 @@ test("observeOpencodeRun ignores unknown and already-priced models", () => {
 test("opencodeModelKey maps a bare gateway id and keeps a routed provider key", () => {
   assert.equal(opencodeModelKey("deepseek-v4.1-flash-free"), "opencode/deepseek-v4.1-flash-free");
   assert.equal(opencodeModelKey("opencode-go/deepseek-v4.1-flash"), "opencode-go/deepseek-v4.1-flash");
+});
+
+test("readOpencodeCache drops a foreign catalog entry and keeps the valid ones", () => {
+  const root = tmpdir("opencode-foreign-");
+  const ok = { free: true, context: 1000, efforts: ["high"], extra: 1 };
+  fs.mkdirSync(path.dirname(opencodeModelsPath(root)), { recursive: true });
+  fs.writeFileSync(
+    opencodeModelsPath(root),
+    JSON.stringify({
+      fetchedAt: 1,
+      models: {
+        "opencode/ok": ok,
+        "opencode/null": null,
+        "opencode/num": 7,
+        "opencode/yes": { free: "yes" },
+        "opencode/nofree": { context: 1000 },
+        "opencode/ctx": { free: true, context: "big" },
+        "opencode/eff": { free: false, efforts: "high" },
+        "opencode/eff2": { free: false, efforts: ["high", 3] },
+        "opencode/billed": { free: true, billedAt: "soon" },
+      },
+    }),
+  );
+  const cache = readOpencodeCache(root);
+  assert.deepEqual(cache.models, { "opencode/ok": ok });
+  assert.equal(opencodeModelFree(cache, "opencode/null"), false);
+  assert.equal(opencodeModelFree(cache, "opencode/yes"), false);
+  assert.equal(
+    observeOpencodeRun(root, { model: "opencode/null", costUsd: 1 }, { source: "feature", log: () => {} }),
+    null,
+  );
 });

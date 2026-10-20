@@ -173,20 +173,34 @@ export function observeOpencodeRun(
   return cache;
 }
 
+function isOpencodeCatalogModel(value: unknown): value is OpencodeCatalogModel {
+  if (!isJsonObject(value) || typeof value.free !== "boolean") return false;
+  const numbers = [value.inputPerM, value.outputPerM, value.context, value.billedAt];
+  if (!numbers.every((n) => n === undefined || (typeof n === "number" && Number.isFinite(n)))) return false;
+  if (value.images !== undefined && typeof value.images !== "boolean") return false;
+  return (
+    value.efforts === undefined ||
+    (Array.isArray(value.efforts) && value.efforts.every((e) => typeof e === "string"))
+  );
+}
+
 /** Read the cached catalog, or an empty one (fetchedAt 0, no models) when the file is missing
  * or malformed — the harness's no-data policy, so a torn write reads as "needs a refresh".
  * Exported so the opencode backend's adapter (part 6d/7) and doctor can read the same cache
  * without triggering a network fetch. The synchronous read the sync poll surfaces
  * (pollBudgetGate, collectBudget) use to thread the catalog-cache into their free-ness reads
  * (part 6b/7); the async refresh (which runs once per process at the startup gate) is what
- * fills the file in. */
+ * fills the file in. Entries that are not well-formed catalog models are dropped, so a foreign
+ * entry reads as a model missing from the cache — not free. */
 export function readOpencodeCache(root: string): OpencodeCatalogCache {
   const existing = readJsonFile<Partial<OpencodeCatalogCache>>(opencodeModelsPath(root));
   if (existing !== null && typeof existing.fetchedAt === "number" && isJsonObject(existing.models)) {
     return {
       fetchedAt: existing.fetchedAt,
       cliVersion: typeof existing.cliVersion === "string" ? existing.cliVersion : undefined,
-      models: existing.models,
+      models: Object.fromEntries(
+        Object.entries(existing.models).filter(([, entry]) => isOpencodeCatalogModel(entry)),
+      ),
     };
   }
   return { fetchedAt: 0, models: {} };

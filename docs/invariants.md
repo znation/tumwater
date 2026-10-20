@@ -3972,3 +3972,19 @@ count toward the role's error streak.
 queued" and "a qa flow record from the reply is written into the coverage file" (on the healthy path
 the flow is still recorded); `test/run-verdict.test.ts` — "a failed qa coverage write warns and the
 no_change run stands" and "a no_change run records its qa flow".
+
+## OpenCode catalog cache: a foreign entry reads as an unknown model
+
+### INV-BV1: readOpencodeCache returns only well-formed catalog entries
+
+**Guarantee.** `readOpencodeCache` returns only well-formed catalog entries, so a missing, torn or
+foreign cache file or entry never throws out of `pollBudgetGate`, `collectBudget` or
+`observeOpencodeRun`, and a dropped entry reads as not free.
+
+**Binds.** `src/agent/opencode/opencode-catalog.ts` (`readOpencodeCache`, `isOpencodeCatalogModel`).
+
+**Pinned by.** `test/opencode-catalog.test.ts` — "readOpencodeCache drops a foreign catalog entry
+and keeps the valid ones", "opencodeModelFree: free and unbilled is free; priced, unknown, or
+billed are not" and "observeOpencodeRun demotes a cached free model on a priced run, once" (a valid
+entry still round-trips); `test/status-budget.test.ts` — "a foreign entry in the opencode catalog
+cache leaves collectBudget standing, read as not free".

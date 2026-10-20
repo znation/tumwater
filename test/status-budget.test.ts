@@ -1,10 +1,12 @@
 import test from "node:test";
+import fs from "node:fs";
 import assert from "node:assert/strict";
 import { collectBudget } from "../src/status/status-budget.js";
 import { snapshot } from "../src/status/status-data.js";
 import { readOrchestratorInfo, writeOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
+import { opencodeModelsPath } from "../src/paths.js";
 import { loadConfig } from "../src/config/config.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";
@@ -61,6 +63,32 @@ test("collectBudget prices an opencode-free team free (part 6b/7)", async () => 
     now,
   );
   assert.equal(got.budget.free, true, "every tier on a catalog-free opencode model");
+});
+
+test("a foreign entry in the opencode catalog cache leaves collectBudget standing, read as not free", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "status opencode foreign");
+  writeOpencodeCache(repo);
+  fs.writeFileSync(
+    opencodeModelsPath(repo),
+    JSON.stringify({ fetchedAt: Date.now(), models: { "opencode/deepseek-v4.1-flash-free": null } }),
+  );
+  writeConfig(repo, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
+  const cfg = loadConfig(repo);
+  const modelsFile = writeModelsFile(tmpdir("status-opencode-"), LOCAL_FREE_MODELS_JSON);
+  const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
+  const snap = snapshot(repo, modelsFile, now);
+  const got = collectBudget(
+    repo,
+    cfg,
+    snap.roles,
+    snap.roles.map((l) => l.role),
+    false,
+    readOrchestratorInfo(repo),
+    modelsFile,
+    now,
+  );
+  assert.equal(got.budget.free, false, "a dropped entry is an unknown model, not free");
 });
 
 test("snapshot carries the orchestrator's chain block only while it is alive", async () => {
