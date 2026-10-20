@@ -3418,3 +3418,54 @@ lifted and subscription-window ones"; `test/orchestrator-scheduling.test.ts` —
 hold stops the director too, while a 429-storm hold still exempts it"; `test/team-polls.test.ts` —
 "a reserve crossing holds claude but not the director, and logs claude_window_reserved once per
 window".
+
+## Flake quarantine: a test that failed then passed on one tree is quarantined until its filed bug leaves ## Open, and a possibly truncated list never counts
+
+### INV-BI1: a flake that passed on a re-run quarantines each failing test it names, and a failure naming only quarantined tests goes on without a re-run
+
+**Guarantee.** A check that failed and then passed on the same tree quarantines each failing test
+it names, at the gate's re-run, the in-lock merge check's re-run and main-watch's confirming
+re-run. A test already listed counts another flake. A failure naming only quarantined tests goes
+on without a re-run.
+
+**Binds.** `src/review/known-flakes.ts` (`quarantineTests`, `onlyQuarantined`).
+
+**Pinned by.** `test/known-flakes.test.ts` — "quarantine: a new test is added once, a repeat
+counts, and only-quarantined needs every test listed"; `test/review-precheck.test.ts` — "a test
+that fails then passes on the gate's re-run is quarantined; a later failure of only that test goes
+on without a re-run"; `test/merger.test.ts` — "a red in-lock merge check whose immediate re-run
+passes merges and quarantines the failing test"; `test/main-watch.test.ts` — "a red whose
+confirming re-run passes quarantines the failing tests and files one BUGS.md entry on main" and "a
+red naming only quarantined tests is recorded passed and starts no bisect".
+
+### INV-BI2: an empty list, or one at `FAILING_TESTS_MAX`, is neither quarantined nor counted as only quarantined
+
+**Guarantee.** A list that may have been cut short by the parser is never recorded and never
+counts as only quarantined, even when every name in it is listed.
+
+**Binds.** `src/review/known-flakes.ts` (`quarantineTests`, `onlyQuarantined`).
+
+**Pinned by.** `test/known-flakes-quarantine.test.ts` — "quarantine: a failing list at the parser's
+cap is neither quarantined nor counted as only quarantined".
+
+### INV-BI3: the store keeps the `QUARANTINE_MAX` most recently seen tests and reads a malformed file as defaults
+
+**Guarantee.** The store keeps the `QUARANTINE_MAX` most recently seen tests. A malformed file or
+entry reads as no data or as defaults, never as a throw.
+
+**Binds.** `src/review/known-flakes.ts` (`loadQuarantine`, `QUARANTINE_MAX`).
+
+**Pinned by.** `test/known-flakes-quarantine.test.ts` — "quarantine: the store keeps the most
+recently seen tests, reads malformed entries as defaults, and counts a name once per call".
+
+### INV-BI4: a test leaves quarantine only once its filed bug is no longer under `## Open`
+
+**Guarantee.** A test leaves quarantine only once it has a filed BUGS.md heading and that heading
+is no longer under `## Open`. An unfiled test, or any test while BUGS.md is missing, stays.
+
+**Binds.** `src/review/known-flakes.ts` (`markQuarantineFiled`, `releaseQuarantine`).
+
+**Pinned by.** `test/known-flakes.test.ts` — "quarantine: a filed test leaves the list once its
+entry is not under ## Open"; `test/main-watch.test.ts` — "moving a quarantined test's bug out of
+## Open releases it"; `test/known-flakes-quarantine.test.ts` — "quarantine: a missing BUGS.md
+releases nothing, even a filed test".

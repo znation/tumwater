@@ -93,7 +93,7 @@ interface QuarantineEntry {
 }
 
 /** How many quarantined tests are kept; the oldest by lastSeen fall off. */
-const QUARANTINE_MAX = 100;
+export const QUARANTINE_MAX = 100;
 
 /** The quarantine list, a malformed file or entry reading as no data. */
 export function loadQuarantine(root: string): QuarantineEntry[] {
