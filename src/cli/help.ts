@@ -127,7 +127,8 @@ Usage:
                                    line matches, case-insensitively (like logs --grep);
                                    -f prints the last N rows oldest first, then one row
                                    per run as it ends, until Ctrl+C or its parent exits (not
-                                   with --since, --summary or --json);
+                                   with --since or --summary); with --json, one compact
+                                   JSON row per line (the --json row shape), like logs -f --json;
                                    --role takes a comma list, keeping the rows of any listed role;
                                    --result <class>[,<class>...] narrows to the listed outcome classes — merged
                                    (merged or waiting to merge), none (no_change/skipped/user_aborted),

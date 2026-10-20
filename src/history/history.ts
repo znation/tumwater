@@ -1,5 +1,5 @@
 // vocabulary: plain
-import { fail, say, sayJson } from "../cli/cli-output.js";
+import { fail, say, sayJson, sayJsonLine } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, tickRows, summarizeTickRows, summarizeTickRowsByModel, tickRowsMatchingGrep, tickRowsOnModels, type HistoryResultClass, type TickRow } from "./history-data.js";
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
@@ -76,8 +76,6 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
       failRivalShapes("history --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
     if (rest.includes("--summary"))
       failRivalShapes("history --summary", "-f/--follow", "a summary tallies a bounded set; -f follows from now on");
-    if (rest.includes("--json"))
-      failRivalShapes("history --json", "-f/--follow", "--json prints one document; -f streams rows");
   }
   const followTail = follow ? readEventsTailWithEnd(root, HISTORY_FOLLOW_BUFFER_EVENTS) : null;
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
@@ -151,7 +149,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
     rows = tickRowsOnModels(rows, pieces);
   }
   if (followTail !== null) {
-    await followHistory(root, rest, rows, followTail, (r) => rowKept(r, grepPattern, resultClasses, models), seams);
+    await followHistory(root, rest, rows, followTail, (r) => rowKept(r, grepPattern, resultClasses, models), seams, rest.includes("--json"));
     return;
   }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
@@ -219,7 +217,8 @@ function rowKept(row: TickRow, grep: string | null, classes: HistoryResultClass[
 }
 
 /** `history -f`: print the seed rows oldest first, then one row per `run_end` as it lands. A run
- * whose change waits to merge prints `queued` and no second line when the merge resolves. */
+ * whose change waits to merge prints `queued` and no second line when the merge resolves. With
+ * `json`, each row is one `sayJsonLine` object (the `history --json` row shape), nothing else. */
 async function followHistory(
   root: string,
   rest: string[],
@@ -227,10 +226,12 @@ async function followHistory(
   tail: { events: HarnessEvent[]; coveredEnd: number },
   keep: (row: TickRow) => boolean,
   seams: FollowSeams,
+  json: boolean,
 ): Promise<void> {
   const ordered = [...seed].reverse();
   let widths = widestWidths(ordered);
-  if (ordered.length > 0) say(ordered.map((r) => renderRow(r, widths)).join("\n"));
+  if (json) for (const r of ordered) sayJsonLine(r);
+  else if (ordered.length > 0) say(ordered.map((r) => renderRow(r, widths)).join("\n"));
   const seen = new Set(seed.map((r) => `${r.role}#${r.run}`));
   const buffer = [...tail.events];
   const role = parseRoleListScope(root, rest);
@@ -246,6 +247,10 @@ async function followHistory(
       const key = `${row.role}#${row.run}`;
       if (seen.has(key) || !keep(row)) continue;
       seen.add(key);
+      if (json) {
+        sayJsonLine(row);
+        continue;
+      }
       widths = widenWidths(widths, widestWidths([row]));
       say(renderRow(row, widths));
     }

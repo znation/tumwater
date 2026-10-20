@@ -22,6 +22,8 @@ async function follow(args: string[], seed: string, appended: string[]): Promise
   const file = eventsLogPath(repo);
   ensureParentDir(file);
   fs.writeFileSync(file, seed);
+  // Let the runner flush the previous test's result before stdout is captured.
+  await new Promise((r) => setTimeout(r, 50));
   const cap = captureStdout();
   let parent = 4242;
   let done = false;
@@ -71,8 +73,31 @@ test("history -f applies --role and --result to followed rows", async () => {
 
 test("history -f fails with its rival shapes", async () => {
   const repo = makeRepo();
-  for (const rival of [["--since", "1h"], ["--summary"], ["--json"]]) {
+  for (const rival of [["--since", "1h"], ["--summary"]]) {
     const err = await expectFailAsync(() => cmdHistory(repo, ["-f", ...rival]));
     assert.match(err, new RegExp(`${rival[0]}.*-f|-f.*${rival[0]}`));
   }
+});
+
+// The test runner's own stream can interleave with captured stdout, even mid-line, so pull
+// each row out by its first and last keys.
+const jsonRows = (out: string) => (out.match(/\{"ts":\d+,.*?"detail":"[^"]*"\}/g) ?? []).map((l) => JSON.parse(l));
+
+test("history -f --json streams one JSON row per line, seed oldest first", async () => {
+  const out = await follow(["-f", "--json"], seed, [start("clean", 3, 5, "acme/m2"), end("clean", 3, 6, "changed")]);
+  const rows = jsonRows(out);
+  assert.deepEqual(rows.map((r) => `${r.role}#${r.run}`), ["clean#1", "feature#2", "clean#3"]);
+  assert.equal(rows[2].model, "acme/m2");
+  assert.equal(typeof rows[2].ts, "number");
+});
+
+test("history -f --json applies --result to followed rows", async () => {
+  const more = [
+    start("clean", 6, 7), end("clean", 6, 8, "no_change"),
+    start("clean", 7, 9), end("clean", 7, 10, "changed"),
+  ];
+  const out = await follow(["--result", "merged", "-f", "--json"], seed, more);
+  const runs = jsonRows(out).map((r) => r.run);
+  assert.ok(runs.includes(7));
+  assert.ok(!runs.includes(6));
 });
