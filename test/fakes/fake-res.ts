@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import type http from "node:http";
 
 /** The shared fake `http.ServerResponse` for the dashboard endpoint unit tests
@@ -36,4 +37,15 @@ export async function captureJson(
   const { res, captured } = fakeRes();
   await run(res);
   return { captured, data: JSON.parse(captured.body) };
+}
+
+/** A fake `http.IncomingMessage` for the handlers that read a request body (the shared
+ * readJsonObject front half): an EventEmitter that emits `body` as one chunk, then ends. */
+export function fakeReq(body: string): http.IncomingMessage {
+  const req = new EventEmitter() as unknown as http.IncomingMessage;
+  process.nextTick(() => {
+    req.emit("data", Buffer.from(body));
+    req.emit("end");
+  });
+  return req;
 }

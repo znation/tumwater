@@ -1,22 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
-import type http from "node:http";
 import { handleRevert } from "../src/gui/gui-endpoint-commands.js";
-import { captureJson } from "./fakes/fake-res.js";
+import { captureJson, fakeReq } from "./fakes/fake-res.js";
 import { headSha, makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
 
 // POST /api/revert: the History drill-down's preview-then-revert button, through the same cores
 // `tumwater revert` uses.
-
-function fakeReq(body: string): http.IncomingMessage {
-  const req = new EventEmitter() as unknown as http.IncomingMessage;
-  process.nextTick(() => {
-    req.emit("data", Buffer.from(body));
-    req.emit("end");
-  });
-  return req;
-}
 
 const post = (root: string, body: unknown) => captureJson((res) => handleRevert(fakeReq(JSON.stringify(body)), res, root));
 const status = (root: string) => sh(root, "git", "status", "--porcelain");

@@ -2,8 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { EventEmitter } from "node:events";
-import type http from "node:http";
 import { readEventsTailWithEnd } from "../src/events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
@@ -36,7 +34,7 @@ import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { captureJson } from "./fakes/fake-res.js";
+import { captureJson, fakeReq } from "./fakes/fake-res.js";
 import { readJson } from "./helpers/json-read.js";
 import { rolePayload } from "../src/roles/role-view.js";
 import { summarizeRunRows, summarizeRunRowsByModel } from "../src/history/history-data.js";
@@ -197,15 +195,6 @@ test("handleFailures serves the windowed digest as { markdown } when ?sinceMs is
 // ---- POST /api/restart: the build-stale alert's refresh button ----
 // handleRestart reads a request body (the shared readJsonObject front half), so a fake req is
 // an EventEmitter that emits the body then ends — the same shape readBody's callbacks expect.
-function fakeReq(body: string): http.IncomingMessage {
-  const req = new EventEmitter() as unknown as http.IncomingMessage;
-  process.nextTick(() => {
-    req.emit("data", Buffer.from(body));
-    req.emit("end");
-  });
-  return req;
-}
-
 function serveRestart(root: string, body = "{}") {
   return captureJson((res) => handleRestart(fakeReq(body), res, root));
 }

@@ -2,26 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { EventEmitter } from "node:events";
-import type http from "node:http";
 import { handleRetireList } from "../src/gui/gui-endpoints.js";
 import { handleRetire } from "../src/gui/gui-endpoint-commands.js";
 import { worktreePath } from "../src/paths.js";
 import { initializedWorktree, sh, writeConfig } from "./fixtures/repo-fixtures.js";
-import { captureJson } from "./fakes/fake-res.js";
+import { captureJson, fakeReq } from "./fakes/fake-res.js";
 import { disableRole } from "./helpers/disable-role.js";
 
 // The dashboard's retire endpoints: GET /api/retire lists disabled roles' leftovers and POST
 // /api/retire removes them through the same cores `tumwater retire --role <id>` uses.
-
-function fakeReq(body: string): http.IncomingMessage {
-  const req = new EventEmitter() as unknown as http.IncomingMessage;
-  process.nextTick(() => {
-    req.emit("data", Buffer.from(body));
-    req.emit("end");
-  });
-  return req;
-}
 
 const post = (root: string, body: unknown) => captureJson((res) => handleRetire(fakeReq(JSON.stringify(body)), res, root));
 const branchExists = (root: string) => {
