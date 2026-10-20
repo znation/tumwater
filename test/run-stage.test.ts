@@ -17,6 +17,7 @@ import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { truncate } from "../src/text/text.js";
+import { readEvents } from "../src/events/event-read.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A fresh initialized repo plus the improve role's worktree with one changed file — the
@@ -382,7 +383,9 @@ test("a fix-up that drops a sibling's held entry leaves nothing to merge", async
 
   assert.equal(outcome.result, "no_change", "no duplicate reaches the gate, the review, or the merge slot");
   assert.equal(calls.pins.length, 0, "nothing was pinned");
-  assert.ok(calls.warnings.some((w) => w.includes('nothing to land')), calls.warnings.join("\n"));
+  assert.ok(
+    readEvents(root, 50).some((e) => e.type === "warning" && String(e.message).includes("nothing to land")),
+  );
 });
 
 test("an unassigned run that moves a held plan and a free one claims the free one", async () => {
@@ -731,7 +734,13 @@ test("a self-check finding triggers one follow-up and queues with the fixed warn
   assert.deepEqual(calls.stageFixRequests[0]!.findings, [
     "md-only BUGS.md edit moves X to Fixed, but none of its symbols exist",
   ]);
-  assert.deepEqual(calls.warnings, ["stage self-check: 1 finding — fixed by the follow-up turn"]);
+  assert.deepEqual(calls.warnings, []);
+  const outcomes = readEvents(root, 50).filter((e) => e.type === "warning");
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0]!.message, "stage self-check: 1 finding — fixed by the follow-up turn");
+  assert.equal(outcomes[0]!.source, "improve");
+  assert.deepEqual(outcomes[0]!.findings, ["md-only BUGS.md edit moves X to Fixed, but none of its symbols exist"]);
+  assert.equal("open" in outcomes[0]!, false);
   assert.equal(queuedMerges(root)[0]!.summary, "add the feature");
 });
 
@@ -768,8 +777,34 @@ test("a finding the follow-up leaves unfixed still queues, with the still-open w
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageChecks.length, 2);
   assert.equal(calls.stageFixRequests.length, 1);
-  assert.deepEqual(calls.warnings, ["stage self-check: 1 finding; 1 still open, queued for the gate"]);
+  assert.deepEqual(calls.warnings, []);
+  const outcomes = readEvents(root, 50).filter((e) => e.type === "warning");
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0]!.message, "stage self-check: 1 finding; 1 still open, queued for the gate");
+  assert.deepEqual(outcomes[0]!.findings, ["a finding"]);
+  assert.deepEqual(outcomes[0]!.open, ["a finding"]);
   assert.equal(queueDepth(root), 1, "the change queues regardless");
+});
+
+test("the self-check outcome warning caps the logged findings and their length", async () => {
+  const { root, wt } = await setup();
+  const { ctx } = makeCtx(root, wt, freshRunnerState("improve"), {
+    finalText: "SUMMARY: add the feature\n",
+    stageChecks: [Array.from({ length: 15 }, (_, i) => `finding ${i} ` + "x".repeat(400)), []],
+    stageFix: okPi({ finalText: "WHY: fixed\n" }),
+  });
+
+  await stageRunMerge(ctx);
+
+  const outcomes = readEvents(root, 50).filter((e) => e.type === "warning");
+  assert.equal(outcomes.length, 1);
+  const logged = outcomes[0]!.findings as string[];
+  assert.equal(logged.length, 12);
+  for (const f of logged) {
+    assert.ok(f.length <= 300);
+    assert.ok(f.endsWith("…"));
+  }
+  assert.ok(logged[0]!.startsWith("finding 0 "));
 });
 
 test("a clean self-check runs no follow-up turn", async () => {
@@ -800,7 +835,12 @@ test("no follow-up session leaves the finding for the gate and still queues", as
 
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageFixRequests.length, 1, "the fix-up was attempted once");
-  assert.deepEqual(calls.warnings, ["stage self-check: 1 finding; 1 still open, queued for the gate"]);
+  assert.deepEqual(calls.warnings, []);
+  const outcomes = readEvents(root, 50).filter((e) => e.type === "warning");
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0]!.message, "stage self-check: 1 finding; 1 still open, queued for the gate");
+  assert.deepEqual(outcomes[0]!.findings, ["a finding"]);
+  assert.deepEqual(outcomes[0]!.open, ["a finding"]);
 });
 
 test("an aborted self-check follow-up finalizes through the role and queues nothing", async () => {
@@ -837,9 +877,14 @@ test("a fix-up that reverts the whole change ends no_change with nothing queued"
   assert.equal(calls.stageFixRequests.length, 1);
   assert.equal(calls.pins.length, 0, "a clean worktree is never pinned");
   assert.equal(queueDepth(root), 0, "nothing is queued");
-  assert.deepEqual(calls.warnings, [
+  assert.deepEqual(calls.warnings, []);
+  const outcomes = readEvents(root, 50).filter((e) => e.type === "warning");
+  assert.equal(outcomes.length, 1);
+  assert.equal(
+    outcomes[0]!.message,
     "stage self-check: the follow-up turn left no change; nothing to land",
-  ]);
+  );
+  assert.deepEqual(outcomes[0]!.findings, ["a finding"]);
 });
 
 test("the real staging self-check leaves the index clean, so a full revert still ends no_change", async () => {
@@ -863,9 +908,14 @@ test("the real staging self-check leaves the index clean, so a full revert still
   assert.equal(calls.stageFixRequests.length, 1, "the real finding triggered the fix-up");
   assert.equal(calls.pins.length, 0, "a clean worktree is never pinned");
   assert.equal(queueDepth(root), 0, "nothing is queued");
-  assert.deepEqual(calls.warnings, [
+  assert.deepEqual(calls.warnings, []);
+  const outcomes = readEvents(root, 50).filter((e) => e.type === "warning");
+  assert.equal(outcomes.length, 1);
+  assert.equal(
+    outcomes[0]!.message,
     "stage self-check: the follow-up turn left no change; nothing to land",
-  ]);
+  );
+  assert.equal((outcomes[0]!.findings as string[]).length, 1);
 });
 
 for (const [label, finalText] of [

@@ -118,7 +118,7 @@ export interface HarnessEvent {
     | "restart_forced" // the operator pressed the dashboard's restart button: the pending restart's cooldown deferral is waived for the next poll (carries build)
     | "supervisor_exit" // the supervisor gave up without the operator asking: a generation exited with a failure (code/signal, reason when the startup gate names one) or the crash-loop guard tripped — the team is down
     | "state_migrated" // a startup migration moved persisted state to its current name (src/orchestrator/startup-migrations.ts): step, moved (count of changes, not kept collisions; older events may count them), detail (the changes, then any kept collisions); a step that only kept things logs nothing
-    | "warning";
+    | "warning"; // something is off but the loop continues: message; the stage self-check's outcome warnings (run/run-stage.ts) also carry findings (the finding texts, capped) and, when some stayed open after the fix-up turn, open
   [key: string]: unknown;
 }
 /** An event to log. `logEvent` stamps `ts`; event-specific extra fields (run, summary, …)

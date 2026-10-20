@@ -19,12 +19,40 @@ import {
 import { logEventBestEffort } from "../events/events.js";
 import { enqueueMerge, entryRevisionFields } from "../merge/merge-queue.js";
 import { plural } from "../text/phrases.js";
+import { squash } from "../text/text.js";
 import { recordFlow } from "./qa-coverage.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
 import { entryKey } from "../backlog/backlog-eligibility.js";
 import { assignedMovedFinding, heldMovedFinding } from "./stage-check.js";
 import { archiveNewFinishedEntries } from "../backlog/backlog-archive.js";
+
+/** The most findings one self-check outcome event carries. */
+const SELF_CHECK_LOGGED_FINDINGS = 12;
+/** The cap on each logged finding's text. */
+const SELF_CHECK_FINDING_CHARS = 300;
+
+/** The findings as the outcome event records them: capped in count and in each text's length. */
+function findingDigest(findings: readonly string[]): string[] {
+  return findings.slice(0, SELF_CHECK_LOGGED_FINDINGS).map((f) => squash(f, SELF_CHECK_FINDING_CHARS));
+}
+
+/** The self-check's outcome warning. It bypasses `ctx.warn` because it carries fields beyond a
+ * message (the finding texts, and those still open); the event shape is otherwise the same. */
+function logSelfCheckOutcome(
+  ctx: RunStageContext,
+  message: string,
+  findings: readonly string[],
+  remaining: readonly string[] = [],
+): void {
+  logEventBestEffort(ctx.root, {
+    source: ctx.role,
+    type: "warning",
+    message,
+    findings: findingDigest(findings),
+    ...(remaining.length > 0 ? { open: findingDigest(remaining) } : {}),
+  });
+}
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is
  * module-private there; this mirrors it so the run staging needs no export from it). */
@@ -228,14 +256,21 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
     // in the worktree there is nothing to commit or queue: end the run no_change here instead
     // of handing a clean tree to commitAll. The worktree is left clean and no pin is taken.
     if ((await changedFiles(ctx.wt)).length === 0) {
-      ctx.warn("stage self-check: the follow-up turn left no change; nothing to land");
+      logSelfCheckOutcome(
+        ctx,
+        "stage self-check: the follow-up turn left no change; nothing to land",
+        findings,
+      );
       return { result: "no_change" };
     }
     const remaining = await ctx.stageCheck(ctx.wt);
-    ctx.warn(
+    logSelfCheckOutcome(
+      ctx,
       remaining.length === 0
         ? `stage self-check: ${plural(before, "finding")} — fixed by the follow-up turn`
         : `stage self-check: ${plural(before, "finding")}; ${remaining.length} still open, queued for the gate`,
+      findings,
+      remaining,
     );
   }
 
