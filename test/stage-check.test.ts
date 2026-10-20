@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { FINISHED_ARCHIVES } from "../src/backlog/backlog-md.js";
-import { declaredNames, finishedDuplicateFindings, heldMovedFinding, pathTokens, planDependencyFinding, stageCheckFindings, strayPlaceholderFinding, waitingNoteFinding } from "../src/run/stage-check.js";
+import { declaredNames, pathTokens, stageCheckFindings } from "../src/run/stage-check.js";
+import {
+  finishedDuplicateFindings,
+  heldMovedFinding,
+  planDependencyFinding,
+  strayPlaceholderFinding,
+  waitingNoteFinding,
+} from "../src/run/stage-backlog-checks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 

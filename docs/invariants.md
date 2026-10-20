@@ -587,7 +587,7 @@ never holds. A note line (Refused, Needs review, Needs replan, Waiting for the n
 as well. `planDependencyProblems` reports a still-planned prerequisite named without the clause.
 
 **Binds.** `src/backlog/backlog-eligibility.ts` (`requiredParts`, `entryHoldAgainst`,
-`prerequisitesMerged`, `planDependencyProblems`), `src/run/stage-check.ts` and
+`prerequisitesMerged`, `planDependencyProblems`), `src/run/stage-backlog-checks.ts` and
 `src/doctor/doctor-backlog.ts` (where the wording problem is reported).
 
 **Pinned by.** `test/backlog-eligibility.test.ts` — "requiredParts reads the trailing
