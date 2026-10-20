@@ -88,6 +88,11 @@ import { gitLevelFindings } from "./stage-path-checks.js";
 /** Where finished plans are archived (plans/backlog-archive.md). */
 const PLANS_ARCHIVE = finishedArchiveOf("PLANS.md").archive;
 
+/** `file` as it stands at the change's merge-base with `mainBranch`, or undefined when the
+ * merge-base or the read fails. */
+const baseFileText = (wt: string, mainBranch: string, file: string): Promise<string | undefined> =>
+  changeBaseRev(wt, mainBranch).then((rev) => fileContentAt(wt, rev, file)).catch(() => undefined);
+
 /** The findings likely to get this uncommitted change rejected at merge, or an empty list when
  * it is clean: the merge gate's own deterministic checks plus the staging-only heuristics (plan
  * dependencies, the bugfix Waiting note, path drift). Checks the worktree at `wt` against
@@ -109,7 +114,7 @@ export async function stageCheckFindings(
   if (structure) findings.push(structure);
   if (files.includes("PLANS.md")) {
     const head = readTextOrNull(path.join(wt, "PLANS.md")) ?? "";
-    const base = await fileContentAt(wt, await changeBaseRev(wt, mainBranch), "PLANS.md").catch(() => undefined);
+    const base = await baseFileText(wt, mainBranch, "PLANS.md");
     // Finished plans are archived in PLANS-DONE.md (plans/backlog-archive.md): a requires clause
     // naming a merged part resolves there, on both sides of the comparison alike.
     const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
@@ -146,14 +151,14 @@ export async function stageCheckFindings(
   }
   if (baseRoleOf(role) === "bugfix" && files.includes("BUGS.md")) {
     const head = readTextOrNull(path.join(wt, "BUGS.md")) ?? "";
-    const base = await fileContentAt(wt, await changeBaseRev(wt, mainBranch), "BUGS.md").catch(() => undefined);
+    const base = await baseFileText(wt, mainBranch, "BUGS.md");
     const waiting = base === undefined ? undefined : waitingNoteFinding(head, base);
     if (waiting !== undefined) findings.push(waiting);
   }
   for (const file of PLACEHOLDER_FILES) {
     if (!files.includes(file)) continue;
     const head = readTextOrNull(path.join(wt, file)) ?? "";
-    const base = (await fileContentAt(wt, await changeBaseRev(wt, mainBranch), file).catch(() => undefined)) ?? "";
+    const base = (await baseFileText(wt, mainBranch, file)) ?? "";
     const stray = strayPlaceholderFinding(file, head, base);
     if (stray !== undefined) findings.push(stray);
   }
