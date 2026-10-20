@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 11/14: A failed reviewer run retries in place before the attempt ends `review_error` (planned 2026-10-19 by user; requires part 10/14 landed; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/review/review.ts src/runner/runner-pi.ts src/merge/merge-core.ts src/events/events.ts and their tests) — done 2026-10-19
+
+**Goal.** From 2026-10-17 to 2026-10-19, `review_error` ended 47 attempts and cost 34 h of pipeline time. A reviewer that timed out, was killed (exit 143), lost its connection or never stated a VERDICT ended the attempt. The change then waited for a requeue and paid the gate again. `runWithTransientRetry` (src/runner/runner-pi.ts) skips timeouts and kills. A timed-out review resumes only on the next attempt (`REVIEW_RESUME_LIMIT`).
+
+**Approach.**
+- In the review step (src/review/review.ts ~561-601), retry up to twice more within the same verify, 30 s apart, when the reviewer run:
+  - timed out or was quiet-killed;
+  - was killed by a signal;
+  - failed in transport or at the provider (not a `configError`);
+  - stated no VERDICT after its recovery turn.
+- Resume the session when `REVIEW_RESUME_LIMIT` allows; otherwise start fresh.
+- While the reviewer's provider is held (`reviewHeld`), wait for the hold to lift instead of counting an attempt.
+- Only after the retries does the attempt end `review_error`, as today. `REVIEW_FAILURE_LIMIT` keeps counting unparseable verdicts per head.
+- `review_failed` events carry `attempt`; register the field in src/events/events.ts.
+
+**Files touched.**
+- Source: src/review/review.ts, src/runner/runner-pi.ts, src/merge/merge-core.ts, src/events/events.ts.
+- Tests: the review tests with a fake reviewer.
+
+**Acceptance criteria.**
+- A fake reviewer exits 143 once, then approves: one verify, the change merges, and no `merge_failed` is logged.
+- Three failed reviewer runs end `review_error`, as today.
+- A configuration error is not retried.
+- `npm test` passes.
+
+**What changed.** The retry lives in `reviewAheadOfMain` (src/review/review.ts), not in `runWithTransientRetry`: src/runner/runner-pi.ts needed no change. A failed reviewer run (or a verdict-less reply after its recovery turn) retries up to twice in the same verify, 30 s apart, reusing the first attempt's green pre-check; `ReviewContext.reviewHeld` (wired from the merge pipeline's `startHeld`) makes a retry wait for the hold without spending one. A retried attempt's usage folds through `ReviewContext.foldUsage`. `retries`/`retryDelayMs` (`reviewRetries`/`reviewRetryDelayMs` on the merge scope context) are test seams.
+
 ### Fast merge, part 4b/14: A merge-slot task reverts the named culprit of a red main (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 4a/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/operator/revert.ts src/merge/merge-drain.ts src/merge/merge-git.ts src/baseline/main-watch.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md and their tests) — done 2026-10-19 by the feature role
 
 **Goal.** When part 4a/14 names a culprit, main should lose that commit within minutes instead of staying red while roles pile up fixes. Bugfix keeps fix-forward for what a revert cannot handle. Part 4c/14 hands the reverted change back to its role.

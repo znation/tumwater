@@ -95,31 +95,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Moving the bug entry out of `## Open` releases the test.
 - `npm test` passes.
 
-### Fast merge, part 11/14: A failed reviewer run retries in place before the attempt ends `review_error` (planned 2026-10-19 by user; requires part 10/14 landed; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/review/review.ts src/runner/runner-pi.ts src/merge/merge-core.ts src/events/events.ts and their tests)
-
-**Goal.** From 2026-10-17 to 2026-10-19, `review_error` ended 47 attempts and cost 34 h of pipeline time. A reviewer that timed out, was killed (exit 143), lost its connection or never stated a VERDICT ended the attempt. The change then waited for a requeue and paid the gate again. `runWithTransientRetry` (src/runner/runner-pi.ts) skips timeouts and kills. A timed-out review resumes only on the next attempt (`REVIEW_RESUME_LIMIT`).
-
-**Approach.**
-- In the review step (src/review/review.ts ~561-601), retry up to twice more within the same verify, 30 s apart, when the reviewer run:
-  - timed out or was quiet-killed;
-  - was killed by a signal;
-  - failed in transport or at the provider (not a `configError`);
-  - stated no VERDICT after its recovery turn.
-- Resume the session when `REVIEW_RESUME_LIMIT` allows; otherwise start fresh.
-- While the reviewer's provider is held (`reviewHeld`), wait for the hold to lift instead of counting an attempt.
-- Only after the retries does the attempt end `review_error`, as today. `REVIEW_FAILURE_LIMIT` keeps counting unparseable verdicts per head.
-- `review_failed` events carry `attempt`; register the field in src/events/events.ts.
-
-**Files touched.**
-- Source: src/review/review.ts, src/runner/runner-pi.ts, src/merge/merge-core.ts, src/events/events.ts.
-- Tests: the review tests with a fake reviewer.
-
-**Acceptance criteria.**
-- A fake reviewer exits 143 once, then approves: one verify, the change merges, and no `merge_failed` is logged.
-- Three failed reviewer runs end `review_error`, as today.
-- A configuration error is not retried.
-- `npm test` passes.
-
 ### Fast merge, part 12/14: The review runs alongside the gate check instead of after it (planned 2026-10-19 by user; requires part 11/14 landed; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/review/review.ts src/review/review-precheck.ts src/merge/merge-batch.ts src/git/worktree-pool.ts src/prompt/gate-prompts.ts src/merge/merge-slot.ts and their tests)
 
 **Goal.** The reviewer starts only after `gateBuildPrecheck` passes (src/review/review.ts ~262-321), so every attempt pays the gate's duration (p50 67 s) before the review begins. The two can run at once.

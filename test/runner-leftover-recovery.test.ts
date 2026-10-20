@@ -43,6 +43,9 @@ async function pinLeftover(
 }
 import { conflictingMainEdit, firstRunThenIdle, seedBranchEdit, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./fixtures/pi-events.js";
+
+// A failed review retries in place (src/review/review.ts); the pause between tries is not tested.
+process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = "0";
 // The crash path of plans/merge-queue.md invariant 7: a shutdown between the tick's commitAll
 // and its merge leaves the pin on disk (the branch is already reset to main). The next tick
 // must re-merge that sha through the SAME gate — reviewed, never smuggled in unreviewed.
@@ -461,7 +464,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
       const mergeWt = path.join(repo, ".tumwater/worktrees/_slot-1");
       assert.ok(!fs.existsSync(path.join(mergeWt, "stray.txt")), "the reviewer's stray file is cleaned on re-merge");
       const failed = eventsOfType(repo, "review_failed");
-      assert.equal(failed.length, 2, "both the tick's review and its recovery review failed");
+      assert.equal(failed.length, 6, "both the tick's review and its recovery review failed, each on its 3 in-place attempts");
       assert.ok(
         failed.some((e) => String(e.message).includes('no parseable VERDICT')),
         `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,

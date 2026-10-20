@@ -55,6 +55,9 @@ export function makeCtx(
     root,
     mainBranch: "main",
     config: defaultConfig(),
+    // No in-place reviewer retries unless a test opts in: most cases count one run per verify.
+    reviewRetries: 0,
+    reviewRetryDelayMs: 0,
     state,
     runPi: async (wt, prompt, session) => {
       calls.push({ wt, prompt, session });
@@ -175,6 +178,8 @@ export function makeBatchCtx(root: string, config?: TumwaterConfig, controller?:
     config: config ?? defaultConfig(),
     signal: () => (controller ?? new AbortController()).signal,
     runGatePi: async (opts) => runPi(opts),
+    reviewRetries: 0,
+    reviewRetryDelayMs: 0,
   };
 }
 

@@ -71,6 +71,26 @@ test("an approved merge merges on main and deletes the ref", async () => {
   );
 });
 
+test("a reviewer killed once (exit 143) is retried in the verify: the change merges with no merge_failed", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  await withPi(
+    `n=$(cat '${counter}' 2>/dev/null || echo 0)\nn=$((n+1))\necho $n > '${counter}'\n` +
+      `if [ $n -le 1 ]; then exit 143; fi\n` +
+      `printf '%s\\n' '${assistantLine("VERDICT: approve\nfine")}'`,
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      const state = freshLoopState(ROLE);
+      const { ctx } = makeCtx(root, state);
+
+      assert.equal(await verifyAndMerge({ ...ctx, reviewRetries: 2 }, request(sha)), "changed");
+
+      assert.equal(mainSha(root), sha, "the pinned commit is main's head");
+      assert.equal(fs.readFileSync(counter, "utf8").trim(), "2", "one failed run, one approving run");
+      assert.equal(eventsOfType(root, "merge_failed").length, 0);
+    },
+  );
+});
+
 test("the gate's verdict is durable on disk before the tick's end save", async () => {
   // Regression (2026-09-14): state was written to disk only at tick boundaries, so a
   // sudden death after the gate's verdict (power loss, kill -9) left the last

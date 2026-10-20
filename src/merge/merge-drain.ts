@@ -192,6 +192,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
           onChangeStatus: (role, status) => setMergeChangeStatus(root, role, status),
           onResult: settleOne,
           runGatePi: (opts) => picks[0]!.author.runGatePi(opts),
+          reviewHeld: () => ctx.startHeld(),
         },
         picks.map((v) => ({
           role: v.entry.role,

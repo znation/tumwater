@@ -188,6 +188,9 @@ export async function mergeApproved(
     runGatePi: (opts) => w.runGatePi(opts),
     foldUsage: w.foldUsage,
     signal: ctx.signal,
+    reviewHeld: ctx.reviewHeld,
+    reviewRetries: ctx.reviewRetries,
+    reviewRetryDelayMs: ctx.reviewRetryDelayMs,
   });
   let aborted = false;
   // Every finalized result goes through here: record it, then hand it to the caller's

@@ -75,6 +75,13 @@ export interface MergeScopeContext {
   config: TumwaterConfig;
   /** The task's abort signal, fresh per call. */
   signal(): AbortSignal;
+  /** Whether the reviewer's provider is held: a failed reviewer run's in-place retry waits for
+   * the hold to lift (ReviewContext.reviewHeld). */
+  reviewHeld?(): boolean;
+  /** Test seams for the reviewer's in-place retries (ReviewContext.retries / retryDelayMs);
+   * production callers leave them unset. */
+  reviewRetries?: number;
+  reviewRetryDelayMs?: number;
 }
 
 /** MergerContext: what the merger (merge-batch.ts and merge-core.ts) needs from its owning
@@ -136,9 +143,10 @@ export async function syncPinToMain(
  * (ReviewGateContext and MergerContext) carry the root/mainBranch/config/signal/runGatePi fields
  * this reads. */
 function reviewContextFor(
-  ctx: Pick<ReviewGateContext, "root" | "mainBranch" | "config" | "signal" | "runGatePi">,
+  ctx: Pick<ReviewGateContext, "root" | "mainBranch" | "config" | "signal" | "runGatePi" | "reviewHeld" | "reviewRetries" | "reviewRetryDelayMs">,
   req: MergeRequest,
   wt: string,
+  foldUsage: (run: PiRunResult) => void,
 ): ReviewContext {
   return {
     root: ctx.root,
@@ -152,6 +160,10 @@ function reviewContextFor(
     sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.tick}-${shortSha(req.sha)}`),
     signal: ctx.signal(),
     runGatePi: ctx.runGatePi,
+    foldUsage,
+    ...(ctx.reviewRetries !== undefined ? { retries: ctx.reviewRetries } : {}),
+    ...(ctx.reviewRetryDelayMs !== undefined ? { retryDelayMs: ctx.reviewRetryDelayMs } : {}),
+    ...(ctx.reviewHeld ? { reviewHeld: () => ctx.reviewHeld!() } : {}),
     revisionRound: req.revisionRound,
     priorReview: req.priorReview,
   };
@@ -193,7 +205,7 @@ export async function reviewPinnedChange(
   // (fail closed) exactly as for an abort mid-review below.
   if (ctx.signal().aborted) return { kind: "result", result: "aborted" };
   const gate = await reviewAheadOfMain(
-    reviewContextFor(ctx, req, wt),
+    reviewContextFor(ctx, req, wt, foldUsage),
     state,
     req.summary,
     req.body,
@@ -409,7 +421,7 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
         // convention as reviewPinnedChange: the reject path records the verdict, resets the
         // worktree to main and logs review_rejected itself; the ref and the lastError are ours.
         const gate = await reviewAheadOfMain(
-          reviewContextFor(ctx, req, resolvedWt),
+          reviewContextFor(ctx, req, resolvedWt, ctx.foldUsage),
           ctx.state,
           req.summary,
           req.body,

@@ -356,6 +356,77 @@ test("gate discards the leftover after three failed reviews of one HEAD", async 
   });
 });
 
+// A reviewer run that fails is retried in place before the attempt ends (REVIEW_RETRIES). The
+// fake reviewer counts its runs in a file outside the worktree and fails the first `failRuns`.
+function flakyReviewer(counter: string, failRuns: number, failure: string): string {
+  return `n=$(cat '${counter}' 2>/dev/null || echo 0)\nn=$((n+1))\necho $n > '${counter}'\n` +
+    `if [ $n -le ${failRuns} ]; then ${failure}; fi\n` +
+    `printf '%s\\n' '${assistantLine("VERDICT: approve\nLooks fine.")}'`;
+}
+
+test("a reviewer killed once (exit 143) is retried in the same verify and approves", async () => {
+  const { root, wt } = await gateFixture();
+  const counter = path.join(tmpdir(), "runs");
+  await withPi(flakyReviewer(counter, 1, "exit 143"), async () => {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2 }, state);
+    assert.equal(result.decision, "approved");
+    assert.equal(fs.readFileSync(counter, "utf8").trim(), "2");
+    const failed = eventsOfType(root, "review_failed");
+    assert.equal(failed.length, 1);
+    assert.equal(failed[0]!.attempt, 1);
+    assert.equal(state.unreviewFailures ?? 0, 0);
+  });
+});
+
+test("three failed reviewer runs end the attempt failed, as before", async () => {
+  const { root, wt } = await gateFixture();
+  const counter = path.join(tmpdir(), "runs");
+  await withPi(flakyReviewer(counter, 99, "exit 143"), async () => {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2 }, state);
+    assert.equal(result.decision, "failed");
+    assert.equal(fs.readFileSync(counter, "utf8").trim(), "3");
+    assert.deepEqual(eventsOfType(root, "review_failed").map((e) => e.attempt), [1, 2, 3]);
+    assert.equal(await aheadOfMain(wt, "main"), 1);
+  });
+});
+
+test("a verdict-less reviewer is retried, and only the final attempt counts the strike", async () => {
+  const { root, wt } = await gateFixture();
+  const counter = path.join(tmpdir(), "runs");
+  const reply = `printf '%s\\n' '${assistantLine("no verdict")}'; exit 0`;
+  await withPi(flakyReviewer(counter, 99, reply), async () => {
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2 }, state);
+    assert.equal(result.decision, "failed");
+    assert.equal(state.unreviewFailures, 1);
+  });
+});
+
+test("a provider configuration error is not retried", async () => {
+  const { root, wt } = await gateFixture();
+  const counter = path.join(tmpdir(), "runs");
+  await withPi(flakyReviewer(counter, 99, "echo 'HTTP 401: invalid api key' >&2; exit 1"), async () => {
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2 }, freshLoopState(ROLE));
+    assert.equal(result.decision, "failed");
+    assert.equal(result.configError, true);
+    assert.equal(fs.readFileSync(counter, "utf8").trim(), "1");
+  });
+});
+
+test("a retry waits out a provider hold without spending a retry", async () => {
+  const { root, wt } = await gateFixture();
+  const counter = path.join(tmpdir(), "runs");
+  await withPi(flakyReviewer(counter, 3, "exit 143"), async () => {
+    let polls = 0;
+    // Held for the first three polls of each wait; the failures during a hold cost nothing.
+    const reviewHeld = () => polls++ % 4 < 3 && polls < 8;
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2, reviewHeld }, freshLoopState(ROLE));
+    assert.equal(result.decision, "approved");
+  });
+});
+
 test("gate does not discard the commit when the reviewer run itself fails", async () => {
   // A dead reviewer backend: pi exits non-zero with no assistant output at all, so the run
   // FAILED (pi.ok false) rather than replying without a VERDICT. That says nothing about the

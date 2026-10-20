@@ -94,6 +94,16 @@ export interface ReviewContext {
    * gate gets the same retry as an authoring run). Every caller supplies it; the tests'
    * gateCtx wires the bare runPi so the offline fake-pi shim still drives the reviewer. */
   runGatePi: GateRunsPi["runGatePi"];
+  /** Folds the usage of a reviewer attempt that is retried in place (the final attempt's runs
+   * are folded by the caller). Absent in tests that ignore usage. */
+  foldUsage?: (run: PiRunResult) => void;
+  /** Whether the reviewer's provider is held; a retry waits for the hold to lift instead of
+   * spending one of its retries. */
+  reviewHeld?: () => boolean;
+  /** In-place retries of a failed reviewer run; defaults to 2. A test seam. */
+  retries?: number;
+  /** The pause before an in-place retry; defaults to 30 s. A test seam. */
+  retryDelayMs?: number;
 }
 
 /** What the gate decided and what the caller should do next. "approved"/"exempt": safe to
@@ -141,6 +151,25 @@ export interface GateResult {
    * into the loop totals like followUpRun. Absent when the reviewer never broke the
    * no-re-run rule (or there was no session to continue). */
   nudgeRun?: PiRunResult;
+  /** Internal to reviewAheadOfMain: the attempt failed in a way worth retrying in place. Never
+   * set on a result the wrapper returns. */
+  retryable?: boolean;
+}
+
+/** In-place retries of a failed reviewer run within one verify, after the first run. */
+const REVIEW_RETRIES = 2;
+/** The pause before each retry (ReviewContext.retryDelayMs overrides it in tests). */
+const REVIEW_RETRY_DELAY_MS = 30_000;
+/** Overrides the pause for tests that drive a whole runner or orchestrator, where no context
+ * reaches the review. */
+const REVIEW_RETRY_DELAY_ENV = "TUMWATER_REVIEW_RETRY_DELAY_MS";
+
+/** Per-verify state shared by a review's attempts: the attempt number the `review_failed` event
+ * carries, the retries still allowed, and the first attempt's green pre-check. */
+interface ReviewRetry {
+  attempt: number;
+  retriesLeft: number;
+  pre?: { verifiedHead?: string; verifiedByHarness?: string; knownMainFailures?: string[] };
 }
 
 /** Run the adversarial review gate over everything ahead of main in `wt` and update `state`
@@ -170,12 +199,13 @@ export interface GateResult {
  * `highFriction` marks a change whose authoring run burned more than the configured turn/time
  * thresholds (plans/refusal-and-thrash.md): the flag rides along in the review prompt so the
  * reviewer applies extra scrutiny to whether the work should exist at all. */
-export async function reviewAheadOfMain(
+async function reviewAttempt(
   ctx: ReviewContext,
   state: LoopState,
-  summary?: string,
-  commitBody?: string,
-  highFriction?: boolean,
+  summary: string | undefined,
+  commitBody: string | undefined,
+  highFriction: boolean | undefined,
+  retry: ReviewRetry,
 ): Promise<GateResult> {
   const { root, role, wt, mainBranch, config } = ctx;
   if (!config.review.enabled) {
@@ -259,12 +289,21 @@ export async function reviewAheadOfMain(
   // here is returned verbatim and a pass hands the verified head to the merge path below.
   // The pre-check sets the merge cell's stage (a no-op outside a queued merge) —
   // "build-check" while it runs, "reviewing" when the reviewer run starts below.
-  const pre = await gateBuildPrecheck(ctx, state, head, reject);
-  if (pre.resolved) {
-    state.reviewResume = undefined;
-    return pre.resolved;
+  // A retried attempt keeps the first attempt's passing pre-check (a green, or a red naming
+  // only main's known failures): the tree is the same head.
+  if (!retry.pre) {
+    const pre = await gateBuildPrecheck(ctx, state, head, reject);
+    if (pre.resolved) {
+      state.reviewResume = undefined;
+      return pre.resolved;
+    }
+    retry.pre = {
+      verifiedHead: pre.verifiedHead,
+      verifiedByHarness: pre.verifiedByHarness,
+      knownMainFailures: pre.knownMainFailures,
+    };
   }
-  const { verifiedHead, verifiedByHarness, knownMainFailures } = pre;
+  const { verifiedHead, verifiedByHarness, knownMainFailures } = retry.pre;
 
   // A review judges a diff, not a sha: a head carrying exactly the patch this role's last
   // approval judged (the approved head cleanly rebased onto a moved main) reuses that verdict
@@ -496,7 +535,7 @@ export async function reviewAheadOfMain(
   // rejection is recorded against the author's diff.
   if (nudgeRepeat) {
     const message = `${nudgeRepeat} The review is failed on this repeat: the commit is kept, and the merge re-reviews it under the normal path.`;
-    logEventBestEffort(root, { source: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
+    logEventBestEffort(root, { source: role, type: "review_failed", head, message, attempt: retry.attempt, durationMs: Date.now() - reviewStartedAt });
     state.reviewResume = undefined;
     recordReview(state, "failed", [message], head);
     return keep(withRuns({ decision: "failed", detail: message }, pi, followUp, nudge));
@@ -550,7 +589,7 @@ export async function reviewAheadOfMain(
               : ""
         }`,
     );
-    logEventBestEffort(root, { source: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
+    logEventBestEffort(root, { source: role, type: "review_failed", head, message, attempt: retry.attempt, durationMs: Date.now() - reviewStartedAt });
     // A dead reviewer must never destroy committed work (BUGS.md 2026-09-20): leave the commit
     // for the next tick's re-review and do not advance the per-HEAD discard counter. That
     // holds for the review run itself (BUGS.md 2026-09-20), for the verdict-recovery
@@ -571,8 +610,13 @@ export async function reviewAheadOfMain(
       } else {
         state.reviewResume = undefined;
       }
-      recordReview(state, "failed", [message], head);
       const configError = pi.configError || Boolean(followUp?.configError) || Boolean(nudge?.configError);
+      // Retried in place (reviewAheadOfMain): the failure is about the world, so the verify tries
+      // the reviewer again before the attempt ends. A configuration error can never succeed.
+      if (retry.retriesLeft > 0 && !configError) {
+        return keep(withRuns({ decision: "failed", detail: message, retryable: true }, pi, followUp, nudge));
+      }
+      recordReview(state, "failed", [message], head);
       return keep(
         withRuns(
           { decision: "failed", detail: message, ...(configError ? { configError: true } : {}) },
@@ -584,6 +628,11 @@ export async function reviewAheadOfMain(
     }
     // Consecutive failures of THIS HEAD only: a new commit (new HEAD) starts fresh. Read
     // *before* overwriting lastReview with this failure.
+    // Retry before counting: the strike below is per verify's final outcome, not per run.
+    if (retry.retriesLeft > 0) {
+      state.reviewResume = undefined;
+      return keep(withRuns({ decision: "failed", detail: message, retryable: true }, pi, followUp, nudge));
+    }
     const prev = state.lastReview;
     const sameHead = prev?.verdict === "failed" && prev.head === head;
     state.reviewResume = undefined;
@@ -625,4 +674,50 @@ export async function reviewAheadOfMain(
     durationMs: Date.now() - reviewStartedAt,
   });
   return withRuns({ decision: "approved", verifiedHead }, pi, followUp, nudge);
+}
+
+/** Review the change ahead of main, retrying a failed reviewer run in place (twice, 30 s apart)
+ * before the attempt ends `failed`: a run that timed out, was killed, died in transport or at
+ * the provider, or stated no VERDICT after its recovery turn. A resumable session is resumed,
+ * otherwise the retry starts fresh (reviewAttempt). A configuration error and an abort are not
+ * retried. While the reviewer's provider is held the retry waits for the hold to lift and
+ * costs nothing. See reviewAttempt for the rest of the gate's contract. */
+export async function reviewAheadOfMain(
+  ctx: ReviewContext,
+  state: LoopState,
+  summary?: string,
+  commitBody?: string,
+  highFriction?: boolean,
+): Promise<GateResult> {
+  const retry: ReviewRetry = { attempt: 1, retriesLeft: ctx.retries ?? REVIEW_RETRIES };
+  const delayMs = ctx.retryDelayMs ?? Number(process.env[REVIEW_RETRY_DELAY_ENV] ?? REVIEW_RETRY_DELAY_MS);
+  for (;;) {
+    const result = await reviewAttempt(ctx, state, summary, commitBody, highFriction, retry);
+    if (!result.retryable) return result;
+    for (const run of [result.run, result.followUpRun, result.nudgeRun]) if (run) ctx.foldUsage?.(run);
+    const held = ctx.reviewHeld?.() ?? false;
+    warnEventBestEffort(
+      ctx.root,
+      ctx.role,
+      `the reviewer run failed (${result.detail ?? "no detail"}) — ${held ? "waiting for the provider hold to lift, then " : ""}retrying the review in place`,
+    );
+    await sleepUnlessAborted(delayMs, ctx.signal);
+    while (ctx.reviewHeld?.() && !ctx.signal?.aborted) await sleepUnlessAborted(Math.min(delayMs, 5000), ctx.signal);
+    if (ctx.signal?.aborted) return { decision: "failed", aborted: true };
+    if (!held) retry.retriesLeft -= 1;
+    retry.attempt += 1;
+  }
+}
+
+function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
 }

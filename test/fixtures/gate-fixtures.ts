@@ -30,6 +30,10 @@ export function gateCtx(root: string, wt: string, tick = 1) {
     tick,
     sessionDir: reviewRunSessionDir(root, ROLE, `${tick}-test`),
     runGatePi: (opts: Parameters<typeof runPi>[0]) => runPi(opts),
+    // A failed reviewer run is not retried in place unless a test opts in (retries) — most
+    // tests count one run per attempt; the retry cases set both.
+    retries: 0,
+    retryDelayMs: 0,
   };
 }
 

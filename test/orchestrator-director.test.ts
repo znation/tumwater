@@ -50,6 +50,9 @@ import { mergeRefName } from "../src/paths.js";
 import { pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
+// A failed review retries in place (src/review/review.ts); the pause between tries is not tested.
+process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = "0";
+
 /** The session name (pi's `-n` value) of a run block recorded by logPromptsTo: the line after
  * the `-n` flag. Empty when the block records no session. */
 function sessionOf(block: string): string {

@@ -186,7 +186,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
           semaphore,
           () =>
             verifyRequest(
-              { root, mainBranch, config: author.config, signal: () => verify.controller.signal, runGatePi: (opts) => author.runGatePi(opts) },
+              { root, mainBranch, config: author.config, signal: () => verify.controller.signal, runGatePi: (opts) => author.runGatePi(opts), reviewHeld: () => ctx.startHeld() },
               {
                 role,
                 sha: entry.sha,

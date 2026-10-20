@@ -57,7 +57,7 @@ export interface HarnessEvent {
     | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the merge is a revision (plans/revise-rejected.md part 2/2); resumed true when the run continues a timed-out reviewer's session (PLANS.md, review-retry part 3/3)
     | "review_verdict" // approved; carries durationMs of the reviewer run
     | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
-    | "review_failed"
+    | "review_failed" // a reviewer run or its verdict failed; carries head, message, durationMs, and attempt (1-based: the reviewer run within the verify — a failed run is retried in place twice before the attempt ends review_error)
     | "revision" // a rejected change's revision round: action applied|conflict|dropped|exhausted, with round and sha (plans/revise-rejected.md)
     | "conflict_handback" // a change whose merges kept conflicting was handed back to its author with the markers in place (PLANS.md "Robust conflict landing, part 2/2"); action queued|applied, with sha, reason merge|revision, and the conflicted paths on a successful re-apply
     | "build_check" // the project's declared check ran: scope gate|baseline|merge|batch (merge is the merge lock's post-rebase re-check; batch is the batch merger's one check over the stacked tree), status, script, durationMs; spawnedAt/settledAt when a process ran, plus timeoutMs/deadlineLateMs when its deadline fired, and sleptMs when the host slept mid-run (build/build-check-events.ts buildCheckRunFields); installed/installMs (plus installError) when the check first installed the tree's drifted lockfile (build/dep-install.ts)
