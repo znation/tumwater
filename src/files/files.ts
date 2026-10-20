@@ -30,6 +30,17 @@ export function isDirectory(file: string): boolean {
   return statOrNull(file)?.isDirectory() === true;
 }
 
+/** Whether `file` is a regular file the process may execute (a symlink is followed); false
+ * when it is missing, a directory (which passes X_OK), or lacks the executable bit. */
+export function isExecutableFile(file: string): boolean {
+  try {
+    fs.accessSync(file, fs.constants.X_OK);
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** Whether a freshly stat'd file is still the same file at the same bytes as a prior
  * observation: matching dev/ino (a replaced inode is a different file even at the same size)
  * plus matching size and, when the caller tracks it, mtime. The one home of the freshness
@@ -158,12 +169,7 @@ export function findOnPath(name: string, pathEnv: string = envPath()): string | 
   for (const dir of pathEnv.split(path.delimiter)) {
     if (!dir) continue;
     const candidate = path.join(dir, name);
-    try {
-      fs.accessSync(candidate, fs.constants.X_OK); // Directories pass X_OK; require a file.
-      if (fs.statSync(candidate).isFile()) return candidate;
-    } catch {
-      // Not in this directory; keep looking.
-    }
+    if (isExecutableFile(candidate)) return candidate;
   }
   return null;
 }

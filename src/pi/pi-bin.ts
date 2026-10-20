@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 import { resolvedBackendConfig } from "../config/config-views.js";
-import { envPath, findOnPath } from "../files/files.js";
+import { envPath, findOnPath, isExecutableFile } from "../files/files.js";
 
 /** Which backend binary the harness spawns and where that value came from — the per-backend
  * resolution `TUMWATER_<ID>_BIN` → `backends.<id>.bin` (pi's legacy `agentBin` alias) → the
@@ -115,13 +114,7 @@ export function findBackendBinary(
   pathEnv: string = envPath(),
 ): string | null {
   if (resolved.bin.includes("/")) {
-    try {
-      fs.accessSync(resolved.bin, fs.constants.X_OK); // Directories pass X_OK; require a file.
-      if (fs.statSync(resolved.bin).isFile()) return resolved.bin;
-      return null;
-    } catch {
-      return null;
-    }
+    return isExecutableFile(resolved.bin) ? resolved.bin : null;
   }
   return findOnPath(resolved.bin, pathEnv);
 }
