@@ -44,4 +44,28 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - docs/invariants.md: at the END of the file, add `## OpenCode catalog seed: startup reports its failures` with `### INV-CG1: the startup seed's failed catalog fetch or cache write logs one warning event per process and never fails the startup check`. Use the Guarantee / Binds / Pinned by layout. CG was free: when this was planned, `grep -c 'INV-CG' docs/invariants.md PLANS.md` gave 0 for both, and the in-flight Quarantine filing plan reserves CF. Re-check against the newest letter before writing. Binds `src/gates/startup-gate.ts` (`runStartupCheck`, `seedOpencodeCatalog`). Pinned by the new test, cited by its full name.
 - `npm run test:gate` passes. The cited test name exists verbatim (`grep -rF` it in test/).
 
+### Backlog archive: a bulk archive whose file write fails restores the checkout instead of leaving a half-done move (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/backlog/backlog-archive.ts + test/backlog-archive.test.ts + docs/invariants.md)
+
+**Goal.** `archiveFinishedOnMain` (src/backlog/backlog-archive.ts) runs at team start (`archiveAtTeamStart`) and behind `tumwater archive` (`cmdArchive`, src/backlog/backlog-cli.ts). It holds the merge lock and the primary-worktree lock, then writes each planned move with `writeMove` (archive file first, then the live file, both through `writeTextAtomic`) in a `for` loop that sits *before* the `try` around `git add`/`git commit`. Only a failed commit restores the files (`git reset`, `git checkout -- <tracked>`, removing the archive files it created). If a write throws (ENOSPC, EACCES), say the BUGS.md write after PLANS.md, PLANS-DONE.md and BUGS-FIXED.md were already written, the error escapes with the primary checkout half-moved and uncommitted. `archiveAtTeamStart`'s catch warns, but nothing puts the files back. Each later `archiveFinishedOnMain` then returns `skipped` with "… have uncommitted changes" until someone cleans the checkout by hand. Bring the write under the same restore the commit already has, so a failed bulk archive leaves the checkout as it found it.
+
+**Approach.**
+1. src/backlog/backlog-archive.ts, `archiveFinishedOnMain`: move `for (const { spec, move } of plan) writeMove(root, spec, move);` inside the existing `try`, before `git add`. `touched` and `created` are computed before the loop already, so the catch restores every file the loop may have written, and removes every archive file it may have created. Build `subject` before the `try` as today. Change the skip reason from `` `the commit failed: ${errorFirstLine(err)}` `` to `` `the move could not be written or committed: ${errorFirstLine(err)}` ``, because the catch now covers both. `grep -rn 'the commit failed' src test docs` finds only this site and the one in `fileQuarantineBugsOnMain`, and no test matches the string.
+2. Extend the function's doc comment: "a failed commit restores the files" becomes "a failed write or commit restores the files".
+3. Leave `fileQuarantineBugsOnMain` alone. Its `appendBugEntryLocked` loop has the same gap, but the in-flight "Quarantine filing: … reuses that heading" plan rewrites that loop. Bringing it under its restore is a separate change once that plan merges.
+
+**Files touched.** src/backlog/backlog-archive.ts, test/backlog-archive.test.ts, docs/invariants.md.
+
+**Acceptance criteria.**
+- New test in test/backlog-archive.test.ts, "archiveFinishedOnMain restores the checkout when a file write fails, and archives on the next call". Seed the same way as "archiveFinishedOnMain commits the bulk move on the base branch, and refuses dirty files": `makeRepo()`, `seedCommit` a PLANS.md with one `## Done` entry and a BUGS.md with one `## Fixed` entry, `ignoreInRepo(root, ".tumwater/")`. Record `sh(root, "git", "rev-list", "--count", "HEAD")`. Arm `const restore = failRenameSyncOn(path.join(root, "BUGS.md"), "disk full")` (import from ./helpers/fs-faults.js), so the failure hits the last of the four writes. Call `await archiveFinishedOnMain(root)` and call `restore()` in a `finally`. Assert:
+  - status `skipped`, with a reason matching `/disk full/`;
+  - `sh(root, "git", "status", "--porcelain")` is `""`;
+  - `PLANS-DONE.md` and `BUGS-FIXED.md` do not exist;
+  - PLANS.md still holds its `## Done` entry;
+  - the commit count is unchanged.
+  Then a second `archiveFinishedOnMain(root)` returns `archived` and leaves `git status --porcelain` empty.
+  Mutation: move the `writeMove` loop back out of the `try`. The call then rejects with "disk full" instead of returning `skipped`, so the test fails.
+- The existing test/backlog-archive.test.ts tests pass unchanged, including "archiveFinishedOnMain commits the bulk move on the base branch, and refuses dirty files" and "archiveFinishedOnMain drops a hand commit's re-pasted entries instead of archiving them twice".
+- docs/invariants.md: at the END of the file, add `## Backlog bulk archive: a failed move leaves the checkout as it was` with `### INV-CH1: a bulk archive whose file write or commit fails restores every file it touched and returns skipped`. Use the Guarantee / Binds / Pinned by layout. CH was free: when this was planned, `grep -c 'INV-CH' docs/invariants.md PLANS.md` gave 0 for both, the newest merged section was CE, and the waiting plans reserve CF and CG. Re-check against the newest letter before writing. Binds `src/backlog/backlog-archive.ts` (`archiveFinishedOnMain`, `writeMove`). Pinned by the new test, cited by its full name.
+- `npm run test:gate` passes. The cited test names exist verbatim (`grep -rF` them in test/).
+
 ## Done
