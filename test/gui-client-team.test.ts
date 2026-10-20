@@ -11,6 +11,7 @@ import { GUI_PAGE } from "../src/ui/gui/gui-page.js";
 
 function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}) {
   const panels: Record<string, string> = {};
+  const getJsonPaths: string[] = [];
   const scope = clientScope<{
     renderBacklog(d: object): void;
     beginQueuedEdit(role: string, file: string, text: string): void;
@@ -22,6 +23,8 @@ function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}
   }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "setBacklogGrep", "beginBacklogNew", "toggleBacklogSeries"], {
     backlogTab,
     backlogGrep: "",
+    backlogBodyHits: null,
+    getJson: async (path: string) => { getJsonPaths.push(path); return {}; },
     paintPanel: (id: string, html: string) => { panels[id] = html; },
     icon: iconStub,
     openEntryKey: () => null,
@@ -29,7 +32,7 @@ function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}
     lastStatus: undefined,
     ...extra,
   });
-  return { scope, panels };
+  return { scope, panels, getJsonPaths };
 }
 
 test("the Queued tab shows how long each prompt has waited, and unstamped ones as today", () => {
@@ -941,4 +944,29 @@ test("setBacklogGrep repaints and an empty search restores the tab byte-for-byte
   assert.doesNotMatch(panels["backlog"] ?? "", /Bravo/);
   scope.setBacklogGrep("");
   assert.equal(panels["backlog"], plain.panels["backlog"]);
+});
+
+const noHits = { plans: [], bugs: [], questions: [], done: [], fixed: [], answered: [] };
+
+test("a Backlog Search keeps a row whose body matched on the server", () => {
+  const { scope, panels } = backlogScope("plans", { backlogGrep: "zebra", backlogBodyHits: { needle: "zebra", ...noHits, plans: [1] } });
+  scope.renderBacklog({ ...grepBase, plans: ["Alpha", "Bravo", "Charlie"] });
+  const html = panels["backlog"] ?? "";
+  assert.match(html, /data-index='1'/);
+  assert.doesNotMatch(html, /data-index='0'/);
+  assert.doesNotMatch(html, /data-index='2'/);
+});
+
+test("body hits for an older needle are ignored", () => {
+  const { scope, panels } = backlogScope("plans", { backlogGrep: "zebra", backlogBodyHits: { needle: "zeb", ...noHits, plans: [1] } });
+  scope.renderBacklog({ ...grepBase, plans: ["Alpha", "Bravo", "Charlie"] });
+  assert.match(panels["backlog"] ?? "", /Nothing matches this search/);
+});
+
+test("setBacklogGrep asks /api/backlog-match for the trimmed text", () => {
+  const { scope, getJsonPaths } = backlogScope("plans");
+  scope.setBacklogGrep("  zebra ");
+  assert.deepEqual(getJsonPaths, ["/api/backlog-match?grep=zebra"]);
+  scope.setBacklogGrep("");
+  assert.equal(getJsonPaths.length, 1);
 });

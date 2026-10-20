@@ -443,6 +443,27 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
 // /api/backlog serves one entry's title + body on demand, so multi-KB bodies never ride the
 // 1-second /api/status poll — and statusPayload keeps carrying titles only.
 
+test("gui /api/backlog-match lists the indexes whose heading or body matches", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "backlog match gui test");
+  writeBacklogFile(repo, "PLANS.md", [
+    { heading: "## Planned", body: "### Alpha (planned 2026-09-05)\n\nNothing.\n\n### Bravo (planned 2026-09-05)\n\n**Goal.** Feed the zebra.\n\n### Charlie (planned 2026-09-05)\n\nNothing." },
+  ]);
+  writeBacklogFile(repo, "BUGS.md", [
+    { heading: "## Open", body: "### Zebra crashes (reported 2026-09-05)\n\n**Symptom.** It breaks." },
+  ]);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const d = await getJson<Record<string, number[]>>(base, "/api/backlog-match?grep=ZEBRA");
+    assert.deepEqual(d, { plans: [1], bugs: [0], questions: [], done: [], fixed: [], answered: [] });
+    for (const url of ["/api/backlog-match?grep=%20", "/api/backlog-match"]) {
+      assert.equal((await fetch(base + url)).status, 400, url);
+    }
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("gui /api/backlog serves an entry's title and body and validates file/index", async () => {
   const repo = makeRepo();
   await initProject(repo, "backlog gui test");

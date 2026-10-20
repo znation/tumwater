@@ -18,7 +18,7 @@ import {
 import { warnEvent, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import {
-  handleBacklog,
+  handleBacklog, handleBacklogMatch,
   handleBrief,
   handleConfig,
   handleDiff,
@@ -228,6 +228,7 @@ export function startGui(
     "GET /api/role": (_req, res, target) => handleRole(target.searchParams, res, root),
     "GET /api/diff": (_req, res, target) => handleDiff(target.searchParams, res, root),
     "GET /api/backlog": (_req, res, target) => handleBacklog(target.searchParams, res, root),
+    "GET /api/backlog-match": (_req, res, target) => handleBacklogMatch(target.searchParams, res, root),
     "GET /api/config": (_req, res) => handleConfig(res, root),
     "GET /api/brief": (_req, res) => handleBrief(res, root),
     "GET /api/doctor": (_req, res) => handleDoctor(res, root),

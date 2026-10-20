@@ -12,7 +12,7 @@
  */
 import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
-import { answeredQuestionEntries, donePlanEntries, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { answeredQuestionEntries, entryMatches, donePlanEntries, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { knownRoleIds, loadConfigSafe } from "../config/config.js";
@@ -103,6 +103,24 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
     return;
   }
   sendJson(res, 200, { title: entry.title, body: entry.body, refused: refusalNote(entry.body) !== null, waiting: waitingNote(entry.body) !== null });
+}
+
+/** Handle GET /api/backlog-match?grep=<text>: for each /api/backlog `file`, the ascending
+ * indexes (the ones /api/backlog?file=…&index=N addresses) whose entry heading or body contains
+ * the trimmed text, case-insensitively — the match `tumwater backlog --grep` and the TUI's `/`
+ * use — so the dashboard's Search can find text bodies hold without bodies riding the status
+ * poll. Missing or blank grep → 400. */
+export function handleBacklogMatch(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  const needle = (q.get("grep") ?? "").trim();
+  if (!needle) {
+    badRequest(res, "grep required");
+    return;
+  }
+  const out: Record<string, number[]> = {};
+  for (const [file, reader] of BACKLOG_FILE_READERS) {
+    out[file] = reader(root).flatMap((entry, i) => (entryMatches(entry, needle) ? [i] : []));
+  }
+  sendJson(res, 200, out);
 }
 
 /** Handle GET /api/diff[?role=<id>]: the unmerged-change view the CLI prints from the same

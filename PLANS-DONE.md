@@ -5,6 +5,41 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The dashboard's Backlog Search also keeps rows whose entry body matches, through a new `GET /api/backlog-match?grep=<text>`, so it matches what the TUI Backlog pane's `/` and `tumwater backlog --grep` match (planned 2026-10-19 by the plan role; no dependency on any Planned entry: the in-flight entries edit status, prompt, history and src/tick, and none touches src/ui/gui/gui-client-team.ts's backlog region or the /api/backlog handlers; done 2026-10-19)
+
+**Goal.** The dashboard Backlog card's Search box (`backlogGrep`, `setBacklogGrep` and `renderBacklog` in src/ui/gui/gui-client-team.ts) matches only the text a row shows, because `/api/status` carries titles, not bodies. The TUI's `/` (`visibleBacklogIndexes` in src/ui/tui/tui-backlog.ts) and `tumwater backlog --grep` match the heading or the body through `entryMatches` (src/backlog/backlog.ts). So a dashboard search for a file or symbol named only inside a plan's body finds nothing. This plan closes that gap. Bodies still never ride the 1s status poll.
+
+**Decided scope (no open question).**
+- One new read-only route, `GET /api/backlog-match?grep=<text>`. It answers `{ plans, bugs, questions, done, fixed, answered }`. Each value is the ascending list of indexes whose entry `entryMatches` the trimmed text. It reads each file through its reader in `BACKLOG_FILE_READERS`, so its indexes are the ones `/api/backlog?file=…&index=N` already addresses. Those are the same indexes the card's rows carry as `data-index`, including the newest-first done/fixed/answered order.
+- A missing or blank (after trim) `grep` is a 400 `grep required`, via `badRequest`.
+- The Inbox (queued prompts) tab is unchanged: its rows already show the preview, and prompt bodies are out of scope.
+- A row shows when its shown text hits, as today, OR when its index is in the body-match list for the current needle. Until the first match response for the needle arrives, only shown-text hits paint. That is today's behavior, so typing never blanks the panel while a request is in flight.
+
+**Approach.**
+- **src/gui/gui-endpoints.ts**: add `export function handleBacklogMatch(q, res, root)` beside `handleBacklog`, with a doc comment in the same style. It reads `q.get("grep")`, trims it, and returns 400 when the result is empty. Otherwise it builds the object by iterating `BACKLOG_FILE_READERS` and, for each file, collecting the indexes `i` where `entryMatches(entry, needle)`. Import `entryMatches` from ../backlog/backlog.js. Answer with `sendJson(res, 200, …)`.
+- **src/gui/gui-server.ts**: add `"GET /api/backlog-match": (_req, res, target) => handleBacklogMatch(target.searchParams, res, root),` after the `"GET /api/backlog"` route, plus the import.
+- **src/ui/gui/gui-client-team.ts**, inside the `backlog:start`/`backlog:end` region:
+  - Add `let backlogBodyHits = null;`, shaped `{ needle, plans: [...], bugs, questions, done, fixed, answered }` and holding the last match response.
+  - Add `let backlogMatchAt = 0;` for the time of the last match fetch.
+  - Add `async function fetchBacklogMatch()`. With an empty `backlogGrep` it sets `backlogBodyHits = null` and returns. Otherwise it captures `const needle = backlogGrep`, sets `backlogMatchAt = Date.now()`, and awaits `getJson("/api/backlog-match?grep=" + encodeURIComponent(needle))`. If `backlogGrep` still equals `needle` when the answer arrives, it stores `{ needle, ...d }` and repaints with `renderBacklog(backlogStatus)` when `backlogStatus` is set. A stale answer for an older needle is dropped. A failed fetch is caught and leaves the shown-text matching in place.
+  - `setBacklogGrep` calls `fetchBacklogMatch()` after its repaint.
+  - At the top of `renderBacklog`, when `backlogGrep` is set and `Date.now() - backlogMatchAt > 5000`, call `fetchBacklogMatch()` (not awaited). This keeps body hits fresh as the files change, at most once per 5s, much like the History view's `histFetchedAt` throttle.
+  - Change the local `hit(text)` to `hit(text, file, i)`. It returns true when `needle` is empty, when the text contains it, or when `backlogBodyHits && backlogBodyHits.needle === backlogGrep` and `(backlogBodyHits[file] || []).includes(i)`.
+  - Pass the file and the row's payload index at each call: `"plans"`/`"bugs"`/`"questions"` (the tab key) with the open row's index, `"answered"` with `x.i`, and `"done"`/`"fixed"` (by tab) with `x.i`. The Inbox call keeps one argument.
+  - Update the "Search narrows rows by the text each one shows" comment to say that body matches come from /api/backlog-match.
+- **docs/cli.md**: in the TUI key table's `/` row, change "the dashboard's Backlog card has a Search box that does the same over each row's shown text" to say the Search box filters by heading or body the same way.
+
+**Files touched.** src/gui/gui-endpoints.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-team.ts, docs/cli.md, test/gui.test.ts, test/gui-client-team.test.ts.
+
+**Acceptance criteria.**
+- test/gui.test.ts, "gui /api/backlog-match lists the indexes whose heading or body matches": seed PLANS.md with three planned entries, only the second of which mentions `zebra`, and only in its body. Seed one BUGS.md open entry whose title says `Zebra`. `GET /api/backlog-match?grep=ZEBRA` answers 200 with `plans: [1]`, `bugs: [0]`, and empty `questions`, `done`, `fixed` and `answered`. `?grep=%20` and a request with no `grep` both answer 400.
+- test/gui-client-team.test.ts. The scope helper adds `backlogBodyHits` and `getJson` to `extra` and stubs `getJson` to record paths.
+  - "a Backlog Search keeps a row whose body matched on the server": plans `["Alpha", "Bravo", "Charlie"]`, `backlogGrep: "zebra"` and `backlogBodyHits: { needle: "zebra", plans: [1], bugs: [], questions: [], done: [], fixed: [], answered: [] }` paint `data-index='1'` only.
+  - "body hits for an older needle are ignored": the same fixture with `backlogBodyHits.needle: "zeb"` paints `Nothing matches this search`.
+  - "setBacklogGrep asks /api/backlog-match for the trimmed text": `setBacklogGrep("  zebra ")` makes one `getJson` call to `/api/backlog-match?grep=zebra`, and `setBacklogGrep("")` makes none.
+- The existing Backlog Search tests in test/gui-client-team.test.ts pass unchanged with `backlogBodyHits: null`. That includes "setBacklogGrep repaints and an empty search restores the tab byte-for-byte".
+- `npm run test:gate` passes.
+
 ### `tumwater status --role <id>[,<id>...]` shows only the listed roles' rows, the status twin of `report --role` and `history --role` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — part 10/14 edits config/roles/init, the questions entry `cmdQuestions` and src/backlog, the Backlog-search entry src/ui/gui; none touches `cmdStatus`, src/ui/status-render.ts or src/ui/status-payload.ts) — done 2026-10-19
 
 **Goal.** `report`, `history`, `wake`, `pause`, `resume`, `abort` and `reset-counters` all take `--role <id>[,<id>...]`, but `tumwater status` does not. `cmdStatus` (src/cli/cli-query-commands.ts) calls `rejectUnknownArgs("status", args, [JSON_FLAG])`, so `status --role feature` exits 1. A team with 16 roles plus feature/bugfix instances prints a long table, and an operator watching two roles has to scan it all. Let `status --role clean,dedupe` (and `--json`) keep only the listed roles' rows. The header, its badges and the team-wide banners stay the same.

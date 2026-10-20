@@ -266,12 +266,14 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   // ---- backlog: questions, plans, bugs, and queued prompts ----
   let backlogTab = recall("backlog") || "";
   let backlogGrep = recall("backlog-grep") || "";
+  let backlogBodyHits = null;
   // backlog:start
   // The Queued tab's in-place editor state, beside the tab choice its rows paint from:
   // backlogStatus is the last payload renderBacklog saw, queuedEdit is the open editor
   // ({ role, file, text } or null), and queuedEditPainted marks that its textarea is on
   // screen so the standing 1s poll cannot repaint over what the operator is typing.
   let backlogStatus = null;
+  let backlogMatchAt = 0;
   let queuedEdit = null;
   let queuedEditPainted = false;
   // The Plans/Bugs tabs' New form: { kind: "plan" | "bug" } or null, with the same painted
@@ -294,6 +296,21 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     backlogGrep = text.trim();
     store("backlog-grep", backlogGrep);
     if (backlogStatus) renderBacklog(backlogStatus);
+    fetchBacklogMatch();
+  }
+  // The server's body matches for the current Search text: { needle, plans: [index…], … } from
+  // /api/backlog-match. A stale answer (the box changed meanwhile) is dropped, and a failed
+  // fetch leaves the shown-text matching in place.
+  async function fetchBacklogMatch() {
+    if (!backlogGrep) { backlogBodyHits = null; return; }
+    const needle = backlogGrep;
+    backlogMatchAt = Date.now();
+    try {
+      const d = await getJson("/api/backlog-match?grep=" + encodeURIComponent(needle));
+      if (backlogGrep !== needle) return;
+      backlogBodyHits = { needle, ...d };
+      if (backlogStatus) renderBacklog(backlogStatus);
+    } catch (e) { /* keep shown-text matching */ }
   }
   function beginBacklogNew(kind) {
     backlogNew = { kind };
@@ -328,6 +345,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   ];
   function renderBacklog(d) {
     backlogStatus = d;
+    if (backlogGrep && Date.now() - backlogMatchAt > 5000) fetchBacklogMatch();
     if (queuedEdit && queuedEditPainted) return; // an open editor owns the panel until Save or Cancel
     if (backlogNew && backlogNewPainted) return; // likewise the New form
     const items = { questions: d.questions || [], plans: d.plans || [], bugs: d.bugs || [], queued: queuedPrompts(d) };
@@ -337,9 +355,11 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       items[k].length + "</span></button>").join(""));
     const [key, , ic, tone, emptyTitle, emptyText] = BACKLOG.find((s) => s[0] === backlogTab);
     const list = items[key];
-    // Search narrows rows by the text each one shows; indexes stay the payload's own.
+    // Search narrows rows by the text each one shows, or by a body match from /api/backlog-match;
+    // indexes stay the payload's own.
     const needle = backlogGrep.toLowerCase();
-    const hit = (text) => !needle || String(text).toLowerCase().includes(needle);
+    const hit = (text, file, i) => !needle || String(text).toLowerCase().includes(needle) ||
+      (!!file && !!backlogBodyHits && backlogBodyHits.needle === backlogGrep && (backlogBodyHits[file] || []).includes(i));
     let shown = 0;
     let html;
     if (!list.length) html = "<div class='empty'><strong>" + esc(emptyTitle) + "</strong>" + esc(emptyText) + "</div>";
@@ -389,7 +409,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       const rows = list.map((title, i) => {
         const t = splitTitle(title);
         const mark = holds[i] || "";
-        if (!hit(t.title + " " + t.meta + " " + mark)) return "";
+        if (!hit(t.title + " " + t.meta + " " + mark, key, i)) return "";
         shown++;
         return "<div class='list-item t-" + tone + (open === key + ":" + i ? " active" : "") + "'><span class='li-icon'>" + icon(ic) + "</span>" +
           "<button type='button' class='li-open backloglink' data-file='" + key + "' data-index='" + i + "'><span class='li-title'>" + esc(t.title) + "</span>" +
@@ -414,14 +434,14 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       });
       html = ready.join("") + (heldCount ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + heldCount + ")</span></div>" + held.join("") : "");
     }
-    const answered = (key === "questions" ? (d.answeredQuestions || []) : []).map((a, i) => ({ a, i })).filter((x) => hit(x.a.title + " " + (x.a.decision || "")));
+    const answered = (key === "questions" ? (d.answeredQuestions || []) : []).map((a, i) => ({ a, i })).filter((x) => hit(x.a.title + " " + (x.a.decision || ""), "answered", x.i));
     shown += answered.length;
     if (answered.length) {
       html += "<div class='list-item list-divider'><span class='li-meta'>Answered recently</span></div>" + answered.map(({ a, i }) =>
         "<div class='list-item t-gray" + (openEntryKey() === "answered:" + i ? " active" : "") + "'><span class='li-icon'>" + icon("check") + "</span><button type='button' class='li-open backloglink' data-file='answered' data-index='" + i + "'><span class='li-title'>" + esc(a.title) + "</span>" +
         (a.decision ? "<span class='li-meta'>" + esc(a.decision) + "</span>" : "") + "</button></div>").join("");
     }
-    const finished = (key === "plans" ? (d.donePlans || []) : key === "bugs" ? (d.fixedBugs || []) : []).map((f, i) => ({ f, i })).filter((x) => hit(x.f.title));
+    const finished = (key === "plans" ? (d.donePlans || []) : key === "bugs" ? (d.fixedBugs || []) : []).map((f, i) => ({ f, i })).filter((x) => hit(x.f.title, key === "plans" ? "done" : "fixed", x.i));
     shown += finished.length;
     if (finished.length) {
       html += "<div class='list-item list-divider'><span class='li-meta'>" + (key === "plans" ? "Done recently" : "Fixed recently") + "</span></div>" + finished.map(({ f, i }) => {
