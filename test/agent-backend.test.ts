@@ -54,7 +54,7 @@ test("a backend that returns stdin gets its prompt written to the child and echo
 
 test("an over-long native line with no newline is dropped, not buffered without bound", async () => {
   // A backend that streams bytes without a newline (a runaway tool call dumping binary) would
-  // otherwise grow the native line buffer until the tick timeout — four hours by default — and
+  // otherwise grow the native line buffer until the run timeout — four hours by default — and
   // can OOM the harness, while every byte resets the quiet watchdog. The cap drops the
   // never-terminated line and resynchronizes on the next newline: the line after it must still
   // be translated, no line reaching the translator may exceed the cap, and the drop is warned

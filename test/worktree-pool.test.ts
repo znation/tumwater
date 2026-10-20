@@ -588,7 +588,7 @@ test("a lease that waited 30 s or more logs one slot_wait naming the pool", asyn
   const waited = waitingLease(root);
   await sleep(20);
   assert.equal(waited.claimed(), undefined, "the second lease claimed a slot with none free");
-  t.mock.timers.tick(31_000);
+  t.mock.timers.tick(31_000); // retired-name-ok: node:test mock clock
   held.release();
   const got = await waitFor(waited.claimed);
   t.mock.timers.reset();
@@ -611,7 +611,7 @@ test("a lease that waited under 30 s logs no slot_wait", async (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const waited = waitingLease(root);
   await sleep(20);
-  t.mock.timers.tick(1_000);
+  t.mock.timers.tick(1_000); // retired-name-ok: node:test mock clock
   held.release();
   const got = await waitFor(waited.claimed);
   t.mock.timers.reset();

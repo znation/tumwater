@@ -2521,7 +2521,7 @@ does not skip the roles after it.
 
 **Pinned by.** `test/operator-requests.test.ts` — "consumeWakeRequest wakes every named role when a
 wake event cannot be logged", "consumeResetRequest resets and acknowledges when its event cannot be
-logged", "consumeAbortRequests consumes every marker when one tick abort cannot be logged",
+logged", "consumeAbortRequests consumes every marker when one run abort cannot be logged",
 "consumeAbortRequests keeps a marker whose abort side effect throws, without skipping later ones",
 "consumeResetRequest survives an unwritable runnerless state file instead of ending the poll",
 "consumeWakeRequest survives an unwritable runnerless state file" and "consumeWakeRequest keeps a

@@ -15,7 +15,7 @@ const ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
 
 /** Per-process minting state, mirroring OpenCode's per-millisecond counter: the counter
  * restarts at 1 for each new millisecond, and increments within the same millisecond so two
- * ids minted in one tick still differ in their hex. */
+ * ids minted in one millisecond still differ in their hex. */
 let lastMintMs = -1;
 let counter = 0;
 

@@ -361,7 +361,7 @@ test("consumeAbortRequests ignores non-abort files in the state directory", () =
   assert.equal(readEvents(root).length, 0);
 });
 
-test("consumeAbortRequests consumes every marker when one tick abort cannot be logged", () => {
+test("consumeAbortRequests consumes every marker when one run abort cannot be logged", () => {
   const root = tmpdir();
   // events.jsonl as a directory makes logEvent throw (EISDIR) at the first marker's
   // run_aborted append. The pre-fix broad catch swallowed that throw and skipped every
@@ -376,7 +376,7 @@ test("consumeAbortRequests consumes every marker when one tick abort cannot be l
   assert.doesNotThrow(() => consumeAbortRequests(root, asRunners(a, b), []));
   assert.equal(fs.existsSync(markerA), false, "the first marker is consumed despite the failed log");
   assert.equal(fs.existsSync(markerB), false, "one marker's failure must not skip the next");
-  assert.equal(a.aborts + b.aborts, 2, "both running ticks were aborted");
+  assert.equal(a.aborts + b.aborts, 2, "both in-flight runs were aborted");
 });
 
 test("consumeAbortRequests keeps a marker whose abort side effect throws, without skipping later ones", () => {

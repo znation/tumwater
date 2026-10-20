@@ -91,7 +91,7 @@ test("a range that cannot be evaluated reads as work merged — conservative", a
   const cache = new WorkMergedCache(root, "main");
   const ghost = "0123456789abcdef0123456789abcdef01234567";
 
-  assert.equal(await cache.since(ghost, head), true, "an unknown since-head cannot be evaluated: run the tick");
+  assert.equal(await cache.since(ghost, head), true, "an unknown since-head cannot be evaluated: rerun the check");
   assert.equal(
     await cache.since(ghost, head),
     true,

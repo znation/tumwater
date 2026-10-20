@@ -581,7 +581,7 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   assert.match(clean, /\(finished current work in 0m\)$/, "nothing aborted: no resume clause");
 
   // A torn or hand-edited numeric field reads as zero, never NaN: "NaN commits", "after
-  // NaNm", and "true tick(s)" would all mislead an operator, and `String`/`Number`
+  // NaNm", and "true run(s)" would all mislead an operator, and `String`/`Number`
   // coercions otherwise leak them through.
   const staleTorn = formatEvent({
     ts: 0, source: "tumwater", type: "build_stale", build: "a".repeat(40), head: "b".repeat(40), aheadCommits: "12",
@@ -592,7 +592,7 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
     ts: 0, source: "tumwater", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: "x", abortedRuns: "2",
   } as never);
   assert.match(restartTorn, /\(finished current work in 0m\)$/, `corrupt drain/abort counts must read zero: ${restartTorn}`);
-  assert.doesNotMatch(restartTorn, /NaN|true tick/);
+  assert.doesNotMatch(restartTorn, /NaN|true run/);
 
   // BUGS.md 2026-09-23: a refused restart names both builds and the reason; a dead team says so.
   const refused = formatEvent({

@@ -52,7 +52,7 @@ test("piMissingMessage for a configured source names the resolved value and wher
 // plans/portability.md §5/7: the agent binary is TUMWATER_PI_BIN → agentBin → "pi". The
 // resolver is precedence only (no filesystem calls — resolvability is the preflight sites'
 // job); a path-shaped value is normalized against the process cwd AT RESOLUTION TIME, so
-// the spawn — which runs with each tick's worktree as cwd — lands on the same file the run
+// the spawn — which runs with each run's worktree as cwd — lands on the same file the run
 // preflight and doctor checked.
 test("resolveAgentBin: TUMWATER_PI_BIN beats agentBin beats the PATH default", () => {
   assert.deepEqual(resolveAgentBin({}), { bin: "pi", source: "default" });

@@ -119,7 +119,7 @@ test("piArgs starts fresh sessions with a name and resumes with --continue", () 
   assert.ok(fresh.includes("-n"), "fresh runs are named");
   assert.ok(!fresh.includes("--continue"));
   const resumed = piArgs({ ...base, continueSession: true });
-  assert.ok(resumed.includes("--continue"), "the within-tick retry resumes the session");
+  assert.ok(resumed.includes("--continue"), "the within-run retry resumes the session");
   assert.ok(!resumed.includes("-n"), "resumed runs keep their existing name");
 });
 

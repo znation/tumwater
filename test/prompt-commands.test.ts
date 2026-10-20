@@ -268,7 +268,7 @@ test("prompt --list shows a deferred prompt's countdown instead of its age", asy
   assert.equal(payload.prompts[0]?.notBeforeMs, Date.now() + 90 * 60_000);
   assert.equal(payload.prompts[1]?.notBeforeMs, null);
   // The queued preview never shows the marker line — plumbing, not content.
-  t.mock.timers.tick(91 * 60_000);
+  t.mock.timers.tick(91 * 60_000); // retired-name-ok: node:test mock clock
   const due = await expectOk(() => cmdPrompt(root, ["--list"]));
   assert.match(due.stdout, /^1\. re-check coverage \(queued \S+ ago\)$/m);
 });

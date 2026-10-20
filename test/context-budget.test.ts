@@ -46,7 +46,7 @@ test("contextNote jumps to the highest crossed threshold instead of replaying th
 test("contextNote advice is role-agnostic, so the reviewer and conflict runs can carry it", () => {
   for (const t of CONTEXT_THRESHOLDS) {
     const note = contextNote(t, 1000, 2000, 0)!;
-    assert.ok(!note.text.includes("SUMMARY"), `no tick-only contract at ${t}%`);
+    assert.ok(!note.text.includes("SUMMARY"), `no run-only contract at ${t}%`);
     assert.ok(!note.text.includes("TUMWATER_"), `no sentinel at ${t}%`);
   }
 });

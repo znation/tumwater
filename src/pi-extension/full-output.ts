@@ -43,7 +43,7 @@ export function findTumwaterRoot(startDir: string = process.cwd()): string | nul
  * orchestrator's retention passes prune this directory with the team's
  * sessionRetentionDays window (paths.ts's toolOutputDir, the single home of this path that
  * this module shares instead of re-joining it), so a pointer to a full output stays readable
- * while its tick is recent and never accumulates forever. */
+ * while its run is recent and never accumulates forever. */
 export function writeFullOutput(
   text: string,
   toolCallId: unknown,

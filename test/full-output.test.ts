@@ -49,7 +49,7 @@ test("writeFullOutput returns null when the write fails instead of throwing", ()
   fs.mkdirSync(path.join(dir, ".tumwater", "log"), { recursive: true });
   // .tumwater/log/tool-output exists as a regular file, so the recursive mkdirSync inside
   // writeFullOutput throws: the catch must turn that into null (a failing write can never
-  // crash a tick's tool_result handling), and nothing is written.
+  // crash a run's tool_result handling), and nothing is written.
   fs.writeFileSync(path.join(dir, ".tumwater", "log", "tool-output"), "occupied");
   assert.equal(writeFullOutput("text", "call-9", dir), null);
 });

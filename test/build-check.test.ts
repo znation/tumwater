@@ -179,10 +179,10 @@ test("a deadline the host slept through is reported as when it really fired, on 
   });
   await waitFor(() => fs.existsSync(first), "the first attempt's marker", 10_000);
   assert.ok(fs.existsSync(first), "the check spawned before the deadline");
-  t.mock.timers.tick(412_000); // the host sleeps 412 s through the 2 s deadline
+  t.mock.timers.tick(412_000); // the host sleeps 412 s through the 2 s deadline // retired-name-ok: node:test mock clock
   // The gate owes one retry after a late-deadline timeout; drive it through its own late fire.
   await waitFor(() => fs.existsSync(second), "the retry's marker", 10_000);
-  t.mock.timers.tick(412_000);
+  t.mock.timers.tick(412_000); // retired-name-ok: node:test mock clock
   const result = await pending;
   assert.equal(result!.outcome.skipReason, "timeout");
   assert.equal(result!.outcome.run?.deadlineLateMs, 410_000, "the deadline fired 410 s past its 2 s bound");
@@ -319,7 +319,7 @@ async function assertHostSleepRetry(t: TestContext, scope: "merge" | "gate") {
     check: { command: "if [ -f retried ]; then exit 0; else touch retried; sleep 30; fi", timeoutSeconds: 2 },
   });
   await waitFor(() => fs.existsSync(path.join(wt, "retried")), "the first attempt's retried marker", 10_000);
-  t.mock.timers.tick(10_000); // the host sleeps 10 s through the 2 s deadline
+  t.mock.timers.tick(10_000); // the host sleeps 10 s through the 2 s deadline // retired-name-ok: node:test mock clock
   const result = await pending;
   assert.equal(result!.outcome.status, "passed", "the clean retry's verdict stands");
   const events = eventsOfType(root, "build_check");
@@ -358,9 +358,9 @@ test("a merge-scope timeout late on both attempts rejects unverified, without th
     },
   }, undefined, undefined, undefined, undefined, IDLE_HOST);
   await waitFor(() => fs.existsSync(path.join(wt, "retried")), "the first attempt's retried marker", 10_000);
-  t.mock.timers.tick(10_000); // the first deadline fires 8s late → one retry is owed
+  t.mock.timers.tick(10_000); // the first deadline fires 8s late → one retry is owed // retired-name-ok: node:test mock clock
   await waitFor(() => fs.existsSync(path.join(wt, "retried2")), "the retry's retried2 marker", 10_000);
-  t.mock.timers.tick(10_000); // the retry's deadline fires late too → its verdict stands
+  t.mock.timers.tick(10_000); // the retry's deadline fires late too → its verdict stands // retired-name-ok: node:test mock clock
   const result = await pending;
   assert.equal(result!.outcome.status, "failed", "an unverified tree must not merge");
   assert.match(

@@ -1,4 +1,4 @@
-/** The run's watchdog clocks, split out of pi.ts's runPi (2026-10-04, organize): the tick
+/** The run's watchdog clocks, split out of pi.ts's runPi (2026-10-04, organize): the run
  * deadline and the quiet watchdog (quiet-kill plus the stalled-tool-call warning) — the
  * timing policy of one pi run, which changes for different reasons than the spawn, stream,
  * and result-distillation wiring that drives it (src/agent/run-agent.ts keeps those). The
@@ -15,7 +15,7 @@ interface PiWatchdogDeps {
   progressCount(): number;
   /** The currently open tool calls, read live at each check. */
   openToolCalls(): OpenToolCall[];
-  tickTimeoutMs: number;
+  runTimeoutMs: number;
   quietMs: number;
   stallMs: number;
   /** The run's agent backend id (plans/agent-backends.md "Watchdogs and progress"): claude
@@ -25,9 +25,9 @@ interface PiWatchdogDeps {
   agent?: string;
   /** Give the deadline one extension when a progress event landed within the last
    * `progressWindowMs` of the base budget (the gate's fresh-session reviewer and conflict
-   * resolver; authoring runs resume next tick and keep one deadline). */
+   * resolver; authoring agent runs resume next run and keep one deadline). */
   extendOnProgress?: boolean;
-  /** Kill the run's process tree (terminateChild on the spawned child). */
+  /** Kill the agent run's process tree (terminateChild on the spawned child). */
   kill(): void;
   onToolCallStalled?: (message: string) => void;
 }
@@ -36,14 +36,14 @@ interface PiWatchdogDeps {
  * calls the data handlers and settle path make. The booleans are live getters: they change
  * while the run is in flight, so a copied field would go stale. */
 interface PiWatchdogs {
-  /** The tick deadline fired. */
+  /** The run deadline fired. */
   readonly timedOut: boolean;
   /** The wall-clock budget the deadline actually used: the base budget, doubled when a
    * progressing gate run took its one extension. Feeds the kill message's seconds. */
   readonly timeoutBudgetMs: number;
   /** The deadline fired on a run still making progress — the same `progressWindowMs` the
    * extension test uses, so the kill's classification matches the extension decision even
-   * when the quiet window is longer than the tick budget (BUGS.md 2026-09-29, 2026-10-09). */
+   * when the quiet window is longer than the run budget (BUGS.md 2026-09-29, 2026-10-09). */
   readonly timedOutProgressing: boolean;
   /** The quiet watchdog killed the run as hung. */
   readonly quietKilled: boolean;
@@ -58,7 +58,7 @@ interface PiWatchdogs {
   stop(): void;
 }
 
-/** Start one pi run's two watchdog clocks: the tick deadline (kills the process tree when it
+/** Start one pi run's two watchdog clocks: the run deadline (kills the process tree when it
  * fires, recording whether the run was still progressing) and the quiet/stall interval
  * (quiet-kills a run that stopped making progress and warns on stalled tool calls). Returns
  * the live flags the run's close handler reads and the note/stop calls its data handlers and
@@ -75,7 +75,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   // diff's review can finish instead of timing out mid-verification and being re-read from
   // scratch on the next attempt (BUGS.md 2026-10-07). "Still making progress" means a
   // progress event landed within `progressWindowMs` of the deadline — the quiet watchdog's
-  // own recency window, but never more than half the tick budget, so a quiet window
+  // own recency window, but never more than half the run budget, so a quiet window
   // configured longer than the budget cannot let a run that stopped progressing past the
   // base deadline. The window does not depend on the quiet watchdog being enabled: a
   // progressing gate run earns its extension even when quietTimeoutSeconds is 0. One
@@ -83,7 +83,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   // only progress since that snapshot counts, so a run that progressed early and then
   // stalled keeps today's bound.
   const progressWindowMs =
-    deps.quietMs > 0 ? Math.min(deps.quietMs, deps.tickTimeoutMs / 2) : deps.tickTimeoutMs / 2;
+    deps.quietMs > 0 ? Math.min(deps.quietMs, deps.runTimeoutMs / 2) : deps.runTimeoutMs / 2;
   let checkpointProgress = 0;
   // Arm (or re-arm) the checkpoint `progressWindowMs` before the upcoming deadline: the
   // progress count at that instant is the bar a run must beat to count as progressing. One
@@ -100,37 +100,37 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
       Math.max(0, deadlineMs - progressWindowMs),
     );
   };
-  armCheckpoint(deps.tickTimeoutMs);
+  armCheckpoint(deps.runTimeoutMs);
 
   let extended = false;
-  let timeoutBudgetMs = deps.tickTimeoutMs;
+  let timeoutBudgetMs = deps.runTimeoutMs;
   let timeout: ReturnType<typeof setTimeout>;
   const fireDeadline = () => {
     if (deps.extendOnProgress && !extended && deps.progressCount() > checkpointProgress) {
       extended = true;
-      timeoutBudgetMs = deps.tickTimeoutMs * 2;
-      armCheckpoint(deps.tickTimeoutMs); // the extended deadline gets its own progress window
-      timeout = setTimeout(fireDeadline, deps.tickTimeoutMs); // one more slice; the next firing is final
+      timeoutBudgetMs = deps.runTimeoutMs * 2;
+      armCheckpoint(deps.runTimeoutMs); // the extended deadline gets its own progress window
+      timeout = setTimeout(fireDeadline, deps.runTimeoutMs); // one more slice; the next firing is final
       return;
     }
     timedOut = true;
     // A deadline that fires on a run still making progress killed a slow run, not a hung
     // one: "recent progress" is progress since the checkpoint `progressWindowMs` before this
     // deadline — the same window the extension test uses, so the kill's classification
-    // cannot contradict the extension decision when the quiet window is longer than the tick
+    // cannot contradict the extension decision when the quiet window is longer than the run
     // budget (BUGS.md 2026-09-29, 2026-10-09). A run with no progress event at all — never
     // emitted a byte, or bytes without one structured event — keeps today's discard path: it
     // has not demonstrably begun.
     timedOutProgressing = deps.progressCount() > 0 && deps.progressCount() > checkpointProgress;
     deps.kill();
   };
-  timeout = setTimeout(fireDeadline, deps.tickTimeoutMs);
+  timeout = setTimeout(fireDeadline, deps.runTimeoutMs);
 
   // Quiet watchdog: a healthy run makes PROGRESS continuously even when slow — messages
   // start and end, turns and tool calls complete. Prolonged lack of progress means a hung
   // tool (an interactive command waiting for input) or a zombie stream (a dead generation
   // whose connection drips content-free keepalive updates for hours) that would otherwise
-  // burn the whole tick timeout. Raw output bytes deliberately do NOT reset the clock:
+  // burn the whole run timeout. Raw output bytes deliberately do NOT reset the clock:
   // keepalives are bytes without progress. Checked on an interval against the wall clock,
   // so it also fires promptly after a machine sleep rather than pausing with a suspended
   // timer. The stall warning below rides the same interval: it needs no kill of its own,
@@ -144,14 +144,14 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   // first bytes entirely — fork/exec starved by the same load, or bytes already written
   // but not yet drained (a firing timer phase precedes the poll phase that delivers
   // stdout, and a suspended machine resumes the same way). The 2026-09-23 fix therefore
-  // gave a byte-silent run no quiet kill at all, delegating its bound to the tick timeout
+  // gave a byte-silent run no quiet kill at all, delegating its bound to the run timeout
   // — which holds only while runTimeoutSeconds is near the quiet window's scale (BUGS.md
   // 2026-09-29: the live 54000 s config left a wedged model connection 15 hours in a
   // concurrency slot). A zero-byte run now gets a finite bound of its own, independent of
-  // the tick timeout: max(two quiet windows, 30 min). Startup latency under healthy load
+  // the run timeout: max(two quiet windows, 30 min). Startup latency under healthy load
   // stays far below it, so the runs the 2026-09-23 fix protected are still protected; a
   // run that is genuinely wedged before its first byte (dead connection, unscheduled
-  // fork/exec) is reaped at half an hour instead of at the tick timeout. The false
+  // fork/exec) is reaped at half an hour instead of at the run timeout. The false
   // positive it can cost — a machine so loaded the child has not been scheduled in 30
   // minutes — is a quiet kill, which resumes the session and the worktree's edits like
   // an interruption: a restart, not discarded work. Once bytes have flowed the run has
@@ -171,7 +171,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
       if (warnedStalledCalls.has(call.id)) continue;
       // A command whose stdout is piped or redirected holds its bytes away from
       // pi until it exits, so "no output" there is the prescribed shape, not
-      // evidence of a hang (BUGS.md 2026-09-28: the tick prompt tells every role
+      // evidence of a hang (BUGS.md 2026-09-28: the run prompt tells every role
       // to pipe its verification through `tail`, and the resulting false alarms
       // were the digest's top warning cluster, drowning real hangs). Silence is
       // not the only way such a command hangs, though: a leaked grandchild

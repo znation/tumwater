@@ -334,7 +334,7 @@ const finalize = (t: ClaudeStreamTranslator): string[] =>
 test("a killed run's unclosed assistant message flushes at stream end", () => {
   // claude emits one event per content block; the translator emits its folded message_end only
   // when the NEXT message, a user event, or the result closes it. A run the harness kills (the
-  // quiet watchdog, the tick deadline, a shutdown) never sends that closing event, so without a
+  // quiet watchdog, the run deadline, a shutdown) never sends that closing event, so without a
   // stream-end flush the last assistant message is dropped from the canonical stream and the
   // raw log — the very turn a timed-out review's transcript needs (BUGS.md 2026-10-09).
   const translator = claudeTranslator();

@@ -207,7 +207,7 @@ test("writeRoleNote writes the text and empty text clears the file", () => {
 test("writeRoleNote removes its temp file when the write cannot complete", () => {
   // A failed write must not litter the notes directory: the temp is written beside the target,
   // and the rename fails when the target path is occupied by a directory (ENOTDIR/EISDIR).
-  // Nothing prunes .tumwater/state/notes/, so a leaked temp would survive every tick.
+  // Nothing prunes .tumwater/state/notes/, so a leaked temp would survive every run.
   const dir = tmpdir();
   const notesDir = path.join(dir, "notes");
   const notes = path.join(notesDir, "feature.md");

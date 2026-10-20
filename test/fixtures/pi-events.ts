@@ -84,7 +84,7 @@ export function agentStart(): string {
   return JSON.stringify({ type: "agent_start" });
 }
 
-/** A pi JSON line for a user message_end (the tick prompt). Its content is never rendered, but its
+/** A pi JSON line for a user message_end (the run prompt). Its content is never rendered, but its
  * timestamp drives the run separator. */
 export function userLine(text: string, timestamp: number = FIXED_TS): string {
   return JSON.stringify({

@@ -44,7 +44,7 @@ export function sessionLedgerPath(dir: string): string {
 }
 
 /** Append one run's record to `dir`'s ledger, before its spawn. Best-effort: an unwritable
- * session dir or a full disk must degrade to "no resumable session" on a later tick, never
+ * session dir or a full disk must degrade to "no resumable session" on a later run, never
  * fail the run it was trying to describe. A crash or power loss mid-append leaves the previous
  * record without its newline; terminating that torn tail first keeps the next record on its
  * own line instead of gluing the two into one unparseable line that loses both runs' records

@@ -19,7 +19,7 @@ import type {
   StreamTranslator,
 } from "../agent/agent-backend.js";
 
-/** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in
+/** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five runs in
  * the first 18 days died this way (one of them 2 h 39 m of director work on a fresh steering
  * prompt), each traced to a torn chunk from the model server rather than to the session. Matched
  * against the child's stderr at exit; exported for tests. */

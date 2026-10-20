@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
 import type { ModelFallbackState } from "./model-fallback.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -49,10 +49,10 @@ export interface RunnerState {
    * multiplier 1. */
   recentOutcomes?: string;
   /** The last COMPLETED result and its summary — the pair the dashboards' "last result" cell
-   * renders. A `queued` run never writes it (run-apply.ts's applyTickOutcome): its change is
+   * renders. A `queued` run never writes it (run-apply.ts's applyRunOutcome): its change is
    * still in flight, which the state column already shows, so the pair keeps the prior outcome
    * until the merge resolves and applyMergeOutcome records the merge's own. */
-  lastResult?: TickResult;
+  lastResult?: RunResult;
   lastSummary?: string;
   /** The summary a `queued` run reported for the change it pinned (the text its run_end
    * carries, high-friction annotation included), keyed by that change's sha. Held back from
@@ -133,7 +133,7 @@ export interface RunnerState {
    * 2026-09-18). Reset by any non-quiet-kill outcome. */
   quietKillStreak?: number;
   /** Consecutive failed runs: an `error`-result run OR one whose leftover recovery left a
-   * merge pin behind (TickOutcome.recoveryFailure). While at or past the warning threshold
+   * merge pin behind (RunOutcome.recoveryFailure). While at or past the warning threshold
    * (run-apply.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
    * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
    * identical run failures looked like a quiet team; BUGS.md 2026-09-21: a dead reviewer
@@ -411,9 +411,9 @@ function healRecord<T extends object>(value: T | undefined, heal: (v: T) => void
  * value to the new key when the new key is absent and always drops the old key, so a file holding
  * both keeps the new value and the next save writes only current keys. */
 const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
-  ticks: "runs", // vocabulary-ok: legacy state key read from old files
-  lastTickStartedAt: "lastRunStartedAt", // vocabulary-ok: legacy state key read from old files
-  lastTickEndedAt: "lastRunEndedAt", // vocabulary-ok: legacy state key read from old files
+  ticks: "runs", // retired-name-ok: legacy name
+  lastTickStartedAt: "lastRunStartedAt", // retired-name-ok: legacy name
+  lastTickEndedAt: "lastRunEndedAt", // retired-name-ok: legacy name
   // retired-name-ok:start old state keys
   landingReviewError: "mergeReviewError", // vocabulary-ok: legacy state key read from old files
   landingCheckFailures: "mergeCheckFailures", // vocabulary-ok: legacy state key read from old files

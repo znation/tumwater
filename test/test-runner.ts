@@ -270,8 +270,8 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  *
  * The harness's variables: a team's build checks and pi tool calls run with the harness's own
  * environment, so a suite they start inherits what the operator exported, the supervisor set,
- * and the tick's own run exported, while a suite run by hand does not. Each one the harness
- * resolves out of the environment is dropped here, so a suite a tick starts exercises exactly
+ * and what the run itself exported, while a suite run by hand does not. Each one the harness
+ * resolves out of the environment is dropped here, so a suite a run starts exercises exactly
  * what a hand-run suite does:
  * - TUMWATER_PI_BIN outranks PATH in resolveAgentBin, so an operator's override (a wrapper
  *   around the real pi, plans/portability.md) displaced every fake pi the suite puts on PATH:
@@ -283,7 +283,7 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  *   shell that exported it would spawn the operator's binary instead of the PATH shim.
  * - CLAUDECODE and every CLAUDE_CODE_* mark a host Claude Code session. A run spawned inside
  *   one that kept them reports "Not logged in" (finding 2), and the isolation env strips them
- *   at spawn; dropping them here makes a suite started by hand and one started by a tick
+ *   at spawn; dropping them here makes a suite started by hand and one started by a run
  *   exercise the same parent environment.
  * - OPENCODE and every OPENCODE_* mark a host OpenCode session (its client, server, config,
  *   database, and session id), which opencodeEnv scrubs at spawn; dropping them here keeps a
@@ -293,7 +293,7 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  * - SUPERVISOR_PID_ENV carries the supervisor pid a supervised run was handed, so an inherited
  *   mark would make a spawned run's watch compare against a stale pid and stop early.
  * - TUMWATER_NOTES_PATH names the role's notes file the `tumwater-notes` command reads, so a
- *   non-authoring run that inherited a tick's notebook path would point that command at a file
+ *   non-authoring run that inherited a run's notebook path would point that command at a file
  *   the run's own contract says it must not touch (test/runner-pi.test.ts pins the empty env line).
  * - TUMWATER_RUN names the outer run a nested run's stamp is appended to (run-marker.ts), so an
  *   inherited mark made a spawned run's sweep read the suite's own process tree.

@@ -28,7 +28,7 @@ test("logs -f follows a missing event log without creating it, then picks up app
     // A fresh repo has no events.jsonl; following must tolerate that without creating it —
     // logs is read-only (writes to stdout only), so it never leaves harness state behind.
     const file = eventsLogPath(repo);
-    t.mock.timers.tick(500);
+    t.mock.timers.tick(500); // retired-name-ok: node:test mock clock
     assert.ok(!fs.existsSync(file), "logs -f does not create the missing event log");
     assert.equal(cap.out(), "", "an empty log prints nothing");
 
@@ -38,13 +38,13 @@ test("logs -f follows a missing event log without creating it, then picks up app
     ensureParentDir(file);
     fs.appendFileSync(file, "\n");
     fs.appendFileSync(file, "not json\n");
-    t.mock.timers.tick(500);
+    t.mock.timers.tick(500); // retired-name-ok: node:test mock clock
     assert.equal(cap.out(), "", "blank and malformed lines are skipped");
 
     // A real event appended while following is rendered through the same formatter as the
     // one-shot path.
     logEvent(repo, { source: "clean", type: "run_start", run: 1 });
-    t.mock.timers.tick(500);
+    t.mock.timers.tick(500); // retired-name-ok: node:test mock clock
     assert.match(cap.out(), /clean\s+run #1 started/);
     assert.equal(followError, null);
   } finally {
@@ -68,12 +68,12 @@ test("logs --transcript -f follows a transcript created after startup and skips 
     ensureParentDir(file);
     // A streaming delta renders no entry; printEntry's empty guard must print nothing.
     fs.appendFileSync(file, JSON.stringify({ type: "message_update" }) + "\n");
-    t.mock.timers.tick(500);
+    t.mock.timers.tick(500); // retired-name-ok: node:test mock clock
     assert.equal(cap.out(), "no transcript yet for clean\n", "non-renderable lines print nothing");
 
     // A completed assistant turn appended later is rendered exactly once.
     fs.appendFileSync(file, assistantLine("live turn") + "\n");
-    t.mock.timers.tick(500);
+    t.mock.timers.tick(500); // retired-name-ok: node:test mock clock
     assert.match(cap.out(), /live turn/);
     assert.equal(followError, null);
   } finally {

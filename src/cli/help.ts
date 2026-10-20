@@ -546,7 +546,7 @@ export function helpStanzas(help: string = HELP): HelpStanza[] {
 
 /** Commands that still dispatch but are not listed in help or completion: alias -> the command
  * whose topic they print. `run` is the older name of `start`. */
-export const HIDDEN_COMMAND_ALIASES: Readonly<Record<string, string>> = { run: "start", tick: "history" };
+export const HIDDEN_COMMAND_ALIASES: Readonly<Record<string, string>> = { run: "start", tick: "history" }; // retired-name-ok: legacy name
 
 /** The usage text for one command — every stanza whose command matches, then a pointer back to
  * the full list — or null when nothing in the help names that command. */

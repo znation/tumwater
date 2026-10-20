@@ -29,7 +29,7 @@ export function clockHm(ms: number): string {
  * clamps at zero (an age never goes negative when the clock skews), `secondsUntil` clamps at
  * zero the same way for the future direction (a countdown never reads negative once its
  * deadline has passed). The one home of the clamp + rounding behind every elapsed age and
- * countdown — status-render.ts's lastTickCell and nextRunCell, the queued-prompt age and
+ * countdown — status-render.ts's lastRunCell and nextRunCell, the queued-prompt age and
  * deliver-in suffix, the team pause's auto-resume countdown, and status-model.ts's sleeping
  * phase label (which re-floors at 1s) all render through. The GUI page's browser
  * script keeps its own one-line twins (gui-client.ts's ageSec and its inline countdown
@@ -54,7 +54,7 @@ export function formatDate(d: Date): string {
 
 /** Wall-clock time as zero-padded `HH:MM:SS` in local time — the clock half formatTimestamp
  * builds, and the direct rendering of the status table's last-run cell (status-render.ts's
- * lastTickCell), doctor-checks's probe-at stamp, failure-render's state-change stamp, and
+ * lastRunCell), doctor-checks's probe-at stamp, failure-render's state-change stamp, and
  * operator-intent's pause/deadline wording, so a local time of day reads the same shape at
  * every surface. */
 export function formatTime(d: Date): string {

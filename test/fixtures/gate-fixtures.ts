@@ -19,7 +19,7 @@ export const ROLE = "improve";
 
 /** The reviewAheadOfMain context over a repo: run 1 unless overridden. The gate's pi runs
  * go through the bare runPi here (no transient retry): the tests drive the reviewer with a
- * fake-pi shim and never need the retry, which the LoopPi-level tests pin. */
+ * fake-pi shim and never need the retry, which the RunnerPi-level tests pin. */
 export function gateCtx(root: string, wt: string, runNumber = 1) {
   return {
     root,

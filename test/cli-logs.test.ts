@@ -214,7 +214,7 @@ test("logs --transcript prints the rendered pi transcript and -n limits entries"
   writeLogLines(file, [
       JSON.stringify({ type: "session", version: 3, id: "x" }),
       JSON.stringify({ type: "agent_start" }),
-      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "tick prompt one (must not appear)" }], timestamp: TS1 } }),
+      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "run prompt one (must not appear)" }], timestamp: TS1 } }),
       JSON.stringify({ type: "message_update", delta: { type: "text_delta", textDelta: "streaming noise" } }),
       JSON.stringify({
         type: "message_end",
@@ -229,7 +229,7 @@ test("logs --transcript prints the rendered pi transcript and -n limits entries"
         },
       }),
       JSON.stringify({ type: "agent_start" }),
-      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "tick prompt two (must not appear)" }], timestamp: TS2 } }),
+      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "run prompt two (must not appear)" }], timestamp: TS2 } }),
       JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "second run done" }], stopReason: "stop" } }),
     ]);
 

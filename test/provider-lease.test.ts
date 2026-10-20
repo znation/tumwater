@@ -26,7 +26,7 @@ function settle(ms = 20): Promise<void> {
 }
 
 test("ensureProviderLease is a no-op without a lease in context", async () => {
-  // A bare LoopPi unit test or `tumwater tick` carries no lease: the run must not wait or
+  // A bare RunnerPi unit test or `tumwater history` carries no lease: the run must not wait or
   // re-key anything, and must take no permit.
   const semaphore = new Semaphore(2);
   semaphore.setKeyCaps({ omlx: 1 });

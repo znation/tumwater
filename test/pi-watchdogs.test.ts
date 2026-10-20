@@ -20,7 +20,7 @@ import { runPiFixture } from "./helpers/pi-run-harness.js";
 
 // The quiet watchdog's kill is reported as quietKilled, not timedOut: a hung tool call leaves
 // its session and worktree edits intact, so the runner resumes them instead of discarding hours
-// of work for the next tick's reset (BUGS.md 2026-09-12).
+// of work for the next run's reset (BUGS.md 2026-09-12).
 //
 // The watchdog tests below run it on logical time (watchdogClock): each waits until the raw
 // log shows the fake pi's output — so the parser has counted it — then advances the clock
@@ -46,7 +46,7 @@ test("a stalled run is reported as quiet-killed, not timed out", async (t) => {
       const result = await run;
       assert.equal(result.ok, false);
       assert.equal(result.quietKilled, true, "the watchdog kill is reported as quiet-killed");
-      assert.equal(result.timedOut, false, "a hung tool call is not a tick timeout");
+      assert.equal(result.timedOut, false, "a hung tool call is not a run timeout");
       assert.match(result.errorMessage ?? "", /killed as hung/);
     },
   );
@@ -92,10 +92,10 @@ test("a run that is slow to speak is not quiet-killed during startup", async (t)
 // emits a byte was bounded only by runTimeoutSeconds, which operators raise for unrelated
 // reasons (the live config's 54000 s left a wedged model connection 15 hours in a
 // concurrency slot). The zero-byte bound is now max(two quiet windows, 30 min), independent
-// of the tick timeout. This pins that a byte-silent run is reaped by the quiet watchdog —
-// reported quietKilled, so the runner resumes it — with a tick timeout set far beyond the
+// of the run timeout. This pins that a byte-silent run is reaped by the quiet watchdog —
+// reported quietKilled, so the runner resumes it — with a run timeout set far beyond the
 // bound; under the old exemption this run never settles short of the real 2 h timeout.
-test("a run that never emits a byte is quiet-killed at 30 minutes regardless of the tick timeout", async (t) => {
+test("a run that never emits a byte is quiet-killed at 30 minutes regardless of the run timeout", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
   config.quietTimeoutSeconds = 2; // zero-byte bound = max(2 × 2 s, 30 min) = 30 min
@@ -110,7 +110,7 @@ test("a run that never emits a byte is quiet-killed at 30 minutes regardless of 
       clock.advance(31 * 60_000); // one minute past the 30-minute zero-byte bound
       const result = await run;
       assert.equal(result.quietKilled, true, "a byte-silent run is reaped by the quiet watchdog");
-      assert.equal(result.timedOut, false, "the tick timeout is not the zero-byte bound");
+      assert.equal(result.timedOut, false, "the run timeout is not the zero-byte bound");
       assert.match(result.errorMessage ?? "", /killed as hung/);
     },
   );
@@ -171,7 +171,7 @@ test("a gate run that stopped progressing before its deadline is not extended", 
       assert.equal(
         result.timedOutProgressing,
         false,
-        "a run whose progress stopped before the checkpoint is not progressing, even though the quiet window is longer than the tick budget",
+        "a run whose progress stopped before the checkpoint is not progressing, even though the quiet window is longer than the run budget",
       );
       assert.match(result.errorMessage ?? "", /timed out after 2s/);
       assert.doesNotMatch(result.errorMessage ?? "", /after 4s/);

@@ -51,10 +51,10 @@ test("armScheduledStopWatch fires once for a passed marker and consumes it", asy
   let calls = 0;
   const watch = armScheduledStopWatch(root, () => calls++);
   scheduleStop(root, Date.now() + 10_000);
-  t.mock.timers.tick(5_000);
+  t.mock.timers.tick(5_000); // retired-name-ok: node:test mock clock
   assert.equal(calls, 0, "a future marker does not fire");
-  t.mock.timers.tick(10_000);
-  t.mock.timers.tick(10_000);
+  t.mock.timers.tick(10_000); // retired-name-ok: node:test mock clock
+  t.mock.timers.tick(10_000); // retired-name-ok: node:test mock clock
   assert.equal(calls, 1);
   assert.equal(scheduledStopAt(root), undefined, "the marker was consumed");
   watch.clear();

@@ -60,7 +60,7 @@ export interface OpencodeArgOptions {
   title: string;
   /** The configured `backends.opencode.args` passthrough, appended last. */
   args?: string[];
-  /** The tick prompt, returned as stdin rather than as an argv element. */
+  /** The run prompt, returned as stdin rather than as an argv element. */
   prompt: string;
 }
 

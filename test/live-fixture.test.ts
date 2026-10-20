@@ -70,10 +70,10 @@ test("seedLiveTeam writes the orchestrator marker, one running state per role, a
   for (const role of ["alpha", "beta"]) {
     const st = JSON.parse(fs.readFileSync(path.join(state, `${role}.json`), "utf8"));
     assert.equal(st.role, role);
-    assert.equal(st.ticks, 3);
+    assert.equal(st.runs, 3);
     assert.equal(st.running, true);
     assert.equal(st.phase, "pi");
-    assert.ok(st.lastRunStartedAt > st.lastRunEndedAt, "a still-running tick started after the last one ended");
+    assert.ok(st.lastRunStartedAt > st.lastRunEndedAt, "a still-running run started after the last one ended");
 
     const lines = fs
       .readFileSync(path.join(root, ".tumwater", "log", `${role}.pi.jsonl`), "utf8")

@@ -12,12 +12,12 @@ test("readJsonFile treats missing or torn files as no data, not errors", () => {
 
   assert.equal(readJsonFile<Record<string, unknown>>(file), null); // missing — no throw
 
-  fs.writeFileSync(file, JSON.stringify({ ticks: 3 }));
-  assert.deepEqual(readJsonFile<{ ticks: number }>(file), { ticks: 3 });
+  fs.writeFileSync(file, JSON.stringify({ runs: 3 }));
+  assert.deepEqual(readJsonFile<{ runs: number }>(file), { runs: 3 });
 
   // A torn write (crash mid-write by another process) must not throw — observers polling
   // these files every second would die on it.
-  fs.writeFileSync(file, '{"ticks": ');
+  fs.writeFileSync(file, '{"runs": ');
   assert.equal(readJsonFile<Record<string, unknown>>(file), null);
 });
 
@@ -49,15 +49,15 @@ test("writeJsonAtomic replaces the target atomically, honoring the caller's newl
   const dir = tmpdir();
   const file = path.join(dir, "nested", "state.json"); // Parent does not exist yet.
 
-  writeJsonAtomic(file, { ticks: 1 });
+  writeJsonAtomic(file, { runs: 1 });
   let raw = fs.readFileSync(file, "utf8");
-  assert.deepEqual(JSON.parse(raw), { ticks: 1 });
+  assert.deepEqual(JSON.parse(raw), { runs: 1 });
   assert.ok(!raw.endsWith("\n"), "state files end without a trailing newline (writeJsonFile convention)");
-  assert.ok(raw.includes('\n  "ticks": 1'), "two-space pretty print — the shared marker/info format");
+  assert.ok(raw.includes('\n  "runs": 1'), "two-space pretty print — the shared marker/info format");
 
-  writeJsonAtomic(file, { ticks: 2 }, true); // tumwater.json convention.
+  writeJsonAtomic(file, { runs: 2 }, true); // tumwater.json convention.
   raw = fs.readFileSync(file, "utf8");
-  assert.deepEqual(JSON.parse(raw), { ticks: 2 }, "the old content is replaced, not mixed");
+  assert.deepEqual(JSON.parse(raw), { runs: 2 }, "the old content is replaced, not mixed");
   assert.ok(raw.endsWith("}\n") && !raw.endsWith("\n\n"), "trailingNewline adds exactly one newline");
 
   // The tmp file is renamed into place, not left behind.
@@ -67,7 +67,7 @@ test("writeJsonAtomic replaces the target atomically, honoring the caller's newl
 test("writeJsonAtomic rethrows a failed write, removes its tmp, and leaves the target untouched", () => {
   const dir = tmpdir();
   const file = path.join(dir, "state.json");
-  writeJsonAtomic(file, { ticks: 1 });
+  writeJsonAtomic(file, { runs: 1 });
 
   // A non-empty directory squatting on the target path makes the rename fail
   // (EISDIR/ENOTEMPTY) — deterministically, for any user including root, with the
@@ -76,7 +76,7 @@ test("writeJsonAtomic rethrows a failed write, removes its tmp, and leaves the t
   fs.mkdirSync(file);
   fs.writeFileSync(path.join(file, "blocker.txt"), "x\n");
 
-  assert.throws(() => writeJsonAtomic(file, { ticks: 2 }), (err: unknown) => err instanceof Error);
+  assert.throws(() => writeJsonAtomic(file, { runs: 2 }), (err: unknown) => err instanceof Error);
 
   assert.ok(fs.statSync(file).isDirectory(), "the target is left untouched");
   assert.deepEqual(fs.readdirSync(file), ["blocker.txt"]);

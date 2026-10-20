@@ -33,7 +33,7 @@ test("harness commits fall back to tumwater for the committer too when no identi
   try {
     fs.writeFileSync(path.join(repo, "new.txt"), "hi\n");
     await commitAll(repo, "tumwater(improve): add new.txt");
-    // No ambient identity means both sides read tumwater — ticks still work with no config.
+    // No ambient identity means both sides read tumwater — runs still work with no config.
     assert.equal(identLine(repo), "tumwater <tumwater@localhost>|tumwater <tumwater@localhost>");
   } finally {
     restoreGlobal();

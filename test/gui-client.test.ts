@@ -142,7 +142,7 @@ test("the page's role order is status-model's, rank by rank", () => {
     "queued-z", "sleepy", "never-ran", // idle
   ]);
   // Lockstep with the TUI/status comparator and its rank function.
-  assert.deepEqual(sortRolesByState(roles.map((l) => ({ ...l, lastTickEndedAt: l.lastRunEndedAt }))).map((l) => l.role), order);
+  assert.deepEqual(sortRolesByState(roles.map((l) => ({ ...l }))).map((l) => l.role), order);
   for (const l of roles) assert.equal(model.roleRank(l.phase), roleRank(l.phase), l.phase);
   // Ties break on the name, and the input is left alone.
   const tied = [

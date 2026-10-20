@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { repoRoot } from "./helpers/repo-root.js";
 
 // A deterministic unused-export check: tsconfig's noUnusedLocals does not cover exports, so an
-// exported symbol nothing outside its own file uses would otherwise cost a clean tick per case.
+// exported symbol nothing outside its own file uses would otherwise cost a clean run per case.
 // This test fails in the author's gate check instead. Tests count as users: exported-for-test is
 // legitimate.
 

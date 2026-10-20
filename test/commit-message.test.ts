@@ -133,13 +133,13 @@ test("commitTrailer compacts context at 10k and below", () => {
 });
 
 test("commitTrailer appends a sibling Friction line only when flagged high-friction", () => {
-  // Without the flag: exactly the Tick line — its asserted format stays stable (plans/
+  // Without the flag: exactly the Run line — its asserted format stays stable (plans/
   // refusal-and-thrash.md, trailer format decided in the 2026-08-29 re-audit).
   assert.equal(
     commitTrailer("feature", 7, 41, 9_999),
     "Run: feature #7 · turns 41 · ctx 9999",
   );
-  // With it: a sibling git-trailer line after the Tick line — minutes rounded to whole
+  // With it: a sibling git-trailer line after the Run line — minutes rounded to whole
   // minutes, e.g. `Friction: high (41 turns / 62m)`. Only changed runs carry it.
   assert.equal(
     commitTrailer("feature", 7, 41, 9_999, 62.4),
@@ -215,7 +215,7 @@ test("parseCommitMetadata yields absent fields for a message with neither body n
     body: undefined,
     highFriction: undefined,
   });
-  // A routine harness commit: the Tick trailer alone still carries no friction flag.
+  // A routine harness commit: the Run trailer alone still carries no friction flag.
   assert.deepEqual(
     parseCommitMetadata(buildCommitMessage("tumwater(clean): tidy", null, commitTrailer("clean", 1, 3, 500))),
     { subject: "tidy", body: undefined, highFriction: undefined },

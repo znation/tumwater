@@ -127,7 +127,7 @@ export function findAgentBinary(
 }
 
 /** Normalize a path-shaped agent binary against the harness process's cwd NOW, at
- * resolution time: the spawn runs with each tick's worktree as cwd, so a relative value
+ * resolution time: the spawn runs with each run's worktree as cwd, so a relative value
  * left as given would name a different file there than the run preflight and doctor (which
  * evaluate against the process cwd) had already accepted. An absolute path comes back
  * normalized; a bare name — no separator — is left for PATH resolution exactly as before.

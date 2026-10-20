@@ -39,7 +39,7 @@ function groupAlive(pgid: number): boolean {
 function checkClock(t: TestContext): (ms: number) => void {
   t.mock.timers.enable({ apis: ["Date", "setTimeout", "setInterval"], now: Date.now() });
   return (ms) => {
-    for (let left = ms; left > 0; left -= 50) t.mock.timers.tick(Math.min(50, left));
+    for (let left = ms; left > 0; left -= 50) t.mock.timers.tick(Math.min(50, left)); // retired-name-ok: node:test mock clock
   };
 }
 

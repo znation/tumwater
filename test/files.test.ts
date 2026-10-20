@@ -101,7 +101,7 @@ test("statOrNull treats a missing file as no data, not an error", () => {
 
   assert.equal(statOrNull(file), null); // missing — no throw
 
-  fs.writeFileSync(file, JSON.stringify({ ticks: 3 }));
+  fs.writeFileSync(file, JSON.stringify({ runs: 3 }));
   assert.ok(statOrNull(file)!.isFile());
 });
 

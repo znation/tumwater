@@ -77,10 +77,10 @@ test("logs --type matches an old line by either the old or the new name, and --j
 });
 
 test("normalizeLegacyEvent moves a tick field to run, and keeps an existing run", () => {
-  const old = { type: "tick_end", tick: 4 }; // vocabulary-ok: legacy event name and field read from old logs
+  const old = { type: "tick_end", tick: 4 }; // vocabulary-ok: legacy event name and field read from old logs // retired-name-ok: legacy name
   assert.deepEqual(normalizeLegacyEvent(old), { type: "run_end", run: 4 });
-  const both = { type: "run_end", tick: 1, run: 2 }; // vocabulary-ok: legacy field read from old logs
-  assert.deepEqual(normalizeLegacyEvent(both), { type: "run_end", tick: 1, run: 2 }); // vocabulary-ok: legacy field read from old logs
+  const both = { type: "run_end", tick: 1, run: 2 }; // vocabulary-ok: legacy field read from old logs // retired-name-ok: legacy name
+  assert.deepEqual(normalizeLegacyEvent(both), { type: "run_end", tick: 1, run: 2 }); // vocabulary-ok: legacy field read from old logs // retired-name-ok: legacy name
 });
 
 test("normalizeLegacyEvent maps an old build_check scope and conflict_handback reason to merge", () => {
@@ -93,7 +93,7 @@ test("normalizeLegacyEvent maps an old build_check scope and conflict_handback r
 });
 
 test("normalizeLegacyEvent renames the restart drain fields and keeps new ones", () => {
-  const old = { type: "restart", drainedMs: 5, abortedTicks: 2, drainWindowMs: 9 }; // vocabulary-ok: legacy field names read from old logs
+  const old = { type: "restart", drainedMs: 5, abortedTicks: 2, drainWindowMs: 9 }; // retired-name-ok: legacy name
   assert.deepEqual(normalizeLegacyEvent(old), { type: "restart", finishedMs: 5, abortedRuns: 2, finishWindowMs: 9 });
   const current = { type: "restart", finishedMs: 1, abortedRuns: 0, finishWindowMs: 3 };
   assert.deepEqual(normalizeLegacyEvent({ ...current }), current);
@@ -136,7 +136,7 @@ test("an old loop-keyed line reads back as source from the live log and from the
 test("normalizeLegacyEvent maps a slot_wait's old purpose values", () => {
   const norm = (purpose: string) =>
     (normalizeLegacyEvent({ type: "slot_wait", purpose } as never) as unknown as { purpose: string }).purpose;
-  assert.equal(norm("tick"), "run"); // vocabulary-ok: legacy event value
+  assert.equal(norm("tick"), "run"); // vocabulary-ok: legacy event value // retired-name-ok: legacy name
   assert.equal(norm("vet"), "verify"); // vocabulary-ok: legacy event value
   assert.equal(norm("run"), "run");
 });

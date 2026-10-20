@@ -1,8 +1,8 @@
 /** The AsyncLocalStorage store that lets a run's lease follow its runs across providers
  * (plans/provider-concurrency.md §5): a lease rides here for the length of a run, a verify task,
- * or a resolver run, and `LoopPi.runWithTransientRetry` re-keys it to the provider each run
+ * or a resolver run, and `RunnerPi.runWithTransientRetry` re-keys it to the provider each run
  * actually uses. The one choke point every run a role makes (authoring, gate, merge and resolver)
- * passes through, so a budget handback or a model-failure switch that moves a mid-run run to
+ * passes through, so a budget handback or a model-failure switch that moves a run in flight to
  * another provider moves the lease with it instead of leaving it parked on the key it was admitted
  * on. The check-permit.ts `holdingPermit` store is the pattern: nothing here is a separate permit,
  * only the single lease the run path already holds.
@@ -54,7 +54,7 @@ export function withProviderLease<T>(
 }
 
 /** Re-key the calling lease to the provider `cfg` runs on, if it is not there yet. No-op when
- * the current async context carries no lease (a direct LoopPi unit test, `tumwater tick`) or
+ * the current async context carries no lease (a direct RunnerPi unit test, `tumwater history`) or
  * when the run is already on the lease's key. When it does re-key and `hooks` are present and
  * the target key is at its cap, the hooks hear `waiting` before the lease parks and `granted`
  * once the key frees — a re-key never waits on the team total (it already holds a team

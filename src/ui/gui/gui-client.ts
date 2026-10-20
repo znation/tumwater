@@ -183,7 +183,7 @@ const FORMAT_JS = String.raw`  // format:start
   // active-phase-fmt:end
   // last-run-fmt:start
   // The absolute local time of a run end with its age ("14:32:05 · 3m ago"), prefixed MM-DD
-  // once older than a day; "-" when never ran — status-render.ts's lastTickCell.
+  // once older than a day; "-" when never ran — status-render.ts's lastRunCell.
   // Whole elapsed seconds since an instant, clamped at zero and rounded to the nearest
   // second — datetime.ts's secondsSince (the browser runtime cannot import it), shared by
   // fmtLastRun and fmtAgo below so the clamp cannot drift between the page's ages.

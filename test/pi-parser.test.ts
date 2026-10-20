@@ -29,7 +29,7 @@ test("parser keeps the last non-empty assistant text and sums usage", () => {
 });
 
 test("parser sums prompt tokens and freezes the pre-edit prefix at the first edit turn", () => {
-  // PLANS.md, per-tick prompt-token telemetry: prompt = input + cacheRead + cacheWrite, and
+  // PLANS.md, per-run prompt-token telemetry: prompt = input + cacheRead + cacheWrite, and
   // the pre-edit prefix includes every turn up to and including the one carrying edit/write.
   const parser = new PiStreamParser();
   const turn = (
@@ -177,7 +177,7 @@ test("parser keeps a refusal declared in an intermediate message (regression)", 
 
 test("parser does not treat a bare sentinel as a refusal", () => {
   // BUGS.md 2026-09-23: the refusal comes only from an anchored line with a reason — a bare
-  // sentinel is a mention, not a declaration, and must not route the tick to handleRefusal.
+  // sentinel is a mention, not a declaration, and must not route the run to handleRefusal.
   const parser = new PiStreamParser();
   parser.feed(assistantLine(REFUSED_SENTINEL) + "\n");
   assert.equal(parser.refused, false);
@@ -206,7 +206,7 @@ test("parser clears the refusal when a negating reason follows it, last line win
 });
 
 test("parser never refuses on a negating reason alone, in every recorded shape", () => {
-  // The exact shapes the discarded ticks emitted (BUGS.md 2026-09-23): `none`, `(none — no
+  // The exact shapes the discarded runs emitted (BUGS.md 2026-09-23): `none`, `(none — no
   // entry refused this run)`, and the empty reason a bare labeled line leaves.
   for (const text of [
     `${REFUSED_SENTINEL}: none`,

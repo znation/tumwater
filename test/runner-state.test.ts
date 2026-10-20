@@ -91,7 +91,7 @@ test("saveRunnerState from two concurrent processes never tears the file or lose
     import { saveRunnerState } from ${JSON.stringify(stateUrl)};
     const [root, tag, n] = process.argv.slice(1);
     for (let i = 0; i < Number(n); i++) {
-      const s = { role: "race", ticks: i, commits: 0, nextRunAt: 0, backoffSeconds: 0, lastMainHead: "", generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0, dayStamp: "", dayCostUsd: 0 };
+      const s = { role: "race", runs: i, commits: 0, nextRunAt: 0, backoffSeconds: 0, lastMainHead: "", generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0, dayStamp: "", dayCostUsd: 0 };
       if (tag === "b") s.lastSummary = "writer-b padding ".repeat(16); // longer payload than writer a's
       saveRunnerState(root, s);
     }`;
@@ -140,7 +140,7 @@ test("loadRunnerState fills fields missing from an older or partial file", () =>
   const file = statePath(dir, "clean");
   ensureParentDir(file);
   // A state file written before generatedTokens/lastMainHead existed.
-  fs.writeFileSync(file, JSON.stringify({ role: "clean", ticks: 3, commits: 1 }));
+  fs.writeFileSync(file, JSON.stringify({ role: "clean", ticks: 3, commits: 1 })); // retired-name-ok: legacy name
   const s = loadRunnerState(dir, "clean");
   assert.equal(s.runs, 3);
   assert.equal(s.commits, 1);
@@ -170,7 +170,7 @@ test("loadRunnerState heals a corrupt persisted numeric field", () => {
     file,
     JSON.stringify({
       role: "dirty",
-      ticks: "12",
+      runs: "12",
       commits: null,
       nextRunAt: -1,
       backoffSeconds: "30",
@@ -375,7 +375,7 @@ test("loadRunnerState recovers from torn or non-object JSON", () => {
   const dir = tmpdir();
   const file = statePath(dir, "dedupe");
   ensureParentDir(file);
-  for (const junk of ['{"ticks": 2', '"just a string"', "[1, 2]", "null"]) {
+  for (const junk of ['{"ticks": 2', '"just a string"', "[1, 2]", "null"]) { // retired-name-ok: legacy name
     fs.writeFileSync(file, junk);
     assertFreshFields(loadRunnerState(dir, "dedupe"), "dedupe"); // must not throw or lose defaults
   }
@@ -470,23 +470,23 @@ test("loadRunnerState maps a legacy `ticks` key to `runs`, and the next save wri
   const dir = tmpdir();
   const file = statePath(dir, "qa");
   ensureParentDir(file);
-  fs.writeFileSync(file, JSON.stringify({ role: "qa", ticks: 7 })); // vocabulary-ok: legacy state key read from old files
+  fs.writeFileSync(file, JSON.stringify({ role: "qa", ticks: 7 })); // retired-name-ok: legacy name
   const s = loadRunnerState(dir, "qa");
   assert.equal(s.runs, 7);
   saveRunnerState(dir, s);
   const onDisk = readJson<Record<string, unknown>>(file);
   assert.equal(onDisk.runs, 7);
-  assert.equal("ticks" in onDisk, false);
+  assert.equal("ticks" in onDisk, false); // retired-name-ok: legacy name
 });
 
 test("loadRunnerState keeps `runs` and drops `ticks` when a file holds both", () => {
   const dir = tmpdir();
   const file = statePath(dir, "qa");
   ensureParentDir(file);
-  fs.writeFileSync(file, JSON.stringify({ role: "qa", ticks: 3, runs: 9 })); // vocabulary-ok: legacy state key read from old files
+  fs.writeFileSync(file, JSON.stringify({ role: "qa", ticks: 3, runs: 9 })); // retired-name-ok: legacy name
   const s = loadRunnerState(dir, "qa");
   assert.equal(s.runs, 9);
-  assert.equal("ticks" in s, false);
+  assert.equal("ticks" in s, false); // retired-name-ok: legacy name
 });
 
 test("loadRunnerState maps the five legacy tick and merge keys, healing each as before", () => {
@@ -497,8 +497,8 @@ test("loadRunnerState maps the five legacy tick and merge keys, healing each as 
     file,
     JSON.stringify({
       role: "qa",
-      lastTickStartedAt: 100, // vocabulary-ok: legacy state key read from old files
-      lastTickEndedAt: 200, // vocabulary-ok: legacy state key read from old files
+      lastTickStartedAt: 100, // retired-name-ok: legacy name
+      lastTickEndedAt: 200, // retired-name-ok: legacy name
       // retired-name-ok:start old state keys
       lastLandedAt: -5, // vocabulary-ok: legacy state key read from old files
       landingReviewError: { sha: "abc", selector: "bad/model", message: "boom" }, // vocabulary-ok: legacy state key read from old files
@@ -514,7 +514,7 @@ test("loadRunnerState maps the five legacy tick and merge keys, healing each as 
   assert.equal(s.mergeCheckFailures, undefined);
   saveRunnerState(dir, s);
   const onDisk = readJson<Record<string, unknown>>(file);
-  for (const old of ["lastTickStartedAt", "lastTickEndedAt", "lastLandedAt", "landingReviewError", "landingCheckFailures"]) // vocabulary-ok: legacy state keys
+  for (const old of ["lastTickStartedAt", "lastTickEndedAt", "lastLandedAt", "landingReviewError", "landingCheckFailures"]) // retired-name-ok: legacy name
     assert.equal(old in onDisk, false);
   assert.equal(onDisk.lastRunEndedAt, 200);
 });

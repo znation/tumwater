@@ -95,7 +95,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     $("histbody").addEventListener("click", (ev) => {
       const b = ev.target instanceof Element ? ev.target.closest("button[data-rundetail]") : null;
       if (!b) return;
-      toggleHistDetail(b.dataset.role, b.dataset.tick);
+      toggleHistDetail(b.dataset.role, b.dataset.run);
     });
     // The drill-down's revert buttons: the first click previews, the preview's own button commits.
     $("histbody").addEventListener("click", (ev) => {
@@ -429,7 +429,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
         ? "<div class='empty'><strong>No runs in " + w[1] + "</strong>The window may have had nothing to do, or its older events may have rotated out.</div>"
         : "<div class='empty'><strong>No runs yet</strong>Completed runs show up here as the roles work.</div>";
     }
-    return "<div class='table-wrap'><table class='table history'><thead><tr><th class='c-x'></th><th>When</th><th>Role</th><th class='c-tick num'>Run</th>" + // vocabulary-ok: the c-tick class stays
+    return "<div class='table-wrap'><table class='table history'><thead><tr><th class='c-x'></th><th>When</th><th>Role</th><th class='c-run num'>Run</th>" +
       "<th>Result</th><th class='c-model'>Model</th><th class='c-detail'>Detail</th><th class='num c-dur'>Took</th><th class='num c-usage'>Usage</th></tr></thead><tbody>" +
       shown.map((r) => {
         const res = resultInfo(r.result);
@@ -441,13 +441,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
         const open = histDetailOpen === key;
         const toggle = known.has(r.role)
           ? "<button type='button' class='btn btn-sm hist-x' data-rundetail='1' data-role='" + esc(r.role) +
-            "' data-tick='" + esc(r.run) + "' aria-expanded='" + open + "' title='" + (open ? "Hide run detail" : "Show run detail") + "'>" + icon("chev") + "</button>" // vocabulary-ok: the data-tick name stays
+            "' data-run='" + esc(r.run) + "' aria-expanded='" + open + "' title='" + (open ? "Hide run detail" : "Show run detail") + "'>" + icon("chev") + "</button>"
           : "";
         const row = "<tr" + (known.has(r.role) ? " class='clickable' data-open='" + esc(r.role) + "'" : "") + ">" +
           "<td class='c-x'>" + toggle + "</td>" +
           "<td title='" + esc(r.time) + "'><span class='clamp1'>" + esc(fmtAgo(r.ts)) + "</span></td>" +
           "<td class='mono'>" + esc(roleLabel(r.role)) + "</td>" +
-          "<td class='c-tick num muted'>#" + esc(r.run) + "</td>" + // vocabulary-ok: the c-tick class stays
+          "<td class='c-run num muted'>#" + esc(r.run) + "</td>" +
           "<td><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span></td>" +
           "<td class='c-model'><span class='clamp1' title='" + esc(r.model || "") + "'>" + (r.model ? esc(r.model) : "<span class='muted'>—</span>") + "</span></td>" +
           "<td class='c-detail'><span class='clamp2' title='" + esc(r.detail) + "'>" + (r.detail ? esc(r.detail) : "<span class='muted'>—</span>") + "</span></td>" +

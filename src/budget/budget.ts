@@ -14,7 +14,7 @@ import type { RunnerState } from "../runner/runner-state.js";
 import { dayAt, dayKey } from "../text/datetime.js";
 
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other
- * wall-clock display in the harness (lastTickCell). */
+ * wall-clock display in the harness (lastRunCell). */
 export function todayStamp(now = Date.now()): string {
   return dayKey(now);
 }

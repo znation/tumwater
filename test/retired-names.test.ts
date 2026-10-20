@@ -21,6 +21,8 @@ interface RetiredFamily {
   fileWords: readonly string[];
   /** Exact identifiers the family keeps everywhere; give each a reason comment. */
   allow: readonly string[];
+  /** Exact identifiers that fail though their words are current (a renamed command's names). */
+  identifiers?: readonly string[];
 }
 
 // Each later Code-names series appends its family here.
@@ -46,6 +48,15 @@ const RETIRED: readonly RetiredFamily[] = [
       "customLoopNames", // renamed by Plain terms code cleanup part 2/7
       "CUSTOM_LOOP_KEYS", // renamed by Plain terms code cleanup part 2/7
     ],
+  },
+  {
+    family: "tick → run",
+    words: ["tick", "ticks", "ticked", "ticking"],
+    fileWords: ["tick", "ticks"],
+    // Node's own names.
+    allow: ["nextTick", "processTicksAndRejections"],
+    // `tumwater run`'s old code names; "run" is the new word, so they cannot be words.
+    identifiers: ["cmdRun", "RUN_FLAG_SPECS", "superviseRun", "superviseRunCommand", "spawnRunChild"],
   },
 ];
 
@@ -104,6 +115,7 @@ function identifierFindings(rel: string, text: string, families: readonly Retire
     if (words[0] === "legacy") return;
     for (const fam of families) {
       if (fam.allow.includes(name)) continue;
+      if (fam.identifiers?.includes(name)) out.push(`${rel}:${line} ${name} (${fam.family})`);
       if (words.some((w) => fam.words.includes(w))) out.push(`${rel}:${line} ${name} (${fam.family})`);
     }
   };
@@ -185,6 +197,9 @@ test("self-test: identifiers", () => {
   assert.equal(f("const landingRefName = 1;\nconst vetted = 2;\n").length, 2);
   assert.equal(f("const userland = 1;\nconst landmarks = 2;\nconst Helvetica = 3;\n").length, 0);
   assert.equal(f("function removeLegacyLandWorktrees() {}\n").length, 0);
+  assert.equal(f("type TickResult = 1;\n").length, 1);
+  assert.equal(f("const cmdRun = 1;\n").length, 1);
+  assert.equal(f("const cmdRunDetail = 1;\nprocess.nextTick(f);\nconst backtick = 1;\n").length, 0);
   assert.deepEqual(identWords("GUI_CLIENT_FLEET_JS"), ["gui", "client", "fleet", "js"]);
 });
 

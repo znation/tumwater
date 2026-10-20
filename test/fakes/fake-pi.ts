@@ -84,7 +84,7 @@ export function fakePi(script: string): () => void {
 }
 
 /** The script fakePiIdle installs: one compliant TUMWATER_NOTHING_TO_DO assistant line — the
- * standard fixture for a tick that finds nothing to do. The single home of the printf +
+ * standard fixture for a run that finds nothing to do. The single home of the printf +
  * assistantLine idiom the orchestrator and runner tests repeated verbatim, so the sentinel's
  * spelling cannot drift per fixture. `opts` passes through to assistantLine when a test pins
  * tokens or cost. */

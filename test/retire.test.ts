@@ -94,7 +94,7 @@ test("retire refuses a dirty worktree and a mid-run role before removing anythin
   const r2 = await cli(root, "retire", "--role", "improve");
   assert.equal(r2.code, 1);
   assert.match(r2.stderr, /run is in progress/);
-  assert.ok(fs.existsSync(wt), "mid-tick refusal removes nothing");
+  assert.ok(fs.existsSync(wt), "mid-run refusal removes nothing");
   const status: RetireStatus = await collectRetire(root, "improve");
   assert.equal(status.midRun, true);
 });

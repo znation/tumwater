@@ -140,7 +140,7 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
   if (!pi.ok && ctx.role !== DIRECTOR_ROLE && subscriptionWindowRejected(pi)) {
     s.lastError = pi.errorMessage ?? "claude subscription usage window rejected";
     // Arm the resume here rather than in applyRunOutcome: the lease release reads
-    // `resumePending` as soon as the run returns (runTickInLeasePhase), before
+    // `resumePending` as soon as the run returns (runOnceInLeasePhase), before
     // applyRunOutcome runs, so without this the slot is detached and the edits above are
     // lost. This is the same inline arming the error-dirty arm below does.
     s.resumePending = true;
@@ -157,7 +157,7 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
   if (!pi.ok && ctx.role !== DIRECTOR_ROLE && pi.budgetCapped) {
     s.lastError = pi.errorMessage ?? "claude per-run budget cap reached";
     // Arm the resume here rather than in applyRunOutcome: the lease release reads
-    // `resumePending` as soon as the run returns (runTickInLeasePhase), before
+    // `resumePending` as soon as the run returns (runOnceInLeasePhase), before
     // applyRunOutcome runs, so without this the slot is detached and the edits are lost.
     s.resumePending = true;
     ctx.pending.requeueForResume(s, ctx.userPrompt);
@@ -175,7 +175,7 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     // One hop only (plans/image-input.md "Rerunning on a model that can read images"): a
     // run that ALREADY started on the image-capable target and still read blind is not
     // rerouted a second time — it fails, so a misreadable image cannot bounce the role
-    // between tiers forever. Set at run start by tickPhase when it routes a run onto the
+    // between tiers forever. Set at run start by runPhase when it routes a run onto the
     // target (blind-read handoff or attachment preflight).
     if (s.imageRerouteActive) {
       s.lastError = pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`;

@@ -33,9 +33,9 @@ import { errnoError, withThrowingFs } from "./helpers/fs-faults.js";
  * deliverability filters read Date.now(), so node:test's mock Date both pins the stamp math
  * and advances past a marker with one tick. The test context's own mock auto-restores after
  * the test, so one test's clock never leaks into its siblings. */
-function mockTimersForInbox(t: TestContext): { tick: (ms: number) => void } {
+function mockTimersForInbox(t: TestContext): { tick: (ms: number) => void } { // retired-name-ok: node:test mock clock
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-  return { tick: (ms: number) => t.mock.timers.tick(ms) };
+  return { tick: (ms: number) => t.mock.timers.tick(ms) }; // retired-name-ok: node:test mock clock
 }
 
 test("inbox is FIFO and dequeues to empty", () => {
@@ -191,7 +191,7 @@ test("dequeuePrompt returns null when the file disappears between listing and re
 
   // A concurrent `tumwater prompt --cancel` removed it after the directory was listed:
   // readFileSync hits ENOENT before any removal is even attempted. The director must see an
-  // empty inbox (skip its tick) instead of failing with a raw ENOENT.
+  // empty inbox (skip its run) instead of failing with a raw ENOENT.
   withThrowingFs("readFileSync", errnoError("ENOENT"), () => {
     assert.equal(dequeuePrompt(dir), null); // no throw
   });
@@ -214,7 +214,7 @@ test("dequeuePrompt rethrows non-ENOENT errors instead of reporting them as an e
   const eacces = errnoError("EACCES");
 
   // A permission failure is not a race with a cancel. Returning null would make the director
-  // skip its tick while the prompt stays queued — both catch blocks must discriminate on
+  // skip its run while the prompt stays queued — both catch blocks must discriminate on
   // ENOENT specifically, like cancelPrompt's.
   withThrowingFs("readFileSync", eacces, () => {
     assert.throws(
@@ -360,8 +360,8 @@ test("a deferred prompt is not dequeued before its time and is the first popped 
   assert.equal(dequeueRolePrompt(dir, "feature"), "earlier");
   assert.equal(dequeueRolePrompt(dir, "feature"), null);
   // Advance past the marker: the prompt becomes deliverable and pops first (only) — the
-  // marker text rides along, as the plan leaves it for the opaquely-consuming tick.
-  clock.tick(91 * 60_000);
+  // marker text rides along, as the plan leaves it for the opaquely-consuming run.
+  clock.tick(91 * 60_000); // retired-name-ok: node:test mock clock
   assert.deepEqual(queuedRolePrompts(dir, "feature"), ["tumwater:not-before " + new Date(due).toISOString() + "\n\nlater"]);
   assert.equal(dequeueRolePrompt(dir, "feature"), "tumwater:not-before " + new Date(due).toISOString() + "\n\nlater");
   assert.equal(dequeueRolePrompt(dir, "feature"), null);
@@ -382,7 +382,7 @@ test("counts exclude deferred prompts and include them once due", (t) => {
   enqueueRolePrompt(dir, "feature", "later", Date.now() + 60_000);
   enqueueRolePrompt(dir, "feature", "now");
   assert.equal(inboxSize(dir, "feature"), 1);
-  clock.tick(61_000);
+  clock.tick(61_000); // retired-name-ok: node:test mock clock
   assert.equal(inboxSize(dir, "feature"), 2);
 });
 

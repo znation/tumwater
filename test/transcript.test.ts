@@ -13,7 +13,7 @@ test("formatTranscript renders a run separator and an assistant turn", () => {
   const lines = [
     JSON.stringify({ type: "session", version: 3, id: "x" }), // skipped: only agent_start separates runs
     agentStart(),
-    userLine("You are the feature loop of tumwater. (multi-KB tick prompt)"),
+    userLine("You are the feature loop of tumwater. (multi-KB run prompt)"),
     assistantBlocks([
       { type: "thinking", thinking: "Let me start by reading the project files to understand what is here." },
       { type: "text", text: "Reading the key files first." },
@@ -31,7 +31,7 @@ test("formatTranscript renders a run separator and an assistant turn", () => {
 });
 
 test("formatTranscript skips deltas, bookkeeping events, and user content", () => {
-  const prompt = "TICK PROMPT ".repeat(50); // must never appear in output
+  const prompt = "RUN PROMPT ".repeat(50); // must never appear in output
   const lines = [
     agentStart(),
     JSON.stringify({ type: "turn_start" }),
@@ -45,7 +45,7 @@ test("formatTranscript skips deltas, bookkeeping events, and user content", () =
     JSON.stringify({ type: "agent_end" }),
   ];
   const out = formatTranscript(lines).flat();
-  assert.ok(!out.some((l) => l.includes("TICK PROMPT")));
+  assert.ok(!out.some((l) => l.includes("RUN PROMPT")));
   assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  done"]);
 });
 

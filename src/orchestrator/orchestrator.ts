@@ -233,11 +233,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // bounded hand-off on a restart (drainInFlightWork) — an aborted merge keeps its ref and
   // drops its entry, recovering on next start. roleInFlight holds every RESERVED role run
   // (permit holders and waiters parked in the semaphore queue alike), since shutdown awaits
-  // both; what the restart drain waits on, aborts, and reports as abortedTicks is only
+  // both; what the restart drain waits on, aborts, and reports as abortedRuns is only
   // rolePermitHolders, the role runs actually holding a permit. A parked waiter has nothing to
   // drain — the start gate (runStartHeld below) keeps it from starting while a restart is
   // pending — and counting it held drains open for runs that had not begun and inflated
-  // abortedTicks (12 reported against 3 aborted run_ends on 2026-09-21; BUGS.md 2026-09-23).
+  // abortedRuns (12 reported against 3 aborted run_ends on 2026-09-21; BUGS.md 2026-09-23).
   const roleInFlight = new Set<Promise<void>>();
   const rolePermitHolders = new Set<RoleRunner>();
   const directorInFlight = new Set<Promise<void>>();

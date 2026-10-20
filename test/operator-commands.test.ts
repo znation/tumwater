@@ -118,10 +118,10 @@ test("cmdWake clears the named role's backoff and pulls nextRunAt to now, leavin
 });
 
 // The "wakes in" phrase once came from the deadline minus a second clock read: cmdWake read
-// the clock for the deadline, requestWake read it again on entry, and a millisecond tick
+// the clock for the deadline, requestWake read it again on entry, and a millisecond elapsed
 // between the two printed "wakes in 2699999ms" for `--in 45m`. A clock that advances on every
 // read makes that run certain instead of a rare flake.
-test("cmdWake --in echoes the operator's duration even when the clock ticks between reads", async (t) => {
+test("cmdWake --in echoes the operator's duration even when the clock advances between reads", async (t) => {
   const root = tmpdir();
   let clock = Date.now();
   t.mock.method(Date, "now", () => clock++);

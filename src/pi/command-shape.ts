@@ -15,7 +15,7 @@ export function bufferedCommandStallMs(stallMs: number): number {
  * silence carries no hang signal and the stall warning would be a false alarm. Two shapes do
  * this: a pipe (`npm test 2>&1 | tail -8`) holds every byte in the pipeline until the upstream
  * command exits, and a stdout redirect (`npm test > /tmp/out`) sends the bytes to a file
- * instead of pi's pipe. Both are shapes the tick prompt itself prescribes for verification
+ * instead of pi's pipe. Both are shapes the run prompt itself prescribes for verification
  * runs, so the stall detector must not read their silence as a stall. A bare `2>&1` is NOT
  * such a shape: it points stderr at stdout's destination — pi's live pipe — so output still
  * streams and a hang stays detectable. `2>` and `2>>` likewise leave or append only stderr.

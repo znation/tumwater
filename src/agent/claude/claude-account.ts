@@ -211,7 +211,7 @@ function setWindow(windows: Record<string, ClaudeWindow>, type: string, window: 
 }
 
 /** Overwrite the account file with `account`, creating the state directory. The orchestrator's
- * one writer; a failure to write is the caller's to handle (best-effort at the tick boundary).
+ * one writer; a failure to write is the caller's to handle (best-effort at the run boundary).
  * Written through writeJsonAtomic (tmp + rename): a crash or ENOSPC mid-write leaves the
  * previous file whole, not a torn one the reader heals to "no subscription" — which would
  * silently drop the billing answer and the window hold until the next run re-observed them. */

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 
-// Old payload key names. Generic words (`tick`, `loop`) stay out: `data-tick` keeps them.
+// Old payload key names. Generic words (`tick`, `loop`) stay out of the list.
 const RETIRED_CLIENT_READS = [
   "ticksByRole",
   "failedTicksByRole",

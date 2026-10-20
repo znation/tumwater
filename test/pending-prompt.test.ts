@@ -181,7 +181,7 @@ test("settleImages removes a fulfilled request's images and keeps a requeued req
   pending2.settleImages();
   const moved = imageReferencePaths(queuedRolePrompts(root, "qa")[0]!)[0];
   assert.ok(moved, "the requeued copy keeps its reference");
-  assert.ok(fs.existsSync(moved!), "a requeued request's image survives for the next tick");
+  assert.ok(fs.existsSync(moved!), "a requeued request's image survives for the next run");
   assert.ok(!fs.existsSync(saved2.paths[0]!), "the image moved off the old stem");
 });
 

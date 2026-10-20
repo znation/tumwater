@@ -358,7 +358,7 @@ function runRunner(args: string[]): SpawnSyncReturns<string> {
 // main() itself — the spawn, the filter announcement, the durations ledger, the exit code —
 // only runs when dist/test/test-runner.js is the program, so these exercise it as a subprocess.
 // json-object is the suite's cheapest file (fractions of a second), keeping the nested run
-// well inside a tick's budget.
+// well inside a run's budget.
 
 test("the spawned runner runs exactly the filtered file and exits with its result", () => {
   const r = runRunner(["json-object"]);

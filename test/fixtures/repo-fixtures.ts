@@ -205,7 +205,7 @@ export function makeRepo(dir = tmpdir()): string {
 }
 
 /** A makeRepo'd repo that has run initProject — the standard fixture for tests that drive a
- * full tick or merger against an initialized tumwater project. Shared by the runner e2e slices,
+ * full run or merger against an initialized tumwater project. Shared by the runner e2e slices,
  * which each used to carry their own identical copy. */
 export async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
@@ -214,7 +214,7 @@ export async function initializedRepo(): Promise<string> {
 }
 
 /** An initializedRepo'd repo plus a role's worktree off main — the base the merge-git,
- * merge-pipeline, refusal, retire, tick-stage, and run-verdict tests stage their scenarios on,
+ * merge-pipeline, refusal, retire, run-stage, and run-verdict tests stage their scenarios on,
  * several of which used to carry their own identical initializedRoot/setup copy. The role
  * defaults to improve; pass one for tests that need a specific role's worktree. */
 export async function initializedWorktree(role = "improve"): Promise<{ root: string; wt: string }> {
@@ -238,7 +238,7 @@ export function commitIn(dir: string, msg: string): void {
 const PIN_COMMITTER_DATE = "2001-01-01T00:00:00 -0700";
 
 /** Commit one change on a detached HEAD and hand the repo back on main, returning the new
- * commit's sha — the "a tick's leftover, pinned off main" shape the tests build.
+ * commit's sha — the "a run's leftover, pinned off main" shape the tests build.
  * `change` writes the off-main edit (a file write or append in the common case); `reset`
  * drops any prior detached commit first so each pin stands alone on main's tip. */
 export function pinOffMain(
@@ -346,7 +346,7 @@ export function writeBacklogFile(
 /** A PLANS.md document string with two one-line planned entries, Alpha and Beta, under
  * `## Planned`, and an empty `## Done`: the two-deep eligible queue the instance-claim and
  * staging tests start from. The single home of the byte-identical array three test files
- * hand-rolled (orchestrator.e2e, orchestrator-scheduling, tick-stage). */
+ * hand-rolled (orchestrator.e2e, orchestrator-scheduling, run-stage). */
 export function twoPlansDoc(): string {
   const entry = (name: string) => `### ${name} (planned 2026-01-01 by operator)\n\nBody.`;
   return ["# Plans", "", "## Planned", "", entry("Alpha"), "", entry("Beta"), "", "## Done", ""].join("\n");
@@ -375,8 +375,8 @@ export function worktreeAt(root: string, role: string): string {
 }
 
 /** Merge a commit on main that counts as "work" for need-based prioritization, so deferrable
- * maintenance roles wake and re-tick. Tests that pin scheduling-adjacent behavior (config
- * reloads, resets, gates) use it to keep their maintenance roles ticking — the deferral rule
+ * maintenance roles wake and re-run. Tests that pin scheduling-adjacent behavior (config
+ * reloads, resets, gates) use it to keep their maintenance roles running — the deferral rule
  * itself is pinned in its own test in orchestrator.e2e.test.ts. */
 export function mergeWork(repo: string): void {
   fs.writeFileSync(

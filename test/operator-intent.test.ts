@@ -137,7 +137,7 @@ test("requestWake clears backoff and pulls nextRunAt to now, leaving counters al
   assert.ok(now > 0, "the marker carries its write instant");
   assert.equal(s.backoffSeconds, 0);
   assert.equal(s.nextRunAt, now, "the wake must make the role eligible at the marker's instant");
-  assert.equal(s.wokenAt, now, "wokenAt lets isEligible honor the demand over the min-tick interval");
+  assert.equal(s.wokenAt, now, "wokenAt lets isEligible honor the demand over the min-run interval");
   assert.equal(s.runs, 4, "counters are observation-window state; wake must not touch them");
   assert.equal(s.lastMainHead, "abc");
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "wake.json"))?.roles, ["fix"]);

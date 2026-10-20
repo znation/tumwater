@@ -450,7 +450,7 @@ test("terminateChild escalates to SIGKILL when the group survives the SIGTERM le
   // terminateChild's own escalation, the half sweepRunMarker's test cannot cover: a detached
   // pi-like child that traps SIGTERM (a server ignoring the polite leg) must still die when
   // the armed timer fires, 10 s later, by SIGKILL to its whole group. The grace is covered
-  // with logical time — the timer is mocked and ticked past it, and the real SIGKILL lands on
+  // with logical time — the timer is mocked and advanced past it, and the real SIGKILL lands on
   // a real process that provably survived the first leg.
   const readyFile = path.join(tmpdir(), "ready");
   // Through the victim fixture: its kill is armed at spawn, before the readiness wait below,
@@ -470,7 +470,7 @@ test("terminateChild escalates to SIGKILL when the group survives the SIGTERM le
   try {
     terminateChild(child);
     assert.equal(pidAlive(pid), true, "the victim survives the SIGTERM leg");
-    t.mock.timers.tick(10_000);
+    t.mock.timers.tick(10_000); // retired-name-ok: node:test mock clock
   } finally {
     t.mock.timers.reset();
   }

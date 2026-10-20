@@ -145,7 +145,7 @@ test("helpTopicForArgs returns null when there is no help request or no topic", 
 });
 
 test("run is a hidden alias of start: same topic, no listing", () => {
-  assert.deepEqual(HIDDEN_COMMAND_ALIASES, { run: "start", tick: "history" });
+  assert.deepEqual(HIDDEN_COMMAND_ALIASES, { run: "start", tick: "history" }); // retired-name-ok: legacy name
   assert.equal(helpTopic("run"), helpTopic("start"));
   assert.doesNotMatch(HELP, /tumwater run\b/);
   assert.equal(suggestCommand("run"), null);
@@ -156,5 +156,5 @@ test("help text uses plain terms: the merge queue tags and no retired words", ()
   assert.match(queue, /\[merging 2m · reviewing\]/);
   assert.match(queue, /\[approved, waiting to merge\]/);
   assert.match(queue, /merge queue empty/);
-  assert.doesNotMatch(HELP, /\b(fleet|tick|landing|operator|notebook|drain)/i);
+  assert.doesNotMatch(HELP, /\b(fleet|tick|landing|operator|notebook|drain)/i); // retired-name-ok: legacy name
 });

@@ -37,7 +37,7 @@ const LOG_LINES = [
 
 /** Seed `root` as a running team: the .tumwater state/log directories, a live orchestrator
  * marker (this process's pid, so snapshot reports running and live detail renders), and one
- * working runner-state + pi log per role — ticks recently finished, a tick started 90s ago and
+ * working runner-state + pi log per role — runs recently finished, a run started 90s ago and
  * still running, so the TUI's live-detail and elapsed branches both have something to show.
  * The caller owns the tempdir itself (mkdtemp names differ per script) and any per-role state
  * overrides it wants on top (diff-check's idle and review-phase loops). */
@@ -49,7 +49,7 @@ export function seedLiveTeam(root, roles) {
   const endedAt = Date.now() - 3_600_000;
   for (const role of roles) {
     const st = {
-      role, ticks: 3, commits: 2, nextRunAt: 0, backoffSeconds: 0, lastMainHead: "x",
+      role, runs: 3, commits: 2, nextRunAt: 0, backoffSeconds: 0, lastMainHead: "x",
       generatedTokens: 100, peakContextTokens: 4000, totalCostUsd: 0.5, dayStamp: "", dayCostUsd: 0.2,
       running: true, phase: "pi", lastRunStartedAt: startedAt, lastRunEndedAt: endedAt,
     };

@@ -378,5 +378,3 @@ export function applyMergeOutcome(
   if (result !== "aborted") s.phase = undefined;
 }
 
-/** @deprecated Use applyRunOutcome. */
-export const applyTickOutcome = applyRunOutcome;

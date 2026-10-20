@@ -20,7 +20,7 @@ import {
 // position, plus the narrowing behavior the callers lean on.
 
 test("a plain object is a JSON object, narrowed to an indexable record", () => {
-  const value: unknown = JSON.parse('{"role":"feature","ticks":3}');
+  const value: unknown = JSON.parse('{"role":"feature","runs":3}');
   assert.equal(isJsonObject(value), true);
   // The narrowing must make property access usable without an added cast — the reason the
   // guard exists rather than each caller re-spelling the three-part check.
@@ -117,7 +117,7 @@ test("nonNegativeNumber keeps zero and positives, rejects negatives and poison",
 // policy: a torn or partial line, or a syntactically valid scalar/null/array, must read as
 // nothing rather than a truthy stand-in the caller then indexes.
 test("parseJsonObject parses an object and reads every other JSON value as no data", () => {
-  assert.deepEqual(parseJsonObject('{"role":"feature","ticks":3}'), { role: "feature", ticks: 3 });
+  assert.deepEqual(parseJsonObject('{"role":"feature","runs":3}'), { role: "feature", runs: 3 });
   assert.deepEqual(parseJsonObject("  {\"a\":{\"b\":2}}  "), { a: { b: 2 } }, "surrounding whitespace is tolerated");
   for (const text of ["null", "[]", "[1,2]", '"x"', "5", "true", "", "not json", "{"]) {
     assert.equal(parseJsonObject(text), null, `\`${text}\` is not a JSON object`);

@@ -177,7 +177,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const runs = drawerRuns === null
       ? "<p class='muted'>Loading…</p>"
       : drawerRuns.length
-        ? "<ul class='ticks'>" + drawerRuns.map((t) => { // vocabulary-ok: the ticks class stays
+        ? "<ul class='run-list'>" + drawerRuns.map((t) => {
           const res = resultInfo(t.result);
           return "<li><span class='when' title='" + esc(t.time) + "'>#" + esc(t.run) + " · " + esc(fmtAgo(t.ts)) + "</span>" +
             "<span class='clamp1' title='" + esc(t.detail) + "'><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span> " + esc(t.detail) + "</span>" +
@@ -283,7 +283,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         // String.raw template), so the page and the CLI read one role's outcomes identically.
         (outcomes.length ? "<section><div class='sec-head'><h3>Recent outcomes" +
           "<span class='muted' style='font-size:13px'>· " + outcomes.length + "</span></h3></div>" +
-          "<ul class='ticks'>" + outcomes.map((o) => { // vocabulary-ok: the ticks class stays
+          "<ul class='run-list'>" + outcomes.map((o) => {
             const info = resultInfo(o.result);
             const detail = typeof o.summary === "string" && o.summary.trim() !== "" ? o.summary : "";
             return "<li><span class='when' title='" + esc(new Date(Number(o.ts)).toLocaleString()) + "'>" + esc(fmtAgo(Number(o.ts))) + "</span>" +

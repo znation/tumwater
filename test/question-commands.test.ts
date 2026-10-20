@@ -25,7 +25,7 @@ const SKELETON = `# Questions
 
 Open questions loops have posted for a human decision — each with context, the options, and the
 loop's recommendation. Answer by moving an entry to ## Answered with your decision (or tell the
-director). Loops never block on their own questions; they check here at the start of each tick.
+director). Loops never block on their own questions; they check here at the start of each run.
 
 ## Open
 

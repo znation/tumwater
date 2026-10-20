@@ -281,5 +281,3 @@ export function assembleRunPrompt(
   return { prompt, userPrompt, userPromptFile };
 }
 
-/** @deprecated Use assembleRunPrompt. */
-export const assembleTickPrompt = assembleRunPrompt;

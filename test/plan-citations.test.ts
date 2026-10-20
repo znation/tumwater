@@ -11,7 +11,7 @@ import { repoRoot } from "./helpers/repo-root.js";
  * rewritten to a terse `## Done` bullet, and a superseded one is deleted — and each move silently
  * strands every comment that named it. Nothing
  * checked that, so the review gate found the survivors one change at a time and rejected the sweep
- * for being incomplete, and the same cleanup was re-authored tick after tick (BUGS.md 2026-10-12,
+ * for being incomplete, and the same cleanup was re-authored run after run (BUGS.md 2026-10-12,
  * "REVISION_LIMIT exhaustion …"): ~100 citations name entries PLANS.md no longer holds. This guard
  * makes the class deterministic — the author runs the suite before merging and sees exactly which
  * citations are stale — so completeness stops depending on a reviewer's sweep.

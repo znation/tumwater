@@ -217,14 +217,14 @@ export class PiStreamParser {
   outputTokens = 0;
   /** Prompt tokens this run sent, summed across assistant turns (usage.input + cacheRead +
    * cacheWrite). The counterpart to outputTokens: an operator compares the two to see how
-   * much of a tick's spend is re-sent context versus generation. */
+   * much of a run's spend is re-sent context versus generation. */
   promptTokens = 0;
   /** The cache-read share of promptTokens (usage.cacheRead summed across turns) — the part
    * the provider served from its prompt cache, billed at the cache-read rate. */
   cacheReadTokens = 0;
   /** Prompt tokens sent up to AND INCLUDING the first assistant turn that carried an edit or
    * write tool call. Before any such turn every turn accumulates; once one is seen the
-   * counter freezes, so it measures the context a tick burns before its first change. */
+   * counter freezes, so it measures the context a run burns before its first change. */
   preEditPromptTokens = 0;
   /** 1-based index of the first assistant turn carrying an edit or write tool call;
    * undefined when the run never edited. */
@@ -237,7 +237,7 @@ export class PiStreamParser {
   errorMessage: string | undefined;
   /** True when any event reports the provider rejecting the context as too large
    * (LM Studio's "Context size has been exceeded"; oMLX rejects over max_context_window).
-   * Diagnostic: every tick starts a fresh session, so nothing needs dropping — but the
+   * Diagnostic: every run starts a fresh session, so nothing needs dropping — but the
    * error names the real cause. */
   contextExceeded = false;
   /** True when any event reports the model server killing an idle predict stream
@@ -303,7 +303,7 @@ export class PiStreamParser {
   /** True once any assistant message carried real content — a tool call or non-empty text.
    * A failed run whose every assistant turn is contentless (the provider's error turn has
    * `content: []` and stopReason "error") produced no work of its own, so a dirty worktree
-   * belongs to a prior interrupted tick rather than this run (BUGS.md 2026-10-06). Distinct
+   * belongs to a prior interrupted run rather than this run (BUGS.md 2026-10-06). Distinct
    * from finalMessageContentless, which describes only the LAST message. */
   producedAssistantContent = false;
   /** True when pi auto-compacted the session during (or at the end of) the run. */
@@ -594,7 +594,7 @@ export class PiStreamParser {
     if (isNothingToDo(text)) this.declaredNothingToDo = true;
     // The refusal comes only from an anchored `TUMWATER_REFUSED: <reason>` line: a bare
     // sentinel and a mid-sentence mention are not refusals, and a negating reason ("none",
-    // "(n/a …)") clears one — BUGS.md 2026-09-23, four ticks ended ordinary replies with
+    // "(n/a …)") clears one — BUGS.md 2026-09-23, four runs ended ordinary replies with
     // `TUMWATER_REFUSED: none` and the harness destroyed their tested work. The last anchored
     // line wins (the run's final declaration is its verdict); a message WITHOUT a line leaves
     // an earlier declaration standing, so a closing remark cannot erase it.

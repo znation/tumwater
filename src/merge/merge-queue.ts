@@ -206,9 +206,9 @@ function readEntry(file: string): MergeEntry | null {
     // is still rejected by isMergeEntry.
     let parsed: unknown = readJsonFile<object>(file);
     // An entry an old build wrote carries `tick` where the current shape has `run`.
-    if (isJsonObject(parsed) && parsed.run === undefined && parsed.tick !== undefined) {
-      const { tick, ...rest } = parsed;
-      parsed = { ...rest, run: tick };
+    if (isJsonObject(parsed) && parsed.run === undefined && parsed.tick !== undefined) { // retired-name-ok: legacy name
+      const { tick, ...rest } = parsed; // retired-name-ok: legacy name
+      parsed = { ...rest, run: tick }; // retired-name-ok: legacy name
     }
     if (!isMergeEntry(parsed)) return null;
     const role = canonicalRoleId(parsed.role);

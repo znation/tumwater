@@ -63,7 +63,7 @@ test("the config file's role overrides resolve: instructions, model pair, interv
         provider: "prov-b",
         model: "model-b",
         thinking: "high",
-        minTickIntervalSeconds: 300,
+        minTickIntervalSeconds: 300, // retired-name-ok: legacy alias
       },
     },
   });
@@ -75,7 +75,7 @@ test("the config file's role overrides resolve: instructions, model pair, interv
   assert.equal(p.thinking, "high");
   assert.equal(p.minRunIntervalSeconds, 300);
   // The override rides along: the drawer can say the shown value is the role's own, not the
-  // team default (the legacy alias minTickIntervalSeconds resolved to the canonical key).
+  // team default (the legacy alias resolved to the canonical key).
   assert.equal(p.minRunIntervalOverride, 300);
   // A role without overrides resolves to the top-level pair and the global interval
   // (bugfix carries no clock override of its own in the defaults) and carries no

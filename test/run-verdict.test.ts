@@ -235,7 +235,7 @@ test("a blind read during an already-rerouted run fails instead of rerouting a s
     config,
     runModel: "local/vision",
   });
-  // The run already started on the target (tickPhase set this when it routed the reroute).
+  // The run already started on the target (runPhase set this when it routed the reroute).
   state.imageRerouteActive = true;
   const outcome = await resolveRunVerdict(ctx);
 

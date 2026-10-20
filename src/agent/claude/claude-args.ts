@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** Building the claude command line for one tick (plans/agent-backends.md "The claude
+/** Building the claude command line for one run (plans/agent-backends.md "The claude
  * invocation") — pure argv construction plus the prompt-on-stdin pairing, with no subprocess,
  * backend registration, or session ledger. Part 3c supplies the session decision (which
  * `--session-id` or `--resume` to pass); this module turns those inputs into the invocation's
@@ -80,7 +80,7 @@ export interface ClaudeArgOptions {
   maxBudgetUsd?: number;
   /** The configured `backends.claude.args` passthrough, appended last. */
   args?: string[];
-  /** The tick prompt, returned as stdin rather than as an argv element. */
+  /** The run prompt, returned as stdin rather than as an argv element. */
   prompt: string;
 }
 

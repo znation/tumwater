@@ -13,10 +13,10 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** An old event type name → today's name. */
 const LEGACY_EVENT_TYPES: Readonly<Record<string, HarnessEvent["type"]>> = {
-  tick_start: "run_start", // vocabulary-ok: legacy event name read from old logs
-  tick_end: "run_end", // vocabulary-ok: legacy event name read from old logs
-  tick_deferred: "run_deferred", // vocabulary-ok: legacy event name read from old logs
-  tick_aborted: "run_aborted", // vocabulary-ok: legacy event name read from old logs
+  tick_start: "run_start", // vocabulary-ok: legacy event name read from old logs // retired-name-ok: legacy name
+  tick_end: "run_end", // vocabulary-ok: legacy event name read from old logs // retired-name-ok: legacy name
+  tick_deferred: "run_deferred", // vocabulary-ok: legacy event name read from old logs // retired-name-ok: legacy name
+  tick_aborted: "run_aborted", // vocabulary-ok: legacy event name read from old logs // retired-name-ok: legacy name
   // retired-name-ok:start old event names
   fleet_paused: "team_paused", // vocabulary-ok: legacy event name read from old logs
   fleet_resumed: "team_resumed", // vocabulary-ok: legacy event name read from old logs
@@ -38,12 +38,12 @@ interface LegacyEventRewrite {
 const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
   {
     // The run number rode `tick` on run_start, run_end, prompt_taken, image_blind, image_reroute.
-    name: "tick-to-run",
+    name: "tick-to-run", // retired-name-ok: legacy name
     apply(ev) {
       const e = ev as Record<string, unknown>;
-      if ("tick" in e && !("run" in e)) { // vocabulary-ok: legacy field name read from old logs
-        e.run = e.tick; // vocabulary-ok: legacy field name read from old logs
-        delete e.tick; // vocabulary-ok: legacy field name read from old logs
+      if ("tick" in e && !("run" in e)) { // vocabulary-ok: legacy field name read from old logs // retired-name-ok: legacy field
+        e.run = e.tick; // vocabulary-ok: legacy field name read from old logs // retired-name-ok: legacy field
+        delete e.tick; // vocabulary-ok: legacy field name read from old logs // retired-name-ok: legacy field
       }
     },
   },
@@ -62,7 +62,7 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
     apply(ev) {
       const e = ev as Record<string, unknown>;
       if (e.type !== "slot_wait") return;
-      if (e.purpose === "tick") e.purpose = "run"; // vocabulary-ok: legacy event value read from old logs
+      if (e.purpose === "tick") e.purpose = "run"; // vocabulary-ok: legacy event value read from old logs // retired-name-ok: legacy name
       if (e.purpose === "vet") e.purpose = "verify"; // vocabulary-ok: legacy event value read from old logs
     },
   },

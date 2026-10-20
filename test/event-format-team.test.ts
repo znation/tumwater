@@ -301,10 +301,10 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   assert.ok(!streakPaused.includes("warning"), `the breaker's pause is routine, not a warning: ${streakPaused}`);
   const withError = (lastError: string) =>
     formatEvent({ ts: 0, source: "tumwater", type: "role_streak_paused", role: "docs", streak: 10, lastError } as never);
-  const named = withError("pi exited 1\n  at runTick");
+  const named = withError("pi exited 1\n  at runOnce");
   assert.match(
     named,
-    /role docs paused — 10 runs failed in a row — last error: pi exited 1 at runTick; fix the cause and resume it \(tumwater resume --role <id>\)$/,
+    /role docs paused — 10 runs failed in a row — last error: pi exited 1 at runOnce; fix the cause and resume it \(tumwater resume --role <id>\)$/,
     `names the last error: ${named}`,
   );
   assert.ok(!named.includes("warning"), `still routine: ${named}`);

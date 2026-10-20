@@ -46,8 +46,8 @@ test("the History table renders run rows, escapes them, and filters by outcome",
   assert.doesNotMatch(html, /NaN|<script>/);
   assert.match(html, /&lt;script&gt;x&lt;\/script&gt;/);
   // The per-row drill-down toggle: a team role's row carries one, addressed by role+run.
-  assert.match(html, /data-rundetail='1' data-role='coverage' data-tick='5' aria-expanded='false'/);
-  assert.match(html, /data-rundetail='1' data-role='qa' data-tick='2'/);
+  assert.match(html, /data-rundetail='1' data-role='coverage' data-run='5' aria-expanded='false'/);
+  assert.match(html, /data-rundetail='1' data-role='qa' data-run='2'/);
   // The outcome filter's buckets.
   const bucketCases = ["changed", "queued", "no_change", "skipped", "user_aborted", "refused", "error", "rejected"];
   assert.deepEqual(bucketCases.map(historyClass),

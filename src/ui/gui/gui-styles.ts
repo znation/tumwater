@@ -414,11 +414,11 @@ export const GUI_STYLES = String.raw`
   .kv dt { font-size: 12px; color: var(--text-3); }
   .kv dd { margin: 1px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .note { padding: 11px 13px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); overflow-wrap: anywhere; }
-  .ticks { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
-  .ticks li { display: grid; grid-template-columns: 116px minmax(0, 1fr) auto; gap: 10px; padding: 8px 12px;
+  .run-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .run-list li { display: grid; grid-template-columns: 116px minmax(0, 1fr) auto; gap: 10px; padding: 8px 12px;
               border-bottom: 1px solid var(--line-soft); font-size: 13px; }
-  .ticks li:last-child { border-bottom: 0; }
-  .ticks .when { color: var(--text-4); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .run-list li:last-child { border-bottom: 0; }
+  .run-list .when { color: var(--text-4); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .transcript-sec { flex: 1; min-height: 320px; display: flex; flex-direction: column; }
   .transcript { flex: 1; min-height: 280px; margin: 0; overflow: auto; padding: 12px 14px; border-radius: 10px;
                 border: 1px solid var(--line); background: var(--surface); font: 12.5px/1.6 var(--font-mono);
@@ -523,9 +523,9 @@ export const GUI_STYLES = String.raw`
     .composer-target { flex: 1; }
     .composer-target select { max-width: none; width: 100%; }
     table.roles tr.group, table.roles tr.group td { display: block; }
-    .history .c-tick, .history .c-detail { display: none; }
-    .ticks li { grid-template-columns: minmax(0, 1fr) auto; }
-    .ticks .when:first-child { grid-column: 1 / -1; }
+    .history .c-run, .history .c-detail { display: none; }
+    .run-list li { grid-template-columns: minmax(0, 1fr) auto; }
+    .run-list .when:first-child { grid-column: 1 / -1; }
     .md { padding: 4px 16px 16px; }
   }
   @media (prefers-reduced-motion: reduce) {

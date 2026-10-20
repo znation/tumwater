@@ -100,7 +100,3 @@ export interface RunOutcome {
  * stamped here so every call site shares one Date.now() read and the shape stays in one place
  * (runner-state.ts's lastReview). */
 
-/** @deprecated Use RunResult. */
-export type TickResult = RunResult;
-/** @deprecated Use RunOutcome. */
-export type TickOutcome = RunOutcome;

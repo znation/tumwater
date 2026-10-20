@@ -12,7 +12,7 @@
  * the note is the stop-reading backstop for a run whose remaining results were not reclaimable. (On
  * a window under 128k context-shake crosses earlier, under pi's compaction line — see its
  * `shakeLimits` — while these notes keep their percentages.) The
- * failure mode the numbers exist for is the fallback's local model (Qwen3.8-27B): its longest ticks
+ * failure mode the numbers exist for is the fallback's local model (Qwen3.8-27B): its longest runs
  * peaked at 96–110k tokens (coverage, steward, telemetry, plan; 2026-09-29..10-01) while the
  * prompt's reading budget could only say "your window is finite". On a large-window model the
  * thresholds are rarely reached, so the extension costs nothing there.

@@ -37,7 +37,7 @@ import { runPiFixture, runFakePi, runPiVerified } from "./helpers/pi-run-harness
 // its silence the way they cannot reset the quiet watchdog.
 
 // Criterion 3 of plans/portability.md §5/7: a wrapper script at agentBin (export an env
-// var, exec the real pi) produces byte-identical tick behavior. PATH holds no pi here, so
+// var, exec the real pi) produces byte-identical run behavior. PATH holds no pi here, so
 // passing at all proves the spawn went through agentBin.
 test("runPi spawns the configured agentBin — a wrapper script behaves like the real pi", async () => {
   const dir = tmpdir();
@@ -121,7 +121,7 @@ test("runPi's spawn-error message names the resolved binary and its source", asy
  * collecting the stall warnings. `configure` mutates the watchdogs before the run; `during`
  * runs once the call is on the raw log — before the run ends — and receives the logical clock
  * and the warnings so far, so a test can advance time and inspect a warning mid-run. Set
- * `timeouts: true` to mock the tick deadline (config.runTimeoutSeconds) too. Returns the run
+ * `timeouts: true` to mock the run deadline (config.runTimeoutSeconds) too. Returns the run
  * result and the warnings. */
 async function withStalledToolCall(
   t: TestContext,
@@ -274,7 +274,7 @@ test("a claude call driven through the translator waits out the buffered thresho
   const claudeWd = startPiWatchdogs({
     progressCount: () => parser.progressCount,
     openToolCalls: () => parser.openToolCalls,
-    tickTimeoutMs: 3_600_000,
+    runTimeoutMs: 3_600_000,
     quietMs: 0,
     stallMs: 300_000,
     agent: "claude",
@@ -284,7 +284,7 @@ test("a claude call driven through the translator waits out the buffered thresho
   const piWd = startPiWatchdogs({
     progressCount: () => parser.progressCount,
     openToolCalls: () => piOpenCall,
-    tickTimeoutMs: 3_600_000,
+    runTimeoutMs: 3_600_000,
     quietMs: 0,
     stallMs: 300_000,
     agent: "pi",
@@ -363,7 +363,7 @@ test("an unbuffered call silent past a minute warns in whole minutes", async (t)
         /^tool call stalled: bash sleep 999 — no output for \d+m$/,
         "past a minute the silence is named in whole minutes, not seconds",
       );
-      clock.advance(600_000); // past the 700 s deadline: the tick timeout ends the run
+      clock.advance(600_000); // past the 700 s deadline: the run timeout ends the run
     },
   });
   assert.equal(result.timedOut, true, "with the quiet watchdog disabled the deadline bounds the run");
@@ -372,9 +372,9 @@ test("an unbuffered call silent past a minute warns in whole minutes", async (t)
 });
 
 // Both watchdog windows off is the one config that schedules no quiet interval at all: no
-// silence kill, no stall warning — the tick deadline is the only clock left.
+// silence kill, no stall warning — the run deadline is the only clock left.
 
-test("disabling both quiet and stall windows leaves only the tick deadline, with no warning", async (t) => {
+test("disabling both quiet and stall windows leaves only the run deadline, with no warning", async (t) => {
   const { result, warnings } = await withStalledToolCall(t, {
     toolName: "bash",
     command: "sleep 999",
@@ -386,13 +386,13 @@ test("disabling both quiet and stall windows leaves only the tick deadline, with
     },
     during: (clock) => clock.advance(10_000), // well past both disabled windows
   });
-  assert.equal(result.timedOut, true, "the tick deadline owns the end of the run");
+  assert.equal(result.timedOut, true, "the run deadline owns the end of the run");
   assert.equal(result.quietKilled, false, "no quiet interval runs to kill it");
   assert.deepEqual(warnings, [], "no stall interval runs to warn");
 });
 
 // The stall warning must not fire on a command whose stdout is piped or redirected — the
-// tick prompt prescribes exactly that shape for verification runs, so their silence is the
+// run prompt prescribes exactly that shape for verification runs, so their silence is the
 // prescribed shape, not a hang (BUGS.md 2026-09-28). The classifier's own shape table lives
 // in test/command-shape.test.ts.
 
@@ -426,7 +426,7 @@ test("a stalled piped-stdout call warns nothing; the redirect is found in the fu
 
 test("a non-zero pi exit with assistant text still counts as a successful run", async () => {
   // Documented lenient behavior (BUGS.md, spurious-warning fix, cause 4): pi can exit
-  // non-zero after producing output; the work is real, so the tick must not be an error.
+  // non-zero after producing output; the work is real, so the run must not be an error.
   const result = await runFakePi(
     [`printf '%s\n' '${assistantLine("done", { tokens: 10 })}'`, "exit 1"].join("\n"),
   );
@@ -437,7 +437,7 @@ test("a non-zero pi exit with assistant text still counts as a successful run", 
 
 test("a non-zero pi exit without assistant text is a failed run", async () => {
   // The other half of the same branch: no output means nothing landed, so it must stay an
-  // error (the tick-level regression for this lives in test/runner.test.ts).
+  // error (the run-level regression for this lives in test/runner.test.ts).
   const result = await runFakePi(`echo 'pi exploded' >&2\nexit 1`);
   assert.equal(result.ok, false);
   assert.match(result.errorMessage ?? "", /pi exploded|exited 1/);
@@ -491,10 +491,10 @@ test("a multi-byte character straddling a stderr chunk boundary survives intact"
   );
 });
 
-// Session lifecycle: every tick starts a fresh pi session (context never accumulates
-// across ticks); --continue exists only for the within-tick transient retry.
+// Session lifecycle: every run starts a fresh pi session (context never accumulates
+// across runs); --continue exists only for the within-run transient retry.
 
-test("every tick starts a fresh pi session", async () => {
+test("every run starts a fresh pi session", async () => {
   const repo = makeRepo();
   await initProject(repo, "fresh session test");
   const argsFile = path.join(tmpdir(), "argv.log");
@@ -508,14 +508,14 @@ test("every tick starts a fresh pi session", async () => {
       const runs = readRunLines(argsFile);
       assert.equal(runs.length, 2);
       for (const [i, run] of runs.entries()) {
-        assert.ok(!run.includes("--continue"), `tick ${i + 1} must not resume a prior session`);
-        assert.ok(run.includes("-n"), `tick ${i + 1} names its fresh session`);
+        assert.ok(!run.includes("--continue"), `run ${i + 1} must not resume a prior session`);
+        assert.ok(run.includes("-n"), `run ${i + 1} names its fresh session`);
       }
     },
   );
 });
 
-test("a context-exceeded error fails the tick with the real cause", async () => {
+test("a context-exceeded error fails the run with the real cause", async () => {
   const repo = makeRepo();
   await initProject(repo, "context overflow test");
   await withPi(
@@ -581,7 +581,7 @@ test("a failed labeled run still flushes its marker (the stale-marker case)", as
 });
 
 // Flush-before-resolve: raw-log writes complete on libuv's threadpool, so runPi must not
-// settle until the log has actually hit disk — a tick that dies right after settling (an
+// settle until the log has actually hit disk — a run that dies right after settling (an
 // abort during a restart drain, a supervisor swap) would otherwise lose its last lines, and
 // under load readers see an empty or marker-only file. Pinned with a stalled stream: it
 // buffers everything and lands it one macrotask after end(), so resolve-before-flush code
@@ -627,7 +627,7 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
   });
 });
 
-test("a broken raw log degrades to a lost log, never a stuck tick", async () => {
+test("a broken raw log degrades to a lost log, never a stuck run", async () => {
   // The stream dies instead of finishing ('error' fires, 'finish' never does): runPi must
   // still settle with the run's real result rather than hang the runner.
   const dir = tmpdir();
@@ -655,7 +655,7 @@ test("a broken raw log degrades to a lost log, never a stuck tick", async () => 
   });
 });
 
-test("a missing pi binary fails the tick with an error", async () => {
+test("a missing pi binary fails the run with an error", async () => {
   const repo = makeRepo();
   await initProject(repo, "spawn failure test");
   // A PATH with git but no pi, so only the pi spawn fails.
@@ -671,7 +671,7 @@ test("a missing pi binary fails the tick with an error", async () => {
   }
 });
 
-// pi crashing on malformed JSON (a torn model-server chunk): five ticks in the first 18 days died
+// pi crashing on malformed JSON (a torn model-server chunk): five runs in the first 18 days died
 // with "Unterminated string in JSON at position N" as their only error, one of them 2 h 39 m of
 // director work. The session survives on disk, so the harness treats it as transient
 // (src/runner/runner-pi.ts retries once with --continue) — flagged from pi's stderr at exit,

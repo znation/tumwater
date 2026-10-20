@@ -1,4 +1,4 @@
-/** INV-H1: commits the agent makes during a tick fold into the harness's single commit. */
+/** INV-H1: commits the agent makes during a run fold into the harness's single commit. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -15,7 +15,7 @@ import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 const PI_COMMIT = `git add -A && git -c user.name=t -c user.email=t@t commit -q -m "pi commit"`;
 const FOLD_WARNING = "folded into tumwater's commit";
 
-async function tickAndMerge(script: string[]): Promise<{ repo: string; before: string }> {
+async function runAndMerge(script: string[]): Promise<{ repo: string; before: string }> {
   const repo = await initializedRepo();
   const before = sh(repo, "git", "rev-parse", "main");
   await withPi([APPROVE_PI, ...script].join("\n"), async () => {
@@ -32,7 +32,7 @@ function assertOneHarnessCommit(repo: string, before: string): void {
 }
 
 test("an agent commit beside uncommitted edits becomes one harness commit", async () => {
-  const { repo, before } = await tickAndMerge([
+  const { repo, before } = await runAndMerge([
     `printf '%s\n' '${assistantLine("did it\nSUMMARY: add two files")}'`,
     `echo a > a.txt`,
     PI_COMMIT,
@@ -44,7 +44,7 @@ test("an agent commit beside uncommitted edits becomes one harness commit", asyn
 });
 
 test("an agent commit with a clean tree is not dropped as no_change", async () => {
-  const { repo, before } = await tickAndMerge([
+  const { repo, before } = await runAndMerge([
     `printf '%s\n' '${assistantLine("did it\nSUMMARY: add a file")}'`,
     `echo a > a.txt`,
     PI_COMMIT,

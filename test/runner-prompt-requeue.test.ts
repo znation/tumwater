@@ -13,7 +13,7 @@ import { sessionDir } from "../src/paths.js";
 import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { assembleTickPrompt } from "../src/run/run-prompt.js";
+import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
@@ -210,7 +210,7 @@ test("assembling the preview leaves the prompt queued and logs no prompt_taken",
   const repo = await initializedRepo();
   enqueueRolePrompt(repo, "perf", "fix the flubbernator");
   const runner = makeRoleRunner(repo, "perf");
-  assembleTickPrompt({ root: repo, config: defaultConfig(), role: "perf", state: runner.state, preview: true });
+  assembleRunPrompt({ root: repo, config: defaultConfig(), role: "perf", state: runner.state, preview: true });
   assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
   assert.deepEqual(queuedRolePrompts(repo, "perf"), ["fix the flubbernator"]);
 });

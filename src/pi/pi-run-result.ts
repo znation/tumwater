@@ -1,6 +1,6 @@
 /** Distilled result of one pi run (`runPi`) — the shared vocabulary every consumer of a
- * pi run reads: the tick loop, the merge wiring, the usage accounting, the failure
- * digests. It lives apart from pi.ts so callers that only handle run results (tick-usage,
+ * pi run reads: the run loop, the merge wiring, the usage accounting, the failure
+ * digests. It lives apart from pi.ts so callers that only handle run results (run-usage,
  * failure-data, the merge batch) need not import the spawn machinery to name the type. */
 import type { BackendFailureKind } from "./pi-failure.js";
 import type { RateWindow } from "./pi-stream.js";
@@ -38,13 +38,13 @@ export interface PiRunResult {
   /** Largest single-request context of the run. */
   peakContextTokens: number;
   /** Assistant turns completed in this run (message_end events) — feeds the commit trailer
-   * and the high-friction flag; a tick sums it across its pre-commit runs. */
+   * and the high-friction flag; a run sums it across its pre-commit agent runs. */
   turns: number;
   costUsd: number;
   stopReason?: string;
   errorMessage?: string;
   timedOut: boolean;
-  /** The tick timeout fired on a run that was still making progress — a real progress event
+  /** The run timeout fired on a run that was still making progress — a real progress event
    * within the last quietTimeoutSeconds. A slow run, not a hung one: the runner preserves its
    * session and worktree edits and resumes it like a quiet kill instead of discarding them
    * (BUGS.md 2026-09-29). Never true without timedOut. */
@@ -57,12 +57,12 @@ export interface PiRunResult {
   fallbackClone?: string;
   /** The run was killed by the quiet watchdog: no pi progress for over quietTimeoutSeconds —
    * typically one hung tool call (a command waiting on input or scanning far more than
-   * intended), not a slow run. Distinct from timedOut (the whole-run tick budget): the session
+   * intended), not a slow run. Distinct from timedOut (the whole-run deadline): the session
    * and any worktree edits are intact, so the runner resumes them promptly instead of discarding.
    */
   quietKilled: boolean;
-  /** The provider rejected the context as too large. With fresh-per-tick sessions this is
-   * purely diagnostic: the next tick starts a new session regardless. */
+  /** The provider rejected the context as too large. With fresh-per-run sessions this is
+   * purely diagnostic: the next run starts a new session regardless. */
   contextExceeded: boolean;
   /** True when any event reported the model server killing an idle predict stream (LM
    * Studio's "Engine protocol predict stream timed out", e.g. after OS sleep). A transient
@@ -77,7 +77,7 @@ export interface PiRunResult {
   /** True when any event reported the provider rejecting the request with HTTP 429 (rate
    * limiting). A transient failure of the world, not of the session — the world saying
    * "later": one retry after retryAfterSeconds usually succeeds, so the runner's transient
-   * retry covers it instead of discarding the tick's work. */
+   * retry covers it instead of discarding the run's work. */
   transientRateLimit: boolean;
   /** True when any event reported a provider-wide failure that is not rate limiting — the
    * connection down, a 5xx, the model failing to load, the stream severed mid-run
@@ -101,7 +101,7 @@ export interface PiRunResult {
    * empty). A compliant finish always ends with a text block, so this signals a generation
    * cut off mid-stream — typically pi clamping max output tokens to the sliver left under
    * the declared context window, with the provider misreporting the truncation as a normal
-   * stop. Used to diagnose otherwise-mysterious no-sentinel no_change ticks. */
+   * stop. Used to diagnose otherwise-mysterious no-sentinel no_change runs. */
   finalMessageContentless: boolean;
   /** True when any assistant message carried a tool call or non-empty text — the run did
    * something of its own. False on a run that ended on a provider error turn with empty

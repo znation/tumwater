@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { TickOutcome } from "../run/run-outcome.js";
+import type { RunOutcome } from "../run/run-outcome.js";
 import type { RunnerState } from "./runner-state.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { setRef } from "../git/git.js";
@@ -39,7 +39,7 @@ export async function finishAbortedRunPhase(
   wt: string,
   userAborted: boolean,
   handedBack: boolean,
-): Promise<TickOutcome> {
+): Promise<RunOutcome> {
   if (userAborted) {
     // An explicit abort discards the request itself too: clear the dequeued prompt here —
     // required on the author-run path (whose early return skips runOnce's shared clearing),
@@ -95,7 +95,7 @@ export async function finishRecoveryRunPhase(
   userPrompt: string | null,
   wt: string,
   priorMergeFailure: string | undefined,
-): Promise<TickOutcome> {
+): Promise<RunOutcome> {
   ctx.pending.clear();
   ctx.pending.requeueUnfulfilled(userPrompt);
   if (recovered.kind === "unpinned") {

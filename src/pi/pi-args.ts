@@ -1,4 +1,4 @@
-/** Building the pi command line for one tick — pure argv construction with no subprocess or
+/** Building the pi command line for one run — pure argv construction with no subprocess or
  * file I/O. Split out of pi.ts; the child-process integration (runPi) now lives in
  * src/agent/run-agent.ts and the run's result types in src/pi/pi-run-result.ts, while
  * test/pi-args.test.ts pins how config and session choices shape the command line. */
@@ -50,7 +50,7 @@ interface PiArgOptions {
   agentBin?: string;
 }
 
-/** Build the pi argv for one tick: the harness's own flags, the bundled extensions, then the
+/** Build the pi argv for one run: the harness's own flags, the bundled extensions, then the
  * user's config.piArgs (so a user flag still wins). */
 export function piArgs(opts: PiArgOptions): string[] {
   const { config } = opts;

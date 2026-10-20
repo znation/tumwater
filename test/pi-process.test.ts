@@ -20,7 +20,7 @@ import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 // tests stay in pi.test.ts; the shared
 // runPi fixture lives in pi-run-harness.ts.
 
-// A killed tick must take its tool-call grandchildren with it. pi runs detached as its own
+// A killed run must take its tool-call grandchildren with it. pi runs detached as its own
 // process group leader and terminateChild signals the group (BUGS.md 2026-09-20); the old
 // single-PID kill left a backgrounded tool-call process orphaned to launchd forever. The
 // fakePi script backgrounds a spinner that does NOT exec, so it is a genuine grandchild —
@@ -110,7 +110,7 @@ test("a run that exits normally leaves no backgrounded tool-call process behind 
   // process killed mid-test strands them only briefly (sh cannot load the owner watch).
   const sleeper = (pidFile: string) => `sh -c 'echo $$ > ${pidFile}; exec sleep 120'`;
   // A backstop, far beyond the test's span: were an orphan ever to hold 'close' open, the run
-  // fails on the tick timeout instead of hanging the file.
+  // fails on the run timeout instead of hanging the file.
   const config = defaultConfig();
   config.runTimeoutSeconds = 30;
   const restore = fakePi(
@@ -192,7 +192,7 @@ test("the end-of-run sweep reaches a detached tool call's cross-group orphan (re
       "c.unref();",
     ].join("\n"),
   );
-  // A backstop, far beyond the test's span: a wedged run fails on the tick timeout.
+  // A backstop, far beyond the test's span: a wedged run fails on the run timeout.
   const config = defaultConfig();
   config.runTimeoutSeconds = 30;
   const restore = fakePi(

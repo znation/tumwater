@@ -254,7 +254,7 @@ test("sweepRunMarker on Linux walks /proc environ and signals only the marked pi
 test("sweepRunMarker escalates to SIGKILL when a marked victim survives the SIGTERM leg", async (t) => {
   // The sweep's escalation leg: a victim that ignores SIGTERM (a server trapping it) must
   // still die 10 s later. The 10 s grace is covered with logical time — the timer is mocked,
-  // ticked past the grace, and the real SIGKILL lands on a real process that provably
+  // advanced past the grace, and the real SIGKILL lands on a real process that provably
   // survived the first leg.
   const marker = makeRunMarker();
   const dir = tmpdir();
@@ -274,7 +274,7 @@ test("sweepRunMarker escalates to SIGKILL when a marked victim survives the SIGT
     const signaled = await sweepRunMarker(marker);
     assert.equal(signaled, 1);
     assert.equal(pidAlive(pid), true, "the victim survives the SIGTERM leg");
-    t.mock.timers.tick(10_000);
+    t.mock.timers.tick(10_000); // retired-name-ok: node:test mock clock
   } finally {
     t.mock.timers.reset();
   }
@@ -350,7 +350,7 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
     "the compliant victim to die on the SIGTERM leg",
     10_000,
   );
-  t.mock.timers.tick(10_000); // fire the escalation: SIGKILL every victim
+  t.mock.timers.tick(10_000); // fire the escalation: SIGKILL every victim // retired-name-ok: node:test mock clock
   t.mock.timers.reset();
 
   await waitFor(

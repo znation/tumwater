@@ -40,7 +40,7 @@ const STDERR_MATCH_TAIL = 512;
  * object; a line this long is already at the default whole-log cap (`logMaxBytes`, 16 MiB), so
  * continuing to buffer it can only be a malformed stream. Past it `feedCanonical` drops the
  * buffered line and skips input to the next newline, so a backend that streams bytes with no
- * newline — each byte resetting the quiet watchdog — cannot grow the buffer until the tick
+ * newline — each byte resetting the quiet watchdog — cannot grow the buffer until the run
  * timeout (4 h by default) exhausts the harness's memory. */
 export const MAX_NATIVE_LINE_CHARS = 16 * 1024 * 1024;
 
@@ -74,7 +74,7 @@ function spawnErrorMessage(
 /** A best-effort append log: its parent is created and it is rotated when oversized before the
  * stream opens, and an 'error' event (EACCES, ENOSPC) flips `broken` so the caller can skip
  * waiting on a 'finish' that will never come. A broken log degrades to a lost log, never an
- * unhandled 'error' or a stuck tick. Both the raw transcript and the backend-native debug log
+ * unhandled 'error' or a stuck run. Both the raw transcript and the backend-native debug log
  * use one. */
 interface AppendLog {
   stream: fs.WriteStream;
@@ -110,8 +110,8 @@ export interface PiRunOptions {
    * src/review/review-followup.ts, BUGS.md 2026-09-29), the two author-side follow-up turns
    * requestSummary and requestStageFix (both via the shared requestFollowUp, to ask for a
    * missing SUMMARY or to fix the pre-queue self-check's findings), and the authoring resume
-   * of a tick a harness interruption cut short (src/run/run-resume.ts's `resuming`).
-   * Every other run starts a fresh session, so context never accumulates across ticks. */
+   * of an agent run a harness interruption cut short (src/run/run-resume.ts's `resuming`).
+   * Every other agent run starts a fresh session, so context never accumulates across them. */
   continueSession?: boolean;
   /** Raw pi JSON event lines are appended here for observability. */
   rawLogFile: string;
@@ -120,7 +120,7 @@ export interface PiRunOptions {
    * exactly as a broken raw log is. */
   nativeLogFile: string;
   signal?: AbortSignal;
-  /** Which kind of run this is: the tick's own authoring run ("author") or the review/merge
+  /** Which kind of run this is: the authoring run ("author") or the review/merge
    * gate's run ("gate"). Required, so every call site names it and the dashboards demultiplex
    * the role's interleaved runs by the raw-log marker instead of the run's worktree path
    * (plans/worktree-pool.md part 1/5). */
@@ -148,13 +148,13 @@ export interface PiRunOptions {
    * full-suite re-run the harness's green pre-check made redundant. */
   onToolCallStart?: (toolName: string, args: unknown) => void;
   /** The role notebook this run may write through the `tumwater-notes` command on PATH,
-   * exported to the child as TUMWATER_NOTES_PATH. Only authoring runs set it (LoopPi.
+   * exported to the child as TUMWATER_NOTES_PATH. Only authoring runs set it (RunnerPi.
    * runAuthoringPi); review, merge, and conflict-resolution runs leave it unset, so the
    * command refuses to write there. Undefined: no notebook. */
   notesPath?: string;
   /** Called at settle when this run read an image its model cannot see (plans/image-input.md
    * "Detecting a blind read") — the caller's hook to log the `image_blind` event with its own
-   * role/tick context. The action follows the run's kind: an authoring run was killed and
+   * role/run context. The action follows the run's kind: an authoring run was killed and
    * carries `"fail"`, a gate run only records the read and carries `"logged"`. Called once,
    * with the blameable path. */
   onBlindRead?: (path: string, action: "fail" | "logged") => void;
@@ -169,16 +169,16 @@ export interface PiRunOptions {
 export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
   return new Promise((resolve) => {
     // The `agent` selector is optional: default to pi, the historical backend. An unregistered
-    // id also falls back to pi rather than rejecting the tick.
+    // id also falls back to pi rather than rejecting the run.
     const backend = agentBackend(opts.config.agent ?? DEFAULT_AGENT) ?? piBackend;
     ensureDir(opts.sessionDir);
     // A broken raw log (EACCES, ENOSPC) must not crash the process on an unhandled 'error'
-    // nor hang the tick: openAppendLog marks it so finish() resolves without waiting for a
+    // nor hang the run: openAppendLog marks it so finish() resolves without waiting for a
     // 'finish' that will never come — a lost transcript is acceptable, a stuck runner is not.
     const rawLog = openAppendLog(opts.rawLogFile, opts.config.logMaxBytes);
     // The backend-native stdout, kept beside the canonical raw log for debugging: every
     // complete native line is written before it is translated, so the two logs line up. A
-    // broken native log degrades to a lost debug log, never a stuck or failed tick.
+    // broken native log degrades to a lost debug log, never a stuck or failed run.
     const nativeLog = openAppendLog(opts.nativeLogFile, opts.config.logMaxBytes);
     // The marker precedes this run's first event in file order — written to the same stream
     // stdout lines flow through, before spawn, so ordering is exact by construction; on a
@@ -327,13 +327,13 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // feed, always after spawn) can reach it.
     terminateRun = () => terminateChild(child);
 
-    // The run's two watchdog clocks (src/pi/pi-watchdogs.ts): the tick deadline and the quiet
+    // The run's two watchdog clocks (src/pi/pi-watchdogs.ts): the run deadline and the quiet
     // watchdog (quiet-kill plus the stalled-tool-call warning). The flags their timers set
     // (timedOut/timedOutProgressing/quietKilled/sawOutput) read live off the returned handle.
     const wd = startPiWatchdogs({
       progressCount: () => parser.progressCount,
       openToolCalls: () => parser.openToolCalls,
-      tickTimeoutMs: opts.config.runTimeoutSeconds * 1000,
+      runTimeoutMs: opts.config.runTimeoutSeconds * 1000,
       quietMs: opts.config.quietTimeoutSeconds * 1000,
       stallMs: Math.max(0, opts.config.toolCallStallSeconds) * 1000,
       // The run's backend id: claude never sends content updates, so the watchdog judges its
@@ -342,7 +342,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // The gate's fresh-session runs (reviewer and conflict resolver) get one deadline
       // extension while they are still making progress: a large diff's review otherwise
       // times out mid-verification and the next attempt re-reads it from scratch
-      // (BUGS.md 2026-10-07). Authoring runs resume their session next tick, so one
+      // (BUGS.md 2026-10-07). Authoring agent runs resume their session on the next one, so one
       // deadline stays right for them.
       extendOnProgress: opts.kind === "gate",
       kill: () => terminateChild(child),
@@ -428,7 +428,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // A blind image read (plans/image-input.md "Detecting a blind read"): surface it to the
       // caller once, at settle, with the action its kind earned — the authoring run was killed
       // ("fail"), a gate run only recorded it ("logged"). The caller logs the image_blind event
-      // with its own role/tick context.
+      // with its own role/run context.
       if (parser.imageBlind) {
         opts.onBlindRead?.(parser.imageBlind.path, opts.kind === "author" ? "fail" : "logged");
       }
@@ -445,10 +445,10 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       for (const warning of translator.warnings?.() ?? []) opts.onAgentWarning?.(warning);
       // Resolve only once the logs have flushed: writes complete on libuv's threadpool, so
       // resolving before 'finish' can leave the tail of <role>.pi.jsonl (or the native log)
-      // unwritten — a tick that dies right after runAgent settles (an abort during a restart
+      // unwritten — a run that dies right after runAgent settles (an abort during a restart
       // drain, a supervisor swap) loses its last lines. end()'s callback fires on 'finish';
       // if a stream errors instead it never does, so settle from 'error' too — a broken log
-      // degrades to a lost log, never a stuck tick.
+      // degrades to a lost log, never a stuck run.
       let resolved = false;
       const settle = () => {
         if (!resolved) {
@@ -529,7 +529,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // 1. The group pi led: pi exits before its orphans — a tool call's `(server &)` or
     //    `cd … && server &` is reparented to PID 1 but stays in pi's group — and the harness
     //    cannot rely on the model's own cleanup (BUGS.md 2026-09-23: qa's unauthenticated
-    //    `gui --all-interfaces` listened on the LAN for 7.5 hours after a tick that ended
+    //    `gui --all-interfaces` listened on the LAN for 7.5 hours after a run that ended
     //    "Everything checked out"). On 'exit', not 'close': pi has just been reaped, so the
     //    pgid still names only its group (never reissued while a member lives), and an orphan
     //    holding pi's stdio open dies now instead of holding 'close' — and the run — open.
@@ -539,7 +539,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // 2. The marker sweep: pi 0.87.1's bash tool starts every command detached, in its own
     //    process group, so whatever a tool call backgrounds sits in a group whose leader is
     //    not pi and pass 1 never reaches it (BUGS.md 2026-09-30 — leaked servers and test
-    //    workers outlived their ticks by hours). Every process the run started carries the
+    //    workers outlived their runs by hours). Every process the run started carries the
     //    run's TUMWATER_RUN mark in its environment, so the same-user scan finds them
     //    wherever they were reparented. Fire-and-forget: one process-table scan, never
     //    awaited — the run resolves on pi's output, and the sweep's own SIGKILL escalation
@@ -589,7 +589,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
         stderrBackend === undefined &&
         (parser.configError || cls.configError === true);
       // The blind-read failure names both the file and the model (plans/image-input.md
-      // "Failing the tick"): take it over any generic exit text so lastError is actionable.
+      // "Failing the run"): take it over any generic exit text so lastError is actionable.
       const errorMessage = blindRead !== undefined
         ? `read ${blindRead}, but ${opts.config.model ?? "the model"} cannot read images`
         : aborted

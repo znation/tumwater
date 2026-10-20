@@ -126,7 +126,7 @@ export function watchdogClock(
     // to the END of the span before running what fell due, so every check in it would read the
     // same Date.now() and never see silence grow.
     advance: (ms) => {
-      for (let left = ms; left > 0; left -= 250) t.mock.timers.tick(Math.min(250, left));
+      for (let left = ms; left > 0; left -= 250) t.mock.timers.tick(Math.min(250, left)); // retired-name-ok: node:test mock clock
     },
     release: () => t.mock.timers.reset(),
   };
