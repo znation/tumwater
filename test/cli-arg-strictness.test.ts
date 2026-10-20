@@ -78,7 +78,7 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   assert.equal(loadRunnerState(repo, "feature").runs, 7, "no reset happened");
 
   // Valid combinations still work.
-  r = await cli(repo, "logs", "-n", "3", "--role", "clean");
+  r = await cli(repo, "logs", "-n", "3", "--transcript", "clean");
   assert.equal(r.code, 0);
 });
 

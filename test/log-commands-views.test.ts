@@ -12,7 +12,7 @@ import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 // The follow half of cmdLogs is covered by log-commands.test.ts (in-process, driven by mocked
 // timers). These tests cover the one-shot views the follow tests never reach: the -n dump,
 // the --grep filter and its no-match note, the --since window and its rotation caveat, the
-// --role transcript without -f, and every mutually-exclusive-flag failure that guards the
+// --transcript transcript without -f, and every mutually-exclusive-flag failure that guards the
 // rival shapes. All failures are caught in-process with a process.exit stub (the shared
 // stub in test/helpers/exit-capture.ts), so no spawned child is needed.
 
@@ -73,45 +73,45 @@ test("logs --since with no events in the window says so without a false rotation
   assert.ok(!stdout.includes("rotated out"), "no rows means no sparse-window note");
 });
 
-test("logs --role prints a one-shot transcript and reports a missing log", async () => {
+test("logs --transcript prints a one-shot transcript and reports a missing log", async () => {
   const repo = makeRepo();
-  const { stdout: missing } = await expectOkAsync(() => cmdLogs(repo, ["--role", "clean"]));
+  const { stdout: missing } = await expectOkAsync(() => cmdLogs(repo, ["--transcript", "clean"]));
   assert.equal(missing, "no transcript yet for clean\n");
 
   const file = piLogPath(repo, "clean");
   ensureParentDir(file);
   fs.appendFileSync(file, userLine("fix the leak") + "\n");
   fs.appendFileSync(file, assistantLine("on it") + "\n");
-  const { stdout: out } = await expectOkAsync(() => cmdLogs(repo, ["--role", "clean"]));
+  const { stdout: out } = await expectOkAsync(() => cmdLogs(repo, ["--transcript", "clean"]));
   assert.ok(!out.includes("no transcript yet"), "an existing log is printed, not the missing note");
   assert.match(out, /on it/);
   // Without --prompt the exact prompt text stays hidden.
   assert.ok(!out.includes("fix the leak"), "prompts are hidden unless --prompt is passed");
 });
 
-test("logs --prompt with --role shows the exact prompt text in the transcript view", async () => {
+test("logs --prompt with --transcript shows the exact prompt text in the transcript view", async () => {
   const repo = makeRepo();
   const file = piLogPath(repo, "clean");
   ensureParentDir(file);
   fs.appendFileSync(file, userLine("fix the leak") + "\n");
-  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--role", "clean", "--prompt"]));
+  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--transcript", "clean", "--prompt"]));
   assert.match(stdout, /fix the leak/);
 });
 
 test("logs rejects rival flag shapes, naming both flags in each failure", async () => {
   const repo = makeRepo();
   // --grep pairs
-  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", "x", "--role", "clean"])), /--grep cannot be combined with --role/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", "x", "--transcript", "clean"])), /--grep cannot be combined with --transcript/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", "x", "--since", "1h"])), /--grep cannot be combined with --since/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep"])), /--grep needs a pattern/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", ""])), /--grep needs a pattern/);
   // --since pairs
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--since", "1h", "-f"])), /--since cannot be combined with -f\/--follow/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--since", "1h", "-n", "5"])), /--since cannot be combined with -n/);
-  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--since", "1h", "--role", "clean"])), /--since cannot be combined with --role/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--since", "1h", "--transcript", "clean"])), /--since cannot be combined with --transcript/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--since", "30d"])), /capped at 7d/);
   // --prompt needs a role: a transcript, not the event log, is what could show prompts.
-  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--prompt"])), /--prompt needs --role/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--prompt"])), /--prompt needs --transcript/);
 });
 
 test("logs --count tallies event types most-frequent-first over the -n window", async () => {
@@ -191,6 +191,6 @@ test("logs --count rejects the rival shapes, naming both flags", async () => {
   const repo = makeRepo();
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--count", "-f"])), /--count cannot be combined with -f\/--follow/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--count", "--follow"])), /--count cannot be combined with -f\/--follow/);
-  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--count", "--role", "clean"])), /--count cannot be combined with --role/);
-  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--count", "--prompt", "--role", "clean"])), /--count cannot be combined with --role/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--count", "--transcript", "clean"])), /--count cannot be combined with --transcript/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--count", "--prompt", "--transcript", "clean"])), /--count cannot be combined with --transcript/);
 });

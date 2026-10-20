@@ -59,7 +59,7 @@ import {
 /** The `--role <id>` value when given, resolved WITHOUT tumwater.json when it names a
  * built-in catalog role: the team itself tolerates a broken config (the live reload keeps
  * the last-known-good one), so an operator marker aimed at a built-in role must not depend
- * on the file parsing — the same resilience `logs --role` already has. A custom-role id or
+ * on the file parsing — the same resilience `logs --transcript` already has. A custom-role id or
  * an unknown id falls through to the config-backed check, which fails with the honest error
  * (the config problem, or "unknown role" naming every valid id). Returns null when no
  * --role is given. */

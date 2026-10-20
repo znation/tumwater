@@ -52,13 +52,13 @@ test("logs -f follows a missing event log without creating it, then picks up app
   }
 });
 
-test("logs --role -f follows a transcript created after startup and skips non-renderable lines", async (t) => {
+test("logs --transcript -f follows a transcript created after startup and skips non-renderable lines", async (t) => {
   const repo = makeRepo();
   const cap = captureStdout();
   t.mock.timers.enable({ apis: ["setInterval"] });
   let followError: unknown = null;
   try {
-    void cmdLogs(repo, ["--role", "clean", "-f"]).catch((err: unknown) => (followError = err));
+    void cmdLogs(repo, ["--transcript", "clean", "-f"]).catch((err: unknown) => (followError = err));
 
     // No pi log yet: the command reports that, then follows the path it will appear at.
     assert.equal(cap.out(), "no transcript yet for clean\n");
@@ -114,9 +114,9 @@ test("logs -f ends once its parent is gone", async () => {
   await assertFollowEndsWithParent(["-f"], eventsLogPath, ev(1), /run #1 started/, ev(2));
 });
 
-test("logs --role -f ends once its parent is gone", async () => {
+test("logs --transcript -f ends once its parent is gone", async () => {
   await assertFollowEndsWithParent(
-    ["--role", "clean", "-f"],
+    ["--transcript", "clean", "-f"],
     (repo) => piLogPath(repo, "clean"),
     assistantLine("first turn"),
     /first turn/,

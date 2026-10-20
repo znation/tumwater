@@ -135,7 +135,7 @@ export const MAX_DURATION_SECONDS = 2147483;
  * `maxDailyCostUsdPerRole.<id>` keys): an id outside the role catalog and customRoles cannot
  * work — a `roles` typo spawns a phantom role that errors every tick forever; a caps typo
  * silently no-ops the cap — so both reject it here with the valid ids, the same message shape
- * `tumwater logs --role` uses for a bad flag value. Returns true when the id is known. */
+ * `tumwater logs --transcript` uses for a bad flag value. Returns true when the id is known. */
 export function checkKnownRoleId(
   section: string,
   id: string,

@@ -26,6 +26,7 @@ import {
   resultFlagSpec,
   modelFlagSpec,
   byFlagSpec,
+  LOGS_TRANSCRIPT_FLAG,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
   sinceFlagSpec,
@@ -217,7 +218,7 @@ async function main(): Promise<void> {
         typeFlagSpec(TYPE_VALUE_ERROR),
         JSON_FLAG,
         COUNT_FLAG,
-        ROLE_FLAG,
+        LOGS_TRANSCRIPT_FLAG,
         PROMPT_FLAG,
       ]);
       await requireReadyRepo(root);

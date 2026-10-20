@@ -30,13 +30,13 @@ test("logs, reset-counters, and abort accept user-defined role names from tumwat
   cfg.customRoles.push({ name: "docs-sync", task: "keep the README examples current" });
   writeConfig(repo, cfg);
 
-  // logs --role <custom>: valid id, no transcript yet.
-  let r = await cli(repo, "logs", "--role", "docs-sync");
+  // logs --transcript <custom>: valid id, no transcript yet.
+  let r = await cli(repo, "logs", "--transcript", "docs-sync");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /no transcript yet for docs-sync/);
 
   // An unknown id fails and lists the custom role among the valid ones.
-  r = await cli(repo, "logs", "--role", "bogus");
+  r = await cli(repo, "logs", "--transcript", "bogus");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus \(valid ids: .+\)/);
   assert.ok(r.stderr.includes("docs-sync"), "the valid list names the custom role");

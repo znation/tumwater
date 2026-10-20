@@ -126,6 +126,18 @@ export const ROLE_FLAG: FlagSpec = {
   missingValue: ROLE_VALUE_ERROR,
 };
 
+/** The missing-value error for `logs --transcript` (LOGS_TRANSCRIPT_FLAG's trailing gate). */
+export const LOGS_TRANSCRIPT_VALUE_ERROR = "--transcript needs a role id (e.g. `--transcript feature`)";
+
+/** The `--transcript <id>` flag spec of `logs`: the role whose agent transcript to print. A
+ * separate constant from ROLE_FLAG because its missing-value text names `--transcript`. */
+export const LOGS_TRANSCRIPT_FLAG: FlagSpec = {
+  names: ["--transcript"],
+  value: true,
+  valueName: "<id>",
+  missingValue: LOGS_TRANSCRIPT_VALUE_ERROR,
+};
+
 /** The `--for <duration>` flag spec factory, accepted by `pause` (the timed pause) and
  * `run` (the windowed run): one definition of the flag's spelling and value shape, beside
  * ROLE_FLAG, so the gate's accepted vocabulary and parseDurationFlag's error messages cannot

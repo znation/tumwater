@@ -169,29 +169,38 @@ test("logs -f's wait expires on the injected clock, not a real deadline", async 
   }
 });
 
-// --- logs --role (per-role pi transcript) ---
+// --- logs --transcript (per-role pi transcript) ---
 
-test("logs --role validates the role id and reports a missing transcript", async () => {
+test("logs --transcript validates the role id and reports a missing transcript", async () => {
   const repo = makeRepo();
   await initProject(repo, "transcript cli test");
 
-  let r = await cli(repo, "logs", "--role");
+  let r = await cli(repo, "logs", "--transcript");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--role needs a role id/);
+  assert.match(r.stderr, /--transcript needs a role id/);
 
-  r = await cli(repo, "logs", "--role", "bogus");
+  r = await cli(repo, "logs", "--transcript", "bogus");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
 
   // A valid id whose role never ran: friendly message, exit 0.
-  r = await cli(repo, "logs", "--role", "clean");
+  r = await cli(repo, "logs", "--transcript", "clean");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /no transcript yet for clean/);
 });
 
-// User-defined roles are valid --role targets for logs/reset-counters/abort once tumwater.json
+test("logs --role is no longer the transcript view", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "transcript cli test");
+  const r = await cli(repo, "logs", "--role", "clean");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /valid flags for tumwater logs/);
+  assert.doesNotMatch(r.stderr, /no transcript yet/);
+});
 
-test("logs --role prints the rendered pi transcript and -n limits entries", async () => {
+// User-defined roles are valid --transcript (logs) and --role (reset-counters, abort) targets.
+
+test("logs --transcript prints the rendered pi transcript and -n limits entries", async () => {
   const repo = makeRepo();
   await initProject(repo, "transcript cli render test");
   const TS1 = 1787222691956;
@@ -219,7 +228,7 @@ test("logs --role prints the rendered pi transcript and -n limits entries", asyn
       JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "second run done" }], stopReason: "stop" } }),
     ]);
 
-  let r = await cli(repo, "logs", "--role", "clean");
+  let r = await cli(repo, "logs", "--transcript", "clean");
   assert.equal(r.code, 0);
   // Both runs render in order: separator stamped from the user message, then the turn.
   assert.ok(r.stdout.includes(`── run @ ${expectedTimestamp(TS1)} ──`), r.stdout);
@@ -233,13 +242,13 @@ test("logs --role prints the rendered pi transcript and -n limits entries", asyn
   assert.ok(!r.stdout.includes("streaming noise"));
 
   // -n limits to the last N entries: only the second run's turn remains.
-  r = await cli(repo, "logs", "--role", "clean", "-n", "1");
+  r = await cli(repo, "logs", "--transcript", "clean", "-n", "1");
   assert.equal(r.code, 0);
   assert.ok(!r.stdout.includes("Reading PLANS.md."), r.stdout);
   assert.ok(r.stdout.includes("  second run done"), r.stdout);
 });
 
-test("logs --role --prompt shows each run's exact prompt and -n limits to the newest", async () => {
+test("logs --transcript --prompt shows each run's exact prompt and -n limits to the newest", async () => {
   const repo = makeRepo();
   await initProject(repo, "transcript prompt test");
   const TS1 = 1787222691956;
@@ -253,7 +262,7 @@ test("logs --role --prompt shows each run's exact prompt and -n limits to the ne
       // The newest run has no assistant turn yet: with --prompt the newest entry is its prompt.
       JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "PROMPT TWO" }], timestamp: TS2 } }),
     ]);
-  let r = await cli(repo, "logs", "--role", "clean", "--prompt");
+  let r = await cli(repo, "logs", "--transcript", "clean", "--prompt");
   assert.equal(r.code, 0);
   // Each prompt lands under its run separator and before that run's assistant turn, verbatim.
   const one = r.stdout.indexOf("PROMPT ONE\nsecond line");
@@ -264,19 +273,19 @@ test("logs --role --prompt shows each run's exact prompt and -n limits to the ne
   assert.ok(r.stdout.includes("PROMPT TWO"), r.stdout);
 
   // -n counts a prompt as one entry: only the newest run's prompt remains.
-  r = await cli(repo, "logs", "--role", "clean", "--prompt", "-n", "1");
+  r = await cli(repo, "logs", "--transcript", "clean", "--prompt", "-n", "1");
   assert.equal(r.code, 0);
   assert.ok(r.stdout.includes("PROMPT TWO"), r.stdout);
   assert.ok(!r.stdout.includes("PROMPT ONE"), r.stdout);
   assert.ok(!r.stdout.includes("  turn one"), r.stdout);
 
-  // --prompt is meaningless without --role.
+  // --prompt is meaningless without --transcript.
   r = await cli(repo, "logs", "--prompt");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /logs --prompt needs --role <id>/);
+  assert.match(r.stderr, /logs --prompt needs --transcript <id>/);
 });
 
-test("logs --role still reads a transcript when tumwater.json is broken", async () => {
+test("logs --transcript still reads a transcript when tumwater.json is broken", async () => {
   // The read-only transcript view needs the config only to accept user-defined role ids, so a
   // torn/mid-edit tumwater.json must not take it down: it falls back to the built-in catalog,
   // the same policy the GUI's transcript handler applies. Before that fallback, loadConfig threw
@@ -287,12 +296,12 @@ test("logs --role still reads a transcript when tumwater.json is broken", async 
   const file = piLogPath(repo, "clean");
   writeLogLines(file, [JSON.stringify({ type: "agent_start" }), assistantLine("readable anyway")]);
 
-  const r = await cli(repo, "logs", "--role", "clean");
+  const r = await cli(repo, "logs", "--transcript", "clean");
   assert.equal(r.code, 0, r.stderr);
   assert.ok(r.stdout.includes("readable anyway"), r.stdout);
 
   // The fallback relaxes the config READ, not the id validation: an unknown id is still refused.
-  const bad = await cli(repo, "logs", "--role", "nope");
+  const bad = await cli(repo, "logs", "--transcript", "nope");
   assert.equal(bad.code, 1);
   assert.match(bad.stderr, /unknown role/);
 });
@@ -320,7 +329,7 @@ test("logs -f prints the current window and follows newly appended events", asyn
   }
 });
 
-test("logs --role -f prints each turn exactly once across the initial window and follow", async () => {
+test("logs --transcript -f prints each turn exactly once across the initial window and follow", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli transcript follow");
 
@@ -328,7 +337,7 @@ test("logs --role -f prints each turn exactly once across the initial window and
   const file = piLogPath(repo, "clean");
   writeLogLines(file, [JSON.stringify({ type: "session", version: 3, id: "x" }), assistantLine("first turn text")]);
 
-  const s = spawnCli(repo, ["logs", "--role", "clean", "-f"]);
+  const s = spawnCli(repo, ["logs", "--transcript", "clean", "-f"]);
   try {
     await s.waitFor((out) => out.includes("first turn text"), "the initial window");
 

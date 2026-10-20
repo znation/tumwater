@@ -175,7 +175,7 @@ test("prompt --cancel fails on out-of-range or non-numeric positions without sid
 });
 
 // The read-only list mode follows parseRoleScope's broken-config policy (the same one
-// logs --role applies): a transiently broken tumwater.json must not take the inspection
+// logs --transcript applies): a transiently broken tumwater.json must not take the inspection
 // command down, while the state-changing modes keep the loud config error when an id is
 // named — and never read the config at all when the target is the director queue.
 test("prompt --list survives a broken tumwater.json; named-role writes still fail loudly", async () => {

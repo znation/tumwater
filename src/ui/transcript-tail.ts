@@ -5,7 +5,7 @@ import { formatTranscript, type TranscriptEntry } from "./transcript.js";
 import { parsePiEventLine } from "../pi/pi-event-line.js";
 import { readCompleteLines } from "../files/tail.js";
 
-/** Rendered tail of a raw pi log for one-shot display (`tumwater logs --role <id>`): the last
+/** Rendered tail of a raw pi log for one-shot display (`tumwater logs --transcript <id>`): the last
  * `limit` transcript entries without reading (or parsing) the whole file, which grows to
  * logMaxBytes (~16MB+) between rotations. Split out of transcript.ts — which keeps the
  * rendering itself (createTranscriptRenderer/formatTranscript) and the incremental reader the
@@ -65,7 +65,7 @@ interface TranscriptWindow {
   end: number;
 }
 
-/** Rendered tail of a raw pi log for one-shot display (`tumwater logs --role <id>`): the last
+/** Rendered tail of a raw pi log for one-shot display (`tumwater logs --transcript <id>`): the last
  * `limit` transcript entries without reading (or parsing) the whole file — which grows to
  * logMaxBytes (~16MB+) between rotations. Scans backwards from EOF in chunks, collecting
  * complete lines until it passes an agent_start with at least `limit` entry-candidate lines

@@ -13,7 +13,7 @@ import {
   rejectUnknownArgs,
   durationFlagSpec,
   ROLE_FLAG,
-  ROLE_VALUE_ERROR,
+  LOGS_TRANSCRIPT_VALUE_ERROR,
   RUN_FLAG_SPECS,
   WAKE_IN_FLAG,
 } from "../src/cli/cli-flag-specs.js";
@@ -142,7 +142,7 @@ test("parseRoleFlag accepts user-defined role names from a supplied id list", ()
 const LOGS_SPECS = [
   { names: ["-f", "--follow"] },
   { names: ["-n"], value: true, valueName: "<count>" },
-  { names: ["--role"], value: true, valueName: "<id>", missingValue: ROLE_VALUE_ERROR },
+  { names: ["--transcript"], value: true, valueName: "<id>", missingValue: LOGS_TRANSCRIPT_VALUE_ERROR },
 ];
 const GUI_SPECS = [
   { names: ["--port"], value: true, valueName: "<n>" },
@@ -153,7 +153,7 @@ test("rejectUnknownArgs accepts empty args and every known flag spelling", () =>
   expectOk(() => rejectUnknownArgs("logs", [], LOGS_SPECS));
   expectOk(() => rejectUnknownArgs("run", [], []));
   // Every accepted spelling, mixed in one line.
-  expectOk(() => rejectUnknownArgs("logs", ["--follow", "-n", "3", "--role", "feature"], LOGS_SPECS));
+  expectOk(() => rejectUnknownArgs("logs", ["--follow", "-n", "3", "--transcript", "feature"], LOGS_SPECS));
   expectOk(() => rejectUnknownArgs("gui", ["--port", "8080", "--all-interfaces"], GUI_SPECS));
 });
 
@@ -208,24 +208,24 @@ test("rejectUnknownArgs rejects unknown tokens with the command's valid flags li
 
   // The valid-flags list joins every spelling with "/" and appends the value name.
   const logs = expectFail(() => rejectUnknownArgs("logs", ["--rol"], LOGS_SPECS));
-  assert.match(logs.stderr, /-f\/--follow, -n <count>, --role <id>/);
+  assert.match(logs.stderr, /-f\/--follow, -n <count>, --transcript <id>/);
 });
 
 test("rejectUnknownArgs: valued flags claim their value token; duplicates and missing values fail", () => {
   // A valued flag claims the following token even when it looks like a known flag — so this
   // is NOT an unknown-argument error (the command's own parser reports "unknown role: -f").
-  expectOk(() => rejectUnknownArgs("logs", ["--role", "-f"], LOGS_SPECS));
+  expectOk(() => rejectUnknownArgs("logs", ["--transcript", "-f"], LOGS_SPECS));
 
   // A trailing valued flag with no value fails right here, with the spec's missingValue
   // wording — cli.ts runs this gate before the ready-repo gate, so "pause --role" outside an
   // initialized repo must name the flag, not "not a git repository".
   const bare = expectFail(() => rejectUnknownArgs("logs", ["-n"], LOGS_SPECS));
   assert.match(bare.stderr, /tumwater: -n needs a value/);
-  const roleBare = expectFail(() => rejectUnknownArgs("logs", ["--follow", "--role"], LOGS_SPECS));
+  const roleBare = expectFail(() => rejectUnknownArgs("logs", ["--follow", "--transcript"], LOGS_SPECS));
   // The exact message parseRoleFlag prints — the drift-guard below pins the two together.
   assert.equal(
     roleBare.stderr,
-    expectFail(() => parseRoleFlag(["--role"])).stderr,
+    expectFail(() => parseRoleFlag(["--transcript"], undefined, "--transcript", LOGS_TRANSCRIPT_VALUE_ERROR)).stderr,
     "the gate's missing-value report must be the parser's own wording",
   );
   const branchBare = expectFail(() => rejectUnknownArgs("run", ["--branch"], RUN_FLAG_SPECS));
@@ -250,7 +250,7 @@ test("rejectUnknownArgs: valued flags claim their value token; duplicates and mi
   assert.match(guiDup.stderr, /--port may only be given once/);
   // A flag-shaped VALUE is not a repeat: the first --role claims "-f" as its value token,
   // so the --follow after it is this line's first --follow occurrence.
-  expectOk(() => rejectUnknownArgs("logs", ["--role", "-f", "--follow"], LOGS_SPECS));
+  expectOk(() => rejectUnknownArgs("logs", ["--transcript", "-f", "--follow"], LOGS_SPECS));
 });
 
 test("parseBranchFlag: absent returns null, a value passes, a missing value fails", () => {
@@ -352,10 +352,10 @@ test("durationLabel phrases a parsed duration back in the parser's vocabulary", 
 test("rejectUnknownArgs names the equals form of a known flag instead of 'unknown argument'", () => {
   // `--role=feature` is a real flag in a spelling this CLI does not accept: the refusal must
   // name the token and the accepted space-separated form, not misreport a misspelling.
-  const valued = expectFail(() => rejectUnknownArgs("logs", ["--role=feature"], LOGS_SPECS));
+  const valued = expectFail(() => rejectUnknownArgs("logs", ["--transcript=feature"], LOGS_SPECS));
   assert.equal(valued.code, 1);
-  assert.match(valued.stderr, /tumwater: --role=feature is not accepted/);
-  assert.match(valued.stderr, /`--role <id>`/);
+  assert.match(valued.stderr, /tumwater: --transcript=feature is not accepted/);
+  assert.match(valued.stderr, /`--transcript <id>`/);
 
   // Valueless flags get their own phrasing: there is no value to separate.
   const valueless = expectFail(() => rejectUnknownArgs("gui", ["--all-interfaces=true"], GUI_SPECS));

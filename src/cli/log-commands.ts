@@ -1,5 +1,6 @@
 // vocabulary: plain
 import { fail, say, sayJsonLine } from "./cli-output.js";
+import { LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
@@ -20,7 +21,7 @@ import { readTranscriptTail } from "../ui/transcript-tail.js";
 import { eventsLogPath, piLogPath } from "../paths.js";
 
 /** The read-only observing half of the CLI's non-dispatch commands: `tumwater logs` and its
- * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table. Unlike
+ * `--transcript` view, split out of cli.ts so the entry point stays a dispatch table. Unlike
  * operator/operator-commands.ts these write nothing but stdout — they only read the event log and
  * each role's agent transcript. It lives beside the other CLI command bodies (history.ts,
  * cli/cli-query-commands.ts, operator/operator-commands.ts), which may import the ui/ rendering
@@ -56,14 +57,14 @@ function sayTally(events: HarnessEvent[], json: boolean): void {
 }
 
 /** The shared rival-shape guard for logs flags that only apply to the event-log feed:
- * `--role` swaps in a transcript rather than the event log (--prompt requires --role, so
- * it is excluded with it), so each such flag fails naming both. One wording for all of them —
- * the --json, --grep, and --since checks cannot drift apart in what they say or why. `active`
- * is the flag's own presence — --json alone composes with nothing here but --role, while
- * --grep and --since call from inside their own presence guards. */
-function rejectRoleViewRival(rest: string[], flag: string, active: boolean): void {
-  if (active && (rest.includes("--role") || rest.includes("--prompt")))
-    failRivalShapes(`logs ${flag}`, "--role", "the --role view is the role's agent transcript, not the event log; --prompt requires --role");
+ * `--transcript` swaps in a transcript rather than the event log (--prompt requires
+ * --transcript, so it is excluded with it), so each such flag fails naming both. One wording
+ * for all of them — the --json, --grep, and --since checks cannot drift apart in what they say
+ * or why. `active` is the flag's own presence — --json alone composes with nothing here but
+ * --transcript, while --grep and --since call from inside their own presence guards. */
+function rejectTranscriptViewRival(rest: string[], flag: string, active: boolean): void {
+  if (active && (rest.includes("--transcript") || rest.includes("--prompt")))
+    failRivalShapes(`logs ${flag}`, "--transcript", "the --transcript view is the role's agent transcript, not the event log; --prompt requires --transcript");
 }
 
 /** The missing-pattern error cmdLogs prints for a valueless `--grep`, exported so cli.ts's
@@ -117,17 +118,17 @@ export function followUntilParentGone(
   });
 }
 
-/** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
- * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
- * role's agent transcript (see cmdLogsTranscript). `-f` follows until Ctrl+C or until its
- * parent process exits. */
+/** `tumwater logs [-f] [-n <count>] [--since <duration>] [--transcript <id>]
+ * [--prompt]`: follow or dump the harness event log, with `--since` a bounded past window of it,
+ * or with `--transcript` one role's agent transcript (see cmdLogsTranscript). `-f` follows until
+ * Ctrl+C or until its parent process exits. */
 export async function cmdLogs(root: string, args: string[], seams: FollowSeams = {}): Promise<void> {
   // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
   // would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
   // (review_rejected, merge_failed) be filtered even where the rendering paraphrases them.
-  // Rival shapes stay exclusive — --role swaps in a transcript rather than this event log
-  // (--prompt requires --role, so it is excluded with it), and --since is a filter of its own
+  // Rival shapes stay exclusive — --transcript swaps in a transcript rather than this event log
+  // (--prompt requires --transcript, so it is excluded with it), and --since is a filter of its own
   // rather than a window to filter — and each failure names both flags. The flag scan itself
   // (the value lookup, the `rest` construction that keeps a flag-shaped pattern from
   // impersonating a rival flag, and the empty-value fail) is cli/cli-args.ts's parseGrepFlag,
@@ -137,8 +138,8 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // deterministic where --grep substrings — a merge_failed whose rendered line quotes
   // "merge_failed" matches --grep but not --type. Unlike --grep it composes with --since
   // (the window, not a filter of its own) as well as -n, -f, --json, and --grep; like --json
-  // it is a rival only of the --role/--prompt transcript view. A comma list matches any of its
-  // types. The value scan (keeping a
+  // it is a rival only of the --transcript/--prompt transcript view. A comma list matches any
+  // of its types. The value scan (keeping a
   // flag-shaped value like --since as text, the empty-value fail) mirrors parseGrepFlag via
   // parseTypeFlag, so the two cannot drift; `rest` here has both flags' value tokens removed.
   const { rest, type } = parseTypeFlag(grepped, TYPE_VALUE_ERROR);
@@ -160,21 +161,21 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // the raw HarnessEvent objects exactly as stored in the log — so scripts read the canonical
   // schema instead of parsing a rendering that changes shape whenever the formatter evolves.
   // It composes with -n, --grep, --since and -f (the grep filter applies before serialization,
-  // the follow streams JSON lines as events land), but not with --role: that view is a pi
-  // transcript of human-oriented prose, not the event log (--prompt requires --role, so it is
+  // the follow streams JSON lines as events land), but not with --transcript: that view is a pi
+  // transcript of human-oriented prose, not the event log (--prompt requires --transcript, so it is
   // excluded with it).
   const json = rest.includes("--json");
-  rejectRoleViewRival(rest, "--json", json);
+  rejectTranscriptViewRival(rest, "--json", json);
   // `--count` tallies the window's present event types instead of printing the rows. Rival
   // shapes stay exclusive: counting implies a bounded window (so -f/--follow is rejected)
-  // and the --role view is the role's agent transcript rather than the event log.
+  // and the --transcript view is the role's agent transcript rather than the event log.
   const count = rest.includes("--count");
-  rejectRoleViewRival(rest, "--count", count);
+  rejectTranscriptViewRival(rest, "--count", count);
   if (count && follow)
     failRivalShapes("logs --count", "-f/--follow", "counting implies a bounded window; -f follows from now on");
-  if (type !== null) rejectRoleViewRival(rest, "--type", true);
+  if (type !== null) rejectTranscriptViewRival(rest, "--type", true);
   if (grepPattern !== null) {
-    rejectRoleViewRival(rest, "--grep", true);
+    rejectTranscriptViewRival(rest, "--grep", true);
     if (rest.includes("--since"))
       failRivalShapes("logs --grep", "--since", "--since is a filter of its own; --grep filters the -n view and its follow");
   }
@@ -182,14 +183,14 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the
   // survivors oldest-first, so an operator can ask for "the hour around that 429 storm" without
   // guessing a count. Rival shapes stay exclusive — follow means "from now on", -n means "last
-  // N", and --role swaps in a transcript rather than this log — and each failure names
-  // both flags. (--prompt requires --role, so it is excluded with it.)
+  // N", and --transcript swaps in a transcript rather than this log — and each failure names
+  // both flags. (--prompt requires --transcript, so it is excluded with it.)
   const ms = parseSinceFlag(rest, "logs --since", LOGS_SINCE_MAX_MS);
   if (ms !== null) {
     if (follow)
       failRivalShapes("logs --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
     if (rest.includes("-n")) failRivalShapes("logs --since", "-n", "a count and a window are rival shapes");
-    rejectRoleViewRival(rest, "--since", true);
+    rejectTranscriptViewRival(rest, "--since", true);
     // covered is only consulted below when the window has rows (an empty window returns
     // earlier), so the helper's vacuous empty-log branch never reaches the note here.
     const { events, covered } = readEventsSince(root, ms);
@@ -223,11 +224,11 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   }
   const nRaw = flagValue(rest, "-n");
   const limit = nRaw !== null ? parseCountFlag("-n", nRaw) : 50;
-  // The event feed (no --role) never needs the config at all: parseRoleScope reads it only
+  // The event feed (no --transcript) never needs the config at all: parseRoleScope reads it only
   // when the flag is present.
-  const role = parseRoleScope(root, rest);
+  const role = parseRoleScope(root, rest, "--transcript", LOGS_TRANSCRIPT_VALUE_ERROR);
   const showPrompts = rest.includes("--prompt");
-  if (showPrompts && role === null) fail("logs --prompt needs --role <id>");
+  if (showPrompts && role === null) fail("logs --prompt needs --transcript <id>");
   if (role !== null) {
     await cmdLogsTranscript(root, role, limit, follow, showPrompts, seams);
     return;
@@ -286,7 +287,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   }, seams);
 }
 
-/** `tumwater logs --role <id>`: print (and optionally follow) one role's agent transcript —
+/** `tumwater logs --transcript <id>`: print (and optionally follow) one role's agent transcript —
  * run separators, abbreviated thinking, assistant text, and tool calls; with `--prompt` also
  * each run's exact prompt text. Read-only; the raw log is pi's streaming event stream, so only
  * complete renderable events are shown. */

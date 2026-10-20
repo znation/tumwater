@@ -78,7 +78,7 @@ test("multi-form commands yield every usage form in their topic", () => {
   // forms name both spellings.
   const logs = helpTopic("logs")!;
   assert.match(logs, /logs \[-f\/--follow\]/);
-  assert.match(logs, /logs --role <id> \[-f\/--follow\]/);
+  assert.match(logs, /logs --transcript <id> \[-f\/--follow\]/);
   assert.match(helpTopic("notify")!, /^  tumwater notify --test/);
 });
 

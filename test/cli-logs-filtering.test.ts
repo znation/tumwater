@@ -70,11 +70,11 @@ test("logs --since refuses the rival shapes, naming both flags", async () => {
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--since .*-n/);
 
-  r = await cli(repo, "logs", "--since", "30m", "--role", "clean");
+  r = await cli(repo, "logs", "--since", "30m", "--transcript", "clean");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--since .*--role/);
+  assert.match(r.stderr, /--since .*--transcript/);
 
-  // --prompt requires --role, so it is excluded with it.
+  // --prompt requires --transcript, so it is excluded with it.
   r = await cli(repo, "logs", "--since", "30m", "--prompt");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--since .*--prompt/);
@@ -220,11 +220,11 @@ test("logs --grep refuses the rival shapes, naming both flags", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs grep exclusions");
 
-  let r = await cli(repo, "logs", "--grep", "x", "--role", "clean");
+  let r = await cli(repo, "logs", "--grep", "x", "--transcript", "clean");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--grep .*--role/);
+  assert.match(r.stderr, /--grep .*--transcript/);
 
-  // --prompt requires --role, so it is excluded with it.
+  // --prompt requires --transcript, so it is excluded with it.
   r = await cli(repo, "logs", "--grep", "x", "--prompt");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--grep .*--prompt/);
@@ -246,7 +246,7 @@ test("logs --grep treats a flag-shaped pattern as text, not as the flag it spell
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /no events matching "--since"/);
 
-  // --prompt misfired the same way, with the --role combine message.
+  // --prompt misfired the same way, with the --transcript combine message.
   r = await cli(repo, "logs", "--grep", "--prompt");
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /no events matching "--prompt"/);
@@ -367,15 +367,15 @@ test("logs --since --json over an empty window prints nothing", async () => {
   assert.equal(r.stdout, "", r.stdout); // No "no events in 5m" prose.
 });
 
-test("logs --role --json fails, naming both flags", async () => {
+test("logs --transcript --json fails, naming both flags", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs json role");
 
-  let r = await cli(repo, "logs", "--role", "clean", "--json");
+  let r = await cli(repo, "logs", "--transcript", "clean", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json .*--role/);
+  assert.match(r.stderr, /--json .*--transcript/);
 
-  // --prompt requires --role, so it is excluded with it.
+  // --prompt requires --transcript, so it is excluded with it.
   r = await cli(repo, "logs", "--json", "--prompt");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--json .*--prompt/);
@@ -540,11 +540,11 @@ test("logs --type refuses the transcript-view rivals and a valueless flag", asyn
   await initProject(repo, "cli logs type rivals");
   seedMixedLog(repo);
 
-  let r = await cli(repo, "logs", "--type", "x", "--role", "clean");
+  let r = await cli(repo, "logs", "--type", "x", "--transcript", "clean");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--type .*--role/);
+  assert.match(r.stderr, /--type .*--transcript/);
 
-  // --prompt requires --role, so it is excluded with it.
+  // --prompt requires --transcript, so it is excluded with it.
   r = await cli(repo, "logs", "--type", "x", "--prompt");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--type .*--prompt/);
@@ -652,7 +652,7 @@ test("logs --count --json emits a sorted type→count object", async () => {
   });
 });
 
-test("logs --count rejects -f and --role, naming both flags", async () => {
+test("logs --count rejects -f and --transcript, naming both flags", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs count exclusions");
 
@@ -664,9 +664,9 @@ test("logs --count rejects -f and --role, naming both flags", async () => {
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--count cannot be combined with -f\/--follow/);
 
-  r = await cli(repo, "logs", "--count", "--role", "clean");
+  r = await cli(repo, "logs", "--count", "--transcript", "clean");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--count cannot be combined with --role/);
+  assert.match(r.stderr, /--count cannot be combined with --transcript/);
 });
 
 test("logs --count reports an empty window and empty match with the plain view's prose", async () => {

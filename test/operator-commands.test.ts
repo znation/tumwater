@@ -135,7 +135,7 @@ test("cmdWake --in echoes the operator's duration even when the clock ticks betw
 // A malformed tumwater.json must not block an operator marker aimed at a built-in role:
 // the team itself keeps running on its last-known-good config (the live reload), so wake,
 // reset-counters, and abort --role <builtin> resolve the id from the static catalog instead
-// of requiring the file to parse — the same resilience `logs --role` has.
+// of requiring the file to parse — the same resilience `logs --transcript` has.
 test("marker commands with --role <builtin> work while tumwater.json is malformed", async () => {
   const root = tmpdir();
   writeMalformedJson(configPath(root));

@@ -118,9 +118,14 @@ export function parsePositionFlag(flag: string, raw: string | undefined, example
  * prompt-commands.ts do.) The id
  * set comes from config.knownRoleIdsCached, the one home of the cached-with-built-in-fallback
  * rule. Shared by the tail views that scope their output to one role (cmdLogs, cmdHistory). */
-export function parseRoleScope(root: string, args: string[]): string | null {
-  if (!args.includes("--role")) return null;
-  return parseRoleFlag(args, knownRoleIdsCached(root));
+export function parseRoleScope(
+  root: string,
+  args: string[],
+  flag = "--role",
+  missingValue = ROLE_VALUE_ERROR,
+): string | null {
+  if (!args.includes(flag)) return null;
+  return parseRoleFlag(args, knownRoleIdsCached(root), flag, missingValue);
 }
 
 /** Resolve `history --role <id>[,<id>...]`: the listed role ids (canonical, deduplicated,
@@ -282,10 +287,15 @@ export function parseSinceFlag(args: string[], label: string, maxMs: number): nu
  * knownRoleIds(config) so user-defined roles are accepted like built-ins; it defaults to the
  * catalog alone, which keeps in-process callers (and tests) that have no config working.
  */
-export function parseRoleFlag(args: string[], validIds?: string[]): string | null {
-  const typed = flagValue(args, "--role");
+export function parseRoleFlag(
+  args: string[],
+  validIds?: string[],
+  flag = "--role",
+  missingValue = ROLE_VALUE_ERROR,
+): string | null {
+  const typed = flagValue(args, flag);
   if (typed === null) return null;
-  if (!typed) fail(ROLE_VALUE_ERROR);
+  if (!typed) fail(missingValue);
   const role = canonicalRoleId(typed);
   const ids = validIds ?? allRoleIds();
   if (!ids.includes(role)) fail(unknownRoleMessage(role, ids));

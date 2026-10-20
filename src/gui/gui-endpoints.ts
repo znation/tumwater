@@ -51,7 +51,7 @@ import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one role's pi
- * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
+ * log (same rendering as `tumwater logs --transcript <id>`). Unknown/missing role or a bad n → 400.
  * User-defined roles are valid targets too — the GUI marks them with an asterisk, so clicking
  * one must open its transcript: ids validate through rejectBadRole. The 400 message lists
  * exactly the ids accepted. The query arrives pre-parsed — the server parses the target
