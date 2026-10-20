@@ -599,3 +599,15 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
   assert.equal(back.reroute, undefined, "the director run after the reroute is back on its own tier");
   assert.equal(String(back.model), "local/text");
 });
+
+// A write that lands in the primary checkout never reaches the worktree's commit; without a
+// warning the run reads as no_change and the work is orphaned (BUGS.md, 2026-10-20).
+test("a run that writes into the primary checkout warns and names the stray path", async () => {
+  const repo = await initializedRepo();
+  const stray = path.join(repo, "scratch-orphan.md");
+  await withPi(`echo orphaned > '${stray}'`, async () => {
+    const runner = makeRoleRunner(repo, "improve", defaultConfig());
+    await runner.run();
+    assert.ok(warningMessages(repo).some((m) => m.includes("wrote outside the worktree") && m.includes("scratch-orphan.md")));
+  });
+});

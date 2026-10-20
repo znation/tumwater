@@ -677,9 +677,19 @@ async function runWithWorktreePhase(
   }
 
   const runBase = await headOf(wt, "HEAD");
+  const primaryBefore = new Set(await changedFiles(ctx.root));
   const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.runs}`, resuming, cfg);
   // The harness owns every commit (INV-H1): fold any the agent made into the run's one commit.
   await foldAgentCommitsSince(ctx, wt, runBase);
+  // A write that landed in the primary checkout never reaches the worktree's commit, so the run
+  // can read as no_change with its work orphaned (BUGS.md, 2026-10-20). The before/after diff
+  // cannot attribute paths to this run when roles overlap, so only warn: the verdict, resume
+  // handling and model-fallback fold below stay as they were.
+  const strayed = (await changedFiles(ctx.root)).filter((f) => !primaryBefore.has(f));
+  if (strayed.length > 0 && !pi.aborted) {
+    const shown = strayed.slice(0, 10).join(", ") + (strayed.length > 10 ? `, … (${strayed.length} paths)` : "");
+    ctx.warn(`wrote outside the worktree (possibly another writer's): ${shown}`);
+  }
   // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
   // post-run handlers spend any more pi runs: only this run is evidence about the primary.
   ctx.foldModelFallback(fallbackCtx, pi);
