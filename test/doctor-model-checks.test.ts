@@ -30,6 +30,8 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { ImageProbeResult } from "../src/doctor/image-probe.js";
 import { envPath } from "../src/files/files.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
+import { readImageProbeCache } from "../src/doctor/image-probe.js";
 import { imageProbesPath, piListedModelsPath } from "../src/paths.js";
 import { readPiListedModels } from "../src/pi/pi-listed-models.js";
 
@@ -769,6 +771,24 @@ test("checkImageInput with missing probes only uncached claimed models once, and
   const second = await checkImageInput(root, models, undefined, undefined, "missing", base, probe);
   assert.equal(calls, 1, "cached pass means no second probe");
   assert.equal(second.level, "ok");
+});
+
+test("checkImageInput keeps a fresh probe's verdict when the probe cache cannot be saved, and warns", async () => {
+  const { root, models } = probeConfig();
+  const probe = async (): Promise<ImageProbeResult> => ({ verdict: "pass", detail: 'answered "1"' });
+  const undo = failRenameSyncOn(imageProbesPath(root), "disk full");
+  try {
+    let outcome: Awaited<ReturnType<typeof checkImageInput>> | undefined;
+    await assert.doesNotReject(async () => {
+      outcome = await checkImageInput(root, models, undefined, undefined, "missing", envPath(), probe);
+    });
+    assert.equal(outcome?.level, "warn");
+    assert.match(outcome?.detail ?? "", /local\/vision \(verified \d{4}-\d{2}-\d{2}\)/);
+    assert.match(outcome?.detail ?? "", /could not save the image-probe cache \(disk full\)/);
+  } finally {
+    undo();
+  }
+  assert.deepEqual(readImageProbeCache(root), {});
 });
 
 test("checkImageInput fails a claimed model whose probe failed, naming it and the fix", async () => {

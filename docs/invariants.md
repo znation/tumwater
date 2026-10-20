@@ -4086,3 +4086,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/gates/startup-gate.ts` (`newOpencodeCatalogRefresh`); `src/agent/opencode/opencode-catalog.ts` (`opencodeCatalogStale`).
 
 **Pinned by.** `test/startup-gate.test.ts` — "newOpencodeCatalogRefresh refetches a missing or stale catalog at most once per retry interval, only while opencode is routed"; "a failing periodic catalog refresh warns once per retry interval and never throws out of poll".
+
+## Doctor: one failing check never takes down the report
+
+### INV-CE1: a doctor check that throws becomes its own fail row, and a failed image-probe cache write keeps the run's verdicts
+
+**Guarantee.** A doctor check that throws or rejects is reported as its own `fail` row ("the check threw: …") and every other check still runs. When `checkImageInput` cannot save the image-probe cache after probing, it does not throw: it keeps this run's verdicts and appends that it could not save the cache, downgrading an `ok` to `warn`.
+
+**Binds.** `src/doctor/doctor.ts` (`runDoctorCheck`, `runDoctor`); `src/doctor/doctor-model-checks.ts` (`checkImageInput`).
+
+**Pinned by.** `test/doctor.test.ts` — "runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through"; `test/doctor-model-checks.test.ts` — "checkImageInput keeps a fresh probe's verdict when the probe cache cannot be saved, and warns".

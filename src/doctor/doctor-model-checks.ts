@@ -37,6 +37,7 @@ import { agree } from "../text/phrases.js";
 import { formatDate, formatTime } from "../text/datetime.js";
 import { belowNodeFloor } from "../version.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
+import { errorMessage } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The doctor's model-readiness checks, split out of doctor-checks.ts (whose environment and
@@ -719,46 +720,61 @@ export async function checkImageInput(
       readsItems.push(`${label(agent, seam.provider, seam.model)} (not verified yet — run \`tumwater doctor\`)`);
     }
   }
-  if (probedAny) writeImageProbeCache(root, probes);
-  // Text-only enabled roles: which can reroute to a tier that reads images (honoring failed
-  // probes), and which cannot.
-  const reroutes: string[] = [];
-  const noTarget: string[] = [];
-  for (const role of enabledRoleIds(config)) {
-    const rc = configForRole(config, role);
-    if (rc.model === undefined) continue;
-    if (seamImageInput(rc, providers, probes, listed) !== false) continue; // reads images, or unknown (to tier models)
-    const rr = imageReroute(config, role, "primary", modelsPath, accountNow, probes, null, listed);
-    if (rr && seamImageInput(rr.config, providers, probes, listed) === true)
-      reroutes.push(
-        `${role} text-only (${label(rc.agent, rc.provider, rc.model)}) — reroutes to ${rr.tier} (${label(rr.config.agent, rr.config.provider, rr.config.model)})`,
-      );
-    else noTarget.push(`${role} text-only (${label(rc.agent, rc.provider, rc.model)})`);
+  let saveProblem: string | null = null;
+  if (probedAny) {
+    try {
+      writeImageProbeCache(root, probes);
+    } catch (err) {
+      saveProblem = errorMessage(err);
+    }
   }
-  // A team that declared no models at all leaves capability to pi's own defaults — the same
-  // "nothing configured" stance as tier models, informational rather than a warning.
-  const declared =
-    pairs.some((p) => p.model !== undefined) ||
-    MODEL_TIERS.some((t) => resolved[t].pair?.model !== undefined);
-  if (!declared) return okOutcome("no models declared — every model job uses pi's own default");
-  const readsLine =
-    readsItems.length > 0 ? `reads images: ${[...readsItems].sort().join(", ")}` : "";
-  const details = [readsLine, ...reroutes].filter(Boolean).join("; ");
-  if (failed.length > 0)
-    return failOutcome(
-      `${failed.join("; ")} — remove "image" from its input in pi's models.json or fix the endpoint, then run \`tumwater doctor --reprobe\``,
-    );
-  if (couldNot.length > 0)
-    return warnOutcome(`${couldNot.join("; ")}; ${details}`.replace(/;\s*$/, ""));
-  if (noTarget.length > 0)
-    return warnOutcome(
-      `${noTarget.join("; ")} — no configured model reads images, so a run that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one`,
-    );
-  if (readsItems.length === 0)
-    return warnOutcome(
-      "no configured model reads images — a run that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one",
-    );
-  return okOutcome(details);
+  const verdict = (): CheckOutcome => {
+    // Text-only enabled roles: which can reroute to a tier that reads images (honoring failed
+    // probes), and which cannot.
+    const reroutes: string[] = [];
+    const noTarget: string[] = [];
+    for (const role of enabledRoleIds(config)) {
+      const rc = configForRole(config, role);
+      if (rc.model === undefined) continue;
+      if (seamImageInput(rc, providers, probes, listed) !== false) continue; // reads images, or unknown (to tier models)
+      const rr = imageReroute(config, role, "primary", modelsPath, accountNow, probes, null, listed);
+      if (rr && seamImageInput(rr.config, providers, probes, listed) === true)
+        reroutes.push(
+          `${role} text-only (${label(rc.agent, rc.provider, rc.model)}) — reroutes to ${rr.tier} (${label(rr.config.agent, rr.config.provider, rr.config.model)})`,
+        );
+      else noTarget.push(`${role} text-only (${label(rc.agent, rc.provider, rc.model)})`);
+    }
+    // A team that declared no models at all leaves capability to pi's own defaults — the same
+    // "nothing configured" stance as tier models, informational rather than a warning.
+    const declared =
+      pairs.some((p) => p.model !== undefined) ||
+      MODEL_TIERS.some((t) => resolved[t].pair?.model !== undefined);
+    if (!declared) return okOutcome("no models declared — every model job uses pi's own default");
+    const readsLine =
+      readsItems.length > 0 ? `reads images: ${[...readsItems].sort().join(", ")}` : "";
+    const details = [readsLine, ...reroutes].filter(Boolean).join("; ");
+    if (failed.length > 0)
+      return failOutcome(
+        `${failed.join("; ")} — remove "image" from its input in pi's models.json or fix the endpoint, then run \`tumwater doctor --reprobe\``,
+      );
+    if (couldNot.length > 0)
+      return warnOutcome(`${couldNot.join("; ")}; ${details}`.replace(/;\s*$/, ""));
+    if (noTarget.length > 0)
+      return warnOutcome(
+        `${noTarget.join("; ")} — no configured model reads images, so a run that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one`,
+      );
+    if (readsItems.length === 0)
+      return warnOutcome(
+        "no configured model reads images — a run that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one",
+      );
+    return okOutcome(details);
+  };
+  const outcome = verdict();
+  if (saveProblem === null) return outcome;
+  return {
+    level: outcome.level === "ok" ? "warn" : outcome.level,
+    detail: `${outcome.detail} — could not save the image-probe cache (${saveProblem}), so the next doctor probes again`,
+  };
 }
 
 /** The provider of a non-gateway opencode model id (`opencode/<provider>/<model>`), or

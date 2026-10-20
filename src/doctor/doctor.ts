@@ -9,7 +9,8 @@ import { checkNotify } from "./doctor-notify.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
-import type { CheckOutcome } from "./outcome.js";
+import { failOutcome, type CheckOutcome } from "./outcome.js";
+import { errorMessage } from "../text/text.js";
 import type { DoctorCheckName } from "./doctor-check-names.js";
 import {
   checkBackendBinary,
@@ -57,13 +58,24 @@ import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkPlanDepen
  * belongs in the review gate / red-main check, not a pre-flight. The individual checks live in
  * doctor-checks.ts and doctor-model-checks.ts; this module composes them into the report. */
 
+/** Run one doctor check, turning a throw or rejection into a fail row: a check that crashed
+ * verified nothing, so it must not read as a pass or abort the report. */
+export async function runDoctorCheck(run: () => CheckOutcome | null | Promise<CheckOutcome | null>): Promise<CheckOutcome | null> {
+  try {
+    return await run();
+  } catch (err) {
+    return failOutcome(`the check threw: ${errorMessage(err)}`);
+  }
+}
+
 /** Run every check in order and compose the report. Read-only against .tumwater/ by
  * construction — no check removes or repairs anything (the state-dir probe writes a temp file
  * and deletes it again; the orphan check reports processes, never signals them) — so doctor
  * works identically with or without a running harness. `probe` feeds the orphan and port
  * checks, so tests can pin the report without reading the host's process table. `only` runs
  * just the named checks, in report order; a skipped check is never evaluated, and a named
- * conditional check that returns null leaves no row. */
+ * conditional check that returns null leaves no row. A check that throws becomes its own fail
+ * row, and every other check still runs. */
 export async function runDoctor(
   root: string,
   pathEnv: string = envPath(),
@@ -172,7 +184,7 @@ export async function runDoctor(
   const checks: DoctorReport["checks"] = [];
   for (const step of steps) {
     if (only && !only.includes(step.name)) continue;
-    const outcome = await step.run();
+    const outcome = await runDoctorCheck(step.run);
     if (outcome !== null) checks.push({ name: step.name, ...outcome });
   }
   const problems = checks.filter((c) => c.level === "fail").length;

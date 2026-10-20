@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runDoctor } from "../src/doctor/doctor.js";
+import { okOutcome } from "../src/doctor/outcome.js";
+import { runDoctor, runDoctorCheck } from "../src/doctor/doctor.js";
 import { DOCTOR_CHECK_NAMES } from "../src/doctor/doctor-check-names.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
 import { renderDoctor, renderDoctorProblems, problemsOnly } from "../src/doctor/doctor-render.js";
@@ -554,4 +555,20 @@ test("doctor --kill-orphans reports an unreadable process table, then the report
   const json = await cliWithEnv(tmpdir(), env, ["doctor", "--kill-orphans", "--json"]);
   assert.notEqual(json.code, 0);
   assert.match(json.stderr, /cannot be combined with --json/);
+});
+
+test("runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through", async () => {
+  assert.deepEqual(
+    await runDoctorCheck(() => {
+      throw new Error("boom");
+    }),
+    { level: "fail", detail: "the check threw: boom" },
+  );
+  const late = await runDoctorCheck(async () => {
+    throw new Error("late");
+  });
+  assert.equal(late?.detail, "the check threw: late");
+  assert.equal(late?.level, "fail");
+  assert.equal(await runDoctorCheck(() => null), null);
+  assert.deepEqual(await runDoctorCheck(() => okOutcome("fine")), okOutcome("fine"));
 });
