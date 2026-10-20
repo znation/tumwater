@@ -2351,3 +2351,50 @@ warns on an unreadable count, where the team stays quiet. The count is read by
 **Pinned by.** `test/launch-services.test.ts` — "the warning names the count, the kill ceiling, the
 consequence and the only remedy" and "doctor's port check: ok with the count, a warning past the
 threshold or when unreadable, and nothing to do off macOS".
+
+## Detached process groups: a timed-out tree is gone when the run settles, and the runner never throws
+
+A timeout is group-wide because killing only the leader once leaked `node --test` workers for up to
+twelve days (2026-09-21, quoted in `runScriptGroup`'s doc comment). The build check and the lockfile
+install (`runScriptGroup`) and git-run's `execGitBounded` share one deadline home, `armGroupDeadline`.
+
+### INV-AO1: the escalation is armed when the deadline fires, never at spawn, and a timed-out run settles once the group is gone or at deadline + grace
+
+**Guarantee.** A healthy run that outlasts the SIGKILL grace is not mistaken for a timeout. When
+the deadline fires the group gets SIGTERM, then SIGKILL after `KILL_GRACE_MS`; the run settles as
+soon as the group is gone (polled every `GROUP_POLL_MS`), or at deadline + grace at the latest,
+never on the leader's `close` alone while a member survives.
+
+**Binds.** `src/process/process-group.ts` (`armGroupDeadline`, `KILL_GRACE_MS`, `GROUP_POLL_MS`,
+`runScriptGroup`).
+
+**Pinned by.** `test/build-check-process.test.ts` — "a healthy check that outlasts the SIGKILL grace
+is not mistaken for a timeout", "a timed-out check whose tree ignores SIGTERM and holds its pipes
+settles at deadline + grace with the group gone (regression)", "a timed-out check does not settle on
+its leader's close while a grandchild survives", "a timed-out check whose tree dies on SIGTERM
+settles right after the deadline, not after the grace" and "a timed-out build check takes its
+process tree with it (regression)".
+
+### INV-AO2: a group is alive while a signal-0 probe of it succeeds or fails with EPERM, and no pid is no group
+
+**Guarantee.** `groupAlive` probes `-pid` with signal 0: success and EPERM (a member exists that we
+may not signal) both count as alive; any other error, and an undefined pid, count as gone.
+
+**Binds.** `src/process/process-group.ts` (`groupAlive`).
+
+**Pinned by.** `test/process-group.test.ts` — "groupAlive: no pid is no group, EPERM is a live
+member, any other error is gone".
+
+### INV-AO3: the runner never throws: a spawn failure is spawnError, each stream keeps at most the chunks that arrive before it reaches maxBuffer, and the tree runs with the LaunchServices preload
+
+**Guarantee.** A command missing from PATH resolves with `spawnError` set and no exit code, not
+with the `close` event's code. Each of stdout and stderr stops accumulating once it reaches
+`maxBuffer`; later chunks are dropped. The tree's env carries the LaunchServices preload on macOS.
+
+**Binds.** `src/process/process-group.ts` (`runScriptGroup`).
+
+**Pinned by.** `test/process-group.test.ts` — "runScriptGroup caps each stream at maxBuffer,
+dropping later chunks", "runScriptGroup reports a command missing from PATH as spawnError, never a
+code, and resolves" and "runScriptGroup starts its tree with the LaunchServices preload on macOS,
+and the env unchanged elsewhere"; `test/build-check.test.ts` — "runBuildCheck skips (not fails
+closed) when npm is missing from PATH".
