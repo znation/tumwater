@@ -4194,3 +4194,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/merge/merge-check-failures.ts` (`rejectChange`, `attributeRedCheck`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
 **Pinned by.** `test/merger.test.ts` — "an unwritable state file during a red merge check's attribution still settles its verdict (green main)" and "an unwritable state file during a red merge check's attribution still settles its verdict (red main)".
+
+## Main revert: a hand-off that cannot be queued never fails the revert task
+
+### INV-CO1: a failed automatic revert whose heal prompt or reviewer hand-off cannot be queued resolves, logs one warning saying the hand-off was not queued, and leaves main unchanged
+
+**Guarantee.** `runMainRevert` keeps its never-throws contract when the heal prompt or the reviewer hand-off itself fails (full disk, EACCES): the failure is caught, main is left as it was, and the one warning logged for the failed revert says "could not queue the heal prompt for bugfix" or "could not send the reviewer's reasons to its role" instead of claiming a prompt that was never queued.
+
+**Binds.** `src/baseline/main-revert.ts` (`runMainRevert`).
+
+**Pinned by.** `test/main-revert.test.ts` — "a conflicting revert whose heal prompt cannot be queued resolves and warns once that it was not queued" and "a post-review revert whose reviewer hand-off throws resolves and warns that the reasons were not sent".

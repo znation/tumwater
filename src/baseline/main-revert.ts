@@ -52,7 +52,8 @@ export async function revertSkipReason(root: string, mainBranch: string, c: Main
 /** Run one revert task on main's current tip in the shared `_merge` checkout: revert the culprit,
  * run `check.gateCommand` on the result when one is set (red aborts), and fast-forward main under
  * the merge lock. Logs `main_revert` on success and calls `onReverted` (the hand-back to a role);
- * every failure queues the heal prompt instead. Never throws. */
+ * every failure queues the heal prompt instead. Never throws: a hand-off that cannot be queued is
+ * warned, not thrown. */
 export async function runMainRevert(
   root: string,
   mainBranch: string,
@@ -61,9 +62,18 @@ export async function runMainRevert(
   onReverted?: (c: MainCulprit) => Promise<void>,
   onFailed?: (c: MainCulprit, reason: string) => void,
 ): Promise<void> {
-  const heal = (reason: string, outputTail?: string[]): void => {
-    if (c.postReview && onFailed) onFailed(c, reason);
-    else queueCulpritHeal(root, c.tip, { culprit: c.commit, failingTests: c.failingTests, outputTail });
+  /** Hand the failure to a role and return the warning's suffix saying truthfully what happened. */
+  const heal = (reason: string, outputTail?: string[]): string => {
+    const toReviewer = c.postReview && onFailed;
+    try {
+      if (toReviewer) onFailed(c, reason);
+      else queueCulpritHeal(root, c.tip, { culprit: c.commit, failingTests: c.failingTests, outputTail });
+      return toReviewer ? "sent the reviewer's reasons to its role" : "queued the heal prompt for bugfix";
+    } catch (err) {
+      return toReviewer
+        ? `could not send the reviewer's reasons to its role: ${errorMessage(err)}`
+        : `could not queue the heal prompt for bugfix: ${errorMessage(err)}`;
+    }
   };
   try {
     const failure = await useWorktree(root, mergeWorktreePath(root), async () => {
@@ -103,19 +113,19 @@ export async function runMainRevert(
       return null;
     });
     if (failure !== null) {
+      const suffix = heal(failure.reason, failure.tail);
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
         type: "warning",
-        message: `could not revert ${shortSha(c.commit)}: ${failure.reason} — ${c.postReview ? "sent the reviewer's reasons to its role" : "queued the heal prompt for bugfix"}`,
+        message: `could not revert ${shortSha(c.commit)}: ${failure.reason} — ${suffix}`,
       });
-      heal(failure.reason, failure.tail);
     }
   } catch (err) {
+    const suffix = heal(errorMessage(err));
     logEventBestEffort(root, {
       source: TUMWATER_SOURCE,
       type: "warning",
-      message: `revert of ${shortSha(c.commit)} failed: ${errorMessage(err)} — ${c.postReview ? "sent the reviewer's reasons to its role" : "queued the heal prompt for bugfix"}`,
+      message: `revert of ${shortSha(c.commit)} failed: ${errorMessage(err)} — ${suffix}`,
     });
-    heal(errorMessage(err));
   }
 }

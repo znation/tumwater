@@ -10,12 +10,12 @@ import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-
 import { queuedFiles } from "../src/inbox/inbox.js";
 import { baselineFixture } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { baseRoleOf } from "../src/roles/runner-ids.js";
-import { revertedPendingPath, rejectedRefName, statePath } from "../src/paths.js";
-import { failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
+import { roleInboxDir, revertedPendingPath, rejectedRefName, statePath } from "../src/paths.js";
+import { errnoError, failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
 import { applyRevision, applyWithConflicts } from "../src/runner/revision.js";
 import { clearSupersededRejection } from "../src/run/run-apply.js";
 import { logEvent } from "../src/events/events.js";
@@ -77,6 +77,37 @@ test("a revert that conflicts leaves main alone and queues the heal prompt namin
   assert.equal(files.length, 1);
   const prompt = fs.readFileSync(files[0]!, "utf8");
   assert.ok(prompt.includes(b.slice(0, 7)) && prompt.includes("first"), prompt);
+});
+
+test("a conflicting revert whose heal prompt cannot be queued resolves and warns once that it was not queued", async () => {
+  const { root, found } = await redMain("improve", true);
+  const before = headSha(root);
+  const inbox = roleInboxDir(root, "bugfix");
+  const restore = patchFsMethod("writeFileSync", (orig) => (target, ...rest) => {
+    if (String(target).startsWith(inbox)) throw errnoError("ENOSPC");
+    return orig(target, ...rest);
+  });
+  try {
+    await runMainRevert(root, "main", defaultConfig(), found[0]!);
+  } finally {
+    restore();
+  }
+  assert.equal(headSha(root), before);
+  assert.equal(queuedFiles(root, "bugfix").length, 0);
+  assert.equal(eventsOfType(root, "main_revert").length, 0);
+  const warnings = warningMessages(root);
+  assert.equal(warnings.filter((m) => m.includes("could not revert") && /could not queue the heal prompt for bugfix: .*ENOSPC/.test(m)).length, 1);
+  assert.equal(warnings.filter((m) => m.includes("queued the heal prompt") && !m.includes("could not queue")).length, 0);
+});
+
+test("a post-review revert whose reviewer hand-off throws resolves and warns that the reasons were not sent", async () => {
+  const { root, found } = await redMain("improve", true);
+  const c: MainCulprit = { ...found[0]!, postReview: { reasons: ["r"] } };
+  await runMainRevert(root, "main", defaultConfig(), c, undefined, () => {
+    throw new Error("EACCES");
+  });
+  const warnings = warningMessages(root);
+  assert.equal(warnings.filter((m) => m.includes("could not send the reviewer's reasons to its role: EACCES")).length, 1);
 });
 
 test("a director-merged, runnerless or revert culprit is skipped", async () => {
