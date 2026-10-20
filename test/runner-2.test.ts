@@ -74,7 +74,7 @@ test("a changed run past thrashTurns is flagged high-friction end to end", async
 
     // The commit on main carries the Friction trailer line after the Tick line (item d's e2e).
     const body = sh(repo, "git", "log", "-1", "--format=%B");
-    assert.match(body, /^Run: improve #\d+ · turns 2 · ctx \S+\nFriction: high \(2 turns \/ \d+m\)$/m);
+    assert.match(body, /^Run: improve #\d+ · turns 2 · ctx \S+\nModel: .+\nFriction: high \(2 turns \/ \d+m\)$/m);
   });
 });
 

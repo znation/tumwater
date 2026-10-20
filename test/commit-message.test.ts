@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildCommitMessage,
   commitTrailer,
+  modelTrailerLine,
   extractCommitBody,
   extractSummary,
   summaryOverCap,
@@ -211,4 +212,25 @@ test("parseCommitMetadata yields absent fields for a message with neither body n
     parseCommitMetadata(buildCommitMessage("tumwater(clean): tidy", null, commitTrailer("clean", 1, 3, 500))),
     { subject: "tidy", body: undefined, highFriction: undefined },
   );
+});
+
+test("modelTrailerLine names the model and backend per agent", () => {
+  assert.equal(modelTrailerLine("claude", undefined, "claude-opus-5-5"), "Model: claude-opus-5-5 · backend claude");
+  assert.equal(
+    modelTrailerLine("pi", "huggingface", "deepseek-ai/DeepSeek-V4.1-Flash:deepinfra"),
+    "Model: huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra · backend pi",
+  );
+  assert.equal(modelTrailerLine("opencode", undefined, "some-id"), "Model: opencode/some-id · backend opencode");
+  assert.equal(modelTrailerLine("pi", undefined, undefined), "Model: default · backend pi");
+});
+
+test("commitTrailer puts the Model line right after Run, with Revision last", () => {
+  const line = "Model: claude-opus-5-5 · backend claude";
+  assert.equal(
+    commitTrailer("feature", 7, 41, 9_999, 62.4, 2, line),
+    `Run: feature #7 · turns 41 · ctx 9999\n${line}\nFriction: high (41 turns / 62m)\nRevision: 2`,
+  );
+  const meta = parseCommitMetadata(buildCommitMessage("tumwater(feature): x", null, commitTrailer("feature", 7, 41, 9_999, 62.4, 2, line)));
+  assert.equal(meta.highFriction, true);
+  assert.equal(commitTrailer("feature", 7, 2, 9_999, undefined, undefined, undefined), "Run: feature #7 · turns 2 · ctx 9999");
 });

@@ -1,6 +1,7 @@
 // vocabulary: plain
 import { truncate } from "../text/text.js";
 import { compactTokens } from "../text/format.js";
+import { modelLabel } from "../agent/backend-traits.js";
 import { labeledLine } from "../verdict/reply-contract.js";
 
 /** Assembling tick commit messages from pi's final reply: the SUMMARY line becomes the
@@ -103,7 +104,9 @@ export function formatCommitBody(body: CommitBody): string {
  * is their largest single-request context. A changed tick flagged high-friction (plans/
  * refusal-and-thrash.md) appends a sibling Friction line after the Run line — minutes rounded,
  * e.g. `Friction: high (41 turns / 62m)`; only changed ticks carry it, so the refusal path
- * never passes the argument and the Run line's asserted format stays stable. */
+ * never passes the argument and the Run line's asserted format stays stable. A `modelLine` (see
+ * modelTrailerLine) goes on its own line directly after the Run line, before Friction and
+ * Revision, so Revision stays last. */
 export function commitTrailer(
   role: string,
   tick: number,
@@ -111,8 +114,10 @@ export function commitTrailer(
   peakCtx: number,
   highFrictionMinutes?: number,
   revisionRound?: number,
+  modelLine?: string,
 ): string {
   const base = `Run: ${role} #${tick} · turns ${turns} · ctx ${compactTokens(peakCtx)}`;
+  const model = modelLine === undefined ? "" : `\n${modelLine}`;
   const friction =
     highFrictionMinutes === undefined
       ? ""
@@ -120,7 +125,17 @@ export function commitTrailer(
   // The revision line is last and absent on a fresh change: leftover recovery reads it back to
   // keep the rejected change's round when the queue marker is lost (plans/revise-rejected.md).
   const revision = revisionRound === undefined ? "" : `\nRevision: ${revisionRound}`;
-  return `${base}${friction}${revision}`;
+  return `${base}${model}${friction}${revision}`;
+}
+
+/** The trailer's Model line: the model and backend a run's seam started on, e.g.
+ * `Model: claude-opus-5-5 · backend claude`; `default` when the seam names no model. */
+export function modelTrailerLine(
+  agent: string,
+  provider: string | undefined,
+  model: string | undefined,
+): string {
+  return `Model: ${model === undefined ? "default" : modelLabel(agent, provider, model)} · backend ${agent}`;
 }
 
 /** The high-friction trailer line a flagged tick's commit carries (see commitTrailer) — the

@@ -309,3 +309,15 @@ test("withoutBlockedPlanRefusals leaves unchanged, already-noted, and tidy cases
   assert.deepEqual(res.dropped, ["S, part 2/2: b (planned 2026-10-12 by plan; requires part 1/2 landed)"]);
   assert.equal(res.md, base);
 });
+
+test("a refusal note commit carries the Model line", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** not worth it\n");
+  const { ctx } = makeCtx(root);
+  ctx.modelLine = "Model: default · backend pi";
+  await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "not worth it" }));
+
+  const lines = sh(wt, "git", "log", "-1", "--format=%B").trimEnd().split("\n");
+  assert.match(lines[lines.length - 2]!, /^Run: improve #/);
+  assert.equal(lines[lines.length - 1], "Model: default · backend pi");
+});

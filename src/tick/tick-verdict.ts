@@ -26,6 +26,8 @@ import { logEventBestEffort } from "../events/events.js";
 import { subscriptionWindowRejected } from "../agent/claude/claude-account.js";
 
 interface TickVerdictContext {
+  /** The trailer's Model line for the seam this tick ran on (see modelTrailerLine). */
+  modelLine?: string;
   root: string;
   role: string;
   mainBranch: string;
@@ -239,6 +241,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
           root: ctx.root,
           mainBranch: ctx.mainBranch,
           turns: ctx.turns,
+          modelLine: ctx.modelLine,
           merge: (w, sum) => ctx.merge(w, sum),
         },
         s,

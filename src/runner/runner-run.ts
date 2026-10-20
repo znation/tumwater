@@ -36,6 +36,8 @@ import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
 import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
+import { seamAgent } from "../config/model-selector.js";
+import { modelTrailerLine } from "../git/commit-message.js";
 import { stageTickMerge, foldAgentCommitsSince } from "../tick/tick-stage.js";
 import { stageCheckFindings } from "../tick/stage-check.js";
 import { planBacklogFull } from "../scheduling/claims.js";
@@ -727,7 +729,9 @@ export async function handlePiResultPhase(
   // Everything that decides the run left nothing mergeable — abort, config request,
   // quiet kill, timeout, refusal, failure without changes, no change — lives in
   // resolveTickVerdict (src/tick/tick-verdict.ts); null means the run IS fulfillable.
+  const modelLine = modelTrailerLine(seamAgent(cfg), cfg.provider, cfg.model);
   const verdict = await resolveTickVerdict({
+    modelLine,
     root: ctx.root,
     role: ctx.role,
     mainBranch: ctx.mainBranch,
@@ -762,6 +766,7 @@ export async function handlePiResultPhase(
   // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
   // `commits` was NOT incremented above: it counts merged changes only.
   return stageTickMerge({
+    modelLine,
     root: ctx.root,
     role: ctx.role,
     state: ctx.state,

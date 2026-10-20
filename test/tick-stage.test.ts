@@ -38,6 +38,7 @@ interface CtxOverrides {
   piStartedAt?: number;
   userPrompt?: string | null;
   revisionRound?: number;
+  modelLine?: string;
   mainBranch?: string;
   /** The loop id the stage runs as; defaults to the improve role. */
   role?: string;
@@ -110,6 +111,7 @@ function buildCtx(
     tickTurns: over.tickTurns ?? 4,
     userPrompt: over.userPrompt ?? null,
     revisionRound: over.revisionRound,
+    modelLine: over.modelLine,
     mainBranch: over.mainBranch ?? "main",
     wt,
     finalText: over.finalText ?? "",
@@ -887,3 +889,19 @@ for (const [label, finalText] of [
     assert.ok(calls.warnings.some((w) => w.includes("folded into tumwater's commit")));
   });
 }
+
+test("a staged commit carries the Model line the run started on", async () => {
+  const { root, wt } = await setup();
+  const modelLine = "Model: claude-opus-5-5 · backend claude";
+  const { ctx } = makeCtx(root, wt, freshLoopState("improve"), {
+    modelLine,
+    finalText: "Done.\nSUMMARY: add feature\nVERIFIED: npm test\n",
+  });
+
+  const outcome = await stageTickMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  const lines = sh(wt, "git", "log", "-1", "--format=%B").trimEnd().split("\n");
+  assert.match(lines[lines.length - 2]!, /^Run: improve #/);
+  assert.equal(lines[lines.length - 1], modelLine);
+});

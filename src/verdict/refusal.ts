@@ -99,6 +99,8 @@ export function newlyRefusedTitles(baseMd: string, headMd: string, section: stri
  * loop's shared merge step so a conflict-resolution run folds into the same tick counters as
  * an authoring run. */
 export interface RefusalContext {
+  /** The trailer's Model line for the seam the refused run started on. */
+  modelLine?: string;
   role: string;
   root: string;
   mainBranch: string;
@@ -162,7 +164,15 @@ export async function handleRefusal(
     const message = buildCommitMessage(
       stampedSubject(baseRoleOf(ctx.role), `refuse — ${reason}`),
       null,
-      commitTrailer(ctx.role, state.runs, ctx.turns, state.peakContextTokens),
+      commitTrailer(
+        ctx.role,
+        state.runs,
+        ctx.turns,
+        state.peakContextTokens,
+        undefined,
+        undefined,
+        ctx.modelLine,
+      ),
     );
     commit = (await commitPathsAndDiscardRest(wt, message, notes)) ?? undefined;
   }

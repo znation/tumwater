@@ -39,6 +39,9 @@ interface TickFlow {
  * run, the merge-ref pin, and the abort finalizer. Mirrors the context-object shapes of
  * leftover.ts, refusal.ts, and merge-core.ts. */
 interface TickStageContext {
+  /** The trailer's Model line for the seam this tick's authoring run started on; transient
+   * retries reuse the same seam. */
+  modelLine?: string;
   root: string;
   role: string;
   state: LoopState;
@@ -270,6 +273,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
       s.peakContextTokens,
       highFriction ? minutes : undefined,
       revisionRound,
+      ctx.modelLine,
     ),
   );
   // The backlog archive (plans/backlog-archive.md): an entry this change pasted under PLANS.md's
