@@ -31,6 +31,7 @@ import {
   sinceFlagSpec,
   STAT_FLAG,
   PATCH_FLAG,
+  PROMPT_FLAG,
   TRANSCRIPT_FLAG,
   SUMMARY_FLAG,
   COUNT_FLAG,
@@ -59,14 +60,14 @@ import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } fr
 
 /** One run's trail, shared by `history <role> <n>` and its hidden alias `tick` so the two cannot
  * drift. Positional-first: the <role> <n> tokens peel off and the remaining flags go through
- * rejectUnknownArgs (only --json, --last, --stat, --patch), so a listing flag such as --role
- * is refused.
+ * rejectUnknownArgs (only --json, --last, --stat, --patch, --transcript, --prompt), so a
+ * listing flag such as --role is refused.
  * Arity is gated before the ready-repo check so a malformed call fails with its usage in any
  * directory; cmdTick owns the value validation and the --last/numbered rivals. */
 async function runTrailCommand(root: string, args: string[]): Promise<void> {
   const { cmdTick, TICK_USAGE } = await import("./tick/tick-detail.js");
   const { positionals, rest } = peelPositionals(args);
-  rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG, PATCH_FLAG, TRANSCRIPT_FLAG]);
+  rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG, PATCH_FLAG, TRANSCRIPT_FLAG, PROMPT_FLAG]);
   if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${TICK_USAGE}`);
   await requireReadyRepo(root);
   await cmdTick(root, positionals, rest.includes("--json"), {
@@ -74,6 +75,7 @@ async function runTrailCommand(root: string, args: string[]): Promise<void> {
     stat: rest.includes("--stat"),
     patch: rest.includes("--patch"),
     transcript: rest.includes("--transcript"),
+    prompt: rest.includes("--prompt"),
   });
 }
 
@@ -216,7 +218,7 @@ async function main(): Promise<void> {
         JSON_FLAG,
         COUNT_FLAG,
         ROLE_FLAG,
-        { names: ["--prompt"] },
+        PROMPT_FLAG,
       ]);
       await requireReadyRepo(root);
       await cmdLogs(root, args);

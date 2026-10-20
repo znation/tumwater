@@ -24,8 +24,14 @@ function segmentStart(lines: string[]): number | null {
 }
 
 /** Rendered lines of every agent run in `file` (+ ".1", oldest first) whose start is within
- * [fromTs, toTs] (toTs null = open-ended). A missing file contributes nothing. */
-export function readRunTranscript(file: string, fromTs: number, toTs: number | null): string[] {
+ * [fromTs, toTs] (toTs null = open-ended). A missing file contributes nothing. `includePrompts`
+ * renders each run's prompt (`--prompt`). */
+export function readRunTranscript(
+  file: string,
+  fromTs: number,
+  toTs: number | null,
+  opts: { includePrompts?: boolean } = {},
+): string[] {
   const kept: string[] = [];
   for (const f of [file + ".1", file]) {
     let text: string;
@@ -45,5 +51,5 @@ export function readRunTranscript(file: string, fromTs: number, toTs: number | n
       if (start !== null && start >= fromTs && start <= (toTs ?? Infinity)) kept.push(...seg);
     }
   }
-  return formatTranscript(kept).flat();
+  return formatTranscript(kept, opts).flat();
 }

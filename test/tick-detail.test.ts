@@ -224,7 +224,7 @@ test("cmdTick fails with the usage on a missing, unknown, or extra positional an
   await initProject(repo, "tick arg errors");
   // Missing role / missing n / stray extra: arity is exactly <role> <n>.
   for (const argv of [[], ["bugfix", "3", "extra"]]) {
-    assert.match(await expectFailAsync(() => cmdTick(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript\] \[--json\]/);
+    assert.match(await expectFailAsync(() => cmdTick(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript \[--prompt\]\] \[--json\]/);
   }
   // Unknown role: the shared unknown-role wording plus the usage.
   const role = await expectFailAsync(() => cmdTick(repo, ["nosuch", "3"], false));
@@ -278,7 +278,7 @@ test("tick's dispatcher fails a wrong positional count with its usage, before th
   for (const args of [["tick"], ["tick", "bugfix", "3", "extra"]]) {
     const r = await cli(empty, ...args);
     assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
-    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript\] \[--json\]/, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript \[--prompt\]\] \[--json\]/, `tumwater ${args.join(" ")}`);
     assert.doesNotMatch(r.stderr, /not a git repository/, `tumwater ${args.join(" ")}`);
   }
 });
@@ -492,4 +492,37 @@ test("history --transcript appends only the run's own agent runs, composes with 
   assert.match(last, /no transcript for bugfix run 3/);
   const both = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "2"], false, { stat: true, transcript: true }))).stdout;
   assert.ok(both.indexOf("(no commit") < both.indexOf("said-two"));
+});
+
+test("history --transcript --prompt shows the run's own prompt, and --prompt needs --transcript", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "history prompt smoke");
+  writeEvents(repo, [
+    start({ ts: 1000, run: 1 }),
+    end({ ts: 2000, run: 1 }),
+    start({ ts: 3000, run: 2 }),
+    end({ ts: 4000, run: 2 }),
+  ]);
+  const seg = (ts: number, asked: string, said: string) => [
+    { type: "tumwater_run", kind: "author", agent: "pi", ts },
+    { type: "agent_start" },
+    { type: "message_end", message: { role: "user", content: [{ type: "text", text: asked }], timestamp: ts } },
+    { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: said }], timestamp: ts } },
+  ];
+  writeLogLines(piLogPath(repo, "bugfix"), [...seg(1500, "asked-one", "said-one"), ...seg(3500, "asked-two", "said-two")]);
+  const out = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "2"], false, { transcript: true, prompt: true }))).stdout;
+  assert.ok(out.includes("asked-two"));
+  assert.ok(out.indexOf("asked-two") < out.indexOf("said-two"));
+  assert.doesNotMatch(out, /asked-one|said-one/);
+  const bare = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "2"], false, { transcript: true }))).stdout;
+  assert.match(bare, /said-two/);
+  assert.doesNotMatch(bare, /asked-two/);
+  const json = JSON.parse(
+    (await expectOkAsync(() => cmdTick(repo, ["bugfix", "2"], true, { transcript: true, prompt: true }))).stdout,
+  );
+  assert.ok(json.transcript.join("\n").includes("asked-two"));
+  assert.match(await expectFailAsync(() => cmdTick(repo, ["bugfix", "2"], false, { prompt: true })), /history --prompt needs --transcript/);
+  const viaCli = await cli(repo, "history", "bugfix", "2", "--transcript", "--prompt");
+  assert.equal(viaCli.code, 0);
+  assert.ok(viaCli.stdout.includes("asked-two"));
 });

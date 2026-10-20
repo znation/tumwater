@@ -277,6 +277,10 @@ export const PATCH_FLAG: FlagSpec = { names: ["--patch"] };
  * transcript to its trail. Value-less, like STAT_FLAG. */
 export const TRANSCRIPT_FLAG: FlagSpec = { names: ["--transcript"] };
 
+/** The `--prompt` flag spec: value-less, used by `logs` (the transcript view) and by the
+ * `history <role>` trail (with `--transcript`). */
+export const PROMPT_FLAG: FlagSpec = { names: ["--prompt"] };
+
 /** The `--summary` flag spec, accepted by `history`: tally each role's tick outcomes instead of
  * printing the rows. Value-less, like STAT_FLAG. */
 export const SUMMARY_FLAG: FlagSpec = { names: ["--summary"] };

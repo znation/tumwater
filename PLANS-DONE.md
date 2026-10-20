@@ -5,6 +5,40 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater history <role> <n> --transcript --prompt` also shows the exact prompt each agent run was given, the run-scoped twin of `logs --prompt` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight dashboard "Show transcript" plan exports `tickTranscriptLines` and calls it with four arguments; this plan only adds an optional fifth, so whichever lands second rebases and keeps both. The in-flight "Logs role filter, part 1/2" edits the same `case "logs"` `rejectUnknownArgs` list in src/cli.ts where this plan swaps the inline `--prompt` spec for a constant; the second to land keeps both edits. Touches src/ui/transcript-run.ts src/tick/tick-detail.ts src/cli.ts src/cli/cli-flag-specs.ts src/cli/help.ts docs/cli.md test/tick-detail.test.ts; done 2026-10-19 by the feature role)
+
+**Goal.** `tumwater history <role> <n> --transcript` prints what the agent said and ran in one past run, but not the prompt it was given. Today the prompt is only reachable through `tumwater logs --role <id> --prompt`, which shows the role's whole recent transcript tail rather than one run. When a run went wrong, the prompt is the first thing to check: was the brief, the inbox message, or the backlog entry in it? Add `--prompt` to the trail command. With `--transcript`, it renders each agent run's user prompt after its run separator, exactly as `logs --prompt` does.
+
+**Approach.**
+- **src/ui/transcript-run.ts `readRunTranscript`.** Add an optional trailing parameter `opts: { includePrompts?: boolean } = {}` and pass it to `formatTranscript(kept, opts)`. Segment selection does not change. Add one clause to the doc comment saying that `includePrompts` renders each run's prompt (`--prompt`).
+- **src/tick/tick-detail.ts.**
+  - `tickTranscriptLines` gets an optional trailing `opts: { includePrompts?: boolean } = {}` and passes it on to `readRunTranscript`.
+  - `cmdTick`'s options object gets `prompt = false` (`prompt?: boolean`). Before any repo read, next to the arity check, add `if (prompt && !transcript) fail(\`history --prompt needs --transcript (usage: ${TICK_USAGE})\`)`. Then call `tickTranscriptLines(root, role, tick, detail, { includePrompts: prompt })`.
+  - `TICK_USAGE` becomes `tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt]] [--json]`. Update `cmdTick`'s doc-comment signature line to match.
+  - `--json` needs no new code: the `transcript` array includes the prompt lines when `--prompt` is given.
+- **src/cli/cli-flag-specs.ts.** Next to `TRANSCRIPT_FLAG`, add `export const PROMPT_FLAG: FlagSpec = { names: ["--prompt"] };` with a one-line doc comment: value-less, used by `logs` (the transcript view) and by the `history <role>` trail (with `--transcript`).
+- **src/cli.ts.**
+  - `runTrailCommand`: add `PROMPT_FLAG` to its `rejectUnknownArgs` list. Pass `prompt: rest.includes("--prompt")` to `cmdTick`. Add `--prompt` to the doc comment's flag list. That list is already stale (it names only `--json, --last, --stat, --patch`), so make it name `--transcript` as well.
+  - `case "logs"`: replace the inline `{ names: ["--prompt"] }` with `PROMPT_FLAG`. Import it next to `TRANSCRIPT_FLAG`.
+- **src/cli/help.ts.** On the `tumwater history <role> …` usage line, change `[--transcript]` to `[--transcript [--prompt]]`. In its description, after the `--transcript appends …` sentence, add `--prompt (with --transcript) also shows each run's exact prompt text;`. Completion reads its flags from HELP, so `--prompt` completes after `history`.
+- **docs/cli.md** "Watch run history" row: after `` `--transcript` appends the agent transcript … (`--json` adds a `transcript` array) ``, add `` , and `--prompt` with it also shows each agent run's exact prompt text ``.
+
+**Tests (test/tick-detail.test.ts).**
+- Update the two usage regexes (the `cmdTick` arity test and "tick's dispatcher fails a wrong positional count with its usage, before the ready-repo gate") to the new `TICK_USAGE` text, with `\[--transcript \[--prompt\]\]`.
+- New test "history --transcript --prompt shows the run's own prompt, and --prompt needs --transcript". Use the same events and `seg` shape as "history --transcript appends only the run's own agent runs…". Add a user `message_end` to each segment (`{ role: "user", content: [{ type: "text", text: "asked-one" | "asked-two" }], timestamp: ts }`) before its assistant message. Check that:
+  - `cmdTick(repo, ["bugfix", "2"], false, { transcript: true, prompt: true })` prints `asked-two` and `said-two`, with `asked-two` first, and prints neither `asked-one` nor `said-one`;
+  - `{ transcript: true }` alone prints `said-two` and not `asked-two`, so prompts stay out by default;
+  - with `json` true plus `transcript` and `prompt`, the `transcript` array's joined text includes `asked-two`;
+  - `{ prompt: true }` without `transcript` fails (`expectFailAsync`) with `/history --prompt needs --transcript/`;
+  - through the CLI (`cli(repo, "history", "bugfix", "2", "--transcript", "--prompt")`), it exits 0 and stdout includes `asked-two`, so the flag passes the `rejectUnknownArgs` gate.
+
+**Acceptance criteria.**
+- `tumwater history <role> <n> --transcript --prompt` prints each agent run's prompt text after its separator, then the rest of the run, using the same rendering as `logs --role <id> --prompt`. Without `--prompt`, the output does not change.
+- `tumwater history <role> <n> --prompt` without `--transcript` exits 1 with `history --prompt needs --transcript`.
+- `logs --prompt` still behaves as before (the existing test/cli-logs.test.ts `--prompt` cases pass).
+- The existing `--transcript` test passes unchanged, and the new test passes.
+- `npm run test:gate` passes.
+
 ### `tumwater revert <TAB>` completes role ids, like `role` and `history` already do (planned 2026-10-19 by the plan role; no dependency on any Planned entry. Touches src/cli/completion.ts docs/cli.md test/completion.test.ts) — done 2026-10-19
 
 **Goal.** `tumwater revert` takes a run form, `revert <role> <n>` or `revert <role> --last`, and its `--dry-run` and refusal messages point operators at it. Shell completion offers role ids for the first positional of `role` and `history`, but not for `revert`, so `tumwater revert fe<TAB>` completes nothing. Make `revert`'s first positional complete role ids the same way. A sha typed there is unaffected: shas were never completable, and a sha that matches no role id gets no candidates.
