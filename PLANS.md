@@ -520,4 +520,24 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every other fast-forward failure (main moved outside the merge lock, or any other git error) reads exactly as it does today.
 - `npm run test:gate` passes.
 
+### A tool call's label drops a leading `cd <dir> &&`, so a stalled command's warning names the command and not the worktree path (planned 2026-10-20 by the plan role; independent of every Planned entry. Touches src/text/phrases.ts and test/phrases.test.ts. Plain terms code run 14/20 edits comments in src/text/phrases.ts but renames no identifier this entry uses or adds; whichever lands second only rebases)
+
+**Goal.** `describeToolCall` (src/text/phrases.ts) builds the one-line label of a tool call: `<toolName> <detail>`, with the detail squashed to 32 characters. Three places use it: the stall warning (src/pi/pi-stream.ts builds the label, and src/pi/pi-watchdogs.ts logs `tool call stalled: <label> — …`), the dashboards' last-tool cell and stall flag (src/ui/progress-data.ts), and transcript rendering (src/ui/transcript.ts). Agents often start a bash command with `cd <their worktree> && …`. The absolute worktree path then fills all 32 characters. In the event log from 2026-10-17 15:58 to 2026-10-19 22:51 UTC, 46 of the 60 `tool call stalled` warnings read exactly `tool call stalled: bash cd /Users/zach/tumwater/.tumwat… — …`, and none of those 46 says which command hung. The label should skip the leading `cd` and show the command that runs after it.
+
+**Approach.**
+- src/text/phrases.ts: add a module-private `withoutLeadingCd(command: string): string`. It removes leading segments that match `^\s*cd\s+("[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*`, repeatedly, so `cd a && cd b && npm test` becomes `npm test`. Remove a segment only when it ends in `&&` or `;`. A bare `cd dir`, or `cd dir || …`, stays unchanged. If removing would leave the string empty, return the original.
+- `describeToolCall`: apply `withoutLeadingCd` only when the candidate came from `args.command` or `args.cmd`, before `squash`. Paths, patterns and urls are unchanged. Add one sentence to the doc comment: a leading `cd <dir> &&` is dropped from a command, because the run's cwd is implied and the path would use up the 32-character budget.
+- No caller changes. The stall classifier reads the raw `call.command` (`commandBuffersOutput(call.command || call.label)` in pi-watchdogs.ts and `stalledToolLabel`), not the label, so INV-A2's threshold behavior does not change. A `cd x && sleep 999 | tail` command still classifies as buffered through its raw command.
+
+**Tests.** In test/phrases.test.ts, add the test "describeToolCall drops a leading cd so the label names the command":
+- `describeToolCall("bash", { command: "cd /Users/zach/tumwater/.tumwater/worktrees/_slot-10 && npm run test:gate > x.log 2>&1" })` returns `bash npm run test:gate > x.log 2>&1`. A remainder longer than 32 characters is squashed as today: `cd /w && ` followed by 40 `x` gives `bash ` followed by 31 `x` and `…`.
+- `cd "/a b" && ls` gives `bash ls`. `cd a; cd b && make` gives `bash make`. `{ cmd: "cd a && ls" }` gives `bash ls`.
+- These stay unchanged: `cd /tmp` gives `bash cd /tmp`, and `cd a || exit 1` gives `bash cd a || exit 1`. `{ path: "/x/cd y && z" }` still basenames to `cd y && z`.
+- The existing describeToolCall tests and the `tool call stalled` assertions in test/pi.test.ts pass unchanged (none of their commands starts with `cd`).
+
+**Acceptance criteria.**
+- A stalled `cd <worktree> && <cmd>` call logs `tool call stalled: bash <cmd…> — …`. The dashboards' last-tool cell and the transcripts show the same label.
+- A command with no leading `cd … &&`/`;` segment gets exactly the label it gets today.
+- `npm run test:gate` passes.
+
 ## Done
