@@ -1,13 +1,13 @@
 // vocabulary: plain
 /** The worktree pool's lease machinery (plans/worktree-pool.md, "Leases"; part 2a/5): a fixed set
- * of `.tumwater/worktrees/_slot-<n>` checkouts that ticks and verifies lease and switch commits in
+ * of `.tumwater/worktrees/_slot-<n>` checkouts that runs and verifies lease and switch commits in
  * place, instead of keeping one `_land-<role>` checkout per role. The persisted layout and its
  * cross-process lock live in slots-state.ts, which other processes (`tumwater diff`, `retire`) also
  * read; this module owns choosing a slot, holding it through the disk-floor registry, and handing
  * it back. Nothing leases a slot yet — part 4/5 wires the roles to it.
  *
  * The lease decision is synchronous: `updateSlotsState` writes slots.json under the slots lock, and
- * one Node process runs every tick and merge, so two concurrent `leaseSlot` calls claim distinct
+ * one Node process runs every run and merge, so two concurrent `leaseSlot` calls claim distinct
  * free slots and a call with none free registers an in-process waiter. A release wakes the waiters,
  * which re-decide; `signal` aborts a waiter. */
 
@@ -251,7 +251,7 @@ async function acquire(
 ): Promise<string> {
   // The caller's live budget when given; else liveCount's tolerance — a broken or missing
   // tumwater.json degrades to the default budget rather than erroring the lease with a raw
-  // load failure (2026-10-08: a mid-run broken config errored every tick via this read even
+  // load failure (2026-10-08: a mid-run broken config errored every run via this read even
   // while the orchestrator held last-known-good).
   const count = slotBudget ?? liveCount(root);
   const startedAt = Date.now();
@@ -264,7 +264,7 @@ async function acquire(
     }
     // The pool-slot wait rule (plans/provider-concurrency.md §5 "No deadlock"): a lease never holds
     // a provider key while it waits for a pool slot. Drop the calling lease's key (which never
-    // waits) before parking here, so this tick or verify holds no provider slot whose in-use a
+    // waits) before parking here, so this run or verify holds no provider slot whose in-use a
     // re-key waiter is waiting to drain; the next run re-takes the key as an ordinary re-key.
     await dropProviderLeaseKey();
     const waiter = registerWaiter(root);
@@ -366,14 +366,14 @@ export async function removeDroppedSlots(
 }
 
 /** One-time startup migration (plans/worktree-pool.md "Legacy role worktrees", part 4c/5):
- * retire the pre-pool `.tumwater/worktrees/<role>` checkouts now that ticks lease pooled slots.
+ * retire the pre-pool `.tumwater/worktrees/<role>` checkouts now that runs lease pooled slots.
  * A resumable enabled role keeps its legacy dir as a pinned slot so its pending resume runs in
  * the same cwd; every other legacy dir is removed (its branch keeps any commit), and pins for
  * roles outside `configured` are cleared. `configured` is every role id the config's roles
  * enable (`runnerIds`), never a `--once --role` filter: a scoped run must leave the other roles'
  * legacy dirs and pins alone, or it silently loses their pending resumes. It runs after
  * `runOrchestrator` constructs every
- * `RoleRunner` but before any tick can call `leaseSlot`: the constructor infers `resumePending`
+ * `RoleRunner` but before any run can call `leaseSlot`: the constructor infers `resumePending`
  * from the on-disk `running` flag only in memory (it does not save it), so `loadRunnerState` here
  * still reports the on-disk flags. *Removing* a dir is best-effort and logged: the slot records
  * are already updated, so a leaked directory is only a leak the next prune collects. */

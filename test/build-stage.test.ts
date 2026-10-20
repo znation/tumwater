@@ -419,7 +419,7 @@ test("pruneStaleStagings swallows every staging-root fault: the prune trails a s
   withReadOnlyDir(stagingRoot, () => {
     assert.equal(pruneStaleStagings(root, path.join(root, "dist")), 0,
       "a failed removal is swallowed, not thrown");
-    assert.equal(fs.existsSync(stale), true, "the unremovable staging survives one tick longer");
+    assert.equal(fs.existsSync(stale), true, "the unremovable staging survives one run longer");
   });
 
   // And once the filesystem heals, the same prune removes it: the swallow never wedged anything.

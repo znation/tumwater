@@ -12,7 +12,7 @@ const COMMIT_AUTHOR = "tumwater <tumwater@localhost>";
  * `user.email` from the repo's local config and then global/system (git's own lookup path),
  * read through gitTry so a key that is unset (git exits nonzero) reads as blank. When the
  * repo and machine configure none (or only one of the two), fall back to tumwater on both
- * sides so ticks still work with no global git config (the long-standing fallback). No
+ * sides so runs still work with no global git config (the long-standing fallback). No
  * process-global cache: identity is resolved per call against the command's `cwd`, so a
  * repo (or a test) with its own local identity reads correctly and no cross-repo bleed is
  * possible. */

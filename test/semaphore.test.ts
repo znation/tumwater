@@ -191,7 +191,7 @@ test("repeated grow/shrink cycles leak no permits and starve no waiter", async (
 
 test("a lower-tier arrival jumps ahead of parked higher-tier waiters, FIFO within a tier", async () => {
   // The orchestrator passes roleTier so the documented "work roles ahead of maintenance"
-  // order holds for ticks WAITING on a slot across polls, not just within one kickoff batch.
+  // order holds for runs WAITING on a slot across polls, not just within one kickoff batch.
   const sem = new Semaphore(1);
   await sem.acquire(1); // holder: the only slot is busy
   const order: string[] = [];

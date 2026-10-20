@@ -2,15 +2,15 @@
 /** The UNFULFILLED-VERDICT half of a finished pi run's classification (see runner-run.ts's
  * handlePiResultPhase for the seam): everything that decides a run left nothing landable — abort,
  * config request, quiet kill, timeout, refusal, failure without changes, or no change at all —
- * with the staging handoff (src/run/run-stage.ts) staying in the tick pipeline. Returns null when
- * the run IS fulfillable, which the pipeline answers with stageTickMerge. Split out of runner.ts so
+ * with the staging handoff (src/run/run-stage.ts) staying in the run pipeline. Returns null when
+ * the run IS fulfillable, which the pipeline answers with stageRunMerge. Split out of runner.ts so
  * the runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
- * tree reads next to its sibling outcome modules (tick-outcome, tick-apply, tick-stage). */
+ * tree reads next to its sibling outcome modules (run-outcome, run-apply, run-stage). */
 import type { RunnerState } from "../runner/runner-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { imageReroute } from "../agent/image-input.js";
-import type { TickOutcome } from "./run-outcome.js";
+import type { RunOutcome } from "./run-outcome.js";
 import type { FlowResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -26,8 +26,8 @@ import { rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
 import { subscriptionWindowRejected } from "../agent/claude/claude-account.js";
 
-interface TickVerdictContext {
-  /** The trailer's Model line for the seam this tick ran on (see modelTrailerLine). */
+interface RunVerdictContext {
+  /** The trailer's Model line for the seam this run ran on (see modelTrailerLine). */
   modelLine?: string;
   root: string;
   role: string;
@@ -37,9 +37,9 @@ interface TickVerdictContext {
   /** The dequeued prompt's requeue policy (src/inbox/pending-prompt.ts): unfulfilled outcomes
    * re-queue the raw director request through it. */
   pending: PendingPrompt;
-  /** Assistant turns folded into this tick so far — the same field handleRefusal reads. */
+  /** Assistant turns folded into this run so far — the same field handleRefusal reads. */
   turns: number;
-  /** The raw director prompt this tick is executing (null for role runners). */
+  /** The raw director prompt this run is executing (null for role runners). */
   userPrompt: string | null;
   /** The team config, when the caller can provide it, used to resolve an image-reroute
    * target (plans/image-input.md part 4/5). Absent in the unit harness, so those contexts
@@ -49,38 +49,38 @@ interface TickVerdictContext {
    * "Regime"): the primary tiers normally, the free fallback pairs while the budget gate is
    * on fallback or the role is in a model-fallback episode. Defaults to the primary regime. */
   rerouteRegime?: "primary" | "fallback";
-  /** The selector string of the model this tick's runs started on — the `from` half of the
+  /** The selector string of the model this run's runs started on — the `from` half of the
    * image_reroute event and the handoff note (the model the blind run was on). */
   runModel?: string;
-  /** The revision round this tick holds the rejected diff for (plans/revise-rejected.md), or
-   * undefined when the tick is not a revision. A per-role user-request or resume tick leaves
+  /** The revision round this run holds the rejected diff for (plans/revise-rejected.md), or
+   * undefined when the run is not a revision. A per-role user-request or resume run leaves
    * `state.revision` set by design but passes undefined here, so the drop branch can never
-   * discard a pending revision from a tick that did not apply it. */
+   * discard a pending revision from a run that did not apply it. */
   revisionRound?: number;
   wt: string;
   pi: PiRunResult;
   flow: FlowResult | null;
   warn(message: string): void;
   /** Merge the worktree branch on main with the role's shared wiring (refusal-note merges). */
-  merge(wt: string, summary: string): Promise<TickOutcome["result"]>;
-  finishAbortedRun(): Promise<TickOutcome>;
+  merge(wt: string, summary: string): Promise<RunOutcome["result"]>;
+  finishAbortedRun(): Promise<RunOutcome>;
 }
 
 /** Classify what the finished run left behind; null means the run is fulfillable and staging
  * should take over. Never throws: every branch returns an outcome, recording what went wrong
  * in `state.lastError` or a warning event. */
-export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickOutcome | null> {
+export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutcome | null> {
   const { pi, state: s } = ctx;
   // A run whose `--resume` target the backend no longer holds records why before any branch
-  // returns: the resume guard the next tick consults is the transcript FILE, which can outlive
+  // returns: the resume guard the next run consults is the transcript FILE, which can outlive
   // the conversation (a torn/empty file, or the fake's planted one), so this verdict must
   // outrank it. The failed-dirty arm below is the common case, but an aborted, quiet-killed, or
   // progressing-timeout run keeps the same session and arms the same resume (run-apply.ts), so
-  // recording it once here covers every path that resumes (BUGS.md 2026-10-09). Director ticks
+  // recording it once here covers every path that resumes (BUGS.md 2026-10-09). Director runs
   // never resume, so the flag is role-only.
   if (pi.resumeMissing && ctx.role !== DIRECTOR_ROLE) s.resumeMissing = true;
   // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
-  // The next tick's reset discards them.
+  // The next run's reset discards them.
   if (pi.aborted) return ctx.finishAbortedRun();
   ctx.pending.clear();
   // Harness-mediated config writes (plans/portability.md §3/7): the director may have left a
@@ -89,7 +89,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   // timeout, refusal, isDirty, commitAll) — so the request file never enters a diff or a
   // review prompt, and a quiet-killed/timeout re-run starts clean instead of losing the
   // request to the reset. Applied names are announced by the orchestrator's ~2 s live reload
-  // (one config_changed event naming the keys); this tick logs only the rejection paths.
+  // (one config_changed event naming the keys); this run logs only the rejection paths.
   if (ctx.role === DIRECTOR_ROLE) {
     const request = applyConfigRequest(ctx.root, ctx.wt);
     if (request) {
@@ -102,8 +102,8 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   }
   if (pi.quietKilled) {
     // A hung tool call, not a slow run: the session and the worktree's edits are intact.
-    // Preserve both — applyTickOutcome resumes them promptly like an interruption instead of
-    // leaving hours of work for the next tick's reset to discard. Director ticks never resume;
+    // Preserve both — applyRunOutcome resumes them promptly like an interruption instead of
+    // leaving hours of work for the next run's reset to discard. Director runs never resume;
     // their prompt goes back to the inbox to run fresh, as on any other unfulfilled kill.
     s.lastError = pi.errorMessage ?? "killed as hung";
     ctx.pending.requeueForResume(s, ctx.userPrompt);
@@ -115,8 +115,8 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     // 97 timeouts in 8 hours, ~55 agent-hours discarded). Handle it the way a quiet kill is
     // handled — keep the session and the worktree's edits, resume promptly, bounded by the
     // same quiet-kill streak — while a run with no recent progress keeps the discard path
-    // below. Director ticks never resume; requeueForResume re-queues their prompt
-    // fresh (src/inbox/pending-prompt.ts), and applyTickOutcome schedules the immediate retry
+    // below. Director runs never resume; requeueForResume re-queues their prompt
+    // fresh (src/inbox/pending-prompt.ts), and applyRunOutcome schedules the immediate retry
     // without a resume.
     s.lastError = pi.errorMessage ?? "timed out while still making progress";
     ctx.pending.requeueForResume(s, ctx.userPrompt);
@@ -125,7 +125,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   if (pi.timedOut) {
     s.lastError = pi.errorMessage ?? "timed out";
     // The request never ran to completion and no work merged: put it back so the next
-    // tick retries it. (A killed run's half-done edits are discarded by the reset.)
+    // run retries it. (A killed run's half-done edits are discarded by the reset.)
     ctx.pending.requeueUnfulfilled(ctx.userPrompt);
     return { result: "error" };
   }
@@ -133,15 +133,15 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   // A subscription claude run the usage window rejected is a hold, not a run failure: the
   // team hold keeps every subscription claude seam from starting until `resetsAt`
   // (plans/agent-backends.md §8, part 6c), and this run's session and worktree edits must
-  // survive the wait — the next eligible tick resumes them (part 6e) instead of committing
+  // survive the wait — the next eligible run resumes them (part 6e) instead of committing
   // partial work or resetting the worktree to main. The rejected-window reading is the
   // signal (subscriptionWindowRejected), so a pi 429, an API-billed run, or an overage
   // window keeps the paths below.
   if (!pi.ok && ctx.role !== DIRECTOR_ROLE && subscriptionWindowRejected(pi)) {
     s.lastError = pi.errorMessage ?? "claude subscription usage window rejected";
-    // Arm the resume here rather than in applyTickOutcome: the lease release reads
-    // `resumePending` as soon as the tick returns (runTickInLeasePhase), before
-    // applyTickOutcome runs, so without this the slot is detached and the edits above are
+    // Arm the resume here rather than in applyRunOutcome: the lease release reads
+    // `resumePending` as soon as the run returns (runTickInLeasePhase), before
+    // applyRunOutcome runs, so without this the slot is detached and the edits above are
     // lost. This is the same inline arming the error-dirty arm below does.
     s.resumePending = true;
     ctx.pending.requeueForResume(s, ctx.userPrompt);
@@ -149,23 +149,23 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   }
 
   // An API-billed claude run cut off at its per-run `--max-budget-usd` cap is a budget
-  // handback, not a failed tick: the remaining daily budget is spent, so the run stopped with
-  // its session and worktree edits intact. Keep both and let the next tick hand off over the
+  // handback, not a failed run: the remaining daily budget is spent, so the run stopped with
+  // its session and worktree edits intact. Keep both and let the next run hand off over the
   // kept worktree (plans/agent-backends.md §7, part 7a/7); the cap is what keeps one runaway
   // run from overshooting the daily cap. `aborted` is the budget-handback result
   // (src/runner/runner-recovery.ts) and schedules the resume promptly.
   if (!pi.ok && ctx.role !== DIRECTOR_ROLE && pi.budgetCapped) {
     s.lastError = pi.errorMessage ?? "claude per-run budget cap reached";
-    // Arm the resume here rather than in applyTickOutcome: the lease release reads
-    // `resumePending` as soon as the tick returns (runTickInLeasePhase), before
-    // applyTickOutcome runs, so without this the slot is detached and the edits are lost.
+    // Arm the resume here rather than in applyRunOutcome: the lease release reads
+    // `resumePending` as soon as the run returns (runTickInLeasePhase), before
+    // applyRunOutcome runs, so without this the slot is detached and the edits are lost.
     s.resumePending = true;
     ctx.pending.requeueForResume(s, ctx.userPrompt);
     return { result: "aborted", resumeCause: "budget-capped" };
   }
 
   // A run the runner killed the moment its agent read an image its model cannot see
-  // (plans/image-input.md "Failing the tick"): pi strips such an image from the request, so
+  // (plans/image-input.md "Failing the run"): pi strips such an image from the request, so
   // the agent was about to answer about a picture it never saw. The run was deliberately
   // stopped before it could work on, so its half-done edits are discarded exactly as a
   // timed-out run's are — nothing to resume, and the prompt re-queues to run fresh on a
@@ -173,9 +173,9 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   // as for any error.
   if (pi.imageBlind) {
     // One hop only (plans/image-input.md "Rerunning on a model that can read images"): a
-    // tick that ALREADY started on the image-capable target and still read blind is not
+    // run that ALREADY started on the image-capable target and still read blind is not
     // rerouted a second time — it fails, so a misreadable image cannot bounce the role
-    // between tiers forever. Set at tick start by tickPhase when it routes a tick onto the
+    // between tiers forever. Set at run start by tickPhase when it routes a run onto the
     // target (blind-read handoff or attachment preflight).
     if (s.imageRerouteActive) {
       s.lastError = pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`;
@@ -186,10 +186,10 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
       return { result: "error" };
     }
     // Otherwise, when the role's tier has an image-capable reroute target, the failed work
-    // is not discarded: the next tick starts directly on that target over the kept worktree.
+    // is not discarded: the next run starts directly on that target over the kept worktree.
     // The one-shot field carries the target seam plus the `from`/`path` facts the handoff
-    // note needs; the tick ends `aborted` with the `image-reroute` resume cause, and
-    // applyTickOutcome schedules it promptly (nextRunAt = now) while planRunStart hands the
+    // note needs; the run ends `aborted` with the `image-reroute` resume cause, and
+    // applyRunOutcome schedules it promptly (nextRunAt = now) while planRunStart hands the
     // kept worktree off to a FRESH session on the target.
     const regime = ctx.rerouteRegime ?? "primary";
     const target =
@@ -258,16 +258,16 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   // 4xx config error, an auth failure, or a dead backend ends on an assistant message_end with
   // empty `content` and stopReason "error" — one completed turn, zero content — so
   // `producedAssistantContent` stays false, while a run that did real work (tool calls, text)
-  // before failing sets it true. On a resume the dirty files are the interrupted tick's
+  // before failing sets it true. On a resume the dirty files are the interrupted run's
   // half-done edits, which the abort branch above deliberately refuses to commit; staging them
   // would ship unfinished work under a diff-derived subject and drop the resumable session
   // (BUGS.md 2026-10-06). Keep the worktree and session for the next resume.
   if (!pi.ok && (!changed || !pi.producedAssistantContent)) {
     s.lastError = pi.errorMessage ?? "the agent failed";
-    // A dirty worktree on a run that added nothing of its own is a prior tick's work: arm the
-    // resume so the next tick continues that session instead of resetting the edits. A role
+    // A dirty worktree on a run that added nothing of its own is a prior run's work: arm the
+    // resume so the next run continues that session instead of resetting the edits. A role
     // runner re-queues through requeueForResume, so the resume reclaims exactly this prompt
-    // rather than leaving a duplicate for a later fresh tick to run again (BUGS.md 2026-09-25);
+    // rather than leaving a duplicate for a later fresh run to run again (BUGS.md 2026-09-25);
     // the director never resumes, so its prompt always re-runs fresh. A clean worktree has
     // nothing to carry forward, so the plain re-queue still applies.
     if (changed && ctx.role !== DIRECTOR_ROLE) {
@@ -281,14 +281,14 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     }
     return { result: "error" };
   }
-  // A revision tick that declares nothing-to-do drops the rejected change (the revise-rejected plan
+  // A revision run that declares nothing-to-do drops the rejected change (the revise-rejected plan
   // in PLANS.md): the author judged the objections show the change should not exist, so reset the
   // re-applied diff away, delete the rejected ref, and end no_change without staging anything.
-  // Guarded on the tick's own revisionRound, not state.revision: a dirty user-request tick that
+  // Guarded on the run's own revisionRound, not state.revision: a dirty user-request run that
   // happens to leave a pending revision untouched must not drop it. Checked before the
   // clean-worktree branch because the re-applied diff can leave the worktree clean — an empty
   // cherry-pick range, or the author reverting the edits while deciding — and the author's
-  // NOTHING_TO_DO must end the change anyway, or every later tick re-applies the same rejected
+  // NOTHING_TO_DO must end the change anyway, or every later run re-applies the same rejected
   // diff.
   if (ctx.revisionRound !== undefined && s.revision && pi.nothingToDo) {
     const { sha } = s.revision;
@@ -297,7 +297,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     await deleteRef(ctx.root, rejectedRefName(ctx.role));
     // The drop's durable effects — the worktree reset, the rejected ref's deletion, and the
     // cleared state — have all taken effect; the event is observability, so an unwritable feed must
-    // not end the tick as an error and mask a change that really was dropped.
+    // not end the run as an error and mask a change that really was dropped.
     logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
     return { result: "no_change" };
   }
@@ -314,7 +314,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     }
     // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
     // to the inbox to rerun fresh; a role runner resumes the just-compacted session
-    // next tick (see the cutOff handling in run()).
+    // next run (see the cutOff handling in run()).
     if (diagnosis.cutOff) ctx.pending.requeueForResume(s, ctx.userPrompt);
     // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
     // line it left mid-stream is not a finished verdict, so recording it would advance the
@@ -326,10 +326,10 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
         ctx.flow.result,
         ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
       );
-    // A prompt-driven (director) tick that answers a question in prose ends `no_change` with
+    // A prompt-driven (director) run that answers a question in prose ends `no_change` with
     // no SUMMARY block, so its reply would be lost — the dashboard reads a bare "No change"
     // and the feed carries nothing (BUGS.md 2026-10-14). Keep the prose above the sentinel as
-    // the tick's summary so `lastSummary` and the run_end event show the answer where the
+    // the run's summary so `lastSummary` and the run_end event show the answer where the
     // operator asked the question. A role runner's bare nothing-to-do stays summary-less.
     const summary =
       ctx.userPrompt !== null && !diagnosis.cutOff

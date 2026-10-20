@@ -1,7 +1,7 @@
 // vocabulary: plain
 /** The worktree-use registry (plans/disk-floor.md, "Reclaiming build outputs", part 2/4): which
  * harness worktrees are in use right now, and when each was last used. The orchestrator is the one
- * process that runs ticks and merges, so a plain in-process map is enough for the "in use" half;
+ * process that runs runs and merges, so a plain in-process map is enough for the "in use" half;
  * the "last used" half is persisted to `.tumwater/state/worktree-use.json` so least-recently-used
  * reclaim ordering survives a restart.
  *
@@ -117,7 +117,7 @@ export function updateWorktreeUse(
  * volume is full — is warned and dropped rather than thrown. Both release paths use it:
  * `beginWorktreeUse`'s release and `releaseReclaim`, the latter in a `finally` after a reclaim.
  * Their bookkeeping must not become the caller's failure — a throw there would mask a successful
- * tick, merge, or clean with a registry error. The in-process `uses`/`reclaiming` state is updated
+ * run, merge, or clean with a registry error. The in-process `uses`/`reclaiming` state is updated
  * before this runs, so only reclaim ordering degrades. */
 function updateWorktreeUseBestEffort(
   root: string,

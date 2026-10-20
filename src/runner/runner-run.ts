@@ -39,7 +39,7 @@ import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { seamAgent } from "../config/model-selector.js";
 import { modelTrailerLine } from "../git/commit-message.js";
-import { stageTickMerge, foldAgentCommitsSince } from "../run/run-stage.js";
+import { stageRunMerge, foldAgentCommitsSince } from "../run/run-stage.js";
 import { stageCheckFindings } from "../run/stage-check.js";
 import { planBacklogFull } from "../scheduling/claims.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
@@ -53,7 +53,7 @@ import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "..
 import { changedFiles } from "../git/git-diff.js";
 import { mergeToMain } from "../merge/merge-to-main.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
-import { resolveTickVerdict } from "../run/run-verdict.js";
+import { resolveRunVerdict } from "../run/run-verdict.js";
 import { extractFlow, type FlowResult } from "../verdict/reply-contract.js";
 
 /** The model-fallback episode context a tick start resolves (src/runner/model-fallback.ts): the
@@ -715,7 +715,7 @@ async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): P
 /** Turn a finished pi run into its TickOutcome: the post-run half of runOnce, split off so each
  * half reads on its own screen — the setup above ends at the pi return. The verdict
  * classification (abort, config request, quiet kill, timeout, refusal, failure, no-change) lives
- * in resolveTickVerdict (src/run/run-verdict.ts), and the fulfillable path — staging —
+ * in resolveRunVerdict (src/run/run-verdict.ts), and the fulfillable path — staging —
  * stays here. `userPrompt` is the raw director prompt this tick is executing (null for role
  * runners) so unfulfilled outcomes can re-queue it; `revisionRound` is the revision this tick holds
  * (undefined when it is not a revision); `flow` is the qa observer's FLOW line (null for every
@@ -732,9 +732,9 @@ export async function handlePiResultPhase(
 ): Promise<TickOutcome> {
   // Everything that decides the run left nothing mergeable — abort, config request,
   // quiet kill, timeout, refusal, failure without changes, no change — lives in
-  // resolveTickVerdict (src/run/run-verdict.ts); null means the run IS fulfillable.
+  // resolveRunVerdict (src/run/run-verdict.ts); null means the run IS fulfillable.
   const modelLine = modelTrailerLine(seamAgent(cfg), cfg.provider, cfg.model);
-  const verdict = await resolveTickVerdict({
+  const verdict = await resolveRunVerdict({
     modelLine,
     root: ctx.root,
     role: ctx.role,
@@ -769,13 +769,13 @@ export async function handlePiResultPhase(
   // — recording the commit count, the outcome, and the reviewer spend into it — and logs
   // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
   // `commits` was NOT incremented above: it counts merged changes only.
-  return stageTickMerge({
+  return stageRunMerge({
     modelLine,
     root: ctx.root,
     role: ctx.role,
     state: ctx.state,
     config: ctx.config,
-    tickTurns: ctx.usage.turns,
+    runTurns: ctx.usage.turns,
     userPrompt,
     revisionRound,
     mainBranch: ctx.mainBranch,

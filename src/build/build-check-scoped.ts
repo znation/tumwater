@@ -169,7 +169,7 @@ export async function runScopedBuildCheck(
   logEventBestEffort(root, buildCheckEvent(role, scope, outcome, durationMs, cheaper));
   if (outcome.status === "skipped") {
     // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
-    // code tick into the 3-strike discard (gate) or a merge behind the merge lock.
+    // code run into the 3-strike discard (gate) or a merge behind the merge lock.
     const w = SCOPE_WORDS[scope];
     warnEventBestEffort(
       root,

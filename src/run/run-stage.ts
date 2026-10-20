@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { TickOutcome } from "./run-outcome.js";
+import type { RunOutcome } from "./run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { commitAll, foldCommitsSince, headOf } from "../git/git.js";
@@ -27,34 +27,34 @@ import { assignedMovedFinding, heldMovedFinding } from "./stage-check.js";
 import { archiveNewFinishedEntries } from "../backlog/backlog-archive.js";
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is
- * module-private there; this mirrors it so the tick staging needs no export from it). */
-interface TickFlow {
+ * module-private there; this mirrors it so the run staging needs no export from it). */
+interface RunFlow {
   flow: string;
   result: "passed" | "bug";
 }
 
 /** The shared role wiring a changed worktree's staging needs (src/runner/runner-run.ts):
- * the per-tick authoring-run counters as a snapshot, plus the callbacks that touch the
+ * the per-run authoring-run counters as a snapshot, plus the callbacks that touch the
  * role — warnings, the summary follow-up run, the pre-queue self-check with its fix-up
  * run, the merge-ref pin, and the abort finalizer. Mirrors the context-object shapes of
  * leftover.ts, refusal.ts, and merge-core.ts. */
-interface TickStageContext {
-  /** The trailer's Model line for the seam this tick's authoring run started on; transient
+interface RunStageContext {
+  /** The trailer's Model line for the seam this run's authoring run started on; transient
    * retries reuse the same seam. */
   modelLine?: string;
   root: string;
   role: string;
   state: RunnerState;
   config: TumwaterConfig;
-  /** Authoring turns folded so far this tick, captured before the commit (friction artifact). */
-  tickTurns: number;
-  /** The raw user prompt a director tick is executing (null for role runners), so an aborted
+  /** Authoring turns folded so far this run, captured before the commit (friction artifact). */
+  runTurns: number;
+  /** The raw user prompt a director run is executing (null for role runners), so an aborted
    * summary follow-up can finalize through the role's requeue path. */
   userPrompt: string | null;
-  /** The revision round this tick holds the rejected diff for (plans/revise-rejected.md), or
-   * undefined when the tick is not a revision. Set by runner-run.ts only when the revision was
-   * applied this tick (or a resume carried its already-applied edits), never read from
-   * `state.revision`: a per-role user-request tick leaves that field set by design. */
+  /** The revision round this run holds the rejected diff for (plans/revise-rejected.md), or
+   * undefined when the run is not a revision. Set by runner-run.ts only when the revision was
+   * applied this run (or a resume carried its already-applied edits), never read from
+   * `state.revision`: a per-role user-request run leaves that field set by design. */
   revisionRound?: number;
   /** The branch main's name, for the merge-base of the staged-moved-entry comparison (part 4/7)
    * and of the backlog archive's commit-time sweep. Optional so callers that never staged a
@@ -63,11 +63,11 @@ interface TickStageContext {
   wt: string;
   /** The pi run's final reply text, the summary's source. */
   finalText: string;
-  /** When the tick's main authoring run started (runOnce's pre-pi capture): the friction
+  /** When the run's main authoring run started (runOnce's pre-pi capture): the friction
    * measurement's wall-clock base. */
   piStartedAt: number;
   /** The `qa` observer's FLOW record, or null for every other role. */
-  flow: TickFlow | null;
+  flow: RunFlow | null;
   warn(message: string): void;
   /** One bounded follow-up turn in the still-open session, to produce a missing SUMMARY. */
   requestSummary(wt: string, overLength?: number): Promise<PiRunResult | null>;
@@ -78,11 +78,11 @@ interface TickStageContext {
   /** Pin the commit by the role's merge ref, then free the worktree. */
   pinAndReset(wt: string, sha: string): Promise<boolean>;
   /** Finalize an aborted follow-up run through the role (requeue + worktree reset). */
-  finishAbortedRun(): Promise<TickOutcome>;
+  finishAbortedRun(): Promise<RunOutcome>;
 }
 
-/** Fold commits an agent run made since `base` into the tick's tree, keeping the harness commit
- * the tick's only one (INV-H1); warns when any were folded. The one home of the fold-and-warn
+/** Fold commits an agent run made since `base` into the run's tree, keeping the harness commit
+ * the run's only one (INV-H1); warns when any were folded. The one home of the fold-and-warn
  * policy and its wording, shared by the two fold sites — the authoring run (runner-run.ts) and
  * this module's follow-up turns — so they cannot drift. */
 export async function foldAgentCommitsSince(
@@ -95,24 +95,24 @@ export async function foldAgentCommitsSince(
 }
 
 /** Stage a changed worktree for the merge queue: derive the commit message from the reply's
- * SUMMARY block (one bounded follow-up turn when the run left none), flag high-friction ticks,
+ * SUMMARY block (one bounded follow-up turn when the run left none), flag high-friction runs,
  * commit, pin the commit by the role's merge ref, and enqueue the merge. Extracted from
- * RoleRunner.runOnce so the tick's own method stays the outcome classifier and this module is
- * the commit-staging layer — the only place a fresh tick's work becomes a queued merge.
- * Returns the tick's outcome; a failed pin or an aborted follow-up returns an error/aborted
+ * RoleRunner.runOnce so the run's own method stays the outcome classifier and this module is
+ * the commit-staging layer — the only place a fresh run's work becomes a queued merge.
+ * Returns the run's outcome; a failed pin or an aborted follow-up returns an error/aborted
  * outcome without anything queued. */
-export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome> {
+export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
   const s = ctx.state;
-  // A revision tick carries the round it applied on its context (runner-run.ts): it rides onto the
+  // A revision run carries the round it applied on its context (runner-run.ts): it rides onto the
   // queued merge so a rejection of this change records the NEXT round (plans/revise-rejected.md).
-  // Undefined for a fresh change — including a user-request tick that leaves a pending revision
-  // untouched — so only the tick that actually held the rejected diff is labeled a revision.
+  // Undefined for a fresh change — including a user-request run that leaves a pending revision
+  // untouched — so only the run that actually held the rejected diff is labeled a revision.
   const revisionRound = ctx.revisionRound;
   // A revision merge carries the review that rejected the change (plans/revise-rejected.md
   // part 2/2): the prior head, its numbered objections, and each objection's persistence count
   // ride the queued entry so the re-review can check each one against the interdiff and the next
-  // rejection can resolve a `(prior N)` restatement (BUGS.md 2026-10-14). Only a tick that
-  // actually held the rejected diff attaches it; a fresh change — including a user-request tick
+  // rejection can resolve a `(prior N)` restatement (BUGS.md 2026-10-14). Only a run that
+  // actually held the rejected diff attaches it; a fresh change — including a user-request run
   // that leaves a pending revision untouched — and a recovery merge carry none.
   const priorReview =
     revisionRound !== undefined && s.lastReview?.head
@@ -176,11 +176,11 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
   // author's own session gets to fix them; the gate still has the final say, and the change commits
   // and queues either way.
   // Claims made at staging (plans/parallel-work-instances.md "Claims", part 4/7): an
-  // unassigned tick of a MULTI-instance base whose diff moved a backlog entry out of its
+  // unassigned run of a MULTI-instance base whose diff moved a backlog entry out of its
   // actionable section records the claim so a sibling is not assigned it while this change
   // merges. A single-runner base has no sibling to hold the entry from, so it stages nothing
-  // and is unchanged by claims. An assigned tick that moved a DIFFERENT entry gets a finding,
-  // so the one fix-up turn can put it back. So does an unassigned tick that moved an entry a
+  // and is unchanged by claims. An assigned run that moved a DIFFERENT entry gets a finding,
+  // so the one fix-up turn can put it back. So does an unassigned run that moved an entry a
   // sibling holds (the poll's heldElsewhere, which its prompt listed as off-limits): that entry
   // is never claimed a second time, and the fix-up turn is asked to drop the duplicate work
   // (BUGS.md 2026-10-12). An unreadable file or git hiccup yields no move and no finding.
@@ -197,7 +197,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
     const first = claimable[0]!;
     s.claim = { file: first.file, key: first.key, title: first.title, at: Date.now(), source: "staged" };
     // The assignment is durable in state before this event; an unwritable feed must not reject
-    // the tick and make a claim that did take effect look unapplied (logEventBestEffort).
+    // the run and make a claim that did take effect look unapplied (logEventBestEffort).
     logEventBestEffort(ctx.root, {
       source: ctx.role,
       type: "claim",
@@ -225,7 +225,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
       body = mergeCommitBody(body, extractCommitBody(fixUp.finalText));
     }
     // A fix-up turn may resolve its findings by reverting the whole change. With nothing left
-    // in the worktree there is nothing to commit or queue: end the tick no_change here instead
+    // in the worktree there is nothing to commit or queue: end the run no_change here instead
     // of handing a clean tree to commitAll. The worktree is left clean and no pin is taken.
     if ((await changedFiles(ctx.wt)).length === 0) {
       ctx.warn("stage self-check: the follow-up turn left no change; nothing to land");
@@ -239,19 +239,19 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
     );
   }
 
-  // Friction as a signal (plans/refusal-and-thrash.md): a changed tick that burned BOTH more
+  // Friction as a signal (plans/refusal-and-thrash.md): a changed run that burned BOTH more
   // than thrashTurns turns and thrashMinutes of wall clock is flagged high-friction —
   // difficulty suggests the work may not fit, so it goes to review marked and leaves a warning
   // event. Requiring both (not either) keeps the absolute turn count from measuring model
   // speed: a fast model emits 40+ turns in a few minutes, which is ordinary work, not
-  // difficulty (BUGS.md 2026-09-19). Measured over this tick's main authoring run (a transient
+  // difficulty (BUGS.md 2026-09-19). Measured over this run's main authoring run (a transient
   // retry included via runAuthoringPi), like the trailer; conflict-resolution runs happen later
   // inside merge().
   const minutes = (Date.now() - ctx.piStartedAt) / 60_000;
-  // Friction is measured over this tick's authoring runs only — the review gate folds its
-  // run into tickTurns AFTER the commit, so every friction artifact (flag, warning event,
+  // Friction is measured over this run's authoring runs only — the review gate folds its
+  // run into runTurns AFTER the commit, so every friction artifact (flag, warning event,
   // trailer line, final summary) reads this pre-gate snapshot instead of the live counter.
-  const authoringTurns = ctx.tickTurns;
+  const authoringTurns = ctx.runTurns;
   const highFriction =
     authoringTurns > ctx.config.thrashTurns && minutes > ctx.config.thrashMinutes;
   if (highFriction) {
@@ -260,9 +260,9 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
         `(thresholds: ${ctx.config.thrashTurns} turns / ${ctx.config.thrashMinutes} min)`,
     );
   }
-  // The trailer is harness-stamped truth: turns and peak ctx over this tick's pre-commit
+  // The trailer is harness-stamped truth: turns and peak ctx over this run's pre-commit
   // runs only (conflict-resolution and review runs fold after the commit). A high-friction
-  // tick appends its Friction line here — both values are already computed above.
+  // run appends its Friction line here — both values are already computed above.
   const message = buildCommitMessage(
     stampedSubject(baseRoleOf(ctx.role), summary),
     body,
@@ -287,7 +287,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
   // Pin the commit by its merge ref BEFORE freeing the worktree (invariant 4), then hand it
   // to the merge queue: from here on the review gate and the rebase run in a verification's
   // leased pool slot, never in this worktree (plans/merge-queue.md 2/5). A failed pin defers to
-  // next-tick recovery — merge without a pin would lose the ref lifecycle this whole flow depends
+  // next-run recovery — merge without a pin would lose the ref lifecycle this whole flow depends
   // on. The reviewer checks the author's claimed WHY/VERIFIED against the actual diff; no diff
   // reaches main unreviewed.
   if (!(await ctx.pinAndReset(ctx.wt, commit))) {
@@ -295,12 +295,12 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
     return { result: "error", summary: s.lastError };
   }
 
-  // The commit is pinned and the worktree is free: enqueue the merge and END the tick — the
+  // The commit is pinned and the worktree is free: enqueue the merge and END the run — the
   // orchestrator drains the queue on its single merge slot, outside the author semaphore, so
   // this slot is free the moment the work is committed (plans/merge-queue.md 3/5). The merge
   // runs the same gate + merge flow through runMergePi/foldMergeUsage on this same state
   // object — recording the commit count, the outcome, and the reviewer spend into it — and logs
-  // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
+  // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-run leftover recovery.
   // `commits` was NOT incremented above: it counts merged changes only.
   enqueueMerge(ctx.root, {
     role: ctx.role,
@@ -318,7 +318,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
   // rebuild a retriable revision's merge entry with its round when the queue marker is lost.
   if (revisionRound !== undefined) s.revision = undefined;
   // The merge sits in the durable queue above and the commit is pinned; the event is
-  // observability, so an unwritable feed must not reject a tick whose work is already queued.
+  // observability, so an unwritable feed must not reject a run whose work is already queued.
   logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit, summary });
   // The flag's durable record is the Friction trailer line stamped on the commit above;
   // lastSummary and the run_end event carry it too for dashboards and logs.

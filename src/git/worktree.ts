@@ -8,7 +8,7 @@ import { KILL_GRACE_MS } from "../process/process-group.js";
 import { branchName, worktreePath, worktreesDir } from "../paths.js";
 
 /** Persistent-worktree lifecycle for the harness: role worktrees (one per role, reset to main
- * on every fresh tick) and the detached mirror worktree redeploy.ts verifies and compiles.
+ * on every fresh run) and the detached mirror worktree redeploy.ts verifies and compiles.
  * The generic git plumbing these build on lives in git/git.ts; this module owns creating,
  * self-healing, resetting, and abort-syncing those worktrees. */
 
@@ -16,7 +16,7 @@ import { branchName, worktreePath, worktreesDir } from "../paths.js";
  * and resolvable via rev-parse. The shared usability probe of both ensure* functions below;
  * a directory that fails it (pointer lost, or admin-side registration under <root>/.git/
  * worktrees/ pruned by outside git maintenance) is rebuilt from scratch instead of failing
- * every tick. Also exported for read-only viewers that must classify a worktree as absent
+ * every run. Also exported for read-only viewers that must classify a worktree as absent
  * rather than fail (change/change-data.ts's collectRoleChange), so the probe's exact
  * conditions live in one place. */
 export async function isUsableWorktree(dir: string): Promise<boolean> {
@@ -34,7 +34,7 @@ async function pruneWorktrees(root: string): Promise<void> {
 /** Clear the way for `worktree add` at `dir`: prune stale registrations first (a registration
  * whose directory was deleted still blocks the add), then remove a leftover unusable directory
  * and prune again so no registration points at it. The removed content is harness scratch only
- * — role worktrees are reset to main on every fresh tick, and branch commits survive in
+ * — role worktrees are reset to main on every fresh run, and branch commits survive in
  * refs/heads either way. Call only inside serializeSetup: a prune deletes any registration
  * another `worktree add` is still creating. */
 async function clearStaleWorktree(root: string, dir: string): Promise<void> {
@@ -82,8 +82,8 @@ async function serializeSetup<T>(root: string, setup: () => Promise<T>): Promise
 
 /** Ensure a persistent worktree + branch exists for a role. Returns the worktree path. Self-heals
  * when the directory exists but is no longer a usable worktree: it removes and re-adds the
- * directory instead of failing every tick (see clearStaleWorktree). Since the worktree pool merged
- * (plans/worktree-pool.md, "Role ticks lease slots"), this serves the director only; every other
+ * directory instead of failing every run (see clearStaleWorktree). Since the worktree pool merged
+ * (plans/worktree-pool.md, "Role runs lease slots"), this serves the director only; every other
  * role leases a pooled `_slot-<n>` via leaseSlot instead. */
 export async function ensureWorktree(root: string, role: string, mainBranch: string): Promise<string> {
   const wt = worktreePath(root, role);
@@ -136,9 +136,9 @@ export async function removeWorktree(root: string, role: string): Promise<void> 
   await removeWorktreeDir(root, worktreePath(root, role));
 }
 
-/** Remove the `_land-<role>` checkouts left by a pre-pool build: the pool's ticks keep their
+/** Remove the `_land-<role>` checkouts left by a pre-pool build: the pool's runs keep their
  * commit on the role branch and a queued merge re-verifies from its pinned ref, so the checkout
- * holds nothing to keep. Called once at orchestrator startup, before any tick; each removal goes
+ * holds nothing to keep. Called once at orchestrator startup, before any run; each removal goes
  * through removeWorktreeDir (force `worktree remove`, with the shared dead-registration fallback),
  * then one prune registers the vanished checkouts. */
 export async function removeLegacyLandWorktrees(root: string): Promise<void> {
@@ -182,7 +182,7 @@ export async function ensureDetachedWorktree(root: string, dir: string, ref: str
  * rebase — instead of spawning two aborts that can only fail. Returns false ("run the
  * aborts anyway") whenever either is running OR the gitdir cannot be resolved from files:
  * false is always safe, it just means "do exactly what the old spawn-based check did".
- * Synchronous and microsecond-scale: this exists because abortSync runs on every fresh tick
+ * Synchronous and microsecond-scale: this exists because abortSync runs on every fresh run
  * and the common case used to cost two ~10ms subprocess spawns that were guaranteed no-ops. */
 function syncStateClear(wt: string): boolean {
   const gitdir = resolveGitDir(wt);
@@ -226,7 +226,7 @@ const STALE_GIT_LOCK_MS = GIT_TIMEOUT_MS + KILL_GRACE_MS;
 /** Remove a stale `index.lock` from `wt`'s gitdir. A git killed mid-write — our own group
  * deadline's SIGKILL after a SIGTERM it could not handle, a crashed harness, an operator kill —
  * leaves index.lock behind, and every later `git reset --hard` then fails "Unable to create
- * '…/index.lock': File exists" with no self-heal, wedging the role on every tick. A *fresh*
+ * '…/index.lock': File exists" with no self-heal, wedging the role on every run. A *fresh*
  * lock is left alone: it may belong to a git still running, so this clears wreckage, never a
  * live writer. */
 function clearStaleIndexLock(wt: string): void {
@@ -284,7 +284,7 @@ function logDroppedRef(root: string, ref: string): void {
 
 /** Hard-reset a worktree to `ref`, self-healing the two wedges a killed git leaves behind: a
  * stale index.lock is cleared first (or the reset fails "Unable to create '…/index.lock'"
- * forever), and an interrupted merge or rebase is aborted (or the tick wedges on "you are
+ * forever), and an interrupted merge or rebase is aborted (or the run wedges on "you are
  * already rebasing"). With `detachRoot` (the repository root), the worktree is checked out
  * detached at `ref` first — ensureDetachedWorktree's repair path for a worktree left on a
  * branch; resetWorktreeToMain leaves its branch checked out. Untracked files are
@@ -298,7 +298,7 @@ async function hardResetWorktree(wt: string, ref: string, detachRoot?: string): 
   pruneStaleBuildDir(wt);
 }
 
-/** Hard-reset a worktree's branch to main — the fresh-tick reset. */
+/** Hard-reset a worktree's branch to main — the fresh-run reset. */
 export async function resetWorktreeToMain(wt: string, mainBranch: string): Promise<void> {
   await hardResetWorktree(wt, mainBranch);
 }

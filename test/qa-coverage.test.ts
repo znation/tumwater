@@ -11,9 +11,9 @@ import { qaCoveragePath } from "../src/paths.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/run/qa-coverage.ts — the `qa` observer's flow-coverage ledger
- * (plans/observer-roles.md 2/2). Every tick is a fresh session and a passing cheap check
+ * (plans/observer-roles.md 2/2). Every run is a fresh session and a passing cheap check
  * leaves nothing in the repo, so this runtime file is the only memory that rotates the flow
- * menu; its read path must degrade to "no data" rather than fail a tick, and its render order
+ * menu; its read path must degrade to "no data" rather than fail a run, and its render order
  * is load-bearing (never-exercised first, then oldest-first) because the prompt tells the
  * model to exercise the top row. */
 

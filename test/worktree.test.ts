@@ -115,7 +115,7 @@ test("ensureWorktree recovers when its admin registration is pruned out from und
 
   pruneAdminRegistration(repo, wt);
 
-  // Previously this wedged every tick with a raw git fatal; now it re-adds the directory.
+  // Previously this wedged every run with a raw git fatal; now it re-adds the directory.
   const again = await ensureWorktree(repo, "clean", "main");
   assert.equal(again, wt);
   assert.ok(fs.existsSync(path.join(again, "seed.txt")));
@@ -237,7 +237,7 @@ test("resetWorktreeToMain clears an interrupted rebase", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "dedupe", "main");
   seedConflict(repo, wt);
-  // Start a conflicting rebase and leave it in progress (a killed tick mid-resolution).
+  // Start a conflicting rebase and leave it in progress (a killed run mid-resolution).
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   await resetWorktreeToMain(wt, "main");
   assert.equal(await aheadOfMain(wt, "main"), 0);
@@ -263,7 +263,7 @@ test("abortSync spawns no git when nothing is in progress", async () => {
 test("abortSync still aborts an interrupted rebase when state exists", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "dedupe", "main");
-  // Leave a conflicting rebase in progress (a killed tick mid-resolution), no shim yet.
+  // Leave a conflicting rebase in progress (a killed run mid-resolution), no shim yet.
   seedConflict(repo, wt);
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
 
@@ -285,7 +285,7 @@ test("abortSync still aborts an interrupted rebase when state exists", async () 
 // A linked worktree's .git is a one-line pointer file. If it is corrupted (truncated write,
 // stale path after outside maintenance), the file check cannot tell whether a merge or rebase
 // is in progress — abortSync must then fall back to spawning both aborts instead of skipping
-// them, or an interrupted tick would wedge on "you are already rebasing" forever.
+// them, or an interrupted run would wedge on "you are already rebasing" forever.
 test("abortSync falls back to spawns when the worktree .git pointer is uncertain", async () => {
   const repo = makeRepo();
   for (const [label, pointer] of [
@@ -310,7 +310,7 @@ test("abortSync falls back to spawns when the worktree .git pointer is uncertain
 
 test("abortSync detects in-progress state from a primary checkout's .git dir", async () => {
   const repo = makeRepo();
-  // Leave a conflicting merge in progress on the primary checkout (a killed tick mid-merge).
+  // Leave a conflicting merge in progress on the primary checkout (a killed run mid-merge).
   sh(repo, "git", "checkout", "-b", "side");
   fs.writeFileSync(path.join(repo, "seed.txt"), "side\n");
   sh(repo, "git", "commit", "-am", "side edit");
@@ -392,7 +392,7 @@ test("abortSync survives a worktree pointer whose target is not a directory", as
   // A .git pointer file naming an existing-but-not-a-directory target leaves the
   // file-based merge/rebase state check uncertain: abortSync must fall back to running
   // the real aborts (which fail harmlessly here) instead of throwing — a corrupted
-  // worktree must not break the tick that tries to clean it.
+  // worktree must not break the run that tries to clean it.
   const dir = tmpdir("stray-gitdir-");
   fs.writeFileSync(path.join(dir, ".git"), `gitdir: ${path.join(dir, "stray-file")}\n`);
   fs.writeFileSync(path.join(dir, "stray-file"), "a file, not a gitdir\n");

@@ -9,10 +9,10 @@ import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, mergeRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import { assembleTickPrompt } from "../src/run/run-prompt.js";
+import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
-import { resolveTickVerdict } from "../src/run/run-verdict.js";
-import { stageTickMerge } from "../src/run/run-stage.js";
+import { resolveRunVerdict } from "../src/run/run-verdict.js";
+import { stageRunMerge } from "../src/run/run-stage.js";
 import { queuedMerges } from "../src/merge/merge-queue.js";
 import { settleMergeOutcome } from "../src/merge/merge-pipeline.js";
 import { recoverLeftover } from "../src/runner/leftover.js";
@@ -30,7 +30,7 @@ import { assistantLine } from "./fixtures/pi-events.js";
 
 /** Unit coverage for the revise-rejected feature (plans/revise-rejected.md part 1/2): the
  * rejected commit is kept alive under its own ref, re-applied to current main as uncommitted
- * edits on the author's next tick, and dropped/conflicted/exhausted with its own event. */
+ * edits on the author's next run, and dropped/conflicted/exhausted with its own event. */
 
 /** A makeRepo'd repo with `content` written to `file` and committed off main (detached), the
  * commit's sha returned with main checked out clean again — the unreviewed-commit base the
@@ -43,7 +43,7 @@ function commitOffMain(file: string, content: string, message = "the rejected wo
   return { root, sha };
 }
 
-/** The resolveTickVerdict context the three nothing-to-do tests share: an "improve" tick whose
+/** The resolveRunVerdict context the three nothing-to-do tests share: an "improve" run whose
  * fake pi declares NOTHING_TO_DO, with the state, worktree, user prompt, and revision round
  * the verdict turns on supplied by the caller. */
 function verdictCtx(
@@ -52,7 +52,7 @@ function verdictCtx(
   state: ReturnType<typeof freshRunnerState>,
   userPrompt: string | null,
   revisionRound?: number,
-): Parameters<typeof resolveTickVerdict>[0] {
+): Parameters<typeof resolveRunVerdict>[0] {
   return {
     root,
     wt,
@@ -116,7 +116,7 @@ test("applyWithConflicts leaves the conflict markers as ordinary uncommitted edi
   assert.match(text, /<<<<<<</);
   assert.match(text, />>>>>>>/);
   assert.equal(await isDirty(root), true, "the marker-bearing file is an ordinary edit");
-  // The index is back at HEAD with no unmerged entries, so the tick can commit normally.
+  // The index is back at HEAD with no unmerged entries, so the run can commit normally.
   assert.equal(sh(root, "git", "diff", "--name-only", "--diff-filter=U").trim(), "");
 });
 
@@ -387,19 +387,19 @@ test("a permanent reviewer config error still holds the pin when the events feed
   });
 });
 
-/** The `stageTickMerge` context the two staging tests share: the runner wiring every tick
+/** The `stageRunMerge` context the two staging tests share: the runner wiring every run
  * supplies, with `overrides` layered on for per-test state, prompt, and reply text. */
 function stageCtx(
   root: string,
   wt: string,
-  overrides: Partial<Parameters<typeof stageTickMerge>[0]> = {},
-): Parameters<typeof stageTickMerge>[0] {
+  overrides: Partial<Parameters<typeof stageRunMerge>[0]> = {},
+): Parameters<typeof stageRunMerge>[0] {
   return {
     root,
     role: "improve",
     state: freshRunnerState("improve"),
     config: defaultConfig(),
-    tickTurns: 4,
+    runTurns: 4,
     userPrompt: null,
     wt,
     finalText: "",
@@ -415,7 +415,7 @@ function stageCtx(
   };
 }
 
-test("stageTickMerge carries the revision round onto the entry and clears state.revision", async () => {
+test("stageRunMerge carries the revision round onto the entry and clears state.revision", async () => {
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
   const state = {
@@ -429,7 +429,7 @@ test("stageTickMerge carries the revision round onto the entry and clears state.
     finalText: "SUMMARY: revise the change\nWHY: the objection\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.revision, undefined, "staging consumes the revision");
@@ -447,7 +447,7 @@ test("a user-request run that leaves a pending revision stages no round and keep
     finalText: "SUMMARY: do the user thing\nWHY: asked\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(queuedMerges(root)[0]?.revisionRound, undefined, "a user change is not a revision");
@@ -463,7 +463,7 @@ test("a non-revision dirty nothing-to-do run does not drop a pending revision", 
   };
   const ctx = verdictCtx(root, wt, state, "please do the user thing");
 
-  const outcome = await resolveTickVerdict(ctx);
+  const outcome = await resolveRunVerdict(ctx);
 
   assert.equal(outcome, null, "the run is fulfillable and staging takes over");
   assert.notEqual(state.revision, undefined, "the pending revision is not dropped");
@@ -478,7 +478,7 @@ test("a revision run that declares nothing-to-do drops the change and ends no_ch
   };
   const ctx = verdictCtx(root, wt, state, null, 1);
 
-  const outcome = await resolveTickVerdict(ctx);
+  const outcome = await resolveRunVerdict(ctx);
 
   assert.equal(outcome?.result, "no_change");
   assert.equal(state.revision, undefined);
@@ -498,7 +498,7 @@ test("a revision run drops the change when the events feed is unwritable", async
   // while every other file under the root still writes, exactly as on a full disk.
   unwritableEvents(root);
 
-  const outcome = await resolveTickVerdict(ctx);
+  const outcome = await resolveRunVerdict(ctx);
 
   assert.equal(outcome?.result, "no_change");
   assert.equal(state.revision, undefined, "the rejected change is dropped");
@@ -507,9 +507,9 @@ test("a revision run drops the change when the events feed is unwritable", async
 
 test("a revision run that declares nothing-to-do drops the change with a clean worktree", async () => {
   const { root, wt } = await initializedWorktree("improve");
-  // A revision tick need not leave the re-applied diff dirty: the cherry-pick can be an empty
+  // A revision run need not leave the re-applied diff dirty: the cherry-pick can be an empty
   // range, or the author can revert the edits while deciding the change should not exist. The
-  // author's NOTHING_TO_DO must still end the rejected change, or every later tick re-applies
+  // author's NOTHING_TO_DO must still end the rejected change, or every later run re-applies
   // the same rejected diff and the change loops without ever reaching its limit.
   await setRef(root, rejectedRefName("improve"), "a".repeat(40));
   const state = {
@@ -518,7 +518,7 @@ test("a revision run that declares nothing-to-do drops the change with a clean w
   };
   const ctx = verdictCtx(root, wt, state, null, 1);
 
-  const outcome = await resolveTickVerdict(ctx);
+  const outcome = await resolveRunVerdict(ctx);
 
   assert.equal(await isDirty(wt), false, "the worktree is already clean");
   assert.equal(outcome?.result, "no_change");
@@ -531,7 +531,7 @@ test("the run prompt skips the plain rejection note while a revision is due", ()
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "README.md"), readmeTemplate("proj", "Build a tiny thing.\n"));
   const lastReview = { verdict: "reject", reasons: ["fix the bug"], head: "b".repeat(40), at: Date.now() };
-  const withRevision = assembleTickPrompt({
+  const withRevision = assembleRunPrompt({
     root: dir,
     config: defaultConfig(),
     role: "coverage",
@@ -540,7 +540,7 @@ test("the run prompt skips the plain rejection note while a revision is due", ()
   assert.ok(withRevision);
   assert.doesNotMatch(withRevision.prompt, /previous change was rejected/);
 
-  const withoutRevision = assembleTickPrompt({
+  const withoutRevision = assembleRunPrompt({
     root: dir,
     config: defaultConfig(),
     role: "coverage",
@@ -652,9 +652,9 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
 });
 
 // The other side of the conflict fallback: when the rejected diff cannot be re-applied at all
-// (its object is gone), the markers fallback fails too, so the tick drops the revision and the
+// (its object is gone), the markers fallback fails too, so the run drops the revision and the
 // ref and tells the author the plain rejection stands — it must not leave a stale revision
-// queued to be retried every tick.
+// queued to be retried every run.
 test("a revision whose diff no longer applies falls back to the plain rejection", async () => {
   const repo = await initializedRepo();
   const rejected = headSha(repo);

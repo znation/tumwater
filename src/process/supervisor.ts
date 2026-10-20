@@ -29,7 +29,7 @@ export const SUPERVISOR_PID_ENV = "TUMWATER_SUPERVISOR_PID";
  * orchestrator generation, so a self-redeploy continues the window instead of opening a new one. */
 export const RUN_WINDOW_START_ENV = "TUMWATER_RUN_WINDOW_START";
 
-/** The exit code of a `run --once` round that finished and found failed ticks (cli-start.ts's
+/** The exit code of a `run --once` round that finished and found failed runs (cli-start.ts's
  * onceFailures): an asked-for ending, so the supervisor passes it through without paging the
  * team-down hook. */
 export const ONCE_FAILED_EXIT_CODE = 3;
@@ -71,7 +71,7 @@ interface ParentDeathWatchOptions {
 /** Parent-death watch for the supervised generation. The supervisor forwards only SIGTERM —
  * SIGKILL (the OOM killer, `kill -9`) cannot be trapped or forwarded, and an uncaught supervisor
  * crash forwards nothing either — so a supervisor that dies outright leaves the generation
- * reparented (on macOS to launchd) and ticking the team unattended, with nothing left to sweep
+ * reparented (on macOS to launchd) and running the team unattended, with nothing left to sweep
  * it. The watch polls the parent pid on an interval: once it changes, the supervisor is gone
  * without having stopped the team, and `onGone` runs the same graceful stop a forwarded SIGTERM
  * would have run — a killed supervisor takes its team down with it. The timer is unref'd so it
@@ -190,7 +190,7 @@ export async function superviseRun(opts: SuperviseOptions, signal: AbortSignal):
       if (exit.code !== RESTART_EXIT_CODE || opts.stopping()) {
         // A clean exit (a child stopped by its own SIGTERM logs orchestrator_stop) and anything
         // while the operator is stopping are asked-for endings, and so is a once round that
-        // finished with failed ticks; everything else is the team dying.
+        // finished with failed runs; everything else is the team dying.
         const code = exitCodeOf(exit);
         if (code !== 0 && code !== ONCE_FAILED_EXIT_CODE && !opts.stopping()) await teamDown({ generation, exit, crashLoop: false });
         return exitCodeOf(exit);

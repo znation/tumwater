@@ -6,7 +6,7 @@
  * review-verdict.ts's parseVerdict), the clipped output tail (clipBuildTail), the one-line headline
  * a warning names the failure by (failureHeadline), the check's human-facing command name
  * (describeCheck), and the reasons a red check hands its author (checkFailureReasons). Every
- * consumer of a check's tail — the review gate, the merge path, the red-main gate, the tick prompt
+ * consumer of a check's tail — the review gate, the merge path, the red-main gate, the run prompt
  * — imports from here, so "which line is the headline" and "how much output survives" have one
  * answer each. Type-only back-reference to build-check.ts for BuildCheckOutcome (no runtime cycle);
  * BuildCheck comes from build-check-detect.ts. */
@@ -58,7 +58,7 @@ export function parseFailingTests(output: string): string[] {
 }
 
 /** Keep the TAIL of a build's combined output: last ≤10 meaningful lines, each via clipReason —
- * so a chatty build cannot bloat persisted state or the injected next-tick note. Blank lines
+ * so a chatty build cannot bloat persisted state or the injected next-run note. Blank lines
  * and npm's own script banner (`> pkg@1.0 script`, `> <command>`) are dropped: they name the
  * script that ran, not what broke in it. When the ten-line window cuts off the error-message
  * line that sits above the stack, the nearest such line is kept as well, so failureHeadline can
@@ -120,7 +120,7 @@ export function failureHeadline(tail: readonly string[] | undefined): string | u
   return what ?? tail[0];
 }
 
-/** The human/prompt-facing name of a check (plans/portability.md §6/7): the tick prompt and
+/** The human/prompt-facing name of a check (plans/portability.md §6/7): the run prompt and
  * the gate's check reasons name the actual verification command instead of asserting npm —
  * "verify with `pytest -q`" in a Python repo, "`npm run test`" in an npm one. */
 export function describeCheck(check: BuildCheck): string {
@@ -128,7 +128,7 @@ export function describeCheck(check: BuildCheck): string {
 }
 
 /** The machine-generated reasons a red check hands its author: the headline joined to the rest of
- * the clipped tail, so the compiler error sits right after it in the injected next-tick note. The
+ * the clipped tail, so the compiler error sits right after it in the injected next-run note. The
  * headline is failureHeadline's — the first line that is not a stack frame — not outputTail[0]: a
  * suite that dies on an unhandled rejection opens mid-stack, and naming the frame tells the author
  * where it broke, never what (BUGS.md 2026-09-19). One definition for every red that rejects a

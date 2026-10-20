@@ -7,7 +7,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/run/stage-check.ts (PLANS.md "Pre-queue self-check, part 1/2"):
-// the merge gate's deterministic backlog checks run before a changed tick commits, so the
+// the merge gate's deterministic backlog checks run before a changed run commits, so the
 // author's still-open session can fix a finding instead of a rejection discarding the work.
 // These tests drive the real checks over a worktree with uncommitted edits.
 
@@ -421,7 +421,7 @@ test("heldMovedFinding names a moved entry a sibling holds, and nothing otherwis
     heldMovedFinding(held, [beta, alpha]) ?? "",
     /moved a backlog entry another instance of this role is working on: "Alpha \(planned 2026-01-01 by operator\)".*revert every edit made for it/,
   );
-  assert.equal(heldMovedFinding(held, [beta]), undefined, "a free entry is this tick's to take");
+  assert.equal(heldMovedFinding(held, [beta]), undefined, "a free entry is this run's to take");
   assert.equal(heldMovedFinding(held, []), undefined, "nothing moved");
   assert.equal(heldMovedFinding(new Set(), [alpha]), undefined, "nothing held");
 });

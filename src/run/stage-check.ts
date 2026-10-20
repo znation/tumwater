@@ -1,14 +1,14 @@
 // vocabulary: plain
-/** The merge gate's deterministic checks, run BEFORE a changed tick commits.
+/** The merge gate's deterministic checks, run BEFORE a changed run commits.
  *
  * The gate runs `backlogStructureReason` and `falseFixReason` at merge time, by which point
  * the author's session is over: a finding costs a queue slot, a verification, and a rejection that
  * discards the work (13 phantom-fix rejections between 2026-09-23 and 2026-10-02). Both checks
  * read the worktree and the change's merge-base, so the same questions can be asked at staging
  * time, while the authoring session can still be continued for one fix-up turn. This module
- * runs them over the tick's uncommitted edits; the gate still has the final say.
+ * runs them over the run's uncommitted edits; the gate still has the final say.
  *
- * Scope mirrors the gate exactly: `backlogStructureReason` runs on every changed tick, while
+ * Scope mirrors the gate exactly: `backlogStructureReason` runs on every changed run, while
  * `falseFixReason` runs only for an exempt (doc-only) diff — the condition under which the gate
  * consults it.
  *
@@ -17,8 +17,8 @@
  * rename or delete, added lines naming paths that do not exist in the resulting tree, and text
  * files whose final newline the change removed. These stage the change (`git add -A`) to read
  * the index with git only, then restore the index to HEAD before returning: staging is a read
- * aid for the checks, not a change to the tick's state. A git hiccup yields no finding rather
- * than failing the tick. Unlike the backlog checks above, the gate does not run these: they are
+ * aid for the checks, not a change to the run's state. A git hiccup yields no finding rather
+ * than failing the run. Unlike the backlog checks above, the gate does not run these: they are
  * heuristics for what a reviewer tends to reject, so neither path check looks inside record
  * prose (isRecordProse), where an old or not-yet-created path is correct as written.
  *
@@ -160,7 +160,7 @@ export function waitingNoteFinding(head: string, base: string): string | undefin
  * the false-fix check.
  *
  * Never throws: a check that fails yields no finding, so a git hiccup at staging time defers to
- * the gate instead of failing the tick. */
+ * the gate instead of failing the run. */
 export async function stageCheckFindings(
   wt: string,
   mainBranch: string,
@@ -201,7 +201,7 @@ export async function stageCheckFindings(
   return findings;
 }
 
-/** The staging finding for a tick that holds a claim but moved a different backlog entry
+/** The staging finding for a run that holds a claim but moved a different backlog entry
  * (plans/parallel-work-instances.md "Claims", part 4/7): the assigned entry is the instance's
  * one task, so moving another is the same class of mistake `backlogStructureReason` catches
  * and costs one fix-up turn before the change commits. undefined when nothing moved or the
@@ -214,8 +214,8 @@ export function assignedMovedFinding(
   return `this run is assigned one backlog entry but moved a different one: "${moved[0]!.title}"`;
 }
 
-/** The staging finding for an unassigned tick that moved a backlog entry a sibling instance
- * holds — one the poll listed in the tick's `<held-entries>` note (RunnerState.heldElsewhere).
+/** The staging finding for an unassigned run that moved a backlog entry a sibling instance
+ * holds — one the poll listed in the run's `<held-entries>` note (RunnerState.heldElsewhere).
  * The note is advice the model can ignore; this is the deterministic backstop at the same
  * point as assignedMovedFinding (BUGS.md 2026-10-12: 24 of 29 staged claims duplicated a
  * sibling's held entry, and each duplicate cost a gate check, a review, and a conflict
@@ -264,7 +264,7 @@ function parseNameStatus(out: string | null): NameStatusEntry[] {
 }
 
 /** Stage the change and run the three git-level path checks over the resulting index, then
- * restore the index to HEAD so the staging is invisible to the tick's own change detection.
+ * restore the index to HEAD so the staging is invisible to the run's own change detection.
  * Each check is best-effort: a failed git command contributes nothing. */
 async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[]> {
   await gitTry(wt, "add", "-A");
@@ -277,10 +277,10 @@ async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[
     findings.push(...newlineFindings(diff));
     return findings;
   } finally {
-    // Restore the index to HEAD. Without this, the tick's change detection (changedFiles and
-    // stageTickMerge's "nothing left to merge" guard) reads the stale index and reports a
+    // Restore the index to HEAD. Without this, the run's change detection (changedFiles and
+    // stageRunMerge's "nothing left to merge" guard) reads the stale index and reports a
     // fix-up that reverted the whole change as still changed, so an empty tree would reach
-    // commitAll instead of the tick ending no_change.
+    // commitAll instead of the run ending no_change.
     await gitTry(wt, "reset");
   }
 }

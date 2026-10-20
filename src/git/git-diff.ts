@@ -96,7 +96,7 @@ export async function changedFiles(wt: string): Promise<string[]> {
 
 /** Repo-relative paths changed between the branch's fork point from main and its HEAD —
  * everything a merge of this branch would bring in (the three-dot range diffs against the
- * merge-base, so commits main gained during the tick are not included). */
+ * merge-base, so commits main gained during the run are not included). */
 export async function aheadOfMainFiles(wt: string, mainBranch: string): Promise<string[]> {
   const out = await gitTry(wt, "diff", "--name-only", `${mainBranch}...HEAD`);
   // Decode git's C-quoted names (same convention as `git status --porcelain`): every caller
@@ -140,7 +140,7 @@ function splitDiffByFile(diff: string): string[] {
  * oversized diff is itself reviewable information, and the reviewer can read any file in the
  * worktree directly). The per-file sections are split out of the one full diff already fetched —
  * spawning a diff per file would re-diff the entire range once per file for text we already hold in
- * memory (measured ~0.5 s of redundant git work on a 530 KB / 39-file tick). Section byte length
+ * memory (measured ~0.5 s of redundant git work on a 530 KB / 39-file run). Section byte length
  * ranks files at least as well as numstat's added+deleted: it is exactly what the reviewer will
  * see, and a binary file's short "Binary files differ" stub naturally ranks below any real text
  * change. */

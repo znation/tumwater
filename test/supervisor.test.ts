@@ -353,7 +353,7 @@ test("spawnRunChild resolves with code 1 when the child cannot be spawned", asyn
   try {
     // A spawn that never reaches a live process (here: an execPath that does not exist) emits
     // 'error' instead of 'exit'. The promise must settle — one left pending would freeze
-    // `tumwater run` before its first tick, with nothing on screen to explain it.
+    // `tumwater run` before its first run, with nothing on screen to explain it.
     process.execPath = path.join(dir, "missing-node-binary");
     const exit = await within(spawnRunChild(new AbortController().signal), 15_000);
     assert.deepEqual(exit, { code: 1, signal: null }, "a failed spawn reads as failure, not success");

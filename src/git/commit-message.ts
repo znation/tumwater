@@ -4,12 +4,12 @@ import { compactTokens } from "../text/format.js";
 import { modelLabel } from "../agent/backend-traits.js";
 import { labeledLine } from "../verdict/reply-contract.js";
 
-/** Assembling tick commit messages from pi's final reply: the SUMMARY line becomes the
+/** Assembling run commit messages from pi's final reply: the SUMMARY line becomes the
  * subject, the WHY/RISK/VERIFIED block becomes the body, and the harness stamps a trailer
- * with tick metadata. Split out of prompt.ts — which keeps building the prompts that declare
+ * with run metadata. Split out of prompt.ts — which keeps building the prompts that declare
  * this contract (the machine-detectable half — sentinel and verdict-line detection — lives in
  * reply-contract.ts) — because turning a reply into what `git commit` receives is the git side
- * of the contract, consumed by the tick pipeline (run-stage.ts, run-verdict.ts) and
+ * of the contract, consumed by the run pipeline (run-stage.ts, run-verdict.ts) and
  * refusal.ts. */
 
 /** Cap on the commit subject's summary portion (the SUMMARY line), so a verbose model cannot
@@ -31,13 +31,13 @@ export function extractSummary(finalText: string): string | null {
   return summary === null ? null : truncate(summary, COMMIT_SUMMARY_MAX);
 }
 
-/** The subject for a changed tick whose reply — and whose follow-up request — carried no
+/** The subject for a changed run whose reply — and whose follow-up request — carried no
  * SUMMARY line: named from what actually changed, so the log still says what the commit touched
  * instead of only which role made it. Up to three repo-relative paths (worktree order), then a
  * count; capped like a real summary. Falls back to the bare "<role> run N" only when nothing is
  * known. */
-export function fallbackSummary(files: string[], role: string, tick: number): string {
-  if (files.length === 0) return `${role} run ${tick}`;
+export function fallbackSummary(files: string[], role: string, runNumber: number): string {
+  if (files.length === 0) return `${role} run ${runNumber}`;
   const shown = files.slice(0, 3).join(", ");
   const rest = files.length > 3 ? ` and ${files.length - 3} more` : "";
   return truncate(`Update ${shown}${rest}`, COMMIT_SUMMARY_MAX);
@@ -73,7 +73,7 @@ export function extractCommitBody(finalText: string): CommitBody | null {
   return body.why || body.risk || body.verified ? body : null;
 }
 
-/** Merge a follow-up reply's body over the tick's original body, field by field: a follow-up that
+/** Merge a follow-up reply's body over the run's original body, field by field: a follow-up that
  * restates only some of WHY/RISK/VERIFIED overrides those fields and leaves the others intact. A
  * wholesale replacement would silently drop the fields a partial reply did not restate, losing the
  * authoring run's recorded reasoning; returns `base` unchanged when `update` carries no field. */
@@ -99,24 +99,24 @@ export function formatCommitBody(body: CommitBody): string {
     .join("\n");
 }
 
-/** The harness-stamped trailer line of every tick commit — truth from the run's counters, not
- * model claims. `turns` sums this tick's pre-commit pi runs (main + transient retry); `peakCtx`
- * is their largest single-request context. A changed tick flagged high-friction (plans/
+/** The harness-stamped trailer line of every run commit — truth from the run's counters, not
+ * model claims. `turns` sums this run's pre-commit pi runs (main + transient retry); `peakCtx`
+ * is their largest single-request context. A changed run flagged high-friction (plans/
  * refusal-and-thrash.md) appends a sibling Friction line after the Run line — minutes rounded,
- * e.g. `Friction: high (41 turns / 62m)`; only changed ticks carry it, so the refusal path
+ * e.g. `Friction: high (41 turns / 62m)`; only changed runs carry it, so the refusal path
  * never passes the argument and the Run line's asserted format stays stable. A `modelLine` (see
  * modelTrailerLine) goes on its own line directly after the Run line, before Friction and
  * Revision, so Revision stays last. */
 export function commitTrailer(
   role: string,
-  tick: number,
+  runNumber: number,
   turns: number,
   peakCtx: number,
   highFrictionMinutes?: number,
   revisionRound?: number,
   modelLine?: string,
 ): string {
-  const base = `Run: ${role} #${tick} · turns ${turns} · ctx ${compactTokens(peakCtx)}`;
+  const base = `Run: ${role} #${runNumber} · turns ${turns} · ctx ${compactTokens(peakCtx)}`;
   const model = modelLine === undefined ? "" : `\n${modelLine}`;
   const friction =
     highFrictionMinutes === undefined
@@ -138,7 +138,7 @@ export function modelTrailerLine(
   return `Model: ${model === undefined ? "default" : modelLabel(agent, provider, model)} · backend ${agent}`;
 }
 
-/** The high-friction trailer line a flagged tick's commit carries (see commitTrailer) — the
+/** The high-friction trailer line a flagged run's commit carries (see commitTrailer) — the
  * durable record recovery reads back. Anchored to the whole line so prose that merely mentions
  * friction cannot set the flag. */
 const FRICTION_TRAILER = /^Friction: high \(\d+ turns \/ \d+m\)$/m;
@@ -164,7 +164,7 @@ export function revisionRoundOf(message: string): number | undefined {
 /** The fields a merge request needs that a commit message can supply: the commit's subject (WHAT
  * merged — recovery rides it into its `merged` summary so the failure digest can name recovered
  * work, BUGS.md 2026-09-21), the author's body (WHY/RISK/VERIFIED, reformatted), and whether the
- * tick was high-friction. */
+ * run was high-friction. */
 export interface CommitMetadata {
   subject?: string;
   body?: string;
@@ -178,7 +178,7 @@ export interface CommitMetadata {
 const SUBJECT_PREFIX = /^tumwater\(([^)]+)\):(?:\s|$)/;
 
 /** Build a harness-stamped commit subject: `tumwater(<role>): <summary>` — the exact shape
- * SUBJECT_PREFIX below matches, so the stamp's writers (run-stage.ts's normal tick commit and
+ * SUBJECT_PREFIX below matches, so the stamp's writers (run-stage.ts's normal run commit and
  * refusal.ts's refusal note) and its parser live in one file and cannot drift apart. */
 export function stampedSubject(role: string, summary: string): string {
   return `tumwater(${role}): ${summary}`;
@@ -221,7 +221,7 @@ export function parseCommitMetadata(message: string): CommitMetadata {
   };
 }
 
-/** Assemble a tick's full commit message — the single place that builds one. The subject is
+/** Assemble a run's full commit message — the single place that builds one. The subject is
  * the existing "tumwater(<role>): <summary>" line; the author's body (omitted when absent)
  * and the harness-stamped trailer follow as separate paragraphs. Refusal commits route
  * through here too (subject + trailer only). */

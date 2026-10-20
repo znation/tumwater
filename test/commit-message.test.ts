@@ -44,7 +44,7 @@ test("extractSummary leaves a compliant (under-cap) summary untouched", () => {
 });
 
 // The commit body is the author's own explanation (WHY/RISK/VERIFIED), parsed out of pi's
-// final reply and stamped into every tick commit. The review gate checks these claims
+// final reply and stamped into every run commit. The review gate checks these claims
 // against the diff, so a parsing regression silently strips rationale from every commit —
 // or worse, fabricates it from unrelated lines.
 
@@ -132,7 +132,7 @@ test("commitTrailer appends a sibling Friction line only when flagged high-frict
     "Run: feature #7 · turns 41 · ctx 9999",
   );
   // With it: a sibling git-trailer line after the Tick line — minutes rounded to whole
-  // minutes, e.g. `Friction: high (41 turns / 62m)`. Only changed ticks carry it.
+  // minutes, e.g. `Friction: high (41 turns / 62m)`. Only changed runs carry it.
   assert.equal(
     commitTrailer("feature", 7, 41, 9_999, 62.4),
     "Run: feature #7 · turns 41 · ctx 9999\nFriction: high (41 turns / 62m)",
@@ -153,8 +153,8 @@ test("buildCommitMessage assembles subject, body, and trailer as separate paragr
 });
 
 test("fallbackSummary names the changed paths, counts the rest, and keeps the bare form only when nothing is known", () => {
-  // The last resort for a changed tick with no SUMMARY (even after the follow-up turn): the log
-  // must still say what the commit touched — "feature tick 105" told a reader nothing.
+  // The last resort for a changed run with no SUMMARY (even after the follow-up turn): the log
+  // must still say what the commit touched — "feature run 105" told a reader nothing.
   assert.equal(fallbackSummary(["src/a.ts"], "dedupe", 7), "Update src/a.ts");
   assert.equal(fallbackSummary(["src/a.ts", "test/a.test.ts", "README.md"], "dedupe", 7), "Update src/a.ts, test/a.test.ts, README.md");
   assert.equal(fallbackSummary(["a", "b", "c", "d", "e"], "dedupe", 7), "Update a, b, c and 2 more");
@@ -181,7 +181,7 @@ test("commitSubject returns the message's first line with the harness stamp stri
   // A harness-stamped commit: the `tumwater(<role>): ` prefix is stamp, not subject.
   assert.equal(commitSubject("tumwater(improve): add hello file\n\nWHY: …"), "add hello file");
   // A hand-made commit has no stamp: its whole subject is the answer.
-  assert.equal(commitSubject("interrupted tick's commit\n\nbody"), "interrupted tick's commit");
+  assert.equal(commitSubject("interrupted run's commit\n\nbody"), "interrupted run's commit");
   // An empty subject line (or a stamp with nothing after it) names nothing.
   assert.equal(commitSubject("\n\nWHY: only a body"), undefined);
   assert.equal(commitSubject("tumwater(clean):\n"), undefined);
@@ -202,8 +202,8 @@ test("parseCommitMetadata reconstructs the subject, body, and friction flag from
 });
 
 test("parseCommitMetadata yields absent fields for a message with neither body nor trailer", () => {
-  assert.deepEqual(parseCommitMetadata("interrupted tick's commit"), {
-    subject: "interrupted tick's commit",
+  assert.deepEqual(parseCommitMetadata("interrupted run's commit"), {
+    subject: "interrupted run's commit",
     body: undefined,
     highFriction: undefined,
   });

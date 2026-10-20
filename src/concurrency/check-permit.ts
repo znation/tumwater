@@ -12,7 +12,7 @@ import { Semaphore } from "./semaphore.js";
  * execution and classification (detect → spawn → classify) — because permit accounting is
  * scheduling policy, not check semantics: it changes when the concurrency or fairness policy
  * changes, not when the check's execution does. Separate from the orchestrator's maxConcurrent
- * semaphore: a role tick holds one of those while it waits here, but a check permit is held only
+ * semaphore: a role run holds one of those while it waits here, but a check permit is held only
  * around the check process itself — never across a pi run, the merge lock, or another check — so no
  * permit holder waits on anything a waiter holds. Sized at each acquire from the caller's live
  * config (checkCap), so a tumwater.json edit applies to the next check; Semaphore.setCapacity never

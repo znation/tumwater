@@ -41,9 +41,9 @@ test("a daemon team samples launchservicesd on its first poll and warns once thr
   try {
     const warned = () => harnessWarnings(repo).filter((e) => e.message === launchServicesWarning(150_000));
     await waitFor(() => warned().length > 0, "the port warning");
-    // The first poll sampled before any tick started; by the time the role's tick has ended the
+    // The first poll sampled before any run started; by the time the role's run has ended the
     // team has polled again and again, and none of those samples inside the interval.
-    await waitFor(() => eventsOfType(repo, "run_end").length > 0, "the clean role's first tick to end");
+    await waitFor(() => eventsOfType(repo, "run_end").length > 0, "the clean role's first run to end");
     assert.equal(probe.reads, 1);
     assert.equal(warned().length, 1);
   } finally {

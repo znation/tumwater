@@ -465,7 +465,7 @@ test("a failing removal with an unwritable events feed still resolves", async ()
 });
 
 // Startup migration (plans/worktree-pool.md "Legacy role worktrees", part 4c/5): the pre-pool
-// `.tumwater/worktrees/<role>` checkouts are retired once ticks lease slots.
+// `.tumwater/worktrees/<role>` checkouts are retired once runs lease slots.
 
 test("startup retires a non-resumable legacy role worktree but keeps its branch", async () => {
   const root = makeRepo();
@@ -512,7 +512,7 @@ test("a resumable enabled role's legacy dir becomes a pinned slot and serves one
   assert.equal(slotForDir(root, wt), undefined, "the retired slot record survived");
 });
 
-test("a resumable role that already owns a tick slot keeps the slot and retires the legacy dir", async () => {
+test("a resumable role that already owns a run slot keeps the slot and retires the legacy dir", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 3 });
   const wt = worktreeAt(root, "feature");

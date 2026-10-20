@@ -76,7 +76,7 @@ export function classifyLock(dir: string): LockState {
 }
 
 /** Name the lock's holder for the timeout message: the pid its pid file records, or a note
- * that none was readable. The message surfaces as a tick's lastError, and the pid is the one
+ * that none was readable. The message surfaces as a run's lastError, and the pid is the one
  * handle an operator needs to tell "waiting on a slow holder" from "an orphan dir nobody can
  * break" — without it every timeout reads the same and the holder has to be found by hand. */
 function lockHolderNote(dir: string): string {
@@ -133,7 +133,7 @@ function acquireStep(dir: string, timeoutMs: number, waitedMs: number): AcquireS
 
 /** The tail every wait-step in acquireStep shares once a lock is held (or was lost in the
  * publish race): break it if stale, then hand back "retry" for another pass — or throw the one
- * timeout error once the wait budget is spent. That error surfaces as a tick's lastError, and
+ * timeout error once the wait budget is spent. That error surfaces as a run's lastError, and
  * naming the holder is what distinguishes a slow holder from a wedged one (and says which
  * process to look at). Single-homed so the held path and the lost-race path cannot drift. */
 function retryOrTimeout(dir: string, timeoutMs: number, waitedMs: number): AcquireStep {

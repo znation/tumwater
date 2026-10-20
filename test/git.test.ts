@@ -30,7 +30,7 @@ import {
 import { runGit } from "../src/git/git-run.js";
 import { ensureWorktree, resetWorktreeToMain } from "../src/git/worktree.js";
 // The merge-flow git helpers live in merge-git.ts — moved there from merge-to-main.ts (which got
-// them from git.ts in the bugfix that completed the half-finished organize tick 78 move) once the
+// them from git.ts in the bugfix that completed the half-finished organize run 78 move) once the
 // merger and the batch merger started calling them directly.
 import {
   MAX_LISTED_HUNKS,
@@ -187,7 +187,7 @@ test("rebaseOntoMain keeps the branch's commits when main has not advanced", asy
   fs.writeFileSync(path.join(wt, "new.txt"), "hi\n");
   const commit = await commitAll(wt, "branch work");
   assert.ok(await rebaseOntoMain(wt, "main"));
-  // No rewrite: the tick's commit hash is preserved (a no-op rebase).
+  // No rewrite: the run's commit hash is preserved (a no-op rebase).
   assert.equal(await headOf(wt, "HEAD"), commit);
 });
 
@@ -458,7 +458,7 @@ test("readBranchHead returns null for missing refs, bad content, and non-repos",
 
 // --- runGit's error contract: a GitError must always say why when there is a why to say ---
 // These messages surface verbatim as a role's lastError on the dashboards (src/runner/runner-run.ts
-// records errorMessage(err) for any tick failure), so an unexplained "failed (ENOENT): " tail is
+// records errorMessage(err) for any run failure), so an unexplained "failed (ENOENT): " tail is
 // what an operator actually reads.
 
 test("runGit names the spawn failure when git cannot be started (empty stderr)", async () => {

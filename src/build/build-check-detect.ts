@@ -42,7 +42,7 @@ export type BuildCheck =
       timeoutMs: number;
     };
 
-/** Hard cap on one build check run — a hung script (watch mode) must not wedge the tick, and
+/** Hard cap on one build check run — a hung script (watch mode) must not wedge the run, and
  * a timeout is environmental, never fail-closed. The default `check.timeoutSeconds` resolves
  * to this (via ms in detectBuildCheck); runBuildCheck uses it as its default timeout
  * parameter so tests can shorten it. */

@@ -15,7 +15,7 @@ function isSha(s: string): boolean {
  * when the ref cannot be resolved from files — no repo here, `.git` is a worktree pointer
  * file, the branch does not exist, or content fails validation — so callers can fall back to
  * `git rev-parse`. Synchronous and microsecond-scale: this exists for poll loops that would
- * otherwise pay a ~10ms subprocess spawn per tick just to watch main. */
+ * otherwise pay a ~10ms subprocess spawn per run just to watch main. */
 export function readBranchHead(root: string, branch: string): string | null {
   let st: fs.Stats;
   try {
@@ -44,8 +44,8 @@ export function readBranchHead(root: string, branch: string): string | null {
 /** Resolve a branch's head without paying for a spawn when the ref files suffice:
  * readBranchHead (microsecond-scale) first, then `git rev-parse` as the fallback that covers
  * what file reads cannot (a worktree-pointer .git, anything unusual). Returns null when
- * neither resolves it. Shared by the orchestrator's per-poll main watch, each tick's
- * end-of-tick head update, the red-main baseline check, and the stack merger, so the
+ * neither resolves it. Shared by the orchestrator's per-poll main watch, each run's
+ * end-of-run head update, the red-main baseline check, and the stack merger, so the
  * file-first/spawn-fallback strategy lives in one place. */
 export async function branchHead(root: string, branch: string): Promise<string | null> {
   return readBranchHead(root, branch) ?? (await gitTry(root, "rev-parse", branch));

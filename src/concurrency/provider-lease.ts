@@ -1,8 +1,8 @@
-/** The AsyncLocalStorage store that lets a tick's lease follow its runs across providers
- * (plans/provider-concurrency.md §5): a lease rides here for the length of a tick, a verify task,
+/** The AsyncLocalStorage store that lets a run's lease follow its runs across providers
+ * (plans/provider-concurrency.md §5): a lease rides here for the length of a run, a verify task,
  * or a resolver run, and `LoopPi.runWithTransientRetry` re-keys it to the provider each run
  * actually uses. The one choke point every run a role makes (authoring, gate, merge and resolver)
- * passes through, so a budget handback or a model-failure switch that moves a mid-tick run to
+ * passes through, so a budget handback or a model-failure switch that moves a mid-run run to
  * another provider moves the lease with it instead of leaving it parked on the key it was admitted
  * on. The check-permit.ts `holdingPermit` store is the pattern: nothing here is a separate permit,
  * only the single lease the run path already holds.
@@ -10,7 +10,7 @@
  * The store carries the `piDefault` (the caller's cached readPiDefaultModel result) beside the
  * lease so `ensureProviderLease` can resolve a bare no-model pi seam's key exactly as the
  * admission/review seam did — a run whose key were computed without it would re-key a default
- * team's tick off pi's own provider. It also carries the semaphore and, optionally, wait
+ * team's run off pi's own provider. It also carries the semaphore and, optionally, wait
  * hooks, so a re-key that has to park on a full target key reports its wait the way a parked
  * resolver does (merge-verify.ts's providerWaitStage). */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -83,7 +83,7 @@ function keyAtCap(ctx: ProviderLeaseStore, key?: string): boolean {
 
 /** The pool-slot wait rule (plans/provider-concurrency.md §5 "No deadlock"): a lease never holds a
  * provider key while it waits for a worktree pool slot. Called by leaseSlot just before it parks on
- * a busy pool; it re-keys the calling lease to no key (which never waits), so a tick or verify
+ * a busy pool; it re-keys the calling lease to no key (which never waits), so a run or verify
  * waiting for a slot does not hold — and cannot deadlock — a provider slot whose in-use a re-key
  * waiter is waiting to drain. No-op without a lease in context. */
 export async function dropProviderLeaseKey(): Promise<void> {

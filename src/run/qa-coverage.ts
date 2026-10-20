@@ -3,13 +3,13 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { qaCoveragePath } from "../paths.js";
 import { isJsonObject } from "../files/json-object.js";
 
-/** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2). Every `qa` tick
+/** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2). Every `qa` run
  * starts a fresh pi session, so the only durable memory of which flow it last exercised is a
  * runtime file the harness — not pi — maintains. A passing cheap check writes nothing into the
  * repo (a note commit per check would move main and wake every sleeping role), so without this
- * ledger the model picks a flow blind every tick and converges on the top of its menu. The
+ * ledger the model picks a flow blind every run and converges on the top of its menu. The
  * ledger is gitignored runtime state under .tumwater/state/ and degrades to "no data" on any
- * missing or malformed file: an observer must never fail a tick on bookkeeping. */
+ * missing or malformed file: an observer must never fail a run on bookkeeping. */
 
 /** The flows `qa` exercises, cheapest-first — the ordered menu from plans/qa-role.md, plus the
  * expensive `run (real)` variant. The names are the universe the coverage block renders; a flow
@@ -28,7 +28,7 @@ export const QA_FLOWS: readonly string[] = [
 
 /** How a flow went: `passed` (the flow worked as documented) or `bug` (a BUGS.md entry was
  * filed). The result token is load-bearing: `run (real)` commits a `## Verified` note on a
- * passing run, so "the tick changed files" cannot stand in for "a bug was found". */
+ * passing run, so "the run changed files" cannot stand in for "a bug was found". */
 type QaFlowResult = "passed" | "bug";
 
 /** One flow's last exercise. `summary` is the bug headline for a `bug` result, shown in the
@@ -56,7 +56,7 @@ function setFlow(coverage: QaCoverage, flow: string, entry: QaFlowEntry): void {
 }
 
 /** Read the ledger, keeping only well-formed entries. A missing, torn, or wrong-shaped file
- * reads as an empty ledger — the caller renders no block and the tick proceeds as before. */
+ * reads as an empty ledger — the caller renders no block and the run proceeds as before. */
 export function readQaCoverage(root: string): QaCoverage {
   const file = readJsonFile<{ flows?: unknown }>(qaCoveragePath(root));
   const flows = file?.flows;

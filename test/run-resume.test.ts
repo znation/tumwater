@@ -10,7 +10,7 @@ import { sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { runAgent } from "../src/agent/run-agent.js";
-import { resolveTickVerdict } from "../src/run/run-verdict.js";
+import { resolveRunVerdict } from "../src/run/run-verdict.js";
 import { applyRunOutcome } from "../src/run/run-apply.js";
 import { slotPinnedForResume } from "../src/runner/runner-run.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -295,7 +295,7 @@ test("a claude author whose transcript is gone handoffs over the kept worktree",
 
 // PLANS.md part 3d: the resume-missing run itself, not just the hand-constructed state. A
 // real fake-claude `--resume` run that answers "No conversation found" yields
-// `resumeMissing`; fed through resolveTickVerdict against a dirty worktree, the failed turn
+// `resumeMissing`; fed through resolveRunVerdict against a dirty worktree, the failed turn
 // must arm `resumePending`; the next run then hands off over the kept worktree instead of
 // resetting it. This is the verdict half the part-3d acceptance criterion calls out.
 test("a fake-claude resumeMissing run arms resumePending, and the next run hands off", async () => {
@@ -327,7 +327,7 @@ test("a fake-claude resumeMissing run arms resumePending, and the next run hands
     // The interrupted run's edits are on disk, so the verdict keeps the worktree.
     fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
     const s = freshRunnerState("feature");
-    const outcome = await resolveTickVerdict({
+    const outcome = await resolveRunVerdict({
       root,
       wt,
       role: "feature",
@@ -371,7 +371,7 @@ test("an aborted resumeMissing run records the missing session for the next run'
   try {
     withClaudeAuthor(root, fs.realpathSync(wt), "c1");
     const s = freshRunnerState("feature");
-    const outcome = await resolveTickVerdict({
+    const outcome = await resolveRunVerdict({
       root,
       wt,
       role: "feature",
@@ -550,7 +550,7 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
     // The interrupted run's half-done edits are on disk and must survive the hold.
     fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
     const s = freshRunnerState("feature");
-    const outcome = await resolveTickVerdict({
+    const outcome = await resolveRunVerdict({
       root,
       wt,
       role: "feature",
@@ -603,7 +603,7 @@ test("a budgetCapped claude run keeps the worktree and hands off to the fallback
     withClaudeAuthor(root, cwd, "c1");
     fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
     const s = freshRunnerState("feature");
-    const outcome = await resolveTickVerdict({
+    const outcome = await resolveRunVerdict({
       root,
       wt,
       role: "feature",

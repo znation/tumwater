@@ -5,7 +5,7 @@ import type { BuildCheckOutcome } from "../src/build/build-check.js";
 import { checkFailureReasons, clipBuildTail, failureHeadline, parseFailingTests } from "../src/build/build-check-report.js";
 
 // build-check-report.ts's checkFailureReasons turns a red check's outcome into the machine text
-// every rejecting gate hands its author — the reason lines injected into the next-tick note by
+// every rejecting gate hands its author — the reason lines injected into the next-run note by
 // main-red, the review gate, the merge path and build-stage alike. Its unverified passthrough is
 // pinned in build-check.test.ts, but the MAIN path — a genuine red whose reason is the headline
 // joined to the rest of the clipped tail — had no coverage at all: a regression there (wrong
@@ -223,13 +223,13 @@ test("failureHeadline skips node:test's summary block, not the failure it frames
       "ℹ duration_ms 73.78325",
       "✖ failing tests:",
       "test at a.test.js:2:1",
-      "✖ the interlock held: no tick ever started (0.348625ms)",
-      "  'the interlock held: no tick ever started'",
+      "✖ the interlock held: no run ever started (0.348625ms)",
+      "  'the interlock held: no run ever started'",
     ].join("\n"),
   );
   assert.equal(
     failureHeadline(tail),
-    "✖ the interlock held: no tick ever started — 'the interlock held: no tick ever started'",
+    "✖ the interlock held: no run ever started — 'the interlock held: no run ever started'",
     "the failed test and its own message, not `ℹ fail 1` or the `test at` marker",
   );
 });

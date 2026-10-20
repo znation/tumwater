@@ -59,7 +59,7 @@ export function pruneStaleStagings(root: string, keep: string, now = Date.now())
       removeTree(dir);
       removed += 1;
     } catch {
-      // Left for the next compile or swap: dead weight one tick longer is fine.
+      // Left for the next compile or swap: dead weight one run longer is fine.
     }
   }
   return removed;

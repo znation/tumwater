@@ -75,7 +75,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
 
 // Self-explaining commit bodies (plans/commit-bodies.md item b): the trailer's turn count is
 // the sum over this tick's PRE-COMMIT runs — main attempt plus, on a transient model-server
-// timeout, the one resumed retry. runRolePi folds both into tickTurns via foldUsage before
+// timeout, the one resumed retry. runRolePi folds both into runTurns via foldUsage before
 // buildCommitMessage assembles the trailer, so a retried CHANGED tick's commit must read the
 // combined count (the no_change regression above never commits, so its trailer is unobservable).
 test("a transient-retry changed tick's trailer sums both runs' turns", async () => {

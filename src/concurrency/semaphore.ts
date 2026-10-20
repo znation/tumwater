@@ -50,7 +50,7 @@ export class Semaphore {
    * §1). An absent key is uncapped — bounded by `capacity` alone. */
   private keyCaps = new Map<string, number>();
   /** Permits withheld from tier ≥ 1 acquirers so a work role that has work to take can claim
-   * one without waiting for a maintenance tick to release (plans/parallel-work-instances.md
+   * one without waiting for a maintenance run to release (plans/parallel-work-instances.md
    * "Priority headroom", part 7/7). Tiers ≤ 0 (work, VERIFY_TIER, MERGE_TIER) ignore it. */
   private reserve = 0;
 

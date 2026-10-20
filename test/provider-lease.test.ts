@@ -1,5 +1,5 @@
 /** Unit tests for the provider-lease store (src/concurrency/provider-lease.ts), the
- * AsyncLocalStorage that lets a tick's lease follow its runs across providers
+ * AsyncLocalStorage that lets a run's lease follow its runs across providers
  * (plans/provider-concurrency.md §5). These pin the properties a unit test is meant to hold:
  * a run with no lease in context is a no-op, a run on the lease's own key never re-keys, a run
  * on another key releases the old key before (and instead of waiting in line for) the new one,
@@ -67,7 +67,7 @@ test("a re-key to a full provider parks (holding no key) and is granted when it 
   // it waits for always drains and another run on a free provider is never blocked behind it.
   const semaphore = new Semaphore(4);
   semaphore.setKeyCaps({ omlx: 1, hf: 1 });
-  const holder = await semaphore.acquireLease(0, "omlx"); // the omlx slot another tick holds
+  const holder = await semaphore.acquireLease(0, "omlx"); // the omlx slot another run holds
   const lease = await semaphore.acquireLease(0, "hf"); // admitted on huggingface, now re-keying
   let ran = false;
   const task = withProviderLease(lease, semaphore, async () => {

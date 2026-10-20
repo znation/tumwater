@@ -55,7 +55,7 @@ export type BuildSkipReason = "timeout" | "killed" | "no-npm" | "toolchain" | "i
  * "failed": a started process exited nonzero — a deterministic REJECTION with the clipped output
  * tail as machine-generated reasons (no pi run consumed). "skipped": environmental (timeout, an
  * external signal kill, no npm on PATH, or a broken toolchain) — warn and still proceed to the
- * model review; deliberately NOT fail-closed so a hung build script cannot wedge every code tick
+ * model review; deliberately NOT fail-closed so a hung build script cannot wedge every code run
  * into the 3-strike discard, and a toolchain broken below the project (BUGS.md 2026-09-15) cannot
  * be misread as a red build of the tree. runScopedBuildCheck remaps a timeout or a signal kill at a
  * merge scope (merge/batch) to "failed": a suite that never finished is unverified, not

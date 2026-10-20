@@ -53,7 +53,7 @@ test("a rebase conflict is resolved by a second pi run and merges with linear hi
       assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
       // Self-explaining commit bodies (plans/commit-bodies.md item c): the trailer counts
       // only the authoring run's turns — the reviewer and conflict-resolution runs fold into
-      // tickTurns after the trailer string is already assembled.
+      // runTurns after the trailer string is already assembled.
       const body = sh(repo, "git", "log", "-1", "--format=%B");
       assert.match(body, /^Run: improve #\d+ · turns 1 · ctx 0$/m);
       // Routine conflict → pi-resolve → merge is normal operation, not something to warn

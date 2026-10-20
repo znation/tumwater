@@ -29,11 +29,11 @@ test("telemetryDigest renders the trailing 24 h, including the previous evening"
   assert.doesNotMatch(digest, /older, out of window/);
 });
 
-test("a corrupted events-log path renders the unreadable alarm and never breaks the tick", () => {
+test("a corrupted events-log path renders the unreadable alarm and never breaks the run", () => {
   const root = makeRepo();
   // The log path occupied by a directory — the class of filesystem damage a crash or a
   // stray tool can leave behind. The read layer reports the outcome instead of throwing
-  // (the never-fail-the-tick policy), so telemetryDigest still returns a digest.
+  // (the never-fail-the-run policy), so telemetryDigest still returns a digest.
   fs.mkdirSync(path.join(root, ".tumwater", "log", "events.jsonl"), { recursive: true });
   const digest = telemetryDigest(root);
   assert.ok(digest, "an unreadable log still yields a digest, never a throw");

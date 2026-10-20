@@ -77,7 +77,7 @@ export function pidAlive(pid: number): boolean {
  * escalating to SIGKILL after 10 s if any of it is still alive. The child is spawned detached
  * (its own process group leader — runPi does this for pi), so a negative PID reaches every
  * tool-call grandchild — which a single-PID kill leaves orphaned to launchd — while the
- * harness's own group is never in the blast radius. Shared by the tick-timeout,
+ * harness's own group is never in the blast radius. Shared by the run-timeout,
  * quiet-watchdog, and harness-shutdown kills, and by the sweep every run gets once pi exits
  * (runPi's 'exit' handler), when the group holds only what pi's tool calls backgrounded.
  *

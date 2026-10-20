@@ -230,7 +230,7 @@ test("aheadOfMainFiles lists the files the branch's commits change", async () =>
 test("aheadOfMainFiles omits files only main gained after the branch forked (three-dot range)", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "improve", "main");
-  // Main moves after the worktree's branch was cut (what a long tick spans).
+  // Main moves after the worktree's branch was cut (what a long run spans).
   fs.writeFileSync(path.join(repo, "main-only.txt"), "on main\n");
   await commitAll(repo, "main moves on");
   fs.writeFileSync(path.join(wt, "branch-only.txt"), "on branch\n");

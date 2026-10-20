@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { stageTickMerge } from "../src/run/run-stage.js";
+import { stageRunMerge } from "../src/run/run-stage.js";
 import { stageCheckFindings } from "../src/run/stage-check.js";
-import { assembleTickPrompt } from "../src/run/run-prompt.js";
+import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { commitIn, initializedRepo, initializedWorktree, sh, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
@@ -12,7 +12,7 @@ import { freshRunnerState } from "../src/runner/runner-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readQaCoverage } from "../src/run/qa-coverage.js";
 import { queueDepth, queuedMerges } from "../src/merge/merge-queue.js";
-import type { TickOutcome } from "../src/run/run-outcome.js";
+import type { RunOutcome } from "../src/run/run-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -20,7 +20,7 @@ import { truncate } from "../src/text/text.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A fresh initialized repo plus the improve role's worktree with one changed file — the
- * staged change stageTickMerge commits in these tests. */
+ * staged change stageRunMerge commits in these tests. */
 async function setup(): Promise<{ root: string; wt: string }> {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
@@ -34,7 +34,7 @@ function okPi(over: Partial<PiRunResult> = {}): PiRunResult {
 
 interface CtxOverrides {
   config?: (config: TumwaterConfig) => void;
-  tickTurns?: number;
+  runTurns?: number;
   piStartedAt?: number;
   userPrompt?: string | null;
   revisionRound?: number;
@@ -50,14 +50,14 @@ interface CtxOverrides {
   /** Successive stageCheck results; the last one repeats. Defaults to a clean check. */
   stageChecks?: string[][];
   stageFix?: PiRunResult | null;
-  /** When true, requestStageFix deletes the tick's only changed file, so the fix-up leaves a
+  /** When true, requestStageFix deletes the run's only changed file, so the fix-up leaves a
    * clean worktree. */
   stageFixDrops?: boolean;
   /** When true, stageCheck runs the real stageCheckFindings (which stages the change and
    * restores the index) instead of returning canned findings. */
   realStageCheck?: boolean;
   pinResult?: boolean;
-  abortedOutcome?: TickOutcome;
+  abortedOutcome?: RunOutcome;
 }
 
 interface CtxCalls {
@@ -70,7 +70,7 @@ interface CtxCalls {
   abortedFinalized: number;
 }
 
-/** A TickStageContext for role "improve" over `state`, recording every callback call and
+/** A RunStageContext for role "improve" over `state`, recording every callback call and
  * defaulting to: no follow-up, pins succeed, friction thresholds unreachable. */
 function makeCtx(
   root: string,
@@ -108,7 +108,7 @@ function buildCtx(
     role: over.role ?? "improve",
     state,
     config,
-    tickTurns: over.tickTurns ?? 4,
+    runTurns: over.runTurns ?? 4,
     userPrompt: over.userPrompt ?? null,
     revisionRound: over.revisionRound,
     modelLine: over.modelLine,
@@ -156,12 +156,12 @@ function buildCtx(
 
 const STAGE_PLANS = twoPlansDoc();
 
-test("an unassigned tick that moves a plan records a staged claim", async () => {
+test("an unassigned run that moves a plan records a staged claim", async () => {
   const root = await initializedRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
   commitIn(root, "plans");
   const wt = await ensureWorktree(root, "improve", "main");
-  // The tick implements Alpha and moves it into Done, and leaves its code change too.
+  // The run implements Alpha and moves it into Done, and leaves its code change too.
   const moved = STAGE_PLANS.replace(/### Alpha[^\n]*\n\nBody\.\n\n/, "").replace(
     "## Done",
     "## Done\n\n### Alpha (planned 2026-01-01 by operator; done 2026-01-02 by improve)",
@@ -181,7 +181,7 @@ test("an unassigned tick that moves a plan records a staged claim", async () => 
     finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.claim?.source, "staged");
@@ -189,7 +189,7 @@ test("an unassigned tick that moves a plan records a staged claim", async () => 
   assert.equal(state.claim?.file, "PLANS.md");
 });
 
-test("an unassigned tick still records its staged claim when the events feed is unwritable", async () => {
+test("an unassigned run still records its staged claim when the events feed is unwritable", async () => {
   const root = await initializedRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
   commitIn(root, "plans");
@@ -216,16 +216,16 @@ test("an unassigned tick still records its staged claim when the events feed is 
   // while every other file under the root still writes.
   unwritableEvents(root);
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.claim?.key, "alpha", "the claim is assigned despite the unwritable feed");
 });
 
-// A single-runner base has no sibling to hold the entry from, so its unassigned tick stages
-// no claim — and the next tick's prompt is the same as before claims existed (part 4/7's
+// A single-runner base has no sibling to hold the entry from, so its unassigned run stages
+// no claim — and the next run's prompt is the same as before claims existed (part 4/7's
 // "Single runner: prompts and scheduling are unchanged").
-test("a bare feature tick that moves a plan stages no claim and leaves the next prompt unchanged", async () => {
+test("a bare feature run that moves a plan stages no claim and leaves the next prompt unchanged", async () => {
   const root = await initializedRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
   commitIn(root, "plans");
@@ -243,16 +243,16 @@ test("a bare feature tick that moves a plan stages no claim and leaves the next 
     finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.claim, undefined, "a single-runner base is never assigned a claim");
-  const next = assembleTickPrompt({ root, config: defaultConfig(), role: "feature", state });
+  const next = assembleRunPrompt({ root, config: defaultConfig(), role: "feature", state });
   assert.ok(next);
   assert.doesNotMatch(next.prompt, /<assigned-entry>/, "the next prompt carries no assignment note");
 });
 
-test("a tick's finished plan is archived in its own commit: PLANS-DONE.md gains it, PLANS.md keeps open work", async () => {
+test("a run's finished plan is archived in its own commit: PLANS-DONE.md gains it, PLANS.md keeps open work", async () => {
   // plans/backlog-archive.md: the commit-time sweep runs right before the commit, so the commit
   // the review and the merge see carries the archived form.
   const root = await initializedRepo();
@@ -271,7 +271,7 @@ test("a tick's finished plan is archived in its own commit: PLANS-DONE.md gains 
     finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   const plans = sh(wt, "git", "show", `${outcome.commit}:PLANS.md`);
@@ -280,12 +280,12 @@ test("a tick's finished plan is archived in its own commit: PLANS-DONE.md gains 
   assert.match(sh(wt, "git", "show", `${outcome.commit}:PLANS-DONE.md`), /## Done\n\n### Alpha \(planned 2026-01-01 by operator; done 2026-01-02 by feature\)/);
 });
 
-test("an assigned tick that moves a different plan gets a stage-check finding", async () => {
+test("an assigned run that moves a different plan gets a stage-check finding", async () => {
   const root = await initializedRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
   commitIn(root, "plans");
   const wt = await ensureWorktree(root, "feature-2", "main");
-  // The tick was assigned Alpha but moved Beta out of Planned instead.
+  // The run was assigned Alpha but moved Beta out of Planned instead.
   const moved = STAGE_PLANS.replace(/### Beta[^\n]*\n\nBody\.\n\n/, "").replace(
     "## Done",
     "## Done\n\n### Beta (planned 2026-01-01 by operator; done 2026-01-02 by feature-2)",
@@ -312,15 +312,15 @@ test("an assigned tick that moves a different plan gets a stage-check finding", 
     finalText: "Done.\nSUMMARY: implement\nVERIFIED: npm test\n",
   });
 
-  await stageTickMerge(ctx);
+  await stageRunMerge(ctx);
 
   assert.equal(calls.stageFixRequests.length, 1, "the move costs one fix-up turn");
   assert.match(calls.stageFixRequests[0]!.findings.join("\n"), /moved a different one/);
 });
 
 /** A feature-2 worktree over STAGE_PLANS whose uncommitted change moved `names` into Done and
- * wrote feature.ts — the shape of an unassigned primary's tick at staging. */
-async function movedPlansTick(names: string[]): Promise<{ root: string; wt: string }> {
+ * wrote feature.ts — the shape of an unassigned primary's run at staging. */
+async function movedPlansRun(names: string[]): Promise<{ root: string; wt: string }> {
   const root = await initializedRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
   commitIn(root, "plans");
@@ -342,8 +342,8 @@ const twoFeatureInstances = (c: TumwaterConfig): void => {
 
 // BUGS.md 2026-10-12: an unassigned primary re-authored the entries its siblings held (24 of 29
 // staged claims). The held titles ride its prompt; staging is the deterministic backstop.
-test("an unassigned tick that moves a plan a sibling holds gets a finding, not a second claim", async () => {
-  const { root, wt } = await movedPlansTick(["Alpha"]);
+test("an unassigned run that moves a plan a sibling holds gets a finding, not a second claim", async () => {
+  const { root, wt } = await movedPlansRun(["Alpha"]);
   const state = freshRunnerState("feature-2");
   state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
   const { ctx, calls } = makeCtx(root, wt, state, {
@@ -352,7 +352,7 @@ test("an unassigned tick that moves a plan a sibling holds gets a finding, not a
     finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(state.claim, undefined, "the sibling's entry is not claimed a second time");
   assert.equal(calls.stageFixRequests.length, 1, "the duplicate costs one fix-up turn");
@@ -362,7 +362,7 @@ test("an unassigned tick that moves a plan a sibling holds gets a finding, not a
 });
 
 test("a fix-up that drops a sibling's held entry leaves nothing to merge", async () => {
-  const { root, wt } = await movedPlansTick(["Alpha"]);
+  const { root, wt } = await movedPlansRun(["Alpha"]);
   const state = freshRunnerState("feature-2");
   state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
   const { ctx, calls } = makeCtx(root, wt, state, {
@@ -378,15 +378,15 @@ test("a fix-up that drops a sibling's held entry leaves nothing to merge", async
     return null;
   };
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "no_change", "no duplicate reaches the gate, the review, or the merge slot");
   assert.equal(calls.pins.length, 0, "nothing was pinned");
   assert.ok(calls.warnings.some((w) => w.includes('nothing to land')), calls.warnings.join("\n"));
 });
 
-test("an unassigned tick that moves a held plan and a free one claims the free one", async () => {
-  const { root, wt } = await movedPlansTick(["Alpha", "Beta"]);
+test("an unassigned run that moves a held plan and a free one claims the free one", async () => {
+  const { root, wt } = await movedPlansRun(["Alpha", "Beta"]);
   const state = freshRunnerState("feature-2");
   state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
   const { ctx, calls } = makeCtx(root, wt, state, {
@@ -395,23 +395,23 @@ test("an unassigned tick that moves a held plan and a free one claims the free o
     finalText: "Done.\nSUMMARY: implement both\nVERIFIED: npm test\n",
   });
 
-  await stageTickMerge(ctx);
+  await stageRunMerge(ctx);
 
-  assert.equal(state.claim?.key, "beta", "the free entry is this tick's claim");
+  assert.equal(state.claim?.key, "beta", "the free entry is this run's claim");
   assert.equal(state.claim?.source, "staged");
   const findings = calls.stageFixRequests[0]?.findings.join("\n") ?? "";
   assert.match(findings, /another instance of this role is working on: "Alpha/);
   assert.doesNotMatch(findings, /moved a different one/, "the staged claim's own move is not a finding");
 });
 
-test("a tick with a SUMMARY commits, pins, and enqueues the merge", async () => {
+test("a run with a SUMMARY commits, pins, and enqueues the merge", async () => {
   const { root, wt } = await setup();
   const state: RunnerState = { ...freshRunnerState("improve"), runs: 3 };
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "Work done.\nSUMMARY: add the feature\nWHY: it was missing\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.summary, "add the feature");
@@ -438,10 +438,10 @@ test("a tick with a SUMMARY commits, pins, and enqueues the merge", async () => 
   assert.equal(queued[0]!.run, 3);
   assert.equal(queued[0]!.summary, "add the feature");
   assert.equal(queued[0]!.highFriction, undefined);
-  assert.equal(queued[0]!.priorReview, undefined, "a fresh tick carries no prior review");
+  assert.equal(queued[0]!.priorReview, undefined, "a fresh run carries no prior review");
 });
 
-test("a tick with a SUMMARY still enqueues its merge when the events feed is unwritable", async () => {
+test("a run with a SUMMARY still enqueues its merge when the events feed is unwritable", async () => {
   const { root, wt } = await setup();
   const state: RunnerState = { ...freshRunnerState("improve"), runs: 3 };
   const { ctx } = makeCtx(root, wt, state, {
@@ -451,14 +451,14 @@ test("a tick with a SUMMARY still enqueues its merge when the events feed is unw
   // EISDIR while every other file under the root still writes.
   unwritableEvents(root);
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(queueDepth(root), 1, "the merge is durably queued despite the unwritable feed");
   assert.equal(queuedMerges(root)[0]!.sha, outcome.commit);
 });
 
-test("a revision tick's queued merge carries the prior review's objections", async () => {
+test("a revision run's queued merge carries the prior review's objections", async () => {
   const { root, wt } = await setup();
   const rejected = "a".repeat(40);
   const state: RunnerState = {
@@ -471,7 +471,7 @@ test("a revision tick's queued merge carries the prior review's objections", asy
     finalText: "SUMMARY: revise the feature\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   const queued = queuedMerges(root);
@@ -488,12 +488,12 @@ test("a missing SUMMARY is recovered with one follow-up turn", async () => {
     followUp: okPi({ finalText: "SUMMARY: recovered summary\n" }),
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.summary, "recovered summary");
   assert.equal(calls.summaryRequests.length, 1);
-  assert.equal(calls.summaryRequests[0], wt, "the follow-up runs in the tick's worktree");
+  assert.equal(calls.summaryRequests[0], wt, "the follow-up runs in the run's worktree");
   assert.match(calls.warnings[0]!, /recovered it with a follow-up turn/);
   assert.equal(queuedMerges(root)[0]!.summary, "recovered summary");
 });
@@ -505,7 +505,7 @@ test("an over-long SUMMARY is shortened with one follow-up turn", async () => {
     followUp: okPi({ finalText: "SUMMARY: short form\n" }),
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.summary, "short form");
@@ -523,7 +523,7 @@ test("a follow-up that stays over the cap keeps the truncated subject", async ()
       followUp,
     });
 
-    const outcome = await stageTickMerge(ctx);
+    const outcome = await stageRunMerge(ctx);
 
     assert.equal(outcome.summary, truncate(original, 100));
     assert.ok(outcome.summary!.endsWith("…"));
@@ -536,7 +536,7 @@ test("a SUMMARY within the cap asks no follow-up", async () => {
   const { ctx, calls } = makeCtx(root, wt, freshRunnerState("improve"), {
     finalText: `SUMMARY: ${"z".repeat(80)}\n`,
   });
-  await stageTickMerge(ctx);
+  await stageRunMerge(ctx);
   assert.equal(calls.summaryRequests.length, 0);
 });
 
@@ -548,7 +548,7 @@ test("a follow-up that yields no SUMMARY falls back to the changed files", async
     followUp: okPi({ finalText: "still nothing" }),
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.match(outcome.summary!, /feature\.ts/, "the subject names what actually changed");
@@ -567,9 +567,9 @@ test("a follow-up that failed names its error instead of claiming 'gave none'", 
     }),
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
-  assert.equal(outcome.result, "queued", "the tick still commits with a derived subject");
+  assert.equal(outcome.result, "queued", "the run still commits with a derived subject");
   assert.match(outcome.summary!, /feature\.ts/);
   assert.match(calls.warnings[0]!, /the follow-up run failed/);
   assert.match(calls.warnings[0]!, /400 model_not_supported/);
@@ -584,7 +584,7 @@ test("a missing SUMMARY with no follow-up session says so", async () => {
     followUp: null,
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.match(outcome.summary!, /feature\.ts/);
@@ -600,7 +600,7 @@ test("an aborted follow-up finalizes through the role and queues nothing", async
     abortedOutcome: { result: "aborted", summary: "aborted mid-summary" },
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.deepEqual(outcome, { result: "aborted", summary: "aborted mid-summary" });
   assert.equal(calls.abortedFinalized, 1, "the runner's abort finalizer ran");
@@ -610,7 +610,7 @@ test("an aborted follow-up finalizes through the role and queues nothing", async
     "no commit was made");
 });
 
-test("a tick past both friction thresholds is flagged, warned, and marked in the merge", async () => {
+test("a run past both friction thresholds is flagged, warned, and marked in the merge", async () => {
   const { root, wt } = await setup();
   const state: RunnerState = { ...freshRunnerState("improve"), runs: 5 };
   const { ctx, calls } = makeCtx(root, wt, state, {
@@ -619,11 +619,11 @@ test("a tick past both friction thresholds is flagged, warned, and marked in the
       c.thrashTurns = 2;
       c.thrashMinutes = 5;
     },
-    tickTurns: 5,
+    runTurns: 5,
     piStartedAt: Date.now() - 6.5 * 60_000,
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.highFriction, true);
@@ -642,13 +642,13 @@ test("burning turns alone is not friction — the wall clock must pass too", asy
       c.thrashTurns = 2;
       c.thrashMinutes = 5;
     },
-    tickTurns: 5,
+    runTurns: 5,
     piStartedAt: Date.now(),
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
-  assert.equal(outcome.highFriction, false, "a fast high-turn tick is ordinary work");
+  assert.equal(outcome.highFriction, false, "a fast high-turn run is ordinary work");
   assert.deepEqual(calls.warnings, []);
   assert.doesNotMatch(sh(wt, "git", "log", "-1", "--format=%b"), /Friction:/);
   assert.equal(queuedMerges(root)[0]!.highFriction, undefined, "the merge is not marked");
@@ -662,7 +662,7 @@ test("a failed pin reports an error, records lastError, and queues nothing", asy
     pinResult: false,
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "error");
   assert.equal(outcome.summary, "failed to pin the merge ref; left for the next run's recovery");
@@ -681,7 +681,7 @@ test("a qa flow record from the reply is written into the coverage file", async 
     flow: { flow: "unit tests", result: "bug" },
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   const coverage = readQaCoverage(root);
@@ -689,7 +689,7 @@ test("a qa flow record from the reply is written into the coverage file", async 
     lastRunAt: coverage["unit tests"]!.lastRunAt,
     result: "bug",
     summary: "fixed the bug",
-  }, "a bug flow records the tick's summary");
+  }, "a bug flow records the run's summary");
 });
 
 test("a passed qa flow records no summary", async () => {
@@ -700,7 +700,7 @@ test("a passed qa flow records no summary", async () => {
     flow: { flow: "unit tests", result: "passed" },
   });
 
-  await stageTickMerge(ctx);
+  await stageRunMerge(ctx);
 
   const coverage = readQaCoverage(root);
   assert.deepEqual(coverage["unit tests"], {
@@ -710,7 +710,7 @@ test("a passed qa flow records no summary", async () => {
 });
 
 // ── The pre-queue self-check follow-up (PLANS.md "Pre-queue self-check, part 1/2") ──
-// A changed tick's deterministic gate faults get one bounded follow-up turn on the author's
+// A changed run's deterministic gate faults get one bounded follow-up turn on the author's
 // own session before the commit; the change commits and queues either way.
 
 test("a self-check finding triggers one follow-up and queues with the fixed warning", async () => {
@@ -722,7 +722,7 @@ test("a self-check finding triggers one follow-up and queues with the fixed warn
     stageFix: okPi({ finalText: "SUMMARY: add the feature\nWHY: fixed the symbol claim\n" }),
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageChecks.length, 2, "the check runs before and after the fix-up");
@@ -745,7 +745,7 @@ test("a partial fix-up body keeps the fields it did not restate", async () => {
     stageFix: okPi({ finalText: "WHY: revised why\n" }),
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   const body = sh(wt, "git", "log", "-1", "--format=%b");
@@ -763,7 +763,7 @@ test("a finding the follow-up leaves unfixed still queues, with the still-open w
     stageFix: okPi({ finalText: "RISK: the finding is wrong\n" }),
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageChecks.length, 2);
@@ -779,7 +779,7 @@ test("a clean self-check runs no follow-up turn", async () => {
     finalText: "SUMMARY: add the feature\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageChecks.length, 1);
@@ -796,7 +796,7 @@ test("no follow-up session leaves the finding for the gate and still queues", as
     stageFix: null,
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageFixRequests.length, 1, "the fix-up was attempted once");
@@ -813,7 +813,7 @@ test("an aborted self-check follow-up finalizes through the role and queues noth
     abortedOutcome: { result: "aborted", summary: "aborted mid-fix" },
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.deepEqual(outcome, { result: "aborted", summary: "aborted mid-fix" });
   assert.equal(calls.abortedFinalized, 1, "the runner's abort finalizer ran");
@@ -831,7 +831,7 @@ test("a fix-up that reverts the whole change ends no_change with nothing queued"
     stageFixDrops: true,
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "no_change");
   assert.equal(calls.stageFixRequests.length, 1);
@@ -845,7 +845,7 @@ test("a fix-up that reverts the whole change ends no_change with nothing queued"
 test("the real staging self-check leaves the index clean, so a full revert still ends no_change", async () => {
   const { root, wt } = await setup();
   const state: RunnerState = freshRunnerState("improve");
-  // Drop the tick's only change's final newline so the real git-level self-check raises a
+  // Drop the run's only change's final newline so the real git-level self-check raises a
   // finding and the follow-up turn runs. Unlike the canned-findings case above, this exercises
   // stageCheckFindings' own `git add -A`, whose staging must not survive into the guard's
   // changedFiles read: a stale staged addition would make the revert look like a live change.
@@ -857,7 +857,7 @@ test("the real staging self-check leaves the index clean, so a full revert still
     stageFixDrops: true,
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "no_change");
   assert.equal(calls.stageFixRequests.length, 1, "the real finding triggered the fix-up");
@@ -881,7 +881,7 @@ for (const [label, finalText] of [
       followUpCommits: true,
     });
 
-    const outcome = await stageTickMerge(ctx);
+    const outcome = await stageRunMerge(ctx);
 
     assert.equal(outcome.result, "queued");
     assert.equal(sh(wt, "git", "rev-list", "--count", `${base}..${calls.pins[0]!.sha}`), "1");
@@ -898,7 +898,7 @@ test("a staged commit carries the Model line the run started on", async () => {
     finalText: "Done.\nSUMMARY: add feature\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickMerge(ctx);
+  const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   const lines = sh(wt, "git", "log", "-1", "--format=%B").trimEnd().split("\n");

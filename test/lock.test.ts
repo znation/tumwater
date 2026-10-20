@@ -326,7 +326,7 @@ test("withLock times out instead of breaking a fresh lock held by a live pid", a
   const lock = path.join(tmpdir(), "x.lock");
   fs.mkdirSync(lock);
   fs.writeFileSync(path.join(lock, "pid"), String(process.pid)); // alive + fresh mtime
-  // The message reports the wait budget (0.7s here) — it surfaces as a tick's lastError,
+  // The message reports the wait budget (0.7s here) — it surfaces as a run's lastError,
   // where "gave up after N s" is what distinguishes a slow holder from a wedged one.
   const ran = await rejectedWithLock(lock, /timed out after 0\.7s waiting for lock/);
   assert.ok(!ran, "must not enter the critical section of a live holder");
@@ -334,7 +334,7 @@ test("withLock times out instead of breaking a fresh lock held by a live pid", a
 });
 
 test("the lock timeout names the holder: its pid, or that no pid was readable", async () => {
-  // The timeout is a tick's lastError. Naming the pid is what lets an operator go look at the
+  // The timeout is a run's lastError. Naming the pid is what lets an operator go look at the
   // holder (or see that an orphan dir has no pid to look for) instead of hunting by hand.
   const root = tmpdir();
 

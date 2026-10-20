@@ -193,7 +193,7 @@ async function findMarkedPids(marker: string): Promise<number[]> {
  * (BUGS.md 2026-09-30). Marker membership is per-run unique, so the blast radius is exactly
  * this run's tree even while sibling runs are live. Never throws: an unreadable table (no
  * ps, a wedged /proc) degrades to no sweep — the group sweep still ran — never a failed
- * tick. Fire-and-forget by design: the run resolves on pi's output, not on the sweep. */
+ * run. Fire-and-forget by design: the run resolves on pi's output, not on the sweep. */
 export async function sweepRunMarker(marker: string): Promise<number> {
   let victims: number[];
   try {

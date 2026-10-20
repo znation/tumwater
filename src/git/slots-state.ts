@@ -144,9 +144,9 @@ export function slotForDir(root: string, dir: string): SlotRecord | undefined {
 
 /** The directory holding a role's checkout, resolved from other processes' point of view
  * (plans/worktree-pool.md, "Readers find a role's checkout"): a slot listed as leased by the role
- * for a tick, or pinned for the role, wins; otherwise the legacy `worktreePath` when it is a
+ * for a run, or pinned for the role, wins; otherwise the legacy `worktreePath` when it is a
  * usable worktree; otherwise null (the reader's "absent" state). Changes no behavior until role
- * ticks lease slots (part 4/5), because nothing writes those leases yet. */
+ * runs lease slots (part 4/5), because nothing writes those leases yet. */
 export async function roleWorktreeDir(root: string, role: string): Promise<string | null> {
   const slots = readSlotsState(root).slots;
   const leased = slots.find((slot) => slot.lease?.role === role && slot.lease.purpose === "run");
