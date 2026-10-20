@@ -1984,3 +1984,48 @@ rethrown.
 **Pinned by.** `test/file-queue.test.ts` — "removeQueueFile reports true for a file it removed",
 "removeQueueFile reports false for a file that already vanished" and "removeQueueFile rethrows
 errors other than ENOENT".
+
+## Deferred prompts: only the writer's exact marker defers or is stripped, and a prompt is due at its stamp
+
+`tumwater prompt --at` keeps the deferral inside the queue file's text, so no queue format migrates.
+One module both composes and reads the marker, so the delivery and display surfaces cannot disagree.
+
+### INV-AI1: only a marker in the writer's exact shape, the stamp line plus the blank separator, defers a prompt, and a stamp that does not parse reads as deliverable
+
+**Guarantee.** `notBeforeMs` returns a time only for text that starts with the stamp line
+`notBeforeMarker` writes followed by the blank separator line. Operator content that merely starts
+with the prefix, a marker without the blank separator, and a stamp in the writer's shape that
+`Date.parse` rejects all read as null, which is deliverable.
+
+**Binds.** `src/inbox/prompt-not-before.ts` (`notBeforeMarker`, `notBeforeMs` and the
+`NOT_BEFORE_MARKER` pattern).
+
+**Pinned by.** `test/prompt-not-before.test.ts` — "notBeforeMarker round-trips through notBeforeMs
+to the millisecond and strips to the body" and "a writer-shaped stamp that Date.parse rejects is
+neither deferred nor stripped"; `test/inbox.test.ts` — "operator content that merely starts with a
+marker-shaped line is never treated as plumbing" and "a marker line without the writer's blank
+separator is content, not a deferral".
+
+### INV-AI2: the stripper removes exactly what the parser accepts, once, and passes every other text through unchanged
+
+**Guarantee.** `stripNotBeforeMarker` removes the leading marker only when `notBeforeMs` accepts it,
+and removes just that one marker. Any other text, including a stamp that does not parse, is returned
+as given. Its consumers are `inbox.ts`, `inbox-edit.ts` and `run-prompt.ts`.
+
+**Binds.** `src/inbox/prompt-not-before.ts` (`stripNotBeforeMarker`).
+
+**Pinned by.** `test/prompt-not-before.test.ts` — "notBeforeMarker round-trips through notBeforeMs
+to the millisecond and strips to the body" and "a writer-shaped stamp that Date.parse rejects is
+neither deferred nor stripped".
+
+### INV-AI3: a deferred prompt is due when now reaches its stamp, and a prompt without a marker is due at once
+
+**Guarantee.** `deliverableAt` is true for a null stamp and for a stamp at or before now, so a prompt
+is due at its stamp's own millisecond. `deliverableNow` parses the text's marker and applies the
+same check.
+
+**Binds.** `src/inbox/prompt-not-before.ts` (`deliverableAt`, `deliverableNow`).
+
+**Pinned by.** `test/prompt-not-before.test.ts` — "deliverableAt delivers at the stamp's own
+millisecond, not before"; `test/inbox.test.ts` — "counts exclude deferred prompts and include them
+once due".
