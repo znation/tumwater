@@ -6,6 +6,8 @@
 // instead. `stopChild` bundles the SIGKILL-and-wait teardown both share.
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { exitWithOwnerEnv } from "../fixtures/victim-fixture.js";
 import { sleep } from "./wait.js";
 
@@ -73,4 +75,39 @@ export function runNodeScript(
     ...(env ? { env: { ...process.env, ...env } } : {}),
   });
   return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+}
+
+/** Spawns a child that takes `lock` (`withStateLock` or `withSyncLock`), runs `before` under it
+ * (e.g. snapshot a file), writes the `ready` file, then waits up to 1.5 s for `until` — a JS
+ * expression, false when it throws — and runs `after` (where the `until()` function is still in
+ * scope) before releasing. `outside` runs before the lock is requested. All three are source
+ * text for the child. The race tests use it to hold a lock while the parent's writer contends. */
+export function spawnLockHolder(opts: {
+  lock: string;
+  ready: string;
+  withLock: "withStateLock" | "withSyncLock";
+  outside?: string;
+  before?: string;
+  until: string;
+  after: string;
+  /** The error when the child never reports ready; names the primary-worktree lock by default. */
+  missingMessage?: string;
+}): ReadyChild {
+  const lockModule = fileURLToPath(new URL("../../src/concurrency/lock.js", import.meta.url));
+  return spawnReadyChild(
+    `const fs = require("node:fs");
+     ${opts.outside ?? ""}
+     import(${JSON.stringify(lockModule)}).then(({ ${opts.withLock} }) => ${opts.withLock}(${JSON.stringify(opts.lock)}, () => {
+       ${opts.before ?? ""}
+       fs.writeFileSync(${JSON.stringify(opts.ready)}, "1");
+       const until = () => { try { return (${opts.until}); } catch { return false; } };
+       const deadline = Date.now() + 1500;
+       while (Date.now() < deadline && !until()) {
+         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+       }
+       ${opts.after}
+     }));`,
+    () => fs.existsSync(opts.ready),
+    opts.missingMessage ?? "the holder child never took the primary-worktree lock",
+  );
 }

@@ -2,8 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
-import { fileURLToPath } from "node:url";
+import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import { initProject } from "../src/init/init.js";
 import { fileBug, fileBugFromText, filePlan, filePlanFromText, normalizeEntryBody, splitEntryFile } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
@@ -242,22 +241,14 @@ test("a filed bug cannot be clobbered by a merge that fast-forwards the same fil
   const bugsFile = path.join(repo, "BUGS.md");
   const lock = primaryWorktreeLockPath(repo);
   const ready = path.join(repo, "child-ready");
-  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const holder = spawnReadyChild(
-    `const fs = require("node:fs");
-     import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
-       const snapshot = fs.readFileSync(${JSON.stringify(bugsFile)}, "utf8");
-       fs.writeFileSync(${JSON.stringify(ready)}, "1");
-       const parentFiled = () => { try { return fs.readFileSync(${JSON.stringify(bugsFile)}, "utf8").includes("operator symptom"); } catch { return false; } };
-       const deadline = Date.now() + 1500;
-       while (Date.now() < deadline && !parentFiled()) {
-         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-       }
-       fs.writeFileSync(${JSON.stringify(bugsFile)}, snapshot);
-     }));`,
-    () => fs.existsSync(ready),
-    "the holder child never took the primary-worktree lock",
-  );
+  const holder = spawnLockHolder({
+    lock,
+    ready,
+    withLock: "withStateLock",
+    before: `const snapshot = fs.readFileSync(${JSON.stringify(bugsFile)}, "utf8");`,
+    until: `fs.readFileSync(${JSON.stringify(bugsFile)}, "utf8").includes("operator symptom")`,
+    after: `fs.writeFileSync(${JSON.stringify(bugsFile)}, snapshot);`,
+  });
   try {
     await holder.ready;
     fileBug(repo, "operator symptom", 'tumwater bug "<symptom>"');

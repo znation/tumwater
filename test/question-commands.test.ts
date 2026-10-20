@@ -2,8 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
-import { fileURLToPath } from "node:url";
+import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import { answerQuestion, sayAnswered } from "../src/cli/question-commands.js";
 import { tryAnswerQuestion, openQuestionList, questionListPayload, answeredQuestionList, answeredQuestionAt, answeredQuestionPayload, answeredQuestionSummaries } from "../src/backlog/question-answer.js";
 import { openQuestionEntries } from "../src/backlog/backlog.js";
@@ -369,22 +368,14 @@ test("an answered question cannot be clobbered by a merge that fast-forwards the
   const file = seed(root, '# Questions\n\n## Open\n\n### Question A\n\nbody\n\n## Answered\n\n_None yet._\n');
   const lock = primaryWorktreeLockPath(root);
   const ready = path.join(root, "child-ready");
-  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const holder = spawnReadyChild(
-    `const fs = require("node:fs");
-     import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
-       const snapshot = fs.readFileSync(${JSON.stringify(file)}, "utf8");
-       fs.writeFileSync(${JSON.stringify(ready)}, "1");
-       const answered = () => { try { return fs.readFileSync(${JSON.stringify(file)}, "utf8").includes("**Answered"); } catch { return false; } };
-       const deadline = Date.now() + 1500;
-       while (Date.now() < deadline && !answered()) {
-         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-       }
-       fs.writeFileSync(${JSON.stringify(file)}, snapshot);
-     }));`,
-    () => fs.existsSync(ready),
-    "the holder child never took the primary-worktree lock",
-  );
+  const holder = spawnLockHolder({
+    lock,
+    ready,
+    withLock: "withStateLock",
+    before: `const snapshot = fs.readFileSync(${JSON.stringify(file)}, "utf8");`,
+    until: `fs.readFileSync(${JSON.stringify(file)}, "utf8").includes("**Answered")`,
+    after: `fs.writeFileSync(${JSON.stringify(file)}, snapshot);`,
+  });
   try {
     await holder.ready;
     answerQuestion(root, 1, "yes");

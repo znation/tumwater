@@ -2,8 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
-import { fileURLToPath } from "node:url";
+import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import {
   conflictedFiles,
   continueRebase,
@@ -174,21 +173,13 @@ test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog 
   const merged = path.join(root, "merged.txt");
   const ready = path.join(root, "child-ready");
   const marker = path.join(root, "child-marker");
-  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const holder = spawnReadyChild(
-    `const fs = require("node:fs");
-     import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
-       fs.writeFileSync(${JSON.stringify(ready)}, "1");
-       const merged = () => fs.existsSync(${JSON.stringify(merged)});
-       const deadline = Date.now() + 1500;
-       while (Date.now() < deadline && !merged()) {
-         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-       }
-       fs.writeFileSync(${JSON.stringify(marker)}, merged() ? "seen" : "not-seen");
-     }));`,
-    () => fs.existsSync(ready),
-    "the holder child never took the primary-worktree lock",
-  );
+  const holder = spawnLockHolder({
+    lock,
+    ready,
+    withLock: "withStateLock",
+    until: `fs.existsSync(${JSON.stringify(merged)})`,
+    after: `fs.writeFileSync(${JSON.stringify(marker)}, until() ? "seen" : "not-seen");`,
+  });
   try {
     await holder.ready;
     assert.equal(await ffMainTo(root, ref, "main"), true);

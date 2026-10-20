@@ -7,8 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
-import { fileURLToPath } from "node:url";
+import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 
 import {
   beginWorktreeUse,
@@ -81,23 +80,16 @@ test("a concurrent worktree-use write cannot drop another process's update", asy
   const registryFile = path.join(stateDir, "worktree-use.json");
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(registryFile, "{}");
-  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const holder = spawnReadyChild(
-    `const fs = require("node:fs");
-     import(${JSON.stringify(lockModule)}).then(({ withSyncLock }) => withSyncLock(${JSON.stringify(lock)}, () => {
-       const snapshot = JSON.parse(fs.readFileSync(${JSON.stringify(registryFile)}, "utf8"));
-       fs.writeFileSync(${JSON.stringify(ready)}, "1");
-       const parentSet = () => { try { return JSON.parse(fs.readFileSync(${JSON.stringify(registryFile)}, "utf8")).feature?.lastUsedAt !== undefined; } catch { return false; } };
-       const deadline = Date.now() + 1500;
-       while (Date.now() < deadline && !parentSet()) {
-         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-       }
-       snapshot.other = { lastUsedAt: 1 };
-       fs.writeFileSync(${JSON.stringify(registryFile)}, JSON.stringify(snapshot));
-     }));`,
-    () => fs.existsSync(ready),
-    "the holder child never took the worktree-use lock",
-  );
+  const holder = spawnLockHolder({
+    lock,
+    ready,
+    withLock: "withSyncLock",
+    before: `const snapshot = JSON.parse(fs.readFileSync(${JSON.stringify(registryFile)}, "utf8"));`,
+    until: `JSON.parse(fs.readFileSync(${JSON.stringify(registryFile)}, "utf8")).feature?.lastUsedAt !== undefined`,
+    after: `snapshot.other = { lastUsedAt: 1 };
+       fs.writeFileSync(${JSON.stringify(registryFile)}, JSON.stringify(snapshot));`,
+    missingMessage: "the holder child never took the worktree-use lock",
+  });
   try {
     await holder.ready;
     releaseReclaim(root, dir, 1_700_000_000_000);

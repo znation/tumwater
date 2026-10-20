@@ -10,8 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { readJson } from "./helpers/json-read.js";
-import { fileURLToPath } from "node:url";
-import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
+import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setConfigKey, unsetConfigKey, setDailyBudgetUsd, setRoleModelFields } from "../src/config/config-write.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
@@ -692,24 +691,17 @@ test("a concurrent config write cannot drop another process's update", async () 
   const lock = path.join(stateDir, "config.lock");
   const ready = path.join(dir, "child-ready");
   const configFile = path.join(dir, "tumwater.json");
-  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const holder = spawnReadyChild(
-    `const fs = require("node:fs");
-     fs.mkdirSync(${JSON.stringify(stateDir)}, { recursive: true });
-     import(${JSON.stringify(lockModule)}).then(({ withSyncLock }) => withSyncLock(${JSON.stringify(lock)}, () => {
-       const snapshot = JSON.parse(fs.readFileSync(${JSON.stringify(configFile)}, "utf8"));
-       fs.writeFileSync(${JSON.stringify(ready)}, "1");
-       const parentSet = () => { try { return JSON.parse(fs.readFileSync(${JSON.stringify(configFile)}, "utf8")).maxDailyCostUsd === 42; } catch { return false; } };
-       const deadline = Date.now() + 1500;
-       while (Date.now() < deadline && !parentSet()) {
-         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-       }
-       snapshot.quietHours = "22:00-06:00";
-       fs.writeFileSync(${JSON.stringify(configFile)}, JSON.stringify(snapshot, null, 2) + "\\n");
-     }));`,
-    () => fs.existsSync(ready),
-    "the holder child never took the config lock",
-  );
+  const holder = spawnLockHolder({
+    lock,
+    ready,
+    withLock: "withSyncLock",
+    outside: `fs.mkdirSync(${JSON.stringify(stateDir)}, { recursive: true });`,
+    before: `const snapshot = JSON.parse(fs.readFileSync(${JSON.stringify(configFile)}, "utf8"));`,
+    until: `JSON.parse(fs.readFileSync(${JSON.stringify(configFile)}, "utf8")).maxDailyCostUsd === 42`,
+    after: `snapshot.quietHours = "22:00-06:00";
+       fs.writeFileSync(${JSON.stringify(configFile)}, JSON.stringify(snapshot, null, 2) + "\\n");`,
+    missingMessage: "the holder child never took the config lock",
+  });
   try {
     await holder.ready;
     const result = setConfigKey(dir, "maxDailyCostUsd", "42");
