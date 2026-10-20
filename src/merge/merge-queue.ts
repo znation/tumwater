@@ -5,6 +5,7 @@ import { listQueueFiles, queueFileName, removeQueueFile } from "../files/file-qu
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import type { MigrationNotes } from "../orchestrator/startup-migrations.js";
 import { mergeQueueDir, legacyLandQueueDir } from "../paths.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
@@ -115,22 +116,22 @@ function queueFiles(root: string): string[] {
  * current one, keeping the basename (the order lives in it) and the contents. A basename already
  * present in the new directory stays put and is noted; the old directory is removed once empty.
  * A file that vanished mid-move (a concurrent run) is skipped. */
-export function legacyMigrateLandQueueDir(root: string): string[] {
+export function legacyMigrateLandQueueDir(root: string): MigrationNotes {
   const from = legacyLandQueueDir(root);
   const to = mergeQueueDir(root);
-  const notes: string[] = [];
+  const notes: MigrationNotes = { moved: [], kept: [], failed: [] };
   const files = listQueueFiles(from, ".json");
   if (files.length > 0) fs.mkdirSync(to, { recursive: true });
   for (const file of files) {
     const name = path.basename(file);
     const dest = path.join(to, name);
     if (fs.existsSync(dest)) {
-      notes.push(`${name} already in merge-queue, left in place`);
+      notes.kept.push(`${name} already in merge-queue, left in place`);
       continue;
     }
     try {
       fs.renameSync(file, dest);
-      notes.push(`moved ${name}`);
+      notes.moved.push(`moved ${name}`);
     } catch (err) {
       if (errCode(err) !== "ENOENT") throw err;
     }

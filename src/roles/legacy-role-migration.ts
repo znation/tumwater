@@ -2,21 +2,24 @@ import fs from "node:fs";
 import { deleteRefIfAt, refSha } from "../git/git.js";
 import { gitTry, runGit } from "../git/git-run.js";
 import { branchName, mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../paths.js";
+import type { MigrationNotes } from "../orchestrator/startup-migrations.js";
 import { errorMessage } from "../text/text.js";
 import { LEGACY_ROLE_IDS } from "./legacy-role-ids.js";
 
 /** Move each retired role id's branch, refs and files to the new id (plans/terminology.md "Role
- * names"). Returns one line per artifact moved or skipped. Nothing that exists under the new id
+ * names"). Returns one line per artifact, sorted into moved, kept (both
+ * ids exist) and failed. Nothing that exists under the new id
  * is overwritten, each artifact fails alone, and pi and native logs stay put as history. */
-export async function migrateLegacyRoleIds(root: string, legacy: Readonly<Record<string, string>> = LEGACY_ROLE_IDS): Promise<string[]> {
-  const notes: string[] = [];
+export async function migrateLegacyRoleIds(root: string, legacy: Readonly<Record<string, string>> = LEGACY_ROLE_IDS): Promise<MigrationNotes> {
+  const notes: MigrationNotes = { moved: [], kept: [], failed: [] };
   for (const [oldId, newId] of Object.entries(legacy)) {
     const attempt = async (what: string, move: () => Promise<string | null>) => {
       try {
         const note = await move();
-        if (note !== null) notes.push(note);
+        if (note === null) return;
+        (note.startsWith("kept ") ? notes.kept : notes.moved).push(note);
       } catch (err) {
-        notes.push(`could not move ${what}: ${errorMessage(err)}`);
+        notes.failed.push(`could not move ${what}: ${errorMessage(err)}`);
       }
     };
 

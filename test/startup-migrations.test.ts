@@ -54,6 +54,9 @@ test("a basename already in the new directory is left in the old one", async () 
   await runStartupMigrations(root);
   assert.ok(fs.existsSync(path.join(legacyLandQueueDir(root), "1000000000001-000000-1.json")));
   assert.equal(fs.readdirSync(mergeQueueDir(root)).length, 3);
+  const ev = migrated(root).filter((e) => e.step === "mergeQueueDir");
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0]?.moved, 2);
 });
 
 test("runStartupMigrationsIfIdle moves nothing while an orchestrator is alive", async () => {
@@ -68,7 +71,7 @@ test("runStartupMigrationsIfIdle moves nothing while an orchestrator is alive", 
 });
 
 test("registering a duplicate step name throws", () => {
-  assert.throws(() => registerStartupMigration({ name: "mergeQueueDir", run: async () => [] }), /already registered/);
+  assert.throws(() => registerStartupMigration({ name: "mergeQueueDir", run: async () => ({ moved: [], kept: [], failed: [] }) }), /already registered/);
 });
 
 test("mergingMarker removes a leftover landing.json once", async () => {
@@ -100,8 +103,29 @@ test("mergeRefs moves a legacy pin once, keeps a differing pair, and retire sees
   await setRef(root, legacyLandingRefName("diff"), other);
   await setRef(root, mergeRefName("diff"), sha);
   const diffNew = sha;
+  const before = migrated(root).filter((e) => e.step === "mergeRefs").length;
   await runStartupMigrations(root);
   assert.equal(await refSha(root, legacyLandingRefName("same")), null);
   assert.equal(await refSha(root, legacyLandingRefName("diff")), other);
   assert.equal(await refSha(root, mergeRefName("diff")), diffNew);
+  const ev = migrated(root).filter((e) => e.step === "mergeRefs");
+  assert.equal(ev.length, before + 1);
+  assert.equal(ev[ev.length - 1]?.moved, 1);
+  assert.match(String(ev[ev.length - 1]?.detail), /kept/);
+  await runStartupMigrations(root);
+  assert.equal(migrated(root).filter((e) => e.step === "mergeRefs").length, before + 1);
+  assert.equal(await refSha(root, legacyLandingRefName("diff")), other);
+});
+
+test("a kept-only mergeRefs collision logs no state_migrated event", async () => {
+  const root = makeRepo();
+  const sha = await headOf(root, "HEAD");
+  const other = execFileSync("git", ["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "other"], { cwd: root, encoding: "utf8" }).trim();
+  await setRef(root, legacyLandingRefName("diff"), other);
+  await setRef(root, mergeRefName("diff"), sha);
+  await runStartupMigrations(root);
+  await runStartupMigrations(root);
+  assert.equal(migrated(root).filter((e) => e.step === "mergeRefs").length, 0);
+  assert.equal(await refSha(root, legacyLandingRefName("diff")), other);
+  assert.equal(await refSha(root, mergeRefName("diff")), sha);
 });

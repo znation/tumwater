@@ -33,7 +33,8 @@ test("a legacy role id's branch, refs and files move to the new id; logs stay", 
   const root = makeRepo();
   const { sha, log } = oldRole(root);
   const notes = await migrateLegacyRoleIds(root, MAP);
-  assert.equal(notes.length, 8);
+  assert.equal(notes.moved.length, 8);
+  assert.deepEqual([notes.kept, notes.failed], [[], []]);
   assert.equal(await refSha(root, "refs/heads/tumwater/newy"), sha);
   assert.equal(await refSha(root, "refs/heads/tumwater/oldy"), null);
   for (const ref of [mergeRefName, rejectedRefName]) {
@@ -48,7 +49,7 @@ test("a legacy role id's branch, refs and files move to the new id; logs stay", 
   assert.equal(read(path.join(reviewSessionDir(root, "newy"), "r.jsonl")), "review");
   for (const f of [statePath, roleNotesPath, roleInboxDir, sessionDir, reviewSessionDir]) assert.equal(fs.existsSync(f(root, "oldy")), false);
   assert.equal(read(log), "history");
-  assert.deepEqual(await migrateLegacyRoleIds(root, MAP), []);
+  assert.deepEqual(await migrateLegacyRoleIds(root, MAP), { moved: [], kept: [], failed: [] });
 });
 
 test("an artifact already under the new id is kept and reported", async () => {
@@ -57,7 +58,8 @@ test("an artifact already under the new id is kept and reported", async () => {
   sh(root, "git", "branch", "tumwater/newy");
   put(statePath(root, "newy"), "fresh");
   const notes = await migrateLegacyRoleIds(root, MAP);
-  assert.ok(notes.some((n) => n.startsWith("kept branch tumwater/oldy")));
+  assert.ok(notes.kept.some((n) => n.startsWith("kept branch tumwater/oldy")));
+  assert.ok(!notes.moved.some((n) => n.startsWith("kept")));
   assert.notEqual(await refSha(root, "refs/heads/tumwater/oldy"), null);
   assert.equal(fs.readFileSync(statePath(root, "newy"), "utf8"), "fresh");
   assert.equal(fs.readFileSync(statePath(root, "oldy"), "utf8"), "state");
