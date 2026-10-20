@@ -535,4 +535,20 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A conflicted `PLANS-DONE.md`/`BUGS-FIXED.md` is handled exactly as before: only the hunk pass runs on it.
 - `npm run test:gate` passes.
 
+### A `budget_paused` or `budget_fallback` page names the roles spending most today, so a cap reached without a prior warning still says where the money went (planned 2026-10-20 by the plan role; no dependency on any Planned entry)
+
+**Goal.** The 2026-10-20 plan gave `budget_warning` a `topRoles` list and on purpose left the cap events alone. But the warning fires only while the gate is open (`warn = gate === "open" && …` in `pollBudgetGate`, src/gates/budget-gates.ts). So a poll that goes from under 80% straight past the cap logs only the transition event. The live log has this case: on 2026-09-30 a `budget_paused` ($15.04 of $15) and on 2026-10-01 three `budget_fallback` events had no `budget_warning` before them that day. `budget_paused` is on the notify allowlist (`NOTIFY_EVENT_TYPES`, src/events/notify.ts) and stops the team, so it is the page where knowing who spent the money matters most. Today the operator has to run `tumwater report` to find out.
+
+**Approach.**
+- In `pollBudgetGate` (src/gates/budget-gates.ts), the `gate !== state.prevGate` emission adds `topRoles: topDailySpenders(states, now)` to `budget_fallback` and `budget_paused` when the list is not empty. It uses the same omit-when-empty spread as the warning. `budget_resumed` does not get it: a midnight resume reads zero spend, and a cap raise is the operator's own act. Compute the list once per poll, before the warning branch, only when the warning or a transition fires. Both branches then share one `const topRoles`.
+- In src/events/event-format.ts, move the warning case's inline `topRoles` read into a module-level helper `mostByPhrase(value: unknown): string`. It returns ` (most by feature $30.00, plan $10.01)`, or `""` for a missing, empty, or all-malformed array, using the same `isJsonObject`/`Number.isFinite` checks it has now. `budget_warning` calls it with no change to its output. `budget_paused` puts the phrase right after "daily cost reached", before the refused/demoted parenthetical. `budget_fallback` puts it right after "daily cost reached", before "; roles continue on", in both its tiered and single-pair returns.
+- Document `topRoles` on the `budget_paused` and `budget_fallback` comments of the `HarnessEvent` union in src/events/events.ts, and in docs/config.md's `budget_paused` row (the table has no `budget_fallback` row; do not add one).
+
+**Files touched.** src/gates/budget-gates.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md, test/budget-gates.test.ts, test/event-format-team.test.ts.
+
+**Acceptance criteria.**
+- test/budget-gates.test.ts: "crossing the cap engages the fallback once: one event, the derived role view, no re-derives" also asserts that the `budget_fallback` event's `topRoles` deep-equals the single spending role with its spend. "a fallback pi prices above zero cannot engage: the gate pauses and the event says why" asserts the same for `budget_paused`. "raising the cap resumes the gate: one budget_resumed event and the live config again" asserts that `budget_resumed` has no `topRoles` key.
+- test/event-format-team.test.ts: in "formatEvent renders the budget transition events plainly with spend and cap", a `budget_paused` with `topRoles: [{ role: "feature", spentUsd: 40 }, { role: "plan", spentUsd: 10.12 }]` renders `budget paused — $50.12 of $50.00 daily cost reached (most by feature $40.00, plan $10.12); roles start no new runs …`. A `budget_fallback` with the same list renders `… daily cost reached (most by feature $40.00, plan $10.12); roles continue on …`. The existing assertions without `topRoles` still match unchanged, and "formatEvent names the top spenders on a budget warning and ignores malformed entries" still passes untouched.
+- `npm run test:gate` passes.
+
 ## Done
