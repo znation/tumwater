@@ -19,13 +19,17 @@
  *   below the insertion point. The change's side is then its new entries followed by exactly
  *   the base lines, and keeping those entries on top of main's side again adds no authored
  *   bytes.
+ * A fourth shape settles entry by entry instead of hunk by hunk (mergeBacklogEntries): each side
+ * finished or added different whole entries, so git's hunks cut through entries and match none
+ * of the shapes above. It reads the three index stages of PLANS.md, BUGS.md and QUESTIONS.md,
+ * not the hunks.
  * Anything else — the same entry edited on both sides, a code file, a file one side deleted —
  * goes to the pi resolver untouched. */
 
 import path from "node:path";
-import { BACKLOG_FILES, FINISHED_ARCHIVES } from "../backlog/backlog-md.js";
+import { BACKLOG_FILES, FINISHED_ARCHIVES, fenceTracker } from "../backlog/backlog-md.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
-import { git } from "../git/git-run.js";
+import { git, gitTry } from "../git/git-run.js";
 
 /** A parsed diff3 conflict hunk: the three sides between `<<<<<<<`, `|||||||`, `=======` and
  * `>>>>>>>`. `base` is empty for an insertion both sides made at the same spot. */
@@ -150,6 +154,132 @@ function collectUntilMarker(
   return i >= lines.length ? null : i + 1;
 }
 
+/** A backlog text split into blocks: the preamble before the first `## ` line, then per
+ * section its header block and its `### ` entries (heading line to the next heading), each
+ * block with trailing blank lines removed. */
+interface ParsedBacklog {
+  preamble: string;
+  sections: { header: string; entries: { key: string; text: string }[] }[];
+}
+
+/** Split `text` into ParsedBacklog blocks, or null when a fence is still open at EOF or a
+ * section holds two entries with the same heading line. */
+function parseBacklogBlocks(text: string): ParsedBacklog | null {
+  const fenced = fenceTracker();
+  const parsed: ParsedBacklog = { preamble: "", sections: [] };
+  let current: string[] = [];
+  let flush: (block: string) => void = (block) => {
+    parsed.preamble = block;
+  };
+  const close = (): void => {
+    while (current.length > 0 && current[current.length - 1]!.trim() === "") current.pop();
+    flush(current.join("\n"));
+    current = [];
+  };
+  for (const line of text.split("\n")) {
+    const structural = !fenced.inside(line);
+    if (structural && line.startsWith("## ")) {
+      close();
+      const section: ParsedBacklog["sections"][number] = { header: "", entries: [] };
+      parsed.sections.push(section);
+      flush = (block) => {
+        section.header = block;
+      };
+    } else if (structural && line.startsWith("### ") && parsed.sections.length > 0) {
+      close();
+      const section = parsed.sections[parsed.sections.length - 1]!;
+      flush = (block) => section.entries.push({ key: line, text: block });
+      // The entry's heading line is `line` itself; the closure above captured it.
+    }
+    current.push(line);
+  }
+  if (fenced.open()) return null;
+  close();
+  for (const section of parsed.sections) {
+    if (new Set(section.entries.map((e) => e.key)).size !== section.entries.length) return null;
+  }
+  return parsed;
+}
+
+/** The one text all three versions agree on after at most one side's edit: the changed side
+ * when only one changed, else the shared text, or null when both changed differently. */
+function settleBlock(base: string, ours: string, theirs: string): string | null {
+  if (ours === theirs || theirs === base) return ours;
+  return ours === base ? theirs : null;
+}
+
+/** Merge one section's entries (see mergeBacklogEntries), or null on a same-entry conflict. */
+function mergeSectionEntries(
+  base: ParsedBacklog["sections"][number]["entries"],
+  ours: ParsedBacklog["sections"][number]["entries"],
+  theirs: ParsedBacklog["sections"][number]["entries"],
+): { key: string; text: string }[] | null {
+  const baseBy = new Map(base.map((e) => [e.key, e.text]));
+  const theirsBy = new Map(theirs.map((e) => [e.key, e.text]));
+  const oursKeys = new Set(ours.map((e) => e.key));
+  const result: { key: string; text: string }[] = [];
+  for (const { key, text: o } of ours) {
+    const b = baseBy.get(key);
+    const t = theirsBy.get(key);
+    if (b === undefined) {
+      if (t !== undefined && t !== o) return null;
+      result.push({ key, text: o });
+    } else if (t === undefined) {
+      if (o !== b) return null; // main edited what the change deleted
+    } else {
+      const settled = settleBlock(b, o, t);
+      if (settled === null) return null;
+      result.push({ key, text: settled });
+    }
+  }
+  // An entry main deleted stays deleted, unless the change edited it.
+  for (const { key, text: b } of base) {
+    const t = theirsBy.get(key);
+    if (!oursKeys.has(key) && t !== undefined && t !== b) return null;
+  }
+  for (let i = 0; i < theirs.length; i++) {
+    const added = theirs[i]!;
+    if (baseBy.has(added.key) || oursKeys.has(added.key)) continue;
+    let at = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const found = result.findIndex((e) => e.key === theirs[j]!.key);
+      if (found >= 0) {
+        at = found + 1;
+        break;
+      }
+    }
+    result.splice(at, 0, added);
+  }
+  return result;
+}
+
+/** Merge three versions of a backlog file entry by entry — `ours` is main, `theirs` the change —
+ * or null when that cannot be done without judgment: an open fence, a duplicate entry heading,
+ * differing `## ` heading sequences, a preamble or section header both sides changed, or the
+ * same entry edited on both sides (or edited by one side and deleted by the other). */
+export function mergeBacklogEntries(base: string, ours: string, theirs: string): string | null {
+  const [b, o, t] = [base, ours, theirs].map(parseBacklogBlocks);
+  if (!b || !o || !t) return null;
+  const count = b.sections.length;
+  if (o.sections.length !== count || t.sections.length !== count) return null;
+  const blocks: string[] = [];
+  const preamble = settleBlock(b.preamble, o.preamble, t.preamble);
+  if (preamble === null) return null;
+  if (preamble !== "") blocks.push(preamble);
+  for (let i = 0; i < count; i++) {
+    const [bs, os, ts] = [b.sections[i]!, o.sections[i]!, t.sections[i]!];
+    const heading = (header: string): string => header.split("\n")[0]!;
+    if (heading(bs.header) !== heading(os.header) || heading(bs.header) !== heading(ts.header)) {
+      return null;
+    }
+    const header = settleBlock(bs.header, os.header, ts.header);
+    const entries = mergeSectionEntries(bs.entries, os.entries, ts.entries);
+    if (header === null || entries === null) return null;
+    blocks.push(header, ...entries.map((e) => e.text));
+  }
+  return `${blocks.join("\n\n")}\n`;
+}
+
 /** Settle the insert-only conflicts among `files` in `wt` (plans/parallel-work-instances.md,
  * part 3/7): every conflicted repo-root backlog file (BACKLOG_FILES: PLANS.md, BUGS.md,
  * QUESTIONS.md and the two archive files) whose hunks all settle is rewritten without markers and
@@ -172,7 +302,7 @@ export async function resolveBacklogInsertConflicts(
       remaining.push(file); // deleted side or unreadable path — leave it to the resolver
       continue;
     }
-    const resolved = resolveInsertOnlyText(text);
+    const resolved = resolveInsertOnlyText(text) ?? (await mergeStagedEntries(wt, file));
     if (resolved === null) {
       remaining.push(file);
       continue;
@@ -185,4 +315,15 @@ export async function resolveBacklogInsertConflicts(
     await git(wt, "add", "--", file);
   }
   return remaining;
+}
+
+/** The entry-by-entry merge of `file`'s three index stages (1 base, 2 main, 3 the change), or
+ * null for an archive file, a stage missing on one side, or a merge needing judgment. */
+async function mergeStagedEntries(wt: string, file: string): Promise<string | null> {
+  if (FINISHED_ARCHIVES.some((a) => a.archive === file)) return null;
+  const base = await gitTry(wt, "show", `:1:${file}`);
+  const ours = await gitTry(wt, "show", `:2:${file}`);
+  const theirs = await gitTry(wt, "show", `:3:${file}`);
+  if (base === null || ours === null || theirs === null) return null;
+  return mergeBacklogEntries(base, ours, theirs);
 }

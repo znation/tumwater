@@ -49,7 +49,9 @@ before that change commits. `tumwater start` moves anything else still there in 
 main, such as legacy history or a hand commit's move, and so does `tumwater archive`.
 `tumwater doctor` warns while a live file still holds finished entries. Nothing reads an archive
 file whole: the dashboards, the report and `plan|bug --list --done` read the live section and
-then the archive, and roles search the archives or read one entry by its line range.
+then the archive, and roles search the archives or read one entry by its line range. When a merge or a revision conflicts in one of the three live
+files and each side only added, removed or edited different `### ` entries, tumwater merges the
+entries itself; the same entry edited on both sides still goes to the conflict resolver.
 
 ## The merge pipeline
 

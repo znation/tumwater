@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  mergeBacklogEntries,
   resolveBacklogInsertConflicts,
   resolveInsertOnlyText,
 } from "../src/merge/backlog-conflicts.js";
@@ -246,4 +247,56 @@ test("resolveBacklogInsertConflicts leaves the conflicted file intact when a wri
     [],
     "no tmp remnant is left behind",
   );
+});
+
+const doc = (...entries: string[]): string => `# Plans\n\n## Planned\n\n${entries.map((e) => `${e}\n`).join("\n")}\n## Done\n`.replace("\n\n\n## Done", "\n\n## Done");
+const ent = (name: string, body = name): string => `### ${name} plan\n\n**Goal.** ${body}.`;
+const [A, B, C, D, N, M] = [ent("A"), ent("B"), ent("C"), ent("D"), ent("N"), ent("M")] as [
+  string, string, string, string, string, string,
+];
+
+test("mergeBacklogEntries merges entries each side finished or added", () => {
+  assert.equal(mergeBacklogEntries(doc(A, B, C), doc(B), doc(A, C)), doc());
+  assert.equal(mergeBacklogEntries(doc(B, C), doc(B, D), doc(C)), doc(D));
+  assert.equal(mergeBacklogEntries(doc(A, B), doc(A, B, N), doc(A)), doc(A, N));
+  assert.equal(mergeBacklogEntries(doc(A, B), doc(A), doc(A, M, B)), doc(A, M));
+  const edited = ent("A", "edited");
+  assert.equal(mergeBacklogEntries(doc(A, B), doc(A), doc(edited, B)), doc(edited));
+});
+
+test("mergeBacklogEntries bails out when judgment is needed", () => {
+  const e1 = ent("A", "one");
+  const e2 = ent("A", "two");
+  assert.equal(mergeBacklogEntries(doc(A), doc(e1), doc(e2)), null, "both edited");
+  assert.equal(mergeBacklogEntries(doc(A, B), doc(e1, B), doc(B)), null, "edit vs delete");
+  assert.equal(mergeBacklogEntries(doc(A, B), doc(B), doc(e1, B)), null, "delete vs edit");
+  assert.equal(mergeBacklogEntries(doc(A), doc(A, A), doc(A)), null, "duplicate heading");
+  const renamed = doc(A).replace("## Done", "## Finished");
+  assert.equal(mergeBacklogEntries(doc(A), doc(A), renamed), null, "section renamed");
+  const open = `${doc(A)}\n\`\`\`\nunclosed\n`;
+  assert.equal(mergeBacklogEntries(open, open, open), null, "unclosed fence");
+});
+
+test("mergeBacklogEntries keeps a heading inside a fence as body text", () => {
+  const fenced = "### F plan\n\n```\n### not an entry\n```";
+  assert.equal(mergeBacklogEntries(doc(fenced, B), doc(fenced), doc(fenced, B)), doc(fenced));
+});
+
+test("resolveBacklogInsertConflicts settles a real rebase where each side finished different entries", async () => {
+  const root = makeRepo();
+  seedCommit(root, "PLANS.md", doc(A, B, C), "seed plans");
+  sh(root, "git", "checkout", "-q", "-b", "change");
+  seedCommit(root, "PLANS.md", doc(A, C), "the change finishes B");
+  sh(root, "git", "checkout", "-q", "main");
+  seedCommit(root, "PLANS.md", doc(B, D), "main finishes A and C, adds D");
+  sh(root, "git", "checkout", "-q", "change");
+  assert.equal(await rebaseOntoMainLeaveConflicts(root, "main"), "conflict");
+  const conflicted = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  assert.equal(resolveInsertOnlyText(conflicted), null, "the hunk settler alone leaves it conflicted");
+
+  const remaining = await resolveBacklogInsertConflicts(root, await conflictedFiles(root));
+
+  assert.deepEqual(remaining, []);
+  assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), doc(D));
+  assert.equal(sh(root, "git", "diff", "--cached", "--name-only"), "PLANS.md");
 });

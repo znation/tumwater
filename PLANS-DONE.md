@@ -5,6 +5,43 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### A backlog conflict where each side finished or added different whole entries settles without a model run, so a revision stops getting PLANS.md conflict markers handed back (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches src/merge/backlog-conflicts.ts, test/backlog-conflicts.test.ts, docs/how-it-works.md; done 2026-10-20 by the feature role)
+
+**Goal.** In the three days to 2026-10-20 the event log holds 73 `conflict_handback` events with `reason: "revision"` whose `conflicted` list is only `["PLANS.md"]`, plus a dozen more where PLANS.md is one of the files. Each one hands a feature run conflict markers to clean up by hand. I rebuilt the six newest of them (`git -c merge.conflictStyle=diff3 merge-tree --merge-base=<merge-base> <main at the event> <sha>`, in a scratch clone). All six have the same shape. The base holds entries A, B, C under `## Planned`. Main finished some of them, and sometimes added a new plan. The change finished a different one, usually its own plan. No entry was edited on both sides. The settler `resolveInsertOnlyText` (src/merge/backlog-conflicts.ts) cannot settle these, because git's hunk boundaries cut through entries: one side of a hunk is a lone `### ` heading line, with the rest of that entry's body outside the hunk. So `settledLines` matches none of its three shapes, and the file goes to the pi resolver (merge path) or keeps its markers (revision path, `pickSettlingBacklog` in src/runner/revision.ts). This plan adds a second deterministic pass that merges entry by entry instead of hunk by hunk.
+
+**Approach (src/merge/backlog-conflicts.ts).**
+- New exported `mergeBacklogEntries(base: string, ours: string, theirs: string): string | null`, where ours is main and theirs is the change, the same convention as the hunk sides. It parses each text into blocks: a preamble (lines before the first `## ` line), then per `## ` section one header block (the heading line plus its lines before the first `### `), then one block per `### ` entry (heading line plus body up to the next `### `/`## `). Classify lines with `fenceTracker` (src/backlog/backlog-md.ts), so a heading inside a fenced block is body text. Compare and emit every block with its trailing blank lines removed. An entry's key is its heading line, verbatim, within its section.
+- Return null, so the file stays conflicted as today, when: any version's tracker is still `open()` at EOF; a section holds two entries with the same key in any version; the three versions' `## ` heading sequences differ; or a preamble or section header block changed on both sides to different text.
+- Per section, walk main's entry order and keep each entry that main has, by these rules:
+  - In all three versions: if main's copy equals base, take the change's copy. If the change's copy equals base, or both copies are equal, take main's. Otherwise return null.
+  - In base and main, but the change deleted it: drop it if main's copy equals base, else return null.
+  - Not in base (main added it): keep it. If the change also added the same key, the two texts must be equal, else return null.
+  - An entry main deleted is never kept, but if it is in base and the change edited it (its text differs from base), return null.
+  - Then insert each entry only the change added (not in base) right after the nearest entry before it in the change's order that is already in the result, or first in the section when there is none.
+- Emit the blocks in order, joined by one blank line, with the file ending in exactly one `\n`.
+- In `resolveBacklogInsertConflicts`, when `resolveInsertOnlyText` returns null and the file is `PLANS.md`, `BUGS.md` or `QUESTIONS.md` (not the two archive files), read the three index stages with `gitTry(wt, "show", `:1:${file}`)` and the same for `:2:` and `:3:`. A null stage (a file added or deleted on one side) leaves the file in `remaining`. Pass the stages to `mergeBacklogEntries`. On a non-null result, write it with `writeTextAtomic` and `git add` it, the same as the hunk path. This one change covers both callers: the merge's first pass (`mergeToMain`, src/merge/merge-to-main.ts) and the revision pick (`pickSettlingBacklog`). Both stop with the stages in the index, and stage 2 is main in each.
+- Extend the module comment with the fourth shape. Note there that a same-entry edit on both sides still goes to the resolver.
+
+**Tests (test/backlog-conflicts.test.ts).**
+- Unit tests on `mergeBacklogEntries`, each building three `# Plans\n\n## Planned\n\n…\n\n## Done\n` texts from entries:
+  - Base [A, B, C], main [B], change [A, C] gives [].
+  - Base [B, C], main [B, D], change [C] gives [D].
+  - Base [A, B], main [A, B, N], change [A] gives [A, N] (the change deleted B; the entry first said [B, N]).
+  - Base [A, B], change adds M after A and main deletes B, giving [A, M].
+  - The change edits A's body while main deletes B gives [A′].
+- Each of these returns null: both sides editing A differently; main editing A while the change deletes it; a duplicate heading; a section heading only one side renamed; an unclosed fence.
+- A `### ` line inside a fenced block in an entry's body stays body text.
+- An integration test in the style of `resolveBacklogInsertConflicts settles a real rebase where …`, built on `makeRepo`/`seedCommit`/`rebaseOntoMainLeaveConflicts`. Seed [A, B, C]. The change finishes B. Main finishes A and C and adds D. Assert the rebase reports "conflict", that `resolveBacklogInsertConflicts` returns `[]`, that PLANS.md reads [D], and that it is staged. Before writing the assertions, check that the seeds really conflict: this test only proves anything when the old hunk settler alone leaves PLANS.md conflicted.
+- The existing hunk-shape tests still pass unchanged.
+
+**Docs.** In docs/how-it-works.md's backlog paragraph (the one that starts "PLANS.md, BUGS.md and QUESTIONS.md hold open work"), add one sentence: when a merge or a revision conflicts in one of those files and each side only added, removed or edited different `### ` entries, tumwater merges the entries itself, and the same entry edited on both sides still goes to the conflict resolver.
+
+**Acceptance criteria.**
+- `mergeBacklogEntries` returns the results listed under Tests, and null for each bail-out case listed there.
+- The integration test's rebase settles with no pi run, and the resolved PLANS.md holds exactly D under `## Planned`.
+- A conflicted `PLANS-DONE.md`/`BUGS-FIXED.md` is handled exactly as before: only the hunk pass runs on it.
+- `npm run test:gate` passes.
+
 ### Plain terms code run, part 10a/20: Rename the orchestrator's run launch and timing names, src prose included (planned 2026-10-16 by user, split 2026-10-20 by the plan role from part 10/20 after two rejected reviews; requires parts 9a/20 and 9b/20 landed; design in plans/terminology.md "Code names"; touches src/orchestrator/ + src/cli/cli-start.ts + src/scheduling/once-round.ts + src/redeploy/ + test/fixtures/orchestrator-fixtures.ts + identifier uses in the non-e2e test/orchestrator-*.test.ts) — done 2026-10-20
 
 **Goal.** The orchestrator launches and times runs by run names: `launchDueRuns`, `ROLE_RUN_DURATION_SAMPLES`, `roleRunDurationsMs` and `runsDone`. Its src/ comments read as sentences after the swap. Part 10b/20 converts the prose in the orchestrator's non-e2e tests.
