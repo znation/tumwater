@@ -16,6 +16,7 @@ import { configPath, roleInboxDir } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { expectFailAsync, expectOkAsync as expectOk } from "./helpers/exit-capture.js";
+import { setEnv } from "./helpers/env.js";
 
 /** src/inbox/prompt-commands.ts's own tests: the `tumwater prompt` CLI layer had no in-process
  * coverage (only the store behind it, inbox.ts, was pinned directly), so its list render,
@@ -532,9 +533,8 @@ test("prompt --edit --attach refuses an image the target role cannot read, and n
   );
   const img = path.join(root, "shot.png");
   fs.writeFileSync(img, Buffer.from("not-a-real-png"));
-  const saved = process.env.PI_CODING_AGENT_DIR;
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
   try {
-    process.env.PI_CODING_AGENT_DIR = modelsDir;
     enqueueRolePrompt(root, "feature", "first");
     // No configured model can read images → the edited-in attachment is refused up front and
     // the queue is untouched.
@@ -555,8 +555,7 @@ test("prompt --edit --attach refuses an image the target role cannot read, and n
     assert.match(`${ok.stdout}${ok.stderr}`, /edited: edited/);
     assert.equal(eventsOfType(root, "prompt_edited").length, 1);
   } finally {
-    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = saved;
+    restoreAgentDir();
   }
 });
 
@@ -569,9 +568,8 @@ test("prompt --edit --attach with no --role resolves the gate's target list-wide
   );
   const img = path.join(root, "shot.png");
   fs.writeFileSync(img, Buffer.from("not-a-real-png"));
-  const saved = process.env.PI_CODING_AGENT_DIR;
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
   try {
-    process.env.PI_CODING_AGENT_DIR = modelsDir;
     writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/vision" } });
     // The director's inbox is empty and only `feature` holds a queue entry, so the no-`--role`
     // position 1 resolves list-wide to `feature` — a non-director, the resolution the gate's
@@ -583,8 +581,7 @@ test("prompt --edit --attach with no --role resolves the gate's target list-wide
     assert.match(stdout, /^edited \(feature\): edited/m);
     assert.equal(eventsOfType(root, "prompt_edited").length, 1);
   } finally {
-    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = saved;
+    restoreAgentDir();
   }
 });
 
@@ -764,10 +761,8 @@ test("prompt --attach refuses an image the target role cannot read, and names wh
   const imgDir = tmpdir("cli-attach-");
   const img = path.join(imgDir, "shot.png");
   fs.writeFileSync(img, Buffer.from("not-a-real-png"));
-  const saved = process.env.PI_CODING_AGENT_DIR;
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
   try {
-    process.env.PI_CODING_AGENT_DIR = modelsDir;
-
     // No configured model can read images → the attach is refused up front, nothing queued.
     writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/text" } });
     const o = await expectFailAsync(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "look at this"]));
@@ -782,7 +777,6 @@ test("prompt --attach refuses an image the target role cannot read, and names wh
     assert.match(`${ok.stdout}${ok.stderr}`, /added to feature's inbox/);
     assert.equal(queuedRolePrompts(root, "feature").length, 1);
   } finally {
-    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = saved;
+    restoreAgentDir();
   }
 });

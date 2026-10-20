@@ -14,6 +14,7 @@ import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { setEnv } from "./helpers/env.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeImageProbeCache } from "../src/doctor/image-probe.js";
 import { collectImageProbeFailures } from "../src/status/status-roles.js";
@@ -208,17 +209,15 @@ test("statusPayload ships modelFromPi beside the model it names", async () => {
   writeModelsFile(dir, MODELS_JSON);
   fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ defaultProvider: "prov", defaultModel: "org/m:route", defaultThinkingLevel: "low" }));
   writeConfig(repo, {});
-  const savedDir = process.env.PI_CODING_AGENT_DIR;
+  // statusPayload reads the default models/settings path, so point it at the temp dir.
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", dir);
   try {
-    // statusPayload reads the default models/settings path, so point it at the temp dir.
-    process.env.PI_CODING_AGENT_DIR = dir;
     const payload = statusPayload(repo) as { roles: Array<{ role: string; model?: string; modelFromPi?: boolean }> };
     const row = payload.roles.find((l) => l.role === "feature")!;
     assert.equal(row.model, "prov/org/m:route:low");
     assert.equal(row.modelFromPi, true);
   } finally {
-    if (savedDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = savedDir;
+    restoreAgentDir();
   }
 });
 
@@ -256,16 +255,14 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
   assert.equal(plan.imageRerouteLabel, null);
   // The payload ships the same surface for the dashboard's images alert and composer notice.
   // statusPayload reads the default models path, so point it at the temp dir the snapshot used.
-  const savedDir = process.env.PI_CODING_AGENT_DIR;
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", dir);
   try {
-    process.env.PI_CODING_AGENT_DIR = dir;
     const payload = statusPayload(repo) as { roles: Array<{ role: string; imageInput?: boolean | null; imageReroute?: string | null }> };
     const featureRow = payload.roles.find((l) => l.role === "feature")!;
     assert.equal(featureRow.imageInput, false);
     assert.equal(featureRow.imageReroute, "strong (local/vision)");
   } finally {
-    if (savedDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = savedDir;
+    restoreAgentDir();
   }
 });
 

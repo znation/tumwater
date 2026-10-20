@@ -7,6 +7,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { imageProbeKey, writeImageProbeCache } from "../src/doctor/image-probe.js";
+import { setEnv } from "./helpers/env.js";
 
 // The submission pipeline (src/inbox/inbox-submit.ts): the shared length cap and the submit
 // wrappers the TUI, GUI, and CLI go through. The queue store's mechanics are pinned in
@@ -127,11 +128,9 @@ test("image prompts are refused when no configured model reads images, accepted 
     }),
   );
   const img = [{ name: "shot.png", dataBase64: Buffer.from("x").toString("base64") }];
-  const saved = process.env.PI_CODING_AGENT_DIR;
+  // roleImageInfo reads pi's models catalog from the default path — point it at our temp one.
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
   try {
-    // roleImageInfo reads pi's models catalog from the default path — point it at our temp one.
-    process.env.PI_CODING_AGENT_DIR = modelsDir;
-
     // No configured model can read images: feature (default tier, text-only) has no target.
     writeConfig(dir, { model: { default: "local/text", strong: "local/text" } });
     assert.throws(() => submitRolePrompt(dir, "feature", "look at this", img), (err: unknown) => {
@@ -151,8 +150,7 @@ test("image prompts are refused when no configured model reads images, accepted 
     assert.ok(queued.includes("[image attached: "));
     assert.equal(queuedRolePrompts(dir, "feature").length, 1);
   } finally {
-    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = saved;
+    restoreAgentDir();
   }
 });
 
@@ -171,9 +169,8 @@ test("imagePromptGuidance returns a refusal or a reroute notice, and nothing whe
       },
     }),
   );
-  const saved = process.env.PI_CODING_AGENT_DIR;
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
   try {
-    process.env.PI_CODING_AGENT_DIR = modelsDir;
     writeConfig(dir, { model: { default: "local/text", strong: "local/vision" } });
     const guidance = imagePromptGuidance(dir, "feature");
     assert.deepEqual(guidance.refusal, undefined);
@@ -182,8 +179,7 @@ test("imagePromptGuidance returns a refusal or a reroute notice, and nothing whe
     writeConfig(dir, { model: { default: "local/vision", strong: "local/vision" } });
     assert.deepEqual(imagePromptGuidance(dir, "feature"), {});
   } finally {
-    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = saved;
+    restoreAgentDir();
   }
 });
 
@@ -204,9 +200,8 @@ test("imagePromptGuidance treats a probe-failed pi claim as text-only, matching 
       },
     }),
   );
-  const saved = process.env.PI_CODING_AGENT_DIR;
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
   try {
-    process.env.PI_CODING_AGENT_DIR = modelsDir;
     writeConfig(dir, { model: { default: "local/vision", strong: "local/vision" } });
     // No probe verdict yet: the claim stands on the catalog, so the role reads images.
     assert.deepEqual(imagePromptGuidance(dir, "feature"), {});
@@ -217,7 +212,6 @@ test("imagePromptGuidance treats a probe-failed pi claim as text-only, matching 
     });
     assert.match(imagePromptGuidance(dir, "feature").refusal ?? "", /can't read images/);
   } finally {
-    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = saved;
+    restoreAgentDir();
   }
 });

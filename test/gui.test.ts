@@ -17,6 +17,7 @@ import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { clockOf, dayKey } from "./helpers/oracles.js";
+import { setEnv } from "./helpers/env.js";
 
 // The dashboard tests read JSON responses the way gui-client's own getJson guard does; this
 // keeps each call site to one line instead of the double-await fetch idiom.
@@ -885,11 +886,9 @@ test("gui /api/prompt-role refuses images with no reroute target and names where
   );
   const png = Buffer.from("89504e470d0a1a0a", "hex");
   const image = { name: "shot.png", dataBase64: png.toString("base64") };
-  const saved = process.env.PI_CODING_AGENT_DIR;
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
   const { server, base } = await startLocalGui(repo);
   try {
-    process.env.PI_CODING_AGENT_DIR = modelsDir;
-
     // No configured model can read images → 400 naming the fix, nothing queued.
     writeConfig(repo, { model: { default: "local/text", strong: "local/text" } });
     const refused = await postJson(base, "/api/prompt-role", { role: "feature", text: "look", images: [image] });
@@ -904,8 +903,7 @@ test("gui /api/prompt-role refuses images with no reroute target and names where
     assert.match(((await ok.json()) as { message: string }).message, /runs on strong \(local\/vision\)/);
     assert.equal(queuedRolePrompts(repo, "feature").length, 1);
   } finally {
-    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = saved;
+    restoreAgentDir();
     server.close();
   }
 });
