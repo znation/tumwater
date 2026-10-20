@@ -126,37 +126,49 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
 }
 
 /** Parse and validate the role-scoped, sinceMs-or-days query the report and failures endpoints
- * both take: the `?role=` filter (rejectBadRole — unknown or empty id → 400) and, when
+ * both take: the `?role=` filter, a comma-separated list (each id trimmed, deduplicated, and
+ * validated by rejectBadRole — an unknown id or an empty list → 400 naming it) and, when
  * `?sinceMs=` is present, the trailing-window length (reportSinceMs, which 400s a simultaneous
  * `?days=`). Returns null once a 400 is sent. `sinceMs` is defined exactly when the caller
  * should use the since shape; otherwise it falls through to the days shape with `windowDays(q)`.
  * The one home of that shared scaffolding, so the two endpoints cannot drift on the role rule or
  * the days-vs-sinceMs mutual exclusion (the server twin of reportEndpoint on the GUI client). */
-function reportScope(q: URLSearchParams, res: http.ServerResponse, root: string): { role?: string; sinceMs?: number } | null {
-  const role = q.get("role");
-  if (role !== null && rejectBadRole(root, res, role)) return null;
+function reportScope(q: URLSearchParams, res: http.ServerResponse, root: string): { roles?: string[]; sinceMs?: number } | null {
+  const raw = q.get("role");
+  let roles: string[] | undefined;
+  if (raw !== null) {
+    const pieces = raw.split(",").map((p) => p.trim()).filter((p) => p !== "");
+    if (pieces.length === 0) {
+      rejectBadRole(root, res, raw);
+      return null;
+    }
+    roles = [...new Set(pieces)];
+    for (const r of roles) if (rejectBadRole(root, res, r)) return null;
+  }
   if (q.get("sinceMs") !== null) {
     const sinceMs = reportSinceMs(q, res);
     if (sinceMs === null) return null;
-    return { role: role ?? undefined, sinceMs };
+    return { roles, sinceMs };
   }
-  return { role: role ?? undefined };
+  return { roles };
 }
 
-/** Handle GET /api/report?days=N[&role=<id>] or /api/report?sinceMs=<ms>[&role=<id>]: the
+/** Handle GET /api/report?days=N[&role=<id>[,<id>...]] or
+ * /api/report?sinceMs=<ms>[&role=<id>[,<id>...]]: the
  * usage report — the day series (collectReport's ReportData) as JSON the dashboard's report tab
  * charts, or, when sinceMs is set, the trailing-window totals rendered through
  * renderSinceReportMarkdown as { markdown } (the CLI's `report --since` shape). The day window
- * follows windowDays. An absent role is the team-wide report; a present one is the filter
- * reportScope validated. Reads files directly, so it works whether or not the team is running. */
+ * follows windowDays. An absent role is the team-wide report; the listed roles, summed
+ * (each id validated by reportScope). Reads files directly, so it works whether or not the team
+ * is running. */
 export function handleReport(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const scope = reportScope(q, res, root);
   if (scope === null) return;
   if (scope.sinceMs !== undefined) {
-    sendJson(res, 200, { markdown: renderSinceReportMarkdown(collectReportSince(root, scope.sinceMs, scope.role)) });
+    sendJson(res, 200, { markdown: renderSinceReportMarkdown(collectReportSince(root, scope.sinceMs, scope.roles)) });
     return;
   }
-  sendJson(res, 200, collectReport(root, windowDays(q), scope.role));
+  sendJson(res, 200, collectReport(root, windowDays(q), scope.roles));
 }
 
 /** Parse and bound the report endpoints' `?sinceMs=` trailing-window length: a simultaneous
@@ -173,22 +185,23 @@ function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | n
   return sinceMsQuery(q, res, REPORT_SINCE_MAX_MS, reportSinceMsg);
 }
 
-/** Handle GET /api/failures?days=N[&role=<id>] or /api/failures?sinceMs=<ms>[&role=<id>]: the
+/** Handle GET /api/failures?days=N[&role=<id>[,<id>...]] or
+ * /api/failures?sinceMs=<ms>[&role=<id>[,<id>...]]: the
  * same bounded Markdown failure digest the telemetry role feeds on and `tumwater report
  * --failures` prints, as JSON ({ markdown }) — the dashboard's failures tab renders it; with
  * sinceMs it is the trailing-window digest (collectFailureReportSince) through the same render,
  * the CLI's `report --failures --since` shape. The days window follows windowDays (so it can
- * never drift from /api/report's). role rides the same absent-team / present-filter rule as
- * handleReport: absent → the team digest, present → validated and scoped. Reads files
+ * never drift from /api/report's). role rides the same rule as
+ * handleReport: absent → the team digest, present → the validated listed roles, summed. Reads files
  * directly, so it works with no team running. */
 export function handleFailures(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const scope = reportScope(q, res, root);
   if (scope === null) return;
   if (scope.sinceMs !== undefined) {
-    sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReportSince(root, scope.sinceMs, scope.role)) });
+    sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReportSince(root, scope.sinceMs, scope.roles)) });
     return;
   }
-  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), scope.role)) });
+  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), scope.roles)) });
 }
 
 /** Handle GET /api/history?role=<id>&n=N[&grep=<text>] — or ?role=<id>&sinceMs=<ms> for a

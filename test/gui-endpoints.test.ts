@@ -26,6 +26,10 @@ import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
+import { collectReportSince } from "../src/report/report-data.js";
+import { renderSinceReportMarkdown } from "../src/report/report-render.js";
+import { collectFailureReportSince } from "../src/failure/failure-data.js";
+import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
@@ -156,6 +160,10 @@ test("handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role", 
   assert.match(scoped.markdown, /^role: feature$/m, "?role scopes the since collector");
   assert.match(scoped.markdown, /10 output tokens/, "only the feature run's usage counts");
   assert.doesNotMatch(scoped.markdown, /bugfix/);
+
+  const multi = (await serveReport(root, "?sinceMs=3600000&role=feature,steward")).data as { markdown: string };
+  assert.equal(multi.markdown, renderSinceReportMarkdown(collectReportSince(root, 3600000, ["feature", "steward"])));
+  assert.equal((await serveReport(root, "?sinceMs=3600000&role=feature,bogus")).captured.status, 400);
 });
 
 test("handleFailures serves the windowed digest as { markdown } when ?sinceMs is set", async () => {
@@ -177,6 +185,10 @@ test("handleFailures serves the windowed digest as { markdown } when ?sinceMs is
 
   const scoped = (await serveFailures(root, "?sinceMs=3600000&role=feature")).data as { markdown: string };
   assert.match(scoped.markdown, /^role: feature$/m, "?role scopes the windowed digest");
+
+  const multi = (await serveFailures(root, "?sinceMs=3600000&role=feature,steward")).data as { markdown: string };
+  assert.equal(multi.markdown, renderFailureMarkdown(collectFailureReportSince(root, 3600000, ["feature", "steward"])));
+  assert.equal((await serveFailures(root, "?sinceMs=3600000&role=feature,bogus")).captured.status, 400);
 });
 
 // ---- POST /api/restart: the build-stale alert's refresh button ----

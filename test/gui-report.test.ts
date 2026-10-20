@@ -67,6 +67,15 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   const rf = await fetch(base + "/api/report?role=feature");
   assert.equal(rf.status, 200);
   assert.deepEqual(await rf.json(), collectReport(repo, 14, "feature"), "?role scopes /api/report");
+  const rmulti = await fetch(base + "/api/report?role=feature,steward");
+  assert.equal(rmulti.status, 200);
+  assert.deepEqual(await rmulti.json(), collectReport(repo, 14, ["feature", "steward"]), "a comma list sums the roles");
+  const rdup = await fetch(base + "/api/report?role=feature,feature");
+  assert.deepEqual(await rdup.json(), collectReport(repo, 14, "feature"), "a repeated id is deduplicated");
+  const rmbad = await fetch(base + "/api/report?role=feature,bogus");
+  assert.equal(rmbad.status, 400);
+  assert.match(((await rmbad.json()) as { error: string }).error, /unknown role "bogus"/);
+  assert.equal((await fetch(base + "/api/report?role=,")).status, 400);
   const rbad = await fetch(base + "/api/report?role=bogus");
   assert.equal(rbad.status, 400, "an unknown role is a 400, not a scope");
   assert.match(((await rbad.json()) as { error: string }).error, /unknown role "bogus" \(valid ids: /);
@@ -113,6 +122,12 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
   const scoped = ((await rf.json()) as { markdown: string }).markdown;
   assert.equal(scoped, renderFailureMarkdown(collectFailureReport(repo, 14, "feature")), "?role scopes /api/failures");
   assert.match(scoped, /^role: feature$/m, "the scoped digest names its role");
+  const fmulti = await fetch(base + "/api/failures?role=feature,steward");
+  assert.equal(fmulti.status, 200);
+  const multi = ((await fmulti.json()) as { markdown: string }).markdown;
+  assert.equal(multi, renderFailureMarkdown(collectFailureReport(repo, 14, ["feature", "steward"])));
+  assert.match(multi, /^role: feature,steward$/m);
+  assert.equal((await fetch(base + "/api/failures?role=feature,bogus")).status, 400);
   assert.equal((await fetch(base + "/api/failures?role=bogus")).status, 400);
   assert.equal((await fetch(base + "/api/failures?role=")).status, 400);
 

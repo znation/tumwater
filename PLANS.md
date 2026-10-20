@@ -857,22 +857,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   - `["--cancel", "--role", "clean,ghost"]` fails with `/unknown role: ghost/` and cancels nothing.
 - `npm run test:gate` passes. The GUI and TUI tests already covering wake-cancel pass with no change to what they assert.
 
-### The dashboard's `/api/report` and `/api/failures` take a comma-separated `?role=` list, the server twin of `tumwater report --role clean,dedupe` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — fast merge 14/14 edits the merge path, runner 9/14 status data and scheduling, and the abort and wake entries src/operator; this one touches src/gui/gui-endpoints.ts, test/gui-report.test.ts and test/gui-endpoints.test.ts)
-
-**Goal.** `tumwater report --role clean,dedupe` sums the usage report and failure digest over the listed roles, and the collectors behind it (`collectReport`, `collectReportSince` in src/report/report-data.ts; `collectFailureReport`, `collectFailureReportSince` in src/failure/failure-data.ts) already take `role?: string | readonly string[]`. The dashboard endpoints do not: `reportScope` (src/gui/gui-endpoints.ts) passes the whole `?role=` value to `rejectBadRole` (src/gui/gui-args.ts), so `GET /api/report?role=clean,dedupe` is a 400 `unknown role "clean,dedupe"`. Accept the comma list on both endpoints, in both the days and `sinceMs` shapes. A single id, an absent `?role=`, and the existing 400s behave as now. The client's Role picker (src/ui/gui/gui-client-report.ts) stays a single-select. It sends one id, which is still valid, so the client does not change.
-
-**Approach.**
-- `src/gui/gui-endpoints.ts` `reportScope`: its return type becomes `{ roles?: string[]; sinceMs?: number } | null`. When `q.get("role")` is non-null, split it on `,`, trim each piece and drop empty pieces. If no piece remains, call `rejectBadRole(root, res, role)` with the raw value. That keeps today's 400 for `?role=` (`unknown role ""`), and `?role=,` gets the same 400 with its raw value. Otherwise run each piece through `rejectBadRole` and return null on the first miss. The 400 then names the bad piece (`unknown role "bogus"`, with the did-you-mean suffix), not the whole list. Deduplicate in first-seen order. Do not canonicalize legacy ids: the GUI endpoints validate exact ids against `validRoleIds`, and this change keeps that rule. Update the doc comment ("the `?role=` filter" → a comma-separated list, each id validated).
-- `handleReport` and `handleFailures`: pass `scope.roles` where they pass `scope.role` today. In both doc comments, `[&role=<id>]` becomes `[&role=<id>[,<id>...]]` and "a present one is the filter" becomes "the listed roles, summed".
-- No collector change: a one-element list gives the same output as the bare id (the output `role` field is `bases.join(",")`). The first acceptance test pins that.
-
-**Files touched.** src/gui/gui-endpoints.ts, test/gui-report.test.ts, test/gui-endpoints.test.ts.
-
-**Acceptance criteria.**
-- In test/gui-report.test.ts, in "gui /api/report serves collectReport's JSON and clamps days instead of erroring": `?role=feature` still deep-equals `collectReport(repo, 14, "feature")`. `?role=feature,steward` is 200 and deep-equals `collectReport(repo, 14, ["feature", "steward"])`. `?role=feature,bogus` is 400 and its error matches `/unknown role "bogus"/`. `?role=` and `?role=,` are 400.
-- In "gui /api/failures serves the rendered digest and clamps days instead of erroring": `?role=feature,steward` is 200, its markdown equals `renderFailureMarkdown(collectFailureReport(repo, 14, ["feature", "steward"]))`, and it matches `/^role: feature,steward$/m`. `?role=feature,bogus` is 400.
-- In test/gui-endpoints.test.ts, next to the existing `?sinceMs=3600000&role=feature` cases for `serveReport` and `serveFailures`: `?sinceMs=3600000&role=feature,steward` serves the markdown rendered from `collectReportSince(root, 3600000, ["feature", "steward"])` / `collectFailureReportSince(…)` through the same renderers, and `?sinceMs=3600000&role=feature,bogus` is 400.
-- `?role=feature,feature` serves the same payload as `?role=feature` (deduplicated).
-- `npm run test:gate` passes.
-
 ## Done
