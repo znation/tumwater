@@ -12,10 +12,8 @@
  * modules; this file owns the shared sequence, including each case's flag rejection and its
  * ready-repo gate. An error escaping main() funnels through its catch to fail(errorMessage(err)),
  * the CLI's one error path. */
-import {
-  failRivalShapes,
-  parseCountFlag,
-} from "./cli/cli-args.js";
+import { parseCountFlag } from "./cli/cli-args.js";
+import type { OrphanKillReport } from "./doctor/doctor-orphans.js";
 import {
   grepFlagSpec,
   GUI_FLAG_SPECS,
@@ -192,14 +190,17 @@ async function main(): Promise<void> {
       // so it must run outside a git repo and print fail lines rather than throwing.
       const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
       rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG]);
-      if (args.includes("--kill-orphans") && args.includes("--json"))
-        failRivalShapes("doctor --kill-orphans", "--json", "it prints what it killed before the report");
       const only = parseDoctorChecks(checkNames);
       const { runDoctor } = await import("./doctor/doctor.js");
+      let orphanKill: OrphanKillReport | undefined;
       if (args.includes("--kill-orphans")) {
         const { killOrphans, orphanKillLines } = await import("./doctor/doctor-orphans.js");
-        for (const line of orphanKillLines(await killOrphans(root))) say(line);
-        say("");
+        orphanKill = await killOrphans(root);
+        // The text form prints the kill before the report; --json keeps stdout one document.
+        if (!args.includes("--json")) {
+          for (const line of orphanKillLines(orphanKill)) say(line);
+          say("");
+        }
       }
       const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
         "./doctor/doctor-render.js"
@@ -214,9 +215,11 @@ async function main(): Promise<void> {
       // forms: 1 when any check fails, 0 otherwise; warnings never fail the exit.
       // --problems keeps the full report for the render (it counts the hidden ok rows) and
       // hands --json the filtered one; the exit code below reads the full report either way.
+      // --kill-orphans adds the kill result to the JSON object as `orphanKill`.
+      const withKill = <T extends object>(payload: T) => (orphanKill === undefined ? payload : { ...payload, orphanKill });
       if (args.includes("--problems"))
-        sayJsonOrRender(args, args.includes("--json") ? problemsOnly(report) : report, renderDoctorProblems);
-      else sayJsonOrRender(args, report, renderDoctor);
+        sayJsonOrRender(args, args.includes("--json") ? withKill(problemsOnly(report)) : report, renderDoctorProblems);
+      else sayJsonOrRender(args, args.includes("--json") ? withKill(report) : report, renderDoctor);
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }

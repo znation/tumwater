@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Doctor: `tumwater doctor --kill-orphans --json` puts what it killed into the JSON report instead of refusing (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/cli.ts + docs/cli.md + test/doctor.test.ts; done 2026-10-20 by the feature role)
+
+**Goal.** A script or cron job that reaps leaked processes has no machine-readable way to do it. src/cli.ts's `doctor` case rejects `doctor --kill-orphans --json` through `failRivalShapes("doctor --kill-orphans", "--json", "it prints what it killed before the report")`, so the script has to choose between doing the kill and getting parseable output. That reason holds only for the text form: the kill lines come before the rendered report. In JSON the kill result can be one more field on the object, the way `report --failures` stopped being a `--since` rival once it had a data shape. `killOrphans` (src/doctor/doctor-orphans.ts) already returns a serializable `OrphanKillReport` (`{ killed, failed }` or `{ error }`). The open BUGS.md entry about two leaked `logs -f` processes says the doctor only detects them; this plan lets a scheduled `doctor --kill-orphans --json` reap them and record the result.
+
+**Approach.** The change is confined to the `doctor` case in src/cli.ts. The text form, the exit code and `killOrphans` stay as they are.
+1. Delete the `if (args.includes("--kill-orphans") && args.includes("--json")) failRivalShapes(...)` check. `failRivalShapes` then has no other use in src/cli.ts, so remove it from the `./cli/cli-args.js` import there or lint fails. Check with `grep -n failRivalShapes src/cli.ts`.
+2. In the `--kill-orphans` branch, keep the result: `orphanKill = await killOrphans(root)` (a `let orphanKill: OrphanKillReport | undefined` declared before the branch; import the type from `./doctor/doctor-orphans.js`). Print `orphanKillLines(orphanKill)` and the blank line only when `--json` is absent, so JSON stdout stays one parseable document.
+3. The JSON payloads: wherever `report` or `problemsOnly(report)` is passed to `sayJsonOrRender` under `--json`, pass `orphanKill === undefined ? payload : { ...payload, orphanKill }` instead. The field is added only when `--kill-orphans` ran, so `doctor --json` without it prints exactly what it prints today. Do not add `orphanKill` to the `DoctorReport` interface (src/doctor/doctor-checks.ts): the dashboard and TUI read `DoctorReport` and never run the kill through this path. The exit code still reads the full `report`'s `fail` rows.
+4. Update the comment above the payload printing to say that `--kill-orphans` adds the kill result as `orphanKill`.
+5. docs/cli.md, Audit row, `doctor` text: replace `not combinable with `--json`` with `with `--json`, the report gains an `orphanKill` field: the `killed` (pid, descendants, command) and `failed` (pid, reason) lists, or the process-table scan `error``. src/cli/help.ts needs no change: its `doctor` synopsis does not mention the rival rule (checked with `grep -n 'orphan' src/cli/help.ts`).
+
+**Files.** src/cli.ts, docs/cli.md, test/doctor.test.ts.
+
+**Acceptance criteria.**
+- In test/doctor.test.ts, rename "doctor --kill-orphans reports an unreadable process table, then the report; --json is rejected" to "doctor --kill-orphans reports an unreadable process table, then the report; with --json it is the report's orphanKill field". Keep its text-form assertions. Replace the rejection assertions with these, using the same no-`ps` env (`{ PATH: gitOnlyBinDir() }`, which keeps the scan off the host's real process table):
+  - `doctor --kill-orphans --json` exits 1. Its whole stdout parses with `JSON.parse`. `orphanKill.error` is a non-empty string, `checks` holds an `orphans` row at level `warn`, and stdout does not contain `nothing killed` outside the JSON (the parse succeeding proves no text line came first).
+  - `doctor --kill-orphans --problems --json` parses too. Its `orphanKill.error` is set and its `checks` holds no `ok` row.
+  - `doctor --json` without `--kill-orphans` has no `orphanKill` key.
+- `grep -n 'cannot be combined with --json\|not combinable with `--json`' src/cli.ts docs/cli.md test/doctor.test.ts` prints nothing.
+- `npm run test:gate` passes.
+
 ### Event log search: `tumwater logs --grep <text>` composes with `--since <duration>` (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/cli/log-commands.ts + src/cli/help.ts + docs/cli.md + test/cli-logs-filtering.test.ts + test/log-commands-views.test.ts; done 2026-10-20)
 
 **Goal.** An operator who wants to find something in the event log over a time window, such as "every warning naming merge.lock in the last 24h", cannot ask for it today. `cmdLogs` (src/cli/log-commands.ts) rejects `logs --grep x --since 1h` through `failRivalShapes("logs --grep", "--since", "--since is a filter of its own; --grep filters the -n view and its follow")`. The other filters already work with a window: `--type` and `--role` filter the `--since` window, and `history --grep` works with `history --since`. So the remaining option is to guess an `-n` count, which bounds the scan and not the time span, or to pipe `--since … --json` through a script. The plan role's own feed mining does that on every run. `--grep` is a filter like `--type`, and the window is a window. The rival rule is left over from before `--type` and `--role` were added.

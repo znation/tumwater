@@ -544,7 +544,7 @@ test("doctor <check>... runs the named checks and rejects an unknown name", asyn
   assert.match(typo.stderr, /unknown check "orphan" — did you mean `orphans`\?/);
 });
 
-test("doctor --kill-orphans reports an unreadable process table, then the report; --json is rejected", async () => {
+test("doctor --kill-orphans reports an unreadable process table, then the report; with --json it is the report's orphanKill field", async () => {
   // The no-ps PATH keeps the scan off the host's real table: a real scan could kill another
   // agent's leaked process.
   const env = { PATH: gitOnlyBinDir() };
@@ -553,8 +553,15 @@ test("doctor --kill-orphans reports an unreadable process table, then the report
   assert.match(r.stdout, /warn\s+orphans\s+could not scan the process table/);
   assert.equal(r.code, 1, "exit follows the report's verdict");
   const json = await cliWithEnv(tmpdir(), env, ["doctor", "--kill-orphans", "--json"]);
-  assert.notEqual(json.code, 0);
-  assert.match(json.stderr, /cannot be combined with --json/);
+  assert.equal(json.code, 1);
+  const doc = JSON.parse(json.stdout);
+  assert.ok(typeof doc.orphanKill.error === "string" && doc.orphanKill.error.length > 0);
+  assert.equal(doc.checks.find((c: { name: string }) => c.name === "orphans").level, "warn");
+  const prob = JSON.parse((await cliWithEnv(tmpdir(), env, ["doctor", "--kill-orphans", "--problems", "--json"])).stdout);
+  assert.ok(prob.orphanKill.error);
+  assert.ok(!prob.checks.some((c: { level: string }) => c.level === "ok"));
+  const plain = JSON.parse((await cliWithEnv(tmpdir(), env, ["doctor", "--json"])).stdout);
+  assert.ok(!("orphanKill" in plain));
 });
 
 test("runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through", async () => {
