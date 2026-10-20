@@ -3090,3 +3090,48 @@ per poll while headroom remains.
 **Pinned by.** `test/maintenance-quota.test.ts` — "pollMaintenanceQuotaGate computes the allowance
 verdict and logs one hold per transition"; `test/orchestrator-scheduling.test.ts` — "the
 allowance's in-flight headroom starts at most one of two due maintenance roles per poll".
+
+## Commit messages: the harness's stamps and trailers read back only in their exact stamped form
+
+`src/git/commit-message.ts` builds every run commit message, and the harness reads it back later:
+leftover recovery calls `parseCommitMetadata`, `recordRevertedChange` calls `revisionRoundOf`, and
+`revertFollowUp` calls `stampedRole`.
+
+### INV-BB1: a run commit is the stamped subject, the body, then the trailer, each its own paragraph
+
+**Guarantee.** A run commit is the stamped subject, then the WHY/RISK/VERIFIED body when present,
+then the harness trailer, with each part a separate paragraph. The trailer's Model line comes right
+after Run, and Revision comes last.
+
+**Binds.** `src/git/commit-message.ts` (`buildCommitMessage`, `commitTrailer`, `stampedSubject`).
+
+**Pinned by.** `test/commit-message.test.ts` — "buildCommitMessage assembles subject, body, and
+trailer as separate paragraphs", "commitTrailer appends a sibling Friction line only when flagged
+high-friction" and "commitTrailer puts the Model line right after Run, with Revision last".
+
+### INV-BB2: the Friction and Revision trailers count only as whole lines
+
+**Guarantee.** The Friction and Revision trailers count only as whole lines, so prose in a body
+cannot flag friction or claim a round. Leftover recovery gets the round back from the trailer.
+
+**Binds.** `src/git/commit-message.ts` (`hasFrictionTrailer`, `revisionRoundOf`,
+`parseCommitMetadata`).
+
+**Pinned by.** `test/commit-message.test.ts` — "hasFrictionTrailer matches only the
+harness-stamped Friction line"; `test/revision.test.ts` — "leftover recovery rebuilds a revision's
+round from its commit trailer"; `test/commit-message-stamps.test.ts` — "revisionRoundOf reads only
+a whole harness Revision line, and parseCommitMetadata carries it".
+
+### INV-BB3: a subject is stamped only as `tumwater(<role>):` plus a space or the line's end
+
+**Guarantee.** A subject counts as stamped only as `tumwater(<role>):` followed by a space or the
+line's end. `stampedRole` and `commitSubject` read only the first line, and a hand-made subject
+passes through whole.
+
+**Binds.** `src/git/commit-message.ts` (`stampedRole`, `commitSubject`).
+
+**Pinned by.** `test/commit-message.test.ts` — "commitSubject returns the message's first line with
+the harness stamp stripped"; `test/operator-revert.test.ts` — "stampedRole reads the role of a
+stamped subject only" and "revertFollowUp names a role, and is null when no role made the commit";
+`test/commit-message-stamps.test.ts` — "the subject stamp needs a space or the line's end after its
+colon, and stampedSubject round-trips through both readers".

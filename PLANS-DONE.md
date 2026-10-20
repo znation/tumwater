@@ -5,6 +5,38 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### docs/invariants.md gains a commit-message section, and two tests pin that only a whole `Revision: N` line names a revision round and that the subject stamp needs a space or the line's end after its colon (planned 2026-10-20 by the plan role; done 2026-10-20; independent of every eligible plan; touches docs/invariants.md + a new test/commit-message-stamps.test.ts)
+
+**Goal.** `src/git/commit-message.ts` builds every run commit message, and the harness reads that message back later: leftover recovery calls `parseCommitMetadata` (src/runner/leftover.ts), `recordRevertedChange` calls `revisionRoundOf` (src/merge/merge-core.ts) and `revertFollowUp` calls `stampedRole` (src/operator/revert.ts). Before this entry, docs/invariants.md did not name the module (`grep -c commit-message docs/invariants.md` printed 0). test/commit-message.test.ts covers the extract, format, merge and trailer builders. Two reading branches fail no test when broken:
+- The anchors on `REVISION_TRAILER` (`/^Revision: (\d+)$/m`). The doc comment says they stop prose from claiming a round. The only test that feeds `revisionRoundOf` real text is "leftover recovery rebuilds a revision's round from its commit trailer" (test/revision.test.ts), and its message carries only the trailer line. So dropping `^` or `$` changes no result.
+- The `(?:\s|$)` tail on `SUBJECT_PREFIX`. Before this entry, `grep -rn 'tumwater([a-z-]*):[^ "\\]' test` found no test that feeds a stamp with no space after the colon. Dropping the tail makes `stampedRole("tumwater(feature):x")` return `"feature"` and makes `commitSubject` strip the stamp. Every existing case still passes.
+
+This plan adds the tests in a new file, then the section that cites them. No change to src/.
+
+**Approach.**
+1. New test/commit-message-stamps.test.ts (node:test + `node:assert/strict`, as test/commit-message.test.ts does). Import `buildCommitMessage`, `commitTrailer`, `commitSubject`, `parseCommitMetadata`, `revisionRoundOf`, `stampedRole` and `stampedSubject` from src/git/commit-message.ts. Do not edit test/commit-message.test.ts.
+2. Test "revisionRoundOf reads only a whole harness Revision line, and parseCommitMetadata carries it". Build `msg = buildCommitMessage("tumwater(feature): x", { why: "w" }, commitTrailer("feature", 7, 3, 100, undefined, 2))`.
+   - `revisionRoundOf(msg)` is `2`, and `parseCommitMetadata(msg)` deep-equals `{ subject: "x", body: "WHY: w", highFriction: undefined, revisionRound: 2 }`.
+   - `revisionRoundOf("tumwater(feature): x\n\nWHY: the reviewer asked for Revision: 3\n\nRun: feature #7 · turns 3 · ctx 100")` is `undefined`. Mutation: drop `^` from `REVISION_TRAILER` and it gives `3`.
+   - `revisionRoundOf("tumwater(feature): x\n\nRevision: 3 rounds was too many\n\nRun: feature #7 · turns 3 · ctx 100")` is `undefined`. Mutation: drop `$` and it gives `3`.
+   - `parseCommitMetadata` of the first of those prose messages has no `revisionRound` key (`assert.equal("revisionRound" in meta, false)`).
+3. Test "the subject stamp needs a space or the line's end after its colon, and stampedSubject round-trips through both readers".
+   - `stampedRole("tumwater(feature):x")` is `undefined`, and `commitSubject("tumwater(feature):x")` is `"tumwater(feature):x"`. Mutation: delete `(?:\s|$)` from `SUBJECT_PREFIX` and they give `"feature"` and `"x"`.
+   - `stampedRole("tumwater(clean):")` is `"clean"` (the line's end counts as the tail).
+   - For `stampedSubject("dedupe", "tidy imports")`: `stampedRole` is `"dedupe"` and `commitSubject` is `"tidy imports"`.
+   Run each case once, and confirm by hand that each named mutation flips it, before you write VERIFIED.
+4. docs/invariants.md: append "## Commit messages: the harness's stamps and trailers read back only in their exact stamped form" at the end. For the INV prefix, check `grep -n '^### INV-' docs/invariants.md | tail` and the "was free" notes in PLANS.md's Planned entries. On 2026-10-20, AZ was the highest merged and BA (maintenance allowance) was planned, so BB was free. Take the letter pair after the highest one taken or planned. Guarantees (cite only tests in test/commit-message.test.ts, test/revision.test.ts, test/operator-revert.test.ts and the new file; reread each test before you cite it):
+   - 1: a run commit is the stamped subject, then the WHY/RISK/VERIFIED body when present, then the harness trailer, with each part a separate paragraph. The trailer's Model line comes right after Run, and Revision comes last. Binds `buildCommitMessage`, `commitTrailer`, `stampedSubject`. Pinned by "buildCommitMessage assembles subject, body, and trailer as separate paragraphs", "commitTrailer appends a sibling Friction line only when flagged high-friction" and "commitTrailer puts the Model line right after Run, with Revision last".
+   - 2: the Friction and Revision trailers count only as whole lines, so prose in a body cannot flag friction or claim a round. Leftover recovery gets the round back from the trailer. Binds `hasFrictionTrailer`, `revisionRoundOf`, `parseCommitMetadata`. Pinned by "hasFrictionTrailer matches only the harness-stamped Friction line", "leftover recovery rebuilds a revision's round from its commit trailer" and the step-2 test.
+   - 3: a subject counts as stamped only as `tumwater(<role>):` followed by a space or the line's end. `stampedRole` and `commitSubject` read only the first line, and a hand-made subject passes through whole. Binds `stampedRole`, `commitSubject`. Pinned by "commitSubject returns the message's first line with the harness stamp stripped", "stampedRole reads the role of a stamped subject only", "revertFollowUp names a role, and is null when no role made the commit" and the step-3 test.
+
+**Files touched.** test/commit-message-stamps.test.ts (new), docs/invariants.md. No change to src/.
+
+**Acceptance criteria.**
+- `npm run test:gate` passes, and both new tests pass.
+- Each mutation named in steps 2 and 3 fails a new test when applied by hand, and passes again once reverted. Report this in VERIFIED.
+- Every test name cited in the new section exists verbatim (`grep -F` each one in test/).
+
 ### Plain terms code cleanup, part 1/7: Rename notebook to notes and the initial prompt to the brief text in code (planned 2026-10-16 by user; requires Plain terms code run 20/20 landed; design in plans/terminology.md "Code names"; touches src/brief/ + src/init/ + src/prompt/ + src/run/run-prompt.ts + src/inbox/inbox-submit.ts + src/cli/brief-command.ts + src/ui/tui/ + comments naming the notebook + their tests; done 2026-10-20 by the feature role)
 
 **Goal.** Code says "notes" for a role's scratch file and names the project description after the brief: `readBriefText`, `editBriefText`, `replaceBriefText`, `BRIEF_TEXT_MAX_CHARS` and `briefText`. No identifier, comment or test title says "notebook" or "initial prompt".
