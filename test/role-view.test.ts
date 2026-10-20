@@ -108,7 +108,7 @@ test("a seeded built-in role with no file override reports no min-run-interval o
 
 test("the role view reports the configured instance count only when set", () => {
   const dir = root();
-  writeConfig(dir, { roles: { feature: { instances: 3 } } });
+  writeConfig(dir, { roles: { feature: { enabled: true, instances: 3 } } });
   const set = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(set.instances, 3);
   // An instance id resolves through its base role, like instructions and the min-run
@@ -132,7 +132,7 @@ test("the payload carries the raw model-triple overrides only when the file sets
   const dir = root();
   // A config that sets provider/model/thinking only through roles feature: the resolved
   // provider/model/thinking come from the top level, and the raw overrides ride along.
-  writeConfig(dir, { model: "model-a", roles: { feature: { provider: "prov-b", model: "model-b", thinking: "high" } } });
+  writeConfig(dir, { model: "model-a", roles: { feature: { enabled: true, instances: 2, provider: "prov-b", model: "model-b", thinking: "high" } } });
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.providerOverride, "prov-b");
   assert.equal(p.modelOverride, "model-b");
@@ -156,7 +156,7 @@ test("the payload carries the raw model-triple overrides only when the file sets
 
 test("an instance id resolves the instructions override through its base role", () => {
   const dir = root();
-  writeConfig(dir, { roles: { feature: { instructions: "Stay small.", instances: 2 } } });
+  writeConfig(dir, { roles: { feature: { instructions: "Stay small.", enabled: true, instances: 2 } } });
   // An instance id reads roles.feature.instructions (the key tick-prompt reads), so the
   // drawer and `tumwater role feature-2` show — and can edit — the override its runs carry.
   const inst = rolePayload(dir, "feature-2", NO_MODELS);
@@ -244,6 +244,15 @@ test("a paused role reads as paused; the pause marker is read, not required", ()
 
 test("an unknown role throws the shared unknownRoleMessage wording", () => {
   assert.throws(() => rolePayload(root(), "bogus", NO_MODELS), /unknown role: bogus \(valid ids: /);
+});
+
+test("an instance id the config does not run throws unknownRoleMessage", () => {
+  assert.throws(() => rolePayload(root(), "feature-9", NO_MODELS), /unknown role: feature-9 \(valid ids: /);
+  assert.throws(() => rolePayload(root(), "feature-9", NO_MODELS), /did you mean `feature`/);
+  const dir = root();
+  writeConfig(dir, { roles: { feature: { enabled: true, instances: 2 } } });
+  assert.ok(rolePayload(dir, "feature-4", NO_MODELS));
+  assert.throws(() => rolePayload(dir, "feature-5", NO_MODELS), /unknown role: feature-5/);
 });
 
 // --- the renderer ---
@@ -927,7 +936,7 @@ test("a malformed per-role window yields no role entry", () => {
 
 test("an instance id reads its base role's quiet-hours window; no window leaves no key", () => {
   const dir = root();
-  writeConfig(dir, { quietHoursPerRole: { feature: "23:00-07:00" } });
+  writeConfig(dir, { roles: { feature: { enabled: true, instances: 2 } }, quietHoursPerRole: { feature: "23:00-07:00" } });
   const at = new Date(2026, 9, 16, 12, 0);
   const p = rolePayload(dir, "feature-2", NO_MODELS, at);
   assert.deepEqual(p.quietHours, [{ scope: "role", window: "23:00-07:00", inWindow: false }]);

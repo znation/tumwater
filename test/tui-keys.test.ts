@@ -3573,6 +3573,8 @@ test("Ctrl+S on a role's Transcript edits that role's min run interval; instance
 
 test("Ctrl+X edits a role's model override on its Transcript; instance writes the base key; the notes view keeps Ctrl+X for clearing notes", () => {
   const root = makeRoot();
+  // The notes view below inspects feature-2, which the config must run.
+  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ roles: { feature: { enabled: true, instances: 2 } } }));
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "feature-2", "director"]);
   const modelOf = (role: string): string | undefined => {

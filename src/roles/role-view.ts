@@ -223,7 +223,9 @@ export function rolePayload(
     (customEntry ? customRole(customEntry.name, customEntry.task)
     : role === DIRECTOR_ROLE ? { id: DIRECTOR_ROLE, title: DIRECTOR_ROLE, find: "" }
     : undefined);
-  if (!resolved) {
+  // roleById maps any `feature-N` to its base whatever the config runs, so an instance id
+  // counts only when knownRoleIds (the ids the config runs) holds it.
+  if (!resolved || !knownRoleIds(cfg).includes(role)) {
     // The one unknown-role answer (unknownRoleMessage): the CLI's main catch turns the throw
     // into `tumwater: <message>` with exit 1, so the collector keeps the wording and the CLI
     // stays a thin peel-parse-print layer.
