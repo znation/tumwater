@@ -31,12 +31,12 @@ import { logEvent, subscribeEvents } from "../events/events.js";
 import { notifyTeamDown } from "../events/notify.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import { runStartupMigrations } from "../orchestrator/startup-migration-steps.js";
 import { loadRunnerState, stateSkipReason, type RunnerState } from "../runner/runner-state.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
-import { readTickRowsSince, summarizeTickRows, type HistorySummaryRow } from "../history/history-data.js";
+import { readRunRowsSince, summarizeRunRows, type HistorySummaryRow } from "../history/history-data.js";
 import { renderSummary } from "../history/history-render.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 
@@ -91,7 +91,7 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
  * (superviseRunCommand below), spawning the real orchestrator as a child generation; the child
  * runs runOrchestrator to completion, handing the terminal back via RESTART_EXIT_CODE after a
  * self-redeploy so the supervisor respawns on the new build; --once collapses the whole thing
- * into one round of ticks and a summary line (onceSummary below), for cron-style invocations.
+ * into one round of runs and a summary line (onceSummary below), for cron-style invocations.
  * `--for <duration>` keeps the daemon shape (redeployer, LaunchServicesWatch, supervisor hand-off
  * all stay) but arms a deadline: at the deadline the same graceful stop a Ctrl+C runs fires, and
  * the process exits after printing the summary. A mid-run self-redeploy hands the same args
@@ -183,7 +183,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   });
   // A supervisor that dies without forwarding — SIGKILL (the OOM killer, `kill -9`) cannot be
   // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
-  // generation reparented and ticking the team unattended. The parent-death watch polls for the
+  // generation reparented and running the team unattended. The parent-death watch polls for the
   // reparent and runs the same graceful stop a forwarded SIGTERM would have run, so a killed
   // supervisor takes its team down with it (BUGS.md 2026-09-30). The spawner hands its pid
   // down (SUPERVISOR_PID_ENV), so a supervisor killed during this child's startup — before the
@@ -218,10 +218,10 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   say(`roles: ${roles.join(", ")}`);
   say("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n");
   const unsubscribe = subscribeEvents((e) => say(formatEvent(e)));
-  // Snapshot each role's tick counter so the once summary can tell this round's ticks from
+  // Snapshot each role's run counter so the once summary can tell this round's runs from
   // the persisted history (the state file accumulates across rounds).
   await runStartupMigrations(root); // so the snapshot reads a migrated state/<new>.json
-  const ticksBefore = new Map(roles.map((role) => [role, loadRunnerState(root, role).runs] as const));
+  const runsBefore = new Map(roles.map((role) => [role, loadRunnerState(root, role).runs] as const));
   let exit;
   try {
     exit = await (await import("../orchestrator/orchestrator.js")).runOrchestrator({
@@ -240,13 +240,13 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
     scheduledStopWatch.clear();
     unsubscribe();
   }
-  if (once) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
+  if (once) say(onceSummary(root, roles, runsBefore, exit.settled, exit.runsDone));
   else if (forMs !== null && !exit.restart) {
-    const { rows, covered } = readTickRowsSince(root, Date.now() - windowStart, null);
-    say(windowSummary(durationLabel(forMs), summarizeTickRows(rows), covered));
+    const { rows, covered } = readRunRowsSince(root, Date.now() - windowStart, null);
+    say(windowSummary(durationLabel(forMs), summarizeRunRows(rows), covered));
   }
   if (once) {
-    const failures = onceFailures(root, roles, ticksBefore, exit.ticksRun);
+    const failures = onceFailures(root, roles, runsBefore, exit.runsDone);
     if (failures.length > 0) {
       say(`once: failed — ${failures.map((f) => `${f.role} ${f.result}`).join(", ")}`);
       process.exitCode = ONCE_FAILED_EXIT_CODE;
@@ -264,8 +264,8 @@ export function inheritedWindowStart(raw: string | undefined, now: number): numb
   return raw !== undefined && Number.isInteger(n) && n > 0 && n <= now ? n : now;
 }
 
-/** The `run --for` exit summary: a window line, then the `history --summary` table for the ticks
- * that ended since the window opened — every tick counted once by its outcome class. Only the
+/** The `run --for` exit summary: a window line, then the `history --summary` table for the runs
+ * that ended since the window opened — every run counted once by its outcome class. Only the
  * final exit prints it; a mid-window self-redeploy hands off silently and the next generation
  * inherits the window start, so the table spans every generation. */
 export function windowSummary(label: string, summary: { roles: HistorySummaryRow[]; total: HistorySummaryRow }, covered: boolean): string {
@@ -344,7 +344,7 @@ export function parseRunWindow(args: string[], once: boolean): number | null {
  * `refused` are the review gate and the agent working as designed; `aborted`, `quiet_killed`, and
  * `user_aborted` only reach a once round on a shutdown or operator abort, which exit
  * their own way. */
-export const ONCE_FAILURE_RESULTS: ReadonlySet<TickResult> = new Set<TickResult>([
+export const ONCE_FAILURE_RESULTS: ReadonlySet<RunResult> = new Set<RunResult>([
   "error",
   "review_error",
   "merge_conflict",
@@ -352,42 +352,42 @@ export const ONCE_FAILURE_RESULTS: ReadonlySet<TickResult> = new Set<TickResult>
   "main_red",
 ]);
 
-function ticksThisRound(
+function runsThisRound(
   s: { runs: number },
   role: string,
-  ticksBefore: Map<string, number>,
-  ticksRun?: ReadonlyMap<string, number>,
+  runsBefore: Map<string, number>,
+  runsDone?: ReadonlyMap<string, number>,
 ): number {
-  return ticksRun ? (ticksRun.get(role) ?? 0) : s.runs - (ticksBefore.get(role) ?? 0);
+  return runsDone ? (runsDone.get(role) ?? 0) : s.runs - (runsBefore.get(role) ?? 0);
 }
 
-/** Every role that could have ticked in this once round — `roles` in order plus any role that
- * appears only in `ticksRun` (enabled mid-round after `ticksBefore` was taken) — paired with
- * its loaded role state and the number of ticks it ran this round. The same per-role setup
+/** Every role that could have run in this once round — `roles` in order plus any role that
+ * appears only in `runsDone` (enabled mid-round after `runsBefore` was taken) — paired with
+ * its loaded role state and the number of runs it made this round. The same per-role setup
  * onceFailures and onceSummary both repeat, folded here so the two summary passes cannot
  * drift on which roles they visit or how they count a round's work. */
 function onceRoundRoles(
   root: string,
   roles: string[],
-  ticksBefore: Map<string, number>,
-  ticksRun?: ReadonlyMap<string, number>,
+  runsBefore: Map<string, number>,
+  runsDone?: ReadonlyMap<string, number>,
 ): { role: string; state: RunnerState; ran: number }[] {
-  const extra = ticksRun ? [...ticksRun.keys()].filter((r) => !roles.includes(r)) : [];
+  const extra = runsDone ? [...runsDone.keys()].filter((r) => !roles.includes(r)) : [];
   return [...roles, ...extra].map((role) => {
     const state = loadRunnerState(root, role);
-    return { role, state, ran: ticksThisRound(state, role, ticksBefore, ticksRun) };
+    return { role, state, ran: runsThisRound(state, role, runsBefore, runsDone) };
   });
 }
 
-/** The roles that ticked this round and whose last result is in ONCE_FAILURE_RESULTS. */
+/** The roles that ran this round and whose last result is in ONCE_FAILURE_RESULTS. */
 export function onceFailures(
   root: string,
   roles: string[],
-  ticksBefore: Map<string, number>,
-  ticksRun?: ReadonlyMap<string, number>,
-): { role: string; result: TickResult }[] {
-  const out: { role: string; result: TickResult }[] = [];
-  for (const { role, state, ran } of onceRoundRoles(root, roles, ticksBefore, ticksRun)) {
+  runsBefore: Map<string, number>,
+  runsDone?: ReadonlyMap<string, number>,
+): { role: string; result: RunResult }[] {
+  const out: { role: string; result: RunResult }[] = [];
+  for (const { role, state, ran } of onceRoundRoles(root, roles, runsBefore, runsDone)) {
     if (ran > 0 && state.lastResult && ONCE_FAILURE_RESULTS.has(state.lastResult)) {
       out.push({ role, result: state.lastResult });
     }
@@ -397,7 +397,7 @@ export function onceFailures(
 
 /** The once round's one-line summary, read from the runners' persisted role state plus the
  * orchestrator's own settle reasons — a cron job's log shows what the round did without parsing
- * events. Roles whose tick counter advanced bucket by their last completed result; the rest are
+ * events. Roles whose run counter advanced bucket by their last completed result; the rest are
  * skipped with the reason the orchestrator settled them for (`paused`, `resume pending`,
  * `backoff`, `deferred`, `disabled`, `idle` — handed back on OrchestratorExit.settled, so a
  * deferred role reads as set aside, not as "nothing was due"); a role the map lacks (defensively
@@ -405,28 +405,28 @@ export function onceFailures(
  * state: a pause marker when one is held, a pending resume when one is flagged, backoff when
  * `backoffSeconds` is raised, otherwise idle — the same classification settleSkipped draws,
  * and keyed on the same signal: backoffSeconds is the backoff indicator, while nextRunAt is
- * shared with the scheduled clock a productive tick also writes (with backoffSeconds 0), so a
+ * shared with the scheduled clock a productive run also writes (with backoffSeconds 0), so a
  * future nextRunAt alone reads as a not-yet-due role, not as backoff (BUGS.md 2026-09-25,
  * the same conflation settleSkipped itself carried).
  *
- * `ticksRun`, when the caller hands it back (the orchestrator's OnceRound snapshot deltas),
- * is the tick count's source of truth and also names roles the pre-round list never had —
- * a role enabled mid-round joins the runners array after `ticksBefore` was taken, so its
+ * `runsDone`, when the caller hands it back (the orchestrator's OnceRound snapshot deltas),
+ * is the run count's source of truth and also names roles the pre-round list never had —
+ * a role enabled mid-round joins the runners array after `runsBefore` was taken, so its
  * whole persisted history must not be counted as this round's work. Without it the old
- * `ticksBefore` delta path runs, for callers (and tests) without a round object. */
+ * `runsBefore` delta path runs, for callers (and tests) without a round object. */
 export function onceSummary(
   root: string,
   roles: string[],
-  ticksBefore: Map<string, number>,
+  runsBefore: Map<string, number>,
   settled: ReadonlyMap<string, string> | undefined,
-  ticksRun?: ReadonlyMap<string, number>,
+  runsDone?: ReadonlyMap<string, number>,
 ): string {
-  let ticks = 0;
+  let runs = 0;
   const outcomes = new Map<string, number>();
   const skipped: string[] = [];
-  for (const { role, state, ran } of onceRoundRoles(root, roles, ticksBefore, ticksRun)) {
+  for (const { role, state, ran } of onceRoundRoles(root, roles, runsBefore, runsDone)) {
     if (ran > 0) {
-      ticks += ran;
+      runs += ran;
       const key = state.lastResult ?? "no_change";
       increment(outcomes, key);
     } else {
@@ -446,7 +446,7 @@ export function onceSummary(
     .map(([k, n]) => `${n} ${k}`)
     .join(", ");
   const skipNote = skipped.length === 0 ? "" : `, ${skipped.length} skipped (${skipped.join(", ")})`;
-  return `once: ${plural(ticks, "run")} — ${counts || "nothing ran"}${skipNote}`;
+  return `once: ${plural(runs, "run")} — ${counts || "nothing ran"}${skipNote}`;
 }
 
 /** Split `run`'s args for `run --gui` and `run --tui`: whether the supervisor should also start
@@ -529,7 +529,7 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
   // The TUI is hosted in the supervisor process, beside the orchestrator generations it must
   // outlive. Quitting it (q or Ctrl+C handled by ink's key handler) is the run's Ctrl+C:
   // runTui resolves and the .then sets `stopping` and aborts the controller, so superviseRun
-  // drains in-flight ticks and the team shuts down exactly as Ctrl+C on a plain `run` does;
+  // drains in-flight runs and the team shuts down exactly as Ctrl+C on a plain `run` does;
   // the team-down teardown (dashboard abort, onDone, terminal restore) is unchanged.
   // reloadDisabled keeps the hosted TUI off its self-reload watch: the team's own first
   // self-redeploy dist swap must not resolve runTui (which would read as a quit and abort

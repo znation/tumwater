@@ -219,7 +219,7 @@ test("a role the settle map lacks falls back to state, via the pause marker", ()
 test("a role enabled mid-round counts by the round's ticks-run map, not its whole history", () => {
   const root = makeRepo();
   // The role joined the runners array after the round's start (live config reload), so it is
-  // in neither `roles` nor ticksBefore: its persisted ticks (5) are not this round's, and
+  // in neither `roles` nor runsBefore: its persisted ticks (5) are not this round's, and
   // only the orchestrator's ticks-run map knows it ran exactly one (BUGS.md 2026-09-25).
   saveRunnerState(root, state("improve", { runs: 6, lastResult: "changed" }));
 

@@ -3,7 +3,7 @@ import type { CompileResult } from "../build/build-stage.js";
 
 /** Self-redeploy for a self-hosting team (see build/build-info.ts for why): when main's build
  * inputs have moved past the running build, verify that main is green, compile it into a staging
- * dir, drain the team (no new ticks; in-flight ones finish or are aborted resumably after
+ * dir, drain the team (no new runs; in-flight ones finish or are aborted resumably after
  * RESTART_DRAIN_MAX_MS), swap the compiled tree into dist/, and ask the supervisor
  * (src/process/supervisor.ts) to respawn the harness onto it by exiting RESTART_EXIT_CODE. Every
  * step is non-blocking from the orchestrator's poll: the green check and the compile run in the
@@ -30,24 +30,24 @@ import type { CompileResult } from "../build/build-stage.js";
  * the code, fails `tumwater run`'s startup gate — so that gate is asked before the team is held
  * and again right before the swap, and a failure refuses the restart with a `restart_refused`
  * event instead of trading a running team for a child that exits on its first line (BUGS.md
- * 2026-09-23). Every tick a restart interrupts resumes on the new build through the same resume
+ * 2026-09-23). Every run a restart interrupts resumes on the new build through the same resume
  * machinery a Ctrl+C uses, so a restart loses no work. */
 
 /** The exit code a supervised `tumwater run` child uses to say "rebuilt; respawn me" —
  * EX_TEMPFAIL, distinct from success (0), fail() (1) and a forced Ctrl+C (130). */
 export const RESTART_EXIT_CODE = 75;
 
-/** The COLD-START drain window: how long a pending restart waits for in-flight ROLE ticks before
- * aborting them (they resume on the new build) when the orchestrator has too few completed-tick
+/** The COLD-START drain window: how long a pending restart waits for in-flight ROLE runs before
+ * aborting them (they resume on the new build) when the orchestrator has too few completed-run
  * samples to derive one. Measured across the whole unbroken hold, not per head — see
- * Redeployer.drainSince. Director ticks are exempt: an in-flight human prompt extends the hold
+ * Redeployer.drainSince. Director runs are exempt: an in-flight human prompt extends the hold
  * without any cap (see poll).
  *
- * The live window tracks the team's real tick duration: the orchestrator passes the p75 of recent
- * completed work-bearing role ticks (InFlightCounts.roleTickP75Ms) and poll uses it in place of
+ * The live window tracks the team's real run duration: the orchestrator passes the p75 of recent
+ * completed work-bearing role runs (InFlightCounts.roleRunP75Ms) and poll uses it in place of
  * this constant once it has enough samples (BUGS.md 2026-09-18). The hand-set 30 minutes had not
  * been re-derived since an earlier backend; measured p50 was 46 min and p75 82 min, so the drain
- * timed out on 60% of ticks — paying the full idle cost of waiting plus the interruption cost of
+ * timed out on 60% of runs — paying the full idle cost of waiting plus the interruption cost of
  * not waiting. */
 export const RESTART_DRAIN_MAX_MS = 30 * 60_000;
 
@@ -80,25 +80,25 @@ export const STALE_ESCALATE_AFTER_MS = 6 * 60 * 60_000;
 /** The sustained-pin warning's repeat cadence: daily, not per poll and not per head. */
 export const STALE_ESCALATE_EVERY_MS = 24 * 60 * 60_000;
 
-/** What the orchestrator should do this poll: `hold` starts no new ticks (a restart is pending),
+/** What the orchestrator should do this poll: `hold` starts no new runs (a restart is pending),
  * `restart` means dist/ now holds the new build — stop and exit RESTART_EXIT_CODE. */
 export type RedeployAction = "none" | "hold" | "restart";
 
-/** How many ticks are running, split by who requested them: role ticks get one drain window,
- * a director tick (an explicit human prompt) holds the restart open without any cap. */
+/** How many runs are in flight, split by who requested them: role runs get one drain window,
+ * a director run (an explicit human prompt) holds the restart open without any cap. */
 export interface InFlightCounts {
-  /** Role ticks holding a maxConcurrent permit — the ones with a pi run to wait for or abort,
-   * and what `abortedTicks` reports. A tick reserved but still parked in the semaphore queue is
+  /** Role runs holding a maxConcurrent permit — the ones with an agent run to wait for or abort,
+   * and what `abortedTicks` reports. A run reserved but still parked in the semaphore queue is
    * not counted: the orchestrator's start gate keeps it from starting while a restart is
    * pending, so there is nothing of it to drain (BUGS.md 2026-09-23). */
   roleInFlight: number;
   directorInFlight: number;
-  /** p75 of recent completed work-bearing role-tick durations (ms) — ticks that ended with
+  /** p75 of recent completed work-bearing role-run durations (ms) — runs that ended with
    * something to show, never a seconds-long `no_change` re-check (runTimedRoleRun filters
    * them out; BUGS.md 2026-09-30) — or null/absent when too few samples: the drain window
-   * tracks the team's real tick duration instead of the cold-start constant
+   * tracks the team's real run duration instead of the cold-start constant
    * (BUGS.md 2026-09-18). */
-  roleTickP75Ms?: number | null;
+  roleRunP75Ms?: number | null;
 }
 
 /** The effects the redeploy policy drives, injectable so the policy is testable without git,

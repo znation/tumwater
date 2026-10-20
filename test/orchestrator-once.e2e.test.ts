@@ -89,7 +89,7 @@ test("once: a team under a standing pause settles every role as paused, ticks no
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "paused", "the pause is the recorded settle reason, not idle");
-    assert.equal(exit.ticksRun?.get("clean"), 0, "the paused role ran no tick");
+    assert.equal(exit.runsDone?.get("clean"), 0, "the paused role ran no tick");
     assert.equal(loadRunnerState(repo, "clean").runs, 0, "nothing ticked under the pause");
     assert.ok(
       !readEvents(repo).some((e) => e.type === "run_start"),

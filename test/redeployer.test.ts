@@ -104,7 +104,7 @@ test("the drain window tracks the observed p75 tick duration, not the cold-start
   const f = fakeDeps();
   // Cold-start fallback 1000 ms; the team's observed p75 is 5000 ms.
   const { r, events } = harness(f.deps, true, 1000);
-  const inFlight = { roleInFlight: 3, directorInFlight: 0, roleTickP75Ms: 5000 };
+  const inFlight = { roleInFlight: 3, directorInFlight: 0, roleRunP75Ms: 5000 };
   let now = 200_000;
   assert.equal(await r.poll(HEAD_B, inFlight, true, now), "hold");
   f.green(true);

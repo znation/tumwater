@@ -32,9 +32,9 @@ test("once: an idle team exits on its own, ticks each role exactly once, and ret
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false, "a once round never reports a restart");
     assert.ok(exit.settled instanceof Map, "once mode returns the settle-reasons map, not the bare daemon shape");
-    assert.ok(exit.ticksRun instanceof Map, "once mode returns the per-role ticks-run map");
-    assert.equal(exit.ticksRun?.get("clean"), 1, "clean ticked once in the round");
-    assert.equal(exit.ticksRun?.get("dedupe"), 1, "dedupe ticked once in the round");
+    assert.ok(exit.runsDone instanceof Map, "once mode returns the per-role ticks-run map");
+    assert.equal(exit.runsDone?.get("clean"), 1, "clean ticked once in the round");
+    assert.equal(exit.runsDone?.get("dedupe"), 1, "dedupe ticked once in the round");
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "clean's persisted state agrees with the round's count");
     assert.equal(loadRunnerState(repo, "dedupe").runs, 1, "dedupe's persisted state agrees with the round's count");
   });
@@ -93,7 +93,7 @@ test("once: a per-role-paused role settles as paused and runs no tick", async ()
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "paused", "the pause is the role's round answer, not silence");
-    assert.equal(exit.ticksRun?.get("clean"), 0, "the paused role ran no tick");
+    assert.equal(exit.runsDone?.get("clean"), 0, "the paused role ran no tick");
     assert.equal(loadRunnerState(repo, "clean").runs, 0, "nothing ticked past the fresh state");
     assert.deepEqual(eventsOfType(repo, "run_start"), [], "no tick started behind the pause");
   });
@@ -115,7 +115,7 @@ test("once: a role in error backoff settles as backoff and runs no tick", async 
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "backoff", "the backoff is the role's round answer");
-    assert.equal(exit.ticksRun?.get("clean"), 0, "the backing-off role ran no tick");
+    assert.equal(exit.runsDone?.get("clean"), 0, "the backing-off role ran no tick");
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "nothing ticked past the seeded history");
     assert.deepEqual(eventsOfType(repo, "run_start"), [], "no tick started behind the backoff");
   });
@@ -131,7 +131,7 @@ test("once: the director with an empty inbox settles as idle and runs no tick", 
       "idle",
       "an empty inbox is the director's round answer — the one role whose idleness is ordinary",
     );
-    assert.equal(exit.ticksRun?.get("director"), 0, "the director ran no tick with nothing queued");
+    assert.equal(exit.runsDone?.get("director"), 0, "the director ran no tick with nothing queued");
     assert.equal(loadRunnerState(repo, "director").runs, 0, "nothing ticked past the fresh state");
     assert.deepEqual(eventsOfType(repo, "run_start"), [], "no tick started for the idle director");
   });
@@ -143,7 +143,7 @@ test("once: a queued per-role prompt makes its role due on its own and logs the 
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(exit.ticksRun?.get("clean"), 1, "the queued prompt makes the role due without the clock");
+    assert.equal(exit.runsDone?.get("clean"), 1, "the queued prompt makes the role due without the clock");
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "the tick really ran");
     assert.equal(queuedRolePromptCount(repo, "clean"), 0, "the tick consumed the queued prompt");
     const wake = eventsOfType(repo, "wake").find((e) => e.source === "clean");

@@ -12,7 +12,7 @@ import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { reviewHoldKey, pollDeferralInputs, pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
-import { launchDueTicks } from "./orchestrator-launch.js";
+import { launchDueRuns } from "./orchestrator-launch.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { queuedMergeFiles, queuedMergeRoles } from "../merge/merge-queue.js";
@@ -78,7 +78,7 @@ export interface PollContext {
   roleInFlight: Set<Promise<void>>;
   rolePermitHolders: Set<RoleRunner>;
   directorInFlight: Set<Promise<void>>;
-  roleTickDurationsMs: number[];
+  roleRunDurationsMs: number[];
   emit: (event: HarnessEventInput) => void;
   warn: (message: string) => void;
 }
@@ -89,11 +89,11 @@ export interface PollState {
    * and the exit value. */
   restart: boolean;
   /** Whether the last poll found a self-redeploy pending (`hold`). Read at scheduling (no new
-   * tick is reserved) and — through tickStartHeld — whenever a parked waiter is granted its
+   * run is reserved) and — through runStartHeld — whenever a parked waiter is granted its
    * permit, which happens between polls. */
   holdForRestart: boolean;
   /** Whether the last poll's disk gate held new work (plans/disk-floor.md, part 1/4); read at
-   * permit time by tickStartHeld, like holdForRestart. */
+   * permit time by runStartHeld, like holdForRestart. */
   diskHeld: boolean;
   /** The primary checkout moved off the target branch and the one warning was logged; re-armed
    * when the checkout returns. */
@@ -107,11 +107,11 @@ export function newPollState(): PollState {
   return { restart: false, holdForRestart: false, diskHeld: false, warnedBranchDivergence: false, lastReserve: 0 };
 }
 
-/** The start gate every reserved tick passes the moment its permit is granted
+/** The start gate every reserved run passes the moment its permit is granted
  * (runTimedRoleRun's `held`): closed while a restart is pending, and after one is decided so
  * no waiter the shutdown hands a permit to starts on the build being replaced. One predicate,
- * so another team-wide hold on new ticks can close the same gate point. */
-function tickStartHeld(state: PollState): boolean {
+ * so another team-wide hold on new runs can close the same gate point. */
+function runStartHeld(state: PollState): boolean {
   return state.holdForRestart || state.restart || state.diskHeld;
 }
 
@@ -210,7 +210,7 @@ export function pollGatesAndHolds(
     info: ctx.info,
     reclaim: ctx.reclaim,
   });
-  // The latest poll's disk verdict, hoisted for tickStartHeld's permit-time reads
+  // The latest poll's disk verdict, hoisted for runStartHeld's permit-time reads
   // (plans/disk-floor.md, part 1/4).
   state.diskHeld = gates.diskHeld;
   // Publish the permit pool's live state (plans/provider-concurrency.md §8): observers
@@ -228,7 +228,7 @@ export function pollGatesAndHolds(
   ]);
 
   // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
-  // tick model's provider stands under a hold, and every role is held when the
+  // run model's provider stands under a hold, and every role is held when the
   // reviewer's provider is (with the review gate on, nothing could merge — and the merge
   // queue reads the same reviewHeld verdict). Key presence in the map is relapse
   // memory, not a hold: heldProviders() reads only standing holds (`until` non-null),
@@ -250,15 +250,15 @@ export function pollGatesAndHolds(
 }
 
 /** Self-redeploy (src/redeploy/redeployer.ts): with main's head in hand, let the state
- * machine observe it. `hold` starts no new ticks at all — director included; a restart
+ * machine observe it. `hold` starts no new runs at all — director included; a restart
  * takes effect within the drain's window plus a bounded merge hand-off, and its prompt waits
  * in the inbox for the new build — while the green check/compile/drain run in the
- * background. That covers ticks reserved before the hold too: a waiter parked in the
+ * background. That covers runs reserved before the hold too: a waiter parked in the
  * semaphore queue that is granted a permit mid-drain meets the closed start gate
- * (tickStartHeld), releases the permit, and hands its reservation back so it re-schedules
+ * (runStartHeld), releases the permit, and hands its reservation back so it re-schedules
  * once the hold lifts or on the new build. `restart` means dist/ already holds the new
- * build: stop scheduling, abort whatever role ticks the drain gave up waiting for — the
- * permit holders; they resume on the new build — and return true. A director tick can never
+ * build: stop scheduling, abort whatever role runs the drain gave up waiting for — the
+ * permit holders; they resume on the new build — and return true. A director run can never
  * be in flight here — poll only returns `restart` once it has finished. (holdForRestart keeps
  * the previous poll's verdict until this one's is in: resetting it before the await
  * would open the gate for a waiter granted a permit while poll runs.)
@@ -278,7 +278,7 @@ export async function pollRedeploy(
     {
       roleInFlight: ctx.rolePermitHolders.size,
       directorInFlight: ctx.directorInFlight.size,
-      roleTickP75Ms: p75RunDurationMs(ctx.roleTickDurationsMs),
+      roleRunP75Ms: p75RunDurationMs(ctx.roleRunDurationsMs),
     },
     liveConfig.autoRestart,
     now,
@@ -289,7 +289,7 @@ export async function pollRedeploy(
     // Only permit holders have a pi run to cut off (the director is guaranteed finished by
     // then): a parked waiter meets the closed start gate whenever the shutdown hands it a
     // permit, so it needs no abort — and aborting for it alone would also cut off an
-    // in-flight merge that no permit-holding tick put at stake. The role-only controller
+    // in-flight merge that no permit-holding run put at stake. The role-only controller
     // keeps that promise: the merge, wired to the full signal, runs on into the hand-off
     // window the wait announces (BUGS.md 2026-09-30).
     if (ctx.rolePermitHolders.size > 0) ctx.internalRoleStop.abort();
@@ -302,8 +302,8 @@ export async function pollRedeploy(
 /** Merge queue 3/5 — drain the durable merge queue while neither a restart nor a failure
  * hold is pending (the scheduler's WHEN; merge-drain.ts owns the HOW — the verification
  * stage, its merge slot, and the dedupe against main). A held poll starts no verify and no
- * merge, exactly as it starts no tick; what is already in flight runs on, and a verify
- * parked for its permit meets the same start gate as a parked tick when the permit comes. */
+ * merge, exactly as it starts no run; what is already in flight carries on, and a verify
+ * parked for its permit meets the same start gate as a parked run when the permit comes. */
 export async function pollMergeDrain(
   ctx: PollContext,
   state: PollState,
@@ -325,14 +325,14 @@ export async function pollMergeDrain(
       roleConfig: gates.roleConfig,
       directorConfig: gates.directorConfig,
       piDefault: ctx.piDefault,
-      startHeld: () => tickStartHeld(state) || gates.reviewHeldNow(),
+      startHeld: () => runStartHeld(state) || gates.reviewHeldNow(),
     },
     ctx.merges,
   );
 }
 
 /** The scheduling pass: the deferral inputs feed pollRunnerReasons, whose reasons map
- * launchDueTicks starts ticks from. */
+ * launchDueRuns starts runs from. */
 export async function pollSchedule(
   ctx: PollContext,
   state: PollState,
@@ -369,10 +369,10 @@ export async function pollSchedule(
     deferredDue: ctx.deferredDue,
     workMergedSince: ctx.workMergedSince,
   });
-  launchDueTicks({
+  launchDueRuns({
     root,
     reasons,
-    // roleSignal, not signal: the timed tick wrapper watches the full signal PLUS the
+    // roleSignal, not signal: the timed run wrapper watches the full signal PLUS the
     // role-only stop, exactly as the pre-extraction inline pass did — the restart drain's
     // give-up abort must also turn away a waiter granted its permit at that moment.
     signal: ctx.roleSignal,
@@ -387,9 +387,9 @@ export async function pollSchedule(
     rolePermitHolders: ctx.rolePermitHolders,
     roleInFlight: ctx.roleInFlight,
     directorInFlight: ctx.directorInFlight,
-    roleTickDurationsMs: ctx.roleTickDurationsMs,
+    roleRunDurationsMs: ctx.roleRunDurationsMs,
     startHeld: (role) =>
-      tickStartHeld(state) ||
+      runStartHeld(state) ||
       (role !== DIRECTOR_ROLE
         ? gates.reviewHeldNow() || gates.teamHeldNow().has(gates.roleProviders.get(role))
         : windowHeldProviders(gateStates.teamHold).has(gates.roleProviders.get(role))),
@@ -401,8 +401,8 @@ export async function pollSchedule(
 export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveConfig, now }: PollInputs): boolean {
   const { root, runners, semaphore } = ctx;
   // Priority headroom (plans/parallel-work-instances.md part 7/7): withhold a few permits
-  // from maintenance while a work role has work to take, so a due work tick never waits out
-  // a whole maintenance tick. Sized after the launch pass, so a runner launched this poll
+  // from maintenance while a work role has work to take, so a due work run never waits out
+  // a whole maintenance run. Sized after the launch pass, so a runner launched this poll
   // already reads as running and reserves nothing for itself.
   const poolSnapshot = semaphore.snapshot();
   // The provider-headroom predicate receives the structural ClaimRunner; the config that
@@ -415,7 +415,7 @@ export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveCon
     instancesOf: (base) => liveConfig.roles[base]?.instances ?? 1,
     // Per-provider headroom (plans/provider-concurrency.md §6): an idle work role reserves a
     // permit only when its own provider could use it — capped and full, it would only idle
-    // the slot another provider's maintenance tick could take. Read from the pool's live
+    // the slot another provider's maintenance run could take. Read from the pool's live
     // snapshot; an uncapped key (or the team-total-only case) always has headroom.
     providerHasHeadroom: (r) => {
       const runner = runnerByRole.get(r.role);
@@ -433,7 +433,7 @@ export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveCon
   }
   state.lastReserve = reserve;
 
-  // Once mode's exit: every enabled role settled, no tick in flight, and the merge queue
+  // Once mode's exit: every enabled role settled, no run in flight, and the merge queue
   // empty with no merge in flight for one full poll cycle — then fire the internal
   // stop, the same graceful shutdown the restart drain uses (the `finally` awaits
   // in-flight merge tasks to the end). The one-poll-cycle requirement is the guard
@@ -442,8 +442,8 @@ export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveCon
   // before the stop is trusted.
   if (
     ctx.once.exitReady({
-      roleTicks: ctx.roleInFlight.size,
-      directorTicks: ctx.directorInFlight.size,
+      roleRuns: ctx.roleInFlight.size,
+      directorRuns: ctx.directorInFlight.size,
       merges: mergeTasks(ctx.merges).length,
       queuedMerges: queuedMergeFiles(root).length,
     })

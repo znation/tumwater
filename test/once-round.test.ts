@@ -93,11 +93,11 @@ test("a runner appended mid-round is snapshotted at first sight, not settled by 
   late.state.runs = 5; // history, not this round
   runners.push(late);
   assert.equal(round.isSettled(late), false);
-  const quiet = { roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 0 };
+  const quiet = { roleRuns: 0, directorRuns: 0, merges: 0, queuedMerges: 0 };
   assert.equal(round.exitReady(quiet), false); // the late role holds the round open
   late.state.runs++; // its one tick this round
   assert.equal(round.isSettled(late), true);
-  assert.equal(round.ticksRun(late), 1); // exactly the round's tick, not the history
+  assert.equal(round.runsDone(late), 1); // exactly the round's tick, not the history
   first.state.runs++;
   assert.equal(round.exitReady(quiet), false); // first quiet poll
   assert.equal(round.exitReady(quiet), true);
@@ -108,7 +108,7 @@ test("exitReady fires only on the second consecutive quiet poll of an active rou
   const runner = makeRoleRunner(repo, "improve");
   const round = new OnceRound([runner], true);
   runner.state.runs++; // ran its one tick
-  const quiet = { roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 0 };
+  const quiet = { roleRuns: 0, directorRuns: 0, merges: 0, queuedMerges: 0 };
   assert.equal(round.exitReady(quiet), false); // first quiet poll: hold
   assert.equal(round.exitReady(quiet), true); // second: fire
 });
@@ -118,13 +118,13 @@ test("exitReady stays false while work is in flight and resets the quiet streak"
   const runner = makeRoleRunner(repo, "improve");
   const round = new OnceRound([runner], true);
   runner.state.runs++;
-  assert.equal(round.exitReady({ roleTicks: 1, directorTicks: 0, merges: 0, queuedMerges: 0 }), false);
-  assert.equal(round.exitReady({ roleTicks: 0, directorTicks: 1, merges: 0, queuedMerges: 0 }), false);
-  assert.equal(round.exitReady({ roleTicks: 0, directorTicks: 0, merges: 1, queuedMerges: 0 }), false);
-  assert.equal(round.exitReady({ roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 2 }), false);
+  assert.equal(round.exitReady({ roleRuns: 1, directorRuns: 0, merges: 0, queuedMerges: 0 }), false);
+  assert.equal(round.exitReady({ roleRuns: 0, directorRuns: 1, merges: 0, queuedMerges: 0 }), false);
+  assert.equal(round.exitReady({ roleRuns: 0, directorRuns: 0, merges: 1, queuedMerges: 0 }), false);
+  assert.equal(round.exitReady({ roleRuns: 0, directorRuns: 0, merges: 0, queuedMerges: 2 }), false);
   // One quiet poll after the in-flight work is not enough: the streak restarted.
-  assert.equal(round.exitReady({ roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 0 }), false);
-  assert.equal(round.exitReady({ roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 0 }), true);
+  assert.equal(round.exitReady({ roleRuns: 0, directorRuns: 0, merges: 0, queuedMerges: 0 }), false);
+  assert.equal(round.exitReady({ roleRuns: 0, directorRuns: 0, merges: 0, queuedMerges: 0 }), true);
 });
 
 test("exitReady is inert in an inactive round even when everything is quiet", () => {
@@ -132,7 +132,7 @@ test("exitReady is inert in an inactive round even when everything is quiet", ()
   const runner = makeRoleRunner(repo, "improve");
   runner.state.runs++; // ran its one tick
   const round = new OnceRound([runner], false);
-  const quiet = { roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 0 };
+  const quiet = { roleRuns: 0, directorRuns: 0, merges: 0, queuedMerges: 0 };
   assert.equal(round.exitReady(quiet), false);
   assert.equal(round.exitReady(quiet), false);
 });
@@ -143,7 +143,7 @@ test("exitReady stays false until every runner is settled", () => {
   const idle = makeRoleRunner(repo, "clean");
   const round = new OnceRound([ran, idle], true);
   ran.state.runs++; // ran its one tick
-  const quiet = { roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 0 };
+  const quiet = { roleRuns: 0, directorRuns: 0, merges: 0, queuedMerges: 0 };
   assert.equal(round.exitReady(quiet), false); // clean has not settled yet
   round.settleSkipped(idle);
   assert.equal(round.exitReady(quiet), false); // first quiet poll

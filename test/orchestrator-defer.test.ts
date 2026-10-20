@@ -32,7 +32,7 @@ import { readBranchHead } from "../src/git/git.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import {
-  awaitSettledTick,
+  awaitSettledRun,
   makeFastRepo,
   onceRound,
   startIdleOrchestrator,
@@ -69,7 +69,7 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "deferred", "the deferral is the role's round answer, not idle");
-    assert.equal(exit.ticksRun?.get("clean"), 0, "the deferred role ran no tick");
+    assert.equal(exit.runsDone?.get("clean"), 0, "the deferred role ran no tick");
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
       eventsOfType(repo, "run_deferred").map((e) => e.source),
@@ -105,7 +105,7 @@ test("once: a fresh operator wake overrides the deferral — the demand ticks de
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(exit.ticksRun?.get("clean"), 1, "the demand runs the tick the backlog would have deferred");
+    assert.equal(exit.runsDone?.get("clean"), 1, "the demand runs the tick the backlog would have deferred");
     assert.equal(loadRunnerState(repo, "clean").runs, 2, "the tick really ran");
     assert.deepEqual(eventsOfType(repo, "run_deferred"), [], "no deferral episode: the demand preempted it");
   });
@@ -127,7 +127,7 @@ test("once: bugfix in search mode defers on the work-merged verdict alone, backl
       "deferred",
       "an idle search tick with nothing new on main defers even with the backlog empty",
     );
-    assert.equal(exit.ticksRun?.get("bugfix"), 0, "the searching bugfix ran no tick");
+    assert.equal(exit.runsDone?.get("bugfix"), 0, "the searching bugfix ran no tick");
     assert.equal(loadRunnerState(repo, "bugfix").runs, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
       eventsOfType(repo, "run_deferred").map((e) => e.source),
@@ -149,7 +149,7 @@ test("live: an inbox demand ends a deferral episode silently, and the next defer
     // A queued prompt makes the role due via its inbox — the demand runs the tick the
     // backlog would have kept deferred, announced by a wake (reason inbox).
     submitRolePrompt(repo, "clean", "an explicit demand");
-    await awaitSettledTick(repo, "clean", 2, "the demand's tick to finish");
+    await awaitSettledRun(repo, "clean", 2, "the demand's tick to finish");
     const wake = eventsOfType(repo, "wake").find((e) => e.source === "clean");
     assert.ok(wake, "the demand is announced with a wake event");
     assert.equal(wake?.reason, "inbox");

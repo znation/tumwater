@@ -54,7 +54,7 @@ export function bestEffortLog(log: (event: RedeployEvent) => void): (event: Rede
 }
 
 /** The redeploy state machine — one per orchestrator process. `poll` is called every scheduler
- * cycle with main's current head and how many role/director ticks are in flight, and returns what
+ * cycle with main's current head and how many role/director runs are in flight, and returns what
  * to do; it never throws and never awaits anything slower than a git query. */
 export class Redeployer {
   private lastHead: string | null = null;
@@ -64,12 +64,12 @@ export class Redeployer {
   /** When the team's current unbroken hold began — 0 when it is not being held. The drain
    * deadline is measured from here and NOT from when the current head became pending: a busy
    * self-hosting team merges while it drains, and giving each new head its own full window
-   * handed the same in-flight ticks another 30 minutes every time main moved. On 2026-09-08 that
+   * handed the same in-flight runs another 30 minutes every time main moved. On 2026-09-08 that
    * held the team for 38 minutes under a 30-minute cap and reported the last 30 (BUGS.md).
-   * Nothing new starts during a hold, so the ticks a drain waits on can only be the ones it
+   * Nothing new starts during a hold, so the runs a drain waits on can only be the ones it
    * began with — one window is all they are owed. */
   private drainSince = 0;
-  /** The drain window captured when the current hold began: the team's observed p75 tick
+  /** The drain window captured when the current hold began: the team's observed p75 run
    * duration when the orchestrator has enough samples, else the cold-start RESTART_DRAIN_MAX_MS.
    * Captured once per unbroken hold so a sample change mid-episode cannot move a deadline that
    * is already running (see drainSince). */
@@ -171,7 +171,7 @@ export class Redeployer {
     private readonly deps: RedeployDeps,
     log: (event: RedeployEvent) => void,
     /** Cold-start drain window (default RESTART_DRAIN_MAX_MS): the fallback poll uses until the
-     * orchestrator supplies enough observed tick durations; a test seam. */
+     * orchestrator supplies enough observed run durations; a test seam. */
     private readonly drainMaxMs: number = RESTART_DRAIN_MAX_MS,
     /** The completed-auto-restart record (see AutoRestartRecord) — production reads it from its
      * state file at construction via autoRestartRecord(root), tests inject one. */
@@ -192,12 +192,12 @@ export class Redeployer {
       s.checkedHead = this.lastHead;
       // Why a stale build is still the one running. Staleness alone cannot say: a restart that
       // is minutes away and one that was refused hours ago look identical, and on 2026-09-08
-      // that gap is what let a blocked restart sit unnoticed while the team ticked on stale
+      // that gap is what let a blocked restart sit unnoticed while the team ran on stale
       // code (BUGS.md). Mutually exclusive by construction — block() clears the pending head,
       // and an episode cannot start inside the cooldown, so no two branches can hold at once.
       if (this.pendingHead === this.lastHead) s.restartPending = true;
       else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
-      // Inside the post-restart cooldown the team deliberately keeps ticking on the stale build
+      // Inside the post-restart cooldown the team deliberately keeps running on the stale build
       // — say so with a deadline, through the same channel as a refused restart
       // (BUGS.md 2026-09-11).
       // Past it, a startup gate that keeps failing holds the team on the stale build just as
@@ -223,7 +223,7 @@ export class Redeployer {
    * the next poll that reaches the cooldown check waives the deferral — it nulls the cooldown's
    * start, so the whole episode proceeds now and later polls of it stay un-deferred. It clears
    * ONLY the cooldown — a red main verdict, a failed compile, a swap error, or a boot refusal
-   * still blocks through the ordinary paths, and in-flight ticks still drain through the
+   * still blocks through the ordinary paths, and in-flight runs still drain through the
    * ordinary window. One `restart_forced` event records the operator's hand, so the feed shows
    * why an episode started mid-cooldown. */
   forceRestart(): void {
@@ -318,8 +318,8 @@ export class Redeployer {
 
     // Completed auto-restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11):
     // under sustained churn every stale head would otherwise drive a full hold+drain+swap episode
-    // back to back. Inside the cooldown the team keeps ticking on the stale build exactly as when
-    // a restart is blocked — no pendingHead, no hold, no drain, no new-tick block — but the
+    // back to back. Inside the cooldown the team keeps running on the stale build exactly as when
+    // a restart is blocked — no pendingHead, no hold, no drain, no new-run block — but the
     // deferred head's green check and staged compile still run (prewarm, BUGS.md 2026-09-30), so
     // the lapse reaches the swap directly instead of paying green-check + compile + drain from
     // zero. This is re-evaluated on every poll rather than latched like blockedHead: once the
@@ -381,7 +381,7 @@ export class Redeployer {
         this.drainSince = now;
         // Capture the window with the hold: the observed p75 when the orchestrator has it,
         // otherwise the cold-start constant.
-        const p75 = inFlight.roleTickP75Ms;
+        const p75 = inFlight.roleRunP75Ms;
         this.drainWindowMs = typeof p75 === "number" && p75 > 0 ? p75 : this.drainMaxMs;
       }
       // Adopt the cooldown's pre-warm (BUGS.md 2026-09-30): verdicts already in hand mean the
@@ -453,10 +453,10 @@ export class Redeployer {
       );
       return this.endDrain();
     }
-    // The drain rule, split by who requested the work (BUGS.md 2026-09-08): a director tick is
+    // The drain rule, split by who requested the work (BUGS.md 2026-09-08): a director run is
     // an explicit human prompt and outranks the redeploy — while one is in flight the hold has no
-    // time cap: no swap and no abort until it finishes. The per-tick watchdogs already bound how
-    // long one run can take, so this cannot hang the team beyond what a single tick can do.
+    // time cap: no swap and no abort until it finishes. The per-run watchdogs already bound how
+    // long one run can take, so this cannot hang the team beyond what a single run can do.
     if (inFlight.directorInFlight > 0) return "hold";
     if (inFlight.roleInFlight > 0 && now - this.drainSince < this.drainWindowMs) return "hold";
     // Ask the startup gate once more, right before the point of no return: the environment can
@@ -492,7 +492,7 @@ export class Redeployer {
     this.staleSince = null;
     this.lastEscalationAt = null;
     // The director is guaranteed finished by here (poll only reaches the swap with
-    // directorInFlight === 0), so what gets aborted — and counted — are role ticks only, and
+    // directorInFlight === 0), so what gets aborted — and counted — are role runs only, and
     // only those holding a permit (see InFlightCounts). A director-extended hold reports
     // finishedMs past the window: correct and informative.
     this.log({

@@ -76,14 +76,14 @@ interface RunOptions {
   fallbackBreakerPolicy?: FallbackBreakerPolicy;
   /** The fallback breaker's clock (default Date.now) — a test seam, like pollMs: the cool-down
    * deadline and its elapsed check both read it, so a test can elapse a cool-down by advancing
-   * this clock instead of sleeping through the real one. Scheduling, tick timing, and gate
+   * this clock instead of sleeping through the real one. Scheduling, run timing, and gate
    * polling keep the wall clock; only the breaker's probe deadlines move with it. */
   breakerNow?: () => number;
   /** The restart hand-off's per-phase wait on an in-flight merge (default
    * HANDOFF_MERGE_WINDOW_MS) — a test seam, like pollMs: tests pass a short window so the
    * deadline path resolves quickly. */
   handoffMergeWindowMs?: number;
-  /** Once mode (`tumwater run --once`): give every enabled role at most one tick, wait for
+  /** Once mode (`tumwater run --once`): give every enabled role at most one run, wait for
    * every merge that round produced to finish, then fire the internal stop — the same
    * graceful-shutdown path an operator's Ctrl+C takes, so drainInFlightWork drains exactly
    * as it always does. Never self-redeploys: the hand-off machinery stays daemon-only. */
@@ -108,10 +108,10 @@ interface RunOptions {
 interface OrchestratorExit {
   restart: boolean;
   settled?: ReadonlyMap<string, string>;
-  /** Per-role ticks this round ran (OnceRound's own snapshot deltas): a role enabled
+  /** Per-role run counts for this round (OnceRound's own snapshot deltas): a role enabled
    * mid-round is in no caller-side snapshot, so the summary counts it from here instead of
    * mistaking its whole persisted history for this round's work. Once mode only. */
-  ticksRun?: ReadonlyMap<string, number>;
+  runsDone?: ReadonlyMap<string, number>;
 }
 
 /** Run all enabled roles until the signal aborts — or until a pending self-redeploy has drained
@@ -140,15 +140,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   // Two internal stop controllers ride beside the caller's (Ctrl+C/SIGTERM): internalStop, the
   // graceful shutdown the once-mode exit and the hand-off's deadline abort fire — it cuts role
-  // ticks and merges alike — and internalRoleStop, which ONLY the restart drain fires when it
-  // gives up on its permit-holding ROLE ticks (they then end as `aborted`, resumable on the new
+  // runs and merges alike — and internalRoleStop, which ONLY the restart drain fires when it
+  // gives up on its permit-holding ROLE runs (they then end as `aborted`, resumable on the new
   // build, exactly like a shutdown). The split is the point: the drain's abort must not cut off
   // an in-flight merge, which then never reaches the hand-off window the wait announces
   // (BUGS.md 2026-09-30: the merge died 13 ms after the warning). So the runners and the timed
-  // tick wrapper watch roleSignal — the full signal PLUS the role-only stop — while the merge
-  // tasks keep wiring the full signal alone. A director tick is never aborted by either
+  // run wrapper watch roleSignal — the full signal PLUS the role-only stop — while the merge
+  // tasks keep wiring the full signal alone. A director run is never aborted by either
   // controller: poll holds for it without a cap, so by the time `restart` takes effect only
-  // role ticks and the merge can remain.
+  // role runs and the merge can remain.
   const internalStop = new AbortController();
   const internalRoleStop = new AbortController();
   const signal = AbortSignal.any([externalSignal, internalStop.signal]);
@@ -160,15 +160,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const launchServicesWatch = opts.once ? null : (opts.launchServicesWatch ?? null);
   // Pressure reclaim (plans/disk-floor.md, part 2/4): one background pass at a time, driven by
   // the disk gate's poll below. In-process state (the use registry) is enough, because this
-  // process is the one that runs ticks and merges.
+  // process is the one that starts runs and merges.
   const reclaim = new ReclaimController(root);
 
-  // The shared concurrency cap: role ticks and the merges (each verify, and the merge's conflict
+  // The shared concurrency cap: role runs and the merges (each verify, and the merge's conflict
   // resolver — merge-drain.ts) all hold a permit; see its MergePipelineContext for why a
   // merge is not exempt.
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
   // Seed the pool's per-provider caps from the startup config (plans/provider-concurrency.md
-  // §7): a role tick's lease is bounded by its provider key from the first launch onward, not
+  // §7): a role run's lease is bounded by its provider key from the first launch onward, not
   // just after a live edit. A config without the key passes an empty map, the no-change case.
   semaphore.setKeyCaps(config.maxConcurrentPerProvider ?? {});
 
@@ -209,7 +209,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   await archiveAtTeamStart(root);
   const runners = enabled.map((role) => new RoleRunner(root, role, config, mainBranch, roleSignal));
   // Legacy merger checkouts (`_land-<role>`) from a pre-pool build hold nothing now that verifies
-  // and merges lease pooled slots: remove them once, before any tick, so the retired layout
+  // and merges lease pooled slots: remove them once, before any run, so the retired layout
   // never lingers on disk. (After the info write and start event above, so startup's published
   // state is on disk synchronously for an in-process test or a second `tumwater run` probe.)
   await removeLegacyLandWorktrees(root);
@@ -225,33 +225,33 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // per day — and 0 disables pruning, the same convention as quietTimeoutSeconds.
   const retentionPruner = new RetentionPruner(root, config.sessionRetentionDays);
 
-  // In-flight tasks, split by who requested them: the redeploy drain caps role ticks at its
-  // window but waits for a director tick without one — an explicit human prompt outranks the
+  // In-flight tasks, split by who requested them: the redeploy drain caps role runs at its
+  // window but waits for a director run without one — an explicit human prompt outranks the
   // self-redeploy (BUGS.md 2026-09-08). The merge tasks are deliberately OUTSIDE this split:
   // in-process tasks (the verifies and the one merge, since 2026-09-18 under the same maxConcurrent
-  // permits as role ticks) that shutdown still awaits — to the end on an operator stop, and for a
+  // permits as role runs) that shutdown still awaits — to the end on an operator stop, and for a
   // bounded hand-off on a restart (drainInFlightWork) — an aborted merge keeps its ref and
-  // drops its entry, recovering on next start. roleInFlight holds every RESERVED role tick
+  // drops its entry, recovering on next start. roleInFlight holds every RESERVED role run
   // (permit holders and waiters parked in the semaphore queue alike), since shutdown awaits
   // both; what the restart drain waits on, aborts, and reports as abortedTicks is only
-  // rolePermitHolders, the role ticks actually holding a permit. A parked waiter has nothing to
-  // drain — the start gate (tickStartHeld below) keeps it from starting while a restart is
-  // pending — and counting it held drains open for ticks that had not begun and inflated
+  // rolePermitHolders, the role runs actually holding a permit. A parked waiter has nothing to
+  // drain — the start gate (runStartHeld below) keeps it from starting while a restart is
+  // pending — and counting it held drains open for runs that had not begun and inflated
   // abortedTicks (12 reported against 3 aborted run_ends on 2026-09-21; BUGS.md 2026-09-23).
   const roleInFlight = new Set<Promise<void>>();
   const rolePermitHolders = new Set<RoleRunner>();
   const directorInFlight = new Set<Promise<void>>();
-  // The restart drain's window tracks the team's real tick duration (BUGS.md 2026-09-18): the
-  // durations of recent COMPLETED role ticks feed a p75 that poll uses in place of the
-  // cold-start constant. Bounded (orchestrator-launch.ts's ROLE_TICK_DURATION_SAMPLES) so a
-  // long-running team's memory stays flat; aborted ticks are
+  // The restart drain's window tracks the team's real run duration (BUGS.md 2026-09-18): the
+  // durations of recent COMPLETED role runs feed a p75 that poll uses in place of the
+  // cold-start constant. Bounded (orchestrator-launch.ts's ROLE_RUN_DURATION_SAMPLES) so a
+  // long-running team's memory stays flat; aborted runs are
   // excluded — their short cut-off durations would drag the window down and cause more aborts.
-  const roleTickDurationsMs: number[] = [];
+  const roleRunDurationsMs: number[] = [];
   // Every merge task (merge-drain.ts's MergePipeline): the verification stage's tasks, the
   // changes they approved, and the merge slot.
   const merges = newMergePipeline();
 
-  // Once-mode bookkeeping (`tumwater run --once`) — the tick-count snapshot, the per-role
+  // Once-mode bookkeeping (`tumwater run --once`) — the run-count snapshot, the per-role
   // settle reasons, and the quiet-poll exit rule — lives in src/scheduling/once-round.ts.
   const once = new OnceRound(runners, opts.once === true);
 
@@ -260,8 +260,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // previous values for the edge-triggered events, the fallback breaker, and the hold's own
   // memory (deadline, kind, relapse count). In memory only — a restart re-trusts the
   // fallback, starts with the hold open, and can re-log at most one event per gate. The
-  // budget gate's breaker is also the fallback ticks' evidence sink: the start pass below
-  // records every tick's outcome into it and runs its probe (src/budget/fallback-breaker.ts), and
+  // budget gate's breaker is also the fallback runs' evidence sink: the start pass below
+  // records every run's outcome into it and runs its probe (src/budget/fallback-breaker.ts), and
   // the start gate reads gateStates.teamHold at permit time, so its closures always see
   // the latest poll's hold verdict rather than the poll that created them.
   const gateStates: TeamGateStates = newTeamGateStates(config);
@@ -330,7 +330,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     roleInFlight,
     rolePermitHolders,
     directorInFlight,
-    roleTickDurationsMs,
+    roleRunDurationsMs,
     emit,
     warn,
   };
@@ -370,14 +370,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     notifier.dispose();
     removeQuiet(infoFile);
   }
-  // Only once mode carries the settle reasons and the per-role ticks-run: the daemon return
+  // Only once mode carries the settle reasons and the per-role run counts: the daemon return
   // keeps its exact shape (an e2e test deep-equals it), and a daemon caller has no summary to
   // feed.
   return once.active
     ? {
         restart: state.restart,
         settled: once.reasons,
-        ticksRun: new Map(runners.map((r) => [r.role, once.ticksRun(r)] as const)),
+        runsDone: new Map(runners.map((r) => [r.role, once.runsDone(r)] as const)),
       }
     : { restart: state.restart };
 }

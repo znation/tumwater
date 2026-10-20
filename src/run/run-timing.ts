@@ -23,7 +23,7 @@ const DRAIN_P75_MIN_SAMPLES = 10;
 /** The p75 of completed role-run durations (ms), or null when there are too few samples to
  * trust. The orchestrator's half of the adaptive drain window (BUGS.md 2026-09-18): a run that
  * finishes inside it is waited for, a longer one is aborted resumably. The samples come from
- * runTimedRoleRun above; the consumer is the redeploy policy's InFlightCounts.roleTickP75Ms.
+ * runTimedRoleRun above; the consumer is the redeploy policy's InFlightCounts.roleRunP75Ms.
  * Exported for its unit test; the p75 is the statistic the bug's expected fix names. */
 export function p75RunDurationMs(durations: readonly number[]): number | null {
   if (durations.length < DRAIN_P75_MIN_SAMPLES) return null;
@@ -230,7 +230,7 @@ export async function drainInFlightWork(
     // wires the harness signal to its controller, and a conflict-resolution run watches the
     // harness signal alone (runMergePi). Nothing else it reaches can start work here — the
     // director has finished, permit holders were aborted at the restart, and a parked waiter
-    // meets the closed start gate (tickStartHeld) whenever it is granted a permit.
+    // meets the closed start gate (runStartHeld) whenever it is granted a permit.
     const outcome = await awaitMergeForHandoff(root, merge, handoffWindowMs, abort, after);
     // An abandoned merge still holds its permit, so a waiter parked behind it would never be
     // granted one and never settle. The runs have had both windows beside the hand-off, so

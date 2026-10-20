@@ -2,7 +2,7 @@
 /** Session retention (the `sessionRetentionDays` setting): the once-per-day gate and the prune
  * itself, split out of orchestrator.ts — the poll-loop runtime carried both a startup prune and
  * a near-identical in-poll prune plus the last-applied-window bookkeeping, and scheduling.ts
- * held the due-gate despite being about tick policy, not file retention. Dependency direction:
+ * held the due-gate despite being about run policy, not file retention. Dependency direction:
  * orchestrator → retention; this module owns the whole "which files age out, and when" concern
  * and the orchestrator only hands it the (possibly live-reloaded) window. */
 

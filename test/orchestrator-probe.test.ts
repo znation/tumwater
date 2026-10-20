@@ -45,7 +45,7 @@ function wakeAll(repo: string): void {
 /** Role ticks started but not yet ended. The launch pass logs a tick's run_start before any
  * I/O, and the orchestrator runs in-process, so once the test reads the log every admitted
  * tick is counted here. */
-function roleTicksInFlight(repo: string): number {
+function roleRunsInFlight(repo: string): number {
   return eventsOfType(repo, "run_start").length - eventsOfType(repo, "run_end").length;
 }
 
@@ -100,7 +100,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     // the pi spawn, so on a loaded host its argv line can appear after budget_paused and read as a
     // pierced pause (BUGS.md 2026-10-07). The snapshot waits for every started tick to end; no
     // new tick can start meanwhile, since admission reads the tripped breaker.
-    await waitFor(() => roleTicksInFlight(repo) === 0, "the pre-trip stragglers to finish");
+    await waitFor(() => roleRunsInFlight(repo) === 0, "the pre-trip stragglers to finish");
     const runsAtTrip = onFallback();
     const ticksAt = (role: string) => loadRunnerState(repo, role).runs;
     const ticksAtTrip = { feature: ticksAt("feature"), helper: ticksAt("helper") };

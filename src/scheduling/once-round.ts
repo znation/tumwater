@@ -4,13 +4,13 @@ import type { RoleRunner } from "../runner/runner.js";
 /**
  * Once-mode bookkeeping (`tumwater run --once`), extracted from the orchestrator's poll loop.
  *
- * At start, each runner's tick count is snapshotted; a role is SETTLED when its ticks have
- * advanced past the snapshot (it ran its one tick), when this round's poll deferred it (a
- * deferred maintenance tick decided not to run — its once-round answer), or when it was skipped
+ * At start, each runner's run count is snapshotted; a role is SETTLED when its runs have
+ * advanced past the snapshot (it had its one run), when this round's poll deferred it (a
+ * maintenance run chose to defer — its once-round answer), or when it was skipped
  * with a persistent reason (backoff, paused, disabled mid-round, or the director's empty inbox —
  * nothing a poll can change). The value is the skip reason, for the caller's summary. A role
- * whose tick is merely in flight is NOT settled — the orchestrator only fires its stop once
- * every role is settled AND no tick is in flight AND the merge queue has been empty with no
+ * whose run is merely in flight is NOT settled — the orchestrator only fires its stop once
+ * every role is settled AND no run is in flight AND the merge queue has been empty with no
  * merge in flight for one full poll cycle (the guard against dropping a
  * queued-but-not-yet-started merge: a stop that arrives during the shutdown drain drops the
  * queue entry, so the slot gets one poll to pick the entry up before the stop is trusted).
@@ -19,54 +19,54 @@ export class OnceRound {
   /** Whether a once round is running at all; false makes every method inert. */
   readonly active: boolean;
   private readonly runners: readonly RoleRunner[];
-  private readonly tickSnapshots = new Map<string, number>();
+  private readonly runSnapshots = new Map<string, number>();
   private readonly settled = new Map<string, string>();
   private idlePolls = 0;
 
   constructor(runners: readonly RoleRunner[], active: boolean) {
     this.runners = runners;
     this.active = active;
-    for (const r of runners) this.tickSnapshots.set(r.role, r.state.runs);
+    for (const r of runners) this.runSnapshots.set(r.role, r.state.runs);
   }
 
-  /** The runner's pre-round tick baseline. Snapshotted at construction for the startup
+  /** The runner's pre-round run baseline. Snapshotted at construction for the startup
    * runners — and at FIRST SIGHT for a runner appended later: the live config reload
    * (src/config/config-live.ts) creates a runner for a role enabled mid-round and pushes it onto
-   * the same array this round watches, carrying persisted ticks from earlier rounds. The
+   * the same array this round watches, carrying persisted runs from earlier rounds. The
    * first isSettled call happens in that same poll's runner pass, before the runner can
-   * start a tick, so first sight is a pre-round baseline. Without it the missing entry read
+   * start a run, so first sight is a pre-round baseline. Without it the missing entry read
    * as 0, so a role with history counted as already settled and the round exited without
    * ever running it (BUGS.md 2026-09-25). Roles are unique across the array — the reload
    * only appends an id no runner has — so the map is keyed by role safely. */
   private snapshotOf(runner: RoleRunner): number {
-    const known = this.tickSnapshots.get(runner.role);
+    const known = this.runSnapshots.get(runner.role);
     if (known !== undefined) return known;
-    this.tickSnapshots.set(runner.role, runner.state.runs);
+    this.runSnapshots.set(runner.role, runner.state.runs);
     return runner.state.runs;
   }
 
-  /** A role is settled once it ran its tick or a settle reason was recorded for it. */
+  /** A role is settled once it had its run or a settle reason was recorded for it. */
   isSettled(runner: RoleRunner): boolean {
     return runner.state.runs > this.snapshotOf(runner) || this.settled.has(runner.role);
   }
 
-  /** Ticks this round advanced the runner past its snapshot — the exit summary's per-role
+  /** Runs this round advanced the runner past its snapshot — the exit summary's per-role
    * count, exact even for a role the caller's own pre-round snapshot never named. */
-  ticksRun(runner: RoleRunner): number {
+  runsDone(runner: RoleRunner): number {
     return runner.state.runs - this.snapshotOf(runner);
   }
 
-  /** Record the role's once-round answer (why it ran no tick, or that it deferred). */
+  /** Record the role's once-round answer (why it got no run, or that it deferred). */
   settle(role: string, reason: string): void {
     this.settled.set(role, reason);
   }
 
-  /** An idle, not-due role's settle reason: disabled mid-round, an interrupted tick waiting
+  /** An idle, not-due role's settle reason: disabled mid-round, an interrupted run waiting
    * to resume, error backoff, or (for the director) an empty inbox. No poll of this round
    * changes any of these, so the role is settled with its skip reason (the caller's summary
    * reports it). backoffSeconds is the backoff signal, not nextRunAt: the scheduled clock
    * also writes nextRunAt (with backoffSeconds 0), so a future nextRunAt alone does not mean
-   * backoff — and resumePending outranks it, because a resume wait (e.g. a cut-off tick
+   * backoff — and resumePending outranks it, because a resume wait (e.g. a cut-off run
    * deliberately held one interval) is pending work, not an idle verdict and not backoff. */
   settleSkipped(runner: RoleRunner): void {
     this.settle(
@@ -82,19 +82,19 @@ export class OnceRound {
     return this.settled;
   }
 
-  /** True on the SECOND consecutive quiet poll — every role settled, no role or director tick
+  /** True on the SECOND consecutive quiet poll — every role settled, no role or director run
    * in flight, no merge task running, merge queue empty — and false otherwise (resetting the
    * quiet streak). The orchestrator fires its internal stop when this returns true. */
   exitReady(flight: {
-    roleTicks: number;
-    directorTicks: number;
+    roleRuns: number;
+    directorRuns: number;
     merges: number;
     queuedMerges: number;
   }): boolean {
     const quiet =
       this.runners.every((r) => this.isSettled(r)) &&
-      flight.roleTicks === 0 &&
-      flight.directorTicks === 0 &&
+      flight.roleRuns === 0 &&
+      flight.directorRuns === 0 &&
       flight.merges === 0 &&
       flight.queuedMerges === 0;
     if (!(this.active && quiet)) {

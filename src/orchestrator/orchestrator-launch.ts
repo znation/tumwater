@@ -1,10 +1,10 @@
 // vocabulary: plain
 /** The orchestrator's launch pass: the half of the per-poll runner sweep that admits due
- * roles to their ticks. The decision half (isEligible, the pause/backoff/deferral gates,
+ * roles to their runs. The decision half (isEligible, the pause/backoff/deferral gates,
  * once-mode settling) stays in runOrchestrator (src/orchestrator/orchestrator.ts) — it reads
  * the poll's gate verdicts and the backlog state; this module takes its output, the
  * `reasons` map of due runners, and turns each into a reserved, semaphore-gated, in-flight
- * tick: the probe admission for the fallback breaker, the wake event, the
+ * run: the probe admission for the fallback breaker, the wake event, the
  * reservation/parking bookkeeping, runTimedRoleRun's wiring (slot acquisition, the start
  * gate, breaker evidence), and the in-flight-bucket bookkeeping the drain and the p75
  * duration sample read. Split out of orchestrator.ts — whose poll loop otherwise reads as
@@ -32,13 +32,13 @@ import type { ModelSelector } from "../config/model-selector.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
 import { runTimedRoleRun } from "../run/run-timing.js";
 
-/** How many recent work-bearing tick durations the p75 sample keeps (drainInFlightWork's
- * HANDOFF_MERGE_WINDOW_MS input): the drain window tracks recent tick pace, not all-time
+/** How many recent work-bearing run durations the p75 sample keeps (drainInFlightWork's
+ * HANDOFF_MERGE_WINDOW_MS input): the drain window tracks recent run pace, not all-time
  * pace, so the sample is a ring buffer. */
-export const ROLE_TICK_DURATION_SAMPLES = 50;
+export const ROLE_RUN_DURATION_SAMPLES = 50;
 
-/** The admission wait threshold below which a role tick's semaphore wait logs no event — a
- * tick that starts at once stays silent. Mirrors SLOT_WAIT_EVENT_MS in src/git/worktree-pool.ts:
+/** The admission wait threshold below which a role run's semaphore wait logs no event — a
+ * run that starts at once stays silent. Mirrors SLOT_WAIT_EVENT_MS in src/git/worktree-pool.ts:
  * the wait that signals maxConcurrentPerProvider (or maxConcurrent) caps the team. */
 export const PROVIDER_WAIT_EVENT_MS = 30_000;
 
@@ -51,7 +51,7 @@ interface LaunchContext {
   root: string;
   /** The decision pass's output: the runner → due-reason map, in poll order. */
   reasons: ReadonlyMap<RoleRunner, string | undefined>;
-  /** The role tick signal (the full shutdown signal plus the role-only stop): a restart
+  /** The role run signal (the full shutdown signal plus the role-only stop): a restart
    * cuts off permit holders through it. */
   signal: AbortSignal;
   /** The team gates' shared memory: the fallback breakers' probe and evidence bookkeeping
@@ -60,9 +60,9 @@ interface LaunchContext {
   /** The breaker's policy knobs (drain window and probe timing), fixed at startup. */
   breakerPolicy: FallbackBreakerPolicy;
   /** The fallback breaker's clock (default Date.now; see RunOptions.breakerNow): the evidence
-   * fold stamps its cool-down deadline from this, never from the tick's own wall clock. */
+   * fold stamps its cool-down deadline from this, never from the run's own wall clock. */
   breakerNow: () => number;
-  /** The pair whose demoted fallback this poll admits a probe tick for, or null when none
+  /** The pair whose demoted fallback this poll admits a probe run for, or null when none
    * (the decision pass computed it from the breaker map). */
   probePair: string | null;
   /** The roles whose model tier resolves to the probed pair (part 5c/8): the ONLY runners
@@ -72,37 +72,37 @@ interface LaunchContext {
    * draft, which continued every non-director runner). */
   probeRoles: ReadonlySet<string>;
   /** Whether the cap is reached this poll (gate-polls.ts's budgetActive): only a budget
-   * hold puts role ticks on fallback pairs, so only then does a tick's outcome fold as
+   * hold puts role runs on fallback pairs, so only then does a run's outcome fold as
    * evidence into the breakers. */
   budgetActive: boolean;
-  /** The team's tick semaphore; the director never queues behind it. */
+  /** The team's run semaphore; the director never queues behind it. */
   semaphore: Semaphore;
   /** pi's saved default model (the caller's stat-cached readPiDefaultModel result): the
    * fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2). */
   piDefault: ModelSelector | null;
-  /** Role ticks actually holding a permit — the redeployer's in-flight count and the
+  /** Role runs actually holding a permit — the redeployer's in-flight count and the
    * restart abort's target. */
   rolePermitHolders: Set<RoleRunner>;
-  /** The two in-flight buckets: role ticks (the drain awaits these) and director ticks
+  /** The two in-flight buckets: role runs (the drain awaits these) and director runs
    * (the drain waits for them to finish first). */
   roleInFlight: Set<Promise<void>>;
   directorInFlight: Set<Promise<void>>;
-  /** The recent work-bearing role-tick duration ring buffer the drain window samples. */
-  roleTickDurationsMs: number[];
+  /** The recent work-bearing role-run duration ring buffer the drain window samples. */
+  roleRunDurationsMs: number[];
   /** The start gate a waiter meets at permit time: the restart hold plus the failure hold
-   * for role ticks (the director is exempt, as at scheduling). */
-  /** The tick semaphore's admission wait threshold (default PROVIDER_WAIT_EVENT_MS): a test
+   * for role runs (the director is exempt, as at scheduling). */
+  /** The run semaphore's admission wait threshold (default PROVIDER_WAIT_EVENT_MS): a test
    * seam mirroring breakerNow — providerWaitMs: 0 forces every admission's wait to be logged. */
   providerWaitMs?: number;
   /** The start gate a waiter meets at permit time: the restart hold plus the failure hold
-   * for role ticks (the director is exempt, as at scheduling). */
+   * for role runs (the director is exempt, as at scheduling). */
   startHeld: (role: string) => boolean;
 }
 
-/** Launch one due runner's tick: reserve it, park it in the semaphore, and start it under
+/** Launch one due runner's run: reserve it, park it in the semaphore, and start it under
  * runTimedRoleRun with the breaker-evidence wiring. Returns the task promise already added
  * to its in-flight bucket (its `finally` self-removes and folds the duration sample). */
-export function launchDueTicks(ctx: LaunchContext): void {
+export function launchDueRuns(ctx: LaunchContext): void {
   const {
     root,
     reasons,
@@ -118,7 +118,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     rolePermitHolders,
     roleInFlight,
     directorInFlight,
-    roleTickDurationsMs,
+    roleRunDurationsMs,
     startHeld,
   } = ctx;
   let admittedProbe = false;
@@ -143,8 +143,8 @@ export function launchDueTicks(ctx: LaunchContext): void {
     runner.state.running = true; // Reserve before the semaphore wait so we don't double-schedule.
     // The director never queues behind roles: a user prompt starts immediately,
     // even when maxConcurrent slots are busy. Parked waiters keep fairOrder's tier order
-    // across polls too: a work-role arrival jumps ahead of maintenance ticks that queued
-    // in an earlier poll (in-flight ticks always run to completion).
+    // across polls too: a work-role arrival jumps ahead of maintenance runs that queued
+    // in an earlier poll (in-flight runs always finish).
     const usesSlot = runner.role !== DIRECTOR_ROLE;
     // Mark the parked waiter while it waits: it holds no permit yet, so the dashboards
     // render `awaiting slot` (an inactive state) and the active rows keep tracking
@@ -156,20 +156,20 @@ export function launchDueTicks(ctx: LaunchContext): void {
     const parkKey = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(Date.now());
     runner.state.parkedSince = usesSlot ? Date.now() : undefined;
     runner.state.parkedOn = usesSlot && parkKey ? seamConcurrencyKey(parkKey, piDefault) : undefined;
-    // The tick's own run time (null when it never ran, was cut off, or ended without
-    // work): the drain-window sample is taken only for a work-bearing tick that finished
+    // The run's own duration (null when it never started, was cut off, or ended without
+    // work): the drain-window sample is taken only for a work-bearing run that finished
     // on its own (runTimedRoleRun; BUGS.md 2026-09-30).
     let durationMs: number | null = null;
     // Whether runner.run() was ever called — false when the start gate (or a shutdown)
-    // turned the tick away at its permit.
+    // turned the run away at its permit.
     let started = false;
-    // The tick's keyed semaphore lease (plans/provider-concurrency.md §4): acquired on the
+    // The run's keyed semaphore lease (plans/provider-concurrency.md §4): acquired on the
     // authoring seam's provider key and released in place of the bare team release, so the
-    // cap is real for role ticks from part 2/5 on. The director never queues, so its lease is
+    // cap is real for role runs from part 2/5 on. The director never queues, so its lease is
     // never created here.
     let lease: Awaited<ReturnType<Semaphore["acquireLease"]>> | null = null;
     // The director's forced provider lease (plans/provider-concurrency.md §4): never queues and
-    // never counts toward maxConcurrent, but DOES count toward its provider key while its tick
+    // never counts toward maxConcurrent, but DOES count toward its provider key while its run
     // runs — so a full provider admits no further grants until the director releases.
     let directorLease: Awaited<ReturnType<Semaphore["forceLease"]>> | null = null;
     const task = (async () => {
@@ -195,7 +195,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
               // provider contention worth surfacing: name it so `tumwater doctor`'s provider
               // contention row can sum it and the operator can size maxConcurrentPerProvider
               // (or maxConcurrent) from real waits. Best-effort like the launch pass's other
-              // events, so an unwritable log never blocks a start; a tick admitted at once
+              // events, so an unwritable log never blocks a start; a run admitted at once
               // stays silent.
               if (Date.now() - admittedAt >= (ctx.providerWaitMs ?? PROVIDER_WAIT_EVENT_MS)) {
                 logEventBestEffort(ctx.root, {
@@ -207,15 +207,15 @@ export function launchDueTicks(ctx: LaunchContext): void {
                   ...heldBy,
                 });
               }
-              // Permit granted: the tick is now an active, permit-holding state until the
-              // release below. A tick the start gate turns away releases within the same
+              // Permit granted: the run is now an active, permit-holding state until the
+              // release below. A run the start gate turns away releases within the same
               // microtask chain, so no poll ever counts it as a permit holder.
               runner.state.parkedSince = undefined;
               runner.state.parkedOn = undefined;
               rolePermitHolders.add(runner);
             }
           : async () => {
-              // The director wraps its tick in a forced lease on its run's provider key, never
+              // The director wraps its run in a forced lease on its provider key, never
               // queuing behind roles: a user prompt starts at once even on a full provider,
               // and the key's in-use rises by one — overshooting by one — so no further grant on
               // that key happens until its release drains it back under the cap.
@@ -232,28 +232,28 @@ export function launchDueTicks(ctx: LaunchContext): void {
             },
         async () => {
           started = true;
-          // A role tick that starts while the budget holds runs on the fallback pair its tier
+          // A role run that starts while the budget holds uses the fallback pair its tier
           // resolved to (the gate's per-tier view was installed in its config), or — when a
           // model-fallback episode is active — on the tier's model-fallback pair, which can
           // differ from the budget pair. Its outcome is the evidence for the pair it ACTUALLY
           // ran on, so read it from runConfig (config + episode), never from configForRole
-          // alone: a per-pair breaker fed a fallback tick under the primary's name would
+          // alone: a per-pair breaker fed a fallback run under the primary's name would
           // misprice a healthy pair and miss a dead one (PLANS.md "Model failure fallback,
           // part 1/2").
           const now = Date.now();
           const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(now);
-          // The breaker is keyed by the seam that ran (seamHoldKey), like the tick pair and
+          // The breaker is keyed by the seam that ran (seamHoldKey), like the run pair and
           // the team-hold stamps (PLANS.md "Mixed claude + pi fleets, part 2/4"): a claude
-          // fallback tick demotes the `claude/<model>` breaker entry, never `?/…`.
+          // fallback run demotes the `claude/<model>` breaker entry, never `?/…`.
           const ranPair =
             budgetActive && cfg?.model !== undefined
               ? modelPairName({ provider: seamHoldKey(cfg), model: cfg.model })
               : null;
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
-          // The tick's lease rides in the provider-lease store for the length of the tick, so
-          // every run it makes re-keys it to the provider that run actually uses
-          // (plans/provider-concurrency.md §5) — a budget or model-failure switch that moves a
-          // mid-tick run to another provider moves the lease with it. The director's forced
+          // The run's lease rides in the provider-lease store for the length of the run, so
+          // every agent run it makes re-keys it to the provider that agent run actually uses
+          // (plans/provider-concurrency.md §5) — a budget or model-failure switch that moves an
+          // agent run to another provider mid-run moves the lease with it. The director's forced
           // lease re-keys the same way, and its rekey never waits.
           const outcome = await withProviderLease(
             runner.role === DIRECTOR_ROLE ? directorLease! : lease!,
@@ -274,28 +274,28 @@ export function launchDueTicks(ctx: LaunchContext): void {
               breakerPolicy,
             );
           } else if (probe && probePair !== null) {
-            // A probe whose tick started on no engaged pair — the budget gate reopened
+            // A probe whose run started on no engaged pair — the budget gate reopened
             // between admission and start (the cap raised, or midnight reset spend) — folds
             // no evidence, so its claim would hang on the pair's entry forever: probing
             // blocks both fallbackProbeDuePair and startFallbackProbeAt, and nothing but a
             // rekey clears it, so the demoted fallback could never earn another probe. Hand
-            // the claim back exactly as the !started path below does for a tick turned away
+            // the claim back exactly as the !started path below does for a run turned away
             // at its permit.
             gateStates.budget.breakers = abandonFallbackProbeAt(gateStates.budget.breakers, probePair);
           }
           return outcome;
         },
         Date.now,
-        // The restart start gate, plus the failure hold for role ticks (the director is
+        // The restart start gate, plus the failure hold for role runs (the director is
         // exempt, as at scheduling): a waiter granted its permit mid-storm must not start
         // into it.
         () => startHeld(runner.role),
       );
-      // A reservation whose tick never started hands itself back, so the role re-schedules
+      // A reservation whose run never started hands itself back, so the role re-schedules
       // once the hold lifts (or on the new build) instead of sitting `running` forever with
       // nothing in flight. Memory only, on purpose: nothing started, so no state write and
       // no run_start/run_end — the persisted state still reads exactly as the last real
-      // tick left it, and the next generation schedules the role from that.
+      // run left it, and the next generation schedules the role from that.
       if (!started) runner.state.running = false;
       // A probe turned away the same way answered nothing: hand its claim back (see
       // abandonFallbackProbeAt) so the next poll can admit a probe that actually runs.
@@ -320,8 +320,8 @@ export function launchDueTicks(ctx: LaunchContext): void {
       .finally(() => {
         bucket.delete(task);
         if (bucket === roleInFlight && durationMs !== null) {
-          roleTickDurationsMs.push(durationMs);
-          if (roleTickDurationsMs.length > ROLE_TICK_DURATION_SAMPLES) roleTickDurationsMs.shift();
+          roleRunDurationsMs.push(durationMs);
+          if (roleRunDurationsMs.length > ROLE_RUN_DURATION_SAMPLES) roleRunDurationsMs.shift();
         }
       });
   }

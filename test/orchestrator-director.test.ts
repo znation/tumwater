@@ -33,7 +33,7 @@ import { pauseTeam } from "../src/team/team-state.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import {
   FAST_POLL_MS,
-  awaitSettledTick,
+  awaitSettledRun,
   makeFastRepo,
   onceRound,
   scriptedRedeployer,
@@ -118,7 +118,7 @@ test("director: a queued prompt runs without a permit even while the only slot i
   submitRolePrompt(repo, "director", "what is the team working on?");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await awaitSettledTick(repo, "director", 1, "the director's prompt tick");
+    await awaitSettledRun(repo, "director", 1, "the director's prompt tick");
     const samplesText = () => {
       try {
         return fs.readFileSync(samples, "utf8");
@@ -152,7 +152,7 @@ test("director: once recovers a kept merge pin and drains the queue before exit"
   try {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(exit.ticksRun?.get("director"), 1, "the director's recovery tick ran");
+    assert.equal(exit.runsDone?.get("director"), 1, "the director's recovery tick ran");
     assert.ok(eventsOfType(repo, "merge_queued").some((e) => e.commit === sha), "the pin was re-queued");
     assert.equal(queueDepth(repo), 0, "the merge queue drained before exit");
     assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
@@ -168,7 +168,7 @@ test("director: a team pause holds role ticks but not the director's queued prom
   submitRolePrompt(repo, "director", "summarize the team's state");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await awaitSettledTick(repo, "director", 1, "the director's prompt tick under the pause");
+    await awaitSettledRun(repo, "director", 1, "the director's prompt tick under the pause");
     assert.equal(loadRunnerState(repo, "director").runs, 1, "the director ticked despite the pause");
     assert.equal(
       eventsOfType(repo, "run_start").some((e) => e.source === "clean"),
@@ -198,13 +198,13 @@ test("merge queue interlock: a role with a queued merge starts no tick until the
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => queueDepth(repo) === 0, "the queued merge to settle and drop", 30_000);
-    await awaitSettledTick(repo, "clean", 1, "clean's first tick after the interlock released it");
+    await awaitSettledRun(repo, "clean", 1, "clean's first tick after the interlock released it");
     const runs = readRunBlocks(log);
     const reviewIdx = runs.findIndex((b) => b.includes("interlock sentinel change"));
-    const tickIdx = runs.findIndex((b) => sessionOf(b).startsWith("tumwater-clean-"));
+    const runIdx = runs.findIndex((b) => sessionOf(b).startsWith("tumwater-clean-"));
     assert.ok(reviewIdx >= 0, "the queued change got a review run");
-    assert.ok(tickIdx >= 0, "clean eventually ran its own tick");
-    assert.ok(reviewIdx < tickIdx, "the review ran before the role's tick — the interlock held the role back");
+    assert.ok(runIdx >= 0, "clean eventually ran its own tick");
+    assert.ok(reviewIdx < runIdx, "the review ran before the role's tick — the interlock held the role back");
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "exactly the post-interlock tick ran");
   } finally {
     await stopOrchestrator(orch, restore);

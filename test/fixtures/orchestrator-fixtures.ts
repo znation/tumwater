@@ -21,7 +21,7 @@ import { assistantLine } from "./pi-events.js";
 import { writeModelsFile } from "./models-fixtures.js";
 import { waitFor } from "../helpers/wait.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
-import type { TickResult } from "../../src/run/run-outcome.js";
+import type { RunResult } from "../../src/run/run-outcome.js";
 
 /** The live-orchestrator tier's test scaffolding — the helpers that drive a running
  * orchestrator or its merge pipeline: fast configs and repos, a start/stop wrapper around
@@ -33,8 +33,8 @@ import type { TickResult } from "../../src/run/run-outcome.js";
  * 2s cadence: multi-cycle behavior (config reloads, marker consumption, wake events) resolves
  * in ~100ms instead of seconds. Tests that verify timing margins against the real cadence —
  * shutdown latency vs POLL_MS, and maxConcurrent's hold < poll boundary — keep the default.
- * Safe because idle ticks back off 1s (fastConfig), so no assertion relies on a >=2s gap
- * between polls to prevent back-to-back ticks. */
+ * Safe because idle runs back off 1s (fastConfig), so no assertion relies on a >=2s gap
+ * between polls to prevent back-to-back runs. */
 export const FAST_POLL_MS = 100;
 
 /** Does `role`'s pinned merge ref still exist? `git rev-parse --verify` exits nonzero once
@@ -64,12 +64,12 @@ export function readSamples(runDir: string): number[] {
   }
 }
 
-/** A config where only the given roles tick quickly (no min gap, 1s backoff) so several
- * ticks merge within a few poll cycles. The per-role clocks defaultConfig seeds (organize
+/** A config where only the given roles run quickly (no min gap, 1s backoff) so several
+ * runs merge within a few poll cycles. The per-role clocks defaultConfig seeds (organize
  * 3600s, plan 3600s, readme 1800s, steward/qa/selfcheck) are zeroed too: a role entry
  * inherits them through overlayDefaults even when the test rewrites `roles.<id>`
  * wholesale, and configForRole prefers the per-role value — leaving them would put a
- * `fastConfig(["organize"])` team on a 1 h tick clock (2026-10-06 CI regression). Only
+ * `fastConfig(["organize"])` team on a 1 h run clock (2026-10-06 CI regression). Only
  * the SEEDED clocks are cleared, so a role without a default clock still inherits the
  * global `minRunIntervalSeconds` a caller sets afterwards (the verify-abort test's 300 s
  * freeze relies on that). */
@@ -86,7 +86,7 @@ export function fastConfig(roles: string[], model?: string): TumwaterConfig {
 }
 
 /** The standard opening of a live-orchestrator e2e test in one call: a fresh repo, run through
- * initProject, configured so the given roles tick quickly (see fastConfig; `model` forwards to
+ * initProject, configured so the given roles run quickly (see fastConfig; `model` forwards to
  * it for tests that pin the model). Returns the repo path. */
 export async function makeFastRepo(label: string, roles: string[], model?: string): Promise<string> {
   const repo = makeRepo();
@@ -191,7 +191,7 @@ export function withHangGuard<T>(promise: Promise<T>, message: string): Promise<
 export function onceRound(
   repo: string,
   roleFilter?: string,
-): Promise<{ restart: boolean; settled?: ReadonlyMap<string, string>; ticksRun?: ReadonlyMap<string, number> }> {
+): Promise<{ restart: boolean; settled?: ReadonlyMap<string, string>; runsDone?: ReadonlyMap<string, number> }> {
   const done = runRepoOrchestrator(repo, {
     pollMs: FAST_POLL_MS,
     once: true,
@@ -229,14 +229,14 @@ export async function stopOrchestrator(
   await orch.stop();
 }
 
-/** Poll until `role`'s persisted runner state has completed at least `n` ticks and is idle
- * (not mid-tick) — the live-orchestrator e2e tests' shared "a tick finished" gate, the
+/** Poll until `role`'s persisted runner state has completed at least `n` runs and is idle
+ * (not mid-run) — the live-orchestrator e2e tests' shared "a run finished" gate, the
  * `waitFor(() => loadRunnerState(repo, role).runs >= n && !loadRunnerState(repo, role).running,
  * what)` idiom that recurred verbatim across the suite. Reads the state file fresh each
  * poll, exactly like the inline form; `ms` forwards to waitFor's deadline (default when
- * omitted). Tests that wait for the tick to start but not finish, or that assert on the
+ * omitted). Tests that wait for the run to start but not finish, or that assert on the
  * state between the two conditions, keep their explicit waitFor calls. */
-export async function awaitSettledTick(
+export async function awaitSettledRun(
   repo: string,
   role: string,
   n: number,
@@ -253,11 +253,14 @@ export async function awaitSettledTick(
   );
 }
 
+/** @deprecated Use awaitSettledRun. */
+export const awaitSettledTick = awaitSettledRun;
+
 /** Merge the head of the durable merge queue through the orchestrator's own merge pipeline
  * (merge-drain.ts). Runner-level tests call `runner.run()` directly — no poll loop — so the
- * entry a changed tick enqueues needs a driver: this verifies the head alone (startVerify, on a
+ * entry a changed run enqueues needs a driver: this verifies the head alone (startVerify, on a
  * one-permit semaphore) and, once approved, merges it (drainMerge), leaving every other queued
- * entry untouched — a test that ticks a second role meanwhile merges that one with its own call.
+ * entry untouched — a test that runs a second role meanwhile merges that one with its own call.
  * `signal` stands in for harness shutdown (the orchestrator's stop signal). Returns the
  * merge's outcome as folded into `runner`'s state; the entry is dropped after every outcome,
  * exactly as the pipeline does. */
@@ -268,7 +271,7 @@ export async function mergeHead(
   role: string,
   branch = "main",
   signal: AbortSignal = new AbortController().signal,
-): Promise<TickResult> {
+): Promise<RunResult> {
   const head = headMerge(repo);
   if (!head) throw new Error("expected a queued merge");
   assert.equal(head.entry.role, role, "the queue head belongs to the expected role");
@@ -291,7 +294,7 @@ export async function mergeHead(
   await pipeline.merge?.promise;
   if (fs.existsSync(head.file)) throw new Error(`the merge of ${role} ended without an outcome`);
   // The pipeline re-queues a kept change itself (requeueKeptChange). This driver models the
-  // author-side backstop — leftover recovery at the next tick — so it drops that re-queue;
+  // author-side backstop — leftover recovery at the next run — so it drops that re-queue;
   // a test of the re-queue itself drives startVerify directly.
   for (const { entry, file } of queuedMergeFiles(repo)) {
     if (entry.role === role && entry.retry !== undefined) dropMerge(file);

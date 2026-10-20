@@ -8,7 +8,7 @@
  * away, the wake event, and the duration-sample fold — ran only inside full-repo runs,
  * where a slip in any of them would surface as a hung team, not a red test.
  *
- * The tests drive launchDueTicks directly with stand-in runners (the launch pass touches
+ * The tests drive launchDueRuns directly with stand-in runners (the launch pass touches
  * only `role`, `state.running`, `state.parkedSince`, and `run()` on a RoleRunner), a real
  * Semaphore, and a real breaker; a zero-capacity semaphore makes the director's bypass
  * observable (the role parked behind it never gets a permit). */
@@ -17,7 +17,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-import { launchDueTicks } from "../src/orchestrator/orchestrator-launch.js";
+import { launchDueRuns } from "../src/orchestrator/orchestrator-launch.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
@@ -32,7 +32,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { waitFor, sleep } from "./helpers/wait.js";
 import { captureStderr } from "./helpers/exit-capture.js";
 
-/** A stand-in runner: only what launchDueTicks reads. `config` is what runConfig returns —
+/** A stand-in runner: only what launchDueRuns reads. `config` is what runConfig returns —
  * the tick's pair comes from the runner's own config view (part 5c/8), or from its active
  * model-fallback episode in the real runner. */
 function fakeRunner(
@@ -54,7 +54,7 @@ function emptyGateStates(breaker: FallbackBreaker = IDLE_FALLBACK_BREAKER): Team
   return { budget: { breakers, engaged: breaker.pair } } as unknown as TeamGateStates;
 }
 
-function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
+function ctx(overrides: Partial<Parameters<typeof launchDueRuns>[0]>) {
   return {
     root: tmpdir("launch-"),
     reasons: new Map<RoleRunner, string | undefined>(),
@@ -70,7 +70,7 @@ function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
     rolePermitHolders: new Set<RoleRunner>(),
     roleInFlight: new Set<Promise<void>>(),
     directorInFlight: new Set<Promise<void>>(),
-    roleTickDurationsMs: [],
+    roleRunDurationsMs: [],
     startHeld: () => false,
     ...overrides,
   };
@@ -83,7 +83,7 @@ async function settle(c: ReturnType<typeof ctx>): Promise<void> {
 test("a due role tick parks, holds a permit, releases it, and folds its duration sample", async () => {
   const runner = fakeRunner("organize");
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]) });
-  launchDueTicks(c);
+  launchDueRuns(c);
   // Reserved before the semaphore wait: not double-schedulable while parked.
   assert.equal(runner.state.running, true, "the reservation is held before the permit");
   assert.ok(typeof runner.state.parkedSince === "number", "a role parks while it waits");
@@ -92,7 +92,7 @@ test("a due role tick parks, holds a permit, releases it, and folds its duration
   assert.equal(runner.state.running, true, "a started tick keeps its reservation");
   assert.equal(c.rolePermitHolders.size, 0, "the permit was released at tick end");
   assert.equal(c.roleInFlight.size, 0, "the finished task left the in-flight bucket");
-  assert.equal(c.roleTickDurationsMs.length, 1, "one work-bearing tick duration was sampled");
+  assert.equal(c.roleRunDurationsMs.length, 1, "one work-bearing tick duration was sampled");
 });
 
 test("a role tick's semaphore lease is keyed by its authoring seam's provider", async () => {
@@ -110,7 +110,7 @@ test("a role tick's semaphore lease is keyed by its authoring seam's provider", 
   }, { provider: "omlx", model: "m", agent: "pi" });
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]) });
   c.semaphore.setKeyCaps({ omlx: 1 });
-  launchDueTicks(c);
+  launchDueRuns(c);
   await waitFor(() => c.rolePermitHolders.size === 1, "the tick to hold the permit");
   const snap = c.semaphore.snapshot().byKey;
   assert.equal(snap.omlx?.inUse, 1, "the in-flight tick consumes the omlx slot");
@@ -128,7 +128,7 @@ test("a role tick that waits for its provider slot logs a provider_wait event; a
   const held = await semaphore.acquireLease(0, "omlx");
   const runner = fakeRunner("feature", undefined, { provider: "omlx", model: "m", agent: "pi" });
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]), semaphore, providerWaitMs: 0 });
-  launchDueTicks(c);
+  launchDueRuns(c);
   held.release(); // free the permit so the role's admission completes
   await settle(c);
   const waits = eventsOfType(c.root, "provider_wait");
@@ -143,14 +143,14 @@ test("a role tick that waits for its provider slot logs a provider_wait event; a
   const atOnce = ctx({
     reasons: new Map([[fakeRunner("feature", undefined, { provider: "omlx", model: "m", agent: "pi" }), "scheduled"]]),
   });
-  launchDueTicks(atOnce);
+  launchDueRuns(atOnce);
   await settle(atOnce);
   assert.equal(eventsOfType(atOnce.root, "provider_wait").length, 0);
 
   // The director never queues and never holds an admission wait, so it logs nothing.
   const director = fakeRunner(DIRECTOR_ROLE);
   const dc = ctx({ reasons: new Map([[director, "prompt"]]) });
-  launchDueTicks(dc);
+  launchDueRuns(dc);
   await settle(dc);
   assert.equal(eventsOfType(dc.root, "provider_wait").length, 0);
 });
@@ -160,7 +160,7 @@ test("a provider_wait names the team cap when maxConcurrent, not the provider, h
   const held = await semaphore.acquireLease(0, "other");
   const runner = fakeRunner("feature", undefined, { provider: "omlx", model: "m", agent: "pi" });
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]), semaphore, providerWaitMs: 0 });
-  launchDueTicks(c);
+  launchDueRuns(c);
   held.release();
   await settle(c);
   const waits = eventsOfType(c.root, "provider_wait");
@@ -179,13 +179,13 @@ test("the director never queues behind the semaphore and never samples the role 
     reasons: new Map([[director, "prompt"], [role, "scheduled"]]),
     semaphore: new Semaphore(0),
   });
-  launchDueTicks(c);
+  launchDueRuns(c);
   assert.equal(director.state.parkedSince, undefined, "the director never parks");
   assert.ok(typeof role.state.parkedSince === "number", "the role parks behind the empty semaphore");
   // The director's tick completes while the role is still parked.
   await waitFor(() => c.directorInFlight.size === 0, "director tick to finish");
   assert.equal(director.state.running, true, "the director's tick ran");
-  assert.equal(c.roleTickDurationsMs.length, 0, "director ticks are not role-drain samples");
+  assert.equal(c.roleRunDurationsMs.length, 0, "director ticks are not role-drain samples");
   assert.equal(c.directorInFlight.size, 0);
   assert.equal(c.roleInFlight.size, 1, "the role stays in flight, parked");
   // Clean up the parked task: aborting lets its acquire-return path settle the tick.
@@ -194,15 +194,15 @@ test("the director never queues behind the semaphore and never samples the role 
 });
 
 test("a start gate held at permit time hands the reservation back with nothing started", async () => {
-  let tickCalls = 0;
-  const runner = fakeRunner("organize", async () => ((tickCalls += 1), { result: "changed" }));
+  let runCalls = 0;
+  const runner = fakeRunner("organize", async () => ((runCalls += 1), { result: "changed" }));
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]), startHeld: () => true });
-  launchDueTicks(c);
+  launchDueRuns(c);
   await settle(c);
-  assert.equal(tickCalls, 0, "the held tick never started");
+  assert.equal(runCalls, 0, "the held tick never started");
   assert.equal(runner.state.running, false, "the unstarted reservation was handed back");
   assert.equal(runner.state.parkedSince, undefined, "the parked-waiter marker was cleared");
-  assert.equal(c.roleTickDurationsMs.length, 0, "no duration was sampled for a tick that never ran");
+  assert.equal(c.roleRunDurationsMs.length, 0, "no duration was sampled for a tick that never ran");
   assert.equal(c.rolePermitHolders.size, 0, "the permit was released");
 });
 
@@ -218,12 +218,12 @@ test("the probe goes to a runner whose tier resolves to the probed pair, one per
     budgetActive: true,
     gateStates: emptyGateStates(breaker),
   });
-  launchDueTicks(c);
+  launchDueRuns(c);
   await settle(c);
   assert.ok(c.gateStates.budget.breakers["free/qwen"]?.probing === false, "the probe's evidence closed the probing flag");
   assert.equal(c.gateStates.budget.breakers["free/qwen"]?.failures, 0, "a served probe is not a failure");
   assert.equal(second.state.running ?? false, false, "the second eligible role was never reserved: one claim per poll");
-  assert.equal(c.roleTickDurationsMs.length, 1, "only the probe ran");
+  assert.equal(c.roleRunDurationsMs.length, 1, "only the probe ran");
   assert.equal(c.rolePermitHolders.size, 0);
 });
 
@@ -245,7 +245,7 @@ test("a model-fallback tick folds its breaker evidence into the pair runConfig n
     run: async () => ({ result: "error" }) as TickOutcome,
   } as unknown as RoleRunner;
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]), budgetActive: true, gateStates });
-  launchDueTicks(c);
+  launchDueRuns(c);
   await settle(c);
   assert.equal(c.gateStates.budget.breakers["free/qwen"]?.failures, 1, "the fallback pair carries the failure");
   assert.equal(c.gateStates.budget.breakers["paid/gpt"]?.failures, 0, "the abandoned primary stays clean");
@@ -263,10 +263,10 @@ test("a probe with no eligible runner leaves the other due launches alone (part 
     probeRoles: new Set(["clean"]),
     gateStates: emptyGateStates(breaker),
   });
-  launchDueTicks(c);
+  launchDueRuns(c);
   await settle(c);
   assert.equal(c.gateStates.budget.breakers["free/qwen"]?.probing, false, "no claim was taken");
-  assert.equal(c.roleTickDurationsMs.length, 1, "the non-probe role launched normally");
+  assert.equal(c.roleRunDurationsMs.length, 1, "the non-probe role launched normally");
 });
 
 test("a probe turned away by the held start gate has its claim handed back", async () => {
@@ -279,7 +279,7 @@ test("a probe turned away by the held start gate has its claim handed back", asy
     gateStates: emptyGateStates(breaker),
     startHeld: () => true,
   });
-  launchDueTicks(c);
+  launchDueRuns(c);
   await settle(c);
   assert.equal(c.gateStates.budget.breakers["free/qwen"]?.probing, false, "the probe claim was abandoned, not left hanging");
   assert.equal(runner.state.running, false, "the probe tick never started, so no reservation remains");
@@ -301,7 +301,7 @@ test("a probe whose tick starts after the budget reopened has its claim handed b
     budgetActive: false, // the reopen arrived between admission and tick start
     gateStates,
   });
-  launchDueTicks(c);
+  launchDueRuns(c);
   await settle(c);
   assert.equal(c.gateStates.budget.breakers["free/qwen"]?.probing, false, "the probe claim was abandoned when no evidence was folded");
 });
@@ -309,13 +309,13 @@ test("a probe whose tick starts after the budget reopened has its claim handed b
 test("a due reason other than scheduled/startup logs a wake event", async () => {
   const runner = fakeRunner("organize");
   const c = ctx({ reasons: new Map([[runner, "operator"]]) });
-  launchDueTicks(c);
+  launchDueRuns(c);
   await settle(c);
   const wakes = readEvents(c.root).filter((e) => e.type === "wake");
   assert.equal(wakes.length, 1, "one wake event for the operator reason");
   assert.equal(wakes[0]!.source, "organize");
   const quiet = ctx({ reasons: new Map([[fakeRunner("clean"), "scheduled"]]) });
-  launchDueTicks(quiet);
+  launchDueRuns(quiet);
   await settle(quiet);
   assert.equal(readEvents(quiet.root).filter((e) => e.type === "wake").length, 0, "a scheduled tick is not a wake");
 });
@@ -323,7 +323,7 @@ test("a due reason other than scheduled/startup logs a wake event", async () => 
 test("an already-aborted signal launches nothing", async () => {
   const runner = fakeRunner("clean");
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]), signal: AbortSignal.abort() });
-  launchDueTicks(c);
+  launchDueRuns(c);
   assert.equal(c.roleInFlight.size, 0, "no task was started");
   assert.equal(runner.state.running ?? false, false, "no reservation was taken");
 });
@@ -338,7 +338,7 @@ test("a rejected tick task is logged and un-reserved, not an unhandled rejection
     throw new Error("boom during finalize");
   });
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]) });
-  launchDueTicks(c);
+  launchDueRuns(c);
   await Promise.allSettled([...c.roleInFlight]);
   await waitFor(() => c.roleInFlight.size === 0, "the rejected task to leave the bucket");
   assert.equal(runner.state.running, false, "the rejected reservation is handed back");
@@ -365,7 +365,7 @@ test("a warning whose event write throws is reported to stderr, not left as an u
   };
   process.on("unhandledRejection", onRejection);
   try {
-    launchDueTicks(c);
+    launchDueRuns(c);
     fs.rmSync(c.root, { recursive: true, force: true });
     fs.writeFileSync(c.root, "");
     await waitFor(() => c.roleInFlight.size === 0, "the rejected task to leave the bucket");
@@ -394,7 +394,7 @@ test("a wake event that cannot be logged still starts the due tick", async () =>
   const runner = fakeRunner("clean");
   const c = ctx({ root, reasons: new Map([[runner, "main moved"]]) });
   // Before the fix this threw EISDIR before the reservation; the tick must still run.
-  launchDueTicks(c);
+  launchDueRuns(c);
   assert.equal(runner.state.running, true, "the reservation is taken despite the unwritable feed");
   await settle(c);
   assert.equal(c.roleInFlight.size, 0, "the tick ran to completion");
