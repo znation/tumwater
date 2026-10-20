@@ -877,4 +877,27 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
+### `tumwater abort --role` takes a comma-separated list of role ids, so one command stops every in-flight run an operator names (planned 2026-10-19 by the plan role; independent of every eligible Planned entry except that it reuses the `namedRoleList` helper the in-flight `wake --role`/`reset-counters --role` entry adds to src/operator/operator-commands.ts — it touches only `cmdAbort` there, plus help, docs and test/operator-commands.test.ts)
+
+**Goal.** `abort --role <id>` stops ONE role's in-flight run (`cmdAbort`, src/operator/operator-commands.ts, via `requiredNamedRole`). An operator who has just seen a bad model change, or a broken main, and wants every running feature instance stopped has to run one `abort` per runner. `abort --role feature,feature-2` fails today with `unknown role: feature,feature-2`. Accept the comma list, as `pause --role` already does (and as `wake --role` and `reset-counters --role` will): write one abort marker per listed role. A single id behaves exactly as now.
+
+**Approach.**
+- `src/operator/operator-commands.ts` `cmdAbort`:
+  - Replace `requiredNamedRole(root, args, "abort")` with `const roles = namedRoleList(root, args) ?? fail("abort requires --role <id> (e.g. \`--role feature\`)");`. Keep that message byte-identical to `requiredNamedRole`'s text for `abort`. `namedRoleList` (from the wake/reset-counters entry) splits on `,`, trims and drops empty pieces, fails with `ROLE_VALUE_ERROR` when none remain, resolves each piece through `namedRole`, and deduplicates in first-seen order. Every piece resolves before anything is written, so one bad id writes no marker. If that entry has not landed when you start, add `namedRoleList` exactly as that entry's Approach specifies, and leave its other changes to it.
+  - Then `for (const role of roles) { const result = requestAbort(root, role); if (!result.ok) fail(result.error); say(result.message); }`. `requestAbort` (src/operator/operator-intent.ts) is unchanged: its liveness check fails the first call before any write when no team runs, and each role keeps its own confirmation line, including the director's discarded-prompt note.
+  - `requiredNamedRole` stays, because `cmdRetire` still calls it. Reword its doc comment from "abort and retire both need a target" to say retire uses it.
+  - Update `cmdAbort`'s doc comment: "kill one loop's in-flight tick" becomes "kill the named roles' in-flight runs (a comma list writes one marker per role)".
+- The GUI's POST /api/abort, the TUI's Transcript `Ctrl+A`, and `consumeAbortRequests` (src/operator/operator-requests.ts) do not change: they already work one marker per role.
+- `src/cli/help.ts`: the usage line becomes `tumwater abort --role <id>[,<id>...]`. Because it outgrows the command column, move the description to the next line, as the `pause` stanza does: "Stop each named role's run in progress (work discarded; the role keeps going)".
+- `docs/cli.md`, "Control the roles" row: `tumwater abort --role <id>` becomes `tumwater abort --role <id>[,<id>...]` (a comma list aborts each listed role's run).
+
+**Files touched.** src/operator/operator-commands.ts, src/cli/help.ts, docs/cli.md, test/operator-commands.test.ts, and test/help.test.ts if it pins the old `abort` line (grep it for `abort --role`).
+
+**Acceptance criteria.**
+- New test in test/operator-commands.test.ts, "cmdAbort --role takes a comma list and writes one marker per role". After `markLive(root)`, call `cmdAbort(root, ["--role", "coverage, clean,coverage"])`. stdout holds `abort requested for coverage` and `abort requested for clean`, each exactly once. `abortRequestPath(root, "coverage")` and `abortRequestPath(root, "clean")` exist, and `abortRequestPath(root, "dedupe")` does not.
+- New test, "cmdAbort with a comma list naming an unknown id writes no marker". After `markLive(root)`, `cmdAbort(root, ["--role", "coverage,ghost"])` fails with stderr matching `/unknown role: ghost/`, and `abortRequestPath(root, "coverage")` does not exist. `["--role", ","]` fails with `ROLE_VALUE_ERROR`'s text.
+- New test, "cmdAbort with a comma list and no live harness writes no marker". `cmdAbort(root, ["--role", "coverage,clean"])` without `markLive` fails with `/tumwater is not running/`, and neither marker exists.
+- These existing tests pass unchanged: "cmdAbort without --role fails before writing any marker", "cmdAbort with no live harness fails instead of leaving an unconsumable marker", "cmdAbort with a live harness writes the per-role marker", "cmdAbort for the director warns that its in-flight prompt is discarded", the `abort --role docs-sync` case in test/cli-operators-team.test.ts, and the `retire` tests that hit `requiredNamedRole`.
+- `tumwater help abort` shows `--role <id>[,<id>...]`. `npm run test:gate` passes.
+
 ## Done
