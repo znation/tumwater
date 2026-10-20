@@ -10,7 +10,8 @@
  * evidence of flakiness — it is exactly the attribution this memory exists to avoid making
  * twice. */
 
-import type { HarnessEvent } from "../events/events.js";
+import { TUMWATER_SOURCE, warnEventBestEffort, type HarnessEvent } from "../events/events.js";
+import { errorMessage } from "../text/text.js";
 import { readEventsSince } from "../events/event-window.js";
 import { increment } from "../collections.js";
 import { normalizeClusterKey } from "../failure/failure-cluster.js";
@@ -134,7 +135,9 @@ export function onlyQuarantined(root: string, failingTests: readonly string[] | 
 
 /** Quarantine each test of a check that failed and then passed on the same tree. A test already
  * listed counts another flake; `tail` is kept for the BUGS.md entry of a new one. Returns the
- * newly quarantined tests. Nothing is recorded for an empty or possibly truncated list. */
+ * newly quarantined tests. Nothing is recorded for an empty or possibly truncated list. A failed
+ * write warns and returns no tests: the callers run this after a re-run passed, so a lost record
+ * must not fail that check. */
 export function quarantineTests(root: string, tests: readonly string[] | undefined, tail: string | readonly string[] | undefined): string[] {
   if (!tests || tests.length === 0 || tests.length >= FAILING_TESTS_MAX) return [];
   const entries = loadQuarantine(root);
@@ -151,7 +154,12 @@ export function quarantineTests(root: string, tests: readonly string[] | undefin
       added.push(test);
     }
   }
-  saveQuarantine(root, entries);
+  try {
+    saveQuarantine(root, entries);
+  } catch (err) {
+    warnEventBestEffort(root, TUMWATER_SOURCE, `could not write quarantine.json: ${errorMessage(err)}`);
+    return [];
+  }
   return added;
 }
 

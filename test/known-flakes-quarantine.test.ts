@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
 import { quarantinePath } from "../src/paths.js";
 import { FAILING_TESTS_MAX } from "../src/build/build-check-report.js";
 import {
@@ -81,4 +83,20 @@ test("quarantine: a missing BUGS.md releases nothing, even a filed test", () => 
   const entry = loadQuarantine(root)[0]!;
   assert.equal(entry.bug, "`a` failed (quarantined)");
   assert.equal("tail" in entry, false);
+});
+
+test("quarantine: a failed quarantine.json write warns and records nothing instead of throwing", () => {
+  const root = tmpdir();
+  const undo = failRenameSyncOn(quarantinePath(root), "disk full");
+  try {
+    assert.deepEqual(quarantineTests(root, ["a"], "out"), []);
+  } finally {
+    undo();
+  }
+  assert.deepEqual(quarantinedTests(root), []);
+  const warnings = warningMessages(root);
+  assert.equal(warnings.length, 1);
+  assert.ok(warnings[0]!.startsWith("could not write quarantine.json"));
+  assert.ok(warnings[0]!.includes("disk full"));
+  assert.deepEqual(quarantineTests(root, ["a"], "out"), ["a"]);
 });

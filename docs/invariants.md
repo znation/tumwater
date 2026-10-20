@@ -3470,6 +3470,17 @@ entry is not under ## Open"; `test/main-watch.test.ts` — "moving a quarantined
 ## Open releases it"; `test/known-flakes-quarantine.test.ts` — "quarantine: a missing BUGS.md
 releases nothing, even a filed test".
 
+### INV-BI5: a failed quarantine write warns and never throws out of the check that passed
+
+**Guarantee.** `quarantineTests` never throws on a failed store write. It warns once per failed
+call, records nothing, and returns `[]`, so the gate's re-run, the in-lock merge check's re-run and
+main-watch's confirming re-run go on with their passing result.
+
+**Binds.** `src/review/known-flakes.ts` (`quarantineTests`).
+
+**Pinned by.** `test/known-flakes-quarantine.test.ts` — "quarantine: a failed quarantine.json write
+warns and records nothing instead of throwing".
+
 ## Review verdict and revision finality: a reply without a verdict never approves, and a rejected change revises until one objection survives two revisions or the backstop
 
 ### INV-BH1: a reply with no verdict line is no verdict, and the last verdict line wins
