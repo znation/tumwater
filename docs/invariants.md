@@ -203,7 +203,7 @@ table never vanishes from the section built to itemize it.
 **Binds.** `src/failure/failure-data.ts` (`collectFailureReport`), `src/failure/failure-render.ts`
 (`renderFailureMarkdown`), `src/failure/failure-cluster.ts`.
 
-**Pinned by.** `test/failure-render.test.ts` — "a main_red tick's cause is clustered with the
+**Pinned by.** `test/failure-render.test.ts` — "a main_red run's cause is clustered with the
 run errors, not left a bare count" (asserts the section total equals the Outcome tables' error
 column plus `main_red` cells).
 

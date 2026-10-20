@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   EXAMPLE_MAX,
-  TICK_TIMEOUT_KEY,
-  TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY,
+  RUN_TIMEOUT_KEY,
+  RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY,
   clusterMessages,
   normalizeClusterKey,
   poolTimeoutKey,
@@ -100,33 +100,33 @@ test("clusterMessages marks a truncated example instead of presenting a silent c
 });
 
 test("poolTimeoutKey pools the progressing-timeout variant into the plain key", () => {
-  // These are the exact shapes src/agent/run-agent.ts emits; TICK_TIMEOUT_KEY is the plain one's
+  // These are the exact shapes src/agent/run-agent.ts emits; RUN_TIMEOUT_KEY is the plain one's
   // normalized form verbatim.
   const plain = normalizeClusterKey("timed out after 900s");
   const progressing = normalizeClusterKey(
     "timed out after 900s while still making progress — session and worktree edits preserved for resume",
   );
   assert.notEqual(plain, progressing);
-  assert.equal(plain, TICK_TIMEOUT_KEY);
-  assert.equal(poolTimeoutKey(progressing), TICK_TIMEOUT_KEY);
-  assert.equal(poolTimeoutKey(plain), TICK_TIMEOUT_KEY);
+  assert.equal(plain, RUN_TIMEOUT_KEY);
+  assert.equal(poolTimeoutKey(progressing), RUN_TIMEOUT_KEY);
+  assert.equal(poolTimeoutKey(plain), RUN_TIMEOUT_KEY);
   // The review run's reworded progressing timeout (BUGS.md 2026-09-30) pools into the same
   // row: one cause, one knob.
   const reviewProgressing = normalizeClusterKey(
     "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch",
   );
   assert.notEqual(reviewProgressing, plain);
-  assert.equal(poolTimeoutKey(reviewProgressing), TICK_TIMEOUT_KEY);
+  assert.equal(poolTimeoutKey(reviewProgressing), RUN_TIMEOUT_KEY);
   // The resumed review's wording is its own cause: the next
   // attempt continues the timed-out session rather than re-reviewing from scratch, so it keeps
-  // a row distinct from both the from-scratch review timeout and the plain tick timeout.
+  // a row distinct from both the from-scratch review timeout and the plain run timeout.
   const reviewResumed = normalizeClusterKey(
     "timed out after 900s while still making progress — the commit is kept; the next attempt continues this review",
   );
-  assert.equal(reviewResumed, TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY);
+  assert.equal(reviewResumed, RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY);
   assert.notEqual(reviewResumed, reviewProgressing);
   assert.notEqual(reviewResumed, plain);
-  assert.equal(poolTimeoutKey(reviewResumed), TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY);
+  assert.equal(poolTimeoutKey(reviewResumed), RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY);
   assert.equal(poolTimeoutKey("some other cause"), "some other cause");
 });
 
@@ -166,12 +166,12 @@ test("clusterMessages labels the cluster with the NEWEST verbatim message, not t
   );
   assert.equal(clusters.length, 1);
   const pooled = clusters[0]!;
-  assert.equal(pooled.key, TICK_TIMEOUT_KEY);
+  assert.equal(pooled.key, RUN_TIMEOUT_KEY);
   assert.equal(pooled.lastSeen, 3);
   assert.equal(pooled.example, "timed out after 900s", "the example is the message at lastSeen");
 });
 
-test("clusterMessages pools both tick-timeout shapes into one cluster", () => {
+test("clusterMessages pools both run-timeout shapes into one cluster", () => {
   const { clusters, hiddenClusters } = clusterMessages(
     [
       { message: "timed out after 900s", role: "feature", ts: 1 },
@@ -187,7 +187,7 @@ test("clusterMessages pools both tick-timeout shapes into one cluster", () => {
   assert.equal(hiddenClusters, 0);
   assert.equal(clusters.length, 1);
   const pooled = clusters[0]!;
-  assert.equal(pooled.key, TICK_TIMEOUT_KEY);
+  assert.equal(pooled.key, RUN_TIMEOUT_KEY);
   assert.equal(pooled.count, 2);
   assert.deepEqual(pooled.roles, ["feature", "review"]);
   // The pooled cluster's example is the newest message's verbatim text, whichever shape it
@@ -215,11 +215,11 @@ test("clusterMessages keeps a resumed review's timeout separate from a from-scra
   );
   assert.equal(hiddenClusters, 0);
   assert.equal(clusters.length, 2);
-  // The from-scratch wording still clusters where it always did — the pooled plain tick-timeout
+  // The from-scratch wording still clusters where it always did — the pooled plain run-timeout
   // row; the resumed wording stands as its own cause.
   assert.deepEqual(
     clusters.map((c) => c.key).sort(),
-    [TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY, TICK_TIMEOUT_KEY].sort(),
+    [RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY, RUN_TIMEOUT_KEY].sort(),
   );
 });
 
@@ -279,7 +279,7 @@ test("normalizeClusterKey collapses volatile parts and keeps exit codes distinct
   assert.equal(normalizeClusterKey("x".repeat(200)).length, 120);
 });
 
-test("poolTimeoutKey pools the two tick-timeout shapes into one cause", () => {
+test("poolTimeoutKey pools the two run-timeout shapes into one cause", () => {
   assert.equal(poolTimeoutKey("timed out after <dur>"), "timed out after <dur>");
   assert.equal(
     poolTimeoutKey(

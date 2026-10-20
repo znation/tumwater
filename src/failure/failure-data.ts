@@ -8,7 +8,7 @@
  * in failure-cluster.ts, shared with the error-storm reducer. The time-and-spend fold —
  * the per-role × outcome-class pricing and the loss ranking — lives in time-spend.ts.
  */
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, type EventLogState } from "../events/event-window.js";
 import { eventDayKey, eventRole } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -67,11 +67,11 @@ export interface ClusterSection {
 /** One `run_end` result tally, per role. */
 export interface OutcomeRow {
   role: string;
-  counts: Partial<Record<TickResult, number>>;
+  counts: Partial<Record<RunResult, number>>;
 }
 
 /** One role's prompt-token telemetry over the window:
- * the median prompt tokens a tick sent, and the share of those sent before the tick's first
+ * the median prompt tokens a run sent, and the share of those sent before the run's first
  * edit. Built only from run_end events that carry `promptTokens`; a log written before the
  * field existed yields no rows, so old digests render unchanged. */
 interface PromptStatRow {
@@ -230,7 +230,7 @@ function mergeFailureSection(events: HarnessEvent[]): ClusterSection {
 }
 
 /** One role's window metrics, used for the delta row: runs/errors/quiet kills from
- * `run_end`, rejections from `review_rejected` (the merge slot logs it after the tick). */
+ * `run_end`, rejections from `review_rejected` (the merge slot logs it after the run). */
 interface RoleStats {
   runs: number;
   errors: number;
@@ -243,8 +243,8 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   const statsFor = (role: string): RoleStats =>
     getOrCreate(byRole, role, () => ({ runs: 0, errors: 0, quietKills: 0, rejections: 0 }));
   for (const ev of events) {
-    // Ticks are run_end events; a rejection is now recorded by the merge slot, AFTER the
-    // authoring tick has already ended `queued` (plans/merge-queue.md 3/5). review_rejected is
+    // Runs are run_end events; a rejection is now recorded by the merge slot, AFTER the
+    // authoring run has already ended `queued` (plans/merge-queue.md 3/5). review_rejected is
     // the one event every reject path logs exactly once (src/review/review.ts), so it — not a
     // run_end result no production path emits — is the rejection source.
     if (ev.type === "run_end") {
@@ -278,7 +278,7 @@ interface FailureDigestEntry {
 }
 
 /** Bounded memo of whole failure digests, keyed by root and day count. The dashboard's Failures
- * tab, the TUI's Ctrl+T pane, and every telemetry tick re-request the same digest, and the
+ * tab, the TUI's Ctrl+T pane, and every telemetry run re-request the same digest, and the
  * collector re-reads and re-parses up to 2× the window's log bytes each time (~4 MB on this
  * repo's own log, growing toward the rotation cap). An unchanged log and window cost one stat
  * and return the prior result; any change — an append, a rotation, or a new local day —
@@ -377,20 +377,20 @@ function assembleFailureReport(
   // Scope first when a role was named: every section below derives from these partitions, so
   // narrowing them at the source scopes outcomes, deltas, clusters, merges, and time/spend at
   // once. The unfiltered read's first event is kept for the retention line, so a scoped partial
-  // window still names when the log starts, not when the scoped role's own first tick does.
+  // window still names when the log starts, not when the scoped role's own first run does.
   const bases = scopeBases(role);
   const current = bases === undefined ? currentRaw : scopeToRole(currentRaw, bases);
   const prior = bases === undefined ? priorRaw : scopeToRole(priorRaw, bases);
   const allEvents = bases === undefined ? allEventsRaw : scopeToRole(allEventsRaw, bases);
   const oldestRetained = allEventsRaw.length > 0 ? eventDayKey(allEventsRaw[0]!) : null;
-  const tickEvents = current.filter((ev) => ev.type === "run_end");
+  const runEvents = current.filter((ev) => ev.type === "run_end");
 
   // Outcome table: one row per role, counts per result that occurred.
-  const outcomeMap = new Map<string, Partial<Record<TickResult, number>>>();
-  for (const ev of tickEvents) {
+  const outcomeMap = new Map<string, Partial<Record<RunResult, number>>>();
+  for (const ev of runEvents) {
     const role = eventRole(ev);
     const counts = getOrCreate(outcomeMap, role, () => ({}));
-    const result = ev.result as TickResult;
+    const result = ev.result as RunResult;
     addTo(counts, result, 1);
   }
   // rankByCount orders strongest role first with the ascending-key tiebreak. The old
@@ -404,13 +404,13 @@ function assembleFailureReport(
   );
 
   // Time and spend: the same runs priced by wall-clock span and cost, per role × outcome
-  // class, plus the loss ranking that weighs causes by agent-hours rather than tick counts.
-  const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(tickEvents, allEvents);
+  // class, plus the loss ranking that weighs causes by agent-hours rather than run counts.
+  const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(runEvents, allEvents);
 
-  // Prompt-token telemetry: per role, the median prompt tokens a tick sent and how much of
+  // Prompt-token telemetry: per role, the median prompt tokens a run sent and how much of
   // the prompt budget went out before the first edit. Only runs carrying the field count, so
   // a pre-feature log leaves the section off entirely.
-  const promptStats = promptStatsFor(tickEvents);
+  const promptStats = promptStatsFor(runEvents);
 
   // Deltas: current vs preceding window, per role.
   const curStats = roleStats(current);
@@ -439,8 +439,8 @@ function assembleFailureReport(
         a.role.localeCompare(b.role),
     );
 
-  // Only runs that ENDED as errors carry a tick error: `state.lastError` is shared state the
-  // merge slot also writes, so a successful tick's `run_end` can carry a leftover merge failure's
+  // Only runs that ENDED as errors carry a run error: `state.lastError` is shared state the
+  // merge slot also writes, so a successful run's `run_end` can carry a leftover merge failure's
   // text (BUGS.md 2026-09-21). `main_red` joins them because its cause is written for that result
   // — the baseline gate's own text (src/baseline/main-red.ts), never a leftover — so the
   // section itemizes the outcome that blocks every merge instead of leaving it a bare count
@@ -450,7 +450,7 @@ function assembleFailureReport(
   // error-text test — so a malformed run_end that skipped the text can never be counted above
   // but itemized nowhere: those events cluster under a placeholder cause, keeping the section's
   // total equal to the tables it cross-checks against (BUGS.md 2026-09-30).
-  const errorEvents = tickEvents.filter(
+  const errorEvents = runEvents.filter(
     (ev) => ev.result === "error" || ev.result === "main_red",
   );
   const errors = section(
@@ -495,10 +495,10 @@ function assembleFailureReport(
   const mergeFailures = mergeFailureSection(current);
 
   // Merge review failures: a reviewer that could not return a parseable verdict (a dead
-  // backend, a transport error) fails closed and keeps the commit, but its authoring tick ends
+  // backend, a transport error) fails closed and keeps the commit, but its authoring run ends
   // `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
   // `run_end.error`. Clustered on their own so the telemetry role can see a gate that keeps
-  // failing without misreading it as a tick error (BUGS.md 2026-09-21).
+  // failing without misreading it as a run error (BUGS.md 2026-09-21).
   const reviewFailures = messageSection(current, "review_failed", REVIEW_FAILURE_TOP);
 
   // The newest MERGED_TOP merges, newest first. The pre-slice count rides along, as it does for
@@ -543,7 +543,7 @@ function assembleFailureReport(
   return {
     ...window,
     ...(bases === undefined ? {} : { role: bases.join(",") }),
-    runs: tickEvents.length,
+    runs: runEvents.length,
     hasEvents,
     emptyLog: !hasEvents && !coversFullWindow,
     logState,
@@ -574,9 +574,9 @@ function median(values: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 
-/** Per-role prompt-token stats from the window's run_end events. Ticks without a
+/** Per-role prompt-token stats from the window's run_end events. Runs without a
  * `promptTokens` reading contribute nothing (and skip a role entirely), so the section only
- * appears once some tick ran on a build that records the field. Both reads go through
+ * appears once some run ran on a build that records the field. Both reads go through
  * nonNegativeNumber like every other event-log number: a torn or hand-edited line whose
  * `promptTokens` is `1e999` (JSON parses to Infinity) would otherwise land in the median and
  * the `preEditSum / promptSum` ratio as a non-finite value no report can render. */
@@ -610,7 +610,7 @@ function promptStatsFor(runs: HarnessEvent[]): PromptStatRow[] {
     .sort((a, b) => a.role.localeCompare(b.role));
 }
 
-function total(counts: Partial<Record<TickResult, number>>): number {
+function total(counts: Partial<Record<RunResult, number>>): number {
   let n = 0;
   for (const v of Object.values(counts)) n += v ?? 0;
   return n;

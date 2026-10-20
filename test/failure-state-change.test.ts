@@ -52,7 +52,7 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
   ]) {
     assert.ok(STATE_CHANGE_TYPES.has(t), `missing ${t}`);
   }
-  // tick outcomes (run_end, merged, ...) are deliberately absent — they are the outcomes
+  // run outcomes (run_end, merged, ...) are deliberately absent — they are the outcomes
   // section's business, not state changes.
   assert.ok(!STATE_CHANGE_TYPES.has("run_end"));
   assert.equal(STATE_CHANGE_TOP, 6);
@@ -60,7 +60,7 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
 
 test("budget_paused leads with the breaker demotion cause when a fallback was demoted", () => {
   // orchestrator.ts emits the demotion pair with the breaker's failure count, so the digest
-  // line names both the free pair that died and how many ticks it took with it.
+  // line names both the free pair that died and how many runs it took with it.
   assert.equal(
     describeStateChange(
       ev({ type: "budget_paused", fallbackDemoted: "groq/llama-3-free", failures: 3, spentUsd: 5, capUsd: 5 }),
@@ -136,7 +136,7 @@ test("team and role pauses render fixed and role-named lines", () => {
 
 test("the error-streak, role-cap and model-fallback transitions render their reason", () => {
   // The breaker's auto-pause names the streak depth so the pause connects to the failing
-  // ticks; without a count the line still renders (?, like the feed's textOr fallback).
+  // runs; without a count the line still renders (?, like the feed's textOr fallback).
   assert.equal(
     describeStateChange(ev({ type: "role_streak_paused", role: "docs", streak: 10 })),
     "role docs paused — 10 runs failed in a row",
@@ -356,7 +356,7 @@ test("rate_limit_hold renders backend kinds as backend holds, rate-limit as a 42
     "backend hold (server error) for 3m (relapse 1) — feature",
   );
   // A timeout hold names the timeout's own phrase, not a connection's — the digest pools
-  // plain and progressing tick timeouts under this kind (src/failure/failure-cluster.ts).
+  // plain and progressing run timeouts under this kind (src/failure/failure-cluster.ts).
   assert.equal(
     describeStateChange(ev({ type: "rate_limit_hold", kind: "timeout", holdMs: 60_000, escalation: 0, roles: ["tests"] })),
     "backend hold (request timed out) for 60s — tests",

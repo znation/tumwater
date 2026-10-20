@@ -70,8 +70,8 @@ test("rows rank by summed wall-clock ms, roles tie-broken by name", () => {
   );
 });
 
-test("a queued tick whose merge was rejected prices into the error cell and a review-rejected cause", () => {
-  const tickEnd = ev({
+test("a queued run whose merge was rejected prices into the error cell and a review-rejected cause", () => {
+  const runEnd = ev({
     source: "coverage",
     ts: 100,
     run: 7,
@@ -80,9 +80,9 @@ test("a queued tick whose merge was rejected prices into the error cell and a re
     costUsd: 0.25,
   });
   const { timeSpend, lossCauses } = timeAndSpend(
-    [tickEnd],
+    [runEnd],
     [
-      tickEnd,
+      runEnd,
       ev({ source: "coverage", ts: 95, type: "merge_queued", commit: "abc1234" }),
       ev({
         source: "coverage",
@@ -100,7 +100,7 @@ test("a queued tick whose merge was rejected prices into the error cell and a re
       }),
     ],
   );
-  // The authoring tick's transient queued result resolves to the merge gate's rejection,
+  // The authoring run's transient queued result resolves to the merge gate's rejection,
   // so its agent-hours leave the merged cell the queued label suggested.
   assert.deepEqual(timeSpend[0]!.classes.error, { runs: 1, ms: 5000, costUsd: 0.25 });
   assert.deepEqual(timeSpend[0]!.classes.merged, { runs: 0, ms: 0, costUsd: 0 });
@@ -116,9 +116,9 @@ test("a queued tick whose merge was rejected prices into the error cell and a re
   ]);
 });
 
-test("a queued tick with no visible merge outcome keeps the conservative queued→merged reading", () => {
+test("a queued run with no visible merge outcome keeps the conservative queued→merged reading", () => {
   // Merge still in the pipeline (no outcome event), and an outcome event whose commit does
-  // not match the pin: both keep the queued tick in the merged cell with no loss cause.
+  // not match the pin: both keep the queued run in the merged cell with no loss cause.
   const queued = ev({ ts: 100, result: "queued", durationMs: 1000 });
   const { timeSpend, lossCauses } = timeAndSpend(
     [queued],
@@ -128,7 +128,7 @@ test("a queued tick with no visible merge outcome keeps the conservative queued�
   assert.deepEqual(lossCauses, []);
 });
 
-test("a queued tick whose merge failed to merge owns a cause named by its result", () => {
+test("a queued run whose merge failed to merge owns a cause named by its result", () => {
   // BUGS.md 2026-10-10: the queued→merging join repriced merge_conflict/merge_blocked authoring
   // spans into the error-class cell but gave them no loss cause, so those hours were owned by
   // no cause and were not counted by lossCausesHidden. Each now itemizes under its own result,
@@ -173,10 +173,10 @@ test("a merge_blocked merge whose merge-scope check was killed at its own deadli
   assert.match(lossCauses[0]!.example, /batch build check killed at its 300s deadline/);
 });
 
-test("a queued tick that failed retriably, was rebased, and recovered into a merge prices into the merged cell (BUGS.md 2026-10-10)", () => {
+test("a queued run that failed retriably, was rebased, and recovered into a merge prices into the merged cell (BUGS.md 2026-10-10)", () => {
   // A first merge_blocked keeps the pin; the verification had already rebased the ref to sha2, so
   // recovery re-enqueues sha2 while the failed attempt logged sha1, and sha2's retry lands.
-  // The authoring tick's span must price under `merged`, with no loss cause, rather than
+  // The authoring run's span must price under `merged`, with no loss cause, rather than
   // latch the retriable failure and burn agent-hours into the error cell.
   const queued = ev({ ts: 100, source: "feature", run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
   const { timeSpend, lossCauses } = timeAndSpend(
@@ -248,7 +248,7 @@ test("an error cluster pools its members' time across roles and its example ride
   ]);
 });
 
-test("a no_change tick's loss cause is its role, with an empty example", () => {
+test("a no_change run's loss cause is its role, with an empty example", () => {
   const { lossCauses } = timeAndSpend(
     [ev({ source: "steward", ts: 100, result: "no_change", durationMs: 400 })],
     [],

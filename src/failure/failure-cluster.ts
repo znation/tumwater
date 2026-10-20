@@ -1,7 +1,7 @@
 /** The cluster-key rules shared by everything that groups failure messages into causes: the
  * failure digest's collection (failure-data.ts) and the error-storm reducer
  * (src/team/error-storm.ts) both count by these keys, so the normalization, the two
- * tick-timeout shapes and their pooling, and the grouping engine live here rather than
+ * run-timeout shapes and their pooling, and the grouping engine live here rather than
  * inside either consumer. Pure string
  * and grouping logic — no event reads, no clock. */
 import { rankByCount } from "../collections.js";
@@ -91,38 +91,38 @@ export function normalizeClusterKey(message: string): string {
   return normalized.trim().slice(0, EXAMPLE_MAX);
 }
 
-/** normalizeClusterKey's rendering of the two tick-timeout errors src/agent/run-agent.ts emits —
+/** normalizeClusterKey's rendering of the two run-timeout errors src/agent/run-agent.ts emits —
  * the plain kill and the still-making-progress variant (session and worktree edits preserved
  * for resume, BUGS.md 2026-09-29). Both are one cause pointing at one knob (runTimeoutSeconds),
  * so every consumer that counts by cluster key pools them under the plain one. */
-export const TICK_TIMEOUT_KEY = "timed out after <dur>";
-const TICK_TIMEOUT_PROGRESSING_KEY =
+export const RUN_TIMEOUT_KEY = "timed out after <dur>";
+const RUN_TIMEOUT_PROGRESSING_KEY =
   "timed out after <dur> while still making progress — session and worktree edits preserved for resume";
 // The review run's rewording of the same cause (BUGS.md 2026-09-30): the reviewer never
 // resumes, so its timeout names what actually happens — the commit is kept, the next
 // attempt re-reviews from scratch. Same cause, same knob (review.timeoutSeconds), one row.
-const TICK_TIMEOUT_PROGRESSING_REVIEW_KEY =
+const RUN_TIMEOUT_PROGRESSING_REVIEW_KEY =
   "timed out after <dur> while still making progress — the commit is kept; the next attempt reviews it from scratch";
 // The review run's wording when a resumable session remains:
 // the next attempt continues this review instead of re-reviewing. Continuing the timed-out
 // session is a different cause from a from-scratch re-review, so this wording is its own
-// cluster rather than joining the pooled plain tick-timeout row. Exported for its unit tests
-// (like TICK_TIMEOUT_KEY), so a display or digest test can pin the mapping by name.
-export const TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY =
+// cluster rather than joining the pooled plain run-timeout row. Exported for its unit tests
+// (like RUN_TIMEOUT_KEY), so a display or digest test can pin the mapping by name.
+export const RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY =
   "timed out after <dur> while still making progress — the commit is kept; the next attempt continues this review";
 
 /** The known progressing-timeout wordings and the key each pools under. The two review
  * wordings name one cause on one knob (review.timeoutSeconds): a still-making-progress kill
- * pools into the plain tick-timeout row (a mixed team of plain and progressing kills is one
+ * pools into the plain run-timeout row (a mixed team of plain and progressing kills is one
  * cause's agent-hours, not two half-size rows the top-N cut can drop — the same pooling the
  * error-storm reducer applies, src/team/error-storm.ts), and a resumed review's wording maps
  * to itself, because continuing the timed-out session is a different cause from a from-scratch
  * re-review. Enumerated so a future wording edit lands in
  * this table rather than silently changing which row its timeouts count under. */
 const TIMEOUT_POOL = new Map<string, string>([
-  [TICK_TIMEOUT_PROGRESSING_KEY, TICK_TIMEOUT_KEY],
-  [TICK_TIMEOUT_PROGRESSING_REVIEW_KEY, TICK_TIMEOUT_KEY],
-  [TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY, TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY],
+  [RUN_TIMEOUT_PROGRESSING_KEY, RUN_TIMEOUT_KEY],
+  [RUN_TIMEOUT_PROGRESSING_REVIEW_KEY, RUN_TIMEOUT_KEY],
+  [RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY, RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY],
 ]);
 
 /** The cluster key a normalized error clusters under: the pooled wordings above map to their

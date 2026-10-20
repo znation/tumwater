@@ -123,7 +123,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "role_streak_paused":
       // The error-streak breaker auto-paused the role; the digest names the depth so the
-      // operator can connect the pause to the failing ticks the clusters above show.
+      // operator can connect the pause to the failing runs the clusters above show.
       text = `role ${field(ev.role ?? "?")} paused — ${field(ev.streak ?? "?")} runs failed in a row`;
       break;
     case "role_cap_paused":

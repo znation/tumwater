@@ -1,11 +1,11 @@
 // vocabulary: plain
 /** The failure digest's time-and-spend fold: read the window's `run_end`s and price each one into
  * the per-role × outcome-class table (runs, summed wall-clock ms, cost) plus the loss-cause
- * ranking that weighs causes by agent-hours rather than tick counts. Split from
+ * ranking that weighs causes by agent-hours rather than run counts. Split from
  * src/failure/failure-data.ts, which owns the rest of the collection (outcome tallies, deltas,
  * clustered sections) and calls into timeAndSpend here; the Markdown rendering of both stays in
  * src/failure/failure-render.ts as a pure function of the collected data. */
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
@@ -14,12 +14,12 @@ import { nonNegativeNumber, stringList } from "../files/json-object.js";
 import { getOrCreate, groupBy, rankByCount } from "../collections.js";
 
 /** How the Outcome table's results collapse for costing:
- * "merged" made progress, "no_change" spent a tick and merged nothing, and every remaining
+ * "merged" made progress, "no_change" spent a run and merged nothing, and every remaining
  * result is "error-class" — it burned agent time without merge, whether the cause was a
  * hard failure or the review gate. Typed as a full Record so a result added to
  * src/run/run-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
  * src/failure/failure-render.ts. */
-export const OUTCOME_CLASS: Record<TickResult, "merged" | "no_change" | "error"> = {
+export const OUTCOME_CLASS: Record<RunResult, "merged" | "no_change" | "error"> = {
   changed: "merged",
   queued: "merged",
   no_change: "no_change",
@@ -39,7 +39,7 @@ export const OUTCOME_CLASS: Record<TickResult, "merged" | "no_change" | "error">
 /** One cell of the time-and-spend table: the runs that ended on one outcome class, their
  * summed wall-clock span (start→end) and cost. `ms` is 0 when no duration is known — an old
  * `run_end` whose `run_start` rotated out of the retained log — so the cell still counts
- * the tick but prices no time it cannot attest. */
+ * the run but prices no time it cannot attest. */
 export interface SpendCell {
   runs: number;
   ms: number;
@@ -82,7 +82,7 @@ const LOSS_TOP = 5;
 /** The raw results whose loss attributes to a cluster — an error, an abort, a quiet kill, or
  * a red-main skip, each carrying its own message on the run_end (main_red's is the
  * redMainMessage the error-clusters section already itemizes, BUGS.md 2026-10-07). A queued
- * tick's merge outcomes are owned by the joins below instead: review_error through its
+ * run's merge outcomes are owned by the joins below instead: review_error through its
  * matching `review_failed` message, review-rejected through its review reasons, and
  * merge_conflict/merge_blocked by the result itself (BUGS.md 2026-10-10). (A raw
  * `user_aborted` run_end is also error-class but is not in this set, so it stays out of the
@@ -100,7 +100,7 @@ interface LossDraft {
   costUsd: number;
 }
 
-/** A queued tick's resolved merge outcome — the pin/outcome pair `resolveQueuedResult`
+/** A queued run's resolved merge outcome — the pin/outcome pair `resolveQueuedResult`
  * returns, used as the attempt window an event must fall inside to belong to it. */
 type ResolvedMerge = NonNullable<ReturnType<typeof resolveQueuedResult>>;
 
@@ -133,14 +133,14 @@ function pooledClusterCause(source: unknown): { key: string; example: string } {
  * written since 2026-09-29 does), else the start→end pairing over `starts` — the same
  * fallback history-data.ts renders, so old events read their span the one way it can still be
  * known. 0 when neither source has the start (rotation cut it); the fold prices no time it
- * cannot attest but still counts the tick. */
-function tickDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
+ * cannot attest but still counts the run. */
+function runDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
   const own = nonNegativeNumber(ev.durationMs, null);
   if (own !== null) return own;
   return tickSpanMs(ev, starts) ?? 0;
 }
 
-/** Add one tick to a {runs, ms, costUsd} accumulator — the single home of the fold shared
+/** Add one run to a {runs, ms, costUsd} accumulator — the single home of the fold shared
  * by the time-and-spend table's outcome cells (SpendCell) and the loss-cause drafts
  * (LossDraft), so the two tallies cannot drift apart in what they count or price. The
  * caller passes one event's already-computed durationMs and usage, so folding an event
@@ -152,18 +152,18 @@ function tally(target: { runs: number; ms: number; costUsd: number }, durationMs
 }
 
 /** Fold the window's run_ends into the time-and-spend table and the loss ranking. Pairing
- * runs over BOTH windows' events (the caller passes the whole read), so a tick that opened
+ * runs over BOTH windows' events (the caller passes the whole read), so a run that opened
  * in the preceding day and ended in the current one still gets its span. The merge-outcome
  * join runs over that same whole read too (BUGS.md 2026-09-30): a queued run_end resolves
  * through its own merge_queued pin to the later merge_done/merge_failed outcome for the same
- * role+sha — history-data.ts's exact join — so an authoring tick whose merge was rejected
+ * role+sha — history-data.ts's exact join — so an authoring run whose merge was rejected
  * prices into the error-class cell its contract names instead of the merged cell its
  * transient queued result suggested. A leftover-recovery run resolves to the failed attempt it
  * re-queued (the history row's rule), so its near-zero span counts under that failure — a
  * review timeout's cluster, say — rather than adding a run to the change's final
  * review-rejected cause once per re-queue. A merge still in the pipeline, or an outcome event
  * matching no pin, keeps the queued→merged reading: the conservative fallback. */
-export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
+export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   timeSpend: TimeSpendRow[];
   lossCauses: LossCause[];
   /** How many distinct causes the LOSS_TOP slice dropped — the render's remainder marker
@@ -199,30 +199,30 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     (e) => e.source,
   );
   // Queued run_ends resolve newest-first so each claims the newest pin at or before its end
-  // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the
-  // history rows. tickEvents is oldest-first, hence the backward walk.
+  // that no newer run has claimed — resolveQueuedResult's exact claim rule, shared with the
+  // history rows. runEvents is oldest-first, hence the backward walk.
   const claimTop = new Map<string, number>();
   const resolved = new Map<HarnessEvent, ResolvedMerge>();
-  for (let i = tickEvents.length - 1; i >= 0; i--) {
-    const ev = tickEvents[i]!;
+  for (let i = runEvents.length - 1; i >= 0; i--) {
+    const ev = runEvents[i]!;
     if (ev.result !== "queued") continue;
     const joined = resolveQueuedResult(ev, mergeQueuedByRunner, outcomeByRunner, claimTop, new Map(), null);
     if (joined !== null) resolved.set(ev, joined);
   }
-  for (const ev of tickEvents) {
-    let cls = OUTCOME_CLASS[ev.result as TickResult];
+  for (const ev of runEvents) {
+    let cls = OUTCOME_CLASS[ev.result as RunResult];
     if (cls === undefined) continue; // An unknown result is tallied in the Outcome table; costing it would need a class first.
     let resolvedOutcome: ResolvedMerge | null = null;
     if (ev.result === "queued") {
       resolvedOutcome = resolved.get(ev) ?? null;
       if (resolvedOutcome) {
-        const resolvedCls = OUTCOME_CLASS[resolvedOutcome.result as TickResult];
+        const resolvedCls = OUTCOME_CLASS[resolvedOutcome.result as RunResult];
         if (resolvedCls !== undefined) cls = resolvedCls;
       }
     }
     const role = eventRole(ev);
     const usage = eventUsage(ev);
-    const durationMs = tickDurationMs(ev, starts);
+    const durationMs = runDurationMs(ev, starts);
     const row = getOrCreate(byRole, role, () => ({
       merged: emptyCell(),
       no_change: emptyCell(),
@@ -240,9 +240,9 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     if (ev.result === "refused") {
       // A refusal is a deliberate objection that blocks its entry, not quiet idleness — the
       // reason live in the event + lastSummary (src/verdict/refusal.ts). Rank it as its own
-      // per-role cause so the digest surfaces the objection instead of pricing the tick
+      // per-role cause so the digest surfaces the objection instead of pricing the run
       // exactly like a silently idle one; the branch sits BEFORE the no_change one because a
-      // refused tick is also no_change-class in the outcome table. The example rides the
+      // refused run is also no_change-class in the outcome table. The example rides the
       // refusal's summary the way a review-rejected cause rides its reason.
       key = `refused\u0000${role}`;
       kind = "refused";
@@ -253,7 +253,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     } else if (CLUSTERED_RESULTS.has(String(ev.result))) {
       // A clustered result with no error text still owns its time: an abort's run_end never
       // carries one (planRunStart clears s.lastError, run-finalize logs error: undefined),
-      // and a malformed error tick can lose it too, so both take the same placeholder cause the
+      // and a malformed error run can lose it too, so both take the same placeholder cause the
       // error-clusters section already itemizes rather than dropping the span itemized nowhere.
       ({ key, example } = pooledClusterCause(ev.error));
     } else if (ev.result === "queued" && resolvedOutcome?.result === "rejected") {

@@ -2,29 +2,29 @@
 /** The fallback's circuit breaker (BUGS.md 2026-09-20): whether the engaged free fallback can
  * actually SERVE. Split out of budget.ts, which keeps the daily-cost figures and the gate they
  * drive; the breaker is a self-contained pure state machine — no scheduler, no pi model
- * catalog, no persistence — that depends on nothing but the TickResult vocabulary, so the
- * orchestrator can hold it in memory and fold tick outcomes into it without importing the
+ * catalog, no persistence — that depends on nothing but the RunResult vocabulary, so the
+ * orchestrator can hold it in memory and fold run outcomes into it without importing the
  * budget. The gate reads its verdict through fallbackServing (budget.ts's budgetGate). */
 
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 
 /** How the fallback breaker trips and retries. A test seam (the orchestrator's RunOptions
  * accepts an override, like pollMs); production uses FALLBACK_BREAKER_POLICY. */
 export interface FallbackBreakerPolicy {
-  /** Consecutive failed fallback ticks, team-wide, that demote the fallback to `paused`. */
+  /** Consecutive failed fallback runs, team-wide, that demote the fallback to `paused`. */
   failureLimit: number;
-  /** The first cool-down before a demoted fallback gets its probe tick. */
+  /** The first cool-down before a demoted fallback gets its probe run. */
   cooldownMs: number;
   /** The cap each failed probe's doubling stops at. */
   maxCooldownMs: number;
 }
 
 /** failureLimit 3 is a single role's failing-streak threshold (run-apply.ts ERROR_STREAK_WARN)
- * applied team-wide: consecutive across every role, so any tick that served in between resets
- * it — a healthy backend with one flaky tick never trips it, while a dead one trips on its
- * first three ticks (on 2026-09-19 the third failure landed 24 minutes into the hour; the 30
- * ticks after it were the waste). A 5-minute first cool-down because a failed probe costs one
- * tick — about half of that hour's failures came back in under 10 s, the rest ran minutes
+ * applied team-wide: consecutive across every role, so any run that served in between resets
+ * it — a healthy backend with one flaky run never trips it, while a dead one trips on its
+ * first three runs (on 2026-09-19 the third failure landed 24 minutes into the hour; the 30
+ * runs after it were the waste). A 5-minute first cool-down because a failed probe costs one
+ * run — about half of that hour's failures came back in under 10 s, the rest ran minutes
  * before the 400 — which is cheap next to idling until midnight; doubling to at most 30 minutes
  * bounds how long an operator who fixed the backend waits for the team to notice (editing the
  * cap or the pair re-trusts it at once — see rekeyFallbackBreaker). */
@@ -39,14 +39,14 @@ export const FALLBACK_BREAKER_POLICY: FallbackBreakerPolicy = {
  * models.json prices at zero can sit behind a backend that rejects every prompt, and a network
  * probe would not have caught the case that happened: oMLX was up (a GET /models would have
  * succeeded) but pinned at its Metal ceiling, 400-ing prompts as small as kv_len=1152. So the
- * breaker judges from the only evidence that means "serves" — the fallback's own role ticks:
+ * breaker judges from the only evidence that means "serves" — the fallback's own role runs:
  * `failureLimit` consecutive failures demote it (the gate reads `paused`); after a cool-down ONE
- * probe tick is let through, and served closes the breaker while failed re-opens it with a
+ * probe run is let through, and served closes the breaker while failed re-opens it with a
  * doubled, capped cool-down. Nothing is stuck: the probe keeps asking, and a change of subject
  * (the cap edited, the pair changed, or the gate leaving the fallback — local midnight's
  * `budget_resumed`) starts a fresh, trusted breaker. Pure data with pure transitions; the
  * orchestrator holds the value in memory, so a restart re-trusts the fallback and re-trips
- * within failureLimit ticks if it is still dead. */
+ * within failureLimit runs if it is still dead. */
 export interface FallbackBreaker {
   /** The engaged fallback pair (`provider/model`) the judgment is about; null while no fallback
    * is engaged (the cap is not reached, or the configured pair is not free). */
@@ -54,14 +54,14 @@ export interface FallbackBreaker {
   /** The cap the fallback engaged under. Part of the subject with `pair`: an edit to either is
    * the operator re-deciding the budget, and deserves a fresh judgment instead of a stale one. */
   capUsd: number;
-  /** Consecutive failed fallback ticks since the last one that served. */
+  /** Consecutive failed fallback runs since the last one that served. */
   failures: number;
   /** Null while the fallback is trusted (closed). While demoted: the epoch ms from which one
-   * probe tick may start. */
+   * probe run may start. */
   probeAt: number | null;
   /** The cool-down that set probeAt (0 while closed); each failed probe doubles it. */
   cooldownMs: number;
-  /** The probe tick is in flight: no second role tick starts until it reports. */
+  /** The probe run is in flight: no second role run starts until it reports. */
   probing: boolean;
 }
 
@@ -92,13 +92,13 @@ export function fallbackServing(b: FallbackBreaker): boolean {
 }
 
 /** Half-open: the demoted fallback's cool-down has elapsed and no probe is in flight, so one role
- * tick may start on it despite the `paused` gate. */
+ * run may start on it despite the `paused` gate. */
 export function fallbackProbeDue(b: FallbackBreaker, now: number): boolean {
   return b.pair !== null && b.probeAt !== null && !b.probing && now >= b.probeAt;
 }
 
-/** The breaker once the probe tick has been admitted: probing until recordFallbackTick hears
- * back, so every other due role waits for its verdict — one tick's evidence per cool-down, not
+/** The breaker once the probe run has been admitted: probing until recordFallbackRun hears
+ * back, so every other due role waits for its verdict — one run's evidence per cool-down, not
  * a whole maxConcurrent wave of failures. */
 export function startFallbackProbe(b: FallbackBreaker): FallbackBreaker {
   return { ...b, probing: true };
@@ -106,26 +106,26 @@ export function startFallbackProbe(b: FallbackBreaker): FallbackBreaker {
 
 /** The breaker when an admitted probe never ran — turned away at its permit by the restart
  * hold's start gate: no evidence either way, so the claim is handed back and the probe is due
- * again at the next poll. Without this the breaker would wait on a verdict no tick will ever
+ * again at the next poll. Without this the breaker would wait on a verdict no run will ever
  * deliver, and the demoted pause could only clear on a rekey. */
 export function abandonFallbackProbe(b: FallbackBreaker): FallbackBreaker {
   return { ...b, probing: false };
 }
 
-/** What one role tick that ran on the fallback says about its backend. `failed` is `error`
+/** What one role run that ran on the fallback says about its backend. `failed` is `error`
  * alone: every way a backend cannot serve — an HTTP 4xx/5xx like oMLX's prefill guard, a
- * refused connection, a request that never returns (the tick timeout) — ends a tick as `error`,
+ * refused connection, a request that never returns (the run timeout) — ends a run as `error`,
  * and 33 of 33 did on 2026-09-19. (An `error` can also be local, e.g. a worktree that will not
  * reset; failureLimit of those in a row team-wide is still a team that cannot work, and the
  * probe wins the pause back.) `served` is a result only a model reply produces: a change bound
  * for merge (`queued`, `changed`), an explicit decision (`no_change`, `refused`), or a
  * reviewer's rejection. Everything else is no evidence: harness and operator kills (`aborted`,
- * `user_aborted`), ticks that never reached the model (`skipped`, `main_red`), a quiet kill
+ * `user_aborted`), runs that never reached the model (`skipped`, `main_red`), a quiet kill
  * (the model had answered before the stall — a tool call or the stream stopped), and the
- * merge results (`merge_conflict`, `merge_blocked`, `review_error`) — a tick no longer
+ * merge results (`merge_conflict`, `merge_blocked`, `review_error`) — a run no longer
  * returns them since leftover recovery queues its pin instead of merging it, and they would
  * not say whether the backend was involved. */
-export function fallbackEvidence(result: TickResult): "served" | "failed" | "none" {
+export function fallbackEvidence(result: RunResult): "served" | "failed" | "none" {
   switch (result) {
     case "error":
       return "failed";
@@ -140,18 +140,18 @@ export function fallbackEvidence(result: TickResult): "served" | "failed" | "non
   }
 }
 
-/** Fold one finished role tick that ran on the fallback into the breaker. `ranOn` is the breaker as
- * the tick started under it — evidence about a subject that is no longer engaged is dropped —
- * and `probe` says whether the orchestrator admitted it as the half-open probe. A served tick
+/** Fold one finished role run that ran on the fallback into the breaker. `ranOn` is the breaker as
+ * the run started under it — evidence about a subject that is no longer engaged is dropped —
+ * and `probe` says whether the orchestrator admitted it as the half-open probe. A served run
  * closes the breaker from any state (the backend demonstrably works). A failed probe re-opens it
- * with the cool-down doubled up to maxCooldownMs; a failed tick while closed counts toward
+ * with the cool-down doubled up to maxCooldownMs; a failed run while closed counts toward
  * failureLimit and trips the breaker at it; a failed straggler that started before the trip leaves
  * the running cool-down alone. A probe with no evidence frees the probe slot, so the next due role
  * probes instead. */
-export function recordFallbackTick(
+export function recordFallbackRun(
   b: FallbackBreaker,
   ranOn: FallbackBreaker,
-  result: TickResult,
+  result: RunResult,
   probe: boolean,
   now: number,
   policy: FallbackBreakerPolicy = FALLBACK_BREAKER_POLICY,
@@ -171,7 +171,7 @@ export function recordFallbackTick(
 }
 
 /** A demoted fallback as observers see it: the pair, the consecutive failures that demoted it,
- * and the epoch ms from which the next probe tick may start. */
+ * and the epoch ms from which the next probe run may start. */
 export interface FallbackDemotion {
   pair: string;
   failures: number;
@@ -222,7 +222,7 @@ export function fallbackServingPair(map: FallbackBreakerMap, pair: string | null
 
 /** The pair whose half-open window is due, or null when none is. Several pairs can carry a
  * demotion at once (one per resolved tier), so the walk returns the first due entry in map
- * order and the caller probes that single pair this tick. */
+ * order and the caller probes that single pair this run. */
 export function fallbackProbeDuePair(map: FallbackBreakerMap, now: number): string | null {
   for (const [pair, b] of Object.entries(map)) {
     if (fallbackProbeDue(b, now)) return pair;
@@ -232,7 +232,7 @@ export function fallbackProbeDuePair(map: FallbackBreakerMap, now: number): stri
 
 /** Apply `f` to the pair's entry when the map holds one, else return the map unchanged — the
  * shape shared by the map-scoped breaker transitions below (claim/hand back a probe, fold a
- * tick): a pair the resolution dropped has no judgment to touch. */
+ * run): a pair the resolution dropped has no judgment to touch. */
 function withPair(
   map: FallbackBreakerMap,
   pair: string,
@@ -254,17 +254,17 @@ export function abandonFallbackProbeAt(map: FallbackBreakerMap, pair: string): F
   return withPair(map, pair, abandonFallbackProbe);
 }
 
-/** Fold one finished role tick into the pair named `pair`'s entry (recordFallbackTick's
+/** Fold one finished role run into the pair named `pair`'s entry (recordFallbackRun's
  * semantics, scoped to the map): an absent entry has no judgment to fold into and is left
  * alone. */
-export function recordFallbackTickAt(
+export function recordFallbackRunAt(
   map: FallbackBreakerMap,
   pair: string,
   ranOn: FallbackBreaker,
-  result: TickResult,
+  result: RunResult,
   probe: boolean,
   now: number,
   policy: FallbackBreakerPolicy = FALLBACK_BREAKER_POLICY,
 ): FallbackBreakerMap {
-  return withPair(map, pair, (b) => recordFallbackTick(b, ranOn, result, probe, now, policy));
+  return withPair(map, pair, (b) => recordFallbackRun(b, ranOn, result, probe, now, policy));
 }

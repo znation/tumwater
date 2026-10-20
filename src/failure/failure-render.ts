@@ -1,10 +1,10 @@
 // vocabulary: plain
 /** Rendering half of the failure digest: turn a collected `FailureReportData` (failure-data.ts)
  * into the bounded Markdown the CLI's `--failures` report, the GUI/TUI failures tabs, and the
- * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
+ * telemetry role's run evidence all print. Pure function of the data — no I/O, no clock
  * reads — so the byte bound argued at collection holds here unchanged. The telemetry role's
  * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_MS) lives in run/telemetry-digest.ts. */
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-data.js";
 import type { SpendCell } from "./time-spend.js";
 import { agree, plural } from "../text/phrases.js";
@@ -18,11 +18,11 @@ import { markdownTable, type ColumnAlign } from "../text/markdown.js";
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;
 
-/** Every `TickResult`, mapped to its display/column rank. Typed as a `Record<TickResult, …>`,
+/** Every `RunResult`, mapped to its display/column rank. Typed as a `Record<RunResult, …>`,
  * so adding a result to src/run/run-outcome.ts and forgetting it here is a compile error — the
  * vocabulary is closed by the type checker, not by a comment. Order runs from "made progress"
  * through "did not" to the operator/shutdown outcomes. */
-const RESULT_ORDER: Record<TickResult, number> = {
+const RESULT_ORDER: Record<RunResult, number> = {
   changed: 0,
   queued: 1,
   no_change: 2,
@@ -39,13 +39,13 @@ const RESULT_ORDER: Record<TickResult, number> = {
   user_aborted: 13,
 };
 
-/** The digest table's columns: every TickResult that at least one role logged in the window, ranked
+/** The digest table's columns: every RunResult that at least one role logged in the window, ranked
  * by RESULT_ORDER (ties alphabetical), so the table's shape follows the window's evidence instead
  * of the whole fixed vocabulary — a team with no errors gets no error column. */
-function columns(outcomes: OutcomeRow[]): TickResult[] {
-  const present = new Set<TickResult>();
+function columns(outcomes: OutcomeRow[]): RunResult[] {
+  const present = new Set<RunResult>();
   for (const row of outcomes) {
-    for (const k of Object.keys(row.counts)) present.add(k as TickResult);
+    for (const k of Object.keys(row.counts)) present.add(k as RunResult);
   }
   return [...present].sort((a, b) => RESULT_ORDER[a] - RESULT_ORDER[b] || a.localeCompare(b));
 }
@@ -53,14 +53,14 @@ function columns(outcomes: OutcomeRow[]): TickResult[] {
 /** A delta cell: `prev → cur`, with "—" on a side where the role had no runs (the "new role"
  * case for the preceding window), so an absence is never rendered as an infinite increase.
  * The displayed halves may be raw counts (stringified here) or pre-rendered rate strings —
- * the tick-count halves exist only to decide the "—", not to be printed. */
+ * the run-count halves exist only to decide the "—", not to be printed. */
 function deltaCell(prevRuns: number, prev: string | number, runs: number, cur: string | number): string {
   return `${prevRuns === 0 ? "—" : prev} → ${runs === 0 ? "—" : cur}`;
 }
 
 /** The rejections column's cell. It cannot reuse deltaCell: a rejection is logged by the
  * merge slot, so its authoring run_end can fall in the other window — a role with a
- * rejection must show it even when its tick count is 0. Presence is judged on the rejection
+ * rejection must show it even when its run count is 0. Presence is judged on the rejection
  * count itself (the role is "absent" from the column only with neither runs nor rejections). */
 function rejectionCell(prevRuns: number, prevRejections: number, runs: number, rejections: number): string {
   const prev = prevRuns === 0 && prevRejections === 0 ? "—" : String(prevRejections);
@@ -100,7 +100,7 @@ function rate(errors: number, runs: number): string {
   return percent(errors, runs);
 }
 
-/** One time-and-spend cell: `x.x h · $y.yy`, or "—" when the role ended no tick on that
+/** One time-and-spend cell: `x.x h · $y.yy`, or "—" when the role ended no run on that
  * class — an absence is not a zero cost, for the same reason the Deltas cells say "—".
  * Hours carry one decimal: the digest prices agent-hours, and whole-hour rounding would
  * erase the difference between ten 200-ms errors and one 30-minute timeout. */
@@ -242,7 +242,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   }
 
   // Prompt-token telemetry: the per-role median prompt
-  // send and how much of the prompt budget goes out before a tick's first edit. Omitted
+  // send and how much of the prompt budget goes out before a run's first edit. Omitted
   // entirely when no run_end in the window carries the fields, so old logs and their golden
   // digests render unchanged.
   if (data.promptStats.length > 0) {
@@ -278,7 +278,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   }
 
   // The title restates the section's contract: its total now covers the Outcome table's error
-  // column AND its main_red cells (the baseline gate's own cause rides the tick, BUGS.md
+  // column AND its main_red cells (the baseline gate's own cause rides the run, BUGS.md
   // 2026-09-28), so an operator cross-checking counts against the tables above is not misled
   // by a title that reads as the error column alone.
   renderClusters(lines, "Top error clusters (red-main causes included)", data.errors, "run errors");

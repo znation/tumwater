@@ -28,7 +28,7 @@ function spendNumber(value: unknown): number {
 }
 
 /** This role's spend for the local day (the daily cost budget window): $0 when its stamp is
- * stale or missing — a role that hasn't ticked since yesterday reads as $0 today with no save
+ * stale or missing — a role that hasn't ran since yesterday reads as $0 today with no save
  * required, and spend recorded before this field existed is unknown. A non-number,
  * non-finite, or negative value reads as $0 too: `loadRunnerState` heals the field on read, but
  * this is the budget gate's own guard, and a hand-edited or torn `dayCostUsd` (or an in-memory
@@ -43,10 +43,10 @@ export function dailyCost(
 }
 
 /** Record a pi run's cost into the role's daily window, rolling over at local midnight:
- * when `now` is on a different day than the recorded stamp the window resets first, so a tick
+ * when `now` is on a different day than the recorded stamp the window resets first, so a run
  * that crosses midnight attributes its spend to the correct day. Mutates `s` in place — like
- * applyTickOutcome and foldUsage's other counter updates, the caller's state object is
- * authoritative across an in-flight tick; the value persists at tick end with the rest of the
+ * applyRunOutcome and foldUsage's other counter updates, the caller's state object is
+ * authoritative across an in-flight run; the value persists at run end with the rest of the
  * state. Both operands are guarded through spendNumber so a corrupt stored value or a
  * non-finite/negative run cost cannot poison the window with a string/NaN/negative sum. */
 export function recordDailyCost(s: RunnerState, usd: number, now = Date.now(), pair?: string): void {
@@ -117,7 +117,7 @@ export const BUDGET_WARNING_FRACTION = 0.8;
 
 /** True when today's spend has crossed `BUDGET_WARNING_FRACTION` of the daily cap while the
  * budget gate is still open — the early heads-up beside budgetReached, which fires only once
- * the cap itself is reached and the team has already stopped (or demoted) its ticks. Same
+ * the cap itself is reached and the team has already stopped (or demoted) its runs. Same
  * guard terms as budgetReached (non-null view, a cap of 0 disables the budget), scaled by the
  * warning fraction, so the two views can never disagree about whether the budget is on. */
 export function budgetWarning(budget: { spentUsd: number; capUsd: number } | null): boolean {
@@ -175,9 +175,9 @@ export function projectCapHit(
 
 /** What the daily cost budget is doing to roles right now (plans/fallback-model.md):
  * `open` while spend is under the cap, `fallback` once it is reached with a usable free model
- * configured — priced at zero AND serving — so roles keep ticking, on that model, and `paused`
+ * configured — priced at zero AND serving — so roles keep running, on that model, and `paused`
  * once it is reached with none. Three values instead of a boolean because "the cap is reached"
- * and "the roles are stopped" stopped being the same fact: only `paused` blocks a tick. */
+ * and "the roles are stopped" stopped being the same fact: only `paused` blocks a run. */
 export type BudgetGate = "open" | "fallback" | "paused";
 
 /** The name of a model pair as the fallback breaker map and the demotion publish key it
@@ -193,7 +193,7 @@ export function modelPairName(p: { provider?: string; model?: string } | null): 
  * `strong` tiers resolved to a usable free pair (resolveTierFallbacks over the full usable
  * predicate — price AND breaker serving) — plus whether the review gate is on. The gate is
  * `paused` when `default` resolves to pause (nothing for the team's bulk to run on), or when
- * review is on and `strong` does (nothing could merge, so every authoring tick is wasted work);
+ * review is on and `strong` does (nothing could merge, so every authoring run is wasted work);
  * `fallback` otherwise, with the tiers that did resolve running their pairs and the rest held
  * per role. The single definition of the gate: the orchestrator enforces it and both dashboards
  * display it, so what an operator sees is what the scheduler is doing. */

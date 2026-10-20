@@ -14,7 +14,7 @@
  * redeployer read it between polls. */
 import {
   abandonFallbackProbeAt,
-  recordFallbackTickAt,
+  recordFallbackRunAt,
   startFallbackProbeAt,
   type FallbackBreakerPolicy,
 } from "../budget/fallback-breaker.js";
@@ -267,7 +267,7 @@ export function launchDueRuns(ctx: LaunchContext): void {
           if (ranPair !== null && ranOn !== undefined) {
             const at = breakerNow();
             const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;
-            gateStates.budget.breakers = recordFallbackTickAt(
+            gateStates.budget.breakers = recordFallbackRunAt(
               gateStates.budget.breakers,
               ranPair,
               ranOn,

@@ -1,7 +1,7 @@
 /** Unit-tier coverage for the orchestrator's fallback-breaker wiring
  * (src/orchestrator/orchestrator.ts's
  * run bookkeeping): a role run made while the budget gate has engaged the free
- * fallback folds its outcome into the breaker (recordFallbackTick), and the demotion that
+ * fallback folds its outcome into the breaker (recordFallbackRun), and the demotion that
  * follows failureLimit consecutive failures reaches the observers — the budget_paused event
  * and orchestrator.json's fallbackDemoted. Until now this wiring ran only in no test at any
  * tier: the breaker's state machine has its own unit tests (fallback-breaker.test.ts) and

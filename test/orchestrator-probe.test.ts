@@ -96,7 +96,7 @@ test("a demoted fallback admits exactly one probe run per cool-down; other due r
     await waitFor(() => onFallback() >= 3, "the three tripping failures");
     // Both roles fail in lockstep, so the other role's run is usually still in flight when the
     // third failure trips the breaker — a straggler admitted before the trip, which runs to its
-    // own failure by design (recordFallbackTick). Its run_start precedes the worktree reset and
+    // own failure by design (recordFallbackRun). Its run_start precedes the worktree reset and
     // the pi spawn, so on a loaded host its argv line can appear after budget_paused and read as a
     // pierced pause (BUGS.md 2026-10-07). The snapshot waits for every started run to end; no
     // new run can start meanwhile, since admission reads the tripped breaker.

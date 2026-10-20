@@ -187,7 +187,7 @@ test("resumed is true on exactly the reopening poll, with the fallback pair it l
   // Staying open poll after poll: no further resumes.
   assert.equal(poll(root, state, configWith(100), models, [spentRunnerState("feature", 10)]).resumed, false);
 
-  // paused → open is a resume too: ticks parked on the fallback view while the breaker had
+  // paused → open is a resume too: runs parked on the fallback view while the breaker had
   // the gate paused must be handed back exactly like fallback-held ones.
   const paidOnlyDir = tmpdir("budget-gates-paid-");
   const paidOnly = writeModelsFile(paidOnlyDir, PAID_ONLY_JSON);
@@ -262,29 +262,29 @@ test("no budget warning at the cap itself, and none with the cap disabled", () =
   assert.deepEqual(eventTypes(root), ["budget_fallback"]);
 });
 
-test("runOnPair matches only an in-flight tick on the fallback pair", () => {
+test("runOnPair matches only an in-flight run on the fallback pair", () => {
   const pair = { provider: "local", model: "local-free" };
   assert.equal(runOnPair({ provider: "local", model: "local-free" }, pair), true);
-  assert.equal(runOnPair({ provider: "paid", model: "big-paid" }, pair), false, "a primary tick keeps running");
+  assert.equal(runOnPair({ provider: "paid", model: "big-paid" }, pair), false, "a primary run keeps running");
   assert.equal(runOnPair(null, pair), false, "an idle loop has nothing to hand back");
   assert.equal(runOnPair({ provider: "local", model: "local-free" }, null), false, "no fallback, no handback");
   // A claude fallback pair (PLANS.md "Mixed claude + pi fleets, part 2/4"): setRunPair now
-  // keys the in-flight tick by the seam that ran (seamHoldKey → "claude"), and the fallback
+  // keys the in-flight run by the seam that ran (seamHoldKey → "claude"), and the fallback
   // pair is seam-keyed the same way (config-fallbacks.ts's seamKeyedFallbackProvider names the
   // backend for both a `claude/<id>` and a bare `<id>` selector on a claude team) — so a
-  // claude fallback tick IS handed back in both selector forms, and a tick whose provider is
+  // claude fallback run IS handed back in both selector forms, and a run whose provider is
   // a different seam (a pi `omlx` author here) never matches and is not returned.
   const claude = { provider: "claude", model: "claude-sonnet-5-5" };
   assert.equal(runOnPair({ provider: "claude", model: "claude-sonnet-5-5" }, claude), true);
   assert.equal(
     runOnPair({ provider: "omlx", model: "claude-sonnet-5-5" }, claude),
     false,
-    "a tick on a different seam is not handed back to the claude fallback",
+    "a run on a different seam is not handed back to the claude fallback",
   );
   // A bare-selector claude fallback never reaches runOnPair with provider undefined: the
   // fallback pair is seam-keyed at creation (config-views.test.ts, seamKeyedFallbackProvider),
   // so both `claude/<id>` and a bare `<id>` on a claude team produce the `claude` pair above
-  // and both hand the tick back through this same match.
+  // and both hand the run back through this same match.
 });
 
 test("a fallback pi prices above zero cannot engage: the gate pauses and the event says why", () => {
@@ -430,7 +430,7 @@ test("a demoted fallback keeps the gate paused and the role view: demotion never
 
   const p = poll(root, state, cfg, models, [spentRunnerState("feature", 10)]);
   assert.equal(p.gate, "paused"); // free but not serving: paused, like no fallback at all
-  assert.equal(p.onFallback, true); // yet ticks parked in flight still run on the free pair
+  assert.equal(p.onFallback, true); // yet runs parked in flight still run on the free pair
   assert.equal(p.roleConfig.provider, undefined);
   assert.deepEqual(p.roleConfig.model, {
     small: "free/qwen-free",
@@ -500,7 +500,7 @@ test("review on and strong unresolvable pauses the gate; review off holds only i
   assert.ok(p.budgetActive);
 
   // Review off: the same config keeps the gate on fallback — only the strong roles are held
-  // (the per-tier pause set), the rest keep ticking.
+  // (the per-tier pause set), the rest keep running.
   const off = { ...cfg, review: { ...cfg.review, enabled: false } };
   const p2 = pollBudgetGate(newBudgetGateState(off), { root, states: [spentRunnerState("feature", 10)], liveConfig: off, modelsPath: models });
   assert.equal(p2.gate, "fallback");

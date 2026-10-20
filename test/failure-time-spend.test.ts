@@ -46,7 +46,7 @@ test("time and spend folds role × outcome class, pairing old events with run_st
     // New-style event: the event's own durationMs wins over the pairing.
     { ts: at(0, 11), loop: "bugfix", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
     { ts: at(0, 12), loop: "bugfix", type: "run_end", run: 2, result: "no_change", durationMs: 3_600_000, costUsd: 0.3 }, // retired-name-ok: legacy event field in a fixture
-    // An end whose start rotated out: the tick still counts, priced at 0 ms.
+    // An end whose start rotated out: the run still counts, priced at 0 ms.
     { ts: at(0), loop: "bugfix", type: "run_end", run: 3, result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
@@ -68,14 +68,14 @@ test("time and spend folds role × outcome class, pairing old events with run_st
 });
 
 test("a review-rejected change's authoring hours price into error-class, not merged", () => {
-  // The 2026-09-30 digest bug: a tick ends `queued` when it pins its change, and the merge
+  // The 2026-09-30 digest bug: a run ends `queued` when it pins its change, and the merge
   // slot rejects that change AFTER the run_end — so the fold that reads only run_ends read
   // the authoring span into the merged column, contradicting its own contract ("the review
   // gate" is error-class) and never appearing in the loss ranking. The fold now joins each
   // queued run_end through its merge_queued pin to the same-sha merge_done/merge_failed outcome —
   // history-data's exact join — and prices a rejected merge's authoring span as the loss it
-  // was. The fixture uses the live shape: merge_queued DURING the tick, review_rejected +
-  // merge_failed after it, the merge_failed carrying the MERGE's own duration, not the tick's.
+  // was. The fixture uses the live shape: merge_queued DURING the run, review_rejected +
+  // merge_failed after it, the merge_failed carrying the MERGE's own duration, not the run's.
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
@@ -136,7 +136,7 @@ test("a review-rejected change's authoring hours price into error-class, not mer
   assert.match(md, /\| coverage \| — \| — \| 1\.0 h · \$1\.00 \|/);
 });
 
-test("a mixed team of plain and progressing tick timeouts pools into one digest cluster", () => {
+test("a mixed team of plain and progressing run timeouts pools into one digest cluster", () => {
   const root = tmpdir();
   writeEvents(root, [
     { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "timed out after 1800s", durationMs: 1_800_000, costUsd: 0.10 }, // retired-name-ok: legacy event field in a fixture
@@ -182,7 +182,7 @@ test("a cluster that outlived a config change labels itself with its newest mess
 });
 
 test("a review_error merge prices its authoring hours under the matching review_failed cause", () => {
-  // BUGS.md 2026-10-07: a queued tick whose merge ended `review_error` — the reviewer's own
+  // BUGS.md 2026-10-07: a queued run whose merge ended `review_error` — the reviewer's own
   // process failed (a timeout, a dead backend, no parseable verdict) and the pin was re-queued —
   // was priced into the error-class cell but owned by no loss cause, because the rejected-only
   // branch and CLUSTERED_RESULTS both missed it. The matching `review_failed` event carries the
@@ -203,7 +203,7 @@ test("a review_error merge prices its authoring hours under the matching review_
     "the authoring span prices as error-class, not the merge's own 60s",
   );
   const loss = data.lossCauses.find((c) => c.roles.includes("bugfix"));
-  assert.ok(loss, `the review_error tick owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.ok(loss, `the review_error run owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
   assert.equal(loss?.kind, "error-cluster");
   assert.equal(loss?.runs, 1);
   assert.equal(loss?.ms, 3_600_000);
@@ -234,7 +234,7 @@ test("a rebased review_error merge prices under its review_failed message, not t
   ]);
   const data = collectFailureReport(root, 1);
   const loss = data.lossCauses.find((c) => c.roles.includes("bugfix"));
-  assert.ok(loss, `the rebased review_error tick owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.ok(loss, `the rebased review_error run owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
   assert.equal(loss?.runs, 1);
   assert.equal(loss?.ms, 3_600_000);
   assert.match(loss?.example ?? "", /^timed out after 900s/, `the message labels the span, not the placeholder: ${JSON.stringify(loss)}`);
@@ -264,8 +264,8 @@ test("a rebased review-rejected merge names its reason, not an empty example", (
   assert.equal(loss?.example, "too big", `the reason labels the cause: ${JSON.stringify(loss)}`);
 });
 
-test("a main_red tick prices its red-main cause into the loss ranking, not only the error clusters", () => {
-  // BUGS.md 2026-10-07: a `main_red` tick is error-class, but the loss fold's CLUSTERED_RESULTS
+test("a main_red run prices its red-main cause into the loss ranking, not only the error clusters", () => {
+  // BUGS.md 2026-10-07: a `main_red` run is error-class, but the loss fold's CLUSTERED_RESULTS
   // missed it, so its hours merged in the error-class cell and in the digest's error clusters
   // while owned by no loss cause and not even counted by lossCausesHidden. Its run_end carries
   // the same verbatim redMainMessage the error-clusters section clusters, so it joins the fold.
@@ -295,9 +295,9 @@ test("a main_red tick prices its red-main cause into the loss ranking, not only 
   assert.equal(data.lossCausesHidden, 0, "neither cause is dropped by the top-N cut");
 });
 
-test("a refused tick prices its own loss cause, not no_change", () => {
+test("a refused run prices its own loss cause, not no_change", () => {
   // PLANS.md 2026-10-14: a refusal is a deliberate objection that blocks its entry, yet the
-  // loss fold bucketed every no_change-class tick under `no_change\u0000<role>` — so a role
+  // loss fold bucketed every no_change-class run under `no_change\u0000<role>` — so a role
   // that actively refuses priced into the digest exactly like a quietly idle one. A refused
   // still counts under no_change in the outcome table (that three-class table is its stated
   // contract), but the loss ranking names the objection via the refusal's own summary.
@@ -318,7 +318,7 @@ test("a refused tick prices its own loss cause, not no_change", () => {
   assert.equal(refused?.ms, 3_600_000);
   assert.ok(Math.abs((refused?.costUsd ?? 0) - 0.5) < 1e-9, `the refusal's cost is priced: ${refused?.costUsd}`);
   const idle = data.lossCauses.find((c) => c.kind === "no_change");
-  assert.ok(idle, `the idling tick stays its own no_change cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.ok(idle, `the idling run stays its own no_change cause: ${JSON.stringify(data.lossCauses)}`);
   assert.equal(idle?.runs, 1, "the idle and refused runs are not merged");
   assert.equal(idle?.example, "", "no_change keeps its empty example");
   // The outcome table still folds the refusal under no_change, its class contract unchanged.

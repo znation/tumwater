@@ -28,7 +28,7 @@ test("collectFailureReport memoizes an unchanged log and re-reads a changed one"
   ]);
   const third = collectFailureReport(root, 1);
   assert.notEqual(third, first, "a changed log re-derives the digest");
-  assert.equal(third.runs, 2, "the re-derived digest sees the appended tick");
+  assert.equal(third.runs, 2, "the re-derived digest sees the appended run");
 });
 
 test("collectFailureReport tallies run_end results per role", () => {
@@ -51,7 +51,7 @@ test("collectFailureReport tallies run_end results per role", () => {
 });
 
 test("equal-total roles tie in ascending key order in the outcome and time-spend tables", () => {
-  // The outcome table ranks by total tick count, the time-spend table by summed wall-clock
+  // The outcome table ranks by total run count, the time-spend table by summed wall-clock
   // ms; both must break ties by ascending role name, matching the rank rule everywhere
   // else that ranks counters (the old sort-ascending-then-reverse idiom here flipped ties
   // into reverse-alphabetical order).
@@ -64,7 +64,7 @@ test("equal-total roles tie in ascending key order in the outcome and time-spend
   assert.deepEqual(
     data.outcomes.map((o) => o.role),
     ["alpha", "zed"],
-    "equal totals (1 tick each) read alphabetically",
+    "equal totals (1 run each) read alphabetically",
   );
   assert.deepEqual(
     data.timeSpend.map((r) => r.role),
@@ -73,7 +73,7 @@ test("equal-total roles tie in ascending key order in the outcome and time-spend
   );
 });
 
-test("a main_red tick's cause is clustered with the run errors, not left a bare count", () => {
+test("a main_red run's cause is clustered with the run errors, not left a bare count", () => {
   const root = tmpdir();
   writeEvents(root, [
     { ts: at(0), loop: "organize", type: "run_end", result: "main_red", // retired-name-ok: legacy event field in a fixture
@@ -154,23 +154,23 @@ test("review rejections cluster on (role, reasons[0]), not role alone", () => {
   assert.equal(data.rejections.clusters.length, 3);
 });
 
-test("run errors cluster only on error-result ticks; merge review failures get their own section", () => {
+test("run errors cluster only on error-result runs; merge review failures get their own section", () => {
   const root = tmpdir();
   writeEvents(root, [
-    // A tick that did NOT end as an error but carries a stale `lastError` — the merge slot
-    // wrote the shared slot during leftover recovery. It must not be counted as a tick error
+    // A run that did NOT end as an error but carries a stale `lastError` — the merge slot
+    // wrote the shared slot during leftover recovery. It must not be counted as a run error
     // (BUGS.md 2026-09-21).
     { ts: at(0), loop: "clean", type: "run_end", result: "no_change", error: 'review failed: 429 "Rate limit exceeded"' }, // retired-name-ok: legacy event field in a fixture
     { ts: at(0), loop: "dedupe", type: "run_end", result: "queued", error: 'review failed: 429 "Rate limit exceeded"' }, // retired-name-ok: legacy event field in a fixture
     // The merge failure itself is surfaced from its own event.
     { ts: at(0), loop: "clean", type: "review_failed", head: "a".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" }, // retired-name-ok: legacy event field in a fixture
     { ts: at(0), loop: "dedupe", type: "review_failed", head: "b".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" }, // retired-name-ok: legacy event field in a fixture
-    // A real tick error still clusters.
+    // A real run error still clusters.
     { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
   const errorTotal = data.outcomes.reduce((n, o) => n + (o.counts.error ?? 0), 0);
-  assert.equal(errorTotal, 1, "only the error-result tick counts as an error");
+  assert.equal(errorTotal, 1, "only the error-result run counts as an error");
   assert.equal(
     data.errors.clusters.reduce((n, c) => n + c.count, 0),
     errorTotal,
@@ -178,7 +178,7 @@ test("run errors cluster only on error-result ticks; merge review failures get t
   );
   assert.ok(
     data.errors.clusters.every((c) => !c.key.includes("review failed")),
-    "a successful tick's stale lastError is not a tick error",
+    "a successful run's stale lastError is not a run error",
   );
   assert.equal(data.reviewFailures.clusters.length, 1);
   assert.equal(data.reviewFailures.clusters[0]?.count, 2);
@@ -314,9 +314,9 @@ test("every digest table's separator has one delimiter cell per header cell", ()
       { loop: "qa", result: "error" }, // retired-name-ok: legacy event field in a fixture
     ],
   };
-  for (const [name, ticks] of Object.entries(fixtures)) {
+  for (const [name, runs] of Object.entries(fixtures)) {
     const root = tmpdir();
-    writeEvents(root, ticks.map((t) => ({ ts: at(0), type: "run_end", ...t })));
+    writeEvents(root, runs.map((t) => ({ ts: at(0), type: "run_end", ...t })));
     const md = renderFailureMarkdown(collectFailureReport(root, 1));
     const tables = markdownTables(md);
     // Outcome by role, Time and spend by outcome, and Deltas: a scan that finds no table
@@ -330,7 +330,7 @@ test("every digest table's separator has one delimiter cell per header cell", ()
     // The outcome table keeps its alignment: role left, one right-aligned `---:` per result.
     const outcome = tables[0]!;
     assert.equal(outcome.header[0], "role");
-    assert.equal(outcome.header.length - 1, new Set(ticks.map((t) => t.result)).size, name);
+    assert.equal(outcome.header.length - 1, new Set(runs.map((t) => t.result)).size, name);
     assert.deepEqual(outcome.separator, ["---", ...outcome.header.slice(1).map(() => "---:")], name);
   }
 });
@@ -354,7 +354,7 @@ test("deltas report new roles as absent, not an infinite increase", () => {
 
 test("deltas count quiet kills and rejections per role, both windows", () => {
   // The delta table has dedicated quiet-kills and rejections columns. A rejection is recorded
-  // by the merge slot AFTER its authoring tick has ended `queued` (plans/merge-queue.md 3/5),
+  // by the merge slot AFTER its authoring run has ended `queued` (plans/merge-queue.md 3/5),
   // so the fixture pairs a `queued` run_end with a `review_rejected` event — the shape the
   // live team emits. A fixture that fabricates a `rejected` run_end would pass even while the
   // counter reads 0 on every real rejection, the regression an operator could not notice.
@@ -403,8 +403,8 @@ test("deltas count quiet kills and rejections per role, both windows", () => {
 
 test("a nonzero error rate never rounds to 0%, and a partial rate never to 100%", () => {
   // Whole-percent rounding would erase a real difference in both windows: one error in 400
-  // ticks is 0.25%, which rounds to "0%" (a role that had an error read as error-free), and
-  // 399 errors in 400 ticks is 99.75%, which rounds to "100%". Those two keep one decimal.
+  // runs is 0.25%, which rounds to "0%" (a role that had an error read as error-free), and
+  // 399 errors in 400 runs is 99.75%, which rounds to "100%". Those two keep one decimal.
   const root = tmpdir();
   const events: object[] = [];
   for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "feature", type: "run_end", result: "changed" }); // retired-name-ok: legacy event field in a fixture
@@ -537,7 +537,7 @@ test("the digest replays harness decisions so a wrong response is visible", () =
 test("the digest replays a failure-caused role pause and a model fallback", () => {
   // The gate transitions added after the digest's section was written (the error-streak
   // breaker, the role's own cap, and the model-fallback episode) are the reason a role
-  // stopped ticking or moved off-model: without them the digest shows the failed ticks but
+  // stopped running or moved off-model: without them the digest shows the failed runs but
   // never the harness's response to them.
   const root = tmpdir();
   writeEvents(root, [
@@ -758,7 +758,7 @@ test("collectFailureReportSince counts only the trailing window and compares the
   ]);
   const data = collectFailureReportSince(root, 6 * HOUR);
   assert.equal(data.sinceMs, 6 * HOUR);
-  assert.equal(data.runs, 1, "only the 1h-old tick is inside the window");
+  assert.equal(data.runs, 1, "only the 1h-old run is inside the window");
   assert.equal(data.errors.total, 1, "the current window clusters only its own errors");
   // The 8h-old event falls in the prior window [12h, 6h), so it is the prior side of the deltas.
   const feature = data.deltas.find((d) => d.role === "feature");
@@ -872,7 +872,7 @@ test("the digest reports per-role prompt-token medians and the pre-edit share", 
   writeEvents(root, [
     { ts: at(0), loop: "feature", type: "run_end", result: "changed", promptTokens: 100, preEditPromptTokens: 40 }, // retired-name-ok: legacy event field in a fixture
     { ts: at(0), loop: "feature", type: "run_end", result: "no_change", promptTokens: 300, preEditPromptTokens: 20 }, // retired-name-ok: legacy event field in a fixture
-    // A tick without the prompt-token fields contributes nothing and does not zero the median.
+    // A run without the prompt-token fields contributes nothing and does not zero the median.
     { ts: at(0), loop: "feature", type: "run_end", result: "queued" }, // retired-name-ok: legacy event field in a fixture
     { ts: at(0), loop: "bugfix", type: "run_end", result: "changed", promptTokens: 50, cacheReadTokens: 40, preEditPromptTokens: 50 }, // retired-name-ok: legacy event field in a fixture
   ]);
@@ -892,7 +892,7 @@ test("a non-finite prompt-token reading contributes nothing, not Infinity", () =
   // JSON has no Infinity literal, but `1e999` parses to Infinity — the shape a torn or
   // hand-edited log line can carry. The reader must fold it as absent, like every other
   // event-log number (finiteNumber/nonNegativeNumber), so it cannot reach the median or the
-  // pre-edit ratio. Without the guard the first tick's median read Infinity and the second's
+  // pre-edit ratio. Without the guard the first run's median read Infinity and the second's
   // preEditShare read NaN (Infinity/Infinity).
   const root = tmpdir();
   writeEvents(root, [
@@ -1022,7 +1022,7 @@ test("the loss-ranking renders a refused cause with its summary, and bare withou
     `the refused cause names its summary: ${md}`,
   );
   assert.match(md, /0\.5 h · \$0\.20 — 1 run: refused on bugfix/, "a summary-less refusal renders the bare form");
-  assert.ok(!md.includes("no_change on feature"), "the refused tick is not rendered as no_change");
+  assert.ok(!md.includes("no_change on feature"), "the refused run is not rendered as no_change");
 });
 
 test("the digest's table headers and section titles use plain terms, not raw result codes", () => {

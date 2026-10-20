@@ -8,7 +8,7 @@ import {
   fallbackEvidence,
   fallbackProbeDue,
   fallbackServing,
-  recordFallbackTick,
+  recordFallbackRun,
   rekeyFallbackBreaker,
   startFallbackProbe,
   type FallbackBreaker,
@@ -18,7 +18,7 @@ import {
 /** The fallback circuit breaker's tests (src/budget/fallback-breaker.ts): the rekey rules (a
  * changed
  * subject re-trusts), the half-open probe admission, the evidence vocabulary, and the fold of
- * one finished tick — trips, served closes from any state, failed probes double the cool-down
+ * one finished run — trips, served closes from any state, failed probes double the cool-down
  * up to the cap, stragglers leave the running cool-down alone. */
 
 /** A small policy so doubling arithmetic is easy to read; the thresholds' real values are
@@ -63,7 +63,7 @@ test("fallbackServing is false exactly while the breaker holds a demotion, probe
   assert.equal(fallbackServing(startFallbackProbe(demoted())), false);
 });
 
-test("fallbackProbeDue admits one tick only after the cool-down, only with a demotion and no probe in flight", () => {
+test("fallbackProbeDue admits one run only after the cool-down, only with a demotion and no probe in flight", () => {
   assert.equal(fallbackProbeDue(IDLE_FALLBACK_BREAKER, 10_000), false); // no fallback engaged
   assert.equal(fallbackProbeDue(closed(), 10_000), false); // trusted: no probe needed
   assert.equal(fallbackProbeDue(demoted(5_000), 4_999), false); // still cooling down
@@ -78,7 +78,7 @@ test("startFallbackProbe marks the slot busy; abandon hands it back without touc
   assert.deepEqual(abandoned, demoted(5_000)); // due again at the next poll, cool-down intact
 });
 
-test("fallbackEvidence maps the TickResult vocabulary: error alone fails, a model reply serves, kills and merge results say nothing", () => {
+test("fallbackEvidence maps the RunResult vocabulary: error alone fails, a model reply serves, kills and merge results say nothing", () => {
   assert.equal(fallbackEvidence("error"), "failed");
   for (const served of ["queued", "changed", "no_change", "refused", "rejected"] as const) {
     assert.equal(fallbackEvidence(served), "served", served);
@@ -97,21 +97,21 @@ test("fallbackEvidence maps the TickResult vocabulary: error alone fails, a mode
   }
 });
 
-test("recordFallbackTick drops evidence about a subject that is not the engaged one", () => {
+test("recordFallbackRun drops evidence about a subject that is not the engaged one", () => {
   const b = closed();
-  // The tick ran while no fallback was engaged.
-  assert.equal(recordFallbackTick(b, IDLE_FALLBACK_BREAKER, "error", false, 1_000), b);
-  // The tick ran on the previous pair, but the operator repointed fallbackModel mid-tick.
-  assert.equal(recordFallbackTick(b, closed("old/free", 5), "error", false, 1_000), b);
-  // The tick ran on the previous cap, but the operator raised it mid-tick.
-  assert.equal(recordFallbackTick(b, closed("free/qwen", 4), "error", false, 1_000), b);
+  // The run ran while no fallback was engaged.
+  assert.equal(recordFallbackRun(b, IDLE_FALLBACK_BREAKER, "error", false, 1_000), b);
+  // The run ran on the previous pair, but the operator repointed fallbackModel mid-run.
+  assert.equal(recordFallbackRun(b, closed("old/free", 5), "error", false, 1_000), b);
+  // The run ran on the previous cap, but the operator raised it mid-run.
+  assert.equal(recordFallbackRun(b, closed("free/qwen", 4), "error", false, 1_000), b);
   // Nothing was recorded either way.
   assert.deepEqual(b, closed());
 });
 
-test("recordFallbackTick closes the breaker from any state when a tick served", () => {
+test("recordFallbackRun closes the breaker from any state when a run served", () => {
   const demotedProbing = startFallbackProbe(demoted(5_000));
-  assert.deepEqual(recordFallbackTick(demotedProbing, demotedProbing, "no_change", true, 6_000), {
+  assert.deepEqual(recordFallbackRun(demotedProbing, demotedProbing, "no_change", true, 6_000), {
     pair: "free/qwen",
     capUsd: 5,
     failures: 0,
@@ -121,7 +121,7 @@ test("recordFallbackTick closes the breaker from any state when a tick served", 
   });
   // A served straggler from before the trip also re-trusts at once.
   const demotedIdle = demoted(5_000);
-  assert.deepEqual(recordFallbackTick(demotedIdle, demotedIdle, "changed", false, 6_000), {
+  assert.deepEqual(recordFallbackRun(demotedIdle, demotedIdle, "changed", false, 6_000), {
     pair: "free/qwen",
     capUsd: 5,
     failures: 0,
@@ -131,46 +131,46 @@ test("recordFallbackTick closes the breaker from any state when a tick served", 
   });
 });
 
-test("recordFallbackTick counts failures while closed and trips at the limit, opening the first cool-down", () => {
+test("recordFallbackRun counts failures while closed and trips at the limit, opening the first cool-down", () => {
   let b = closed();
   const at = 10_000;
-  b = recordFallbackTick(b, b, "error", false, at, policy);
+  b = recordFallbackRun(b, b, "error", false, at, policy);
   assert.deepEqual(b, { pair: "free/qwen", capUsd: 5, failures: 1, probeAt: null, cooldownMs: 0, probing: false });
-  b = recordFallbackTick(b, b, "error", false, at, policy);
+  b = recordFallbackRun(b, b, "error", false, at, policy);
   assert.equal(b.probeAt, null); // one below the limit: still trusted
-  b = recordFallbackTick(b, b, "error", false, at, policy);
+  b = recordFallbackRun(b, b, "error", false, at, policy);
   assert.deepEqual(b, { pair: "free/qwen", capUsd: 5, failures: 3, probeAt: at + policy.cooldownMs, cooldownMs: policy.cooldownMs, probing: false });
   // The shipped policy trips on the third failure too, five minutes out.
   let shipped = closed();
-  for (let i = 0; i < FALLBACK_BREAKER_POLICY.failureLimit; i++) shipped = recordFallbackTick(shipped, shipped, "error", false, at);
+  for (let i = 0; i < FALLBACK_BREAKER_POLICY.failureLimit; i++) shipped = recordFallbackRun(shipped, shipped, "error", false, at);
   assert.equal(shipped.probeAt, at + FALLBACK_BREAKER_POLICY.cooldownMs);
 });
 
-test("recordFallbackTick leaves a failed straggler's running cool-down alone", () => {
+test("recordFallbackRun leaves a failed straggler's running cool-down alone", () => {
   // The straggler started under the closed breaker (probe false) but reports after the trip.
-  const b = recordFallbackTick(demoted(20_000, 100, 3), closed(), "error", false, 21_000, policy);
+  const b = recordFallbackRun(demoted(20_000, 100, 3), closed(), "error", false, 21_000, policy);
   assert.deepEqual(b, { pair: "free/qwen", capUsd: 5, failures: 4, probeAt: 20_000, cooldownMs: 100, probing: false });
 });
 
-test("recordFallbackTick doubles a failed probe's cool-down, capped, and re-opens the breaker", () => {
+test("recordFallbackRun doubles a failed probe's cool-down, capped, and re-opens the breaker", () => {
   const started = startFallbackProbe(demoted(5_000, 100, 3));
-  const first = recordFallbackTick(started, started, "error", true, 6_000, policy);
+  const first = recordFallbackRun(started, started, "error", true, 6_000, policy);
   assert.deepEqual(first, { pair: "free/qwen", capUsd: 5, failures: 4, probeAt: 6_000 + 200, cooldownMs: 200, probing: false });
   // The next failed probe doubles again…
-  const second = recordFallbackTick(startFallbackProbe(first), startFallbackProbe(first), "error", true, 8_000, policy);
+  const second = recordFallbackRun(startFallbackProbe(first), startFallbackProbe(first), "error", true, 8_000, policy);
   assert.deepEqual(second, { pair: "free/qwen", capUsd: 5, failures: 5, probeAt: 8_000 + 300, cooldownMs: 300, probing: false });
   // …and then the cap holds instead of growing without bound.
-  const third = recordFallbackTick(startFallbackProbe(second), startFallbackProbe(second), "error", true, 12_000, policy);
+  const third = recordFallbackRun(startFallbackProbe(second), startFallbackProbe(second), "error", true, 12_000, policy);
   assert.deepEqual(third, { pair: "free/qwen", capUsd: 5, failures: 6, probeAt: 12_000 + 300, cooldownMs: 300, probing: false });
 });
 
-test("recordFallbackTick frees the probe slot when the probe produced no evidence", () => {
+test("recordFallbackRun frees the probe slot when the probe produced no evidence", () => {
   const started = startFallbackProbe(demoted(5_000, 100, 3));
-  const b = recordFallbackTick(started, started, "aborted", true, 6_000, policy);
+  const b = recordFallbackRun(started, started, "aborted", true, 6_000, policy);
   assert.deepEqual(b, { pair: "free/qwen", capUsd: 5, failures: 3, probeAt: 5_000, cooldownMs: 100, probing: false });
-  // A non-probe tick with no evidence changes nothing at all.
+  // A non-probe run with no evidence changes nothing at all.
   const demotedIdle = demoted(5_000);
-  assert.equal(recordFallbackTick(demotedIdle, demotedIdle, "main_red", false, 6_000, policy), demotedIdle);
+  assert.equal(recordFallbackRun(demotedIdle, demotedIdle, "main_red", false, 6_000, policy), demotedIdle);
 });
 
 test("fallbackDemotion publishes a demotion and nothing while trusted or unengaged", () => {
@@ -185,7 +185,7 @@ import {
   abandonFallbackProbeAt,
   fallbackProbeDuePair,
   fallbackServingPair,
-  recordFallbackTickAt,
+  recordFallbackRunAt,
   rekeyFallbackBreakers,
   startFallbackProbeAt,
   type FallbackBreakerMap,
@@ -226,19 +226,19 @@ test("the probe admission and evidence fold run on the named pair's entry", () =
   const probing = startFallbackProbeAt(map, "free/qwen");
   assert.equal(probing["free/qwen"]?.probing, true);
   assert.equal(probing["other/mini"], map["other/mini"], "the other pair's entry is untouched");
-  // A probe whose tick never ran has its claim handed back, on its pair only.
+  // A probe whose run never ran has its claim handed back, on its pair only.
   const abandoned = abandonFallbackProbeAt(probing, "free/qwen");
   assert.equal(abandoned["free/qwen"]?.probing, false);
   assert.equal(abandoned["other/mini"], map["other/mini"]);
   // The probe served: the entry closes; the other pair's breaker keeps its state.
-  const served = recordFallbackTickAt(probing, "free/qwen", map["free/qwen"]!, "changed", true, 1_001, policy);
+  const served = recordFallbackRunAt(probing, "free/qwen", map["free/qwen"]!, "changed", true, 1_001, policy);
   assert.deepEqual(served["free/qwen"], { pair: "free/qwen", capUsd: 5, failures: 0, probeAt: null, cooldownMs: 0, probing: false });
   assert.equal(served["other/mini"], map["other/mini"]);
   // A failed probe doubles only its own pair's cool-down.
-  const failed = recordFallbackTickAt(probing, "free/qwen", map["free/qwen"]!, "error", true, 1_001, policy);
+  const failed = recordFallbackRunAt(probing, "free/qwen", map["free/qwen"]!, "error", true, 1_001, policy);
   assert.equal(failed["free/qwen"]?.probeAt, 1_201);
   assert.equal(failed["other/mini"]?.probeAt, null);
   // An entry the rekey dropped mid-flight: nothing to fold into, the map stands.
-  const dropped = recordFallbackTickAt({}, "free/qwen", demoted(), "error", true, 1_001, policy);
+  const dropped = recordFallbackRunAt({}, "free/qwen", demoted(), "error", true, 1_001, policy);
   assert.deepEqual(dropped, {});
 });

@@ -22,12 +22,12 @@ import {
   fallbackProbeDue,
   fallbackServing,
   IDLE_FALLBACK_BREAKER,
-  recordFallbackTick,
+  recordFallbackRun,
   rekeyFallbackBreaker,
   startFallbackProbe,
 } from "../src/budget/fallback-breaker.js";
 import { defaultConfig } from "../src/config/config.js";
-import type { TickResult } from "../src/run/run-outcome.js";
+import type { RunResult } from "../src/run/run-outcome.js";
 
 /** Two local-time timestamps straddling midnight, built with the local Date constructor so
  * the test holds in any timezone: dayA is an evening, dayB just after local midnight. */
@@ -50,7 +50,7 @@ test("recordDailyCost accumulates same-day spend and rolls over at local midnigh
   assert.equal(s.dayStamp, todayStamp(dayA));
   assert.equal(s.dayCostUsd, 1.75);
 
-  // A tick that crosses midnight attributes its spend to the NEW day: the window resets
+  // A run that crosses midnight attributes its spend to the NEW day: the window resets
   // first, so yesterday's $1.75 cannot leak into today's budget (or vice versa).
   recordDailyCost(s, 0.5, dayB);
   assert.equal(s.dayStamp, todayStamp(dayB));
@@ -59,7 +59,7 @@ test("recordDailyCost accumulates same-day spend and rolls over at local midnigh
 });
 
 test("dailyCost reads $0 for a stale or missing stamp and the window's value when fresh", () => {
-  const s = freshRunnerState("feature"); // dayStamp "" — never ticked
+  const s = freshRunnerState("feature"); // dayStamp "" — never ran
   assert.equal(dailyCost(s), 0);
 
   const { dayA, dayB } = midnightPair();
@@ -105,7 +105,7 @@ test("teamDailyCost sums every role's daily window with stale ones reading $0", 
   const { dayA, dayB } = midnightPair();
   const a = freshRunnerState("feature");
   recordDailyCost(a, 1.25, dayA); // spent on day A
-  const b = freshRunnerState("clean"); // never ticked: missing stamp → $0
+  const b = freshRunnerState("clean"); // never ran: missing stamp → $0
   const c = freshRunnerState("dedupe");
   recordDailyCost(c, 0.75, dayB); // spent on day B only
 
@@ -131,7 +131,7 @@ test("budgetPaused is false at cap 0 (disabled) and below the cap, true at/above
   cfg.maxDailyCostUsd = 0;
   assert.equal(budgetPaused([s], cfg, dayA), false); // 0 disables the budget entirely
 
-  // A stale window reads $0: a team that hasn't ticked since yesterday is never paused.
+  // A stale window reads $0: a team that hasn't ran since yesterday is never paused.
   const other = freshRunnerState("clean");
   recordDailyCost(other, 100, dayB);
   cfg.maxDailyCostUsd = 1;
@@ -146,12 +146,12 @@ test("budgetGate: reached with a free, serving fallback keeps roles running; oth
   assert.equal(budgetGate(false, { default: true, strong: true }, true), "open");
   assert.equal(budgetGate(false, { default: true, strong: false }, true), "open");
   // At the cap the tiers' resolutions decide whether the team degrades or stops. Only
-  // "paused" blocks a tick, which is why this had to stop being a boolean.
+  // "paused" blocks a run, which is why this had to stop being a boolean.
   assert.equal(budgetGate(true, { default: true, strong: true }, true), "fallback");
   assert.equal(budgetGate(true, { default: false, strong: false }, true), "paused");
   // Free is not usable on its own: this pin used to read a demoted default tier as
   // "fallback" with no way to say "free, but its backend cannot serve" — the 2026-09-19
-  // hour of 33/33 failed ticks. A tier whose resolution pauses holds its own roles; with
+  // hour of 33/33 failed runs. A tier whose resolution pauses holds its own roles; with
   // review on, an unresolvable strong tier pauses the whole team (nothing could merge).
   assert.equal(budgetGate(true, { default: true, strong: false }, true), "paused");
   assert.equal(budgetGate(true, { default: true, strong: false }, false), "fallback");
@@ -166,15 +166,15 @@ function engaged(pair = "omlx/qwen", capUsd = 10): FallbackBreaker {
   return rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, pair, capUsd);
 }
 
-/** Fold `results` in order as ordinary (non-probe) fallback ticks, all started under `b`. */
-function fold(b: FallbackBreaker, results: TickResult[], now = T0): FallbackBreaker {
-  for (const r of results) b = recordFallbackTick(b, b, r, false, now);
+/** Fold `results` in order as ordinary (non-probe) fallback runs, all started under `b`. */
+function fold(b: FallbackBreaker, results: RunResult[], now = T0): FallbackBreaker {
+  for (const r of results) b = recordFallbackRun(b, b, r, false, now);
   return b;
 }
 
 test("fallbackEvidence: only error is a backend failure; only a model reply is served", () => {
-  // Exhaustive over TickResult, so a new result value must be classified on purpose.
-  const expected: Record<TickResult, "served" | "failed" | "none"> = {
+  // Exhaustive over RunResult, so a new result value must be classified on purpose.
+  const expected: Record<RunResult, "served" | "failed" | "none"> = {
     error: "failed",
     queued: "served",
     changed: "served",
@@ -191,11 +191,11 @@ test("fallbackEvidence: only error is a backend failure; only a model reply is s
     review_error: "none",
   };
   for (const [result, evidence] of Object.entries(expected))
-    assert.equal(fallbackEvidence(result as TickResult), evidence, result);
+    assert.equal(fallbackEvidence(result as RunResult), evidence, result);
 });
 
 test("the fallback breaker replays the 2026-09-19 hour: three failures demote the gate to paused", () => {
-  // The incident: the cap reached, oMLX priced at zero, and every fallback tick an HTTP 400.
+  // The incident: the cap reached, oMLX priced at zero, and every fallback run an HTTP 400.
   // Before the breaker the gate read `fallback` for all 33 of them.
   let b = engaged();
   const gate = (x: FallbackBreaker) =>
@@ -209,15 +209,15 @@ test("the fallback breaker replays the 2026-09-19 hour: three failures demote th
   assert.equal(gate(b), "paused", "the third consecutive failure demotes the fallback");
   assert.equal(b.probeAt, T0 + POLICY.cooldownMs);
   assert.deepEqual(fallbackDemotion(b), { pair: "omlx/qwen", failures: 3, probeAt: T0 + POLICY.cooldownMs });
-  // The other 30 ticks of the hour: the ones already in flight at the trip still report, but
-  // they cannot extend the cool-down or re-trip anything — and no new tick starts.
+  // The other 30 runs of the hour: the ones already in flight at the trip still report, but
+  // they cannot extend the cool-down or re-trip anything — and no new run starts.
   const stragglers = fold(b, ["error", "error"], T0 + 60_000);
   assert.equal(stragglers.probeAt, b.probeAt, "a failed straggler leaves the running cool-down alone");
   assert.equal(gate(stragglers), "paused");
 });
 
-test("the fallback breaker counts consecutive failures: any served tick resets the streak", () => {
-  // Team-wide and consecutive: a healthy backend with a flaky tick never trips it.
+test("the fallback breaker counts consecutive failures: any served run resets the streak", () => {
+  // Team-wide and consecutive: a healthy backend with a flaky run never trips it.
   let b = fold(engaged(), ["error", "error", "no_change", "error", "error", "queued", "error"]);
   assert.equal(b.failures, 1);
   assert.equal(fallbackServing(b), true);
@@ -226,7 +226,7 @@ test("the fallback breaker counts consecutive failures: any served tick resets t
   assert.equal(b.failures, 2);
   assert.equal(fallbackServing(b), true);
   b = fold(b, ["error"]);
-  assert.equal(fallbackServing(b), false, "the third failure trips, however far apart the no-evidence ticks spread them");
+  assert.equal(fallbackServing(b), false, "the third failure trips, however far apart the no-evidence runs spread them");
 });
 
 // A probe the orchestrator admitted but the restart hold's start gate turned away at its
@@ -243,7 +243,7 @@ test("an admitted probe that never ran hands its claim back, so the next poll ca
   assert.equal(abandoned.failures, probing.failures);
 });
 
-test("the demoted fallback lets exactly one probe tick through after its cool-down", () => {
+test("the demoted fallback lets exactly one probe run through after its cool-down", () => {
   const tripped = fold(engaged(), ["error", "error", "error"]);
   const probeAt = tripped.probeAt!;
   assert.equal(fallbackProbeDue(tripped, probeAt - 1), false, "no probe during the cool-down");
@@ -256,7 +256,7 @@ test("the demoted fallback lets exactly one probe tick through after its cool-do
   assert.equal(fallbackServing(probing), false);
 
   // A probe that serves closes the breaker: the gate is `fallback` again and the streak is clear.
-  const healed = recordFallbackTick(probing, probing, "no_change", true, probeAt + 5_000);
+  const healed = recordFallbackRun(probing, probing, "no_change", true, probeAt + 5_000);
   assert.equal(fallbackServing(healed), true);
   assert.equal(healed.failures, 0);
   assert.equal(healed.probing, false);
@@ -270,7 +270,7 @@ test("each failed probe doubles the cool-down up to its cap; a probe with no evi
   let now = b.probeAt!;
   for (let i = 0; i < 5; i++) {
     b = startFallbackProbe(b);
-    b = recordFallbackTick(b, b, "error", true, now);
+    b = recordFallbackRun(b, b, "error", true, now);
     assert.equal(b.probing, false);
     assert.equal(b.probeAt, now + b.cooldownMs, "the next probe waits the new cool-down from the failure");
     cooldowns.push(b.cooldownMs);
@@ -286,7 +286,7 @@ test("each failed probe doubles the cool-down up to its cap; a probe with no evi
   // A probe cut off by a shutdown (or one that never reached the model) says nothing: the slot
   // frees, the elapsed cool-down stands, and the next due role probes instead.
   const probing = startFallbackProbe(b);
-  const freed = recordFallbackTick(probing, probing, "aborted", true, now);
+  const freed = recordFallbackRun(probing, probing, "aborted", true, now);
   assert.equal(freed.probing, false);
   assert.equal(freed.probeAt, b.probeAt);
   assert.equal(fallbackProbeDue(freed, now), true);
@@ -294,14 +294,14 @@ test("each failed probe doubles the cool-down up to its cap; a probe with no evi
 
 test("a served straggler closes a demoted breaker; evidence about another subject is dropped", () => {
   const tripped = fold(engaged(), ["error", "error", "error"]);
-  // A tick that started before the trip and then served: the backend demonstrably works.
-  assert.equal(fallbackServing(recordFallbackTick(tripped, tripped, "queued", false, T0)), true);
-  // A tick that ran on a different pair (or under a different cap) says nothing about this one.
+  // A run that started before the trip and then served: the backend demonstrably works.
+  assert.equal(fallbackServing(recordFallbackRun(tripped, tripped, "queued", false, T0)), true);
+  // A run that ran on a different pair (or under a different cap) says nothing about this one.
   const other = engaged("omlx/other");
-  assert.equal(recordFallbackTick(tripped, other, "queued", false, T0), tripped);
-  assert.equal(recordFallbackTick(engaged(), engaged("omlx/qwen", 20), "error", false, T0).failures, 0);
+  assert.equal(recordFallbackRun(tripped, other, "queued", false, T0), tripped);
+  assert.equal(recordFallbackRun(engaged(), engaged("omlx/qwen", 20), "error", false, T0).failures, 0);
   // Nor does one that started with no fallback engaged.
-  assert.equal(recordFallbackTick(tripped, IDLE_FALLBACK_BREAKER, "queued", false, T0), tripped);
+  assert.equal(recordFallbackRun(tripped, IDLE_FALLBACK_BREAKER, "queued", false, T0), tripped);
 });
 
 test("rekeyFallbackBreaker clears a demotion when the cap, the pair, or the day changes", () => {

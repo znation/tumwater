@@ -1,5 +1,5 @@
-/** The team-wide error-storm warning (BUGS.md 2026-09-29): when three or more roles' ticks
- * are failing consecutively on one shared cause, only each role's own "consecutive tick
+/** The team-wide error-storm warning (BUGS.md 2026-09-29): when three or more roles' runs
+ * are failing consecutively on one shared cause, only each role's own "consecutive run
  * failures" warning fires — nothing team-wide names the shared cause. The 2026-09-22
  * meltdown (all 14 roles timing out at the 1800 s default for 8 hours) surfaced as 14
  * independent streak warnings; an operator scanning the feed saw a quiet team. POLICY, on
@@ -10,7 +10,7 @@
  * no single poll's inputs carry — so it is a reducer rather than a stateless predicate. */
 
 import { getOrCreate, rankByCount } from "../collections.js";
-import { normalizeClusterKey, poolTimeoutKey, sortedRoles, TICK_TIMEOUT_KEY } from "../failure/failure-cluster.js";
+import { normalizeClusterKey, poolTimeoutKey, sortedRoles, RUN_TIMEOUT_KEY } from "../failure/failure-cluster.js";
 import { ERROR_STREAK_WARN } from "../run/run-apply.js";
 
 /** Distinct roles whose consecutive error streaks share one normalized cause that trip the
@@ -25,7 +25,7 @@ export const ERROR_STORM_ROLES = 3;
  * (RunnerState.consecutiveErrors/lastError — the same fields the per-role warning reads). */
 export interface ErrorStormObservation {
   role: string;
-  /** The role's consecutive tick failures; 0 when it is healthy, and absent when a torn or
+  /** The role's consecutive run failures; 0 when it is healthy, and absent when a torn or
    * older state read omits it — the reducer reads a missing streak as healthy. */
   consecutiveErrors?: number;
   /** The last error's message, when the streak is live. */
@@ -46,16 +46,16 @@ export interface ErrorStorm {
 export const ERROR_STORM_QUIET: ErrorStorm = { key: null, roles: [] };
 
 /** The config knob a shared cause points at, when one is known. Only the timeout cause is
- * mapped: `timed out after <dur>` is the reducer's pooled rendering of the tick-timeout errors
+ * mapped: `timed out after <dur>` is the reducer's pooled rendering of the run-timeout errors
  * (src/agent/run-agent.ts's two `timed out after ${runTimeoutSeconds}s` shapes, pooled into one
  * key by poolTimeoutKey — src/failure/failure-cluster.ts owns the two shapes and their
  * pooling), and a team-wide
- * run of it means the tick budget does not fit the serving model — the one cause with a knob
+ * run of it means the run budget does not fit the serving model — the one cause with a knob
  * to name. Every other cause is left unmapped: the storm warning still names it, but inventing
  * a knob for a cause no setting controls would send an operator turning the wrong dial.
  * Exported for its unit tests. */
 export function errorStormKnob(key: string): string | undefined {
-  return key === TICK_TIMEOUT_KEY ? "runTimeoutSeconds" : undefined;
+  return key === RUN_TIMEOUT_KEY ? "runTimeoutSeconds" : undefined;
 }
 
 /** Step the storm by one orchestrator poll: from `prev` and every role's current streak,
