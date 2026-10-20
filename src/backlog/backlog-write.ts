@@ -1,13 +1,13 @@
 // vocabulary: plain
 /** The entry-writing half of `tumwater bug` and `tumwater plan` — the operator-authored backlog
  * writes, mirroring the read half in backlog.ts: file a bug into BUGS.md's `## Open` or a plan
- * request into PLANS.md's `## Planned`, stamped the way loops write those entries, and cancel,
+ * request into PLANS.md's `## Planned`, stamped the way roles write those entries, and cancel,
  * edit, release, or show an entry by position. The markdown surgery is more than a dispatch case:
  * the entry must be placed after the section's last entry and before the next `## ` heading,
  * fenced-safe (a `## ` line quoted inside an entry's code fence is body text, never a boundary —
  * the same fenceTracker every backlog reader consults), and a file tumwater init never seeded is
  * created with init's template rather than failing. Flag classification, preflights, and the
- * printed confirmations live in backlog-cli.ts; the wake of the loop that should act stays in
+ * printed confirmations live in backlog-cli.ts; the wake of the role that should act stays in
  * cli.ts beside the other command bodies. */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker, headingMetadata, nextSectionHeading } from "./backlog-md.js";
@@ -427,18 +427,18 @@ export function fileBugFromText(root: string, text: string, usage: string): File
   return fileFromText(root, "bug", text, usage);
 }
 
-/** The loop prompt a filed bug wakes the `bugfix` loop with — one wording for the CLI's
+/** The role prompt a filed bug wakes the `bugfix` role with — one wording for the CLI's
  * `tumwater bug` and the dashboard's backlog-file endpoint. */
 export function bugWakeText(title: string): string {
   return `The user filed a new bug with \`tumwater bug\`: "${title}" — it is under BUGS.md ## Open; fix it.`;
 }
 
-/** The loop prompt a requested plan wakes the `feature` loop with, shared like bugWakeText. */
+/** The role prompt a requested plan wakes the `feature` role with, shared like bugWakeText. */
 export function planWakeText(title: string): string {
   return `The user requested a plan with \`tumwater plan\`: "${title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`;
 }
 
-/** The loop each operator-filed kind wakes and the wording it wakes it with, keyed by the
+/** The role each operator-filed kind wakes and the wording it wakes it with, keyed by the
  * kind the dashboard posts. */
 export const OPERATOR_FILE_KINDS = {
   bug: { role: "bugfix", wakeText: bugWakeText },
@@ -486,7 +486,7 @@ export function fileBug(root: string, rawText: string, usage: string): FiledEntr
 
 /** `tumwater plan "<title>" [body...]`: append one `### <title> (reported by the user
  * <date>)` entry to PLANS.md's `## Planned`, with the optional body as the entry text. No
- * goal/approach/acceptance-criteria scaffolding is invented — the feature loop's
+ * goal/approach/acceptance-criteria scaffolding is invented — the feature role's
  * plan-refinement pass fleshes the stub out on pickup. An empty title fails with the usage
  * line and writes nothing. */
 export function filePlan(root: string, rawTitle: string, rawBody: string, usage: string): FiledEntry {

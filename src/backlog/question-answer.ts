@@ -3,8 +3,8 @@
  * the open questions in QUESTIONS.md and answering one, which moves its entry from `## Open` to
  * `## Answered` with a dated operator answer. It does the markdown surgery — cut exactly one
  * `### ` block (fence-aware, like every backlog reader in backlog-md.ts) and extend a missing
- * `## Answered` section with the file's documented skeleton — so the loop→human→loop round trip
- * never corrupts the file the loops read at their next tick. Pure: no subprocess and no CLI
+ * `## Answered` section with the file's documented skeleton — so the role→human→role round trip
+ * never corrupts the file the roles read at their next tick. Pure: no subprocess and no CLI
  * output helpers, so every surface can drive it without ending the process.
  *
  * Shared by every read/answer surface: the CLI's `tumwater questions` command body wraps it in

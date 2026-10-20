@@ -84,7 +84,7 @@ export const piBackend: AgentBackend = {
     // A run the harness itself killed has its own cause; no stderr rule claims it.
     if (info.killed) return {};
     // A nonzero exit whose stderr ends in a JSON.parse failure is pi dying on a torn server
-    // chunk: transient, retryable with --continue (the loop decides).
+    // chunk: transient, retryable with --continue (the runner decides).
     if (info.code !== 0 && TRANSIENT_PI_CRASH.test(info.stderr)) return { transientPiCrash: true };
     // A provider-wide backend failure printed on pi's stderr (a severed stream, the provider's
     // own request timeout, a connection failure, a 5xx, or a model-load failure) classifies

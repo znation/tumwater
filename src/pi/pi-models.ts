@@ -317,8 +317,8 @@ export function fallbackModelPair(
 /** True when the configured fallback model (plans/fallback-model.md) is one the budget gate may
  * actually engage: configured at all, resolvable to a provider/model pair, and priced at zero in
  * pi's definitions. False for every other case — no fallback, a half-named pair that would fall
- * through to pi's own default, an unknown id, or a priced one — and the gate then pauses role
- * loops exactly as it did before this feature. */
+ * through to pi's own default, an unknown id, or a priced one — and the gate then pauses
+ * roles exactly as it did before this feature. */
 export function fallbackModelFree(
   config: TumwaterConfig,
   modelsPath = piModelsPath(),

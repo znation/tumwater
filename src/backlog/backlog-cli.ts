@@ -3,7 +3,7 @@
  * and the confirmation each case prints — over the entry-writing primitives in
  * backlog-write.ts (the read half's mirror, backlog.ts). cli.ts reaches the file, cancel,
  * release, edit, list, and show cases only through the `*AndAnnounce` shells here; the markdown
- * surgery and the locked read-modify-write live in backlog-write.ts. The wake of the loop that
+ * surgery and the locked read-modify-write live in backlog-write.ts. The wake of the role that
  * should act stays in cli.ts beside the other command bodies. */
 
 import { fail, say, sayJson, warnIfUncommitted } from "../cli/cli-output.js";
@@ -100,11 +100,11 @@ function scanProseFlags(
  * sequence both commands run in cli.ts: peel the free-form positionals (the questions
  * command's prose-token pattern), reject anything flag-shaped that is not `--json`, run the
  * ready-repo gate the other backlog commands run, write the entry via `file`, wake the
- * `role` loop that should act so it picks the entry up within one poll, then announce — the
+ * role that should act so it picks the entry up within one poll, then announce — the
  * wake always fires, its confirmation line rides the prose output only, in `--json` mode
  * stdout is the payload document alone (the prompt --json precedent) so a script can parse
  * it. The command name and usage string ride in for the reject/confirmation/empty-arg
- * wordings (fileBug/filePlan's empty-arg usage lines); `wakeText` builds the loop prompt
+ * wordings (fileBug/filePlan's empty-arg usage lines); `wakeText` builds the role prompt
  * from the filed entry's title and `titleOf` derives that title from the positionals (the
  * exported bugTitleOf/planTitleOf, so the preflight and the write see one derivation).
  * The wake prompt rides into the target tick's prefill under the same submission cap every
@@ -152,7 +152,7 @@ export async function fileAndAnnounce(
 }
 
 /** The tail both fileAndAnnounce forms share: commit the entry on main, wake the `role`
- * loop with the filed entry's title, then print the confirmation (the wake line rides the
+ * role with the filed entry's title, then print the confirmation (the wake line rides the
  * prose output only). */
 async function announceFiled(
   root: string,
@@ -174,7 +174,7 @@ async function announceFiled(
  * through rejectUnknownArgs. The position parses through the plain-decimal rule every position
  * flag shares (parsePositionFlag, cli-args.ts), not Number(). After requireReadyRepo it prints
  * `cancelled <command> in <file>: <title>` or the `--json` payload {file, title}. Unlike
- * fileAndAnnounce there is no wake: removing work must not wake a loop. */
+ * fileAndAnnounce there is no wake: removing work must not wake a role. */
 export async function cancelAndAnnounce(
   root: string,
   args: string[],
@@ -215,7 +215,7 @@ export async function cancelAndAnnounce(
 /** The shell of the `bug --release` and `plan --release` CLI cases, parsed as cancelAndAnnounce
  * parses `--cancel`: `--release <n>`, an optional `--json`, anything else refused. After
  * requireReadyRepo it releases the entry, commits the file on main, and wakes `role` (the
- * released entry is eligible now, and that loop may be backed off) with no queued prompt. Prints
+ * released entry is eligible now, and that role may be backed off) with no queued prompt. Prints
  * `released <command> in <file>: <title>` plus the wake line, or only the `--json` payload. */
 export async function releaseAndAnnounce(
   root: string,
@@ -546,7 +546,7 @@ function renderShownEntry(shown: { title: string; body: string }): string {
  * what remains after the flags is the new text the callback folds to one line (so a `## `/`### `
  * line quoted in it can never grow a phantom section). After requireReadyRepo it prints
  * `edited <command> in <file>: <title>` or the `--json` payload {file, title}. Unlike
- * fileAndAnnounce there is no wake: an edit adds no work for a loop to pick up. With
+ * fileAndAnnounce there is no wake: an edit adds no work for a role to pick up. With
  * `--file <path>` (`-` reads stdin) the new entry comes from a markdown file instead of
  * positionals: `editText` receives its text, and any positional alongside --file is refused.
  * With neither positionals nor --file the entry, rendered as `--show` prints it, opens in

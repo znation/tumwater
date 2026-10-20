@@ -12,7 +12,7 @@ import { holdMark, inProgressMark, type EntryHold } from "./backlog-eligibility.
  * (sayJsonOrRender's thunk) instead of each reading the entry files afresh. Entries render
  * verbatim — heading text with its `(planned …)`/`(reported …)` suffix and, when the caller
  * passes holds, a trailing eligibility mark, body lines indented two spaces under it — because
- * these are markdown the loops wrote, including their Goal/Approach/Acceptance-criteria
+ * these are markdown the roles wrote, including their Goal/Approach/Acceptance-criteria
  * structure; reflowing them here would make this command a worse reader of its own backlog
  * than the files it summarizes. An empty section renders a single `_(none)_` line rather than
  * disappearing, so an all-clear backlog reads as three explicit empties, not a suspiciously

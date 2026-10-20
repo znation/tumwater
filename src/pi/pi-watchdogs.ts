@@ -171,7 +171,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
       if (warnedStalledCalls.has(call.id)) continue;
       // A command whose stdout is piped or redirected holds its bytes away from
       // pi until it exits, so "no output" there is the prescribed shape, not
-      // evidence of a hang (BUGS.md 2026-09-28: the tick prompt tells every loop
+      // evidence of a hang (BUGS.md 2026-09-28: the tick prompt tells every role
       // to pipe its verification through `tail`, and the resulting false alarms
       // were the digest's top warning cluster, drowning real hangs). Silence is
       // not the only way such a command hangs, though: a leaked grandchild

@@ -247,7 +247,7 @@ export class PiStreamParser {
   transientServerTimeout = false;
   /** True when any event reports the provider rejecting the request with HTTP 429 (rate
    * limiting). Transient by definition: the session is healthy and a later attempt succeeds —
-   * the loop's transient retry covers it, waiting out retryAfterSeconds when present. */
+   * the runner's transient retry covers it, waiting out retryAfterSeconds when present. */
   transientRateLimit = false;
   /** True when any event reports a provider-wide failure that is not rate limiting — the
    * connection down, a 5xx, the model failing to load (TRANSIENT_BACKEND, in pi-failure.ts).

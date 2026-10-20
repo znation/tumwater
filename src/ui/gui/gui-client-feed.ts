@@ -9,7 +9,7 @@ export const GUI_CLIENT_FEED_JS = String.raw`
   // The Activity card's own narrowing, beside the Notable/All segmented choice: a Role picker
   // and a text box filter the events the card carries, and — once a filter is set — a debounced
   // /api/logs search reaches past that carried window into the log's recent slice (the same
-  // loop/match rule 'tumwater logs --role'/'--grep' apply to the CLI feed), while the tally
+  // role/match rule 'tumwater logs --role'/'--grep' apply to the CLI feed), while the tally
   // chips select one exact event type the way 'tumwater logs --type <type>' does. All persist
   // like the Notable/All choice, so a reload keeps the operator's scope.
   let feedFilter = recall("feed") === "all" ? "all" : "notable";

@@ -1,10 +1,10 @@
 /** The team-wide backend-failure hold — the generalization of the 429 storm hold (BUGS.md
  * 2026-09-21, spun out of the fixed 429-retry entry 2026-09-22; generalized 2026-09-29,
  * PLANS.md): when several roles see the provider fail them the same way within a short window
- * — a 429 storm, or the connection down, a 5xx spell, or the model failing to load — role
- * loops start no new ticks until the hold re-opens. The per-run transient retry
+ * — a 429 storm, or the connection down, a 5xx spell, or the model failing to load —
+ * roles start no new ticks until the hold re-opens. The per-run transient retry
  * (src/runner/runner-pi.ts) already gives each transient failure one wait-and-retry, but it has no
- * cross-role view — with maxConcurrent loops issuing requests against one backend, each burns
+ * cross-role view — with maxConcurrent roles issuing requests against one backend, each burns
  * its retry straight into a storm the team is collectively sustaining. POLICY only, on the
  * shape of the budget gate (src/budget/budget.ts): pure functions of the observations the
  * orchestrator collects each poll and the previous hold, so the rule is unit-testable without

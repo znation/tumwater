@@ -6,28 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Plain terms code runner, part 15/16: Reword role-sense "loop" in src/ comments, leaving every iteration-sense "loop" alone (planned 2026-10-19 by the plan role, split from the rejected 14/14; requires part 14/16 landed; design in plans/terminology.md "Code names"; touches comments in src/ only)
-
-**Goal.** No comment in src/ says "loop" when it means a role or its worker. Every comment where "loop" means iteration (a `for`/`while` loop, "loop over", "loops through", the poll loop, the event loop, a retry, crash or feedback loop) reads exactly as before.
-
-**Approach.**
-- This part exists because the 14/14 review rejected blanket substitution. Judge each hit on its own and change nothing in code, string literals or serialized names.
-- Work list: `grep -rnwiE 'loops?' src | grep -E ':[0-9]+:\s*(//|\*|/\*)'` (about 250 lines today, most in src/ui, src/backlog, src/doctor, src/events, src/process, src/paths.ts, src/git, src/agent, src/change and src/pi). Also check trailing `// …` comments on code lines (`grep -rnwiE '//.*\bloops?\b' src`).
-- Before editing a hit, classify it by reading the whole sentence:
-  - Role sense: the sentence is about a configured role, its runner, its state file, its claim, or "each loop" meaning each role. Reword "loop" to "role", or to "runner" when the sentence is about the `RoleRunner` object or one instance's state. Fix the grammar ("a loop's" → "a role's", "loops" → "roles").
-  - Iteration sense: the sentence is about control flow, polling, retrying or feedback. Leave it byte-for-byte unchanged. Test: if "role" substituted in would make the sentence describe something other than iteration, it is iteration sense.
-  - Ambiguous: leave it unchanged, and list it in the commit message.
-- Leave alone: legacy readers (the files and regions listed in part 14/16's series rules), quoted PLANS.md/BUGS.md titles, `plans/*.md` names, commit subjects, and `customLoop*` names. Rewrap any edited comment past 100 columns.
-- Commit message: state the rule you applied. Name only repairs you made, without counts or "all".
-
-**Files touched.** Comments in src/ files from the work list; nothing in test/ (part 16/16).
-
-**Acceptance criteria.**
-- `git diff main -- src` changes only comment text: no code, string literal or identifier line changes. Check that every changed line is inside a comment.
-- In every changed comment, the old "loop" referred to a role or its runner. No removed line has "loop" in an iteration sense (for/while, "loop over/through", poll loop, event loop, retry/crash/feedback loop).
-- `grep -rnwiE 'loops?' src | grep -E ':[0-9]+:\s*(//|\*|/\*)'` lists only iteration-sense comments, legacy-reader comments, and the ambiguous ones the commit message names.
-- `npm run test` passes.
-
 ### Plain terms code runner, part 16/16: Reword role-sense "loop" in test/ comments and test titles (planned 2026-10-19 by the plan role, split from the rejected 14/14; requires part 15/16 landed; design in plans/terminology.md "Code names"; touches comments and test titles in test/ + docs/invariants.md quotes of renamed titles)
 
 **Goal.** No comment or `it`/`test`/`describe` title in test/ says "loop" when it means a role or its worker. Iteration-sense wording is unchanged, and serialized fixture data is untouched.

@@ -184,7 +184,7 @@ export function checkValidationGaps(root: string): CheckOutcome {
 /** Stranded plans — plan headings filed under the wrong PLANS.md section (the stranded-plan
  * detector, src/backlog/backlog-structure.ts): a `(planned …)` heading sitting under `## Done` is
  * invisible to every Planned reader, and a done-dated heading still under `## Planned` invites
- * a second implementation. The clean loop repairs these when it happens to tick; this makes
+ * a second implementation. The clean role repairs these when it happens to tick; this makes
  * the state visible to an operator without waiting for that tick. Reads the tree at `root` —
  * the primary checkout IS main's tree — like checkFixClaims. A warn, never a fail: a misplaced
  * heading is operator signal, not a broken environment. */
@@ -251,7 +251,7 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
 }
 
 /** Stalled plans — planned plans held by a **Needs review …** or **Needs replan …** note,
- * parked until the plan role splits or replans them. No loop takes a held entry (the claim
+ * parked until the plan role splits or replans them. No role takes a held entry (the claim
  * gate refuses one) and nothing clears the note on its own, so the state is visible only as
  * the `[needs review]`/`[needs replan]` marks in the backlog listings; this names them so an
  * operator gets a single-line health signal from `tumwater doctor`. Reads the tree at `root`
@@ -451,7 +451,7 @@ export function checkStaleQuestions(root: string): CheckOutcome {
 
 /** Stale bugs — unrefused open BUGS.md bugs whose `(found by … YYYY-MM-DD)` or `(reported …)`
  * stamp is at least 3 days old. The bugfix role fixes a bug within hours, so one that sits means
- * no loop is fixing it. Positions are the 1-based `bug --list` numbers; a refused bug is skipped
+ * no role is fixing it. Positions are the 1-based `bug --list` numbers; a refused bug is skipped
  * (checkRefusedEntries names it), a waiting bug is skipped (checkWaitingBugs names it) and so is
  * an undated heading. A warn, never a fail. */
 export function checkStaleBugs(root: string): CheckOutcome {
@@ -584,7 +584,7 @@ export function checkRegressedFixes(root: string): CheckOutcome {
   return okOutcome("no recently Fixed bug's quoted test has failed since its fix");
 }
 
-/** Refused entries — planned plans and open bugs held by a **Refused …** note. No loop clears
+/** Refused entries — planned plans and open bugs held by a **Refused …** note. No role clears
  * a Refused note, so the entry stays parked until a human or the director edits it, or an
  * operator releases it with `--release <n>`, and the
  * only other signs are the `[refused]` marks in the backlog listings. Reads the tree at `root`
@@ -626,7 +626,7 @@ export function checkRefusedEntries(root: string): CheckOutcome {
 
 /** Names the backlog files (and the brief file) with uncommitted edits in the primary checkout. An
  * operator write is meant to be committed on the base branch by commitOperatorBacklogEdit; when
- * that commit does not happen the edit is invisible to every loop worktree (they branch from main)
+ * that commit does not happen the edit is invisible to every role worktree (they branch from main)
  * and a merge that touches the file cannot fast-forward the checkout (merge_blocked). A primary off
  * the base branch is skipped: the ref-push merge arm leaves its working tree alone. Untracked files
  * are not edits of a tracked file and are ignored. */

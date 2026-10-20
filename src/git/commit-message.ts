@@ -33,7 +33,7 @@ export function extractSummary(finalText: string): string | null {
 
 /** The subject for a changed tick whose reply — and whose follow-up request — carried no
  * SUMMARY line: named from what actually changed, so the log still says what the commit touched
- * instead of only which loop made it. Up to three repo-relative paths (worktree order), then a
+ * instead of only which role made it. Up to three repo-relative paths (worktree order), then a
  * count; capped like a real summary. Falls back to the bare "<role> run N" only when nothing is
  * known. */
 export function fallbackSummary(files: string[], role: string, tick: number): string {

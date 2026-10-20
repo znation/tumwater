@@ -15,7 +15,7 @@ import { slotsLockPath, slotsStatePath, worktreePath } from "../paths.js";
 import { isUsableWorktree } from "./worktree.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
-/** A live claim on one slot: the loop and purpose using it, when the lease began, and the
+/** A live claim on one slot: the role and purpose using it, when the lease began, and the
  * orchestrator pid that owns it. A lease whose pid is not the running process is dead. */
 /** Why a slot is leased: a role's `run`, a change's `verify`, or the second slot a verify leases to
  * run its gate check alongside the reviewer (`verify-check`). */

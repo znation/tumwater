@@ -206,7 +206,7 @@ export function checkConfigKeyNames(root: string): CheckOutcome {
 
 /** Which file holds the project brief (the managed initial prompt + status sections,
  * plans/portability.md §7a/7): TUMWATER.md first, README.md as the compatibility path. A repo
- * whose README carries no markers — or that has no brief at all — still boots, but every loop
+ * whose README carries no markers — or that has no brief at all — still boots, but every role
  * runs without its project prompt, so that state is a warning, not an error: it is exactly
  * what a repo looks like between `git clone` and `tumwater init` on purpose (e.g. 7b's
  * `--dry-run`). */
@@ -228,7 +228,7 @@ export function checkBrief(root: string): CheckOutcome {
 }
 
 /** New-project bootstrap (plans/work-ratio.md, part 2/2): while active, report its progress as
- * an ok check — a young project's deliberate hold on the maintenance loops is not a fault. A
+ * an ok check — a young project's deliberate hold on the maintenance roles is not a fault. A
  * missing or unreadable config, or no `bootstrap` entry, reads as not bootstrapping. Read-only,
  * like every doctor check: it never writes the latch or runs the gate's poll. */
 export function checkBootstrap(

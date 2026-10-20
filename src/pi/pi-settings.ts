@@ -5,7 +5,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
 
 /** pi's own saved-default model, read from pi's `settings.json` beside the models catalog —
- * the name a loop row shows when `tumwater.json` resolves no model and pi starts on its own
+ * the name a role row shows when `tumwater.json` resolves no model and pi starts on its own
  * default. This mirrors step 3 of pi 1.2.0's start-up model choice, "saved default from
  * settings" (`findInitialModel` in pi's `dist/core/model-resolver.js`), for a run tumwater
  * starts without `--provider`/`--model`. The reader does NOT model pi's last step: when the

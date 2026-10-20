@@ -7,7 +7,7 @@ import { pruneOldDirectory, removeTree, subdirectoryNames } from "../files/files
 import { KILL_GRACE_MS } from "../process/process-group.js";
 import { branchName, worktreePath, worktreesDir } from "../paths.js";
 
-/** Persistent-worktree lifecycle for the harness: role worktrees (one per loop, reset to main
+/** Persistent-worktree lifecycle for the harness: role worktrees (one per role, reset to main
  * on every fresh tick) and the detached mirror worktree redeploy.ts verifies and compiles.
  * The generic git plumbing these build on lives in git/git.ts; this module owns creating,
  * self-healing, resetting, and abort-syncing those worktrees. */
@@ -162,7 +162,7 @@ function isUsableWorktreeSyncPath(dir: string): boolean {
  * exactly `ref`'s tree. A stale index.lock left by a killed git is cleared first, or the
  * checkout/reset below would fail on it forever. Used by redeploy.ts as the pristine copy of main
  * it verifies and compiles — the primary checkout may be dirty or on another branch, a role
- * worktree is never pristine while its loop works. */
+ * worktree is never pristine while its role works. */
 export async function ensureDetachedWorktree(root: string, dir: string, ref: string): Promise<string> {
   if (!(await isUsableWorktree(dir))) {
     const created = await serializeSetup(root, async () => {
@@ -226,7 +226,7 @@ const STALE_GIT_LOCK_MS = GIT_TIMEOUT_MS + KILL_GRACE_MS;
 /** Remove a stale `index.lock` from `wt`'s gitdir. A git killed mid-write — our own group
  * deadline's SIGKILL after a SIGTERM it could not handle, a crashed harness, an operator kill —
  * leaves index.lock behind, and every later `git reset --hard` then fails "Unable to create
- * '…/index.lock': File exists" with no self-heal, wedging the loop on every tick. A *fresh*
+ * '…/index.lock': File exists" with no self-heal, wedging the role on every tick. A *fresh*
  * lock is left alone: it may belong to a git still running, so this clears wreckage, never a
  * live writer. */
 function clearStaleIndexLock(wt: string): void {

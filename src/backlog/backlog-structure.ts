@@ -27,13 +27,13 @@ const PLANS_ARCHIVE = FINISHED_ARCHIVES[0].archive;
 const BUGS_ARCHIVE = FINISHED_ARCHIVES[1].archive;
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) — the
- * same files loops edit and readers parse, but read here for states no reader wants: an entry filed
+ * same files roles edit and readers parse, but read here for states no reader wants: an entry filed
  * under the wrong `## ` section. This module holds PLANS.md's stranding rules (plans:
  * "Stranded-plan detection", part 3/4): a `(planned …)` heading sitting under `## Done` never
  * entered a reader's section, and a `done`-dated heading still sitting under `## Planned` invites
  * re-implementation. It also holds the gate-side companion (part 4/4): a change that ADDS a new
  * plan directly under `## Done` is rejected before it can merge. Detection is pure markdown reading
- * — no pi, no git — so the clean loop's tick prompt, `tumwater doctor`, and every merge check can
+ * — no pi, no git — so the clean role's tick prompt, `tumwater doctor`, and every merge check can
  * all afford it every time. This module also parses actionable entry ranges
  * (actionableEntryRanges/actionableEntryRangesFor) and collapses a series' blocked parts
  * (groupBlockedSeries/partsLabel) for the backlog-index block, which the text of the index block
@@ -109,7 +109,7 @@ const DONE_STAMP = /[—,(;]\s*done \d{4}-\d{2}-\d{2}/;
  * but no `done YYYY-MM-DD` — written as plans, never stamped done, and invisible to every
  * Planned reader (`plannedPlanEntries` reads only `## Planned`); and (b) entries under
  * `## Planned` whose heading already carries `done YYYY-MM-DD` — finished and never moved,
- * so the feature loop may implement them again. Fence-aware through backlog-md.ts's shared
+ * so the feature role may implement them again. Fence-aware through backlog-md.ts's shared
  * machinery: a `### `/`## ` line inside a fenced code block is quoted content, not structure,
  * and heading dates are matched against the same joined metadata entryDates matches against.
  * BUGS.md and QUESTIONS.md are deliberately out of scope — their Fixed-section headings do
@@ -255,7 +255,7 @@ export function doubleBlockFixedEntries(md: string): string[] {
  * the wrong section — rejected with a reason naming the entry and the one-line fix. Judged against
  * the merge-base (the same base the heading rules use), so a Planned → Done move of an entry the
  * base already had passes, a stacked batch is measured change by change, and a pre-existing
- * stranded entry (whose key the base has) never blocks unrelated merges — the clean loop's repair
+ * stranded entry (whose key the base has) never blocks unrelated merges — the clean role's repair
  * (part 3/4) owns those. BUGS.md has one more: a head `## Fixed` entry that holds more than one
  * `**Symptom:**` or `**Fix:**` block (doubleBlockFixedEntries) absorbed a headingless record into
  * its body; a base body that already had the shape is never re-flagged, so only a newly merged
@@ -346,7 +346,7 @@ const strandedPlanCache = new Map<string, StatKeyedValue<StrandedPlanEntry[]>>()
 
 /** `strandedPlanEntries` for the primary checkout's PLANS.md and PLANS-DONE.md (where finished
  * plans are archived, plans/backlog-archive.md), each entry tagged with its file, stat-cached per
- * file path (stat-cache.cachedTextByStat): the clean loop asks for it every tick, `tumwater role`
+ * file path (stat-cache.cachedTextByStat): the clean role asks for it every tick, `tumwater role`
  * previews the same block and doctor reports it, and the archive grows without bound, so an
  * unchanged file costs one stat instead of a full read and section walk. A missing or
  * unreadable file reads as no entries. The result is copied out, so each caller owns its
@@ -366,7 +366,7 @@ export function strandedPlanEntriesFor(root: string): StrandedPlanEntry[] {
   });
 }
 
-/** The clean loop's `<backlog-structure>` prompt block for the primary checkout at `root`
+/** The clean role's `<backlog-structure>` prompt block for the primary checkout at `root`
  * (the same root the telemetry digest and qa coverage blocks read): a rendered block listing
  * each stranded heading with its current section, or undefined when PLANS.md is missing,
  * unreadable, or clean — an unreadable or clean file gives no block, so the prompt is
@@ -400,7 +400,7 @@ export interface ActionableEntryRange {
  * order: the fence-aware walk sectionLines and parseEntryDetails share, carrying the line
  * numbers neither returns. An entry starts at a `### ` line and ends at the line before the
  * next `### ` or `## ` line (or EOF) — the same boundary parseEntryDetails closes bodies on —
- * so a loop reading lines `start`..`end` sees exactly the entry's heading and body. A `## ` or
+ * so a role reading lines `start`..`end` sees exactly the entry's heading and body. A `## ` or
  * `### ` line inside a fenced code block is body content, never a boundary, through
  * backlog-md.ts's shared fenceTracker. */
 export function actionableEntryRanges(md: string, sectionTitle: string): ActionableEntryRange[] {
@@ -522,7 +522,7 @@ export function partsLabel(rows: readonly SeriesRow[]): string {
 
 /** Renders `rows` to index lines, collapsing a multi-part series' blocked parts to one line per
  * series (this plan, "Compact backlog index, part 1/1"): a long series' chain of held parts would
- * otherwise fill every loop prompt with lines no role can act on. An entry collapses when it is a
+ * otherwise fill every role prompt with lines no role can act on. An entry collapses when it is a
  * series part held only by an unmerged prerequisite and no live claim names it; a series with two
  * or more such parts renders as one line at the position of its first collapsed part, spanning from
  * that part's start to the last's end, with the part list (`2/4–4/4`) and a `[blocked: each waits

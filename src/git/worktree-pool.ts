@@ -4,7 +4,7 @@
  * place, instead of keeping one `_land-<role>` checkout per role. The persisted layout and its
  * cross-process lock live in slots-state.ts, which other processes (`tumwater diff`, `retire`) also
  * read; this module owns choosing a slot, holding it through the disk-floor registry, and handing
- * it back. Nothing leases a slot yet — part 4/5 wires the loops to it.
+ * it back. Nothing leases a slot yet — part 4/5 wires the roles to it.
  *
  * The lease decision is synchronous: `updateSlotsState` writes slots.json under the slots lock, and
  * one Node process runs every tick and merge, so two concurrent `leaseSlot` calls claim distinct
@@ -36,7 +36,7 @@ export interface SlotLeaseHandle {
 }
 
 interface LeaseSlotOptions {
-  /** The loop the slot is held for; drives affinity and the persisted lease record. */
+  /** The role the slot is held for; drives affinity and the persisted lease record. */
   role: string;
   purpose: SlotPurpose;
   /** The commit the slot is prepared at (a sha or branch name; ensureDetachedWorktree
@@ -369,7 +369,7 @@ export async function removeDroppedSlots(
  * retire the pre-pool `.tumwater/worktrees/<role>` checkouts now that ticks lease pooled slots.
  * A resumable enabled role keeps its legacy dir as a pinned slot so its pending resume runs in
  * the same cwd; every other legacy dir is removed (its branch keeps any commit), and pins for
- * roles outside `configured` are cleared. `configured` is every loop id the config's roles
+ * roles outside `configured` are cleared. `configured` is every role id the config's roles
  * enable (`runnerIds`), never a `--once --role` filter: a scoped run must leave the other roles'
  * legacy dirs and pins alone, or it silently loses their pending resumes. It runs after
  * `runOrchestrator` constructs every

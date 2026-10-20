@@ -305,7 +305,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         if (overageStatus !== undefined) out.overageStatus = overageStatus;
         if (info.isUsingOverage === true) out.isUsingOverage = true;
         if (status === "rejected" && resetsAt !== undefined) {
-          // resetsAt is a unix-seconds stamp; retryAfterSeconds is the wait the loop honors.
+          // resetsAt is a unix-seconds stamp; retryAfterSeconds is the wait the runner honors.
           out.retryAfterSeconds = Math.max(0, Math.round(resetsAt - Date.now() / 1000));
         }
         return [JSON.stringify(out), ...windows];

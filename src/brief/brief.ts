@@ -80,7 +80,7 @@ function ownsBrief(text: string): boolean {
  *
  * A candidate that exists but cannot be read (README.md created as a directory, a
  * permission-lost file) is an operator-visible break, not a silent skip: the brief is
- * every loop's reason to exist, read each tick, so falling through to the next candidate
+ * every role's reason to exist, read each tick, so falling through to the next candidate
  * could run the team on the wrong brief and throwing raw would crash every tick with an
  * errno that names neither the file nor the fix — the message below names both. */
 function firstBriefText(
@@ -114,7 +114,7 @@ export function briefFile(root: string): string | null {
  * TUMWATER.md when it exists with markers, else README.md (plans/portability.md §7a/7). The
  * closing marker is searched for only AFTER the opening one: an end marker mentioned in prose
  * before the real block (e.g. README docs explaining how to edit the prompt) must not make a
- * valid later block unreadable — every loop would then run without its project prompt, and
+ * valid later block unreadable — every role would then run without its project prompt, and
  * init's guard would reject re-init as if the section were missing. */
 export function readInitialPrompt(root: string): string {
   return readBrief(root)?.prompt ?? "";

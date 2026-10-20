@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** Renders the `<backlog-index>` prompt block every loop prompt carries — each actionable
+/** Renders the `<backlog-index>` prompt block every role prompt carries — each actionable
  * entry (PLANS.md ## Planned, BUGS.md ## Open, QUESTIONS.md ## Open) plus the newest closed
  * ones, each with the 1-based line range it occupies in its file — the bounded replacement for
  * the per-tick `grep -n '^##'` heading map. The entry-range parsing (actionableEntryRanges) and
@@ -35,7 +35,7 @@ function indexTitle(heading: string): string {
   return truncate(collapseWhitespace(stripEntryStamp(heading)), INDEX_TITLE_MAX);
 }
 
-/** The files and sections the actionable index covers, in the order loops read them: PLANS.md's
+/** The files and sections the actionable index covers, in the order roles read them: PLANS.md's
  * planned features, BUGS.md's open bugs, QUESTIONS.md's open questions. */
 const INDEX_SECTIONS: readonly { file: string; section: string }[] = [
   { file: "PLANS.md", section: "Planned" },
@@ -54,7 +54,7 @@ const CLOSED_SECTIONS: readonly { files: readonly string[]; section: string }[] 
   section: a.section,
 }));
 
-/** One actionable entry as the index renders it: the 1-based range the loop reads, the verbatim
+/** One actionable entry as the index renders it: the 1-based range the role reads, the verbatim
  * heading, and the body a hold note is read from. Cached per file stat
  * (stat-cache.cachedTextByStat): both branches of every tick prompt render this block, and the
  * backlog files — BUGS.md above all, since its closed history grows without bound — change only at

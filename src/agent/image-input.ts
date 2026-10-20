@@ -142,22 +142,22 @@ export function seamImageLabel(
   return modelLabel(agent, provider, model);
 }
 
-/** The per-loop image-input surface (plans/image-input.md "Surfaces"): one call gives a caller
- * both the loop's own capability (`imageInput`, seamImageInput's true/false/null) and its
+/** The per-role image-input surface (plans/image-input.md "Surfaces"): one call gives a caller
+ * both the role's own capability (`imageInput`, seamImageInput's true/false/null) and its
  * reroute target as the display label `<tier> (<model>)` or null when no peer tier reads
  * images. Shared by the status rows, the role page, and the submit gate so the three surfaces
- * can never disagree about what one loop can read or where its image prompts run. */
+ * can never disagree about what one role can read or where its image prompts run. */
 interface RoleImageInfo {
-  /** Whether the loop's own model reads images (`true`), is text-only (`false`), or the team
+  /** Whether the role's own model reads images (`true`), is text-only (`false`), or the team
    * cannot tell (null — an unknown pair the `tier models` check already flags). */
   imageInput: boolean | null;
   /** The reroute target as `<tier> (<model>)`, or null when no other tier reads images. */
   imageReroute: string | null;
 }
 
-/** Compute RoleImageInfo for one loop. `modelsPath` and `probes` are injectable; the providers
+/** Compute RoleImageInfo for one role. `modelsPath` and `probes` are injectable; the providers
  * catalog is read (stat-cached) here and also handed to imageReroute so a poll that asks many
- * loops still parses the catalog once. All reads mirror the doctor's `image input` check, so
+ * roles still parses the catalog once. All reads mirror the doctor's `image input` check, so
  * the surface and the check agree about capability. */
 export function roleImageInfo(
   config: TumwaterConfig,

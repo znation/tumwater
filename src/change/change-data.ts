@@ -1,6 +1,6 @@
-/** The collector behind `tumwater diff --role <id>`: what change a loop holds between its commit
- * and its merge. The committed half is the loop branch's unmerged work (commits ahead of the
- * team's main branch, with the patch); the uncommitted half is the loop worktree's dirty state.
+/** The collector behind `tumwater diff --role <id>`: what change a role holds between its commit
+ * and its merge. The committed half is the role branch's unmerged work (commits ahead of the
+ * team's main branch, with the patch); the uncommitted half is the role worktree's dirty state.
  * Everything is read-only git plumbing already used elsewhere — this module only wires the pieces
  * into one operator view, degrading like `report` does when the team (or just this role's
  * worktree) does not exist yet. Lives beside the other collectors (src/report/report-data.ts,
@@ -31,13 +31,13 @@ export interface RoleChangeView {
    * per-invocation and invisible to a later CLI query, so baseBranch is the durable way an
    * operator aims the team off the default.) */
   mainBranch: string;
-  /** absent: no usable worktree yet (fresh team, never-run loop). no-base: the resolved
+  /** absent: no usable worktree yet (fresh team, never-run role). no-base: the resolved
    * main branch does not exist, so no ahead-of-main comparison is possible. ready: both
    * halves were collected. */
   state: "absent" | "no-base" | "ready";
-  /** Commits on the loop branch not on mainBranch (0 unless state is "ready"). */
+  /** Commits on the role branch not on mainBranch (0 unless state is "ready"). */
   ahead: number;
-  /** Commits on mainBranch the loop branch has not picked up (0 unless state is "ready"). */
+  /** Commits on mainBranch the role branch has not picked up (0 unless state is "ready"). */
   behind: number;
   commits: RoleChangeCommit[];
   /** The ahead-of-main patch ("" unless state is "ready"); under `--stat` the `git diff --stat`
@@ -74,8 +74,8 @@ export interface TeamChangeView {
   roles: TeamRoleChange[];
 }
 
-/** Collect the pending change of every known role (built-in plus custom loop ids, config
- * order — disabled roles included, since a loop stopped mid-flight still holds its branch).
+/** Collect the pending change of every known role (built-in plus custom role ids, config
+ * order — disabled roles included, since a role stopped mid-flight still holds its branch).
  * Each entry goes through collectRoleChange, which keeps the absent/no-base degradation
  * logic single-homed and only computes the patch git-diffs for roles actually holding work
  * (both are "" when a role holds nothing); the team view then drops the patch fields. */
@@ -96,9 +96,9 @@ export async function collectTeamChanges(root: string): Promise<TeamChangeView> 
  * half of the view can print unbounded text. */
 const DIFF_MAX_BYTES = 200_000;
 
-/** Collect the change the role's loop holds: both halves of the view, or a degraded state
+/** Collect the change the role holds: both halves of the view, or a degraded state
  * when the worktree or the base branch is missing. Never throws on a degraded team — a
- * query about a loop that has not run yet must answer, not fail (report's rationale). */
+ * query about a role that has not run yet must answer, not fail (report's rationale). */
 export async function collectRoleChange(
   root: string,
   role: string,
@@ -121,7 +121,7 @@ export async function collectRoleChange(
   if (!(await branchExists(root, mainBranch))) return { ...empty, state: "no-base" };
   // The role's checkout comes from the pool resolver (slots-state.ts): a slot leased for its
   // tick or pinned for it, else the legacy worktree. A null or unusable directory is the same
-  // operator situation — this loop holds nothing inspectable yet — so worktree.ts's shared
+  // operator situation — this role holds nothing inspectable yet — so worktree.ts's shared
   // usability probe still answers the final question.
   const wt = await roleWorktreeDir(root, role);
   if (wt === null || !(await isUsableWorktree(wt))) return { ...empty, state: "absent" };

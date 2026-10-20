@@ -45,7 +45,7 @@ export interface PiRunResult {
   errorMessage?: string;
   timedOut: boolean;
   /** The tick timeout fired on a run that was still making progress — a real progress event
-   * within the last quietTimeoutSeconds. A slow run, not a hung one: the loop preserves its
+   * within the last quietTimeoutSeconds. A slow run, not a hung one: the runner preserves its
    * session and worktree edits and resumes it like a quiet kill instead of discarding them
    * (BUGS.md 2026-09-29). Never true without timedOut. */
   timedOutProgressing: boolean;
@@ -58,7 +58,7 @@ export interface PiRunResult {
   /** The run was killed by the quiet watchdog: no pi progress for over quietTimeoutSeconds —
    * typically one hung tool call (a command waiting on input or scanning far more than
    * intended), not a slow run. Distinct from timedOut (the whole-run tick budget): the session
-   * and any worktree edits are intact, so the loop resumes them promptly instead of discarding.
+   * and any worktree edits are intact, so the runner resumes them promptly instead of discarding.
    */
   quietKilled: boolean;
   /** The provider rejected the context as too large. With fresh-per-tick sessions this is
@@ -76,7 +76,7 @@ export interface PiRunResult {
   transientPiCrash: boolean;
   /** True when any event reported the provider rejecting the request with HTTP 429 (rate
    * limiting). A transient failure of the world, not of the session — the world saying
-   * "later": one retry after retryAfterSeconds usually succeeds, so the loop's transient
+   * "later": one retry after retryAfterSeconds usually succeeds, so the runner's transient
    * retry covers it instead of discarding the tick's work. */
   transientRateLimit: boolean;
   /** True when any event reported a provider-wide failure that is not rate limiting — the
@@ -95,7 +95,7 @@ export interface PiRunResult {
    * instead of re-queuing it at suite speed (BUGS.md 2026-10-06). */
   configError: boolean;
   /** The provider's Retry-After delay (seconds) from the rate-limit error text, when one was
-   * sent; undefined otherwise. Caps the loop's wait before the transient retry. */
+   * sent; undefined otherwise. Caps the runner's wait before the transient retry. */
   retryAfterSeconds?: number;
   /** The run's last assistant message carried no text and no tool call (thinking-only or
    * empty). A compliant finish always ends with a text block, so this signals a generation

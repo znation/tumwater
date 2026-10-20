@@ -46,7 +46,7 @@ interface ReclaimCandidate {
   /** The last time a reclaim pass cleaned this worktree; absent until one has. Idle reclaim
    * skips a worktree already reclaimed since its last use (part 3/4). */
   reclaimedAt?: number;
-  /** A role whose loop state has a pending resume; cleaned last. */
+  /** A role whose runner state has a pending resume; cleaned last. */
   resumePending: boolean;
 }
 

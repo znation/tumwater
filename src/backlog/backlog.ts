@@ -6,8 +6,8 @@ export type { BacklogEntry } from "./backlog-md.js";
 
 /** The stat-cached file readers of the project backlog data shown on both dashboards: planned
  * features (PLANS.md), open bugs (BUGS.md), and open questions (QUESTIONS.md). These are tracked
- * markdown that loops edit, so readers must never show a stale entry — but the dashboards poll them
- * every second while the files change only when a loop merges an edit. Each reader therefore serves
+ * markdown that roles edit, so readers must never show a stale entry — but the dashboards poll them
+ * every second while the files change only when a role merges an edit. Each reader therefore serves
  * an unchanged file from a stat-keyed cache: one syscall per file per poll instead of re-reading
  * and re-parsing markdown that grows without bound over the project's lifetime (PLANS/BUGS are
  * append-only durable memory). Any write invalidates it via dev/ino/mtime/size
@@ -46,7 +46,7 @@ const dateCache = new Map<string, StatKeyedValue<string[]>>();
 
 /** Completion dates of an entry section (PLANS.md `## Done`, BUGS.md `## Fixed`), stat-cached like
  * sectionEntries above. The usage report scans these sections on every /api/report fetch, but the
- * files change only when a loop merges an edit — serving an unchanged file from the cache makes
+ * files change only when a role merges an edit — serving an unchanged file from the cache makes
  * that cost one stat instead of a full read plus an O(size) markdown walk of append-only documents
  * that grow without bound. The date regex is part of the cache key (each section's completion verbs
  * differ); a missing or unreadable file yields []. */
@@ -114,7 +114,7 @@ export function filingDate(title: string): string | null {
 
 /** The completion stamp of a `## Done` plan heading. */
 export const DONE_DATE_RE = /done (\d{4}-\d{2}-\d{2})/;
-// The completion verbs track the phrasing the harness's own loops actually write: the bugfix prompt
+// The completion verbs track the phrasing the harness's own roles actually write: the bugfix prompt
 // pins the date, not the verb, and the re-merge flow's own epitaph — "re-merged <date>" on an entry
 // whose first merge was rejected in review — is a completion the report must count (a rejected
 // merge is not a fix, the re-merge is). Body verbs without a date ("was fixed;") match nothing, and
@@ -197,7 +197,7 @@ export function openBugs(root: string): string[] {
   return sectionEntries(root, "BUGS.md", "Open").map((e) => e.title);
 }
 
-/** Open questions: the `### ` headings under QUESTIONS.md's `## Open` section — loops post
+/** Open questions: the `### ` headings under QUESTIONS.md's `## Open` section — roles post
  * them when a decision is genuinely the user's (see plans/questions-outbox.md). Missing or
  * unreadable → []. */
 export function openQuestions(root: string): string[] {

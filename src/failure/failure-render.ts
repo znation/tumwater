@@ -124,7 +124,7 @@ function hoursPhrase(ms: number): string {
  * chars)` cut marker when truncated, so a marked cut can never read as a complete message —
  * BUGS.md 2026-09-30), merged summaries at 100 under the same rule, a cluster's role list at 4
  * names plus a remainder count, and any role id sliced to 32 chars (config validation already
- * refuses longer custom-loop ids, so the slice is a guard rather than the real bound). Cluster
+ * refuses longer custom-role ids, so the slice is a guard rather than the real bound). Cluster
  * counts are capped at top-N, and the Team state changes section is capped at STATE_CHANGE_TOP
  * lines with each payload at STATE_CHANGE_MAX and each free field at STATE_CHANGE_FIELD_MAX; the
  * merged list at MERGED_TOP lines, each capped section closing with one remainder line when its cut
@@ -337,7 +337,7 @@ function roleList(roles: string[]): string {
   return rest > 0 ? `${shown} +${rest} more` : shown;
 }
 
-/** Config validation caps custom-loop ids at 32 chars; this slice keeps the render's byte bound
+/** Config validation caps custom-role ids at 32 chars; this slice keeps the render's byte bound
  * true even for a hand-edited state file or a future catalog id. */
 function roleCell(role: string): string {
   return role.slice(0, 32);

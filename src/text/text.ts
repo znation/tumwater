@@ -74,7 +74,7 @@ export function gotSuffix(v: unknown): string {
  * narrows `v` to `string` for the code that consumes it — the one spelling shared by
  * build/build-check-detect.ts's check-script/command/cwd/gateCommand reads, config validation's
  * thinking-level check and model-field guards (tier-map values, the legacy model/ fallback selector
- * and its legacy provider, exempt paths, custom-loop tasks), pi-event-line.ts's tool-result content
+ * and its legacy provider, exempt paths, custom-role tasks), pi-event-line.ts's tool-result content
  * test, quiet-hours.ts's per-role window lookup, and inbox-attachments.ts's image-name check, so
  * the blank-means-unset rule cannot drift per call site. Callers where a bare empty string means
  * unset rather than blank text (notify.ts, version.ts, inbox-cancel.ts) keep their own `=== ""`

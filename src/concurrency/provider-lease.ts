@@ -1,7 +1,7 @@
 /** The AsyncLocalStorage store that lets a tick's lease follow its runs across providers
  * (plans/provider-concurrency.md §5): a lease rides here for the length of a tick, a verify task,
  * or a resolver run, and `LoopPi.runWithTransientRetry` re-keys it to the provider each run
- * actually uses. The one choke point every run a loop makes (authoring, gate, merge and resolver)
+ * actually uses. The one choke point every run a role makes (authoring, gate, merge and resolver)
  * passes through, so a budget handback or a model-failure switch that moves a mid-tick run to
  * another provider moves the lease with it instead of leaving it parked on the key it was admitted
  * on. The check-permit.ts `holdingPermit` store is the pattern: nothing here is a separate permit,

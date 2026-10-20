@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code runner, part 15/16: Reword role-sense "loop" in src/ comments, leaving every iteration-sense "loop" alone (planned 2026-10-19 by the plan role, split from the rejected 14/14; requires part 14/16 landed; design in plans/terminology.md "Code names"; touches comments in src/ only) — done 2026-10-19
+
+**Goal.** No comment in src/ says "loop" when it means a role or its worker. Every comment where "loop" means iteration (a `for`/`while` loop, "loop over", "loops through", the poll loop, the event loop, a retry, crash or feedback loop) reads exactly as before.
+
+**Approach.**
+- This part exists because the 14/14 review rejected blanket substitution. Judge each hit on its own and change nothing in code, string literals or serialized names.
+- Work list: `grep -rnwiE 'loops?' src | grep -E ':[0-9]+:\s*(//|\*|/\*)'` (about 250 lines today, most in src/ui, src/backlog, src/doctor, src/events, src/process, src/paths.ts, src/git, src/agent, src/change and src/pi). Also check trailing `// …` comments on code lines (`grep -rnwiE '//.*\bloops?\b' src`).
+- Before editing a hit, classify it by reading the whole sentence:
+  - Role sense: the sentence is about a configured role, its runner, its state file, its claim, or "each loop" meaning each role. Reword "loop" to "role", or to "runner" when the sentence is about the `RoleRunner` object or one instance's state. Fix the grammar ("a loop's" → "a role's", "loops" → "roles").
+  - Iteration sense: the sentence is about control flow, polling, retrying or feedback. Leave it byte-for-byte unchanged. Test: if "role" substituted in would make the sentence describe something other than iteration, it is iteration sense.
+  - Ambiguous: leave it unchanged, and list it in the commit message.
+- Leave alone: legacy readers (the files and regions listed in part 14/16's series rules), quoted PLANS.md/BUGS.md titles, `plans/*.md` names, commit subjects, and `customLoop*` names. Rewrap any edited comment past 100 columns.
+- Commit message: state the rule you applied. Name only repairs you made, without counts or "all".
+
+**Files touched.** Comments in src/ files from the work list; nothing in test/ (part 16/16).
+
+**Acceptance criteria.**
+- `git diff main -- src` changes only comment text: no code, string literal or identifier line changes. Check that every changed line is inside a comment.
+- In every changed comment, the old "loop" referred to a role or its runner. No removed line has "loop" in an iteration sense (for/while, "loop over/through", poll loop, event loop, retry/crash/feedback loop).
+- `grep -rnwiE 'loops?' src | grep -E ':[0-9]+:\s*(//|\*|/\*)'` lists only iteration-sense comments, legacy-reader comments, and the ambiguous ones the commit message names.
+- `npm run test` passes.
+
 ### Shell completion completes `tumwater doctor` check names, quoting the multi-word ones (`image\ input`, `main\'s\ check`), so `tumwater doctor im<Tab>` finishes a name the operator would otherwise copy from the report (planned 2026-10-19 by the plan role; no dependency on any Planned entry. It follows the done plan "`tumwater doctor <check>...` runs only the named checks", which left check-name completion out of scope. None of the Planned entries touches these files. This one touches src/cli/completion.ts, test/completion.test.ts, docs/cli.md — done 2026-10-19)
 
 **Goal.** `tumwater doctor <check>...` takes check names as positionals, matched ignoring case against `DOCTOR_CHECK_NAMES` (src/doctor/doctor-check-names.ts). `tumwater completion bash|zsh|fish` offers only doctor's flags there, so the operator has to type a name exactly or copy it from a full report. Many names have spaces (`git binary`, `image input`, `models for each tier`), and `main's check` has an apostrophe, so the names must reach the command line quoted. After this change, every positional word after `doctor` that does not start with `-` completes to the check names. Names come back escaped (`image\ input`, `main\'s\ check`), or raw when the operator opened a quote (`"image in<Tab>`).

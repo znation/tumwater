@@ -151,7 +151,7 @@ export interface PiRunOptions {
   notesPath?: string;
   /** Called at settle when this run read an image its model cannot see (plans/image-input.md
    * "Detecting a blind read") — the caller's hook to log the `image_blind` event with its own
-   * loop/tick context. The action follows the run's kind: an authoring run was killed and
+   * role/tick context. The action follows the run's kind: an authoring run was killed and
    * carries `"fail"`, a gate run only records the read and carries `"logged"`. Called once,
    * with the blameable path. */
   onBlindRead?: (path: string, action: "fail" | "logged") => void;
@@ -171,7 +171,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     ensureDir(opts.sessionDir);
     // A broken raw log (EACCES, ENOSPC) must not crash the process on an unhandled 'error'
     // nor hang the tick: openAppendLog marks it so finish() resolves without waiting for a
-    // 'finish' that will never come — a lost transcript is acceptable, a stuck loop is not.
+    // 'finish' that will never come — a lost transcript is acceptable, a stuck runner is not.
     const rawLog = openAppendLog(opts.rawLogFile, opts.config.logMaxBytes);
     // The backend-native stdout, kept beside the canonical raw log for debugging: every
     // complete native line is written before it is translated, so the two logs line up. A
@@ -423,7 +423,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // A blind image read (plans/image-input.md "Detecting a blind read"): surface it to the
       // caller once, at settle, with the action its kind earned — the authoring run was killed
       // ("fail"), a gate run only recorded it ("logged"). The caller logs the image_blind event
-      // with its own loop/tick context.
+      // with its own role/tick context.
       if (parser.imageBlind) {
         opts.onBlindRead?.(parser.imageBlind.path, opts.kind === "author" ? "fail" : "logged");
       }
@@ -599,7 +599,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
           backendKind: parser.backendFailureKind ?? stderrBackend,
           configError,
           // Kept distinct on purpose: a hung tool call leaves its session and worktree edits
-          // intact, so the loop resumes them (quiet_killed) instead of discarding them as an
+          // intact, so the runner resumes them (quiet_killed) instead of discarding them as an
           // unfulfilled timeout does. A deadline that fired on a run still making progress
           // gets the same treatment (BUGS.md 2026-09-29).
           timedOut: wd.timedOut,

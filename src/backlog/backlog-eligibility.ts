@@ -1,12 +1,12 @@
 // vocabulary: plain
-/** Backlog eligibility: which PLANS.md / BUGS.md entries a work loop may take now (plans,
+/** Backlog eligibility: which PLANS.md / BUGS.md entries a work role may take now (plans,
  * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**,
  * **Needs review …**, **Needs replan …** or **Waiting for the next failure …** note, or when
  * its heading's trailing parenthetical
  * (or a parenthetical left open by a wrapped heading) names a prerequisite (`requires parts
  * 1/5–3/5 landed`) that is itself still listed under `## Planned`. The parsers are pure over
  * markdown text; `eligibleEntries` is the stat-backed reader for a caller that wants the list.
- * The backlog index marks every held entry so a loop
+ * The backlog index marks every held entry so a role
  * skips it without re-deriving the rule. */
 
 import path from "node:path";
@@ -25,7 +25,7 @@ import { finishedFiles, openBugEntries, plannedPlanEntries } from "./backlog.js"
 export type EntryHold = "refused" | "needs-review" | "needs-replan" | "waiting-for-failure" | { blockedBy: string[] } | null;
 
 /** One entry the reader may take: `key` is the stamp-free identity a claim can match on
- * (entryKey), `title` the verbatim heading, and `start`/`end` the 1-based line range the loop
+ * (entryKey), `title` the verbatim heading, and `start`/`end` the 1-based line range the role
  * reads by, exactly as the `<backlog-index>` block shows it. */
 export interface EligibleEntry {
   key: string;
@@ -365,7 +365,7 @@ export function prerequisitesMerged(title: string, plannedParts: ReadonlySet<str
 
 /** Why `entry` is held against the still-`planned` entries, or null when it may be taken: a
  * `**Refused …` line (refused), a Needs-review line (needs-review), a Needs-replan line
- * (needs-replan — the plan loop owns it), or a prerequisite `(series, part)` still among
+ * (needs-replan — the plan role owns it), or a prerequisite `(series, part)` still among
  * `planned` ({ blockedBy }). Series compare case-insensitively; part tokens compare verbatim.
  * Bodies mentioning "requires" are never consulted — only the heading's trailing or
  * still-open parenthetical. */
@@ -413,7 +413,7 @@ export function holdMark(hold: EntryHold): string {
 interface BacklogHolds { plans: EntryHold[]; bugs: EntryHold[] }
 
 /** `/api/status` polls the holds on the 1-second dashboard poll and the TUI recomputes them each
- * frame while PLANS.md/BUGS.md change only when a loop merges an edit. The file reads beneath are
+ * frame while PLANS.md/BUGS.md change only when a role merges an edit. The file reads beneath are
  * already stat-cached (plannedPlanEntries/openBugEntries), but the per-entry eligibility walk
  * (entryHoldAgainst's body scan + heading clause) is pure CPU re-derived on every call, growing
  * with the append-only backlog. Cache the derived holds keyed on both files' stat identities — the
@@ -520,7 +520,7 @@ export function inProgressMark(runner: string | null): string {
   return runner === null ? "" : ` [working on it: ${roleLabel(runner)}]`;
 }
 
-/** The entries a `role` loop may take now, in file order: PLANS.md's `## Planned` entries for
+/** The entries `role` may take now, in file order: PLANS.md's `## Planned` entries for
  * feature, BUGS.md's `## Open` entries for bugfix, minus every entry entryHold holds, each with
  * its stamp-free key, verbatim title and 1-based line range. Reads the primary checkout through
  * the same stat-cached readers the index uses; a missing or unreadable file yields []. */

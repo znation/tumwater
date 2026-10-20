@@ -124,7 +124,7 @@ const isLocalUrl = (url: string): boolean => {
 /** The `fallback chain` check: one fragment per step of every tier's chain saying whether the
  * step can run now — a local pi server that does not answer (warn), a step whose own daily cap is
  * spent, a free pair, a claude step with its billing, or a priced pair. Reads config, pi's
- * models.json and the loop states; only a pi step on 127.0.0.1/localhost makes a network
+ * models.json and the role states; only a pi step on 127.0.0.1/localhost makes a network
  * request. `probe` is injectable so tests need no real server. */
 export async function checkFallbackChain(
   root: string,
@@ -605,7 +605,7 @@ export async function checkTierModels(
 }
 
 /** The doctor's image-input capability check (plans/image-input.md "Doctor", parts 1-2/5):
- * which of the team's seams claim to read images, and whether every text-only enabled loop can
+ * which of the team's seams claim to read images, and whether every text-only enabled role can
  * reroute to one that does. Part 2 adds the live probe — with `probeImages` "missing" (the
  * terminal `tumwater doctor` default) each claimed pi model with no fresh cached verdict is
  * shown a real image and the answer is checked; with "all" (the `--reprobe` flag) every claimed
@@ -618,7 +618,7 @@ export async function checkTierModels(
  * reviewer) plus the tiers' fallback pairs (the reroute part picks its target among them, so a
  * text-only fallback would promise a reroute no fallback can serve). A claimed model whose probe
  * failed (fresh verdict) is dropped from the readers and reads false from seamImageInput, so the
- * reroute sweep never sends a text-only loop to a model that lost its probe. `providers`,
+ * reroute sweep never sends a text-only role to a model that lost its probe. `providers`,
  * `account`, `pathEnv` and `probe` are injectable so tests need no real pi install or account. */
 export async function checkImageInput(
   root: string,
@@ -722,7 +722,7 @@ export async function checkImageInput(
     }
   }
   if (probedAny) writeImageProbeCache(root, probes);
-  // Text-only enabled loops: which can reroute to a tier that reads images (honoring failed
+  // Text-only enabled roles: which can reroute to a tier that reads images (honoring failed
   // probes), and which cannot.
   const reroutes: string[] = [];
   const noTarget: string[] = [];

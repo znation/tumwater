@@ -190,7 +190,7 @@ function sweepStaleTemps(dir: string): void {
   }
 }
 
-/** Directory-and-pid mutex shared by all loops (and processes) of one project: the holder
+/** Directory-and-pid mutex shared by all roles (and processes) of one project: the holder
  * publishes a dir with its pid in it by atomic rename. */
 export async function withLock<T>(dir: string, fn: () => Promise<T>, timeoutMs = 120_000): Promise<T> {
   const startedAt = Date.now();

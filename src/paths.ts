@@ -61,7 +61,7 @@ export function exampleConfigPath(root: string): string {
 
 /** The director's config-write request file, at its worktree root (plans/portability.md §3/7):
  * the director writes it, the harness consumes and deletes it before any commit path — so it
- * never enters a diff, a review prompt, or the project's history, and custom-loop management
+ * never enters a diff, a review prompt, or the project's history, and custom-role management
  * works whether or not tumwater.json is tracked. */
 export function configRequestPath(wt: string): string {
   return path.join(wt, ".tumwater-config-request.json");
@@ -74,17 +74,17 @@ export function worktreesDir(root: string): string {
   return path.join(tumwaterDir(root), "worktrees");
 }
 
-/** A loop's persistent git worktree under .tumwater/worktrees/. */
+/** A role's persistent git worktree under .tumwater/worktrees/. */
 export function worktreePath(root: string, role: string): string {
   return path.join(worktreesDir(root), role);
 }
 
-/** A loop's persistent branch name. */
+/** A role's persistent branch name. */
 export function branchName(role: string): string {
   return `tumwater/${role}`;
 }
 
-/** A role's per-loop state file (.tumwater/state/<role>.json; runner-state.ts). */
+/** A role's state file (.tumwater/state/<role>.json; runner-state.ts). */
 export function statePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", `${role}.json`);
 }
@@ -204,7 +204,7 @@ export function resetRequestPath(root: string): string {
 }
 
 /** Marker file `tumwater wake [--role <id>]` drops for a running team to consume: like the
- * reset-counters marker it must name its targets because it can affect many loops, and like it
+ * reset-counters marker it must name its targets because it can affect many roles, and like it
  * it must reach the runners' IN-MEMORY schedule — the poll loop reads eligibility from the
  * in-memory state, so clearing only the on-disk file would not wake anything. */
 export function wakeRequestPath(root: string): string {
@@ -234,9 +234,9 @@ export function reclaimRequestPath(root: string): string {
 }
 
 /** Per-role marker file `tumwater abort --role <id>` drops for a running team to consume:
- * kill that loop's in-flight tick. One file per role (presence = pending request; content is
+ * kill that role's in-flight tick. One file per role (presence = pending request; content is
  * just `{ at }`) keeps consumption race-free and needs no parsing — unlike the single shared
- * reset-counters marker, which must name its targets because it affects many loops. */
+ * reset-counters marker, which must name its targets because it affects many roles. */
 export function abortRequestPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), `abort-${role}.json`);
 }
@@ -416,14 +416,14 @@ export function reviewRunSessionDir(root: string, role: string, runKey: string):
   return path.join(reviewSessionDir(root, role), runKey);
 }
 
-/** Queued human prompts awaiting pickup by a loop (inbox.ts). */
+/** Queued human prompts awaiting pickup by a role (inbox.ts). */
 export function inboxDir(root: string): string {
   return path.join(tumwaterDir(root), "inbox");
 }
 
-/** The queue directory one loop's prompts wait in (inbox.ts): the director keeps its historical
- * queue at the inbox root so existing inboxes stay readable, and every other loop gets a
- * per-role subdirectory — `tumwater prompt --role <id>` writes where only that loop reads. */
+/** The queue directory one role's prompts wait in (inbox.ts): the director keeps its historical
+ * queue at the inbox root so existing inboxes stay readable, and every other role gets a
+ * per-role subdirectory — `tumwater prompt --role <id>` writes where only that role reads. */
 export function roleInboxDir(root: string, role: string): string {
   return role === DIRECTOR_ROLE ? inboxDir(root) : path.join(inboxDir(root), role);
 }

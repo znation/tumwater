@@ -39,8 +39,8 @@ export function loadRunnerStates(root: string, config: TumwaterConfig): RunnerSt
  * over a team that starts no tick. Read-only: it reads the same team and per-role pause
  * markers the scheduler reads (standingTeamPause, pausedRoles, pausedRolesUntil — all treat
  * an expired marker as absent), so its verdict cannot disagree with what the team does. A
- * team pause is a warn because it stops every loop; paused roles are ok because the operator
- * chose them by name and every other loop keeps ticking. `now` only drives the countdowns. */
+ * team pause is a warn because it stops every role; paused roles are ok because the operator
+ * chose them by name and every other role keeps ticking. `now` only drives the countdowns. */
 export function checkPause(root: string, now: number = Date.now()): CheckOutcome {
   const team = standingTeamPause(root);
   const roles = pausedRoles(root);
@@ -61,7 +61,7 @@ export function checkPause(root: string, now: number = Date.now()): CheckOutcome
  * so doctor does not print "ready to run" over a team that starts no tick until the window
  * ends. Read-only: membership comes from the scheduler's own parser and predicate
  * (quietHoursStatus, roleQuietHold), so the verdict cannot disagree with the gate. A team
- * window holding is a warn because it stops every loop (the director is exempt); held per-role
+ * window holding is a warn because it stops every role (the director is exempt); held per-role
  * windows are ok because the operator chose those roles by name. A malformed value reads as
  * unset here — checkInit owns that error. `now` is injected so tests never read the clock. */
 export function checkQuietHours(config: TumwaterConfig | undefined, now: Date = new Date()): CheckOutcome {
@@ -95,7 +95,7 @@ export function checkQuietHours(config: TumwaterConfig | undefined, now: Date = 
  * own `maxDailyCostUsdPerRole` cap. Read-only and built on the scheduler's own definitions
  * (teamDailyCost, budgetReached, roleCapVerdicts), so the verdict cannot disagree with the gate.
  * `published` is the running scheduler's figure (it includes runs charged since the last save)
- * and wins over the persisted sum, as in status. A reached team cap is a warn because role loops
+ * and wins over the persisted sum, as in status. A reached team cap is a warn because roles
  * run on their tier fallback or hold until local midnight (the `fallback` row says which);
  * per-role caps reached alone are ok because the operator chose them by name. */
 export function checkBudget(
@@ -127,9 +127,9 @@ export function checkBudget(
 }
 
 /** The `maintenance quota` check: rolling-24 h maintenance merges against the allowance
- * (`maintenancePerWorkMerge` per work merge + the daily floor), naming the maintenance loops held
+ * (`maintenancePerWorkMerge` per work merge + the daily floor), naming the maintenance roles held
  * when it is full. Read-only and built on the same verdict the scheduler and status use
- * (maintenanceQuotaForPoll). Only a live team's running loops and merge queue count as in flight,
+ * (maintenanceQuotaForPoll). Only a live team's running roles and merge queue count as in flight,
  * since a dead team's leftover `running` flag and queue drain nothing. A held allowance is a warn
  * because it stops a whole tier. */
 export function checkMaintenanceQuota(
@@ -237,12 +237,12 @@ export function checkProviderHolds(root: string, now: number = Date.now()): Chec
   return warnOutcome(lines.join("; "));
 }
 
-/** The `error streaks` check: names each enabled loop whose `consecutiveErrors` is at or past
+/** The `error streaks` check: names each enabled role whose `consecutiveErrors` is at or past
  * ERROR_STREAK_WARN, with its streak and last error, and whether it is paused. Read-only; it reads
  * the same `consecutiveErrors` the error-streak breaker and `teamAlerts` read, and the same
  * `pausedRoles` marker the scheduler reads. The marker does not record who wrote it, so a paused
- * loop at ERROR_STREAK_BREAKER's bar is described, not attributed to the breaker. A warn, not a
- * fail: a failing loop does not stop the team from running. */
+ * role at ERROR_STREAK_BREAKER's bar is described, not attributed to the breaker. A warn, not a
+ * fail: a failing role does not stop the team from running. */
 export function checkErrorStreaks(root: string, config: TumwaterConfig | undefined): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const failing = loadRunnerStates(root, config)
@@ -265,7 +265,7 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
   return warnOutcome(`failing run after run: ${phrases.join("; ")}`);
 }
 
-/** The `main red` check: names the code loops the red-main gate (mainRedGate) holds, ending
+/** The `main red` check: names the code roles the red-main gate (mainRedGate) holds, ending
  * each blocked tick `main_red` while main's suite is red. Read-only: it asks heldByMainRed,
  * the predicate the status phase's `main red` label reads, so the two cannot disagree. A warn,
  * not a fail: a red main does not stop the team from running. */

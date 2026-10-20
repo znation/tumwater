@@ -5,7 +5,7 @@
 
 /** Group items by a key, preserving first-seen key order and input order within each group.
  * The single home of the "append to a Map of arrays" step, shared by the event bucketers
- * (history-data.ts's bucketMergeEvents, failure/time-spend.ts's rejected-by-loop pass) and
+ * (history-data.ts's bucketMergeEvents, failure/time-spend.ts's rejected-by-role pass) and
  * the team-hold poll's observations-by-provider grouping (team-polls.ts's pollTeamHold), so
  * those sites cannot drift on how a missing key is seeded. Returns a fresh Map; the input is
  * never mutated. */
@@ -55,7 +55,7 @@ export function increment<K>(map: Map<K, number>, key: K): void {
  * tumwater module by design, since node --test loads it into its own parent process.
  *
  * The seed reads an OWN property (Object.hasOwn), not a bare `record[key] ?? 0`: the
- * custom-loop name charset admits "constructor", an Object.prototype key, whose inherited
+ * custom-role name charset admits "constructor", an Object.prototype key, whose inherited
  * function would otherwise be the seed — storing `function Object() …5` and turning every
  * later `roleSum`/report total into string concatenation (BUGS.md 2026-10-10). */
 export function addTo<K extends string>(
