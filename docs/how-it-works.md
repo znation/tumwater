@@ -203,6 +203,17 @@ discards a role's in-flight merge.
   merging runner, one the director merged, a revert itself, or one already reverted is not
   reverted, and a revert that conflicts, fails its gate or loses the fast-forward is abandoned with
   main unchanged; each of those queues bugfix's heal prompt naming the commit and the failing tests.
+- A test that fails and then passes on the same tree is quarantined at once: the gate's re-run, a
+  red in-lock merge check's one immediate re-run (the change then merges), and the watch's
+  confirming re-run each add the failing tests the failed run named to
+  `.tumwater/state/quarantine.json` (newest 100). A quarantined test counts as a known failure
+  everywhere: a gate or merge check failing only known tests goes on, the watch records a red
+  naming only quarantined tests as passed (`quarantined: [tests]`) with no bisect, and the culprit
+  search treats such a red as green. The watch files one BUGS.md `## Open` entry per newly
+  quarantined test, committed on main under the merge and primary-worktree locks (it warns and
+  retries on a later poll when the checkout is dirty or off main). A test leaves quarantine when its
+  entry is no longer under `## Open`; a later flake puts it back. The 24 h headline excuse
+  (`known-flaky failure, merge kept`) remains for failures that name no test.
 - Failed runs retry on a shorter ladder, capped at ten minutes. Three failures in a row mark a
   role `failing` until it has a healthy run.
 - A search role's own recent yield stretches its clock: after ten consecutive counted runs

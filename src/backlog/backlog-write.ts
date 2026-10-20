@@ -463,6 +463,16 @@ function appendOperatorEntry(
   return { file: fileName, title, stamp };
 }
 
+/** Append one tumwater-filed bug under BUGS.md's `## Open` with the heading as given (no operator
+ * stamp), for a caller that already holds the primary-worktree lock and commits the file itself
+ * (backlog-archive.ts's quarantine filing). Returns the heading line's title. */
+export function appendBugEntryLocked(root: string, title: string, body: string): string {
+  const t = collapseWhitespace(title);
+  requireBodyStructurallySound(body, "filed");
+  appendEntryLocked(root, "BUGS.md", BUGS_TEMPLATE, "Open", `### ${t}`, body);
+  return t;
+}
+
 /** `tumwater bug "<symptom>"`: append one `### <symptom> (reported by the user <date>)`
  * entry to BUGS.md's `## Open`. The symptom is operator prose, so it folds to one line
  * (collapseWhitespace, the questions answer precedent) — a multi-line raw text could carry

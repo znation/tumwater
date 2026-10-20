@@ -14,6 +14,13 @@ import type { HarnessEvent } from "../events/events.js";
 import { readEventsSince } from "../events/event-window.js";
 import { increment } from "../collections.js";
 import { normalizeClusterKey } from "../failure/failure-cluster.js";
+import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { isJsonObject } from "../files/json-object.js";
+import { parseEntryDetails } from "../backlog/backlog-md.js";
+import { readTextOrNull } from "../files/files.js";
+import { quarantinePath } from "../paths.js";
+import path from "node:path";
 
 /** How far back the gate looks for its own flake warnings. One local day: the example in
  * BUGS.md 2026-10-06 recorded a flake at 10:50 and rejected an unrelated change on the same
@@ -71,4 +78,104 @@ export function flakeKeys(
 export function isKnownFlake(root: string, headline: string): boolean {
   const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);
   return flakeKeys(events, Date.now()).has(normalizeClusterKey(headline));
+}
+
+/** One quarantined test: it failed, then passed on the same tree. `bug` is the heading of the
+ * BUGS.md entry filed for it, empty until the filing is committed; `tail` is the failing output
+ * kept only until then. */
+interface QuarantineEntry {
+  test: string;
+  firstSeen: number;
+  lastSeen: number;
+  count: number;
+  bug: string;
+  tail?: string;
+}
+
+/** How many quarantined tests are kept; the oldest by lastSeen fall off. */
+const QUARANTINE_MAX = 100;
+
+/** The quarantine list, a malformed file or entry reading as no data. */
+export function loadQuarantine(root: string): QuarantineEntry[] {
+  const stored = readJsonFile<{ tests?: unknown }>(quarantinePath(root));
+  const out: QuarantineEntry[] = [];
+  for (const e of Array.isArray(stored?.tests) ? stored.tests : []) {
+    if (!isJsonObject(e) || typeof e.test !== "string") continue;
+    const num = (v: unknown): number => (typeof v === "number" ? v : 0);
+    out.push({
+      test: e.test,
+      firstSeen: num(e.firstSeen),
+      lastSeen: num(e.lastSeen),
+      count: num(e.count) || 1,
+      bug: typeof e.bug === "string" ? e.bug : "",
+      ...(typeof e.tail === "string" ? { tail: e.tail } : {}),
+    });
+  }
+  return out;
+}
+
+function saveQuarantine(root: string, entries: readonly QuarantineEntry[]): void {
+  const kept = [...entries].sort((a, b) => b.lastSeen - a.lastSeen).slice(0, QUARANTINE_MAX);
+  writeJsonAtomic(quarantinePath(root), { tests: kept });
+}
+
+/** The quarantined test names. */
+export function quarantinedTests(root: string): string[] {
+  return loadQuarantine(root).map((e) => e.test);
+}
+
+/** The failing tests when every one is quarantined; null when none is named, any is outside the
+ * list, or the list may have been cut short (FAILING_TESTS_MAX). */
+export function onlyQuarantined(root: string, failingTests: readonly string[] | undefined): string[] | null {
+  if (!failingTests || failingTests.length === 0 || failingTests.length >= FAILING_TESTS_MAX) return null;
+  const known = new Set(quarantinedTests(root));
+  return failingTests.every((t) => known.has(t)) ? [...failingTests] : null;
+}
+
+/** Quarantine each test of a check that failed and then passed on the same tree. A test already
+ * listed counts another flake; `tail` is kept for the BUGS.md entry of a new one. Returns the
+ * newly quarantined tests. Nothing is recorded for an empty or possibly truncated list. */
+export function quarantineTests(root: string, tests: readonly string[] | undefined, tail: string | readonly string[] | undefined): string[] {
+  if (!tests || tests.length === 0 || tests.length >= FAILING_TESTS_MAX) return [];
+  const entries = loadQuarantine(root);
+  const now = Date.now();
+  const added: string[] = [];
+  for (const test of new Set(tests)) {
+    const have = entries.find((e) => e.test === test);
+    if (have) {
+      have.lastSeen = now;
+      have.count += 1;
+    } else {
+      const text = typeof tail === "string" ? tail : (tail ?? []).join("\n");
+      entries.push({ test, firstSeen: now, lastSeen: now, count: 1, bug: "", ...(text ? { tail: text } : {}) });
+      added.push(test);
+    }
+  }
+  saveQuarantine(root, entries);
+  return added;
+}
+
+/** Record the BUGS.md heading filed for each of `tests`, dropping their kept output. */
+export function markQuarantineFiled(root: string, bugs: ReadonlyMap<string, string>): void {
+  const entries = loadQuarantine(root);
+  for (const e of entries) {
+    const bug = bugs.get(e.test);
+    if (bug === undefined) continue;
+    e.bug = bug;
+    delete e.tail;
+  }
+  saveQuarantine(root, entries);
+}
+
+/** Release the quarantined tests whose filed BUGS.md entry is no longer under `## Open`; a later
+ * flake of one puts it back. Returns the released tests. A missing BUGS.md releases nothing. */
+export function releaseQuarantine(root: string): string[] {
+  const entries = loadQuarantine(root);
+  const md = readTextOrNull(path.join(root, "BUGS.md"));
+  if (md === null || entries.length === 0) return [];
+  const open = new Set(parseEntryDetails(md, "Open").map((e) => e.title));
+  const released = entries.filter((e) => e.bug !== "" && !open.has(e.bug));
+  if (released.length === 0) return [];
+  saveQuarantine(root, entries.filter((e) => !released.includes(e)));
+  return released.map((e) => e.test);
 }

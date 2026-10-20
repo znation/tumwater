@@ -21,6 +21,8 @@ import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
+import { describeCheck, failureHeadline } from "../build/build-check-report.js";
+import { MERGE_FLAKY_WARNING_PREFIX, quarantineTests } from "../review/known-flakes.js";
 import { noteGreenBaseline, noteInheritedGreen } from "../baseline/main-baseline.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
@@ -300,17 +302,30 @@ async function verifyMerge(
   // runScopedBuildCheck, shared with the review gate's pre-check. The merge cell names the
   // check (or its wait for a permit) while it runs, then the merge again for the ff.
   setMergeStage(ctx.root, ctx.role, "build-check");
-  const check = await runScopedBuildCheck(
-    ctx.root,
-    ctx.role,
-    "merge",
-    wt,
-    ctx.config,
-    undefined,
-    undefined,
-    undefined,
-    checkWaitStage(ctx.root, [ctx.role]),
-  );
+  const runMergeCheck = () =>
+    runScopedBuildCheck(
+      ctx.root,
+      ctx.role,
+      "merge",
+      wt,
+      ctx.config,
+      undefined,
+      undefined,
+      undefined,
+      checkWaitStage(ctx.root, [ctx.role]),
+    );
+  let check = await runMergeCheck();
+  if (check?.outcome.status === "failed" && !unverifiedTreeOutcome(check.outcome) && !onlyKnownMainFailures(ctx.root, check.outcome.failingTests)) {
+    // One immediate re-run of the same tree: a pass makes the failed run a flake. The change
+    // merges and each test the failed run named is quarantined.
+    const failed = check.outcome;
+    const retry = await runMergeCheck();
+    if (retry?.outcome.status === "passed") {
+      warnEventBestEffort(ctx.root, ctx.role, `${MERGE_FLAKY_WARNING_PREFIX}${failureHeadline(failed.outputTail) ?? describeCheck(check.check)}`);
+      quarantineTests(ctx.root, failed.failingTests, failed.outputTail);
+      check = retry;
+    }
+  }
   setMergeStage(ctx.root, ctx.role, "merging");
   if (!check) return true; // No declared check: nothing to run, exactly like the gate skipping its pre-check.
   if (check.outcome.status === "failed") {

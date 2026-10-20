@@ -11,6 +11,7 @@ import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { logEvent } from "../src/events/events.js";
+import { loadQuarantine, quarantinedTests, quarantineTests, releaseQuarantine } from "../src/review/known-flakes.js";
 
 // The main watch (src/baseline/main-watch.ts) records the full check's verdict on main's tip in the
 // background. The suite's process-wide verdict cache is keyed by SHA, and every fixture repo has
@@ -187,4 +188,49 @@ test("a red tip with no cached green below it warns that none was found", async 
   assert.equal(eventsOfType(root, "main_culprit").length, 0);
   const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
   assert.ok(warnings.some((m) => m.includes("no green commit within 50 first-parent commits")), warnings.join("|"));
+});
+
+test("a red whose confirming re-run passes quarantines the failing tests and files one BUGS.md entry on main", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture(
+    "improve",
+    `echo run >> ${counter}; if [ "$(wc -l < ${counter})" -eq 1 ]; then ${FAILING_OUTPUT}; exit 1; fi; echo ok`,
+  );
+  const watch = createMainWatch(root, "main");
+  await watchAt(watch, root);
+  assert.equal(eventsOfType(root, "main_check")[0]?.status, "passed");
+  assert.deepEqual(
+    loadQuarantine(root).map((e) => e.test),
+    ["first", "second", "third"],
+  );
+  await watchAt(watch, root); // the next poll files them
+  const bugs = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  assert.equal(bugs.match(/failed, then passed on the same tree \(quarantined by tumwater/g)?.length, 3);
+  assert.match(sh(root, "git", "log", "-1", "--format=%s"), /quarantined flaky tests/);
+  assert.ok(loadQuarantine(root).every((e) => e.bug !== "" && e.tail === undefined));
+  assert.deepEqual(onlyKnownMainFailures(root, ["first"]), ["first"]);
+});
+
+test("a red naming only quarantined tests is recorded passed and starts no bisect", async () => {
+  const { root } = baselineFixture("improve", `${FAILING_OUTPUT}; exit 1`);
+  quarantineTests(root, ["first", "second", "third"], "");
+  const watch = createMainWatch(root, "main");
+  await watchAt(watch, root);
+  const check = eventsOfType(root, "main_check")[0];
+  assert.equal(check?.status, "passed");
+  assert.deepEqual(check?.quarantined, ["first", "second", "third"]);
+  assert.equal(eventsOfType(root, "main_culprit").length, 0);
+});
+
+test("moving a quarantined test's bug out of ## Open releases it", async () => {
+  const { root } = baselineFixture("improve", "echo ok");
+  quarantineTests(root, ["flaky one"], "boom");
+  const watch = createMainWatch(root, "main");
+  await watchAt(watch, root);
+  assert.deepEqual(quarantinedTests(root), ["flaky one"]);
+  const file = path.join(root, "BUGS.md");
+  const md = fs.readFileSync(file, "utf8");
+  fs.writeFileSync(file, md.replace("## Open", "## Fixed"));
+  releaseQuarantine(root);
+  assert.deepEqual(quarantinedTests(root), []);
 });

@@ -168,7 +168,7 @@ test("a no-op rebase with no verified head still runs the merge check and fails 
   assert.equal(mainSha(root), mainBefore, "nothing merges on the unverified tree");
   assert.deepEqual(
     eventsOfType(root, "build_check").map((e) => [e.scope, e.status]),
-    [["merge", "failed"]],
+    [["merge", "failed"], ["merge", "failed"]],
     "the merge-scope check ran and rejected the tree",
   );
   assert.equal(eventsOfType(root, "merged").length, 0);
@@ -195,7 +195,7 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
   const checks = eventsOfType(root, "build_check");
   assert.deepEqual(
     checks.map((e) => [e.scope, e.status, (e as { script?: string }).script]),
-    [["merge", "failed", "exit 1"]],
+    [["merge", "failed", "exit 1"], ["merge", "failed", "exit 1"]],
     "one merge-scope run of check.command, never the gate command",
   );
 });
@@ -254,7 +254,7 @@ test("a code commit under the verified head still re-runs the check", async () =
   const result = await mergeToMain(ctx, wt, "branch work", head);
 
   assert.equal(result, "merge_blocked");
-  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["merge", "failed"]]);
+  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["merge", "failed"], ["merge", "failed"]]);
 });
 
 test("with check.gateCommand set, doc-only drift still runs the full check", async () => {
@@ -266,7 +266,7 @@ test("with check.gateCommand set, doc-only drift still runs the full check", asy
   const result = await mergeToMain(ctx, wt, "branch work", head);
 
   assert.equal(result, "merge_blocked", "the gate ran only the gate command, so its green proves nothing here");
-  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["merge", "failed"]]);
+  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["merge", "failed"], ["merge", "failed"]]);
 });
 
 test("a doc-only delta skips the re-check even when main moved under it", async () => {

@@ -3,7 +3,7 @@ import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { isKnownFlake, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
+import { isKnownFlake, MERGE_FLAKY_WARNING_PREFIX, quarantinedTests } from "../src/review/known-flakes.js";
 import { MERGE_CHECK_FAILURE_LIMIT } from "../src/merge/merge-check-failures.js";
 import { mergeApprovedChange, reviewPinnedChange } from "../src/merge/merge-core.js";
 import type { BatchRoleWiring } from "../src/merge/merge-batch.js";
@@ -527,6 +527,23 @@ test("a red merge check that passes on its kept-pin retry logs a merge-check fla
   assert.match(flaky[0]!, /the flaky test/);
   // failureHeadline strips the duration, so the gate looks up the bare headline.
   assert.ok(isKnownFlake(root, "✖ the flaky test"));
+});
+
+test("a red in-lock merge check whose immediate re-run passes merges and quarantines the failing test", async () => {
+  const { root, sha } = await pinnedFixture();
+  const tip = advanceMain(root, `main-requarantine-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  noteGreenBaseline(tip);
+  const state = freshLoopState(ROLE);
+  const { ctx } = makeCtx(root, state);
+  const flag = path.join(tmpdir(), "merge-flaky-once");
+  ctx.config = {
+    ...ctx.config,
+    check: { command: `if [ -f '${flag}' ]; then exit 0; fi; touch '${flag}'; echo '✖ the flaky test (1.2ms)'; exit 1` },
+  };
+
+  assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "the re-run passed, so the change merges");
+  assert.deepEqual(quarantinedTests(root), ["the flaky test"]);
+  assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 1);
 });
 
 test("a stale red strike of another pin is not recorded as a flake when a different pin merges", async () => {

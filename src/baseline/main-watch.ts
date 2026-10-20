@@ -10,6 +10,15 @@ import { gitTry } from "../git/git-run.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
+import { fileQuarantineBugsOnMain } from "../backlog/backlog-archive.js";
+import {
+  loadQuarantine,
+  markQuarantineFiled,
+  onlyQuarantined,
+  quarantinedTests,
+  quarantineTests,
+  releaseQuarantine,
+} from "../review/known-flakes.js";
 import { shortSha } from "../text/format.js";
 
 /** The main watch: after main's head moves, run the full check on the new tip in the `_gate-main`
@@ -37,10 +46,11 @@ interface MainWatch {
 const knownFailures = new Map<string, string[]>();
 
 /** Main's known failures: the failing tests of the watch's newest verdict — main's tip, or the
- * nearest tip it checked while the newest head waits. Empty when that verdict is green, red with
- * no parsed test, or none has been recorded yet in this process. */
+ * nearest tip it checked while the newest head waits — and every quarantined flaky test
+ * (review/known-flakes.ts). Empty when the verdict is green, red with no parsed test, or none has
+ * been recorded yet in this process, and nothing is quarantined. */
 export function knownMainFailures(root: string): string[] {
-  return knownFailures.get(root) ?? [];
+  return [...new Set([...(knownFailures.get(root) ?? []), ...quarantinedTests(root)])];
 }
 
 /** The failing tests of a failed check when every one of them is a known main failure; null when
@@ -59,6 +69,46 @@ export function createMainWatch(
 ): MainWatch {
   let lastWatched: string | undefined;
   let inFlight: Promise<void> | null = null;
+  let housekeeping: Promise<void> | null = null;
+  let lastFilingWarning = "";
+
+  /** Release quarantined tests whose bug left `## Open`, and file the bugs of newly quarantined
+   * ones on main. A filing the primary checkout cannot take warns (once per reason) and is
+   * retried on a later poll. Never throws. */
+  async function settleQuarantine(): Promise<void> {
+    try {
+      const released = releaseQuarantine(root);
+      if (released.length > 0) {
+        logEventBestEffort(root, {
+          source: TUMWATER_SOURCE,
+          type: "warning",
+          message: `quarantine released ${released.join(", ")}: its BUGS.md entry is no longer open`,
+        });
+      }
+      const pending = loadQuarantine(root).filter((e) => e.bug === "");
+      if (pending.length === 0) return;
+      const outcome = await fileQuarantineBugsOnMain(root, pending);
+      if (outcome.status === "filed") {
+        markQuarantineFiled(root, outcome.bugs);
+        lastFilingWarning = "";
+        return;
+      }
+      if (outcome.reason !== lastFilingWarning) {
+        lastFilingWarning = outcome.reason;
+        logEventBestEffort(root, {
+          source: TUMWATER_SOURCE,
+          type: "warning",
+          message: `quarantined flaky tests are not filed in BUGS.md yet: ${outcome.reason}`,
+        });
+      }
+    } catch (err: unknown) {
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "warning",
+        message: `quarantine housekeeping failed: ${errorMessage(err)}`,
+      });
+    }
+  }
 
   async function watchOnce(mainHead: string, config: TumwaterConfig): Promise<void> {
     if (!detectBuildCheck(root, config)) {
@@ -75,7 +125,10 @@ export function createMainWatch(
       };
       let check = await checkMainBaseline(wt, config, hook, false, false, undefined, false, CHECK_TIER.merge);
       if (check.baseline?.status === "red") {
+        const first = check.baseline;
         check = await checkMainBaseline(wt, config, hook, true, false, undefined, false, CHECK_TIER.merge);
+        // A red the same tree's confirming re-run turns green is a flake: quarantine its tests.
+        if (check.baseline?.status === "green") quarantineTests(root, first.failingTests, (first.failingTests ?? []).join("\n"));
       }
       const baseline = check.baseline;
       const previous = lastWatched;
@@ -83,7 +136,10 @@ export function createMainWatch(
       // next poll does not start another run for it.
       if (!baseline) return void (lastWatched = await headOf(wt));
       lastWatched = baseline.sha;
-      knownFailures.set(root, baseline.status === "red" ? (baseline.failingTests ?? []) : []);
+      // A red naming only quarantined tests counts as green: no bisect, no redeploy hold.
+      const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
+      const red = baseline.status === "red" && !quarantined;
+      knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
       const counted =
         previous === undefined
           ? 1
@@ -92,13 +148,14 @@ export function createMainWatch(
         source: TUMWATER_SOURCE,
         type: "main_check",
         sha: baseline.sha,
-        status: baseline.status === "green" ? "passed" : "failed",
+        status: red ? "failed" : "passed",
         durationMs: ran ? Date.now() - started : 0,
         covered: Number.isFinite(counted) && counted > 0 ? counted : 1,
-        ...(baseline.status === "red" ? { failingTests: baseline.failingTests ?? [] } : {}),
+        ...(red ? { failingTests: baseline.failingTests ?? [] } : {}),
+        ...(quarantined ? { quarantined } : {}),
         ...(baseline.inheritedFrom !== undefined ? { inherited: true } : {}),
       });
-      if (baseline.status !== "red") return;
+      if (!red) return;
       // Once per red head: lastWatched already holds it, so a later poll does not search again.
       const found = await findRedCulprit(root, wt, config, baseline);
       if (found.kind === "culprit") {
@@ -131,6 +188,11 @@ export function createMainWatch(
 
   return {
     poll(mainHead, held, config) {
+      if (!held && !housekeeping) {
+        housekeeping = settleQuarantine().finally(() => {
+          housekeeping = null;
+        });
+      }
       if (held || mainHead === "" || inFlight || mainHead === lastWatched) return;
       inFlight = watchOnce(mainHead, config)
         .catch((err: unknown) => {
@@ -148,7 +210,7 @@ export function createMainWatch(
         });
     },
     idle: async () => {
-      while (inFlight) await inFlight;
+      while (inFlight || housekeeping) await (inFlight ?? housekeeping);
     },
   };
 }

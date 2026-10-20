@@ -5,6 +5,42 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 9/14: A flaky test is quarantined and filed in BUGS.md the first time it fails and then passes on the same tree (planned 2026-10-19 by user; requires part 7/14 landed; design in plans/fast-merge.md "Lever 4: a flaky test is quarantined the first time"; touches src/review/known-flakes.ts src/review/review-precheck.ts src/merge/merge-check-failures.ts src/merge/merge-core.ts src/baseline/main-watch.ts src/backlog/backlog-write.ts src/backlog/backlog-archive.ts docs/how-it-works.md and their tests) — done 2026-10-19
+
+**Goal.** On 2026-10-19, test/merger.test.ts "a green batch stacks every approved change…" failed 104 times between 05:00 and its fix at 12:29 (a10e2ccfe). It accounted for 104 of the 165 check-failure warnings since 2026-10-17. Each failure cost a retry and often a full requeue. Today a flake is excused only after it repeats inside a 24 h window, and the excuse still ends the gate's attempt. A test that fails and then passes on the same tree should stop costing anything at once, and bugfix should get it.
+
+**Approach.**
+- If the BUGS.md entry "An excused known-flaky gate failure ends the merge attempt as `review_error`…" is still under `## Open`, fix it first in this part, as its fix sketch says, and close it.
+- Keep a quarantine list in `.tumwater/state/quarantine.json`: `[{ test, firstSeen, lastSeen, count, bug }]`, newest 100.
+- A test is added when a check fails and an immediate re-run of the same tree passes: each failing test the failed run names joins the list. This covers:
+  - the gate's re-run;
+  - a new single re-run of a red in-lock merge check, before the pin is kept as `merge_blocked`;
+  - the watch's confirming re-run.
+- A quarantined test counts as a known failure everywhere:
+  - in part 7's subset rule;
+  - in the watch: a red that names only quarantined tests counts as green for the bisect and for redeploy, recorded with `quarantined: [tests]`;
+  - in part 4a/14's culprit search.
+- Filing: one BUGS.md `## Open` entry per newly quarantined test, via `fileBugFromText`/`appendEntry` (src/backlog/backlog-write.ts).
+  - Title it "`<test>` failed, then passed on the same tree (quarantined by tumwater YYYY-MM-DD)", with the failing output tail.
+  - Commit it on main under the merge lock and the primary-worktree lock, as `archiveFinishedOnMain` does (src/backlog/backlog-archive.ts).
+  - When the primary checkout is dirty or off main, warn and retry on a later poll.
+- Release: a quarantined test whose bug entry is no longer under `## Open` leaves the list. A later flake puts it back.
+- Fold the 24 h known-flake excuse (`isKnownFlake`, src/review/known-flakes.ts) into quarantine. The `FLAKY_WARNING_PREFIX` warnings stay, since doctor's "flaky checks" row reads them.
+
+**Files touched.**
+- Source: src/review/known-flakes.ts, src/review/review-precheck.ts, src/merge/merge-check-failures.ts, src/merge/merge-core.ts, src/baseline/main-watch.ts, src/backlog/backlog-write.ts, src/backlog/backlog-archive.ts.
+- Docs: docs/how-it-works.md.
+- Tests: test/known-flakes.test.ts, test/review-precheck.test.ts, test/main-watch.test.ts, and a merge-check test.
+
+**Acceptance criteria.**
+- A fake test fails once, then passes. The gate's re-run passes, the test is quarantined, and one BUGS.md entry is committed on main. A later change whose gate fails only that test goes on without a re-run.
+- A red in-lock merge check whose immediate re-run passes merges, and quarantines the test.
+- A watch red that names only quarantined tests starts no bisect.
+- Moving the bug entry out of `## Open` releases the test.
+- `npm test` passes.
+
+**Done.** Quarantine lives in src/review/known-flakes.ts (`quarantineTests`, `onlyQuarantined`, `releaseQuarantine`) over `.tumwater/state/quarantine.json`. The gate (review-precheck.ts), the in-lock merge check's one immediate re-run (merge-to-main.ts's `verifyMerge`, not merge-check-failures.ts: the re-run has to happen before the block, so the merge can go on) and the watch's confirming re-run add tests. `knownMainFailures` includes quarantined tests; the watch (main-watch.ts) also files and releases them each poll, the filing committed by `fileQuarantineBugsOnMain` (backlog-archive.ts) through `appendBugEntryLocked` (backlog-write.ts); main-culprit.ts treats a quarantined-only red as green. The 24 h headline excuse stays for failures that name no test, and now runs after the known-failures subset rule. The BUGS.md entry about an excused flake ending the attempt was no longer in BUGS.md, so nothing was closed.
+
 ### Fast merge, part 11/14: A failed reviewer run retries in place before the attempt ends `review_error` (planned 2026-10-19 by user; requires part 10/14 landed; design in plans/fast-merge.md "Lever 5: a diff is reviewed once"; touches src/review/review.ts src/runner/runner-pi.ts src/merge/merge-core.ts src/events/events.ts and their tests) — done 2026-10-19
 
 **Goal.** From 2026-10-17 to 2026-10-19, `review_error` ended 47 attempts and cost 34 h of pipeline time. A reviewer that timed out, was killed (exit 143), lost its connection or never stated a VERDICT ended the attempt. The change then waited for a requeue and paid the gate again. `runWithTransientRetry` (src/runner/runner-pi.ts) skips timeouts and kills. A timed-out review resumes only on the next attempt (`REVIEW_RESUME_LIMIT`).

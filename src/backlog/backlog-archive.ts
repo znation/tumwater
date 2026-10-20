@@ -34,6 +34,8 @@ import { plural } from "../text/phrases.js";
 import { collapseWhitespace, errorMessage } from "../text/text.js";
 import { FINISHED_ARCHIVES, fenceTracker, fencedHeadingTitle, type FinishedArchive } from "./backlog-md.js";
 import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-structure.js";
+import { appendBugEntryLocked } from "./backlog-write.js";
+import { formatDate } from "../text/datetime.js";
 
 /** The placeholder a role leaves under an emptied section: never archived content. */
 const PLACEHOLDER = /^_None yet\._$/;
@@ -416,4 +418,67 @@ export async function archiveAtTeamStart(root: string): Promise<void> {
   } catch (err) {
     warnEventBestEffort(root, TUMWATER_SOURCE, `finished backlog entries were not archived: ${errorMessage(err)}`);
   }
+}
+
+/** What fileQuarantineBugsOnMain did: the headings filed, or why nothing was. */
+type QuarantineFilingOutcome =
+  | { status: "filed"; bugs: Map<string, string> }
+  | { status: "skipped"; reason: string };
+
+/** Output fenced into a bug body: a fence of its own length cannot be closed by the quoted text. */
+function fencedTail(tail: string): string {
+  return ["~~~~", ...tail.replaceAll("~~~~", "~~~").split("\n").slice(-30), "~~~~"].join("\n");
+}
+
+/** File one BUGS.md `## Open` entry per newly quarantined test and commit BUGS.md on the base
+ * branch as one `tumwater(operator):` commit, under the merge lock and the primary-worktree lock
+ * exactly as archiveFinishedOnMain does. Skipped, writing nothing, when the primary checkout is
+ * off the base branch or BUGS.md has uncommitted changes; a failed commit restores BUGS.md. */
+export async function fileQuarantineBugsOnMain(
+  root: string,
+  tests: readonly { test: string; tail?: string }[],
+  opts: { lockTimeoutMs?: number } = {},
+): Promise<QuarantineFilingOutcome> {
+  return withLock(
+    mergeLockDir(root),
+    () =>
+      withStateLockAsync(primaryWorktreeLockPath(root), async (): Promise<QuarantineFilingOutcome> => {
+        const primary = await currentBranch(root);
+        const base = targetBranch(loadConfigSafe(root).config?.baseBranch, primary);
+        if (primary !== base) {
+          return { status: "skipped", reason: `your checkout is on ${primary ?? "a detached HEAD"}, not ${base}` };
+        }
+        const status = await gitTry(root, "status", "--porcelain", "--", "BUGS.md");
+        if (status === null) return { status: "skipped", reason: "could not read git status" };
+        if (status.trim() !== "" && !status.startsWith("??")) {
+          return { status: "skipped", reason: "BUGS.md has uncommitted changes" };
+        }
+        const file = path.join(root, "BUGS.md");
+        const before = readTextOrNull(file);
+        const date = formatDate(new Date());
+        const bugs = new Map<string, string>();
+        for (const { test, tail } of tests) {
+          const body = [
+            `The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves \`## Open\`. Find why it is unstable and fix it.`,
+            ...(tail ? ["", fencedTail(tail)] : []),
+          ].join("\n");
+          bugs.set(test, appendBugEntryLocked(root, `\`${test}\` failed, then passed on the same tree (quarantined by tumwater ${date})`, body));
+        }
+        const subject = stampedSubject(
+          "operator", // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
+          `File ${plural(tests.length, "quarantined flaky test", "quarantined flaky tests")} in BUGS.md`,
+        );
+        try {
+          await git(root, "add", "--", "BUGS.md");
+          await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", subject, "--", "BUGS.md");
+        } catch (err) {
+          await gitTry(root, "reset", "-q", "--", "BUGS.md");
+          if (before === null) fs.rmSync(file, { force: true });
+          else writeTextAtomic(file, before);
+          return { status: "skipped", reason: `the commit failed: ${errorMessage(err).trim().split("\n")[0]}` };
+        }
+        return { status: "filed", bugs };
+      }),
+    opts.lockTimeoutMs,
+  );
 }

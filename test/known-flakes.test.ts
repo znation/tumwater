@@ -3,7 +3,21 @@
  * The prefix extraction, the shared failure-cluster normalization, and the 24 h window. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX, flakeCounts, flakeKeys } from "../src/review/known-flakes.js";
+import fs from "node:fs";
+import path from "node:path";
+import {
+  FLAKY_WARNING_PREFIX,
+  MERGE_FLAKY_WARNING_PREFIX,
+  flakeCounts,
+  flakeKeys,
+  loadQuarantine,
+  markQuarantineFiled,
+  onlyQuarantined,
+  quarantinedTests,
+  quarantineTests,
+  releaseQuarantine,
+} from "../src/review/known-flakes.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
 const NOW = 1_700_000_000_000;
@@ -87,4 +101,28 @@ test("flakeKeys and flakeCounts read merge-check flake warnings too", () => {
   const key = "✖ the flaky test (<dur>)";
   assert.deepEqual(flakeCounts(events), [[key, 2]]);
   assert.ok(flakeKeys(events, NOW).has(key));
+});
+
+test("quarantine: a new test is added once, a repeat counts, and only-quarantined needs every test listed", () => {
+  const root = tmpdir();
+  assert.deepEqual(quarantineTests(root, ["a", "b"], "out"), ["a", "b"]);
+  assert.deepEqual(quarantineTests(root, ["a"], "out"), []);
+  assert.equal(loadQuarantine(root).find((e) => e.test === "a")?.count, 2);
+  assert.deepEqual(onlyQuarantined(root, ["a", "b"]), ["a", "b"]);
+  assert.equal(onlyQuarantined(root, ["a", "c"]), null);
+  assert.equal(onlyQuarantined(root, []), null);
+  assert.deepEqual(quarantineTests(root, undefined, ""), []);
+});
+
+test("quarantine: a filed test leaves the list once its entry is not under ## Open", () => {
+  const root = tmpdir();
+  quarantineTests(root, ["a"], "out");
+  releaseQuarantine(root);
+  assert.deepEqual(quarantinedTests(root), ["a"], "an unfiled test is never released");
+  markQuarantineFiled(root, new Map([["a", "`a` failed (quarantined)"]]));
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n### `a` failed (quarantined)\n\nbody\n");
+  assert.deepEqual(releaseQuarantine(root), []);
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n_None yet._\n\n## Fixed\n\n### `a` failed (quarantined)\n");
+  assert.deepEqual(releaseQuarantine(root), ["a"]);
+  assert.deepEqual(quarantinedTests(root), []);
 });

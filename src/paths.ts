@@ -166,6 +166,12 @@ export function baselineVerdictsPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "baseline-verdicts.json");
 }
 
+/** The quarantined flaky tests (review/known-flakes.ts): tests that failed and then passed on the
+ * same tree, newest 100, each with the BUGS.md entry filed for it. */
+export function quarantinePath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "quarantine.json");
+}
+
 /** Marker file `tumwater reset-counters` drops for a running team to consume (it must also
  * zero the runners' in-memory counters, or their next save resurrects the old values). */
 export function resetRequestPath(root: string): string {

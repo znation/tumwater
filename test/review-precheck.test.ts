@@ -17,6 +17,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { logEvent } from "../src/events/events.js";
+import { loadQuarantine } from "../src/review/known-flakes.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { createMainWatch } from "../src/baseline/main-watch.js";
 import { shortSha } from "../src/text/format.js";
@@ -938,7 +939,7 @@ test("a gate failure of only main's known failures goes on to review with no fre
     assert.equal(result.verifiedHead, undefined, "a red tree is not attested as verified");
     assert.ok(warningMessages(root).includes("gate check fails only main's known failures: X"));
     const gateRuns = buildCheckEvents(root).filter((e) => e.startsWith("gate:"));
-    assert.deepEqual(gateRuns, ["gate:failed", "gate:failed"]);
+    assert.deepEqual(gateRuns, ["gate:failed"], "known failures are not re-run");
     assert.equal(baselineRuns(), watched, "no fresh run on main");
   });
 });
@@ -950,5 +951,29 @@ test("a gate failure of a known failure plus another test is handled as before",
     assert.equal(result.decision, "failed");
     assert.equal(result.mainRed, true);
     assert.ok(!warningMessages(root).some((m) => m.includes("known failures")));
+  });
+});
+
+test("a test that fails then passes on the gate's re-run is quarantined; a later failure of only that test goes on without a re-run", async () => {
+  const flag = path.join(tmpdir(), "flaky-once");
+  const failing = "echo '✖ wobbly test (1.2ms)' >&2\nexit 1\n";
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --flaky",
+    `#!/bin/sh\nif [ -f '${flag}' ]; then exit 0; fi\ntouch '${flag}'\n${failing}`,
+  );
+  await withPi(reviewerStub(), async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "approved");
+    assert.deepEqual(
+      loadQuarantine(root).map((e) => e.test),
+      ["wobbly test"],
+    );
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:passed"]);
+    // Now it fails every time: a known failure, so the gate neither re-runs nor attributes.
+    writeScript(path.join(root, "node_modules", ".bin", "buildcheck-tool"), `#!/bin/sh\n${failing}`);
+    const again = await reviewGate(root, wt);
+    assert.equal(again.result.decision, "approved");
+    assert.equal(again.result.verifiedHead, undefined, "the tree did not pass");
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:passed", "gate:failed"], "one run, no re-run");
   });
 });

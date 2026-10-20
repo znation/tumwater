@@ -6,6 +6,7 @@ import { gitTry } from "../git/git-run.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { gateMainWorktreePath } from "../paths.js";
 import { isExemptDiff } from "../review/exemptions.js";
+import { onlyQuarantined } from "../review/known-flakes.js";
 import { readEvents } from "../events/event-read.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -75,12 +76,12 @@ export async function findRedCulprit(
       const mid = (lo + hi) >> 1;
       const verdict = await check(candidates[mid] as string, false, false, true);
       if (!verdict) return { kind: "unattributed", reason: `the check made no verdict at ${(candidates[mid] as string).slice(0, 7)}` };
-      if (verdict.status === "red") hi = mid;
+      if (verdict.status === "red" && !onlyQuarantined(root, verdict.failingTests)) hi = mid;
       else lo = mid + 1;
     }
     const commit = candidates[lo] as string;
     const confirmed = await check(commit, true, false, true);
-    if (confirmed?.status !== "red") {
+    if (confirmed?.status !== "red" || onlyQuarantined(root, confirmed.failingTests)) {
       return { kind: "unattributed", reason: `red did not reproduce at ${commit.slice(0, 7)}` };
     }
     const failingTests = red.failingTests ?? []; // G was just verified green, so it carries none to subtract

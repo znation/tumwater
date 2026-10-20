@@ -20,7 +20,7 @@ import { shortSha } from "../text/format.js";
 import { checkWaitStage, setMergeStage } from "../merge/merge-slot.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
-import { FLAKY_WARNING_PREFIX, isKnownFlake } from "./known-flakes.js";
+import { FLAKY_WARNING_PREFIX, isKnownFlake, quarantineTests } from "./known-flakes.js";
 
 /** What the pre-check decided: either the gate is resolved without a reviewer run
  * (`resolved` — a deterministic rejection, failure, or unverified tree) or the tree passed
@@ -86,7 +86,9 @@ export async function gateBuildPrecheck(
       // digest, so telemetry and bugfix can go after the flaky test). A re-run that fails
       // again goes to attribution below; a skipped one says nothing about the tree, so the
       // first failure stands.
-      const retry = await runGateCheck();
+      // A failure naming only known tests (main's, or quarantined) is judged below as it stands:
+      // a re-run could only repeat it.
+      const retry = onlyKnownMainFailures(root, outcome.failingTests) ? undefined : await runGateCheck();
       if (retry?.outcome.status === "passed") {
         // When the failed run spanned a host sleep, the pass says the tree is fine and the
         // sleep is the story — not a flaky test (BUGS.md 2026-09-30): the digest clusters
@@ -96,6 +98,8 @@ export async function gateBuildPrecheck(
         } else {
           const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
           warnEventBestEffort(root, role, `${FLAKY_WARNING_PREFIX}${flaky}`);
+          // Each test the failed run named failed and then passed on this same tree: quarantined.
+          quarantineTests(root, outcome.failingTests, outcome.outputTail);
         }
         outcome = retry.outcome;
       } else if (retry?.outcome.status === "failed") {
@@ -123,10 +127,6 @@ export async function gateBuildPrecheck(
       // verifiedHead and no harness counts sentence — the tree was not verified — so the merge
       // path's own check still judges the tree before it reaches main.
       const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
-      if (isKnownFlake(root, flaky)) {
-        warnEventBestEffort(root, role, `known-flaky failure, merge kept: ${flaky}`);
-        return {};
-      }
       // A failure that names only tests main already fails is main's, not this change's: it goes
       // on to review with no fresh run on main. No verifiedHead — the tree did not pass, so the
       // merge path must not seed a green for it — and the merge check judges it by the same rule.
@@ -134,6 +134,11 @@ export async function gateBuildPrecheck(
       if (known) {
         warnEventBestEffort(root, role, `gate check fails only main's known failures: ${known.join(", ")}`);
         return { knownMainFailures: known };
+      }
+      // The headline excuse stays for a failure that names no test: quarantine covers named ones.
+      if (isKnownFlake(root, flaky)) {
+        warnEventBestEffort(root, role, `known-flaky failure, merge kept: ${flaky}`);
+        return {};
       }
       const reasons = checkFailureReasons(check, outcome);
       // A failure that reproduced is attributed, never fixed here: the one merge slot the
