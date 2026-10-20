@@ -141,15 +141,6 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // are information.
   const NEEDS_YOU = (a) => a.tone === "red" || a.tone === "amber" || a.tone === "indigo";
   const needsYou = (alerts) => alerts.filter(NEEDS_YOU).length;
-  // The needs-you alerts' keys — the set the sound cue diffs each poll against the last poll's.
-  const needsYouKeys = (alerts) => alerts.filter(NEEDS_YOU).map((a) => a.key);
-  // The needs-you keys of the given alerts that prevKeys (the previous poll's set, or null on
-  // the first poll) lacks — exactly the alerts a new cue should announce. A null prev yields
-  // every needs-you key, so a page opened onto an already-alerting team cues once.
-  const newNeedsYouKeys = (prevKeys, alerts) => {
-    const prior = new Set(prevKeys || []);
-    return needsYouKeys(alerts).filter((k) => !prior.has(k));
-  };
   // needs-you:end
   // An activity item's kind — its icon and tone, and whether the Notable filter keeps it.
   const ROUTINE_EVENTS = ${JSON.stringify(ROUTINE_EVENTS)};

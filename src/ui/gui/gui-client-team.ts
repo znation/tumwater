@@ -136,32 +136,10 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     renderBudgetBadge(d);
     renderPauseBadge(d);
     renderStopControl(d);
-    renderSoundBadge();
   }
   // sidebar:end
 
   // ---- alerts ----
-  // needs-you-cue:start
-  // The sound half of the alerts band: when this poll's alerts carry a needs-you key the last
-  // poll lacked, play that alert's cue (playAlertCue, gui-client-sound.ts, no-ops while muted
-  // or before the first gesture). renderAlerts passes no clock, so every fresh alert in one
-  // poll lands on the same Date.now() and playAlertCue's 2 s rate limit collapses the poll
-  // to a single cue — deliberate, an alert storm is one chirp (gui-client-sound.ts). The
-  // i * 2000 spacing exists for the test path, which passes a stepped clock so each fresh
-  // alert clears the window and sounds its own cue. The keys seen now are kept for the next
-  // poll's diff; lastNeedsYouKeys starts null, so a page opened onto an already-alerting
-  // team cues once.
-  let lastNeedsYouKeys = null;
-  function cueNewNeedsYou(alerts, now) {
-    const fresh = newNeedsYouKeys(lastNeedsYouKeys, alerts);
-    lastNeedsYouKeys = needsYouKeys(alerts);
-    fresh.forEach((key, i) => {
-      const a = alerts.find((x) => x.key === key);
-      if (a) playAlertCue(a.tone, now === undefined ? undefined : now + i * 2000);
-    });
-    return fresh;
-  }
-  // needs-you-cue:end
   // Alerts are patched by key, and only their text is rewritten in place: a stall alert's
   // "no pi output for 9m47s" updates every second, and rebuilding it would swap its buttons out
   // from under a click in progress.
@@ -181,7 +159,6 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   }
   function renderAlerts(d) {
     const alerts = pageAlerts(d, offline);
-    cueNewNeedsYou(alerts);
     const box = $("alerts");
     const keep = new Set(alerts.map((a) => a.key));
     for (const el of Array.from(box.children)) if (!keep.has(el.dataset.key)) el.remove();

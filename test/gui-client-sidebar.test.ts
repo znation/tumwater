@@ -25,7 +25,6 @@ function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<s
       renderBudgetBadge: () => {},
       renderPauseBadge: () => {},
       renderStopControl: () => {},
-      renderSoundBadge: () => {},
     },
   );
   return { renderSidebar, panels };

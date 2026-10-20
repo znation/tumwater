@@ -7,16 +7,14 @@ import { PAUSE_REASON_MAX } from "../../team/team-state.js";
  * setter as the TUI's Ctrl+B) — the pause control, a menu of timed pauses with an
  * optional reason (POST /api/pause with `forSeconds` and `reason`, the CLI's
  * `pause --for`/`--reason`) that turns into a Resume button with the countdown while the
- * team is paused, and the sound toggle that mutes the alert cue (a per-browser preference,
- * no server call). Neither keeps optimistic state: after a successful
+ * team is paused. Neither keeps optimistic state: after a successful
  * POST the next status poll re-renders them from the server's answer, and a failed one toasts
  * the error and leaves the editor open. Spliced into gui-client.ts's script, where it reaches
  * the other sections' shared plumbing through that concatenation: the DOM and HTML helpers
  * ($, esc, icon), the formatters (fmtUsd, fmtCap, humanSeconds), the slot painter and toast
  * (paintPanel, showFlash), the POST helper (postJson), the click hook (onClick), the menu
  * registry (closeMenus, openMenu), the poll re-render (refresh, hoisted from gui-client-boot.ts
- * later in the join), the sound state it flips (soundMuted, setSoundMuted — gui-client-sound.ts
- * earlier in the join), and the shared page state it reads and invalidates (lastStatus,
+ * later in the join), and the shared page state it reads and invalidates (lastStatus,
  * lastPaint). Its own two popovers share their scaffolding through openPopover (each
  * supplies the html plus an onClosed that resets its flag and re-renders the slot), and
  * its two POSTs share their send-toast-close-repaint tail through the core's postAction. */
@@ -375,25 +373,4 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     if (choice) postStopSchedule({ inSeconds: Number(choice.dataset.stopin) });
   });
   // stop-control:end
-
-  // sound-control:start
-  // The sidebar's sound control, beside the theme toggle: a speaker icon that flips between
-  // the unmuted and muted glyph. A per-browser preference (setSoundMuted stores it), not team
-  // state — no server call; the choice takes effect on the next cue.
-  function soundControlHtml() {
-    return "<button type='button' class='icon-btn' id='soundtoggle' title='" +
-      (soundMuted ? "Sound is muted — click to unmute the alert cue" : "Sound is on — click to mute the alert cue") +
-      "' aria-label='" + (soundMuted ? "Unmute" : "Mute") + " the alert cue'>" +
-      icon(soundMuted ? "mute" : "sound") + "</button>";
-  }
-  function renderSoundBadge() {
-    paintPanel("soundwrap", soundControlHtml());
-  }
-  function toggleSound() {
-    setSoundMuted(!soundMuted);
-    renderSoundBadge();
-  }
-  onClick((t) => {
-    if (t.closest("#soundtoggle")) toggleSound();
-  });
-  // sound-control:end`;
+`;

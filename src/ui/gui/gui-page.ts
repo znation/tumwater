@@ -32,7 +32,6 @@ export const GUI_PAGE = `<!doctype html>
   <div class="side-top">
     <a class="brand" href="#team" aria-label="tumwater team">${LOGO_SVG}<span>tumwater</span></a>
     <div class="side-top-actions">
-      <span id="soundwrap"></span>
       <button type="button" class="icon-btn" id="themetoggle" title="Switch between light and dark" aria-label="Switch between light and dark">${iconSvg("sun", "theme-sun")}${iconSvg("moon", "theme-moon")}</button>
     </div>
   </div>

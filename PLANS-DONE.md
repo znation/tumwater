@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The web dashboard plays no sound: remove the needs-you alert cue and its sidebar mute toggle (planned 2026-10-20 by the director role; no dependency on any Planned entry; done 2026-10-20 by the feature role)
+
+**Goal.** The user decided on 2026-10-20: "Remove sound effects from the GUI. We don't need sound effects." Today a new needs-you alert plays a short Web Audio cue, and the sidebar has a speaker toggle that mutes it. Remove both completely. Afterwards the dashboard makes no sound, has no mute control, and keeps no `sound` preference. Everything else about alerts stays the same: the alerts band, the needs-you count in the page title (`needsYou`/`NEEDS_YOU`), and the alert tones.
+
+**Approach.**
+- **src/ui/gui/gui-client-sound.ts.** Delete the file (`GUI_CLIENT_SOUND_JS`, `armAudio`, `playAlertCue`, `setSoundMuted`, `soundMuted`). In **src/ui/gui/gui-client.ts**, drop its import and remove `GUI_CLIENT_SOUND_JS` from the `GUI_CLIENT_JS` join.
+- **src/ui/gui/gui-client-boot.ts.** Remove the two one-time `armAudio` listeners (pointerdown and keydown) and the "Sound:" comment above them.
+- **src/ui/gui/gui-client-team.ts.** Delete the `needs-you-cue` block: the `lastNeedsYouKeys` and `cueNewNeedsYou` markers and the comment between them. Remove the `cueNewNeedsYou(alerts)` call in the alerts renderer and the `renderSoundBadge()` call in the sidebar renderer.
+- **src/ui/gui/gui-client-model.ts.** Remove `needsYouKeys` and `newNeedsYouKeys`. The sound cue is their only user; confirm with a grep before deleting them. Keep `NEEDS_YOU` and `needsYou`.
+- **src/ui/gui/gui-client-operator.ts.** Delete the `sound-control` block (`soundControlHtml`, `renderSoundBadge`, `toggleSound`, and the `#soundtoggle` click branch). Remove the sound toggle from the module doc comment.
+- **src/ui/gui/gui-page.ts.** Remove `<span id="soundwrap"></span>`. **src/ui/gui/gui-icons.ts:** remove the `sound` and `mute` icons once a grep shows nothing else uses them.
+- **Tests.** Delete test/gui-client-sound.test.ts. In test/gui.test.ts, drop `"soundwrap"` from the page-ids list. In test/gui-client-sidebar.test.ts, drop the `renderSoundBadge` stub.
+- **Docs.** In docs/how-it-works.md, delete the sentence "A new needs-you alert also plays a short Web Audio cue, with a sidebar speaker toggle persisted across reloads" and keep the surrounding text joined. Delete docs/feature-gui-audio-sound-effects.md and docs/implementation-gui-audio-sound-effects.md: they describe the removed feature, and nothing outside dist links to them. If docs/gui.png shows the speaker icon, leave it; a screenshot refresh is a separate change.
+- A browser that stored `sound=off` keeps an unused localStorage key. That is harmless, and no migration is needed.
+
+**Files touched.** src/ui/gui/gui-client-sound.ts (deleted), src/ui/gui/gui-client.ts, src/ui/gui/gui-client-boot.ts, src/ui/gui/gui-client-team.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-operator.ts, src/ui/gui/gui-page.ts, src/ui/gui/gui-icons.ts, test/gui-client-sound.test.ts (deleted), test/gui.test.ts, test/gui-client-sidebar.test.ts, docs/how-it-works.md, docs/feature-gui-audio-sound-effects.md and docs/implementation-gui-audio-sound-effects.md (both deleted).
+
+**Acceptance criteria.**
+- In src/, test/ and docs/, a case-insensitive grep for `AudioContext|armAudio|playAlertCue|soundMuted|setSoundMuted|renderSoundBadge|soundwrap|soundtoggle|cueNewNeedsYou|newNeedsYouKeys` finds nothing.
+- test/gui.test.ts's served-page test still passes without `soundwrap`. The served client script contains no `AudioContext`; add that assertion to the existing test that checks the served `GUI_CLIENT_JS`.
+- The alerts band and the page title's needs-you count are unchanged. Their existing tests in test/gui*.test.ts pass unmodified.
+- `npm run test:gate` passes.
+
 ### An `orchestrator_stop` event names why the team stopped (a restart onto a new build, a settled `--once` round, a stop signal, or a poll-loop error), so `logs` and the failure digest no longer read a bare "tumwater stopped" (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches src/orchestrator/orchestrator.ts src/text/phrases.ts src/events/event-format.ts src/failure/failure-state-change.ts src/events/events.ts test/event-format.test.ts test/failure-state-change.test.ts test/orchestrator.e2e.test.ts test/orchestrator-redeploy.e2e.test.ts; done 2026-10-20 by the feature role)
 
 **Goal.** `runOrchestrator` (src/orchestrator/orchestrator.ts) emits `{ type: "orchestrator_stop" }` from its `finally` with no other field. `formatEvent` (src/events/event-format.ts) and `describeStateChange` (src/failure/failure-state-change.ts) both render it as the constant `ORCHESTRATOR_STOPPED` (src/text/phrases.ts), "tumwater stopped". The poll loop leaves its `while` in four ways, and each one means something different to an operator: `pollRedeploy` returns true (a self-redeploy drained and swaps builds), `pollReserveAndExit` returns true (the `--once` round settled and fired `internalStop`), the caller's signal aborted (Ctrl+C or SIGTERM, which is also how `tumwater stop` and the `--for` window's end reach the child), or a poll step threw. The orchestrator knows which one happened, but the event does not record it. Six `orchestrator_stop` events in the live log since 10-18 carry only `source`.
