@@ -66,6 +66,57 @@ test("prompt --list --role with an empty queue names the role, not an error", as
   assert.match(r.stdout, /^qa's inbox is empty$/m);
 });
 
+test("prompt --list --role takes a comma list and keeps each section's numbering", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list role comma");
+
+  let r = await cli(repo, "prompt", "--list", "--role", "qa,readme");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^every listed inbox is empty \(qa, readme\)$/m);
+
+  submitPrompt(repo, "director task");
+  submitRolePrompt(repo, "qa", "qa one");
+  submitRolePrompt(repo, "qa", "qa two");
+  submitRolePrompt(repo, "readme", "docs task");
+
+  r = await cli(repo, "prompt", "--list", "--role", "qa,readme");
+  assert.equal(r.code, 0);
+  // List-wide order (the catalog puts readme first), not the flag order.
+  const qaAt = r.stdout.indexOf("qa:");
+  const readmeAt = r.stdout.indexOf("readme:");
+  assert.ok(readmeAt >= 0 && qaAt > readmeAt, `readme before qa in:\n${r.stdout}`);
+  assert.match(r.stdout, /^1\. qa one/m);
+  assert.match(r.stdout, /^2\. qa two/m);
+  assert.match(r.stdout, /^1\. docs task/m);
+  assert.ok(!r.stdout.includes("director task"));
+
+  const single = await cli(repo, "prompt", "--list", "--role", "qa");
+  const dup = await cli(repo, "prompt", "--list", "--role", "qa,qa");
+  assert.equal(dup.stdout.replace(/\d+[smh] ago/g, ""), single.stdout.replace(/\d+[smh] ago/g, ""));
+
+  r = await cli(repo, "prompt", "--list", "--role", "director,readme", "--json");
+  assert.equal(r.code, 0);
+  const roles = new Set((JSON.parse(r.stdout) as { prompts: { role: string }[] }).prompts.map((p) => p.role));
+  assert.deepEqual([...roles].sort(), ["director", "readme"]);
+});
+
+test("prompt --list --role rejects bad comma lists; enqueue keeps a single --role", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list role comma bad");
+
+  let r = await cli(repo, "prompt", "--list", "--role", "qa,nosuch");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /nosuch/);
+  r = await cli(repo, "prompt", "--list", "--role", ",");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--role needs a role id/);
+
+  r = await cli(repo, "prompt", "--role", "qa,readme", "text");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /qa,readme/);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), []);
+});
+
 test("prompt --cancel removes the Nth queued prompt and reports its text", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt cancel");

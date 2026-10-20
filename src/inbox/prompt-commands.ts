@@ -30,7 +30,7 @@ import {
 import { movePromptToTop, type TopOutcome } from "./inbox-top.js";
 import { editInEditor } from "../cli/cli-editor.js";
 import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, renderQueuedList } from "./inbox.js";
-import { durationLabel } from "../cli/cli-args.js";
+import { durationLabel, parseRoleListFlag } from "../cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";
 import { readPromptImageFiles, type PromptImageInput } from "./inbox-attachments.js";
@@ -141,15 +141,16 @@ function readPromptImages(paths: readonly string[]): PromptImageInput[] {
 }
 
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>|top <n>>`: submit a steering prompt to the
- * director (default) or one role's queue, list what is queued with per-loop position
- * numbering, cancel a queued prompt by position, or move one to the head of its
- * queue. The dispatcher in cli.ts gates on a ready
- * repo and delegates here; list output is grouped by loop — the director first (its queue is
+ * director (default) or one role's queue (`--list` takes `--role <id>[,<id>...]`), list what
+ * is queued with per-loop position numbering, cancel a queued prompt by position, or move
+ * one to the head of its queue. The dispatcher in cli.ts gates on a ready repo and
+ * delegates here; list output is grouped by loop — the director first (its queue is
  * the shared one every pre-1/2 prompt landed in), then each role with queued prompts — so a
  * per-role queue's position numbering stays unambiguous. */
 export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   const parsed = parsePromptArgs(args);
-  if (parsed.role !== null) parsed.role = canonicalRoleId(parsed.role);
+  // --list takes a comma list (parseRoleListFlag below); every other mode keeps one id.
+  if (parsed.role !== null && parsed.mode !== "list") parsed.role = canonicalRoleId(parsed.role);
   // `--role <id>` scopes every mode to one loop's queue; the value is validated here, with
   // the same message every other --role consumer uses. The director is always valid: its
   // queue is the historical inbox (inbox.ts).
@@ -170,7 +171,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     : parsed.role !== null
       ? knownRoleIds(loadConfig(root))
       : null;
-  if (validIds !== null && parsed.role !== null && !validIds.includes(parsed.role)) {
+  if (parsed.mode !== "list" && validIds !== null && parsed.role !== null && !validIds.includes(parsed.role)) {
     fail(unknownRoleMessage(parsed.role, validIds));
   }
   const role = parsed.role;
@@ -179,14 +180,22 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     // same array, so the per-loop positions --cancel consumes can never disagree with the
     // data a script reads. Full text, verbatim: this is the inspection command that tells
     // you what a queued prompt actually says before you cancel it.
-    const prompts = queuedListRows(root, role, validIds as string[]);
+    // `--role a,b` filters the list-wide rows, so section order and each section's own
+    // numbering stay what `--cancel <n> --role <id>` takes.
+    const listRoles = parseRoleListFlag(args, validIds as string[]);
+    const allRows = queuedListRows(root, null, validIds as string[]);
+    const prompts = listRoles === null ? allRows : allRows.filter((row) => listRoles.includes(row.role));
     if (parsed.json) {
       // An empty queue still prints the document, the history --json empty-rows precedent.
       sayJson({ prompts });
       return;
     }
     if (prompts.length === 0) {
-      say(role !== null ? `${roleLabel(role)}'s inbox is empty` : "every inbox is empty");
+      say(listRoles === null
+        ? "every inbox is empty"
+        : listRoles.length === 1
+          ? `${roleLabel(listRoles[0]!)}'s inbox is empty`
+          : `every listed inbox is empty (${listRoles.join(", ")})`);
       return;
     }
     say(renderQueuedList(prompts, Date.now()));

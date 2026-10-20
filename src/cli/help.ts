@@ -402,7 +402,9 @@ Usage:
                                    images: png, jpg, jpeg, gif, webp, bmp; each at most 5
                                    MiB — saved beside the inbox file for the role's next
                                    run)
-  tumwater prompt --list [--json]  Show inbox messages, numbered, grouped by role
+  tumwater prompt --list [--role <id>[,<id>...]] [--json]
+                                   Show inbox messages, numbered, grouped by role;
+                                   --role keeps only the listed roles' sections
                                    (--json prints the {prompts} array as
                                    machine-readable data)
   tumwater prompt --cancel <n>     Remove the Nth inbox message as --list shows them; when
