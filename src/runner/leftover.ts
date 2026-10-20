@@ -105,6 +105,9 @@ export interface LeftoverContext {
    * this pin's sha, recovery returns `held` instead of re-queueing, so a 4xx config error is
    * not retried at suite speed (BUGS.md 2026-10-06). */
   mergeReviewError?: RunnerState["mergeReviewError"];
+  /** The record of a `main_red` pin waiting for the orchestrator poll's `requeueMainRedPin`
+   * (RunnerState.mainRedRetry): while set, recovery holds the pin instead of re-queuing it. */
+  mainRedRetry?: RunnerState["mainRedRetry"];
 }
 
 /** What recovery did with a leftover, for the run to end on:
@@ -125,12 +128,16 @@ export interface LeftoverContext {
  *   `conflict_handback` `queued` event;
  * - `held`: a merge failed on a permanent reviewer configuration error and the model config
  *   is unchanged — the pin stays, nothing is queued, and the run ends on the error ladder
- *   instead of re-paying a gate check at suite speed (BUGS.md 2026-10-06). */
+ *   instead of re-paying a gate check at suite speed (BUGS.md 2026-10-06);
+ * - `main_red_wait`: a merge kept the pin because main was red, and main's head has not moved
+ *   since — the pin stays, nothing is queued, and the run ends `main_red` on the idle ladder
+ *   until the orchestrator poll re-queues the pin. */
 export type LeftoverRecovery =
   | { kind: "enqueued"; entry: MergeEntry }
   | { kind: "already_queued"; entry: MergeEntry }
   | { kind: "unpinned"; sha: string }
   | { kind: "held"; sha: string; message: string }
+  | { kind: "main_red_wait"; sha: string; message: string }
   | { kind: "handback"; sha: string; summary: string; attempts: number }
   | { kind: "discarded"; sha: string; summary: string; attempts: number };
 
@@ -189,6 +196,12 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   // fixed config recovers automatically (BUGS.md 2026-10-06).
   const held = reviewHold(ctx.mergeReviewError, sha);
   if (held) return { kind: "held", sha, message: held.message };
+  // `requeueMainRedPin` owns the re-queue of a main_red pin, once main's head moves. Queuing it
+  // here would pay a full gate check against the same red head, whose result is already known.
+  if (ctx.mainRedRetry) {
+    const message = `kept change ${shortSha(sha)} waits for main to move past red ${shortSha(ctx.mainRedRetry.head)} before its next merge`;
+    return { kind: "main_red_wait", sha, message };
+  }
   const attempts = conflictAttempts(ctx.mergeConflicts, sha);
   if (attempts >= MERGE_CONFLICT_LIMIT) {
     const summary = meta.subject ?? `leftover ${shortSha(sha)}`;

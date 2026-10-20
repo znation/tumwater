@@ -110,6 +110,12 @@ export async function finishRecoveryRunPhase(
     ctx.state.lastError = recovered.message;
     return { result: "error", summary: recovered.message, recoveredLeftover: true };
   }
+  if (recovered.kind === "main_red_wait") {
+    // The pin waits for the orchestrator poll to re-queue it once main moves; `main_red` takes
+    // the idle ladder, and the worktree stays as it is.
+    ctx.state.lastError = recovered.message;
+    return { result: "main_red", summary: recovered.message, error: recovered.message, recoveredLeftover: true };
+  }
   const { entry } = recovered;
   if (recovered.kind === "enqueued") {
     ctx.setRecoveryFailure(priorMergeFailure);

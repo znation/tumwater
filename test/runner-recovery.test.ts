@@ -140,6 +140,18 @@ test("finishRecoveryRunPhase ends error on a held pin and keeps its message", as
   assert.equal(inboxSize(root, "improve"), 0, "a null prompt enqueues nothing");
 });
 
+test("finishRecoveryRunPhase ends main_red on a pin waiting for main to move", async () => {
+  const { root, wt } = await initializedWorktree();
+  const { ctx, state } = makeCtx(root);
+  const message = "kept change sha1 waits for main to move past red abc before its next merge";
+  fs.writeFileSync(path.join(wt, "dirty.txt"), "kept as is\n");
+
+  const outcome = await finishRecoveryRunPhase(ctx, { kind: "main_red_wait", sha: "sha1", message }, null, wt, undefined);
+  assert.deepEqual(outcome, { result: "main_red", summary: message, error: message, recoveredLeftover: true });
+  assert.equal(state.lastError, message);
+  assert.ok(fs.existsSync(path.join(wt, "dirty.txt")), "the worktree is not reset");
+});
+
 test("finishRecoveryRunPhase maps an already-queued pin to queued without a recovery failure", async () => {
   const root = await initializedRepo();
   const { ctx, failures } = makeCtx(root);

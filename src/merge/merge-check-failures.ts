@@ -210,8 +210,9 @@ export async function mergeBlocked(
  * the SHA it moved main to). Main green → the change broke the check: rejected deterministically
  * — reasons in lastReview for the author's next tick, the strike count reset, ref deleted,
  * review_rejected logged, no pi run. Main red → not this change's failure: "main_red" with the
- * ref kept and unreviewFailures untouched, so recovery re-merges it once main-red.ts's repair
- * turns main green. No verdict → reject, the safe default, and the reasons say so. The verdict
+ * ref kept and unreviewFailures untouched, so the orchestrator poll (requeueMainRedPin) re-queues
+ * it once main's head moves, and leftover recovery holds it until then. No verdict → reject, the
+ * safe default, and the reasons say so. The verdict
  * is persisted before it returns. A red whose headline matches a flake the gate or a merge
  * retry recorded (isKnownFlake) is excused once per headline per pin
  * (RunnerState.mergeFlakeExcused): "merge_blocked" with the ref kept, before main's verdict,

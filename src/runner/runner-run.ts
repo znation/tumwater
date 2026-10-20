@@ -495,6 +495,7 @@ async function runWithWorktreePhase(
       mergeConflicts: s.mergeConflicts,
       conflictHandback: s.conflictHandback,
       mergeReviewError: s.mergeReviewError,
+      mainRedRetry: s.mainRedRetry,
     });
     if (recovered?.kind === "handback" && plan.prompt === null) {
       // A promptless recovery run has no authoring run to hand the pin back to: leave the pin and
