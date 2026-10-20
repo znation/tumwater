@@ -375,6 +375,32 @@ test("gui /api/run carries revertSha only for a run whose commit is on main", as
   }
 });
 
+test("gui /api/run carries hasCommit, and the patch only on request", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "patch api test");
+  const onMain = sh(repo, "git", "rev-parse", "HEAD");
+  writeEvents(repo, [
+    { ts: 1000, source: "clean", type: "run_start", run: 1 },
+    { ts: 1100, source: "clean", type: "merge_done", run: 1, commit: onMain },
+    { ts: 1200, source: "clean", type: "run_end", run: 1, result: "merged" },
+    { ts: 2000, source: "clean", type: "run_start", run: 2 },
+    { ts: 2200, source: "clean", type: "run_end", run: 2, result: "no_change" },
+  ]);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const get = async (u: string) => (await (await fetch(base + u)).json()) as { hasCommit: boolean; patch?: string };
+    const plain = await get("/api/run?role=clean&run=1");
+    assert.equal(plain.hasCommit, true);
+    assert.equal("patch" in plain, false);
+    assert.match((await get("/api/run?role=clean&run=1&patch=1")).patch ?? "", /diff --git/);
+    const none = await get("/api/run?role=clean&run=2");
+    assert.equal(none.hasCommit, false);
+    assert.equal((await get("/api/run?role=clean&run=2&patch=1")).patch, "(no commit: this run sent nothing to merge)");
+  } finally {
+    server.close();
+  }
+});
+
 test("gui /api/history grows its role-filtered scan window until it reaches the role's ticks", async () => {
   // The dilution case the CLI's `history --role` fix pinned: the first window (n*2+50 events)
   // fills with a busy sibling role's run_ends, so the filtered rows fall short while the

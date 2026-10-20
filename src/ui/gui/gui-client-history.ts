@@ -104,11 +104,19 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       if (b.dataset.histRevertGo !== undefined) runHistRevert(b.dataset.histRevertGo);
       else previewHistRevert(b.dataset.histRevert);
     });
+    // The drill-down's "Show patch" / "Hide patch" button.
+    $("histbody").addEventListener("click", (ev) => {
+      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-patch]") : null;
+      if (!b) return;
+      toggleHistPatch(b.dataset.histPatch);
+    });
   }
   // history-detail:start
   // Tick drill-down state: one open card at a time, keyed "role#tick", with each key's cache
   // entry — { state: "loading" } while its fetch is in flight, { state: "error", message }
-  // when one failed, { state: "ok", text, stat, revertSha, revert? } once /api/run answered —
+  // when one failed, { state: "ok", text, stat, revertSha, hasCommit, patch?, revert? } once
+  // /api/run answered — hasCommit is whether the run pinned a commit (the Show patch button's
+  // gate), patch the button's sub-state { state: loading | ok | error, text?, message?, open? },
   // revertSha is the full sha of the change on main (null when none), revert the revert button's
   // sub-state { state: previewing | preview | reverting | done | error, preview?, message? }.
   // Cached until the view refetches (fetchHistory clears the map), so collapsing and
@@ -169,6 +177,42 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   function runHistRevert(key) {
     return histRevertStep(key, false);
   }
+  // The Show/Hide patch button under a card whose run pinned a commit, then the sub-state: the
+  // loading note, the error message, or the patch itself while open.
+  function histPatchHtml(entry, key) {
+    const p = entry.patch || {};
+    const label = p.state === "ok" && p.open ? "Hide patch" : "Show patch";
+    let out = "<button type='button' class='btn btn-sm' data-hist-patch='" + esc(key) + "'>" + label + "</button>";
+    if (p.state === "loading") out += " <span class='muted'>Loading patch…</span>";
+    else if (p.state === "error") out += "<div class='err'>" + esc(p.message || "the patch failed to load") + "</div>";
+    else if (p.state === "ok" && p.open) out += "<pre class='mono hist-detail-patch'>" + esc(p.text) + "</pre>";
+    return out;
+  }
+  // Toggle the patch for the card at key ("role#run"): flip a loaded one, else fetch it once
+  // (an errored one refetches) and repaint around the request.
+  async function toggleHistPatch(key) {
+    const entry = histDetails.get(key);
+    if (!entry || entry.state !== "ok") return;
+    if (entry.patch && entry.patch.state === "ok") {
+      entry.patch.open = !entry.patch.open;
+      renderHistory();
+      return;
+    }
+    if (entry.patch && entry.patch.state === "loading") return;
+    const at = key.lastIndexOf("#");
+    entry.patch = { state: "loading" };
+    renderHistory();
+    try {
+      const d = await getJson(
+        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&patch=1",
+      );
+      if (!d || typeof d.patch !== "string") throw new Error("/api/run answered without a patch field");
+      entry.patch = { state: "ok", text: d.patch, open: true };
+    } catch (err) {
+      entry.patch = { state: "error", message: err && err.message ? err.message : "the patch failed to load" };
+    }
+    renderHistory();
+  }
   function histDetailCardHtml(entry, key) {
     const state = entry && entry.state;
     if (!state || state === "loading") return "<div class='empty'>Loading run detail…</div>";
@@ -179,6 +223,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     return "<div class='hist-detail'><div class='hist-detail-head mono'>" + esc(head) + "</div>" +
       (trail ? "<pre class='mono'>" + esc(trail) + "</pre>" : "<div class='empty'>No events in this run's block.</div>") +
       (entry.stat ? "<pre class='mono hist-detail-stat'>" + esc(entry.stat) + "</pre>" : "") +
+      (entry.hasCommit === true ? histPatchHtml(entry, key) : "") +
       (entry.revertSha ? histRevertHtml(entry, key) : "") +
       "</div>";
   }
@@ -209,7 +254,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
         throw new Error(
           "/api/run answered " + role + " run " + tick + " without a text field — the running tumwater may not match this dashboard",
         );
-      histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null });
+      histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null, hasCommit: d.hasCommit === true });
     } catch (err) {
       histDetails.set(key, { state: "error", message: err && err.message ? err.message : "Run detail unavailable" });
     }

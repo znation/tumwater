@@ -571,3 +571,44 @@ test("clicking a By model button fetches that model's table; the chip clears it"
   assert.ok(!(paths[paths.length - 1] ?? "").includes("model="), "the chip refetches without model=");
   assert.equal(el("histmodel").style.display, "none");
 });
+
+test("the drill-down's Show patch button loads the patch on demand and toggles it", async () => {
+  const urls: string[] = [];
+  let fail = false;
+  const scope = clientScope<{
+    histDetails: Map<string, Record<string, unknown>>;
+    histDetailCardHtml(entry: unknown, key: string): string;
+    toggleHistPatch(key: string): Promise<void>;
+  }>(HISTORY_REGIONS, ["histDetails", "histDetailCardHtml", "toggleHistPatch"], {
+    icon: iconStub,
+    renderHistory: () => {},
+    getJson: (url: string) => {
+      urls.push(url);
+      return fail ? Promise.reject(new Error("boom")) : Promise.resolve({ patch: "+a < b" });
+    },
+  });
+  const { histDetails, histDetailCardHtml, toggleHistPatch } = scope;
+  const card = () => histDetailCardHtml(histDetails.get("clean#9"), "clean#9");
+
+  histDetails.set("clean#7", { state: "ok", text: "h", hasCommit: false });
+  histDetails.set("clean#8", { state: "ok", text: "h" });
+  assert.doesNotMatch(histDetailCardHtml(histDetails.get("clean#7"), "clean#7"), /data-hist-patch/);
+  assert.doesNotMatch(histDetailCardHtml(histDetails.get("clean#8"), "clean#8"), /data-hist-patch/);
+  histDetails.set("clean#9", { state: "ok", text: "h", hasCommit: true });
+  assert.match(card(), /data-hist-patch='clean#9'>Show patch</);
+
+  fail = true;
+  await toggleHistPatch("clean#9");
+  assert.match(card(), /<div class='err'>boom<\/div>/);
+  fail = false;
+  await toggleHistPatch("clean#9");
+  assert.equal(urls.length, 2, "an errored patch refetches");
+  assert.match(urls[0]!, /&patch=1$/);
+  assert.match(card(), /hist-detail-patch'>\+a &lt; b</);
+  assert.match(card(), />Hide patch</);
+
+  await toggleHistPatch("clean#9");
+  assert.equal(urls.length, 2, "hiding does not refetch");
+  assert.doesNotMatch(card(), /hist-detail-patch/);
+  assert.match(card(), />Show patch</);
+});

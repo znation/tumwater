@@ -32,7 +32,14 @@ import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js
 import { eventRole, readEvents } from "../events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
 import { readTickDetail } from "../tick/tick-detail-data.js";
-import { renderTickDetail, tickDetailStat, tickMergedSha, tickNotFoundMessage } from "../tick/tick-detail.js";
+import {
+  renderTickDetail,
+  tickCommitSha,
+  tickDetailPatch,
+  tickDetailStat,
+  tickMergedSha,
+  tickNotFoundMessage,
+} from "../tick/tick-detail.js";
 import { resolveRevertTarget } from "../operator/revert.js";
 import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -333,7 +340,10 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
  * CLI's exact not-found wording,
  * never a crash. `revertSha` is the run's landed commit's full sha when it is on the base branch
  * of a primary checkout that is on it (resolveRevertTarget, the revert cores' own check), else
- * null — the drill-down offers its revert button only when it is set. Reads files directly, so
+ * null — the drill-down offers its revert button only when it is set. `hasCommit` says whether
+ * the run pinned a commit (tickCommitSha), for the "Show patch" button; `patch` — the same text
+ * `history --patch` prints — is added only when the `patch` flag is present, whatever its
+ * value, so the default expand costs no extra `git show`. Reads files directly, so
  * it works whether or not the team is running. */
 export async function handleTick(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
@@ -352,6 +362,8 @@ export async function handleTick(q: URLSearchParams, res: http.ServerResponse, r
     text: renderTickDetail(detail),
     stat: await tickDetailStat(root, detail),
     revertSha: target?.ok ? target.full : null,
+    hasCommit: tickCommitSha(detail) !== null,
+    ...(q.get("patch") !== null ? { patch: await tickDetailPatch(root, detail) } : {}),
   });
 }
 /** Handle GET /api/role?role=<id>: one role's inspection payload — rolePayload's object,

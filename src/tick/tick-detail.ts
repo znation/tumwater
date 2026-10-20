@@ -51,7 +51,7 @@ function tickNotFoundLastMessage(role: string): string {
 
 /** The commit a tick pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
  * block carrying a non-empty one, else null. The one rule both the header's sha and --stat use. */
-function tickCommitSha(d: TickDetail): string | null {
+export function tickCommitSha(d: TickDetail): string | null {
   const queued = d.events.find(
     (e) => (e.type === "merge_queued" || e.type === "merge_done") && typeof e.commit === "string" && e.commit !== "", 
   );
@@ -84,8 +84,9 @@ export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
 
 /** The pinned commit's full patch for a tick, for `history --patch`. Like tickDetailStat it
  * shows the commit the tick pinned (tickCommitSha), not the `merged as` sha, so the stat and
- * the patch describe the same commit; the placeholder texts are the stat's. */
-function tickDetailPatch(root: string, d: TickDetail): Promise<string> {
+ * the patch describe the same commit; the placeholder texts are the stat's. GET /api/run is its
+ * second caller (the dashboard's "Show patch" button). */
+export function tickDetailPatch(root: string, d: TickDetail): Promise<string> {
   return tickCommitShow(root, tickCommitSha(d), "--patch");
 }
 
