@@ -490,6 +490,3 @@ export const LOOP_RANK_RULES = ROLE_RANK_RULES;
 
 /** @deprecated Use sortRolesByState. */
 export const sortLoopsByState = sortRolesByState;
-
-/** @deprecated Use roleRowCells. */
-export const loopRowCells = roleRowCells;

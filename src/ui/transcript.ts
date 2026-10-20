@@ -244,7 +244,7 @@ function feedEntries(value: TranscriptValue, line: string): void {
   if (value.entries.length > MAX_ENTRIES) value.entries.splice(0, value.entries.length - MAX_ENTRIES);
 }
 
-/** Rendered transcript lines for the last `limit` entries of a loop's pi log, oldest first.
+/** Rendered transcript lines for the last `limit` entries of a role's pi log, oldest first.
  * Returns [] when the role has no log yet.
  *
  * The raw log is append-only while pi runs and rotates at `logMaxBytes` (default 16MB), so

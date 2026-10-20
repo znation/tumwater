@@ -7,7 +7,7 @@
  * rejection never shows as "reviewing" on the dashboards and consumes no reviewer budget. */
 
 import type { ReviewContext, GateResult } from "./review.js";
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
@@ -43,7 +43,7 @@ interface GatePrecheckResult {
  * model-verdict path. */
 export async function gateBuildPrecheck(
   ctx: ReviewContext,
-  state: LoopState,
+  state: RunnerState,
   head: string,
   reject: (reasons: string[], durationMs?: number) => Promise<GateResult>,
 ): Promise<GatePrecheckResult> {

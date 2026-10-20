@@ -174,7 +174,7 @@ test("isNegatedRefusal negates none and n/a under typographic quoting", () => {
 
 // BUGS.md 2026-09-28: a whole-reason absence statement (`TUMWATER_REFUSED: nothing to do`,
 // `nothing to refuse`, `nothing refused`, `no refusal`) left isNegatedRefusal false — the
-// guard only knew `none`/`n/a` as the negating token, but a loop that found no work reaches
+// guard only knew `none`/`n/a` as the negating token, but a role that found no work reaches
 // for these phrases too, and the same hard-reset destroyed its finished, tested work. The
 // match stays anchored: the phrase followed by a word (`nothing to do with the review`) is a
 // real reason and stays a refusal.

@@ -5,7 +5,7 @@ import path from "node:path";
 import { createMainWatch } from "../src/baseline/main-watch.js";
 import { attributeRedCheck } from "../src/merge/merge-check-failures.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { warnEvent } from "../src/events/events.js";
@@ -40,10 +40,10 @@ function red(): { check: BuildCheck; outcome: BuildCheckOutcome } {
 
 /** A role state carrying strike-count history, so the test can watch what attribution does
  * to it (the reset on a rejection, the leave-alone on a main_red). */
-function seededState(root: string): LoopState {
-  const s = freshLoopState(ROLE);
+function seededState(root: string): RunnerState {
+  const s = freshRunnerState(ROLE);
   s.unreviewFailures = 3;
-  saveLoopState(root, s);
+  saveRunnerState(root, s);
   return s;
 }
 
@@ -55,8 +55,8 @@ async function attribute(
   root: string,
   scope: Parameters<typeof attributeRedCheck>[3],
   failure: { check: BuildCheck; outcome: BuildCheckOutcome },
-  state: LoopState = seededState(root),
-): Promise<{ head: string; state: LoopState; result: Awaited<ReturnType<typeof attributeRedCheck>> }> {
+  state: RunnerState = seededState(root),
+): Promise<{ head: string; state: RunnerState; result: Awaited<ReturnType<typeof attributeRedCheck>> }> {
   const head = mainSha(root);
   await setRef(root, mergeRefName(ROLE), head);
   const result = await attributeRedCheck(
@@ -97,7 +97,7 @@ test("attributeRedCheck rejects deterministically when main's own tip is green",
     assert.deepEqual(reviewRejectedEvents(root), [
       { loop: ROLE, head, reasons: [`check failed (\`npm run test\`): ${CHANGE_REASON}`] },
     ]);
-    const saved = loadLoopState(root, ROLE);
+    const saved = loadRunnerState(root, ROLE);
     assert.equal(saved.unreviewFailures, 0, "the reset was persisted");
     assert.equal(saved.lastReview?.verdict, "reject", "the review was persisted");
   } finally {
@@ -120,7 +120,7 @@ test("attributeRedCheck keeps the ref once for a known-flake red, then attribute
     assert.equal(first.state.lastReview, undefined, "no reject was recorded");
     assert.match(first.state.lastError ?? "", /known-flaky failure, merge kept/);
     assert.match(first.state.lastError ?? "", /the flaky test/);
-    assert.ok(loadLoopState(root, ROLE).mergeFlakeExcused, "the excuse was persisted");
+    assert.ok(loadRunnerState(root, ROLE).mergeFlakeExcused, "the excuse was persisted");
     const second = await attribute(root, "merge check", flaky, first.state);
     assert.equal(second.result, "rejected", "a repeat of the excused headline is attributed");
     assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin was deleted");
@@ -147,7 +147,7 @@ test("attributeRedCheck returns main_red and keeps the change recoverable when m
       "the pin was kept so recovery can re-merge once main is green",
     );
     assert.deepEqual(reviewRejectedEvents(root), [], "no rejection event for main's own red");
-    const saved = loadLoopState(root, ROLE);
+    const saved = loadRunnerState(root, ROLE);
     assert.equal(saved.lastError, state.lastError, "the attribution was persisted");
   } finally {
     restore();
@@ -166,7 +166,7 @@ test("attributeRedCheck rejects with the unavailable why when main's baseline ca
   ]);
   assert.equal(state.unreviewFailures, 0, "the strike count reset with the rejection");
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin was deleted");
-  const saved = loadLoopState(root, ROLE);
+  const saved = loadRunnerState(root, ROLE);
   assert.equal(saved.lastReview?.verdict, "reject", "the rejection was persisted");
 });
 
@@ -218,10 +218,10 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
 
 test("attributeRedCheck still rejects when the events feed is unwritable", async () => {
   // rejectChange (src/merge/merge-check-failures.ts) writes review_rejected LAST, after the durable
-  // state (recordReview, saveLoopState) and the pin's deletion. An EISDIR on the feed must not turn
-  // the terminal "rejected" into a thrown merge error that leaves the pin deleted while the caller
-  // believes the attribution failed. Seed main's baseline green so mainTipVerdict is a cache hit
-  // and this test isolates rejectChange's own append.
+  // state (recordReview, saveRunnerState) and the pin's deletion. An EISDIR on the feed must not
+  // turn the terminal "rejected" into a thrown merge error that leaves the pin deleted while the
+  // caller believes the attribution failed. Seed main's baseline green so mainTipVerdict is a cache
+  // hit and this test isolates rejectChange's own append.
   const { root } = baselineFixture(ROLE, "attr-green-unwritable");
   const restore = fakeNpm("echo ok; exit 0");
   try {
@@ -234,7 +234,7 @@ test("attributeRedCheck still rejects when the events feed is unwritable", async
 
     assert.equal(result, "rejected", "the deterministic reject stands despite the broken feed");
     assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin was still deleted");
-    assert.equal(loadLoopState(root, ROLE).lastReview?.verdict, "reject", "the rejection was persisted");
+    assert.equal(loadRunnerState(root, ROLE).lastReview?.verdict, "reject", "the rejection was persisted");
   } finally {
     restore();
   }

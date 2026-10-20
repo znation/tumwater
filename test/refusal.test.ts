@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { handleRefusal, newlyRefusedTitles, refusalContradiction, withoutBlockedPlanRefusals, type RefusalContext } from "../src/verdict/refusal.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { TickResult } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import type { LoopState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state.js";
 import { assertClean, commitIn, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { readEvents } from "../src/events/event-read.js";
 import { piRunResult } from "./fakes/fake-pi.js";
@@ -51,7 +51,7 @@ test("a refusal with a markdown note commits only the note and merges it directl
   fs.appendFileSync(path.join(wt, "seed.txt"), "bad\n");
   fs.writeFileSync(path.join(wt, "broken.ts"), "export const broken = true;\n");
 
-  const state: LoopState = { ...freshLoopState("improve"), runs: 7 };
+  const state: RunnerState = { ...freshRunnerState("improve"), runs: 7 };
   const { ctx, merges } = makeCtx(root);
   const outcome = await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "it would delete user data" }));
 
@@ -68,7 +68,7 @@ test("a refusal with a markdown note commits only the note and merges it directl
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "seed\n", "the code change was discarded");
   assert.ok(!fs.existsSync(path.join(wt, "broken.ts")), "untracked half-work is cleaned");
 
-  // The note commit merges directly — through the loop's shared merge wiring, once.
+  // The note commit merges directly — through the runner's shared merge wiring, once.
   assert.equal(merges.length, 1);
   assert.equal(merges[0]!.summary, "refused: it would delete user data");
 
@@ -84,7 +84,7 @@ test("a refusal with no note resets the worktree and never merges", async () => 
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "broken.ts"), "export const broken = true;\n");
 
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const before = mainSha(root);
   const { ctx, merges } = makeCtx(root);
   const outcome = await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "half-baked" }));
@@ -103,7 +103,7 @@ test("a bare sentinel falls back to a generic reason", async () => {
   const { root, wt } = await initializedWorktree();
   fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** no reason written\n");
 
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx } = makeCtx(root);
   const outcome = await handleRefusal(ctx, state, wt, refusedPi());
 
@@ -142,7 +142,7 @@ test("a failed note merge records lastError and still reports the commit", async
   const { root, wt } = await initializedWorktree();
   fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** it would delete user data\n");
 
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, merges } = makeCtx(root, "merge_conflict");
   const outcome = await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "it would delete user data" }));
 
@@ -160,7 +160,7 @@ test("a failed note merge records lastError and still reports the commit", async
 test("a merged refusal note clears a superseded rejection unless a revision is owed", async () => {
   const { root, wt } = await initializedWorktree();
   fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** it would delete user data\n");
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   state.lastReview = { verdict: "reject", reasons: ["old objection"], at: 1 };
   const { ctx } = makeCtx(root);
   await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "it would delete user data" }));
@@ -168,7 +168,7 @@ test("a merged refusal note clears a superseded rejection unless a revision is o
 
   const { root: pendingRoot, wt: pendingWt } = await initializedWorktree();
   fs.appendFileSync(path.join(pendingWt, "PLANS.md"), "\n**Refused:** still risky\n");
-  const pending: LoopState = freshLoopState("improve");
+  const pending: RunnerState = freshRunnerState("improve");
   pending.lastReview = { verdict: "reject", reasons: ["old objection"], at: 1 };
   pending.revision = { sha: "deadbeef", round: 1, at: 2 };
   const { ctx: pendingCtx } = makeCtx(pendingRoot);
@@ -177,7 +177,7 @@ test("a merged refusal note clears a superseded rejection unless a revision is o
 
   const { root: failedRoot, wt: failedWt } = await initializedWorktree();
   fs.appendFileSync(path.join(failedWt, "PLANS.md"), "\n**Refused:** no\n");
-  const failed: LoopState = freshLoopState("improve");
+  const failed: RunnerState = freshRunnerState("improve");
   failed.lastReview = { verdict: "reject", reasons: ["old objection"], at: 1 };
   const { ctx: failedCtx } = makeCtx(failedRoot, "merge_conflict");
   await handleRefusal(failedCtx, failed, failedWt, refusedPi({ refusedReason: "no" }));
@@ -213,7 +213,7 @@ test("a refusal note on a plan still blocked by a planned prerequisite is droppe
   const { root, wt } = await worktreeWithPlans(base);
   fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(base, "### S, part 2/2"));
   const { ctx, merges } = makeCtx(root);
-  const outcome = await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  const outcome = await handleRefusal(ctx, freshRunnerState("improve"), wt, refusedPi({ refusedReason: "x" }));
   assert.equal(outcome.result, "refused");
   assert.equal(outcome.commit, undefined);
   assert.equal(merges.length, 0);
@@ -232,7 +232,7 @@ test("the dropped-refusal PLANS.md rewrite is atomic and leaves no tmp remnant",
   const { root, wt } = await worktreeWithPlans(base);
   fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(base, "### S, part 2/2"));
   const { ctx } = makeCtx(root);
-  await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  await handleRefusal(ctx, freshRunnerState("improve"), wt, refusedPi({ refusedReason: "x" }));
   // The refusal note is gone from the worktree's PLANS.md and the two plan entries survive;
   const plans = fs.readFileSync(path.join(wt, "PLANS.md"), "utf8");
   assert.ok(!plans.includes(REFUSED_LINE), "the blocked refusal note is dropped");
@@ -248,7 +248,7 @@ test("a refusal note on a plan whose prerequisite is Done merges as usual", asyn
   const { root, wt } = await worktreeWithPlans(base);
   fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(base, "### S, part 2/2"));
   const { ctx, merges } = makeCtx(root);
-  const outcome = await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  const outcome = await handleRefusal(ctx, freshRunnerState("improve"), wt, refusedPi({ refusedReason: "x" }));
   assert.ok(outcome.commit);
   assert.equal(merges.length, 1);
   const refused = readEvents(root).filter((e) => e.type === "entry_refused");
@@ -264,7 +264,7 @@ test("only the blocked plan's note is dropped when an eligible entry is refused 
     refuseUnder(refuseUnder(base, "### S, part 2/2"), "### E: eligible"),
   );
   const { ctx, merges } = makeCtx(root);
-  const outcome = await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  const outcome = await handleRefusal(ctx, freshRunnerState("improve"), wt, refusedPi({ refusedReason: "x" }));
   assert.ok(outcome.commit);
   assert.equal(merges.length, 1);
   const plans = fs.readFileSync(path.join(wt, "PLANS.md"), "utf8");
@@ -285,7 +285,7 @@ test("one run refusing a plan and a bug names both, plan first", async () => {
   fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(plans, "### P: plan"));
   fs.writeFileSync(path.join(wt, "BUGS.md"), refuseUnder(bugs, "### B: bug"));
   const { ctx } = makeCtx(root);
-  await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  await handleRefusal(ctx, freshRunnerState("improve"), wt, refusedPi({ refusedReason: "x" }));
   const refused = readEvents(root).filter((e) => e.type === "entry_refused");
   assert.deepEqual(refused[0]!.entries, ["P: plan", "B: bug"]);
 });
@@ -315,7 +315,7 @@ test("a refusal note commit carries the Model line", async () => {
   fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** not worth it\n");
   const { ctx } = makeCtx(root);
   ctx.modelLine = "Model: default · backend pi";
-  await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "not worth it" }));
+  await handleRefusal(ctx, freshRunnerState("improve"), wt, refusedPi({ refusedReason: "not worth it" }));
 
   const lines = sh(wt, "git", "log", "-1", "--format=%B").trimEnd().split("\n");
   assert.match(lines[lines.length - 2]!, /^Run: improve #/);

@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { APPROVED_PATCH_IDS_MAX, REVIEW_RESUME_LIMIT, saveLoopState, type LoopState } from "../runner/runner-state.js";
+import { APPROVED_PATCH_IDS_MAX, REVIEW_RESUME_LIMIT, saveRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { modelSelectorField, resolvedAgentConfig, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
@@ -58,11 +58,11 @@ async function restoreReviewedHead(wt: string, head: string, root: string, role:
 }
 
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
- * a warning: a misconfigured reviewer model must not be able to wedge a loop into re-reviewing
+ * a warning: a misconfigured reviewer model must not be able to wedge a role into re-reviewing
  * the same commit forever. */
 export const REVIEW_FAILURE_LIMIT = 3;
 
-/** Everything reviewAheadOfMain needs from its caller (a LoopRunner tick or recovery). */
+/** Everything reviewAheadOfMain needs from its caller (a RoleRunner tick or recovery). */
 export interface ReviewContext {
   root: string;
   role: string;
@@ -92,7 +92,7 @@ export interface ReviewContext {
    * the revision had to resolve. A recovery merge carries none. */
   priorReview?: PriorReview;
   /** The reviewer's pi runs (the review run and the verdict follow-up), through the owning
-   * loop's shared transient-retry wiring (LoopPi.runGatePi — BUGS.md 2026-10-01: a 429 in the
+   * runner's shared transient-retry wiring (RunnerPi.runGatePi — BUGS.md 2026-10-01: a 429 in the
    * gate gets the same retry as an authoring run). Every caller supplies it; the tests'
    * gateCtx wires the bare runPi so the offline fake-pi shim still drives the reviewer. */
   runGatePi: GateRunsPi["runGatePi"];
@@ -146,15 +146,15 @@ export interface GateResult {
    * succeed until the config changes. The merge path holds the pin instead of re-queuing it
    * at suite speed (BUGS.md 2026-10-06). Absent on every other failure. */
   configError?: boolean;
-  /** The reviewer's pi run, for usage folding into the loop totals — absent when no review
+  /** The reviewer's pi run, for usage folding into the runner totals — absent when no review
    * ran (gate disabled, exempt diff, or an already-approved HEAD or patch). */
   run?: PiRunResult;
   /** The follow-up turn that recovered (or failed to recover) a missing VERDICT line, when
-   * one ran — folded into the loop totals by the caller right after `run`. Absent when the
+   * one ran — folded into the runner totals by the caller right after `run`. Absent when the
    * reviewer's own reply parsed (no follow-up needed) or there was no session to continue. */
   followUpRun?: PiRunResult;
   /** The no-re-run nudge turn (requestNoRerun, BUGS.md 2026-10-02), when one ran — folded
-   * into the loop totals like followUpRun. Absent when the reviewer never broke the
+   * into the runner totals like followUpRun. Absent when the reviewer never broke the
    * no-re-run rule (or there was no session to continue). */
   nudgeRun?: PiRunResult;
   /** Internal to reviewAheadOfMain: the attempt failed in a way worth retrying in place. Never
@@ -205,7 +205,7 @@ async function leaseCheckSlot(ctx: ReviewContext, head: string): Promise<SlotLea
 
 /** Start the gate check in `lease`'s checkout of `head`. A rejection is recorded, not applied:
  * resetting the change's branch is left to reviewAttempt, after the reviewer has stopped. */
-function startOverlappedCheck(ctx: ReviewContext, state: LoopState, head: string, lease: SlotLeaseHandle): CheckOverlap {
+function startOverlappedCheck(ctx: ReviewContext, state: RunnerState, head: string, lease: SlotLeaseHandle): CheckOverlap {
   const overlap = { abort: new AbortController(), done: false } as CheckOverlap;
   const reject = async (reasons: string[]): Promise<GateResult> => {
     overlap.rejectedReasons = reasons;
@@ -263,7 +263,7 @@ function combineSignals(a: AbortSignal | undefined, b: AbortSignal): AbortSignal
  * reviewer applies extra scrutiny to whether the work should exist at all. */
 async function reviewAttempt(
   ctx: ReviewContext,
-  state: LoopState,
+  state: RunnerState,
   summary: string | undefined,
   commitBody: string | undefined,
   highFriction: boolean | undefined,
@@ -415,7 +415,7 @@ async function reviewAttempt(
   // a claude review's resume guard looks under the same dir the review run writes its transcript
   // to — a team that set one must resume under it, not the default ~/.claude.
   const claudeConfigDir = resolvedAgentConfig(config, "claude").configDir;
-  // A progressing timeout left this run's session for the next attempt (LoopState.reviewResume):
+  // A progressing timeout left this run's session for the next attempt (RunnerState.reviewResume):
   // resume it only while the patch is unchanged (the same diff), the resume budget lasts, and
   // the directory still holds a gate session to `--continue`. Otherwise the stale marker is
   // cleared and this attempt reviews the change from scratch.
@@ -432,7 +432,7 @@ async function reviewAttempt(
     // Count the resume before the run: a crash must not let the same session be resumed
     // forever without ever spending the budget.
     priorResume.attempts += 1;
-    saveLoopState(root, state);
+    saveRunnerState(root, state);
   } else {
     state.reviewResume = undefined;
   }
@@ -457,10 +457,10 @@ async function reviewAttempt(
   // mid-review is distinguishable from a crash mid-author-run on resume (stray edits are the
   // reviewer's then, not the author's). Cleared at tick end alongside `running`.
   state.phase = "review";
-  saveLoopState(root, state);
+  saveRunnerState(root, state);
 
   // Freeze the revision the diff is measured from once, before the run: main moves while a
-  // merge is approved, and a reviewer comparing against the live `main` ref reads another loop's
+  // merge is approved, and a reviewer comparing against the live `main` ref reads another role's
   // just-merged work as this change reverting it (BUGS.md 2026-10-06). The prompt names this SHA
   // and tells the reviewer to compare against it instead.
   const base = await changeBaseRev(wt, mainBranch);
@@ -702,7 +702,7 @@ async function reviewAttempt(
           attempts: resumeAttempts,
           at: Date.now(),
         };
-        saveLoopState(root, state);
+        saveRunnerState(root, state);
       } else {
         state.reviewResume = undefined;
       }
@@ -780,7 +780,7 @@ async function reviewAttempt(
  * costs nothing. See reviewAttempt for the rest of the gate's contract. */
 export async function reviewAheadOfMain(
   ctx: ReviewContext,
-  state: LoopState,
+  state: RunnerState,
   summary?: string,
   commitBody?: string,
   highFriction?: boolean,

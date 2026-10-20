@@ -1,7 +1,7 @@
 // vocabulary: plain
 /** The machine-detectable half of the reply contract every pi run must follow: the
- * TUMWATER_NOTHING_TO_DO sentinel a loop emits when it found nothing to do, the
- * TUMWATER_REFUSED line a loop emits when it declines its task, and the review gate's VERDICT
+ * TUMWATER_NOTHING_TO_DO sentinel a role emits when it found nothing to do, the
+ * TUMWATER_REFUSED line a role emits when it declines its task, and the review gate's VERDICT
  * line. This module owns both halves of that contract: the constants and detection the harness
  * uses to parse pi's replies — so the run's stream parser (pi-stream.ts) and the review gate
  * (review.ts) detect it without reaching into prompt construction, and the verdict line's shape
@@ -35,7 +35,7 @@ claim gets it rejected; a small, correct change is welcome:
 - Verify after your LAST edit, backlog files included: an edit after the last green run is
   unverified.`;
 
-/** Sentinel a loop's pi run outputs when it found nothing worth doing (REPLY_ENDINGS below
+/** Sentinel a role's pi run outputs when it found nothing worth doing (REPLY_ENDINGS below
  * instructs it). */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
 
@@ -45,7 +45,7 @@ export function isNothingToDo(text: string): boolean {
   return text.includes(NOTHING_TO_DO);
 }
 
-/** Sentinel a loop's pi run outputs when it declines its task (see plans/refusal-and-thrash.md):
+/** Sentinel a role's pi run outputs when it declines its task (see plans/refusal-and-thrash.md):
  * `TUMWATER_REFUSED: <one-line reason>`. The reason is the durable objection — it becomes the
  * commit subject of the refusal note and the tick's lastSummary. */
 export const REFUSED_SENTINEL = "TUMWATER_REFUSED";
@@ -122,7 +122,7 @@ export function extractRefusal(text: string): string | null {
  *   alike, each of ‘ ’ “ ” decorating either side of the token (a model's quote direction
  *   is not reliable, so both classes carry all four);
  * - the whole reason itself stating absence: `nothing to do`, `nothing to refuse`,
- *   `nothing refused`, `no refusal` — a loop that found no work reaches for these phrases
+ *   `nothing refused`, `no refusal` — a role that found no work reaches for these phrases
  *   exactly as it reaches for `none`, and they are not objections (BUGS.md 2026-09-28);
  * - with trailing sentence punctuation: `None.`, `N/A!`, `none…` — punctuation is formatting
  *   (the one-character ellipsis beside its ASCII dots);
@@ -167,7 +167,7 @@ export function isNegatedRefusal(reason: string | null | undefined): boolean {
     // `none "nothing to do"`, `none “nothing to do”`). The hyphen stays in the class beside the
     // en/em dashes: `none - …` is the same appended-note dress as `none — …` and dropping it
     // would regress `n/a - …` replies to genuine refusals. The alternation also carries the
-    // whole-reason absence statements a loop writes instead of `none` (`nothing to do`, `nothing to
+    // whole-reason absence statements a role writes instead of `none` (`nothing to do`, `nothing to
     // refuse`, `nothing refused`, `no refusal` — same negating intent, BUGS.md 2026-09-28).
     // Anchored right after the token, so a reason that continues with a word (`none of the
     // attempted fixes work`, `nothing to do with the review`, `no refusal of my own`) stays a

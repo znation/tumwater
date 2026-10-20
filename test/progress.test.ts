@@ -165,7 +165,7 @@ test("parseProgress skips empty text blocks when capturing the work item", () =>
   assert.equal(parseProgress(lines, 0).currentWork, "the real item");
 });
 
-test("readLiveProgress reads the loop's raw log and reports quiet time", () => {
+test("readLiveProgress reads the role's raw log and reports quiet time", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
   const written = Date.now();

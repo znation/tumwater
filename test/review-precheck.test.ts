@@ -16,7 +16,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { tryLeaseSlot } from "../src/git/worktree-pool.js";
 import { readSlotsState } from "../src/git/slots-state.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { logEvent } from "../src/events/events.js";
 import { loadQuarantine } from "../src/review/known-flakes.js";
@@ -304,7 +304,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
   const movedMainSha = uniqueMain(root);
   const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike against this head stays exactly as it was
     const head = await headOf(wt, "HEAD");
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
@@ -353,7 +353,7 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
   };
   const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(ctx, state);
     assert.equal(result.decision, "rejected", "the author's failure is the safe default");
     assert.ok(!fs.existsSync(marker), "no pi run");
@@ -425,7 +425,7 @@ test("a repeat failure matching a recorded flake keeps the commit and counts no 
   });
   const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
     const head = await headOf(wt, "HEAD");
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
@@ -464,7 +464,7 @@ test("a repeat failure with no recorded flake re-runs main fresh instead of trus
   seedGreenMain(root); // an earlier merge verified this SHA green; the test now fails on it
   const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
     const head = await headOf(wt, "HEAD");
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
@@ -502,7 +502,7 @@ test("a configured check.command gates a merge in a repo with no npm install at 
   // Main is green (seeded), so the repeat failure is the change's: rejected with no pi run.
   const marker = path.join(tmpdir(), "pi-ran-command-check");
   await withPi(reviewerStub(marker), async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(ctx, state);
     assert.equal(result.decision, "rejected", "the configured check's failure gates the merge");
     assert.equal(result.run, undefined, "the reviewer never ran: the check decided alone");
@@ -525,7 +525,7 @@ test("a configured check.command gates a merge in a repo with no npm install at 
     config: { ...defaultConfig(), check: { command: "true" } },
   };
   await withPi(`printf '%s\n' '${assistantLine("VERDICT: approve\n1. checked the diff", { tokens: 17, output: 17, cost: 0.02 })}'`, async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(greenCtx, state);
     assert.equal(result.decision, "approved");
     const events = readEvents(root);
@@ -603,7 +603,7 @@ test("an approved change cleanly rebased onto a moved main reuses its approval: 
   const { root, wt } = await greenBuildFixture();
   const runs = path.join(tmpdir(), "pi-runs");
   await withPi(`echo run >> '${runs}'\nprintf '%s\n' '${assistantLine("VERDICT: approve\n1. solid")}'`, async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const approvedHead = await headOf(wt, "HEAD");
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
     assert.equal(state.approvedPatchIds?.length, 1, "the approval is keyed by its patch-id too");
@@ -634,11 +634,11 @@ test("main editing next to the change's hunk, or a restart, keeps the approval",
   const { root, wt } = await greenBuildFixture();
   const runs = path.join(tmpdir(), "pi-runs");
   await withPi(`echo run >> '${runs}'\n${reviewerStub()}`, async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
     // A restart: the runner state round-trips through its file.
-    saveLoopState(root, state);
-    const reloaded = loadLoopState(root, ROLE);
+    saveRunnerState(root, state);
+    const reloaded = loadRunnerState(root, ROLE);
     await moveMainAndRebase(root, wt);
     const result = await reviewAheadOfMain(gateCtx(root, wt, 2), reloaded);
     assert.equal(result.decision, "approved");
@@ -651,7 +651,7 @@ test("a rebase that changes the patch is re-reviewed", async () => {
   const { root, wt } = await greenBuildFixture();
   const runs = path.join(tmpdir(), "pi-runs");
   await withPi(`echo run >> '${runs}'\n${reviewerStub()}`, async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
     const approvedPatch = state.approvedPatchIds?.[0];
     await moveMainAndRebase(root, wt);
@@ -673,7 +673,7 @@ test("a reused approval still rejects a tree whose pre-check now fails", async (
   const red = path.join(tmpdir(), "red");
   const { root, wt } = await gateBuildFixture(`test ! -f '${red}'`, undefined, "build", "echo ok");
   await withPi(reviewerStub(), async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
     await moveMainAndRebase(root, wt);
     fs.writeFileSync(red, "");
@@ -821,7 +821,7 @@ test("a no-re-run nudge that dies on the backend is strike-free and its error na
       `printf '%s\n' '${assistantLine("I ran the suite to be sure; no verdict yet")}'`,
     ].join("\n"),
     async () => {
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it is
       const result = await reviewAheadOfMain({ ...gateCtx(green.root, green.wt) }, state);
       assert.equal(result.decision, "failed");
@@ -844,7 +844,7 @@ test("a pre-check that sleeps and fails on every attempt keeps the commit and re
     "buildcheck-tool --fail",
     "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
   );
-  const state = freshLoopState(ROLE);
+  const state = freshRunnerState(ROLE);
   state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
   const head = await headOf(wt, "HEAD");
   // runScopedBuildCheck retries a slept failure internally, so two attempts, four samples —

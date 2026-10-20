@@ -20,7 +20,7 @@ import { logEventBestEffort } from "../events/events.js";
 import { clearSupersededRejection } from "../tick/tick-apply.js";
 import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 
 /** Handling a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended
  * with TUMWATER_REFUSED. Only the markdown objection note may merge — it is the durable record
@@ -32,7 +32,7 @@ import type { LoopState } from "../runner/runner-state.js";
  * nothing but add a failure mode for a record that is not code. Split out of runner.ts — which
  * keeps the tick lifecycle around it — because this is a self-contained concern with its own
  * policy and its own git surface (commit-only-the-notes / reset); the only things it borrows
- * from the loop are identity, the pre-commit counters for the trailer, and the loop's shared
+ * from the runner are identity, the pre-commit counters for the trailer, and the runner's shared
  * merge wiring. */
 
 /** A self-contradicted refusal: the reply declares a refusal yet also carries a SUMMARY —
@@ -94,9 +94,9 @@ export function newlyRefusedTitles(baseMd: string, headMd: string, section: stri
     .map((e) => stripEntryStamp(e.title));
 }
 
-/** What handleRefusal needs from its owning loop: identity, this tick's assistant-turn count
- * (deliberately not on LoopState — see TickUsage.turns, src/tick/tick-usage.ts), and the
- * loop's shared merge step so a conflict-resolution run folds into the same tick counters as
+/** What handleRefusal needs from its owning runner: identity, this tick's assistant-turn count
+ * (deliberately not on RunnerState — see TickUsage.turns, src/tick/tick-usage.ts), and the
+ * runner's shared merge step so a conflict-resolution run folds into the same tick counters as
  * an authoring run. */
 export interface RefusalContext {
   /** The trailer's Model line for the seam the refused run started on. */
@@ -107,7 +107,7 @@ export interface RefusalContext {
   /** Assistant turns folded into this tick so far (main + transient retry) — the same field
    * the friction flag reads. */
   turns: number;
-  /** Merge the worktree branch on main with the loop's shared wiring. */
+  /** Merge the worktree branch on main with the runner's shared wiring. */
   merge(wt: string, summary: string): Promise<TickResult>;
 }
 
@@ -115,7 +115,7 @@ export interface RefusalContext {
  * in `state.lastError` and reported through the "refused" result like any other non-merge. */
 export async function handleRefusal(
   ctx: RefusalContext,
-  state: LoopState,
+  state: RunnerState,
   wt: string,
   pi: PiRunResult,
 ): Promise<TickOutcome> {

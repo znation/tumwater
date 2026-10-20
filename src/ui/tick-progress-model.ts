@@ -1,19 +1,19 @@
 // vocabulary: plain
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
 
 /** The in-flight tick's PROGRESS display model (split from status-model.ts, which keeps the
- * loop-phase ladder, the merge cells, and the row derivations): how a running tick renders
+ * role-phase ladder, the merge cells, and the row derivations): how a running tick renders
  * its live detail — elapsed, turn, context, current tool, stall — derived from the live log
  * tail (progress-data.ts) and shared by BOTH observer surfaces: the terminal table
  * (status-render.ts's state cell) and the JSON/GUI payload (status-payload.ts), plus the
- * phase ladder's in-flight branches (status-model.ts's loopPhase), so the three cannot
+ * phase ladder's in-flight branches (status-model.ts's rolePhase), so the three cannot
  * drift apart. This is the disk-reading half: every helper here reads (or accepts a caller's
  * precomputed) live log tail, while status-model.ts derives labels from the snapshot. */
 
 /** Seconds/minutes/hours elapsed formatting shared by the progress helpers and the phase
- * ladder's elapsed branches (loopPhase's merge and parked branches). The hours bucket
+ * ladder's elapsed branches (rolePhase's merge and parked branches). The hours bucket
  * rounds to whole minutes off the total, so a rounded-up 59m5Xs carries into the next hour
  * ("2h0m"); rounding the remainder alone would print the impossible "1h60m". */
 export function duration(ms: number): string {
@@ -24,12 +24,12 @@ export function duration(ms: number): string {
   return `${Math.floor(totalMinutes / 60)}h${totalMinutes % 60}m`;
 }
 
-/** The label for a loop's in-flight tick: `<label>` plus how long it has been running
+/** The label for a role's in-flight tick: `<label>` plus how long it has been running
  * ("working 3m", "reviewing 2m") — shared by workingDetail and the review-gate branch of
- * loopPhase so their elapsed formatting cannot drift. A tick with no recorded start time
+ * rolePhase so their elapsed formatting cannot drift. A tick with no recorded start time
  * renders as just the bare label. (A merge's elapsed is its marker's, never the tick's —
- * loopPhase's merge branch builds that head itself.) */
-export function inFlightLabel(s: LoopState, label: string): string {
+ * rolePhase's merge branch builds that head itself.) */
+export function inFlightLabel(s: RunnerState, label: string): string {
   const elapsed = s.lastRunStartedAt ? duration(Date.now() - s.lastRunStartedAt) : "";
   return `${label} ${elapsed}`.trim();
 }
@@ -42,13 +42,13 @@ export function inFlightLabel(s: LoopState, label: string): string {
  * quiet time measured from before the tick even began, tripping the STALL alert on every
  * such tick's baseline (BUGS.md 2026-09-30). Once the run writes, its mtime is inside the
  * tick, so quietMs can never exceed the tick's own age and the honest quiet measure survives.
- * Applied by every progress reader (workingDetail, the reviewing branch of loopPhase, the
- * token metrics, loopRowCells' precomputed tail) and by status-render's state cell via
+ * Applied by every progress reader (workingDetail, the reviewing branch of rolePhase, the
+ * token metrics, roleRowCells' precomputed tail) and by status-render's state cell via
  * tickProgress, so the TUI, the GUI payload, and the alert cannot drift apart. A state with
  * no recorded start (a stale `running` flag after a crash) cannot be judged and keeps the
  * tail as before. `p` may be undefined (the caller's "no tail fetched" sentinel) or null
  * ("no log"); both read as no progress. */
-function progressOfTick(s: LoopState, p: LiveProgress | null | undefined): LiveProgress | null {
+function progressOfTick(s: RunnerState, p: LiveProgress | null | undefined): LiveProgress | null {
   if (!p) return null;
   if (s.lastRunStartedAt === undefined) return p;
   const elapsed = Math.max(0, Date.now() - s.lastRunStartedAt);
@@ -87,19 +87,19 @@ export function inFlightDetail(head: string, p: LiveProgress | null): string {
   return parts.join(" · ");
 }
 
-/** Which pi run kind (progress-data.ts's ProgressRunKind) a loop's in-flight cells should read:
+/** Which pi run kind (progress-data.ts's ProgressRunKind) a role's in-flight cells should read:
  * the review gate's reviewer run ("gate") while the tick is under review — its `session`
  * event is the log's newest and its counts are what "reviewing" describes — the author's
  * own run ("author") for every other in-flight phase. One home for the rule so the TUI
  * table and the GUI payload cannot drift (the precomputed `live` tail must name the same
- * run the phase label does). status-model's loopRowCells is its only reader. */
-export function progressKind(s: LoopState): ProgressRunKind {
+ * run the phase label does). status-model's roleRowCells is its only reader. */
+export function progressKind(s: RunnerState): ProgressRunKind {
   return s.phase === "review" ? "gate" : "author";
 }
 
 /** progressOfTick with the tail read folded in — the one home for the
  * `live === undefined ? readLiveProgress(...) : live` idiom. Callers holding this frame's
- * already-fetched tail pass it as `live` (renderStatus reads once per running loop and
+ * already-fetched tail pass it as `live` (renderStatus reads once per running role and
  * threads it through every helper); standalone callers pass undefined and this reads the
  * role's log itself — the author accumulator by default, the gate one via `kind`. Every
  * tail-reading caller outside this module routes through it; status-model.ts's staged branch
@@ -107,18 +107,18 @@ export function progressKind(s: LoopState): ProgressRunKind {
  * a freshly read gate tail for the merge label, not a per-frame threaded one. */
 export function tickProgress(
   root: string,
-  s: LoopState,
+  s: RunnerState,
   live?: LiveProgress | null,
   kind: ProgressRunKind = "author",
 ): LiveProgress | null {
   return progressOfTick(s, live === undefined ? readLiveProgress(root, s.role, kind) : live);
 }
 
-/** The state cell for a working loop: elapsed · turns · live context · current tool. Pass
- * `live` — this frame's already-fetched tail (renderStatus reads once per running loop and
+/** The state cell for a working role: elapsed · turns · live context · current tool. Pass
+ * `live` — this frame's already-fetched tail (renderStatus reads once per running role and
  * threads it through every helper) — to avoid re-reading the log; without it, this reads on
  * its own for standalone callers. */
-export function workingDetail(root: string, s: LoopState, live?: LiveProgress | null): string {
+export function workingDetail(root: string, s: RunnerState, live?: LiveProgress | null): string {
   const p = tickProgress(root, s, live);
   return inFlightDetail(inFlightLabel(s, "working"), p);
 }

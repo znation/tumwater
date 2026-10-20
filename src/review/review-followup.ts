@@ -15,7 +15,7 @@ import { cappedRequestTimeouts } from "../request-timeouts.js";
 import type { ReviewContext } from "./review.js";
 
 /** Hard caps on the VERDICT follow-up turn: it should take one short reply on a warm session,
- * so it never gets the review run's own budget (mirrors LoopPi's SUMMARY-request caps). */
+ * so it never gets the review run's own budget (mirrors RunnerPi's SUMMARY-request caps). */
 const VERDICT_REQUEST_TIMEOUT_S = 900;
 const VERDICT_REQUEST_QUIET_S = 300;
 
@@ -78,7 +78,7 @@ async function runFollowupTurn(
 }
 
 /** Ask the reviewer's own session (--continue) for the missing VERDICT line: one tightly
- * bounded turn on the just-finished review's session, mirroring LoopPi.requestSummary on the
+ * bounded turn on the just-finished review's session, mirroring RunnerPi.requestSummary on the
  * author side (BUGS.md 2026-09-29). Null when there is no session to continue — the caller
  * then counts the strike exactly as before. The run is returned even when it failed so the
  * caller can honor a shutdown abort and fold the spend. */

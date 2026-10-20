@@ -160,7 +160,7 @@ function textWithoutVerdictLines(text: string, matches: VerdictMatch[]): string 
  * revision re-review is asked to check the prior objections FIRST, so a reviewer may open its
  * numbered reasons with a statement that they are all resolved — e.g. "Prior objections 1–10
  * are all resolved — …". That resolution is not an objection, yet every reasons[0] consumer
- * (the gate's detail, a loop's lastError, the digest's rejection clusters, the author's
+ * (the gate's detail, a role's lastError, the digest's rejection clusters, the author's
  * next-tick note) would name it as the outstanding rejection and tell the author to fix it.
  * Dropping only from the FRONT keeps a line that reports an objection still open — those are
  * real objections and stay. */

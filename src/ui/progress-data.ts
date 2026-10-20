@@ -16,7 +16,7 @@ import { nonNegativeNumber } from "../files/json-object.js";
 import { worktreesDir } from "../paths.js";
 import { statRoleLog, readCompleteLines, type TailState, withTail } from "../files/tail.js";
 
-/** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
+/** Live view of an in-flight tick, derived from the tail of the role's raw pi log.
  * The log is append-only across ticks AND runs: a role makes several kinds of pi run into
  * the one `piLogPath` file — the authoring tick's run in its own worktree, and the review
  * gate's runs (reviewer, conflict resolver) in a lease's pooled slot (legacy logs: its
@@ -50,7 +50,7 @@ export interface LiveProgress {
    * streaming — readLiveProgress turns the first one past the configured stall threshold into
    * stalledTool. Tail state like every other field: freshProgress restores it to undefined. */
   openToolCalls?: OpenToolCall[];
-  /** What the loop is working on: first assistant text of the current run (~60 chars). */
+  /** What the role is working on: first assistant text of the current run (~60 chars). */
   currentWork?: string;
   /** The agent backend that ran this run, from the `tumwater_run` marker
    * (plans/agent-backends.md). Undefined for a legacy log with no marker — treated as pi, the
@@ -256,7 +256,7 @@ function feedLine(progress: LiveProgress, event: ProgressEvent): void {
             nonNegativeNumber(usage.totalTokens, 0),
           );
         }
-        // The first text the loop speaks in this run is its work item ("I'll implement plan X");
+        // The first text the role speaks in this run is its work item ("I'll implement plan X");
         // later messages never replace it.
         if (!progress.currentWork) progress.currentWork = workItemFromContent(event.message.content);
       }
@@ -364,7 +364,7 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
   feedLine(tail[tail.cur], event);
 }
 
-/** Live progress for one of a loop's pi run kinds (`author` — the in-flight tick's run in
+/** Live progress for one of a role's pi run kinds (`author` — the in-flight tick's run in
  * the role's own worktree, the default; `gate` — the review gate's runs in a leased pool
  * slot, what the reviewing cell shows), or null when there is no log yet. The raw log is
  * append-only while pi runs and every run starts with a `tumwater_run` marker

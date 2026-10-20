@@ -6,7 +6,7 @@ import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review/review.js
 import { aheadOfMain, headOf, patchId } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, REVIEW_RESUME_LIMIT } from "../src/runner/runner-state.js";
+import { freshRunnerState, REVIEW_RESUME_LIMIT } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsLogPath, piLogPath, reviewRunSessionDir } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
@@ -48,7 +48,7 @@ test("gate approves a good diff, records the HEAD, and discards the reviewer's s
       assert.equal(state.phase, "review"); // persisted before the run; the tick clears it at end
       // The reviewer's only output channel is the verdict: its stray edit is reset away.
       assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), committed);
-      // Reviewer usage is surfaced for folding into the loop totals.
+      // Reviewer usage is surfaced for folding into the runner totals.
       assert.equal(result.run?.outputTokens, 17);
       assert.equal(warningMessages(root).filter((m) => m.includes("reviewer moved HEAD")).length, 0);
   });
@@ -111,7 +111,7 @@ test("a fresh merge's review_start carries no revision marker", async () => {
   });
 });
 
-test("the reviewer's pi run goes through the loop's runGatePi wiring, not bare runPi", async () => {
+test("the reviewer's pi run goes through the runner's runGatePi wiring, not bare runPi", async () => {
   // BUGS.md 2026-10-01: the gate called runPi directly, so a 429 in the merge gate failed
   // the review with no transient retry and no rate-limit hold stamp — the one surface the
   // shared retry's "EVERY pi run" doc promised and review.ts alone skipped. The pin: the
@@ -278,7 +278,7 @@ test("a verdict-less completed reply is recovered with one follow-up turn, not a
       assert.equal(state.unreviewFailures, 0); // a recovered verdict is a successful review
       assert.equal(state.lastApprovedHead, head);
       assert.equal(await aheadOfMain(wt, "main"), 1);
-      // Both runs ride back for usage folding into the loop totals.
+      // Both runs ride back for usage folding into the runner totals.
       assert.ok(result.run);
       assert.ok(result.followUpRun);
       assert.equal(eventsOfType(root, "review_failed").length, 0);
@@ -335,7 +335,7 @@ test("a follow-up turn that itself fails (backend dies) is strike-free, like the
 test("gate discards the leftover after three failed reviews of one HEAD", async () => {
   const { root, wt } = await gateFixture();
   await withPi(`printf '%s\n' '${assistantLine("still no verdict here")}'`, async () => {
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       for (let tick = 1; tick < REVIEW_FAILURE_LIMIT; tick++) {
         assert.equal((await reviewAheadOfMain(gateCtx(root, wt, tick), state)).decision, "failed");
         assert.equal(await aheadOfMain(wt, "main"), 1); // still kept while under the limit
@@ -368,7 +368,7 @@ test("a reviewer killed once (exit 143) is retried in the same verify and approv
   const { root, wt } = await gateFixture();
   const counter = path.join(tmpdir(), "runs");
   await withPi(flakyReviewer(counter, 1, "exit 143"), async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2 }, state);
     assert.equal(result.decision, "approved");
     assert.equal(fs.readFileSync(counter, "utf8").trim(), "2");
@@ -383,7 +383,7 @@ test("three failed reviewer runs end the attempt failed, as before", async () =>
   const { root, wt } = await gateFixture();
   const counter = path.join(tmpdir(), "runs");
   await withPi(flakyReviewer(counter, 99, "exit 143"), async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2 }, state);
     assert.equal(result.decision, "failed");
     assert.equal(fs.readFileSync(counter, "utf8").trim(), "3");
@@ -397,7 +397,7 @@ test("a verdict-less reviewer is retried, and only the final attempt counts the 
   const counter = path.join(tmpdir(), "runs");
   const reply = `printf '%s\\n' '${assistantLine("no verdict")}'; exit 0`;
   await withPi(flakyReviewer(counter, 99, reply), async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2 }, state);
     assert.equal(result.decision, "failed");
     assert.equal(state.unreviewFailures, 1);
@@ -408,7 +408,7 @@ test("a provider configuration error is not retried", async () => {
   const { root, wt } = await gateFixture();
   const counter = path.join(tmpdir(), "runs");
   await withPi(flakyReviewer(counter, 99, "echo 'HTTP 401: invalid api key' >&2; exit 1"), async () => {
-    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2 }, freshLoopState(ROLE));
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2 }, freshRunnerState(ROLE));
     assert.equal(result.decision, "failed");
     assert.equal(result.configError, true);
     assert.equal(fs.readFileSync(counter, "utf8").trim(), "1");
@@ -422,7 +422,7 @@ test("a retry waits out a provider hold without spending a retry", async () => {
     let polls = 0;
     // Held for the first three polls of each wait; the failures during a hold cost nothing.
     const reviewHeld = () => polls++ % 4 < 3 && polls < 8;
-    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2, reviewHeld }, freshLoopState(ROLE));
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2, reviewHeld }, freshRunnerState(ROLE));
     assert.equal(result.decision, "approved");
   });
 });
@@ -434,7 +434,7 @@ test("gate does not discard the commit when the reviewer run itself fails", asyn
   // failures delete a complete commit the reviewer never saw (BUGS.md 2026-09-20).
   const { root, wt } = await gateFixture();
   await withPi(`echo 'oMLX HTTP 400: prefill_memory_exceeded' >&2\nexit 1`, async () => {
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       for (let tick = 1; tick <= REVIEW_FAILURE_LIMIT + 2; tick++) {
         const result = await reviewAheadOfMain(gateCtx(root, wt, tick), state);
         assert.equal(result.decision, "failed");
@@ -456,7 +456,7 @@ test("a reviewer that outruns review.timeoutSeconds fails in its own budget: com
       const config = defaultConfig();
       config.review.timeoutSeconds = 2;
       assert.ok(config.runTimeoutSeconds > 60); // only the review budget can end this run in time
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const startedAt = Date.now();
       const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
       const elapsedMs = Date.now() - startedAt;
@@ -476,7 +476,7 @@ test("a reviewer that outruns review.timeoutSeconds fails in its own budget: com
 test("a progressing timeout says the next attempt continues this review, not 'preserved for resume'", async () => {
   // runPi's progressing-timeout text is written for authoring ticks, which do resume their
   // session and worktree (BUGS.md 2026-09-29). The reviewer's commit stays on the branch and
-  // the gate leaves the session for the next attempt to continue (LoopState.reviewResume), so
+  // the gate leaves the session for the next attempt to continue (RunnerState.reviewResume), so
   // the recorded failure names that — not the raw "preserved for resume" whose resume the
   // gate could not honor before (BUGS.md 2026-09-30). The session file must exist for the
   // promise to be one the next attempt can keep (TOUCH_SESSION).
@@ -488,7 +488,7 @@ test("a progressing timeout says the next attempt continues this review, not 'pr
     async () => {
       const config = defaultConfig();
       config.review.timeoutSeconds = 1;
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
       assert.equal(result.decision, "failed");
       assert.match(
@@ -512,7 +512,7 @@ test("a progressing timeout with no session to resume records a from-scratch re-
   await withPi(`printf '%s\n' '${assistantLine("reading the diff…")}'\nwhile true; do sleep 0.05; echo '${assistantLine("still reading")}'; done`, async () => {
       const config = defaultConfig();
       config.review.timeoutSeconds = 1;
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
       assert.equal(result.decision, "failed");
       assert.match(
@@ -546,7 +546,7 @@ test("a progressing timeout leaves a resume marker and the next review continues
     async () => {
       const config = defaultConfig();
       config.review.timeoutSeconds = 1;
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const firstCtx = gateCtx(root, wt, 1);
       const first = await reviewAheadOfMain({ ...firstCtx, config }, state);
       assert.equal(first.decision, "failed");
@@ -605,7 +605,7 @@ test("a resumed review's verdict follow-up continues the resumed session's direc
       `printf '%s\\n' '${assistantLine("VERDICT: approve\\n1. recovered")}'`,
     ].join("\n"),
     async () => {
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       state.reviewResume = {
         patchId: (await patchId(wt, "main", head)) ?? "",
         sessionDir: resumeDir,
@@ -637,7 +637,7 @@ test("a resume marker for a different patch reviews fresh and clears", async () 
   const { root, wt } = await gateFixture();
   const calls: Array<{ continueSession?: boolean; prompt: string }> = [];
   await withPi(`printf '%s\\n' '${assistantLine("VERDICT: approve")}'`, async () => {
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const staleDir = reviewRunSessionDir(root, ROLE, "old-run");
       fs.mkdirSync(staleDir, { recursive: true });
       fs.writeFileSync(path.join(staleDir, "s.jsonl"), "");
@@ -664,7 +664,7 @@ test("after REVIEW_RESUME_LIMIT resumes the next review starts from scratch", as
   const { root, wt, head } = await gateFixture();
   const calls: Array<{ continueSession?: boolean; prompt: string }> = [];
   await withPi(`printf '%s\\n' '${assistantLine("VERDICT: approve")}'`, async () => {
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const spentDir = reviewRunSessionDir(root, ROLE, "spent-run");
       fs.mkdirSync(spentDir, { recursive: true });
       fs.writeFileSync(path.join(spentDir, "s.jsonl"), "");
@@ -706,7 +706,7 @@ test("a stalled tool call during review warns in the event feed while the watchd
       const config = defaultConfig();
       config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
       config.toolCallStallSeconds = 2; // ...but the warning lands first
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       // On logical time (watchdogClock, test/helpers/wait.ts): once the reviewer has named its
       // call,
       // move the watchdog past the stall threshold and then the quiet window.
@@ -892,7 +892,7 @@ test("gate skips the run when this exact HEAD was already approved", async () =>
   const { root, wt, head } = await gateFixture();
   const marker = piRanMarker();
   await withPi(`touch '${marker}'`, async () => {
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       state.lastApprovedHead = head; // e.g. a merge_blocked retry of the same commit
       const result = await reviewAheadOfMain(gateCtx(root, wt), state);
       assert.equal(result.decision, "approved");

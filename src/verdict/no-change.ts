@@ -12,7 +12,7 @@ interface NoChangeDiagnosis {
   /** True when the run did real work but was truncated before it could declare its outcome:
    * no nothing-to-do sentinel AND a final message with neither text nor tool call (see
    * PiRunResult.finalMessageContentless). Such a tick is NOT fulfilled — a director prompt
-   * goes back to the inbox, a role loop resumes its compacted session next tick. */
+   * goes back to the inbox, a role resumes its compacted session next tick. */
   cutOff: boolean;
   /** Diagnostic notes for the warning event when no sentinel appeared (empty otherwise): an
    * abnormal stopReason, missing assistant text, a contentless final message (likely cut off
@@ -49,8 +49,8 @@ const NO_CHANGE_ANSWER_MAX = 100;
  * reply to a question-only prompt, which ends `no_change` with no SUMMARY block (BUGS.md
  * 2026-10-14). Everything before the sentinel line, trimmed; null when the reply carried no
  * text of its own above the sentinel (a bare sentinel, or a cut-off run whose reply never
- * reached one). Only a prompt-driven (director) tick treats it as the tick's summary — a role
- * loop's bare nothing-to-do stays summary-less, decided by the verdict, not here. */
+ * reached one). Only a prompt-driven (director) tick treats it as the tick's summary — a role's
+ * bare nothing-to-do stays summary-less, decided by the verdict, not here. */
 export function extractNoChangeAnswer(finalText: string): string | null {
   const idx = finalText.indexOf(NOTHING_TO_DO);
   if (idx < 0) return null;
