@@ -1195,10 +1195,20 @@ test("revert succeeds on main, prints the new head, and revers to a clean tree",
   const r = await cli(repo, "revert", before);
   assert.equal(r.code, 0);
   assert.match(r.stdout, /main is now [0-9a-f]{8}/);
-  assert.match(r.stdout, /may redo the work/);
+  assert.doesNotMatch(r.stdout, /may redo/);
   assert.notEqual(headSha(repo), before, "the revert committed the inverse");
   assert.equal(sh(repo, "git", "status", "--porcelain"), "", "tree is clean after the revert");
   assert.equal(sh(repo, "git", "log", "-1", "--format=%s"), `tumwater(operator): Revert ${before.slice(0, 8)}`);
+});
+
+test("revert of a role-stamped commit names that role as the one that may redo the work", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli revert role");
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "work\n");
+  commitIn(repo, "tumwater(feature): add x");
+  const r = await cli(repo, "revert", headSha(repo));
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /the feature role may redo the work, so cancel or edit its PLANS\.md\/BUGS\.md entry if it should not/);
 });
 
 test("revert rejects a flag-shaped token as a flag, before a lookup or a write", async () => {

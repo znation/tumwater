@@ -175,7 +175,7 @@ export interface CommitMetadata {
 
 /** The harness-stamped commit-subject prefix — the `tumwater(<role>):` part run-stage.ts (and
  * refusal.ts) adds before the SUMMARY line, space included when a summary follows. */
-const SUBJECT_PREFIX = /^tumwater\([^)]+\):(?:\s|$)/;
+const SUBJECT_PREFIX = /^tumwater\(([^)]+)\):(?:\s|$)/;
 
 /** Build a harness-stamped commit subject: `tumwater(<role>): <summary>` — the exact shape
  * SUBJECT_PREFIX below matches, so the stamp's writers (run-stage.ts's normal tick commit and
@@ -195,6 +195,13 @@ export function commitSubject(message: string): string | undefined {
   if (!m) return line;
   const rest = line.slice(m[0].length).trim();
   return rest === "" ? undefined : rest;
+}
+
+/** The `<role>` of a commit subject the harness stamped (`tumwater(<role>): …`); undefined for an
+ * unstamped line. */
+export function stampedRole(message: string): string | undefined {
+  const line = (message.split("\n", 1)[0] ?? "").trim();
+  return SUBJECT_PREFIX.exec(line)?.[1];
 }
 
 /** Reconstruct the review-gate metadata from a commit message the harness stamped itself.

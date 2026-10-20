@@ -8,7 +8,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { headSha, makeRepo, seedCommit, sh, writeConfig } from "./fixtures/repo-fixtures.js";
-import { previewRevert, revertMergedCommit } from "../src/operator/revert.js";
+import { stampedRole } from "../src/git/commit-message.js";
+import { previewRevert, revertFollowUp, revertMergedCommit } from "../src/operator/revert.js";
 
 test("reverting a rename commit commits both halves and leaves the tree clean", async () => {
   const repo = makeRepo();
@@ -217,4 +218,20 @@ test("revertMergedCommit and previewRevert refuse a merge commit", async () => {
   assert.equal(statusPorcelain(repo), "");
   const p = await previewRevert(repo, "HEAD");
   assert.deepEqual(p, { ok: false, error: r.error });
+});
+
+test("stampedRole reads the role of a stamped subject only", () => {
+  assert.equal(stampedRole("tumwater(feature): add x"), "feature");
+  assert.equal(stampedRole("tumwater(operator): Revert abc\n\nbody"), "operator");
+  assert.equal(stampedRole("work to undo"), undefined);
+});
+
+test("revertFollowUp names a role, and is null when no role made the commit", () => {
+  assert.equal(revertFollowUp("work to undo"), null);
+  assert.equal(revertFollowUp("tumwater(operator): Revert abc"), null);
+  assert.equal(revertFollowUp("tumwater(tumwater): Revert abc"), null);
+  assert.equal(
+    revertFollowUp("tumwater(feature): add x"),
+    "the feature role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not",
+  );
 });

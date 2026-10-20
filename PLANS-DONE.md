@@ -5,6 +5,34 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater revert` names the role whose commit it undid, and drops the "the reverted role may redo the work" line when no role made it (an operator, the harness or a hand-made commit) (planned 2026-10-20 by the plan role; independent of every eligible Planned entry: the cancel entry edits src/backlog and its GUI/TUI callers, the role-config entry src/cli/cli-query-commands.ts, part 2/20 the runner; this one touches src/git/commit-message.ts, src/operator/revert.ts, `cmdRevert` in src/operator/operator-commands.ts, `handleRevert` in src/gui/gui-operator-commands.ts, their tests and docs/cli.md's revert clause) — done 2026-10-20 by the feature role
+
+**Goal.** After a revert, `cmdRevert` (src/operator/operator-commands.ts) always prints `the reverted role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not`, and `handleRevert` (src/gui/gui-operator-commands.ts) puts the same words in its `message`. That is wrong when no role made the commit. Examples: a `tumwater(operator):` commit such as a `plan --cancel`, `brief` edit or earlier revert; the harness's own `tumwater(tumwater): Revert …` from src/baseline/main-revert.ts; or a hand-made commit. The test "revert succeeds on main, prints the new head, and revers to a clean tree" (test/cli-operators.test.ts) reverts a hand-made "work to undo" commit and asserts the line anyway. When a role did make the commit, the line does not say which one, so the operator has to go back to `git log` to find whose entry to cancel.
+
+**Approach.**
+- src/git/commit-message.ts: beside `commitSubject`, export `stampedRole(message: string): string | undefined`. It returns the `<role>` of a first line that matches `SUBJECT_PREFIX` (add a capture group to the regex; `commitSubject` stays as it is), and undefined for an unstamped line.
+- src/operator/revert.ts: `revertMergedCommit` reads the target's subject (`git log -1 --format=%s <full>`, as `previewRevert` does) before reverting. Its ok result gains `subject: string`. Export `revertFollowUp(subject: string): string | null`:
+  - `stampedRole(subject)` is undefined, `operator` or `tumwater`: return null.
+  - Any other role: return `the <role> role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not`.
+- `cmdRevert`: print the follow-up only when it is non-null.
+- `handleRevert`: the `message` is `main is now <sha>`, plus ` — <follow-up>` when one exists. Also return `subject` in the JSON.
+- No other wording, exit code or refusal changes. The dry-run path is untouched.
+
+**Tests.**
+- test/cli-operators.test.ts "revert succeeds on main …": the hand-made commit prints no `may redo` line; assert with `doesNotMatch`. Add one case that commits `tumwater(feature): add x` and reverts it; stdout contains `the feature role may redo the work`.
+- test/gui-revert.test.ts: change the `message` regex the same way. Its fixture's commit decides which form applies; check the fixture and assert the matching form.
+- test/operator-revert.test.ts (or the commit-message test file): unit-test `stampedRole` (stamped, unstamped, `tumwater(operator):`) and `revertFollowUp` (null for operator/tumwater/unstamped, named for `feature`).
+- test/gui-client-history.test.ts only feeds a canned message, so leave it alone.
+
+**Docs.** docs/cli.md's revert clause: if it describes the success output, say the follow-up names the role from the reverted commit's `tumwater(<role>):` stamp and is left out for operator, harness and hand-made commits.
+
+**Acceptance criteria.**
+- `tumwater revert <sha>` of a hand-made commit prints `main is now <sha>` and no `may redo` line, exit 0.
+- Reverting a `tumwater(operator): …` commit also prints no `may redo` line.
+- Reverting a `tumwater(feature): …` commit prints `the feature role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not`.
+- `POST /api/revert` answers with the same follow-up in `message` (or none), plus `subject`.
+- `npm run test:gate` passes.
+
 ### `tumwater plan|bug --cancel <n>` says when a role is working on the cancelled entry and how to stop it, so cancelling an in-flight plan no longer reads as stopping its work (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — the pause/resume entry edits src/operator/operator-intent.ts, the revert entry src/operator/revert.ts and operator-commands.ts' revert commands, the part 2/20 rename src/run and the runner; this one touches src/backlog/backlog-eligibility.ts, src/backlog/backlog-cli.ts, src/ui/tui/tui-pane-backlog.ts, src/gui/gui-backlog-commands.ts, src/ui/gui/gui-client-boot.ts, their tests and docs/cli.md); done 2026-10-20 by the feature role
 
 **Goal.** `plan --list` already marks a claimed entry `[working on it: feature #2]` (`inProgressMark`, src/backlog/backlog-eligibility.ts), but cancelling that entry says only `cancelled plan in PLANS.md: <title>`. The cancel removes the heading; the orchestrator then drops the runner's claim as `left` (`claimReleaseReason`, src/scheduling/claims.ts, called from src/orchestrator/orchestrator-scheduling.ts), which clears `state.claim` and nothing else — the run in progress goes on implementing, and spending on, the work the operator just retracted. Every cancel surface (CLI, TUI Backlog Ctrl+X, dashboard drawer Cancel) should name the role and the stop command, `tumwater abort --role <runner id>` (`requestAbort`, src/operator/operator-intent.ts).

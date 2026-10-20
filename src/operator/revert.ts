@@ -3,7 +3,7 @@ import { loadConfigSafe } from "../config/config.js";
 import { withStateLockAsync } from "../concurrency/lock.js";
 import { currentBranch, headOf, isMergedInto, targetBranch } from "../git/git.js";
 import { GitError, commitAuthorArgs, committerIdentArgs, gitTry, runGit } from "../git/git-run.js";
-import { stampedSubject } from "../git/commit-message.js";
+import { stampedRole, stampedSubject } from "../git/commit-message.js";
 import { primaryWorktreeLockPath } from "../paths.js";
 import { shortSha } from "../text/format.js";
 
@@ -118,6 +118,15 @@ export async function previewRevert(
   }
 }
 
+/** What to tell the operator after reverting a commit with this subject: the role that made it may
+ * redo the work. Null when no role made it — an unstamped (hand-made) commit, the operator's or
+ * the harness's own. */
+export function revertFollowUp(subject: string): string | null {
+  const role = stampedRole(subject);
+  if (role === undefined || role === "operator" || role === "tumwater") return null; // vocabulary-ok: commit stamp strings
+  return `the ${role} role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not`;
+}
+
 /** Revert one already-merged commit (`ref` resolved to a commit) and commit the inverse on the
  * primary checkout under the primary-worktree lock. Never throws; every refusal and every git
  * failure comes back as `{ ok: false, error }` after restoring the checkout. `head` is captured
@@ -126,7 +135,7 @@ export async function previewRevert(
 export async function revertMergedCommit(
   root: string,
   ref: string,
-): Promise<{ ok: true; headSha: string; beforeSha: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; headSha: string; beforeSha: string; subject: string } | { ok: false; error: string }> {
   try {
     // Yield first: a synchronous caller (the TUI key handler) may write again right after this
     // call, and that write takes the same lock synchronously — a lock already held across our
@@ -140,6 +149,7 @@ export async function revertMergedCommit(
       if (refusal !== null) return { ok: false, error: refusal };
       // `head` is captured before the revert so a future caller can compare before/after.
       const head = await headOf(root, "HEAD");
+      const subject = await runGit(root, ["log", "-1", "--format=%s", full]);
 
       // Fail-closed on any staged or unstaged change to a tracked path: we refuse to revert a
       // checkout that has one (untracked files are tolerated — the lock dir we just created is
@@ -153,7 +163,7 @@ export async function revertMergedCommit(
       const reverted = await revertCommitIn(root, full, stampedSubject("operator", "Revert " + shortSha(full))); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
       if (!reverted.ok) return reverted;
 
-      return { ok: true, headSha: await headOf(root, "HEAD"), beforeSha: head };
+      return { ok: true, headSha: await headOf(root, "HEAD"), beforeSha: head, subject };
     });
   } catch {
     return { ok: false, error: "the revert did not complete (git failed); nothing was committed" };

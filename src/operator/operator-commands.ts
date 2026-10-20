@@ -5,7 +5,7 @@ import { failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, pars
 import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
-import { previewRevert, revertMergedCommit } from "./revert.js";
+import { previewRevert, revertFollowUp, revertMergedCommit } from "./revert.js";
 import { tickMergedSha, tickNotFoundMessage } from "../run/run-detail.js";
 import { readTickDetail } from "../run/run-detail-data.js";
 import { readTickRows } from "../history/history-data.js";
@@ -477,8 +477,8 @@ function revertRunSha(root: string, positionals: string[], last: boolean): { sha
 /** `tumwater revert <sha>|<role> <n>|<role> --last`: undo one merged change on main,
  * committing the inverse as `tumwater(operator): Revert <short sha>` under the primary-worktree
  * lock. The lock, branch guard, and fail-closed ref/conflict handling live in
- * src/operator/revert.ts; this renderer names the new main head and reminds the caller the
- * reverted role may redo the work. */
+ * src/operator/revert.ts; this renderer names the new main head and names the role
+ * that made the reverted commit, when one did, as the one that may redo the work. */
 export async function cmdRevert(root: string, args: string[]): Promise<void> {
   // `--dry-run` and `--last` are the only flags; the positionals select a sha (one), a run
   // (`<role> <n>`) or the newest run of a role (`<role>` with --last). A flag or any other
@@ -516,5 +516,6 @@ export async function cmdRevert(root: string, args: string[]): Promise<void> {
   if (!result.ok) fail(result.error);
   if (runLine !== null) say(runLine);
   say(`main is now ${shortSha(result.headSha)}`);
-  say("the reverted role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not");
+  const followUp = revertFollowUp(result.subject);
+  if (followUp !== null) say(followUp);
 }

@@ -44,7 +44,7 @@ test("POST /api/revert reverts a merged commit", async () => {
   assert.equal(headSha(repo), (data as { headSha: string }).headSha);
   assert.notEqual(headSha(repo), sha, "HEAD moved");
   assert.equal(sh(repo, "git", "log", "-1", "--format=%s"), `tumwater(operator): Revert ${sha.slice(0, 8)}`);
-  assert.match((data as { message: string }).message, /^main is now [0-9a-f]+ — the reverted role may redo the work/);
+  assert.match((data as { message: string }).message, /^main is now [0-9a-f]+$/);
 });
 
 test("POST /api/revert refuses a sha not on main with 409 and writes nothing", async () => {
