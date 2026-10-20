@@ -25,7 +25,7 @@ import type http from "node:http";
 function checkedBacklogKind(res: http.ServerResponse, body: Record<string, unknown>): "bug" | "plan" | null {
   const kind = body.kind;
   if (kind !== "bug" && kind !== "plan") {
-    badRequest(res, `kind must be "bug" or "plan"${kind === undefined ? "" : gotSuffix(kind)}`);
+    badRequest(res, `kind must be "bug" or "plan"${gotSuffix(kind)}`);
     return null;
   }
   return kind;
@@ -42,11 +42,11 @@ function checkedEntryPositionAndTitle(
 ): { position: number; title: string } | null {
   const { position, title } = body;
   if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
-    badRequest(res, `position must be a positive integer${position === undefined ? "" : gotSuffix(position)}`);
+    badRequest(res, `position must be a positive integer${gotSuffix(position)}`);
     return null;
   }
   if (typeof title !== "string" || title === "") {
-    badRequest(res, `title must be a non-empty string${title === undefined ? "" : gotSuffix(title)}`);
+    badRequest(res, `title must be a non-empty string${gotSuffix(title)}`);
     return null;
   }
   return { position, title };

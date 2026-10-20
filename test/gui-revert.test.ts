@@ -73,3 +73,10 @@ test("POST /api/revert rejects a non-hex sha and a non-boolean dryRun with 400",
   }
   assert.equal(headSha(repo), before);
 });
+
+test("POST /api/revert with no sha is a 400 that names no undefined value", async () => {
+  const repo = makeRepo();
+  const { captured, data } = await post(repo, {});
+  assert.equal(captured.status, 400);
+  assert.doesNotMatch((data as { error: string }).error, /got undefined/);
+});

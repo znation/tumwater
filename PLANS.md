@@ -737,26 +737,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A command whose specs lack `ROLE_FLAG` (`tumwater queue feature`) gets no `--role` hint.
 - `npm run test:gate` passes.
 
-### No error message reads `(got undefined)`: `gotSuffix` names only a value that is present, and `tumwater completion` with no shell or extra words says what is wrong (planned 2026-10-20 by the plan role; no dependency on any Planned entry. The in-flight entries touch src/cli/cli-flag-specs.ts, src/config, src/agent/image-input.ts and src/ comments; this one touches src/text/text.ts, the `completion` case in src/cli.ts, eight call sites that guard `gotSuffix` themselves, test/text.test.ts, test/completion.test.ts, test/gui-revert.test.ts and test/gui-endpoints.test.ts)
-
-**Goal.** Running main's built CLI on 2026-10-20 printed `tumwater: completion takes one shell: bash, zsh, or fish (got undefined)` for a bare `tumwater completion`. For `tumwater completion bash extra` it printed `(got "extra")`, which reads as if `extra` were a bad shell name when the real problem is the word count. `gotSuffix(v)` (src/text/text.ts) is `` ` (got ${JSON.stringify(v)})` ``, and its doc comment leaves undefined values to each caller. Some callers add the guard (`x === undefined ? "" : gotSuffix(x)`) in src/gui/gui-args.ts (three sites), src/gui/gui-backlog-commands.ts (three), src/cli/cli-query-commands.ts (`questions answer`) and src/agent/role-notes-write.ts. Others don't add it, so a request that leaves out the field gets `(got undefined)`. From reading the code: `handleRevert` (src/gui/gui-operator-commands.ts) answers `"sha" must be a hex commit id of 4-64 digits (got undefined)` to a body with no `sha`, and `requireStringField` (src/gui/gui-args.ts) answers `"text" must be a string — … (got undefined)` to a body with no `text`/`prompt`/`window`/model key.
-
-**Approach.**
-- `gotSuffix` returns `""` when `v === undefined`. Rewrite its doc comment: drop "Undefined values are the caller's call…" and say instead that a missing value (undefined) appends nothing, because ` (got undefined)` would name a field the request never carried. `null` still prints `(got null)`, since that is a value the request did carry.
-- Remove the now-redundant `=== undefined ? "" :` guards at the call sites listed above (find them with `grep -rn 'undefined ? "" : gotSuffix' src`). Messages stay byte-for-byte the same.
-- The `completion` case in `src/cli.ts`, past the `--config-keys` branch: with no args, fail `completion needs a shell: bash, zsh, or fish`. With more than one arg, fail `completion takes one shell: bash, zsh, or fish (got N words: <args joined by space>)`. With exactly one unsupported word, keep the current message and its `typoSuffix`. Update the comment above it to match.
-
-**Files touched.** `src/text/text.ts`, `src/cli.ts`, `src/gui/gui-args.ts`, `src/gui/gui-backlog-commands.ts`, `src/cli/cli-query-commands.ts`, `src/agent/role-notes-write.ts`, `test/text.test.ts`, `test/completion.test.ts` (or `test/cli-arg-strictness.test.ts` if the CLI-run tests for completion live there), `test/gui-revert.test.ts`, `test/gui-endpoints.test.ts`.
-
-**Acceptance criteria.**
-- Unit test: `gotSuffix(undefined) === ""`, `gotSuffix(null) === " (got null)"`, `gotSuffix("x") === ' (got "x")'`.
-- `tumwater completion` exits 1 with stderr `tumwater: completion needs a shell: bash, zsh, or fish` and no `got`.
-- `tumwater completion bash extra` exits 1, stderr contains `(got 2 words: bash extra)` and no `did you mean`.
-- `tumwater completion zs` still ends with `` did you mean `zsh`? ``, and `tumwater completion bash` still prints the bash script.
-- A revert POST with body `{}` answers 400, and its error does not match `/got undefined/`. A POST to one `requireStringField` endpoint (for example the brief endpoint) with no `prompt` key answers 400 with no `got undefined`.
-- The existing `doesNotMatch(/got undefined/)` assertions in test/gui-endpoints.test.ts still pass, and `grep -rn 'undefined ? "" : gotSuffix' src` prints nothing.
-- `npm run test:gate` passes.
-
 ### `tumwater config get|set|unset` reach one field of the fixed-shape sections, so `config set bootstrap.untilPlansDone 3` and `config get review.model` work (planned 2026-10-20 by the plan role; touches src/config/config-keys.ts src/config/config-write.ts src/cli/config-commands.ts src/cli/completion.ts docs/config.md and their tests)
 
 **Goal.** `tumwater.json` has four top-level sections whose fields are a fixed list in src/config/config-schema.ts: `review` (`REVIEW_KEYS`), `check` (`CHECK_KEYS`), `idleBackoff` (`BACKOFF_KEYS`) and `bootstrap` (`BOOTSTRAP_KEYS`). `parseConfigKey` (src/config/config-keys.ts) refuses every dotted key into them, so on main's build `tumwater config get bootstrap.untilPlansDone`, `config set bootstrap.untilPlansDone 3`, `config get review.model` and `config set idleBackoff.factor 3` each fail with the generic `unknown config key "…" — dotted keys name one entry of a per-role map or one field of a role entry …`. The only way to change one field is to re-type the whole section as JSON (`config set review '{…}'`), which drops any field the operator forgets. `roles.<id>.<field>`, `backends.<id>.<field>` and `model.<tier>` already work this way; this extends the same dotted form to the four sections, nothing else.

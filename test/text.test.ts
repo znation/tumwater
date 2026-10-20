@@ -1,12 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, stripTerminalControls, truncate, truncateWithNote } from "../src/text/text.js";
+import { collapseWhitespace, gotSuffix, parseNonNegativeInt, parsePositiveInt, stripTerminalControls, truncate, truncateWithNote } from "../src/text/text.js";
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
 // (live progress work items, transcript lines/thinking/errors, tool-call descriptions)
 // relies on to keep one logical line at or below its column budget. These tests pin the
 // documented contract directly instead of only through one indirect case per consumer.
+
+test("gotSuffix names a present value, and nothing for a missing one", () => {
+  assert.equal(gotSuffix(undefined), "");
+  assert.equal(gotSuffix(null), " (got null)");
+  assert.equal(gotSuffix("x"), ' (got "x")');
+});
 
 test("collapseWhitespace folds runs of spaces, tabs, and newlines to single spaces", () => {
   assert.equal(collapseWhitespace("  fix   the\n\tzombie streams  "), "fix the zombie streams");

@@ -345,7 +345,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   const n = raw === undefined ? null : parsePositiveInt(raw);
   if (n === null)
     fail(
-      `questions answer needs a positive question number: questions answer <n> "<decision>"${raw === undefined ? "" : gotSuffix(raw)}`,
+      `questions answer needs a positive question number: questions answer <n> "<decision>"${gotSuffix(raw)}`,
     );
   if (file !== undefined) {
     if (words.length > 2) fail(`unexpected argument ${JSON.stringify(words[2])} — with --file the decision comes from the file`);

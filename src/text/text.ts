@@ -60,12 +60,11 @@ export function errorMessage(err: unknown): string {
  * this one helper, so the "got" wording and its quoting cannot drift between surfaces.
  * (Deliberately different suffixes: config-field-checks's show() truncates long config values
  * before the parenthetical, and cli/cli-args.ts's duration cap renders the value through
- * durationLabel — neither fits a plain stringify.) Undefined values are the
- * caller's call: append the suffix only for a value that is actually present (see
- * gui/gui-args's string/boolean validators), since ` (got undefined)` would name a field the
- * request simply did not carry. */
+ * durationLabel — neither fits a plain stringify.) A missing value
+ * (undefined) appends nothing, since ` (got undefined)` would name a field the request never
+ * carried; null still prints ` (got null)`, a value the request did carry. */
 export function gotSuffix(v: unknown): string {
-  return ` (got ${JSON.stringify(v)})`;
+  return v === undefined ? "" : ` (got ${JSON.stringify(v)})`;
 }
 
 /** Is `v` a string with non-whitespace content — the "field carries something usable" guard every

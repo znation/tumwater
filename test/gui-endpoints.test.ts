@@ -2087,6 +2087,9 @@ test("POST /api/brief replaces the prompt and commits on main; refusals leave th
   }
   assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), before);
   assert.equal(head(), after);
+  const missing = await post({});
+  assert.equal(missing.captured.status, 400);
+  assert.doesNotMatch((missing.data as { error: string }).error, /got undefined/);
 });
 
 test("handleNotifyTest runs the saved hook and answers its verdict; no hook is a 409", async () => {

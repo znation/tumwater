@@ -136,7 +136,7 @@ export function requirePromptText(
     sendJson(
       res,
       400,
-      { error: `text must be a string${text === undefined ? "" : gotSuffix(text)}` },
+      { error: `text must be a string${gotSuffix(text)}` },
     );
     return null;
   }
@@ -188,7 +188,7 @@ export function requireConfigKey(
 ): string | null {
   const key = body.key;
   if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
-    badRequest(res, `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}${typeof key === "string" ? typoSuffix(key, EDITABLE_CONFIG_KEYS) : ""}`);
+    badRequest(res, `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${gotSuffix(key)}${typeof key === "string" ? typoSuffix(key, EDITABLE_CONFIG_KEYS) : ""}`);
     return null;
   }
   return key;
@@ -237,7 +237,7 @@ export function requirePausedFlag(res: http.ServerResponse, body: Record<string,
     sendJson(
       res,
       400,
-      { error: `paused must be a boolean${value === undefined ? "" : gotSuffix(value)}` },
+      { error: `paused must be a boolean${gotSuffix(value)}` },
     );
     return null;
   }

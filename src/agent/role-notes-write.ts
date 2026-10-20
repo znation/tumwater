@@ -45,7 +45,7 @@ export function writeRoleNote(notesPath: string, text: string): void {
 export function saveRoleNote(notesPath: string, text: unknown): string {
   if (typeof text !== "string") {
     throw new Error(
-      `a note must be a string, not ${typeof text}${text === undefined ? "" : gotSuffix(text)} — pass the full replacement note, or "" to clear it`,
+      `a note must be a string, not ${typeof text}${gotSuffix(text)} — pass the full replacement note, or "" to clear it`,
     );
   }
   const error = validateRoleNote(text);

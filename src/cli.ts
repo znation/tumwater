@@ -434,11 +434,14 @@ async function main(): Promise<void> {
         break;
       }
       const shell = args[0];
-      if (args.length !== 1 || !SUPPORTED_SHELLS.includes(shell as CompletionShell))
-        // A single near-miss shell word gets the same typoSuffix `logs --type`/`history --result`
-        // give, so `completion zs` reads "did you mean `zsh`?" while a far-off value (`tcsh`) and
-        // a wrong arity (none or several words, typed shown by gotSuffix) stay hint-free.
-        fail(`completion takes one shell: bash, zsh, or fish${gotSuffix(args.length > 1 ? args[1] : shell)}${args.length === 1 ? typoSuffix(shell ?? "", SUPPORTED_SHELLS) : ""}`);
+      // A wrong word count names the count, not a bad shell. A single near-miss shell word gets
+      // the same typoSuffix `logs --type`/`history --result` give, so `completion zs` reads
+      // "did you mean `zsh`?" while a far-off value (`tcsh`) stays hint-free.
+      if (args.length === 0) fail("completion needs a shell: bash, zsh, or fish");
+      if (args.length > 1)
+        fail(`completion takes one shell: bash, zsh, or fish (got ${args.length} words: ${args.join(" ")})`);
+      if (!SUPPORTED_SHELLS.includes(shell as CompletionShell))
+        fail(`completion takes one shell: bash, zsh, or fish${gotSuffix(shell)}${typoSuffix(shell ?? "", SUPPORTED_SHELLS)}`);
       say(completionScript(shell as CompletionShell));
       break;
     }

@@ -89,6 +89,15 @@ test("the completion command works outside a repo and rejects other shells", asy
   assert.notEqual(typo.code, 0);
   assert.match(typo.stderr, /bash, zsh, or fish/);
   assert.match(typo.stderr, /did you mean `zsh`\?/);
+  // A wrong word count says so instead of naming a word as if it were a bad shell.
+  const bare = await cli(dir, "completion");
+  assert.equal(bare.code, 1);
+  assert.match(bare.stderr, /tumwater: completion needs a shell: bash, zsh, or fish/);
+  assert.doesNotMatch(bare.stderr, /got/);
+  const extra = await cli(dir, "completion", "bash", "extra");
+  assert.equal(extra.code, 1);
+  assert.match(extra.stderr, /\(got 2 words: bash extra\)/);
+  assert.doesNotMatch(extra.stderr, /did you mean/);
   const fish = await cli(dir, "completion", "fish");
   assert.equal(fish.code, 0);
   assert.match(fish.stdout, /complete -c tumwater/);
