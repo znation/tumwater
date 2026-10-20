@@ -424,6 +424,55 @@ test("removing a file's final newline yields the finding", async () => {
   assert.match(findings[0]!, /removes the final newline from: src\/a\.ts/);
 });
 
+test("added lines with a broken participle yield the garbled-wording finding", async () => {
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n" });
+  fs.writeFileSync(
+    path.join(wt, "src/a.ts"),
+    "export const a = 1;\n// the role would have " + "ran twice\n// a never" + "-ran role\n",
+  );
+
+  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+    f.includes("garbled rename wording"),
+  );
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /src\/a\.ts:2/);
+  assert.match(findings[0]!, /src\/a\.ts:3/);
+});
+
+test("added lines that stack run on run yield the garbled-wording finding", async () => {
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n" });
+  fs.mkdirSync(path.join(wt, "test"), { recursive: true });
+  fs.writeFileSync(path.join(wt, "test/b.test.ts"), 'assert.ok(x, "no run was ' + 'running");\n');
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.ok(findings.some((f) => f.includes("garbled rename wording") && f.includes("test/b.test.ts:1")));
+});
+
+test("garbled wording in record prose, and a correct participle, yield no finding", async () => {
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n", "PLANS.md": "# Plans\n" });
+  fs.writeFileSync(path.join(wt, "PLANS.md"), "# Plans\nit would have " + "ran twice\n");
+  fs.writeFileSync(
+    path.join(wt, "src/a.ts"),
+    "export const a = 1;\n// the role has run twice; it ran once today\n",
+  );
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
+});
+
+test("garbled wording already on the base is not reported", async () => {
+  const old = "// would have " + "ran\n";
+  const { wt } = await repoWith({ "src/a.ts": old + "export const a = 1;\n" });
+  fs.writeFileSync(path.join(wt, "src/a.ts"), old + "export const a = 2;\n");
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
+});
+
 test("a file whose base already lacked a final newline yields no finding", async () => {
   const { wt } = await repoWith({ "src/a.ts": "export const a = 1;" });
   fs.writeFileSync(path.join(wt, "src/a.ts"), "export const a = 2;");

@@ -28,6 +28,11 @@
  * occurrence inside a string literal (legacy-name tables and serialized keys keep old names on
  * purpose), a line marked `retired-name-ok`, and record prose, where history names old things.
  *
+ * A fifth check, `garbledWordingFindings`, reports added lines (outside record prose) that carry
+ * the broken participles and doubled "run" wording a word-swap rename leaves (has/have/had … ran,
+ * a hyphen before ran, "run" repeated back to back). Like the path checks, the gate does not
+ * run it.
+ *
  * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
  * merge re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
  * anything that gets past the fix-up turn. `waitingNoteFinding` is staging-only and bugfix-only
@@ -351,6 +356,7 @@ async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[
     const diff = (await gitTry(wt, "diff", "--cached", "-U0", base)) ?? "";
     findings.push(...(await missingPathFindings(wt, diff, entries)));
     findings.push(...newlineFindings(diff));
+    findings.push(...garbledWordingFindings(diff));
     findings.push(...(await staleNameFindings(wt, diff)));
     return findings;
   } finally {
@@ -603,4 +609,49 @@ function newlineFindings(diff: string): string[] {
   flush();
   if (files.length === 0) return [];
   return [`the change removes the final newline from: ${cappedList(files, MAX_NEWLINE_FILES)}`];
+}
+
+/** Patterns for the garbled English a rote "tick" → "run" word swap leaves, in order: a broken
+ * past participle after an auxiliary, "ran" hyphenated onto another word (the class stays a
+ * letter range so this line does not match itself), "run" followed by a form of "to be" and
+ * "running", and "run" stacked directly on "run". */
+const GARBLED_WORDING: readonly RegExp[] = [
+  /\b(?:has|have|had|having)\s+(?:\w+ly\s+|never\s+|not\s+|already\s+|just\s+)?ran\b/i,
+  /[A-Za-z]-ran\b/i,
+  /\bruns?\s+(?:is|are|was|were|already|still)\s+(?:still\s+|already\s+)?running\b/i,
+  /\b(?:run|runs|running)\s+(?:a|the|no)\s+run\b/i,
+];
+
+/** (e) Added lines, outside record prose, that match GARBLED_WORDING: at most one hit per line,
+ * reported as `file:line "matched text"` in a single finding. */
+function garbledWordingFindings(diff: string): string[] {
+  const hits: string[] = [];
+  let file: string | null = null;
+  let lineNo = 0;
+  for (const line of diff.split("\n")) {
+    const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
+    if (header) {
+      file = header[1]!;
+      continue;
+    }
+    const hunk = /^@@ .*\+(\d+)(?:,\d+)? @@/.exec(line);
+    if (hunk) {
+      lineNo = Number(hunk[1]);
+      continue;
+    }
+    if (!line.startsWith("+") || line.startsWith("+++ ")) continue;
+    if (file !== null && !isRecordProse(file)) {
+      for (const re of GARBLED_WORDING) {
+        const m = re.exec(line.slice(1));
+        if (m) {
+          hits.push(`${file}:${lineNo} "${m[0]}"`);
+          break;
+        }
+      }
+    }
+    lineNo++;
+  }
+  if (hits.length === 0) return [];
+  const lead = 'added lines carry garbled rename wording (reword them; a rote "tick" → "run" swap reads wrong here): '; // vocabulary-ok: quotes the retired word
+  return [lead + cappedList(hits, MAX_STALE_HITS)];
 }
