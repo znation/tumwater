@@ -3185,3 +3185,50 @@ parses, and read its end back as written.
 names and no other" and "quietHoursStatus: the window string plus the gate's own membership
 predicate"; `test/quiet-hours-edges.test.ts` — "parseQuietHours takes one- or two-digit hours but
 exactly two minute digits, and quietWindowEnd reads the end back as written".
+
+## Disk hold: below the floor the team starts no new work, the hold lifts only clear of a 5 GB band, and an unmeasurable disk never holds
+
+`src/gates/disk-gate.ts` owns the disk floor's hold. The orchestrator polls it once per cycle
+through `pollTeamGates` in `src/gates/gate-polls.ts`.
+
+### INV-BD1: free space is `bavail * bsize` on the worktrees volume, and null when statfs throws
+
+**Guarantee.** Free space is `bavail * bsize` measured on the worktrees dir once it exists, else on
+the root. It is null when statfs throws.
+
+**Binds.** `src/gates/disk-gate.ts` (`diskVolumePath`, `sampleFreeBytes`).
+
+**Pinned by.** `test/disk-gate.test.ts` — "sampleFreeBytes measures the worktrees volume once it
+exists, else the root", "sampleFreeBytes returns null when statfs throws" and "pollDiskGate:
+measured path detail is the worktrees dir when it exists".
+
+### INV-BD2: the hold enters strictly below the floor, lifts clear of the band, and logs once per crossing
+
+**Guarantee.** The hold enters strictly below `diskHoldGB` (GB = 10^9 bytes), and only once no
+reclaim pass is running. It lifts at `diskHoldGB + DISK_HOLD_HYSTERESIS_GB` or when the floor is
+edited to 0. Each crossing logs exactly one `disk_low` (with `freeGB`, `holdGB`) or `disk_ok` (with
+`freeGB`).
+
+**Binds.** `src/gates/disk-gate.ts` (`pollDiskGate`, `newDiskGateState`, `BYTES_PER_GB`,
+`DISK_HOLD_HYSTERESIS_GB`).
+
+**Pinned by.** `test/disk-gate.test.ts` — "pollDiskGate holds below the floor and one disk_low logs
+per crossing", "pollDiskGate hysteresis: stays held until floor + 5, lifts with one disk_ok",
+"pollDiskGate: diskHoldGB 0 disables the hold at any free space", "pollDiskGate: a live edit to
+diskHoldGB 0 lifts an active hold on the next poll", "pollDiskGate: waitForReclaim defers entering
+the hold until the pass settles" and "pollDiskGate: an unwritable events feed does not throw out of
+the poll"; `test/disk-gate-edges.test.ts` — "pollDiskGate: the floor itself does not hold, a null
+sample lifts an active hold, and the unmeasurable warning fires once per process";
+`test/gate-polls.test.ts` — "pollTeamGates: a low disk holds new work; recovery and a live floor
+edit lift it" and "pollTeamGates publishes the measured disk state for observers".
+
+### INV-BD3: an unmeasurable sample never holds, lifts an active hold, and warns once per process
+
+**Guarantee.** A null sample never holds and lifts an active hold. It logs one `warning` per
+process, however the samples alternate with measurable ones.
+
+**Binds.** `src/gates/disk-gate.ts` (`pollDiskGate`).
+
+**Pinned by.** `test/disk-gate.test.ts` — "pollDiskGate: a null sample never holds and warns once
+per process"; `test/disk-gate-edges.test.ts` — "pollDiskGate: the floor itself does not hold, a
+null sample lifts an active hold, and the unmeasurable warning fires once per process".
