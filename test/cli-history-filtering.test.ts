@@ -539,3 +539,71 @@ test("history --summary --by model tallies runs per model", async () => {
   assert.notEqual(bare.code, 0);
   assert.match(bare.stderr, /history --by needs role or model/);
 });
+
+function writeModelFixture(repo: string): void {
+  writeEvents(repo, [
+    { ts: 1000, loop: "feature", type: "run_start", run: 1, model: "acme/m1" },
+    { ts: 2000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "w" },
+    { ts: 3000, loop: "clean", type: "run_start", run: 2, model: "acme/m2" },
+    { ts: 4000, loop: "clean", type: "run_end", run: 2, result: "no_change" },
+    { ts: 5000, loop: "feature", type: "run_start", run: 3, model: "acme/m1" },
+    { ts: 6000, loop: "feature", type: "run_end", run: 3, result: "no_change" },
+    { ts: 7000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "x" },
+  ]);
+}
+
+test("history --model keeps only the runs that started on the listed models", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history model");
+  writeModelFixture(repo);
+  const one = await cli(repo, "history", "--model", "acme/m1");
+  assert.equal(one.code, 0);
+  const rows = one.stdout.trim().split("\n");
+  assert.equal(rows.length, 2);
+  assert.match(rows[0] ?? "", /feature\s+#?3\b/);
+  assert.match(rows[1] ?? "", /feature\s+#?1\b/);
+  const both = await cli(repo, "history", "--model", "acme/m1,acme/m2", "--json");
+  const parsed = JSON.parse(both.stdout) as { rows: Array<{ role?: string; loop?: string }> };
+  assert.deepEqual(parsed.rows.map((r) => r.role ?? r.loop), ["feature", "clean", "feature"]);
+  assert.equal((await cli(repo, "history", "--model", "acme/m1,acme/m1")).stdout, one.stdout);
+  for (const sel of ["acme/M1", "m1"]) {
+    const r = await cli(repo, "history", "--model", sel);
+    assert.equal(r.code, 0);
+    assert.equal(r.stdout.trim(), `no runs on model "${sel}"`);
+  }
+});
+
+test("history --model composes with --role, --result and --summary", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history model compose");
+  writeModelFixture(repo);
+  const merged = await cli(repo, "history", "--model", "acme/m1", "--result", "merged");
+  assert.equal(merged.stdout.trim().split("\n").length, 1);
+  assert.match(merged.stdout, /feature\s+#?1\b/);
+  const role = await cli(repo, "history", "--model", "acme/m1", "--role", "clean");
+  assert.equal(role.stdout.trim(), 'no runs on model "acme/m1"');
+  const byModel = await cli(repo, "history", "--model", "acme/m1", "--summary", "--by", "model");
+  assert.deepEqual(byModel.stdout.trim().split("\n").slice(1).map((l) => l.split(/\s+/)[0]), ["acme/m1", "total"]);
+  const byRole = await cli(repo, "history", "--model", "acme/m1", "--summary");
+  assert.deepEqual(byRole.stdout.trim().split("\n").slice(1).map((l) => l.split(/\s+/)[0]), ["feature", "total"]);
+  const none = await cli(repo, "history", "--model", "nosuch", "--json");
+  assert.deepEqual(JSON.parse(none.stdout), { rows: [] });
+});
+
+test("history --model fails with its own wording when the value is missing or empty", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history model missing");
+  for (const args of [["--model"], ["--model", ""], ["--model", ","]]) {
+    const r = await cli(repo, "history", ...args);
+    assert.notEqual(r.code, 0);
+    assert.match(r.stderr, /history --model needs a model selector/);
+  }
+});
+
+test("an empty log keeps its own wording under --model", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history model empty");
+  const r = await cli(repo, "history", "--model", "acme/m1");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "no runs yet");
+});

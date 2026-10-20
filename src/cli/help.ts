@@ -117,7 +117,8 @@ Usage:
   tumwater notify --test          Run the configured notify hook once with a synthetic event
                                    so the command can be checked before a real page
   tumwater history [--role <id>[,<id>...]] [-n N] [--since <duration>] [--grep <text>]
-                   [--result <merged|none|refused|problems>[,...]] [--summary] [--by role|model] [--json]
+                   [--result <merged|none|refused|problems>[,...]] [--model <selector>[,...]]
+                   [--summary] [--by role|model] [--json]
                                    One row per completed run, newest first — time, role,
                                    run number, result, duration, tokens/cost, and the
                                    summary (or error), each row one line; --since <duration>
@@ -129,7 +130,8 @@ Usage:
                                    (merged or waiting to merge), none (no_change/skipped/user_aborted),
                                    refused (a run that deliberately declined its entry), or
                                    problems (everything else) — composed with --role, --since,
-                                   -n, and --grep; --json prints the rows as
+                                   -n, and --grep; --model <selector>[,...] keeps only the
+                                   runs that started on the listed models (the exact selectors --by model prints); --json prints the rows as
                                    machine-readable history data — ts, tokens, and costUsd
                                    kept raw, the GUI's /api/history payload; --summary prints one line per role
                                    counting its runs by outcome class and its run time, with the time of its newest change (and a total line)

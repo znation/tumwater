@@ -27,14 +27,20 @@ export const HISTORY_GREP_VALUE_ERROR = "history --grep needs a pattern";
  * it. */
 export const HISTORY_RESULT_VALUE_ERROR = "history --result needs a value";
 
+/** The missing-value error cmdHistory prints for a valueless, empty or comma-only `--model`,
+ * exported so cli.ts's rejectUnknownArgs spec for --model fails a trailing `history --model`
+ * with the same wording. Its sibling of HISTORY_RESULT_VALUE_ERROR. */
+export const HISTORY_MODEL_VALUE_ERROR = "history --model needs a model selector";
+
 /** The missing-value error for a valueless or empty `--by`, exported for cli.ts's flag spec. */
 export const HISTORY_BY_VALUE_ERROR = "history --by needs role or model";
 
 /** `tumwater history [--role <id>[,<id>...]] [-n N] [--since <duration>] [--grep <text>] [--result
- * <class>]`: print the last N completed ticks, newest first — or, with `--since`, the ticks of a
- * bounded past window over the same record, the same shape `logs --since` and `report --since`
- * speak. `--grep` keeps rows whose rendered line matches, and `--result` narrows to the listed
- * outcome classes (changes/none/problems, the dashboard History filter's buckets); both compose
+ * <class>] [--model <selector>[,...]]`: print the last N completed ticks, newest first — or,
+ * with `--since`, the ticks of a bounded past window over the same record, the same shape
+ * `logs --since` and `report --since` speak. `--grep` keeps rows whose rendered line matches,
+ * `--result` narrows to the listed outcome classes (changes/none/problems, the dashboard History
+ * filter's buckets) and `--model` keeps runs that started on the listed models; all compose
  * with --role, -n, and --since. Read-only: stdout only, no state file created — a missing or empty
  * event log prints `no runs yet` and exits 0. */
 export async function cmdHistory(root: string, args: string[]): Promise<void> {
@@ -106,6 +112,20 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     resultClasses = wanted;
     rows = rows.filter((r) => wanted.includes(historyClass(r.result)));
   }
+  // `--model <selector>[,...]` keeps the rows whose run_start named exactly one of the listed
+  // selectors (case-sensitive, the strings `--summary --by model` prints); a null-model row never
+  // matches. An unknown selector is not an error: models have no closed vocabulary and an old log
+  // holds models the config has since dropped, so it simply keeps no rows.
+  const afterResult = rows.length;
+  const modelRaw = flagValue(rest, "--model");
+  let models: string[] | null = null;
+  if (modelRaw !== null) {
+    if (modelRaw === undefined || modelRaw === "") fail(HISTORY_MODEL_VALUE_ERROR);
+    const pieces = [...new Set(modelRaw.split(",").map((p) => p.trim()).filter((p) => p !== ""))];
+    if (pieces.length === 0) fail(HISTORY_MODEL_VALUE_ERROR);
+    models = pieces;
+    rows = rows.filter((r) => r.model !== null && pieces.includes(r.model));
+  }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
   // JSON document even when the log is empty ({"rows":[]} — never the prose `no runs yet`,
@@ -139,7 +159,9 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     // empty-log/window prose is the true one — the dashboard's History view draws the same
     // line. A grep that admitted nothing keeps its own wording regardless of --result.
     say(
-      resultClasses !== null && afterGrep > 0
+      models !== null && afterResult > 0
+        ? `no runs on model "${models.join(",")}"`
+        : resultClasses !== null && afterGrep > 0
         ? `no runs with result "${resultClasses.join(",")}"`
         : grepPattern !== null
           ? `no runs matching "${grepPattern}"`

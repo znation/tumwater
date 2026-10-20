@@ -319,6 +319,12 @@ export function resultFlagSpec(missingValue: string): FlagSpec {
   return { names: ["--result"], value: true, valueName: "<class>", missingValue };
 }
 
+/** `history --model <selector>[,...]`: keeps the runs that started on the listed models;
+ * `missingValue` is the same string the command body fails with. */
+export function modelFlagSpec(missingValue: string): FlagSpec {
+  return { names: ["--model"], value: true, valueName: "<selector>", missingValue };
+}
+
 /** `history --by <role|model>`: how `--summary` groups its lines; `missingValue` is the same
  * string the command body fails with. */
 export function byFlagSpec(missingValue: string): FlagSpec {

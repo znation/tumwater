@@ -800,48 +800,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-
-### `tumwater history --model <selector>[,<selector>...]` keeps only the runs that started on the listed models, the row view behind `history --summary --by model` (planned 2026-10-19 by the plan role; no dependency on any Planned entry — the in-flight part 11/14 renames comments and local names under src/cli/, and src/cli/cli-flag-specs.ts and src/cli.ts's `history` case may meet it as a rebase; the status and prompt entries touch `cmdStatus`, src/ui/status-* and src/inbox/prompt-commands.ts, not src/history; touches src/history/history.ts src/cli/cli-flag-specs.ts src/cli.ts src/cli/help.ts docs/cli.md test/cli-history-filtering.test.ts)
-
-**Goal.** `tumwater history --summary --by model` (`summarizeTickRowsByModel`, src/history/history-data.ts) counts runs per model, for example how many runs a role spent on the fallback. Nothing lists the runs behind one of its lines. Every `TickRow` carries `model`, the agent-qualified selector its `run_start` named, or null. Today the closest filter is `--grep <model>`, which also keeps rows whose summary or error happens to mention the text. Add `--model <selector>[,<selector>...]`. It keeps the rows whose `model` equals one of the listed selectors exactly, so a line from the `--by model` table can be copied straight into the filter. Out of scope: the dashboard's and the TUI's History views, and value completion for the flag.
-
-**Decided semantics (no open question).**
-- A row matches when `row.model` is one of the listed selectors, compared exactly and case-sensitively. A row with a null model never matches. `(unknown)` is only the summary's label for null, so it is not accepted as a selector.
-- The value is split on commas, each piece trimmed, empty pieces dropped and duplicates removed, as `--result` does. A missing value, an empty value, or a value made only of commas fails with `HISTORY_MODEL_VALUE_ERROR = "history --model needs a model selector"`.
-- An unknown selector is not an error. Models have no closed vocabulary, and an old log holds models the config has since dropped. An unknown selector just keeps no rows.
-- The flag composes with `--role`, `-n`, `--since`, `--grep`, `--result`, `--summary`, `--by` and `--json`. It runs on the collected rows after the `--result` filter and before the `--json`, summary and table branches, so all three render the same narrowed set. `-n` still bounds the scanned window, not the printed rows, which is the `--grep` rule.
-
-**Approach.**
-- **src/history/history.ts**:
-  - Export `HISTORY_MODEL_VALUE_ERROR` beside `HISTORY_RESULT_VALUE_ERROR`, with a doc comment in the same style.
-  - In `cmdHistory`, right after the `--result` block, save `const afterResult = rows.length;`. Then read `flagValue(rest, "--model")` and parse it into `models: string[] | null` as described above. When `models` is set, filter with `rows = rows.filter((r) => r.model !== null && models.includes(r.model))`. Add a comment in the file's style naming the exact-match rule and why an unknown selector is not an error.
-  - In the empty-state `say(...)` chain, put a new first arm before the `--result` arm: when `models !== null && afterResult > 0`, print `` `no runs on model "${models.join(",")}"` ``. This keeps the existing rule that the message blames the filter that actually emptied the set. `--json` still prints `{"rows":[]}`.
-  - Update the `cmdHistory` doc comment's flag list to name `--model`.
-- **src/cli/cli-flag-specs.ts**: add `export function modelFlagSpec(missingValue: string): FlagSpec`, returning `{ names: ["--model"], value: true, valueName: "<selector>", missingValue }`, beside `resultFlagSpec`/`byFlagSpec`, with a matching doc comment.
-- **src/cli.ts** `case "history"`: import `HISTORY_MODEL_VALUE_ERROR` with the other history errors and add `modelFlagSpec(HISTORY_MODEL_VALUE_ERROR)` to the `rejectUnknownArgs("history", …)` list. The trail form (`history <role> <n>`) is untouched.
-- **src/cli/help.ts**: in the `tumwater history` usage line, add `[--model <selector>[,...]]` after the `--result` bracket. In the description, after the `--result` sentence, add: `--model <selector>[,...] keeps only the runs that started on the listed models (the exact selectors --by model prints);`.
-- **docs/cli.md** "Watch run history" row: add `[--model <selector>[,...]]` after the `--result` bracket in the synopsis. After the `--result none,refused,problems` clause, add `, `--model` keeps only the runs that started on the listed models, the exact selectors `--summary --by model` prints (`--model acme/m1 --summary` tallies just that model's runs by role)`.
-
-**Files touched.** src/history/history.ts, src/cli/cli-flag-specs.ts, src/cli.ts, src/cli/help.ts, docs/cli.md, test/cli-history-filtering.test.ts. Also touch test/cli-help.test.ts or test/cli-doc.test.ts, but only if their help/doc flag-parity checks need the new flag listed.
-
-**Acceptance criteria.** All new tests go in test/cli-history-filtering.test.ts and reuse the event fixture from "history --summary --by model tallies runs per model": feature #1 and #3 on `acme/m1`, clean #2 on `acme/m2`, and bugfix #9 with no start.
-- "history --model keeps only the runs that started on the listed models":
-  - `history --model acme/m1` prints exactly two rows, feature #3 and feature #1, newest first.
-  - `history --model acme/m1,acme/m2 --json` gives `rows` with roles `["feature", "clean", "feature"]`.
-  - `history --model acme/m1,acme/m1` prints the same as `--model acme/m1`.
-  - `history --model acme/M1` prints `no runs on model "acme/M1"` and exits 0, which shows the match is case-sensitive.
-  - `history --model m1` prints the same empty-state line, which shows the match is exact, not a substring.
-- "history --model composes with --role, --result and --summary":
-  - `--model acme/m1 --result merged` keeps only feature #1.
-  - `--model acme/m1 --role clean` prints `no runs on model "acme/m1"`.
-  - `--model acme/m1 --summary --by model` gives the model column `["acme/m1", "total"]`.
-  - `--model acme/m1 --summary` gives one `feature` line plus `total`.
-  - `--model nosuch --json` prints `{"rows":[]}`.
-- "history --model fails with its own wording when the value is missing or empty": a trailing `history --model`, `history --model ""` and `history --model ","` each exit non-zero, and stderr matches `history --model needs a model selector`.
-- "an empty log keeps its own wording under --model": a repo with no events, run with `--model acme/m1`, prints `no runs yet`.
-- The existing tests in test/cli-history-filtering.test.ts, test/cli-history.test.ts and test/cli-history-views.test.ts pass unchanged.
-- `npm run test:gate` passes.
-
 ### `tumwater logs -f` ends itself once the process that started it is gone, so a follow orphaned at PPID 1 stops instead of polling for days (planned 2026-10-19 by the plan role; no dependency on any Planned entry: the in-flight entries edit status, prompt, history, src/tick and the GUI backlog, and none touches src/cli/log-commands.ts's follow loops)
 
 **Goal.** Both follow loops in src/cli/log-commands.ts, the event feed's `followFile(...)` at the end of `cmdLogs` and the transcript's in `cmdLogsTranscript`, end with `await new Promise(() => {}); // Follow until Ctrl+C.`. A follow whose parent shell exits is reparented to launchd/init. Its 500 ms `followFile` poll then keeps it alive forever, because nothing ever sends it Ctrl+C. BUGS.md's open entry "Two `logs -f` processes leaked out of a slot's run and stayed alive for 3½ days" is that shape: two `node …/_slot-8/dist/src/cli.js logs -f` sat at PPID 1 from 2026-10-16 until the doctor flagged them. That bug waits on the spawner's identity before adding any reaper. This plan does not reap anything. It makes `logs -f` itself end when its parent goes, which is the same parent-death watch the run generation (`startParentDeathWatch` in src/process/supervisor.ts) and the dashboards (`watchReloadSupervisor` in src/redeploy/self-reload.ts) already arm. Whoever turns out to spawn a leaked follow, the follow cleans itself up. Leave the bug entry open: its spawner question still stands. The implementer adds one **Progress 2026-MM-DD (feature)** line under it naming this change.
