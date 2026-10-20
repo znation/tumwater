@@ -17,7 +17,7 @@ import { isPassingFullCheck } from "../build/build-check-events.js";
 import { CUSTOM_NAME_RE, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
-import { envPath, findOnPath, readTextOrNull, subdirectoryNames } from "../files/files.js";
+import { envPath, findOnPath, readTextOrNull, subdirectoryNames, treeBytes } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
@@ -290,34 +290,6 @@ export function checkAgentBinary(
   if (failed) return failed.outcome;
   if (checks.length === 1) return checks[0]!.outcome;
   return okOutcome(checks.map(({ agent, outcome }) => `${agent}: ${outcome.detail}`).join("; "));
-}
-
-/** The total bytes under one directory tree, counted iteratively and skipping unreadable
- * entries: a permission-denied subdirectory must not fail doctor. */
-function treeBytes(dir: string): number {
-  let total = 0;
-  const stack = [dir];
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) stack.push(full);
-      else if (entry.isFile()) {
-        try {
-          total += fs.statSync(full).size;
-        } catch {
-          // A file that vanished mid-walk contributes nothing.
-        }
-      }
-    }
-  }
-  return total;
 }
 
 /** claude transcript disk — the total size of the claude config dir's `projects/`

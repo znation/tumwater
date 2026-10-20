@@ -1,5 +1,4 @@
 // vocabulary: plain
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { childEnv } from "../process/process.js";
@@ -7,7 +6,7 @@ import { boundedProbe } from "./probe.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
 import { opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { opencodeDbPath } from "../paths.js";
-import { readTextOrNull, statOrNull } from "../files/files.js";
+import { readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
 import { configForRole, resolvedAgentConfig } from "../config/config-views.js";
 import { fallbackPair, resolveTierFallbacks, seamsInUse, tierChainSteps } from "../config/config-fallbacks.js";
@@ -859,22 +858,6 @@ function opencodeConfigLeaks(configHome: string): string[] {
   return warns;
 }
 
-/** Total bytes of every regular file under `dir` (a shallow recursive walk), 0 for a missing
- * or unreadable dir. */
-function opencodeDirBytes(dir: string): number {
-  try {
-    let total = 0;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const p = path.join(dir, entry.name);
-      if (entry.isDirectory()) total += opencodeDirBytes(p);
-      else if (entry.isFile()) total += fs.statSync(p).size;
-    }
-    return total;
-  } catch {
-    return 0;
-  }
-}
-
 /** OpenCode model, credential and leak readiness (plans/opencode-backend.md §7, part 7/7):
  * every model routed to opencode must be in the catalog cache — an unknown model fails, a
  * cached one reads "free" or its per-M prices and context window, and a thinking level with no
@@ -928,7 +911,7 @@ export async function checkOpencode(
   warns.push(...opencodeConfigLeaks(xdgConfigHome !== "" ? xdgConfigHome : path.join(home, ".config")));
   const db = statOrNull(opencodeDbPath(root));
   const spillDir = opencodeSpillDir(root);
-  const spill = spillDir !== "" && statOrNull(spillDir)?.isDirectory() === true ? opencodeDirBytes(spillDir) : null;
+  const spill = spillDir !== "" && statOrNull(spillDir)?.isDirectory() === true ? treeBytes(spillDir) : null;
   const sizeNotes = `db ${formatBytes(db?.size ?? 0)}${spill !== null ? `, spill ${formatBytes(spill)}` : ", no spill dir"}`;
   const found = [...fails, ...warns];
   const base =

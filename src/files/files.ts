@@ -383,3 +383,31 @@ export function pruneOldDirectory(dir: string, days: number): boolean {
   }
   return pruned;
 }
+
+/** The total bytes under one directory tree, counted iteratively and skipping unreadable
+ * entries: a permission-denied subdirectory must not fail doctor. */
+export function treeBytes(dir: string): number {
+  let total = 0;
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) stack.push(full);
+      else if (entry.isFile()) {
+        try {
+          total += fs.statSync(full).size;
+        } catch {
+          // A file that vanished mid-walk contributes nothing.
+        }
+      }
+    }
+  }
+  return total;
+}
