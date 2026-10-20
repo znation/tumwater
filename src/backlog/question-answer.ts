@@ -18,7 +18,7 @@ import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "./backlog-
 import { answeredQuestionEntries, entryMatches, openQuestionEntries, ageInDays, ageSuffix } from "./backlog.js";
 import type { BacklogEntry } from "./backlog.js";
 import { normalizeEntryBody } from "./backlog-write.js";
-import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
+import { collapseWhitespace, firstTrimmedLineStartingWith, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { numberedList } from "../text/markdown.js";
@@ -132,7 +132,7 @@ function answerDate(body: string): string | null {
 /** The first body line that starts with `**Answered `, markup stripped, whitespace collapsed
  * and truncated; "" when no line matches. */
 function answerPreview(body: string): string {
-  const line = body.split("\n").map((l) => l.trim()).find((l) => l.startsWith("**Answered "));
+  const line = firstTrimmedLineStartingWith(body, "**Answered ");
   if (line === undefined) return "";
   return truncate(collapseWhitespace(line.replaceAll("**", "")), BODY_PREVIEW_MAX);
 }

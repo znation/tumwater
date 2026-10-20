@@ -11,7 +11,7 @@
 import path from "node:path";
 import { statOrNull } from "../files/files.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
-import { collapseWhitespace } from "../text/text.js";
+import { collapseWhitespace, firstTrimmedLineStartingWith } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
@@ -61,7 +61,7 @@ function hasNoteLine(body: string, prefix: string): boolean {
  * begins with it, trimmed, with the leading `**` and the first closing `**` removed. Null when
  * no line matches — the same line-prefix rule entryHold uses. */
 function noteText(body: string, prefix: string): string | null {
-  const line = body.split("\n").map((l) => l.trim()).find((l) => l.startsWith(prefix));
+  const line = firstTrimmedLineStartingWith(body, prefix);
   return line === undefined ? null : line.replace(/^\*\*/, "").replace("**", "");
 }
 

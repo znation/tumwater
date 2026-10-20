@@ -59,6 +59,12 @@ export function errorFirstLine(err: unknown): string {
   return errorMessage(err).trim().split("\n")[0] as string;
 }
 
+/** The first line of `body` that begins with `prefix` once trimmed, trimmed; undefined when no
+ * line does. Used by the backlog's hold-note text and the answered-question preview. */
+export function firstTrimmedLineStartingWith(body: string, prefix: string): string | undefined {
+  return body.split("\n").map((l) => l.trim()).find((l) => l.startsWith(prefix));
+}
+
 /** The error message's " (got …)" value suffix, spelled one way everywhere: JSON.stringify for
  * the value's debug form, wrapped in the established parenthetical. The human-facing
  * validation errors that echo back a rejected value with this suffix — the CLI flag
